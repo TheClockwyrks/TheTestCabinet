@@ -2918,7 +2918,7 @@ async fn run_agent(
         let history = HistorySetup {
             estimator: Arc::clone(&context_setup.estimator),
             window_limit: context_setup.window_limit,
-            code_mode: code.enabled,
+            program_language: code.enabled.then_some(code.language),
         };
 
         // Build this agent's [modules](crate::modules) — everything it holds. The memory, task and
@@ -3446,7 +3446,7 @@ async fn run_agent(
         let successor_history = HistorySetup {
             estimator: Arc::clone(&orch.estimator),
             window_limit: orch.context_setup(successor_client.model_id()).window_limit,
-            code_mode: successor_code.enabled,
+            program_language: successor_code.enabled.then_some(successor_code.language),
         };
         let (successor_modules, report) = {
             let module_ctx = ModuleResolveCtx {
@@ -5531,7 +5531,13 @@ impl Agent {
         // mode. Resolved once, because neither the strategy nor the mode changes within a run, and
         // both of the places that need it (a memory compaction's instruction, and the refusal that
         // answers anything else while one is pending) must name calls the agent actually has.
-        let memory_calls = caps.memories().strategy().calls(code.enabled);
+        // The [language](crate::sandbox::ProgramLanguage) this agent writes in, or `None` when it
+        // calls tools — resolved once, because every sentence gg puts in front of this agent that
+        // names one of its own calls has to spell it the way this agent writes it.
+        let code_language: Option<&'static dyn crate::sandbox::ProgramLanguage> = code
+            .enabled
+            .then(|| crate::sandbox::language(code.language));
+        let memory_calls = caps.memories().strategy().calls(code_language);
 
         // The turn numbers this incarnation uses. `turn_base` is what this agent has already spent
         // across its earlier incarnations, so a succession numbers its turns continuously (a
@@ -5733,7 +5739,7 @@ impl Agent {
                         context.push(
                             GgContextSource::System,
                             Retention::Ephemeral,
-                            Message::user(pending.instruction(code.enabled, memory_calls)),
+                            Message::user(pending.instruction(code_language, memory_calls.clone())),
                         );
                         pending_compaction = Some(pending);
                     }
@@ -6440,7 +6446,9 @@ impl Agent {
                             (None, Some(pending)) => context.push(
                                 GgContextSource::System,
                                 Retention::Ephemeral,
-                                Message::user(pending.unsatisfied(true, memory_calls)),
+                                Message::user(
+                                    pending.unsatisfied(code_language, memory_calls.clone()),
+                                ),
                             ),
                             (None, None) => {}
                         }
@@ -6502,7 +6510,7 @@ impl Agent {
                 context.push(
                     GgContextSource::System,
                     Retention::Ephemeral,
-                    Message::user(pending.unsatisfied(false, memory_calls)),
+                    Message::user(pending.unsatisfied(code_language, memory_calls.clone())),
                 );
                 if let Some(breach) = breach {
                     return self.stop_on_limit(
@@ -6609,7 +6617,7 @@ impl Agent {
                     // be dropped.
                     ToolOutcome::failed(
                         ToolFailure::Refused,
-                        pending.refusal(&call.name, false, memory_calls),
+                        pending.refusal(&call.name, code_language, memory_calls.clone()),
                     )
                 } else if call.name == COMPACT_TOOL
                     && compaction.strategy.offers_compact_tool(false)
@@ -6939,7 +6947,7 @@ impl Agent {
                 (None, Some(pending)) => context.push(
                     GgContextSource::System,
                     Retention::Ephemeral,
-                    Message::user(pending.unsatisfied(false, memory_calls)),
+                    Message::user(pending.unsatisfied(code_language, memory_calls.clone())),
                 ),
                 (None, None) => {}
             }
@@ -7328,11 +7336,14 @@ struct AmcSetup {
     /// Whether this agent actually has `evict_file_view` — read off the registry rather than assumed
     /// from the capability, so the per-file breakdown appears exactly when a call could act on it.
     can_evict: bool,
-    /// The [program language](GgProgramLanguage) whose view-closing call this agent has, or `None`
-    /// when it is not in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode at all. Read off the
-    /// capability rather than the registry because `view` is not a tool: it is bound into every
-    /// program's scope unconditionally, so code mode *is* the condition.
-    close_views: Option<GgProgramLanguage>,
+    /// The [program language](GgProgramLanguage) this agent writes in, or `None` when it is not in
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode at all.
+    ///
+    /// It decides both halves of what the context-usage signal may say: whether the agent has the
+    /// view-closing call — read off the capability rather than the registry, because `view` is not a
+    /// tool but bound into every program's scope unconditionally, so code mode *is* the condition —
+    /// and how every reclaim call the block names is spelled.
+    program_language: Option<GgProgramLanguage>,
     /// Whether this agent actually has `archive_thread`. This is also what arms the per-result
     /// [turn headers](ContextModel::turn_header): the header exists to give an archival its turn
     /// numbers, so an agent that cannot archive should not be paying for one on every result.
@@ -7361,7 +7372,7 @@ impl AmcSetup {
             archive,
             archive_id,
             can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
-            close_views: code_language,
+            program_language: code_language,
             can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
             top_file_views: profile
                 .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
@@ -7375,7 +7386,7 @@ impl AmcSetup {
     fn signal_options(&self) -> UsageSignalOptions {
         UsageSignalOptions {
             can_evict: self.can_evict,
-            close_views: self.close_views,
+            program_language: self.program_language,
             can_archive: self.can_archive,
             top_file_views: self.top_file_views,
         }

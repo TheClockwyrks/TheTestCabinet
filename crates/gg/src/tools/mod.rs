@@ -109,8 +109,9 @@ pub use filesystem::{
     ReadFileTool, ReadPolicy, WriteFileTool,
 };
 pub use memories::{
-    CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
-    UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,
+    CREATE_MEMORY_TOOL, CreateMemoryTool, DELETE_MEMORY_TOOL, DeleteMemoryTool, EDIT_MEMORY_TOOL,
+    EditMemoryTool, READ_MEMORY_TOOL, ReadMemoryTool, SearchMemoriesTool, UPDATE_MEMORY_TOOL,
+    UpdateMemoryTool, WRITE_MEMORY_TOOL, WriteMemoryTool, is_memory_tool, read_only_refusal,
 };
 pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub(crate) use shell::{

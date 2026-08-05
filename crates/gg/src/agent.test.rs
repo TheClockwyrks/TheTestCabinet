@@ -315,7 +315,7 @@ fn test_modules(setup: ContextSetup, code_mode: bool) -> ModuleSet {
     ModuleSet::inert(&HistorySetup {
         estimator: setup.estimator,
         window_limit: setup.window_limit,
-        code_mode,
+        program_language: code_mode.then_some(GgProgramLanguage::TypeScript),
     })
 }
 
@@ -512,7 +512,7 @@ fn no_amc() -> AmcSetup {
         archive: Arc::new(Mutex::new(ArchiveStore::new())),
         archive_id: "archive-0".to_string(),
         can_evict: false,
-        close_views: None,
+        program_language: None,
         can_archive: false,
         top_file_views: 0,
     }
@@ -542,7 +542,7 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
         archive_id: "archive-0".to_string(),
         can_evict: true,
         // These `drive` e2es are tool-calling agents, so there is no `view` object to point at.
-        close_views: None,
+        program_language: None,
         can_archive: true,
         top_file_views: 5,
     }
@@ -4135,7 +4135,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
         UsageSignalOptions {
             can_evict: true,
             // A tool-calling agent has no `view` object, so the block must not point at `view.close`.
-            close_views: None,
+            program_language: None,
             can_archive: true,
             top_file_views: DEFAULT_TOP_FILE_VIEWS,
         }
@@ -4165,7 +4165,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     let mut code = on.clone();
     code.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    assert!(resolve(&code).close_views.is_some());
+    assert!(resolve(&code).program_language.is_some());
 }
 
 /// The FileView token band of every emitted `ContextBreakdown`, in order.

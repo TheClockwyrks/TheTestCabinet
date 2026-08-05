@@ -99,10 +99,12 @@ mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
-    FileWindow, HARNESS_FINISH, PROGRAMS_GET, PROGRAMS_RERUN, PrepareFailure, PreparedModule,
-    PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SurfaceCall,
-    UnreachableTail, VIEW_CLOSE, VIEW_OPEN_TEXT, all_languages, language, resolve_program_language,
-    spell,
+    CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, FileWindow, HARNESS_FINISH,
+    MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY,
+    MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_RERUN, PrepareFailure,
+    PreparedModule, PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES,
+    SurfaceCall, UnreachableTail, VIEW_CLOSE, VIEW_OPEN_FILE, VIEW_OPEN_TEXT, all_languages,
+    language, resolve_program_language, spell,
 };
 
 // Named only in documentation and in the seam's own tests today, but exported all the same: they
@@ -143,16 +145,17 @@ pub use {
     invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
     membrane::RunEnding, signatures::CatalogueFunction, signatures::Parameter,
     signatures::ParameterKind, signatures::TypeDeclaration, signatures::catalogue_functions,
-    signatures::catalogue_objects, signatures::type_declaration,
+    signatures::catalogue_objects, signatures::meta_function, signatures::summary_of,
+    signatures::type_declaration,
 };
 
-// The three catalogue types nothing outside `sandbox` names *yet*, exported all the same because
-// they are fields of types it does: an `ObjectDoc` comes back from `catalogue_objects`, a
-// `SignatureEntry` hangs off every `CatalogueFunction`, and a `TypeMember` off every
-// `TypeDeclaration`. A type a reader has to reach into a private module to read is a type nobody
-// reads, and the crate denies warnings.
+// The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are
+// fields of types it does: an `ObjectDoc` comes back from `catalogue_objects`, a `MetaSignature`
+// from `meta_function`, a `SignatureEntry` hangs off every `CatalogueFunction`, and a `TypeMember`
+// off every `TypeDeclaration`. A type a reader has to reach into a private module to read is a type
+// nobody reads, and the crate denies warnings.
 #[allow(unused_imports)]
-pub use signatures::{ObjectDoc, SignatureEntry, TypeMember};
+pub use signatures::{MetaSignature, ObjectDoc, SignatureEntry, TypeMember};
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source
 /// whose evaluation — in whatever that guest evaluates — produces its exports.

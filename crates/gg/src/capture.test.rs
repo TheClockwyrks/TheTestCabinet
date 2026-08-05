@@ -630,7 +630,7 @@ fn framed_window() -> ContextModel {
     );
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
-        close_views: None,
+        program_language: None,
         can_archive: true,
         top_file_views: 5,
     });

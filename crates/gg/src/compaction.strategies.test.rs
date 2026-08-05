@@ -322,7 +322,13 @@ fn a_memory_compaction_needs_one_clean_reply() {
 /// The memory calls a scratchpad run names, in one execution mode — what every instruction below
 /// is rendered with unless it is testing the strategy-dependence itself.
 fn scratchpad_calls(code_mode: bool) -> MemoryCalls {
-    MemoryStrategy::Scratchpad.calls(code_mode)
+    MemoryStrategy::Scratchpad.calls(code_language(code_mode))
+}
+
+/// The language a code-mode assertion below is rendered against, and `None` for a tool-calling one.
+fn code_language(code_mode: bool) -> Option<&'static dyn crate::sandbox::ProgramLanguage> {
+    code_mode
+        .then(|| crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript))
 }
 
 /// Each instruction names the call the model must actually make, in the vocabulary of the execution
@@ -330,25 +336,27 @@ fn scratchpad_calls(code_mode: bool) -> MemoryCalls {
 /// responses-as-code — and every one of them says why the model is being interrupted.
 #[test]
 fn each_instruction_names_the_call_for_its_execution_mode() {
-    let tool_calling = PendingCompaction::CompactCall.instruction(false, scratchpad_calls(false));
+    let tool_calling = PendingCompaction::CompactCall.instruction(None, scratchpad_calls(false));
     assert!(tool_calling.contains("Call `compact`"), "{tool_calling}");
-    let code = PendingCompaction::CompactCall.instruction(true, scratchpad_calls(true));
+    let code =
+        PendingCompaction::CompactCall.instruction(code_language(true), scratchpad_calls(true));
     assert!(code.contains("`context.compact(summary, files)`"), "{code}");
 
-    let memories_code = PendingCompaction::MemoryWrites.instruction(true, scratchpad_calls(true));
+    let memories_code =
+        PendingCompaction::MemoryWrites.instruction(code_language(true), scratchpad_calls(true));
     assert!(
         memories_code.contains("memory.writeMemory"),
         "{memories_code}"
     );
-    let memories_tools =
-        PendingCompaction::MemoryWrites.instruction(false, scratchpad_calls(false));
+    let memories_tools = PendingCompaction::MemoryWrites.instruction(None, scratchpad_calls(false));
     assert!(memories_tools.contains("write_memory"), "{memories_tools}");
 
     // **A code agent is never told to stop writing programs.** Its summary arrives the way
     // everything else a program says arrives: as a call carrying it. Asking a code agent for prose
     // would suspend the one contract the whole protocol rests on — and a contract suspended once is
     // a contract a model has learned is negotiable.
-    let summary_code = PendingCompaction::Summary.instruction(true, scratchpad_calls(true));
+    let summary_code =
+        PendingCompaction::Summary.instruction(code_language(true), scratchpad_calls(true));
     assert!(
         summary_code.contains("`context.compact(summary)`"),
         "{summary_code}"
@@ -360,7 +368,7 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
         );
     }
     // The tool-calling arm is unchanged: there, the reply's own text *is* the summary.
-    let summary_tools = PendingCompaction::Summary.instruction(false, scratchpad_calls(false));
+    let summary_tools = PendingCompaction::Summary.instruction(None, scratchpad_calls(false));
     assert!(
         summary_tools.contains("plain text summary"),
         "{summary_tools}"
@@ -374,7 +382,7 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
         for code_mode in [false, true] {
             assert!(
                 pending
-                    .instruction(code_mode, scratchpad_calls(code_mode))
+                    .instruction(code_language(code_mode), scratchpad_calls(code_mode))
                     .contains("context window is full"),
                 "{pending:?} ({code_mode}) states why it is interrupting"
             );
@@ -386,7 +394,7 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
 /// "do X" while its Y silently fails reads the failure as gg being broken and retries Y.
 #[test]
 fn a_refusal_names_the_refused_call_and_the_way_out() {
-    let refusal = PendingCompaction::CompactCall.refusal("shell", false, scratchpad_calls(false));
+    let refusal = PendingCompaction::CompactCall.refusal("shell", None, scratchpad_calls(false));
     assert!(refusal.contains("`shell`"), "{refusal}");
     assert!(refusal.contains("compact"), "{refusal}");
 }
@@ -396,13 +404,13 @@ fn a_refusal_names_the_refused_call_and_the_way_out() {
 /// something it was never given — and the model would have no way out of a full window.
 #[test]
 fn a_memory_compaction_names_the_memory_strategys_own_calls() {
-    let calls = MemoryStrategy::Markdown.calls(false);
-    let instruction = PendingCompaction::MemoryWrites.instruction(false, calls);
+    let calls = MemoryStrategy::Markdown.calls(None);
+    let instruction = PendingCompaction::MemoryWrites.instruction(None, calls.clone());
     assert!(instruction.contains("`create_memory`"), "{instruction}");
     assert!(instruction.contains("`edit_memory`"), "{instruction}");
     assert!(!instruction.contains("write_memory"), "{instruction}");
 
-    let refusal = PendingCompaction::MemoryWrites.refusal("shell", false, calls);
+    let refusal = PendingCompaction::MemoryWrites.refusal("shell", None, calls);
     assert!(refusal.contains("`create_memory`"), "{refusal}");
     assert!(!refusal.contains("write_memory"), "{refusal}");
 }

@@ -84,8 +84,11 @@ pub fn is_memory_tool(name: &str) -> bool {
 /// write anyway: a [responses-as-code](crate::sandbox) program written against a scope the agent
 /// no longer has. A file-shaped store's read call is named, because on that strategy the contents
 /// are not otherwise in front of the model at all.
-pub fn read_only_refusal(strategy: crate::memories::MemoryStrategy, code_mode: bool) -> String {
-    let calls = strategy.calls(code_mode);
+pub fn read_only_refusal(
+    strategy: crate::memories::MemoryStrategy,
+    language: Option<&dyn crate::sandbox::ProgramLanguage>,
+) -> String {
+    let calls = strategy.calls(language);
     let alternative = if strategy.is_file_shaped() {
         format!("; read one with {}", calls.read)
     } else {

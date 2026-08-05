@@ -74,7 +74,7 @@ impl World {
             history: HistorySetup {
                 estimator: Arc::new(HeuristicTokenEstimator),
                 window_limit: None,
-                code_mode: false,
+                program_language: None,
             },
             agent_id,
             ids: &self.ids,

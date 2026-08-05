@@ -149,7 +149,7 @@ fn create_rejects_a_duplicate_slug_and_leaves_the_original() {
             .unwrap_err(),
         MemoryError::Duplicate {
             name: "dup".to_string(),
-            revise: "`edit_memory`",
+            revise: "`edit_memory`".to_string(),
         }
     );
     assert_eq!(store.read("dup").unwrap().body(), "first");
@@ -312,8 +312,8 @@ fn keyword_search_enforces_a_count_limit_when_one_is_configured() {
             .unwrap_err(),
         MemoryError::CountCap {
             cap: 2,
-            revise: "`edit_memory`",
-            delete: "`delete_memory`",
+            revise: "`edit_memory`".to_string(),
+            delete: "`delete_memory`".to_string(),
         }
     );
 }
@@ -333,7 +333,7 @@ fn read_returns_the_contents_and_needs_an_existing_slug() {
         store.read("nope").unwrap_err(),
         MemoryError::NotFound {
             name: "nope".to_string(),
-            create: "`create_memory`",
+            create: "`create_memory`".to_string(),
         }
     );
     assert_eq!(
@@ -441,7 +441,7 @@ fn edit_needs_an_existing_slug_and_a_search_string() {
         store.edit("", "nope", "a", "b").unwrap_err(),
         MemoryError::NotFound {
             name: "nope".to_string(),
-            create: "`create_memory`",
+            create: "`create_memory`".to_string(),
         }
     );
     store
@@ -470,7 +470,7 @@ fn delete_removes_the_memory_and_its_index_entry() {
         store.read("drop").unwrap_err(),
         MemoryError::NotFound {
             name: "drop".to_string(),
-            create: "`create_memory`",
+            create: "`create_memory`".to_string(),
         }
     );
 }
@@ -548,15 +548,18 @@ fn the_state_event_reports_the_strategy_and_its_limits() {
 /// not have.
 #[test]
 fn the_named_calls_follow_the_strategy_and_the_mode() {
-    let scratchpad = MemoryStrategy::Scratchpad.calls(false);
+    let scratchpad = MemoryStrategy::Scratchpad.calls(None);
     assert_eq!(scratchpad.create, "`write_memory`");
     assert_eq!(scratchpad.revise, "`update_memory`");
 
-    let markdown = MemoryStrategy::Markdown.calls(false);
+    let markdown = MemoryStrategy::Markdown.calls(None);
     assert_eq!(markdown.create, "`create_memory`");
     assert_eq!(markdown.revise, "`edit_memory`");
 
-    let code = MemoryStrategy::KeywordSearch.calls(true);
+    // The code-mode spellings come from TypeScript's own committed catalogue rather than from a
+    // table here, which is why a second language spells them its own way with nothing to edit.
+    let typescript = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript);
+    let code = MemoryStrategy::KeywordSearch.calls(Some(typescript));
     assert_eq!(code.create, "`memory.createMemory`");
     assert_eq!(code.revise, "`memory.editMemory`");
     assert_eq!(code.delete, "`memory.deleteMemory`");

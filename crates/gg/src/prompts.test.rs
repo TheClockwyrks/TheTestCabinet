@@ -307,6 +307,28 @@ fn code_mode_teaches_views_rather_than_logging() {
     assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
 }
 
+/// One function's signature as TypeScript's committed catalogue declares it, qualified by its
+/// object — what a prompt that quotes a signature must be quoting.
+///
+/// Written this way rather than as a literal because the literal is the defect: a signature typed
+/// into a test is a second copy of the SDK's declaration, and a test that pinned one would go on
+/// passing after the SDK's argument was renamed and the prompt started describing a call nobody has.
+fn catalogued_signature(object: &str, key: &str) -> String {
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    let function = crate::sandbox::catalogue_functions(language)
+        .into_iter()
+        .find(|function| function.object == object && function.key == key)
+        .unwrap_or_else(|| panic!("`{object}.{key}` is catalogued"));
+    format!(
+        "{object}.{}",
+        function
+            .signatures
+            .first()
+            .expect("every catalogue entry carries a signature")
+            .signature
+    )
+}
+
 /// **The code prompt names the shape of the calls a program cannot get started without.**
 ///
 /// The surface is otherwise [read on demand](https://docs.testcabinet.ai/gg/responses-as-code/), and
@@ -367,7 +389,7 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
         },
         ShellView::default(),
     );
-    assert!(uncapped.contains("view.openFile(path: str)"), "{uncapped}");
+    assert!(uncapped.contains("view.openFile(path)"), "{uncapped}");
     assert!(!uncapped.contains("offset"), "{uncapped}");
     assert!(!uncapped.contains("limit"), "{uncapped}");
 
@@ -380,8 +402,11 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
             ..ShellView::default()
         },
     );
+    // The signature is quoted from the catalogue rather than written out here, which is the whole
+    // of what this asserts: whatever the SDK declares `shell` to take is what the prompt says it
+    // takes, and a renamed argument reaches the model without anyone editing a template.
     assert!(
-        with_shell.contains("`system.shell(command: str)`"),
+        with_shell.contains(&catalogued_signature("system", "shell")),
         "{with_shell}"
     );
     assert!(with_shell.contains("`exitCode`"), "{with_shell}");
@@ -1557,9 +1582,11 @@ fn the_context_usage_signal_renders() {
             },
         ],
         can_evict: true,
+        evict_file_view: "context.evictFileView".to_string(),
         can_close_views: true,
         close_view: "view.close".to_string(),
         can_archive: true,
+        archive_thread: "context.archiveThread".to_string(),
     });
     assert!(
         full.starts_with("Context Usage:\n- Overall: 80.1%\n"),
@@ -1571,9 +1598,11 @@ fn the_context_usage_signal_renders() {
     assert!(full.contains("\n  - `src/main.rs`: 12.7%\n"), "{full}");
     assert!(full.contains("\n  - `src/foo.rs`: 4.6%\n"), "{full}");
     assert!(full.contains("\n- Tasks: 2.0%\n"), "{full}");
-    assert!(full.contains("`evict_file_view`"), "{full}");
+    // Each reclaim call is named exactly as the caller spelled it, so a code agent is pointed at a
+    // method on an API object rather than at a gg tool name it cannot call.
+    assert!(full.contains("`context.evictFileView`"), "{full}");
     assert!(full.contains("`view.close`"), "{full}");
-    assert!(full.contains("`archive_thread`"), "{full}");
+    assert!(full.contains("`context.archiveThread`"), "{full}");
 
     // An agent with neither reclaim tool is given the figures and no advice it cannot take.
     let bare = render_context_pressure(&ContextPressureContext {
@@ -1584,18 +1613,20 @@ fn the_context_usage_signal_renders() {
             top_files: Vec::new(),
         }],
         can_evict: false,
+        evict_file_view: String::new(),
         can_close_views: false,
         close_view: String::new(),
         can_archive: false,
+        archive_thread: String::new(),
     });
     assert!(
         bare.starts_with("Context Usage:\n- Overall: 10.0%\n"),
         "{bare}"
     );
     assert!(!bare.contains("Top File Views"), "{bare}");
-    assert!(!bare.contains("evict_file_view"), "{bare}");
+    assert!(!bare.contains("evictFileView"), "{bare}");
     assert!(!bare.contains("view.close"), "{bare}");
-    assert!(!bare.contains("archive_thread"), "{bare}");
+    assert!(!bare.contains("archiveThread"), "{bare}");
 }
 
 // ---------------------------------------------------------------------------
@@ -1641,7 +1672,7 @@ const REQUIRED_SECTIONS: &[&str] = &[
 /// them behind. Turning them on here would render nothing, so no gate below can cover them; they
 /// are either sections the templates should regain or fields that should go, and that is a decision
 /// rather than a test fix.
-fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
+pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
     SystemContext {
         responses_as_code: true,
         language: Some(language),
@@ -1750,9 +1781,7 @@ fn every_language_renders_its_nothing_shown_notice() {
         assert!(!rendered.trim().is_empty(), "{language}: an empty notice");
         assert_ne!(
             rendered,
-            crate::sandbox::language(language)
-                .prompt()
-                .nothing_shown_fallback,
+            super::nothing_shown_fallback(crate::sandbox::language(language)),
             "{language}: the notice fell back, so its template did not render"
         );
     }
@@ -1798,7 +1827,7 @@ fn each_language_renders_its_own_prompt_and_not_another_languages() {
     );
 
     assert!(
-        rendered.contains("fs.read_file(path)") && rendered.contains("view.open_text(label, body)"),
+        rendered.contains("fs.read_file(path)") && rendered.contains("view.open_text("),
         "the fixture's prompt quotes the fixture's spellings:\n{rendered}"
     );
     assert!(
@@ -1827,7 +1856,7 @@ fn each_language_words_its_own_nothing_shown_notice() {
     assert!(!rendered.contains("view.openText"), "{rendered}");
     assert_ne!(
         rendered,
-        fixture.prompt().nothing_shown_fallback,
+        super::nothing_shown_fallback(fixture),
         "the notice fell back, so its template did not render"
     );
 }

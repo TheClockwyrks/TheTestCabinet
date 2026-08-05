@@ -44,6 +44,7 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     FileWindow, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, PromptDialect,
+    VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 #[path = "typescript.prepare.rs"]
@@ -75,22 +76,14 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is,
 /// and are named for the language they belong to so a second one is a second file rather than a
-/// branch inside this one. Individual function spellings are **not** here — the ending calls and the
-/// view-closing call gg quotes in its own sentences are resolved from this language's catalogue by
-/// [`spell`](super::spell), so there is one copy of each rather than two that have to agree.
+/// branch inside this one. Individual function spellings are **not** here, and not in the templates
+/// either: every name and signature they quote is resolved from this language's committed catalogue
+/// when the template renders, so there is one copy of each rather than two that have to agree.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.typescript.hbs"),
     system_template_name: "system-code.typescript",
     nothing_shown_template: include_str!("../../../templates/code-nothing-shown.typescript.hbs"),
     nothing_shown_template_name: "code-nothing-shown.typescript",
-    nothing_shown_fallback: "Your program ran and put nothing in your context. Open a view to see \
-                             something: `view.openText(label, body)` for a value you computed, \
-                             `view.openFile(path)` for a file.",
-    list_signature: "list(): FunctionSummary[]",
-    list_doc: "List the functions available on this API object, each as `{ name, summary }`. Only \
-               the functions this run actually bound are returned. Call `view.openDocsView(name)` \
-               to see a function's full signature and documentation.",
-    list_summary: "List this object's functions, each with a one-line summary.",
 };
 
 /// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
@@ -192,8 +185,9 @@ impl ProgramLanguage for TypeScript {
         &PROMPT
     }
 
-    /// `view.openFile("src/main.ts");`, or `view.openFile("src/main.ts", { offset: 400, limit: 200 });`
-    /// for a window.
+    /// `view.openFile("src/main.ts");`, or
+    /// `view.openFile("src/main.ts", { offset: 400, limit: 200 });` for a window — with the call's
+    /// name resolved from this language's own catalogue rather than written out here.
     ///
     /// Deliberately the plainest statement that does the job: no `const`, no loop, no logging. It is
     /// synthesized into the agent's own transcript and read by the model as an example of its own
@@ -202,13 +196,33 @@ impl ProgramLanguage for TypeScript {
     /// same shape the system prompt teaches; the path is rendered through [`serde_json`] so a quote
     /// or a backslash in one cannot produce a program that would not parse.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        let open_file = spell(self, VIEW_OPEN_FILE);
         let path = serde_json::Value::String(path.to_string());
         match window {
             Some(window) => format!(
-                "view.openFile({path}, {{ offset: {}, limit: {} }});",
+                "{open_file}({path}, {{ offset: {}, limit: {} }});",
                 window.offset, window.limit
             ),
-            None => format!("view.openFile({path});"),
+            None => format!("{open_file}({path});"),
         }
+    }
+
+    /// A `const` array of names and a `for…of` over it, each iteration opening one documentation
+    /// view.
+    ///
+    /// A loop rather than one statement per name because the list is as long as the family — eleven
+    /// calls written out would be a program a model reads as a style to copy. The names are rendered
+    /// through [`serde_json`] for the reason a path is: a name carrying a quote would otherwise
+    /// produce a program that does not parse.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        let open_docs_view = spell(self, VIEW_OPEN_DOCS_VIEW);
+        let entries: String = names
+            .iter()
+            .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
+            .collect();
+        format!(
+            "const functions = [\n{entries}];\nfor (const name of functions) {{\n  \
+             {open_docs_view}(name);\n}}\n"
+        )
     }
 }

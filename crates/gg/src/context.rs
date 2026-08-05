@@ -53,6 +53,7 @@ use test_cabinet_core::gg::{
 
 use crate::model::{ImageContent, Message, Role, ToolCall};
 use crate::prompts::{self, ContextPressureContext, UsageCategoryView, UsageFileView};
+use crate::tools::{ARCHIVE_THREAD_TOOL, EVICT_FILE_VIEW_TOOL};
 
 /// A small fixed per-message token allowance approximating the role tag and message
 /// framing a provider adds around the content (chat formats wrap each message in a few
@@ -538,18 +539,19 @@ pub struct UsageSignalOptions {
     /// omitted entirely — a ranked list of reads it cannot drop is exactly the noise this block was
     /// rewritten to remove.
     pub can_evict: bool,
-    /// The [program language](GgProgramLanguage) whose view-closing call this agent has, or `None`
-    /// on the tool-calling path, which has no `view` object at all.
+    /// The [program language](GgProgramLanguage) this agent writes in, or `None` on the tool-calling
+    /// path.
     ///
-    /// Under [responses-as-code](crate::agent) the always-bound `view` object gives an agent the one
-    /// call that can close a [text view](GgContextSource::TextView), so without it the block can
-    /// name a `Text Views` band and offer no way to reclaim it — a category the agent cannot act on,
-    /// which is precisely what this struct exists to prevent.
-    ///
-    /// One `Option` rather than a flag beside a language, because the two facts are the same fact:
-    /// an agent has the call exactly when it is writing programs, and the language is only there to
-    /// say how the call is *spelled*. Two fields could disagree; this one cannot.
-    pub close_views: Option<GgProgramLanguage>,
+    /// It decides two things at once, which is why it is one `Option` rather than a flag beside a
+    /// language. It is whether the agent has the **view-closing** call: under
+    /// [responses-as-code](crate::agent) the always-bound `view` object gives an agent the one call
+    /// that can close a [text view](GgContextSource::TextView), so without it the block can name a
+    /// `Text Views` band and offer no way to reclaim it — a category the agent cannot act on, which
+    /// is precisely what this struct exists to prevent. And it is how **every** call this block
+    /// points at is spelled: a code agent reclaims its window by calling a method on an API object,
+    /// so a block that named gg's tool names at it would be naming things its scope does not bind.
+    /// Two fields could disagree; this one cannot.
+    pub program_language: Option<GgProgramLanguage>,
     /// Whether this agent has `archive_thread`, which decides whether the block closes by pointing at
     /// it — and, upstream of that, whether tool results carry
     /// [turn headers](ContextModel::turn_header) at all.
@@ -1443,15 +1445,28 @@ impl ContextModel {
             })
             .collect();
 
+        // How a call this block points at is written for the agent reading it: the method a program
+        // calls when it writes programs, and gg's own tool name when it requests tools. Resolved
+        // from the language's committed catalogue in the first case, so the block quotes what the
+        // SDK really binds.
+        let spelled = |call, tool: &str| match options.program_language {
+            Some(language) => crate::sandbox::spell(crate::sandbox::language(language), call),
+            None => tool.to_string(),
+        };
         Some(prompts::render_context_pressure(&ContextPressureContext {
             overall: percent(total),
             categories,
             can_evict: options.can_evict,
-            can_close_views: options.close_views.is_some(),
-            // The spelling only ever reaches the template when the clause above renders it, so an
-            // agent with no `view` object costs nothing for the language it does not have.
+            // Each spelling only ever reaches the template when its own clause renders it.
+            evict_file_view: spelled(
+                crate::sandbox::CONTEXT_EVICT_FILE_VIEW,
+                EVICT_FILE_VIEW_TOOL,
+            ),
+            can_close_views: options.program_language.is_some(),
+            // The one call with no tool-calling counterpart at all: a native session has no `view`
+            // object, which is why its clause does not render for one.
             close_view: options
-                .close_views
+                .program_language
                 .map(|language| {
                     crate::sandbox::spell(
                         crate::sandbox::language(language),
@@ -1460,6 +1475,7 @@ impl ContextModel {
                 })
                 .unwrap_or_default(),
             can_archive: options.can_archive,
+            archive_thread: spelled(crate::sandbox::CONTEXT_ARCHIVE_THREAD, ARCHIVE_THREAD_TOOL),
         }))
     }
 

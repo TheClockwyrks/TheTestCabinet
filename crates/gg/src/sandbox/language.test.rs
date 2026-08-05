@@ -235,8 +235,8 @@ fn every_language_names_its_templates_after_itself() {
             language.id()
         );
         assert!(
-            !prompt.nothing_shown_fallback.trim().is_empty(),
-            "{}: an empty nothing-shown fallback",
+            !prompt.nothing_shown_template.trim().is_empty(),
+            "{}: an empty nothing-shown notice",
             language.id()
         );
     }

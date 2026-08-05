@@ -27,6 +27,7 @@ use super::{
     ErrorCode, MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall,
     SandboxViewOpened, ToolApi,
 };
+use crate::sandbox::language::{FS_READ_FILE, ProgramLanguage, VIEW_OPEN_FILE, spell};
 use crate::tools::{ToolData, ToolOutcome};
 
 /// The most log lines one program's output is kept from. A JavaScript guest can log in a loop well
@@ -209,16 +210,20 @@ impl<A: ToolApi> MembraneState<A> {
 /// description anybody reads is the one corrected here. A `view.openFile` reaches this function
 /// with its pictures already moved into the view item, so nothing is dropped and the sidecar
 /// correctly still says `shown: true`.
-pub(super) fn withhold_pictures(outcome: &mut ToolOutcome) {
+pub(super) fn withhold_pictures(outcome: &mut ToolOutcome, language: &dyn ProgramLanguage) {
     if outcome.images.is_empty() {
         return;
     }
     outcome.images.clear();
     if let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
         image.shown = false;
-        image.not_shown_reason = Some(
-            "`fs.readFile` does not show images; open one with `view.openFile(path)`".to_string(),
-        );
+        // Both calls spelled from this program's own catalogue: the sentence is one a model reads
+        // and acts on, so naming a call it cannot make would be worse than saying nothing.
+        image.not_shown_reason = Some(format!(
+            "`{}` does not show images; open one with `{}(path)`",
+            spell(language, FS_READ_FILE),
+            spell(language, VIEW_OPEN_FILE),
+        ));
     }
 }
 

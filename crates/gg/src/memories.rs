@@ -60,8 +60,8 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_MEMORIES, GgAgentConfig, GgContextSource, GgMemoryCaps, GgMemoryChange,
-    GgMemoryEntry, GgMemoryPeak, GgModuleOrigin, GgTelemetryKind, MEMORY_STRATEGY_KEYWORD_SEARCH,
-    MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
+    GgMemoryEntry, GgMemoryPeak, GgModuleOrigin, GgProgramLanguage, GgTelemetryKind,
+    MEMORY_STRATEGY_KEYWORD_SEARCH, MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
 };
 
 use crate::model::Message;
@@ -71,6 +71,14 @@ use crate::modules::{
 };
 use crate::prompts::{
     self, MemoriesBlockContext, MemoryIndexContext, MemoryItemView, MemoryNoticeContext,
+};
+use crate::sandbox::{
+    MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY,
+    MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, ProgramLanguage, SurfaceCall, spell,
+};
+use crate::tools::{
+    CREATE_MEMORY_TOOL, DELETE_MEMORY_TOOL, EDIT_MEMORY_TOOL, READ_MEMORY_TOOL, UPDATE_MEMORY_TOOL,
+    WRITE_MEMORY_TOOL,
 };
 
 /// Which memory instance a holder binds to, re-exported from the contract so gg and the
@@ -216,8 +224,8 @@ impl MemoryStrategy {
         matches!(self, Self::KeywordSearch)
     }
 
-    /// The names this strategy's calls go by in one execution mode — how gg must **name a memory
-    /// call back to the model** in prose.
+    /// The names this strategy's calls go by for one agent — how gg must **name a memory call back
+    /// to the model** in prose.
     ///
     /// Every strategy offers a different set of tools, and under
     /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) each is a method on
@@ -225,51 +233,52 @@ impl MemoryStrategy {
     /// the [memory compaction](crate::compaction::CompactionStrategy::Memory) instruction, and the
     /// refusal that answers a call made while one is pending — has to name the calls that run
     /// actually has, so they are derived here once instead of being spelled out at each site.
-    pub fn calls(self, code_mode: bool) -> MemoryCalls {
-        match (self, code_mode) {
-            (Self::Scratchpad, false) => MemoryCalls {
-                create: "`write_memory`",
-                revise: "`update_memory`",
-                delete: "`delete_memory`",
-                read: "`read_memory`",
-            },
-            (Self::Scratchpad, true) => MemoryCalls {
-                create: "`memory.writeMemory`",
-                revise: "`memory.updateMemory`",
-                delete: "`memory.deleteMemory`",
-                read: "`memory.readMemory`",
-            },
-            (_, false) => MemoryCalls {
-                create: "`create_memory`",
-                revise: "`edit_memory`",
-                delete: "`delete_memory`",
-                read: "`read_memory`",
-            },
-            (_, true) => MemoryCalls {
-                create: "`memory.createMemory`",
-                revise: "`memory.editMemory`",
-                delete: "`memory.deleteMemory`",
-                read: "`memory.readMemory`",
-            },
+    ///
+    /// `language` is the agent's [program language](test_cabinet_core::gg::GgProgramLanguage), or
+    /// `None` for a tool-calling agent. It is a language rather than a `bool` because the *method*
+    /// spelling is not gg's to decide: it is resolved from that language's own committed catalogue
+    /// by [`spell`](crate::sandbox::spell), so an SDK that renamed `editMemory` renames it in these
+    /// sentences too, and a second language spells them its own way without this function learning
+    /// about it.
+    pub fn calls(self, language: Option<&dyn ProgramLanguage>) -> MemoryCalls {
+        let named = |call: SurfaceCall, tool: &str| match language {
+            Some(language) => format!("`{}`", spell(language, call)),
+            None => format!("`{tool}`"),
+        };
+        let (create, revise) = match self {
+            Self::Scratchpad => (
+                named(MEMORY_WRITE_MEMORY, WRITE_MEMORY_TOOL),
+                named(MEMORY_UPDATE_MEMORY, UPDATE_MEMORY_TOOL),
+            ),
+            _ => (
+                named(MEMORY_CREATE_MEMORY, CREATE_MEMORY_TOOL),
+                named(MEMORY_EDIT_MEMORY, EDIT_MEMORY_TOOL),
+            ),
+        };
+        MemoryCalls {
+            create,
+            revise,
+            delete: named(MEMORY_DELETE_MEMORY, DELETE_MEMORY_TOOL),
+            read: named(MEMORY_READ_MEMORY, READ_MEMORY_TOOL),
         }
     }
 }
 
-/// What one [strategy](MemoryStrategy::calls)'s calls are called, in one execution mode, already
-/// wrapped in the backticks every prompt renders them with.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What one [strategy](MemoryStrategy::calls)'s calls are called, for one agent, already wrapped in
+/// the backticks every prompt renders them with.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemoryCalls {
     /// The call that records a new memory.
-    pub create: &'static str,
+    pub create: String,
     /// The call that revises an existing one.
-    pub revise: &'static str,
+    pub revise: String,
     /// The call that removes one.
-    pub delete: &'static str,
+    pub delete: String,
     /// The call that reads one back. Named for every strategy, but only ever *offered* by the two
     /// [file-shaped](MemoryStrategy::is_file_shaped) ones — the scratchpad's memories are already
     /// in the window, so it has nothing to read them with. A prompt that points at it has to check
     /// the strategy first.
-    pub read: &'static str,
+    pub read: String,
 }
 
 /// The bounds gg keeps the model's [memories](MemoryStore) within, so self-curated notes cannot
@@ -547,7 +556,7 @@ pub enum MemoryError {
         name: String,
         /// The call that revises the existing memory instead, as this store's
         /// [strategy](MemoryStrategy::calls) names it.
-        revise: &'static str,
+        revise: String,
     },
     /// An operation named a memory that does not exist.
     NotFound {
@@ -555,7 +564,7 @@ pub enum MemoryError {
         name: String,
         /// The call that creates a memory, as this store's [strategy](MemoryStrategy::calls)
         /// names it.
-        create: &'static str,
+        create: String,
     },
     /// The memory's description exceeds the description length limit.
     DescriptionCap {
@@ -590,9 +599,9 @@ pub enum MemoryError {
         cap: usize,
         /// The call that revises an existing memory, as this store's
         /// [strategy](MemoryStrategy::calls) names it.
-        revise: &'static str,
+        revise: String,
         /// The call that removes one, likewise.
-        delete: &'static str,
+        delete: String,
     },
     /// The write would push the aggregate body length over the total limit.
     TotalCap {
@@ -1345,7 +1354,7 @@ impl MemoryStore {
     fn check_count(&self) -> Result<(), MemoryError> {
         match self.caps.max_count {
             Some(cap) if self.memories.len() >= cap => {
-                let calls = self.strategy.calls(false);
+                let calls = self.strategy.calls(None);
                 Err(MemoryError::CountCap {
                     cap,
                     revise: calls.revise,
@@ -1366,7 +1375,7 @@ impl MemoryStore {
     fn duplicate(&self, name: String) -> MemoryError {
         MemoryError::Duplicate {
             name,
-            revise: self.strategy.calls(false).revise,
+            revise: self.strategy.calls(None).revise,
         }
     }
 
@@ -1374,7 +1383,7 @@ impl MemoryStore {
     fn not_found(&self, name: &str) -> MemoryError {
         MemoryError::NotFound {
             name: name.to_string(),
-            create: self.strategy.calls(false).create,
+            create: self.strategy.calls(None).create,
         }
     }
 
@@ -1682,10 +1691,11 @@ pub struct MemoriesRuntime {
     /// for why it is a property of the *run's* configuration rather than of how many holders the
     /// store happens to have when the prompt is rendered.
     linked: bool,
-    /// Whether the holder writes programs rather than calling tools — which changes what the
-    /// memory calls are *named* in the notice this holder is given. A property of the holder's
-    /// execution mode, so it is re-resolved whenever a different agent takes the store over.
-    code_mode: bool,
+    /// The [program language](GgProgramLanguage) the holder writes its programs in, or `None` when
+    /// it calls tools instead — which is what the memory calls are *named* as in the notice this
+    /// holder is given. A property of the holder, so it is re-resolved whenever a different agent
+    /// takes the store over.
+    program_language: Option<GgProgramLanguage>,
 }
 
 impl MemoriesRuntime {
@@ -1744,7 +1754,7 @@ impl MemoriesRuntime {
             scope: MemoryScope::default(),
             access: MemoryAccess::ReadWrite,
             linked: false,
-            code_mode: false,
+            program_language: None,
         }
     }
 
@@ -1827,7 +1837,7 @@ impl MemoriesRuntime {
                 }
             }
         };
-        bound.code_mode = ctx.history.code_mode;
+        bound.program_language = ctx.history.program_language;
         bound.origin = origin;
         bound.linked = links(profile, scope, ctx);
         bound.with_binding(scope, access).with_agent(ctx.agent_id)
@@ -1967,7 +1977,7 @@ impl MemoriesRuntime {
             scope: self.scope,
             access: self.access,
             linked: self.linked,
-            code_mode: self.code_mode,
+            program_language: self.program_language,
         }
     }
 
@@ -2144,7 +2154,7 @@ impl MemoriesRuntime {
         if entries.is_empty() {
             return None;
         }
-        let calls = strategy.calls(self.code_mode);
+        let calls = strategy.calls(self.program_language.map(crate::sandbox::language));
         Some(Message::user(prompts::render_memory_notice(
             &MemoryNoticeContext {
                 entries,
@@ -2338,7 +2348,7 @@ impl Module for MemoriesRuntime {
         };
         self.linked = links(profile, scope, ctx);
         self.agent_id = ctx.agent_id.to_string();
-        self.code_mode = ctx.history.code_mode;
+        self.program_language = ctx.history.program_language;
         Ok(())
     }
 }

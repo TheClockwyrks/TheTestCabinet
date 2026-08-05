@@ -185,6 +185,23 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// [agent persistence](crate::persistence::restore_file_views).
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String;
 
+    /// A whole **program** that opens one documentation view per name in `names`, as this language
+    /// spells and structures it.
+    ///
+    /// The one place gg generates source rather than quoting a call, and it is not optional: it is
+    /// the on-use script of every [built-in family skill](crate::skills), so a language that could
+    /// not write it would be a language whose agents read a skill and are shown nothing. The set of
+    /// names is exactly what `object.list()` would answer for that agent, which is why the program is
+    /// generated at all — a skill that hard-coded a list would be a second answer to a question that
+    /// already has one.
+    ///
+    /// A trait method rather than a `format!` in [`skills`](crate::skills) because every token of it
+    /// is this language's: the list literal, the loop, the statement terminator, and the name of the
+    /// call itself. The implementation is expected to resolve that name with
+    /// [`spell`]`(self, `[`VIEW_OPEN_DOCS_VIEW`]`)` rather than writing it out, for the same reason
+    /// nothing else does.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String;
+
     /// Replies this language contributes to the delete-only invariant corpus.
     ///
     /// `#[cfg(test)]`, and on the trait rather than beside the tests so that a language cannot be
@@ -197,27 +214,26 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     }
 }
 
-/// Everything model-facing that is **authored in one language's syntax** and does not live inside
-/// that language's own [prepare step](ProgramLanguage::prepare_program).
+/// The model-facing **prose** that is written in one language's syntax: two Handlebars templates,
+/// and nothing else.
 ///
-/// Two things qualify, and the boundary between them and everything else is worth stating plainly.
+/// The responses-as-code system prompt is written per language because its *sentences* are — how a
+/// program is structured, what a statement ends with, what its example code looks like. Its
+/// **spellings** are not written here or in the template: every function name and every signature a
+/// template quotes is resolved from that language's own committed
+/// [catalogue](super::signatures) at render time, so a template says `{{api.view.open_text.call}}`
+/// and never `view.openText`. That is the whole rule — gg quotes what the SDK really binds, and
+/// there is no second copy of a name to drift.
 ///
-/// * **Prose written in the language's spellings.** The responses-as-code system prompt quotes the
-///   SDK throughout — `skills.readSkill(name)`, `project.createIssue`, `view.openText`,
-///   `JSON.stringify` — and function spelling is precisely the thing the seam declares free to
-///   differ. So the template is per-language and lives here rather than being one file with a branch
-///   at every bullet.
-///
-/// What is deliberately **not** here, and the boundary is worth stating plainly:
+/// What is deliberately **not** here:
 ///
 /// * The refusals a language produces while *preparing* a program (a module import where there is no
 ///   loader, an `await` where there is no event loop). Those belong to the prepare step and stay with
 ///   it, because they are answers to something the model just wrote rather than standing prose.
-/// * The **spellings of individual functions** gg quotes in its own sentences — the ending call a
-///   prompt names, the call a context-pressure notice points at. Those are not authored anywhere:
-///   they are resolved from the language's own catalogue by [`spell`], keyed on the
-///   language-independent [`SurfaceCall`], so gg quotes what the SDK really binds and there is no
-///   second copy to drift.
+/// * Any function's **signature, description or summary**. All of it is reflected out of the
+///   declaration it describes and arrives in the language's catalogue, `list` included — a signature
+///   authored on gg's side is one nothing can compare against the code, which is exactly the defect
+///   the catalogue exists to remove.
 pub struct PromptDialect {
     /// This language's responses-as-code system prompt template, verbatim.
     pub system_template: &'static str,
@@ -235,19 +251,6 @@ pub struct PromptDialect {
     pub nothing_shown_template: &'static str,
     /// The name that is registered under: `code-nothing-shown.<language id>`.
     pub nothing_shown_template_name: &'static str,
-    /// The plain sentence rendered when that template fails to render — a turn with degraded
-    /// wording is recoverable where a panicked run is not.
-    pub nothing_shown_fallback: &'static str,
-    /// The `list` meta function's signature, as a documentation lookup renders it.
-    ///
-    /// `list` has no catalogue entry: the guest seeds it onto every object it creates, and the
-    /// [docs carve-out](crate::docs) answers for it. So its rendering is authored, and it is
-    /// authored *per language*, because a signature is a spelling.
-    pub list_signature: &'static str,
-    /// The `list` meta function's documentation paragraph.
-    pub list_doc: &'static str,
-    /// The one-line summary every object's directory carries for `list`.
-    pub list_summary: &'static str,
 }
 
 /// One model-facing call, named the only way the seam is allowed to name a function: by the API
@@ -507,7 +510,7 @@ pub(crate) const MODEL_FACING_CALLS: [SurfaceCall; 47] = [
 /// the [agreement gate](agreement) proves every [model-facing call](MODEL_FACING_CALLS) resolves in
 /// every registered language, so the fallback is unreachable — and degrading one word of a notice is
 /// the right failure anyway, where panicking mid-run is not.
-pub fn spell(language: &'static dyn ProgramLanguage, call: SurfaceCall) -> String {
+pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
     let name = super::signatures::spelling(language, call).unwrap_or(call.key);
     format!("{}.{name}", call.object)
 }

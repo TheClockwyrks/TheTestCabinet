@@ -719,7 +719,7 @@ fn a_turn_header_reports_the_results_own_cost_with_separators() {
 fn signal_options() -> UsageSignalOptions {
     UsageSignalOptions {
         can_evict: true,
-        close_views: None,
+        program_language: None,
         can_archive: true,
         top_file_views: 5,
     }

@@ -59,8 +59,8 @@ use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgAgentModule, GgContextSource,
-    GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgTelemetryKind, GgTransitionModule,
-    MODULE_PARAM_OWNERSHIP,
+    GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgProgramLanguage, GgTelemetryKind,
+    GgTransitionModule, MODULE_PARAM_OWNERSHIP,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -459,7 +459,7 @@ impl HistoryModule {
             ContextModel::new(
                 Arc::clone(&setup.estimator),
                 setup.window_limit,
-                setup.code_mode,
+                setup.program_language.is_some(),
             ),
             ids.next(ModuleKind::History),
             ids,
@@ -602,7 +602,8 @@ impl Module for HistoryModule {
     ) -> Result<(), AdoptError> {
         let _ = profile;
         self.context.set_window_limit(ctx.history.window_limit);
-        self.context.set_code_mode(ctx.history.code_mode);
+        self.context
+            .set_code_mode(ctx.history.program_language.is_some());
         self.context.clear_system();
         self.origin = GgModuleOrigin::Transferred;
         Ok(())
@@ -622,10 +623,15 @@ pub struct HistorySetup {
     pub estimator: Arc<dyn TokenEstimator>,
     /// The holder model's context-window limit in tokens, when known — the fullness denominator.
     pub window_limit: Option<u64>,
-    /// Whether the holder runs in
-    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode, which
-    /// arms the per-message headings gg prefixes synthesized user messages with.
-    pub code_mode: bool,
+    /// The [program language](test_cabinet_core::gg::GgProgramLanguage) the holder writes its
+    /// programs in, or `None` when it is not in
+    /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) mode at all.
+    ///
+    /// Its presence arms the per-message headings gg prefixes synthesized user messages with; its
+    /// *value* is how every call a module names back at the holder is spelled, resolved from that
+    /// language's own catalogue. One field rather than a flag beside a language, because the two
+    /// facts are the same fact and two fields could disagree.
+    pub program_language: Option<GgProgramLanguage>,
 }
 
 // ---------------------------------------------------------------------------

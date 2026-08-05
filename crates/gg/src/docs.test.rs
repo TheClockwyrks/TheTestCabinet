@@ -222,8 +222,13 @@ fn read_documents_the_list_meta_function() {
         GgProgramLanguage::TypeScript,
     );
     let list = docs.read("list").expect("list is a meta function");
-    assert!(list.contains("FunctionSummary"), "{list}");
-    // And it now points at the call that replaced `fn.docs()`.
+    // Its signature, its paragraph and its return type all come from the SDK declaration the guest
+    // binds it from — including `FunctionSummary`'s own declaration, which a lookup that named a
+    // return type it could not then define would have left the model to guess at.
+    assert!(list.contains("list(): FunctionSummary[]"), "{list}");
+    assert!(list.contains("interface FunctionSummary"), "{list}");
+    assert!(list.contains("summary"), "{list}");
+    // And it points at the call that opens a function's full documentation.
     assert!(list.contains("view.openDocsView"), "{list}");
     assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
 }

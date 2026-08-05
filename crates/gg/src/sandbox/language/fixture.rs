@@ -57,7 +57,7 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
     FileWindow, PrepareError, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    PromptDialect,
+    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// TypeScript's committed catalogue, read a second time rather than reached for through
@@ -232,14 +232,26 @@ impl ProgramLanguage for FixtureLanguage {
     /// what makes "the synthesized turn is written in the agent's own language" an assertion rather
     /// than a restatement of one implementation.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        let open_file = spell(self, VIEW_OPEN_FILE);
         let path = Value::String(path.to_string());
         match window {
             Some(window) => format!(
-                "view.open_file({path}, offset={}, limit={})",
+                "{open_file}({path}, offset={}, limit={})",
                 window.offset, window.limit
             ),
-            None => format!("view.open_file({path})"),
+            None => format!("{open_file}({path})"),
         }
+    }
+
+    /// One statement per name, with no list literal and no loop — deliberately unlike TypeScript's,
+    /// because "the program gg generates is written in the agent's own language" is only an
+    /// assertion while two languages generate different programs.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        let open_docs_view = spell(self, VIEW_OPEN_DOCS_VIEW);
+        names
+            .iter()
+            .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))
+            .collect()
     }
 }
 
@@ -296,7 +308,7 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 fn respelled_catalogue(edit: impl FnOnce(&mut Value)) -> String {
     let mut document: Value = serde_json::from_str(TYPESCRIPT_SIGNATURES)
         .expect("the committed TypeScript catalogue is valid JSON");
-    for section in ["session", "views", "programs", "tools", "helpers"] {
+    for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
         let entries = document[section]
             .as_array_mut()
             .unwrap_or_else(|| panic!("the catalogue's `{section}` is an array"));
@@ -362,16 +374,17 @@ fn leak(json: String) -> &'static SignatureCatalogue {
 static PROMPT: PromptDialect = PromptDialect {
     system_template: FIXTURE_SYSTEM_TEMPLATE,
     system_template_name: "system-code.fixture",
-    nothing_shown_template: "Your program showed you nothing. Call `view.open_text(label, body)`.",
+    nothing_shown_template: "Your program showed you nothing. Call `{{api.view.open_text.call}}`.",
     nothing_shown_template_name: "code-nothing-shown.fixture",
-    nothing_shown_fallback: "Your program showed you nothing.",
-    list_signature: "list() -> list[FunctionSummary]",
-    list_doc: "List the functions on this object, each as `{ name, summary }`.",
-    list_summary: "List this object's functions.",
 };
 
 /// The fixture's system prompt: enough Handlebars to prove the shared context renders against a
-/// template gg did not write in TypeScript, and enough spellings to prove the right one was chosen.
+/// template gg did not write in TypeScript, and enough resolved spellings to prove the right
+/// language's catalogue answered.
+///
+/// Every call in it is a `{{api.…}}` reference, exactly as TypeScript's template is written, which is
+/// what makes "a template carries no spelling of its own" an assertion over two surfaces rather than
+/// over one.
 const FIXTURE_SYSTEM_TEMPLATE: &str = "\
 ## Responses as Code
 
@@ -379,14 +392,15 @@ Answer with a program in the fixture language. Comments start with `#`.
 
 ### Ending your session
 
-Call `harness.finish(summary)`.
+Call `{{ending.finish}}(summary)`.
 
 ### Your APIs
 
 {{#each apis}}- `{{object}}` — {{description}}
 {{/each}}
 
-Read a file with `fs.read_file(path)` and show yourself something with `view.open_text(label, body)`.
+Read a file with `{{api.fs.read_file.call}}(path)` and show yourself something with \
+`{{api.view.open_text.signature}}`. Every object also carries `{{meta.list.name}}()`.
 ";
 
 // ---------------------------------------------------------------------------------------------

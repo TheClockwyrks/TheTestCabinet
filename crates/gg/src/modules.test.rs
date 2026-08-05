@@ -29,7 +29,7 @@ fn history_setup() -> HistorySetup {
     HistorySetup {
         estimator: Arc::new(HeuristicTokenEstimator),
         window_limit: None,
-        code_mode: false,
+        program_language: None,
     }
 }
 

@@ -114,6 +114,196 @@ fn no_unordered_map_or_set_survives_in_ggs_own_code() {
 }
 
 // ---------------------------------------------------------------------------
+// No SDK spelling is written in gg's own source
+// ---------------------------------------------------------------------------
+
+/// The paths under `src/` a spelling is allowed to appear in, each with the reason it is allowed.
+///
+/// Short on purpose. Every entry is a place where the string is *not* a description of the SDK being
+/// read by a model, and each one is a claim a reader can check.
+const SPELLING_EXEMPT: &[(&str, &str)] = &[
+    (
+        "sandbox/language/",
+        "a language's own module is where its syntax belongs: the statements gg generates are \
+         written here, and each resolves its call's name through `spell` even so",
+    ),
+    (
+        "client.rs",
+        "the mock model's canned programs, which are developer-facing fixtures rather than \
+         anything gg says to a model",
+    ),
+    (
+        "skills.builtin.rs",
+        "a built-in skill family's own `id` — `gg-project` names a grouping of gg capabilities, \
+         not a function on an API object",
+    ),
+];
+
+/// **No sentence gg puts in front of a model spells an SDK call by hand.**
+///
+/// Every function name, signature and description a model reads is reflected out of the declaration
+/// it describes and arrives in that language's committed catalogue; gg reaches for one by
+/// [identity](crate::sandbox::SurfaceCall) and resolves it with
+/// [`spell`](crate::sandbox::spell). A `&'static str` or a `format!` in this crate that writes
+/// `view.openFile` instead is the defect that rule exists to remove, and it is invisible in review:
+/// it reads correctly, it is correct *today*, and it becomes a lie the moment the SDK renames the
+/// function — or the moment a second language is registered, for which it was never true at all.
+///
+/// The rule is therefore the blunt one, and it is the only mechanism there is: outside the
+/// [exemptions](SPELLING_EXEMPT), no line of gg's non-test source may contain
+/// `<catalogued object>.<lowerCamelName>`. It is a **textual** check rather than a semantic one, so
+/// it cannot see a spelling assembled from two constants and joined with a `format!` — that shape is
+/// what [`no_object_name_is_a_constant_waiting_to_be_joined`] covers.
+///
+/// Both halves come from the registered catalogues rather than from a list here, so a call renamed
+/// in the SDK renames what this looks for.
+#[test]
+fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
+    // Every `object.name` pair any registered language's SDK binds — the exact strings a hand-typed
+    // spelling would have to be one of.
+    let mut spellings: Vec<String> = Vec::new();
+    for language in crate::sandbox::all_languages() {
+        for function in crate::sandbox::catalogue_functions(language) {
+            spellings.push(format!("{}.{}", function.object, function.name));
+        }
+    }
+    spellings.sort();
+    spellings.dedup();
+
+    fn walk(dir: &std::path::Path, root: &std::path::Path, found: &mut Vec<(String, String)>) {
+        for entry in std::fs::read_dir(dir).expect("gg's source tree is readable") {
+            let path = entry.expect("a source entry").path();
+            if path.is_dir() {
+                walk(&path, root, found);
+                continue;
+            }
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if !name.ends_with(".rs") || name.ends_with(".test.rs") {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(root)
+                .expect("a path under the source root")
+                .to_string_lossy()
+                .to_string();
+            if SPELLING_EXEMPT
+                .iter()
+                .any(|(prefix, _)| relative.starts_with(prefix))
+            {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).expect("a readable source file");
+            for (number, line) in source.lines().enumerate() {
+                found.push((format!("{relative}:{}", number + 1), line.to_string()));
+            }
+        }
+    }
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut lines = Vec::new();
+    walk(&root, &root, &mut lines);
+
+    let mut offenders = Vec::new();
+    for (where_, line) in lines {
+        // A doc comment is a developer's; only a string literal or a `format!` reaches a model, and
+        // a `///` naming `view.openFile` in an explanation is exactly the kind of prose that should
+        // be able to name it.
+        let code = line.trim_start();
+        if code.starts_with("//") {
+            continue;
+        }
+        for spelling in &spellings {
+            if code.contains(spelling.as_str()) {
+                offenders.push(format!("{where_}: {}", line.trim()));
+                break;
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "gg's own source names an SDK call by hand. Every spelling a model reads must be resolved \
+         from the run's language with `spell(language, SURFACE_CALL)`, so that a renamed function \
+         renames it everywhere and a second language spells it its own way:\n{}",
+        offenders.join("\n"),
+    );
+}
+
+/// **No API object's name is a `const` in gg's own code.**
+///
+/// The weaker, shape-based half of
+/// [`no_sdk_spelling_is_written_by_hand_in_ggs_own_code`], and it exists because the strong half is
+/// textual: `const OBJECT: &str = "context"` beside `const FUNCTION: &str = "compact"`, joined at
+/// the call site with a `format!`, is a hand-written spelling that no substring search can see. That
+/// is not a hypothetical shape — it is the one [compaction](crate::compaction) actually had.
+///
+/// So the rule is about the ingredient rather than the product: an API object's name has no business
+/// being a constant in this crate at all. gg names a call by
+/// [identity](crate::sandbox::SurfaceCall), which carries the object already.
+#[test]
+fn no_object_name_is_a_constant_waiting_to_be_joined() {
+    let objects: Vec<&str> = crate::sandbox::all_languages()
+        .flat_map(crate::sandbox::catalogue_objects)
+        .map(|object| object.object.as_str())
+        .collect();
+
+    fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
+        for entry in std::fs::read_dir(dir).expect("gg's source tree is readable") {
+            let path = entry.expect("a source entry").path();
+            if path.is_dir() {
+                walk(&path, root, out);
+                continue;
+            }
+            let name = path.file_name().unwrap_or_default().to_string_lossy();
+            if !name.ends_with(".rs") || name.ends_with(".test.rs") {
+                continue;
+            }
+            let relative = path
+                .strip_prefix(root)
+                .expect("a path under the source root")
+                .to_string_lossy()
+                .to_string();
+            if SPELLING_EXEMPT
+                .iter()
+                .any(|(prefix, _)| relative.starts_with(prefix))
+            {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).expect("a readable source file");
+            for (number, line) in source.lines().enumerate() {
+                out.push((format!("{relative}:{}", number + 1), line.to_string()));
+            }
+        }
+    }
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut lines = Vec::new();
+    walk(&root, &root, &mut lines);
+
+    let mut offenders = Vec::new();
+    for (where_, line) in lines {
+        let code = line.trim_start();
+        if code.starts_with("//") || !code.contains("const ") {
+            continue;
+        }
+        for object in &objects {
+            if code.contains(&format!("= \"{object}\";")) {
+                offenders.push(format!("{where_}: {}", line.trim()));
+                break;
+            }
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "an API object's name is a constant in gg's own code, which is half of a hand-written \
+         spelling waiting for a `format!`. Name the call by its `SurfaceCall` identity and resolve \
+         it with `spell` instead:\n{}",
+        offenders.join("\n"),
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The command-line surface — the bare `--config` form is a compatibility contract
 // ---------------------------------------------------------------------------
 

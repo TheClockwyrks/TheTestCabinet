@@ -75,14 +75,8 @@ use crate::context::{ContextModel, Retention, item_heading};
 use crate::memories::MemoryCalls;
 use crate::model::{ImageContent, Message, ModelClient, Role};
 use crate::prompts::{self, CompactionPromptContext};
+use crate::sandbox::{CONTEXT_COMPACT, ProgramLanguage, spell};
 use crate::tools::{COMPACT_TOOL, CompactTool, Tool, parse_compact_request};
-
-/// The API object a program reaches the [`compact`](COMPACT_TOOL) function through, and the name it
-/// is bound under there. Both are the sandbox's own catalogue values; they are named here so the
-/// compaction prompts spell the call exactly as the guest binds it.
-const COMPACT_OBJECT: &str = "context";
-/// See [`COMPACT_OBJECT`].
-const COMPACT_FUNCTION: &str = "compact";
 
 /// The compaction capability param naming the
 /// [summary headroom](CompactionPolicy::summary_headroom) — a `0.0..=0.9` fraction of the
@@ -337,8 +331,8 @@ impl PendingCompaction {
     /// top of the turn that must satisfy it, from
     /// [`compaction-instruction.hbs`](crate::prompts) over the
     /// [shared context](Self::prompt_context).
-    pub fn instruction(self, code_mode: bool, calls: MemoryCalls) -> String {
-        prompts::render_compaction_instruction(&self.prompt_context(None, code_mode, calls))
+    pub fn instruction(self, language: Option<&dyn ProgramLanguage>, calls: MemoryCalls) -> String {
+        prompts::render_compaction_instruction(&self.prompt_context(None, language, calls))
     }
 
     /// The refusal that answers a call this pending compaction does not accept — and the message a
@@ -346,25 +340,31 @@ impl PendingCompaction {
     ///
     /// It names the call that was refused rather than only what is wanted, because a model that is
     /// told "do X" while its Y silently fails reads the failure as gg being broken and retries Y.
-    pub fn refusal(self, refused: &str, code_mode: bool, calls: MemoryCalls) -> String {
+    pub fn refusal(
+        self,
+        refused: &str,
+        language: Option<&dyn ProgramLanguage>,
+        calls: MemoryCalls,
+    ) -> String {
         prompts::render_compaction_refusal(&self.prompt_context(
             Some(refused.to_string()),
-            code_mode,
+            language,
             calls,
         ))
     }
 
     /// The feedback for a reply that satisfied nothing at all — no usable call under
     /// [`CompactCall`](Self::CompactCall) / [`MemoryWrites`](Self::MemoryWrites).
-    pub fn unsatisfied(self, code_mode: bool, calls: MemoryCalls) -> String {
-        prompts::render_compaction_unsatisfied(&self.prompt_context(None, code_mode, calls))
+    pub fn unsatisfied(self, language: Option<&dyn ProgramLanguage>, calls: MemoryCalls) -> String {
+        prompts::render_compaction_unsatisfied(&self.prompt_context(None, language, calls))
     }
 
     /// The [rendering context](CompactionPromptContext) this pending compaction's three model-facing
     /// messages share: which requirement is pending, and how this run's model names the calls that
     /// satisfy it.
     ///
-    /// `code_mode` is the one thing that changes the wording: under
+    /// `language` — the agent's [program language](ProgramLanguage), or `None` when it calls tools —
+    /// is the one thing that changes the wording: under
     /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) every reply is a
     /// program and every call is a function on an API object, so the instruction has to name the
     /// call the way that run's model actually makes it. For [`Summary`](Self::Summary) it changes
@@ -378,24 +378,24 @@ impl PendingCompaction {
     fn prompt_context(
         self,
         refused: Option<String>,
-        code_mode: bool,
+        language: Option<&dyn ProgramLanguage>,
         calls: MemoryCalls,
     ) -> CompactionPromptContext {
         CompactionPromptContext {
             summary: matches!(self, Self::Summary),
             compact_call: matches!(self, Self::CompactCall),
             memory_writes: matches!(self, Self::MemoryWrites),
-            code_mode,
-            // Named as the reader writes it: a program calls a method on an API object, a
+            code_mode: language.is_some(),
+            // Named as the reader writes it: a program calls a method on an API object — spelled
+            // from that language's own committed catalogue, never written out here — and a
             // tool-calling model requests a tool.
-            compact_tool: if code_mode {
-                format!("{COMPACT_OBJECT}.{COMPACT_FUNCTION}")
-            } else {
-                COMPACT_TOOL.to_string()
+            compact_tool: match language {
+                Some(language) => spell(language, CONTEXT_COMPACT),
+                None => COMPACT_TOOL.to_string(),
             },
-            memory_create: calls.create.to_string(),
-            memory_revise: calls.revise.to_string(),
-            memory_delete: calls.delete.to_string(),
+            memory_create: calls.create,
+            memory_revise: calls.revise,
+            memory_delete: calls.delete,
             refused,
         }
     }

@@ -246,6 +246,12 @@ fn a_bare_read_of_a_picture_shows_nothing_and_names_the_view_that_would() {
     );
 }
 
+/// The language every direct [`withhold_pictures`] call below spells its two calls from — the one
+/// registered language, since what these tests are about is the *sidecar*, not the spelling.
+fn typescript() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript)
+}
+
 /// A read that produced **no** picture is left exactly as it was.
 ///
 /// The two refusals [`read_image`](crate::tools) makes on its own — a text-only model, and a file
@@ -264,7 +270,7 @@ fn a_read_that_carried_no_picture_is_not_rewritten() {
         }),
     );
 
-    withhold_pictures(&mut outcome);
+    withhold_pictures(&mut outcome, typescript());
 
     let Some(ToolData::FileImage(image)) = outcome.data else {
         panic!("the sidecar survives");
@@ -290,7 +296,7 @@ fn a_picture_already_taken_into_a_view_keeps_its_shown_flag() {
             not_shown_reason: None,
         }));
 
-    withhold_pictures(&mut outcome);
+    withhold_pictures(&mut outcome, typescript());
 
     let Some(ToolData::FileImage(image)) = outcome.data else {
         panic!("the sidecar survives");

@@ -50,24 +50,25 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, TypeDeclaration,
-    catalogue_functions, language, type_declaration,
+    CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, SignatureEntry,
+    TypeDeclaration, catalogue_functions, language, meta_function, summary_of, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
 mod suggest;
 
-/// The name the `list()` meta function is bound and looked up under. Named once here because it is
-/// not the catalogue's to name: the guest binds `list` on every object it creates, this runtime
-/// answers and documents it, and the [surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface)
-/// reports it as bound — three places that must agree on one string.
+/// The **key** the `list()` meta function is catalogued, bound and looked up under. Named once here
+/// because it is gg's own identity for the carve-out rather than any language's spelling of it: the
+/// guest binds `list` on every object it creates, this runtime answers and documents it, and the
+/// [surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) reports it as bound — three
+/// places that must agree on one string.
 pub const LIST_FUNCTION: &str = "list";
 
-// `list`'s summary, signature and documentation are **not** here. They are prose written in one
-// program language's syntax — a signature is a spelling — so they live on that language's
-// [prompt dialect](crate::sandbox::PromptDialect) beside its system prompt, and this module reads
-// them from whichever language the agent writes in. Only the *name* stays here, above, because the
-// name is the carve-out's identity rather than a spelling of it.
+// `list`'s spelling, its signature, its documentation and its one-line summary are **not** here, and
+// are not authored anywhere in this crate. They are reflected out of the declaration in each
+// language's own SDK and arrive in that language's committed catalogue's `meta` section, exactly as
+// every other model-facing function's do — because a description of an SDK function written on gg's
+// side is a description nothing can compare against the code. Only the *key* stays here, above.
 
 /// The per-agent state behind `object.list()` and `view.openDocsView()`: the run's enabled tools and
 /// this agent's ending role, which together decide which functions exist to be documented.
@@ -112,6 +113,16 @@ impl DocsRuntime {
         }
     }
 
+    /// The [program language](ProgramLanguage) this runtime answers in.
+    ///
+    /// Exposed because the one thing gg *generates* rather than quotes — the
+    /// [built-in family skills](crate::skills)' on-use script, a whole program that opens a
+    /// documentation view per function — is written from the same directory this runtime produces,
+    /// and must be written in the same language it answers in.
+    pub fn language(&self) -> &'static dyn ProgramLanguage {
+        self.language
+    }
+
     /// The directory for one API object: its bound functions with one-line summaries, plus the
     /// `list` meta function every object carries. An unknown object lists `list` alone.
     pub fn list(&self, object: &str) -> Vec<FunctionSummary> {
@@ -123,10 +134,12 @@ impl DocsRuntime {
                 summary: function.summary.to_string(),
             })
             .collect();
-        out.push(FunctionSummary {
-            name: LIST_FUNCTION.to_string(),
-            summary: self.language.prompt().list_summary.to_string(),
-        });
+        if let Some(meta) = meta_function(self.language, LIST_FUNCTION) {
+            out.push(FunctionSummary {
+                name: meta.name.clone(),
+                summary: summary_of(&meta.doc).to_string(),
+            });
+        }
         out
     }
 
@@ -137,16 +150,27 @@ impl DocsRuntime {
     /// Takes `&self`: a lookup is a pure projection of the catalogue through this agent's scope, and
     /// nothing about having read one changes what the next one says.
     pub fn read(&self, name: &str) -> Option<String> {
-        let prompt = self.language.prompt();
-        match name {
-            LIST_FUNCTION => Some(format!("{}\n\n{}", prompt.list_signature, prompt.list_doc)),
-            _ => {
-                let function = catalogue_functions(self.language)
-                    .into_iter()
-                    .find(|function| function.name == name && self.bound(function))?;
-                Some(assemble(&function, self.language))
-            }
+        // The meta functions first, and by the name this language spells them: `list` is bound on
+        // every object, so it can never be shadowed by a catalogue entry and never needs a gate.
+        if let Some(meta) = meta_function(self.language, LIST_FUNCTION)
+            && meta.name == name
+        {
+            return Some(assemble(
+                &meta.signatures,
+                &meta.doc,
+                &meta.types,
+                self.language,
+            ));
         }
+        let function = catalogue_functions(self.language)
+            .into_iter()
+            .find(|function| function.name == name && self.bound(function))?;
+        Some(assemble(
+            function.signatures,
+            function.doc,
+            function.types,
+            self.language,
+        ))
     }
 
     /// The bound names nearest `name`, for the hint a failed lookup carries — empty when nothing is
@@ -165,7 +189,7 @@ impl DocsRuntime {
             .into_iter()
             .filter(|function| self.bound(function))
             .map(|function| function.name)
-            .chain(std::iter::once(LIST_FUNCTION))
+            .chain(meta_function(self.language, LIST_FUNCTION).map(|meta| meta.name.as_str()))
             .collect();
         suggest::nearest(name, bound)
     }
@@ -193,8 +217,8 @@ impl DocsRuntime {
     }
 }
 
-/// Assemble a catalogue function's documentation: how it may be called and what each argument is
-/// for, its description, and the declarations of every type it refers to with a line per member.
+/// Assemble one function's documentation: how it may be called and what each argument is for, its
+/// description, and the declarations of every type it refers to with a line per member.
 ///
 /// Every type, every time — see the module's *Why a lookup is self-contained*.
 ///
@@ -203,9 +227,19 @@ impl DocsRuntime {
 /// one function, and showing only the first would tell a model half of what it may write. Under a
 /// language that spells options with a default there is exactly one, and the rendering is the single
 /// line it always was.
-fn assemble(function: &CatalogueFunction, language: &'static dyn ProgramLanguage) -> String {
+///
+/// It takes the three fields rather than a [`CatalogueFunction`] because the
+/// [meta functions](crate::sandbox::MetaSignature) are documented by exactly this rendering and have
+/// no object to hang off — one assembly for the whole surface, so a lookup of `list` cannot come out
+/// looking like a different kind of thing than a lookup of `fs.readFile`.
+fn assemble(
+    signatures: &[SignatureEntry],
+    doc: &str,
+    types: &[String],
+    language: &dyn ProgramLanguage,
+) -> String {
     let mut text = String::new();
-    for entry in function.signatures {
+    for entry in signatures {
         text.push_str(&entry.signature);
         text.push('\n');
         for parameter in &entry.parameters {
@@ -213,9 +247,8 @@ fn assemble(function: &CatalogueFunction, language: &'static dyn ProgramLanguage
         }
     }
     text.push('\n');
-    text.push_str(function.doc);
-    let types: Vec<String> = function
-        .types
+    text.push_str(doc);
+    let types: Vec<String> = types
         .iter()
         .filter_map(|name| type_declaration(language, name))
         .map(declare)

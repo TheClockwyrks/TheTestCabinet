@@ -727,7 +727,7 @@ impl<A: ToolApi> MembraneState<A> {
         self.charge_host_time(started.elapsed());
         // One channel: a picture enters the window through a view or not at all, so a bare read's
         // picture is dropped here and its description corrected to say so.
-        capture::withhold_pictures(&mut outcome);
+        capture::withhold_pictures(&mut outcome, self.language);
         let completed = completed(&outcome);
         self.record(tool, &outcome, completed);
         Ok(outcome)

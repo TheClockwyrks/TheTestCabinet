@@ -364,15 +364,10 @@ fn built_in_code(family: &Family, docs: &crate::docs::DocsRuntime) -> Option<Ski
     if functions.is_empty() {
         return None;
     }
-    let opens = functions
-        .iter()
-        .map(|name| format!("  {:?},", name))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let script = format!(
-        "const functions = [\n{opens}\n];\nfor (const name of functions) {{\n  \
-         view.openDocsView(name);\n}}\n"
-    );
+    // The program itself is the language's to write — its list syntax, its loop, its statement
+    // terminator, and the spelling of the call. gg supplies the names and nothing else.
+    let names: Vec<&str> = functions.iter().map(String::as_str).collect();
+    let script = docs.language().open_docs_views_statement(&names);
     Some(skill(family, String::new(), Some(script)))
 }
 

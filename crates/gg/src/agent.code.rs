@@ -295,7 +295,7 @@ pub(super) async fn run_code_turn(
         state.programs.record(turn.turn, &chain.source, ok, error);
     }
     report_to_operator(&outcome, emitter);
-    report_chain_to_operator(&chain, &outcome, emitter);
+    report_chain_to_operator(code.language, &chain, &outcome, emitter);
 
     // Statements the model wrote that could not run are said out loud on the operator's stream as
     // well as in the model's own feedback, for the same reason a repaired reply is: a program gg
@@ -883,13 +883,23 @@ fn handover_notice(
 /// programs is one `CodeExecution` event with one duration and one roster, and without a line here
 /// an operator reading the stream has no way to know that the source the model sent is not the
 /// source that did the work.
-fn report_chain_to_operator(chain: &ProgramChain, outcome: &SandboxOutcome, emitter: &Emitter) {
+///
+/// The hand-over call is spelled from the run's own language, exactly as the model-facing notices
+/// above spell it. An operator reading a Python run's stream is reading about a Python program, and
+/// a line that named TypeScript's spelling at them would be describing a call that run never had.
+fn report_chain_to_operator(
+    language: GgProgramLanguage,
+    chain: &ProgramChain,
+    outcome: &SandboxOutcome,
+    emitter: &Emitter,
+) {
+    let rerun = crate::sandbox::spell(crate::sandbox::language(language), sandbox::PROGRAMS_RERUN);
     if chain.programs > 1 {
         emitter.emit(log(
             "info",
             format!(
-                "the turn ran {} — each handed over by the one before it with `programs.rerun`; \
-                 the last is the turn's program.",
+                "the turn ran {} — each handed over by the one before it with `{rerun}`; the last \
+                 is the turn's program.",
                 plural(chain.programs as usize, "program")
             ),
         ));
@@ -897,21 +907,25 @@ fn report_chain_to_operator(chain: &ProgramChain, outcome: &SandboxOutcome, emit
     if outcome.revoked_rerun {
         emitter.emit(log(
             "warn",
-            "the program handed one to `programs.rerun` and then failed, so the replacement was \
-             NOT run.",
+            format!(
+                "the program handed one to `{rerun}` and then failed, so the replacement was NOT \
+                 run."
+            ),
         ));
     }
     match chain.refused {
         Some(ChainRefusal::Ended) => emitter.emit(log(
             "warn",
-            "the program both ended the session and handed one to `programs.rerun`; the ending \
-             stands and the replacement was not run.",
+            format!(
+                "the program both ended the session and handed one to `{rerun}`; the ending \
+                 stands and the replacement was not run."
+            ),
         )),
         Some(ChainRefusal::Exhausted) => emitter.emit(log(
             "warn",
             format!(
                 "the turn reached its ceiling of {MAX_PROGRAM_CHAIN} programs; the last \
-                 `programs.rerun` was not run."
+                 `{rerun}` was not run."
             ),
         )),
         None => {}
@@ -1898,7 +1912,7 @@ impl LoopToolApi {
         if is_memory_tool(name) && !self.memories_rt.is_writable() {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
-                read_only_refusal(self.memories_rt.strategy(), true),
+                read_only_refusal(self.memories_rt.strategy(), Some(self.language)),
             ));
         }
         if let Some(pending) = self.pending_compaction
@@ -1907,7 +1921,11 @@ impl LoopToolApi {
         {
             return Some(ToolOutcome::failed(
                 ToolFailure::Refused,
-                pending.refusal(name, true, self.memories_rt.strategy().calls(true)),
+                pending.refusal(
+                    name,
+                    Some(self.language),
+                    self.memories_rt.strategy().calls(Some(self.language)),
+                ),
             ));
         }
         None

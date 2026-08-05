@@ -964,7 +964,7 @@ fn the_context_usage_signal_names_the_text_view_band_and_the_call_that_closes_it
     ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
-        close_views: Some(GgProgramLanguage::TypeScript),
+        program_language: Some(GgProgramLanguage::TypeScript),
         can_archive: false,
         top_file_views: 3,
     });
@@ -998,7 +998,7 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
     ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
-        close_views: None,
+        program_language: None,
         can_archive: false,
         top_file_views: 3,
     });

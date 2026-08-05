@@ -79,6 +79,12 @@ pub(crate) struct SignatureCatalogue {
     /// catalogued function hangs off appears here exactly once, and nothing else does — an object
     /// with no functions would be an object a model is introduced to and never given.
     pub objects: Vec<ObjectDoc>,
+    /// The model-facing functions that hang off **no** API object, because they hang off all of
+    /// them — today just `list`, the directory every object carries.
+    ///
+    /// Kept out of every other section because each of those carries an `object`, and any object a
+    /// meta function named would be a claim about the eleven it is also on. See [`MetaSignature`].
+    pub meta: Vec<MetaSignature>,
     /// The model-facing functions that are not gg tools: the calls that end a session, one group per
     /// [role](crate::ending::EndingRole).
     ///
@@ -108,6 +114,35 @@ pub(crate) struct SignatureCatalogue {
     pub helpers: Vec<HelperSignature>,
     /// Every type declaration the signatures reference, in declaration order.
     pub types: Vec<TypeDeclaration>,
+}
+
+/// One **meta** function: a call bound onto every API object rather than declared on one.
+///
+/// `list` is the whole of it. The guest seeds it onto each object it creates, closing over that
+/// object's name, so the function a program calls takes no arguments and belongs to no object — the
+/// one entry in the surface whose identity is a bare key.
+///
+/// It is catalogued for the reason everything else is: its signature and its description are read by
+/// a **model**, and the rule this whole module exists to keep is that nothing a model reads about
+/// the SDK is written anywhere but on the declaration it describes. A meta function documented in a
+/// `const` on gg's side would be the one description in the surface no gate could compare against
+/// the code — and it was, until this section existed.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaSignature {
+    /// This function's language-independent identity (`list`).
+    pub key: String,
+    /// The name a program calls it by, in this catalogue's language (`list`).
+    pub name: String,
+    /// How this function may be called, one entry per shape its language offers. See
+    /// [`SignatureEntry`].
+    pub signatures: Vec<SignatureEntry>,
+    /// The SDK's own documentation for it, which is what a doc lookup renders and what every
+    /// object's directory takes its one-line summary from.
+    pub doc: String,
+    /// The type names this signature references, folded into a doc lookup's declarations exactly as
+    /// a tool's are.
+    pub types: Vec<String>,
 }
 
 /// One bound tool, as the guest exports it and the prompt describes it.
@@ -450,7 +485,7 @@ fn first_sentence(doc: &'static str) -> &'static str {
 /// and whether it keeps a program library, and adds the `list` meta function itself, since it is the
 /// carve-out's own and has no catalogue entry. Every other reader of this catalogue that reports what
 /// an object binds — the agent-surface telemetry — has to add it back for the same reason.
-pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<CatalogueFunction> {
+pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunction> {
     let catalogue = language.catalogue();
     let mut functions = Vec::with_capacity(
         catalogue.session.len()
@@ -537,6 +572,31 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
     functions
 }
 
+/// One **meta** function by its language-independent key, as `language`'s SDK spells and documents
+/// it — the signature a lookup renders, the paragraph under it, and the one-line summary every
+/// object's directory carries for it.
+///
+/// `None` for a key this language's catalogue does not carry. The [agreement gate](super::language)
+/// asserts every registered language catalogues the same meta keys, so a miss is a corrupt committed
+/// artifact rather than a runtime condition — and the two callers degrade rather than panic, because
+/// one word missing from a directory is a smaller failure than a run that stops.
+pub fn meta_function(language: &dyn ProgramLanguage, key: &str) -> Option<&'static MetaSignature> {
+    language
+        .catalogue()
+        .meta
+        .iter()
+        .find(|entry| entry.key == key)
+}
+
+/// The first sentence of a documentation paragraph, for the one-line summary a directory lists.
+///
+/// Public because a [meta function](meta_function)'s summary is taken the same way a
+/// [catalogue function](CatalogueFunction::summary)'s is, and taking it two ways would be two answers
+/// to one question.
+pub fn summary_of(doc: &'static str) -> &'static str {
+    first_sentence(doc)
+}
+
 /// The name `language`'s SDK gives the function `call` identifies, or `None` when its catalogue
 /// carries no such function.
 ///
@@ -545,10 +605,7 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
 /// gg may not assume. [`spell`](super::spell) is the caller; nothing else should need this, since
 /// every other consumer of the catalogue is rendering *its whole* surface rather than picking one
 /// function out of it.
-pub(crate) fn spelling(
-    language: &'static dyn ProgramLanguage,
-    call: SurfaceCall,
-) -> Option<&'static str> {
+pub(crate) fn spelling(language: &dyn ProgramLanguage, call: SurfaceCall) -> Option<&'static str> {
     catalogue_functions(language)
         .into_iter()
         .find(|function| function.object == call.object && function.key == call.key)
@@ -559,7 +616,7 @@ pub(crate) fn spelling(
 /// explaining it, and a line per member. What a doc lookup appends for a referenced type the session
 /// has not already been shown.
 pub fn type_declaration(
-    language: &'static dyn ProgramLanguage,
+    language: &dyn ProgramLanguage,
     name: &str,
 ) -> Option<&'static TypeDeclaration> {
     language
@@ -575,7 +632,7 @@ pub fn type_declaration(
 /// The order is the catalogue's, not a sort: it is what the system prompt's API list and the run's
 /// [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) both render, so re-ordering
 /// it here would change what a model reads.
-pub fn catalogue_objects(language: &'static dyn ProgramLanguage) -> &'static [ObjectDoc] {
+pub fn catalogue_objects(language: &dyn ProgramLanguage) -> &'static [ObjectDoc] {
     language.catalogue().objects.as_slice()
 }
 

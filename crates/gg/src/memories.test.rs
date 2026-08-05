@@ -79,7 +79,7 @@ fn write_rejects_a_duplicate_name_pointing_at_update() {
         err,
         MemoryError::Duplicate {
             name: "dup".to_string(),
-            revise: "`update_memory`",
+            revise: "`update_memory`".to_string(),
         }
     );
     // The guidance names the fix.
@@ -108,7 +108,7 @@ fn update_replaces_in_place_and_needs_an_existing_name() {
         err,
         MemoryError::NotFound {
             name: "nope".to_string(),
-            create: "`write_memory`",
+            create: "`write_memory`".to_string(),
         }
     );
     assert!(err.to_string().contains("write_memory"));
@@ -131,7 +131,7 @@ fn delete_evicts_and_needs_an_existing_name() {
         store.delete("", "a").unwrap_err(),
         MemoryError::NotFound {
             name: "a".to_string(),
-            create: "`write_memory`",
+            create: "`write_memory`".to_string(),
         }
     );
     assert_eq!(
@@ -204,8 +204,8 @@ fn count_cap_is_enforced_with_a_revise_or_evict_message() {
         err,
         MemoryError::CountCap {
             cap: 2,
-            revise: "`update_memory`",
-            delete: "`delete_memory`",
+            revise: "`update_memory`".to_string(),
+            delete: "`delete_memory`".to_string(),
         }
     );
     let message = err.to_string();
