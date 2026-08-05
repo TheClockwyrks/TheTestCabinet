@@ -369,14 +369,56 @@ pub struct KnowledgeError {
     pub error: PrepareFailure,
 }
 
+impl KnowledgeError {
+    /// Whether the **compiler** is what failed, rather than the source it was handed.
+    ///
+    /// The bit both readers of this error branch on: a compiler that fell over judged nothing, so
+    /// there is no diagnostic to show the model, nothing about the author's source was rejected,
+    /// and whatever the failure is charged to must not be charged to whoever made the call.
+    pub fn is_toolchain_failure(&self) -> bool {
+        matches!(self.error, PrepareFailure::Toolchain(_))
+    }
+
+    /// What the run's **operator** is told about this failure, or `None` when there is nothing to
+    /// tell them that the model was not already given.
+    ///
+    /// A [toolchain failure](PrepareFailure::Toolchain) carries the exit status, the signal, the
+    /// tail of the compiler's stderr — real diagnostic value for the person who can fix the image,
+    /// and nothing the model can act on, which is why [`Display`](std::fmt::Display) does not carry
+    /// it. Without this the detail would have no reader at all: the model must not see it, so if the
+    /// operator does not either, a compiler crashing in an agent's skill load is silent everywhere.
+    pub fn operator_detail(&self) -> Option<String> {
+        match &self.error {
+            PrepareFailure::Program(_) => None,
+            PrepareFailure::Toolchain(detail) => Some(format!(
+                "the `{}` of {} `{}` was not compiled: {detail}",
+                self.half,
+                self.origin.noun(),
+                self.name,
+            )),
+        }
+    }
+}
+
 impl std::fmt::Display for KnowledgeError {
+    /// **What the model reads.**
+    ///
     /// A compiler that could not *finish* is said differently from a source it read and rejected —
     /// "did not compile" over the second is a diagnosis, and over the first it is a guess, made
-    /// about a file nothing ever judged.
+    /// about a file nothing ever judged. So the second hands back the diagnostic and the first hands
+    /// back no diagnostic at all, because there is none: it says the compiler could not run, says
+    /// outright that nothing about the source was rejected (the one thing a model reading a failed
+    /// load will otherwise assume), and keeps the compiler's own crash detail for
+    /// [the operator](Self::operator_detail).
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (verb, error) = match &self.error {
             PrepareFailure::Program(error) => ("did not compile", error.to_string()),
-            PrepareFailure::Toolchain(detail) => ("could not be compiled", detail.clone()),
+            PrepareFailure::Toolchain(_) => (
+                "was not compiled",
+                "this language's compiler could not finish, which is a fault in the run's \
+                 environment rather than in the source. Nothing about it was rejected."
+                    .to_string(),
+            ),
         };
         write!(
             f,

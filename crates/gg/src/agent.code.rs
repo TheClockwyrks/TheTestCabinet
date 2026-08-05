@@ -43,7 +43,7 @@ use test_cabinet_core::gg_replay::GgShellOrigin;
 
 use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
-use crate::knowledge::{KnowledgeModules, KnowledgeOrigin, PendingOnUse};
+use crate::knowledge::{KnowledgeError, KnowledgeModules, KnowledgeOrigin, PendingOnUse};
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
@@ -447,7 +447,8 @@ pub(super) async fn run_code_turn(
 ///
 /// A thin wrapper over [`SandboxError::turn_error_type`] for the three non-fatal arms of
 /// [`sandbox_failure_decision`], which reach it only after the fatal ones have already been claimed
-/// by `is_artifact_defect`/`is_host_fault` — so the `None` those four return is unreachable here. It is answered rather than `expect`ed because a
+/// by `is_artifact_defect`/`is_host_fault` — so the `None` those four return is unreachable here. It
+/// is answered rather than `expect`ed because a
 /// panic inside the turn loop would cost a run that is otherwise fine, and because
 /// [`ProgramThrow`](TurnErrorType::ProgramThrow) is the honest reading of "the program ran and
 /// something gg cannot classify ended it": the base kind it derives is `program_fault`, which is the
@@ -564,6 +565,38 @@ const TOOLCHAIN_NOTICE: &str = "Your program was not run: this language's compil
                                 finish, which is a fault in the run's environment rather than in \
                                 what you wrote. Nothing about your program was rejected. Write it \
                                 again.";
+
+/// The class a refused [knowledge](crate::knowledge) load carries — the same split
+/// [`sandbox_failure_decision`] makes for a turn's own program, on the other consumer of the same
+/// seam.
+///
+/// A source the language read and rejected is the model's, and on a write the model wrote it on this
+/// very call: [`InvalidArgument`](ToolFailure::InvalidArgument), because the argument really was bad.
+/// A compiler that could not finish is a process gg ran falling over:
+/// [`IoError`](ToolFailure::IoError), the class that exists for exactly that, because nothing about
+/// the model's argument was judged. A function rather than an inline `if` so the two consumers of
+/// this seam cannot drift, and so the split is a thing a test can hold.
+fn knowledge_refusal_class(error: &KnowledgeError) -> ToolFailure {
+    if error.is_toolchain_failure() {
+        ToolFailure::IoError
+    } else {
+        ToolFailure::InvalidArgument
+    }
+}
+
+/// Tell the **operator** about a knowledge half that would not prepare, when there is something to
+/// tell them that the model was not already given.
+///
+/// Only a [compiler that could not finish](KnowledgeError::operator_detail) has one: a source the
+/// language read and rejected is the author's, and the whole of it already went out on the call.
+/// Logged at `error` for the reason [`sandbox_failure_decision`] logs the turn-loop half of the same
+/// failure at `error` — an image whose compiler keeps falling over is a run that should be fixed
+/// rather than watched, and this is the only stream the crash detail reaches at all.
+fn report_knowledge_failure(error: &KnowledgeError, emitter: &Emitter) {
+    if let Some(detail) = error.operator_detail() {
+        emitter.emit(log("error", detail));
+    }
+}
 
 /// The one line a **spawner** is given for a turn whose program ran — what it said, or failed to, in
 /// gg's own words rather than in the model's source.
@@ -1729,6 +1762,12 @@ impl LoopToolApi {
     /// somebody else's (an authored skill's, or a memory written twenty turns ago), and refusing to
     /// hand over a mostly-prose skill because its helper has a syntax error would be the wrong
     /// trade. The diagnostic is appended instead, located in the author's own coordinates.
+    ///
+    /// A **compiler that could not finish** is reported to both readers separately, exactly as
+    /// [`sandbox_failure_decision`] does it for a turn's own program: the model is told the module
+    /// was not compiled and that nothing about its source was rejected, and the compiler's crash
+    /// detail goes to the operator's stream, which is the only place it has a reader who can act on
+    /// it.
     fn bring_into_use(
         &mut self,
         origin: KnowledgeOrigin,
@@ -1750,6 +1789,7 @@ impl LoopToolApi {
                 }
             }
             Err(error) => {
+                report_knowledge_failure(&error, &self.emitter);
                 outcome.output.push_str(&format!("\n\n---\nNOTE: {error}"));
             }
         }
@@ -1769,6 +1809,15 @@ impl LoopToolApi {
     /// on this call, so this is the one moment at which a located diagnostic is exactly what it
     /// needs — and storing a module that can never be bound would be storing something that only
     /// fails later.
+    ///
+    /// A write whose **compiler could not finish** is refused too, and for the same reason: under
+    /// this strategy the write is the only moment the code loads, so a memory stored here whose
+    /// module never bound would leave the model naming a `lib` key that does not exist, with nothing
+    /// left to say so. But it is refused as an [`IoError`](ToolFailure::IoError) rather than as an
+    /// [`InvalidArgument`](ToolFailure::InvalidArgument): the compiler is a process gg ran and the
+    /// process failed, and classifying it as a bad argument would record the model's call as
+    /// malformed on the strength of a crash nothing about its source caused. The class is what a
+    /// study slices by, so the misattribution would outlive the turn.
     fn loaded_on_write(
         &mut self,
         name: &str,
@@ -1802,7 +1851,10 @@ impl LoopToolApi {
                 }
                 outcome
             }
-            Err(error) => ToolOutcome::failed(ToolFailure::InvalidArgument, error.to_string()),
+            Err(error) => {
+                report_knowledge_failure(&error, &self.emitter);
+                ToolOutcome::failed(knowledge_refusal_class(&error), error.to_string())
+            }
         }
     }
 

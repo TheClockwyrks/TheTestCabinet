@@ -120,6 +120,12 @@ pub use language::{HostRequirements, PrepareError, PromptDialect, ResolvedProgra
 #[cfg(test)]
 pub(crate) use language::fixture_languages;
 
+// The fixture language's module itself, for the tests outside `sandbox` that drive one of its
+// sentinel sources: a crate-wide seam is exercised from the crate's other modules, and a test that
+// spelled `"nocompiler"` as a literal would go on passing after the fixture stopped meaning it.
+#[cfg(test)]
+pub(crate) use language::fixture;
+
 // The enumeration of gg's whole model-facing surface, for the gates that resolve each call against
 // every registered language and against what the membrane records. A production reader wants one
 // call by name, never the whole set.

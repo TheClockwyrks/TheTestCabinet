@@ -131,6 +131,14 @@ A compiler that could not finish is still an **error turn** and still counts aga
 because a run whose compiler is broken must stop rather than burn to its deadline. The
 separate base kind is what makes the attribution survive that counting.
 
+The split holds on the **other** thing gg compiles, too. A [code skill](/gg/skills/#code-skills)
+or a [code memory](/gg/memories/#code-that-does-not-compile) goes through the same prepare
+step, and the same two failures mean the same two things there: a rejection hands the author's
+diagnostic back on the read, while a compiler that could not finish tells the model only that
+the module was not compiled and that nothing about it was rejected, and puts the crash detail
+on the operator's stream — where it has a reader who can fix the image, which is the only
+reader it has at all.
+
 ## The rules an agent-facing surface obeys in every language
 
 A language is free to spell things its own way. It is not free to change **what the model

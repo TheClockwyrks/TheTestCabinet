@@ -115,7 +115,12 @@ succeeded or failed on its own merits, whatever a skill's script then did.
 
 Neither half can break a read. A skill whose `skill.ts` or `on-use.ts` does not compile is
 still **read**: the body is what the model asked for, and the diagnostic is appended to it
-rather than replacing it.
+rather than replacing it. And a skill whose *compiler could not finish* — a crash, a
+timeout, a toolchain missing from the image — is not reported as a skill that failed to
+compile: the model is told the code was not compiled and that nothing about it was rejected,
+and the compiler's own crash detail goes to the operator instead. It is the same split
+[a turn's own program](/gg/program-languages/#a-compiler-has-two-ways-to-fail) gets, for the
+same reason.
 
 ## The skills gg ships
 

@@ -8,6 +8,8 @@
 //! [`SandboxOutcome`] in, the message the model reads out.
 
 use super::*;
+use crate::knowledge::KnowledgeModules;
+use crate::sandbox::fixture;
 use crate::sandbox::{PrepareError, ProgramErrorKind, SandboxRefusal, SandboxToolCall};
 use crate::telemetry::CollectingSink;
 
@@ -565,4 +567,94 @@ fn only_the_artifact_and_the_host_end_the_session() {
             "{named}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The other consumer of the prepare seam: a skill's or a memory's code
+// ---------------------------------------------------------------------------------------------
+
+/// The failure a load of `source` produced, in a language that compiles.
+fn knowledge_failure(source: &str) -> KnowledgeError {
+    KnowledgeModules::new()
+        .load(
+            crate::sandbox::fixture_languages()
+                .next()
+                .expect("there is a fixture language"),
+            KnowledgeOrigin::Skill,
+            "csv-tools",
+            Some(source),
+            None,
+        )
+        .expect_err("this source does not prepare")
+}
+
+/// **A skill whose compiler crashed reports the crash to the operator and not to the model.**
+///
+/// The prepare seam has two consumers — a turn's own program and a code skill or memory — and this
+/// is the second. The same failure through the same seam must be attributed the same way at both, or
+/// the doctrine holds only where somebody happened to write it down: nothing about the skill's
+/// source was judged, so the model is not told its code is wrong, and the compiler's crash detail
+/// goes where somebody can fix the image.
+#[test]
+fn a_knowledge_load_whose_compiler_crashed_reaches_the_operator() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let error = knowledge_failure(&format!("def parse(text)\n  {}\n", fixture::NO_COMPILER));
+
+    report_knowledge_failure(&error, &emitter);
+
+    let logged: Vec<(String, String)> = sink
+        .events()
+        .into_iter()
+        .filter_map(|event| match event.kind {
+            GgTelemetryKind::Log { level, message } => Some((level, message)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(logged.len(), 1, "{logged:?}");
+    assert_eq!(logged[0].0, "error", "it is the operator's run to fix");
+    assert!(logged[0].1.contains("SIGSEGV"), "{:?}", logged[0].1);
+    assert!(
+        !error.to_string().contains("SIGSEGV"),
+        "and the model reads none of it: {error}"
+    );
+}
+
+/// A skill the language read and **rejected** logs nothing: the model already has the whole of it,
+/// and a second copy on the operator's stream is noise that trains an operator to skim the band.
+#[test]
+fn a_knowledge_load_the_language_rejected_says_nothing_to_the_operator() {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let error = knowledge_failure(&format!("def parse(text)\n  x = {}\n", fixture::MISTYPED));
+
+    report_knowledge_failure(&error, &emitter);
+
+    assert!(sink.events().is_empty(), "{:?}", sink.events());
+}
+
+/// **A memory write refused because the compiler crashed is not recorded as a bad argument.**
+///
+/// A write whose code the language rejected is `invalid-argument` and always was — the model wrote
+/// that code on that call. A write whose *compiler* fell over is refused for a different reason
+/// entirely: the argument was never judged, and the class is what a study slices by, so calling it
+/// malformed would outlive the turn as a count of model errors that were not the model's.
+#[test]
+fn a_write_refused_by_a_crashed_compiler_is_not_an_invalid_argument() {
+    assert_eq!(
+        knowledge_refusal_class(&knowledge_failure(&format!(
+            "def parse(text)\n  x = {}\n",
+            fixture::MISTYPED
+        ))),
+        ToolFailure::InvalidArgument,
+        "code the language read and rejected is the model's argument being wrong"
+    );
+    assert_eq!(
+        knowledge_refusal_class(&knowledge_failure(&format!(
+            "def parse(text)\n  {}\n",
+            fixture::NO_COMPILER
+        ))),
+        ToolFailure::IoError,
+        "a compiler that could not finish is a process gg ran failing, not a bad argument"
+    );
 }

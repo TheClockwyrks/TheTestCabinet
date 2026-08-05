@@ -210,6 +210,16 @@ Both halves are compiled at the moment they load, which is the moment the table 
 The same is true of a [skill](/gg/skills/#code-skills), which only ever loads on a read:
 broken code costs the model a diagnostic, never the prose it went looking for.
 
+A **compiler that could not finish** is a different failure and is reported as one, exactly
+as it is for [a turn's own program](/gg/program-languages/#a-compiler-has-two-ways-to-fail).
+Nothing about the code was judged, so the model is told the module was not compiled and that
+nothing about it was rejected — never a diagnostic, because there is none — and the
+compiler's crash detail goes to the run's operator, who is the only reader who can act on it.
+A write is still refused, since under the scratchpad the write is the only moment the code
+loads and a memory stored here whose module never bound would leave the model naming a `lib`
+key that does not exist; but the refusal is recorded as an `io-error` rather than an
+`invalid-argument`, because the model's argument was never the thing that failed.
+
 ## Scoping: whose memories are these?
 
 By default a memory instance belongs to **one agent instance**: a subagent starts

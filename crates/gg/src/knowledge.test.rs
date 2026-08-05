@@ -4,6 +4,7 @@
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::*;
+use crate::sandbox::fixture;
 
 /// The [program language](ProgramLanguage) these tests load code in: **TypeScript**, named
 /// explicitly because every module they load is TypeScript source and every export list they assert
@@ -321,4 +322,101 @@ fn a_load_that_failed_to_compile_still_reports_what_it_spent() {
 fn a_load_in_a_language_that_does_not_compile_reports_nothing() {
     let (mut modules, _) = with_csv_tools();
     assert_eq!(modules.take_compile(), None);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Whose failure a load's failure was
+// ---------------------------------------------------------------------------------------------
+
+/// The error a load of `source` produced.
+fn refused_load(source: &str) -> KnowledgeError {
+    KnowledgeModules::new()
+        .load(
+            compiling(),
+            KnowledgeOrigin::Skill,
+            "csv-tools",
+            Some(source),
+            None,
+        )
+        .expect_err("this source does not prepare")
+}
+
+/// **A source the language read and rejected reaches the model as the language's own diagnostic**,
+/// and has nothing to say to the operator.
+///
+/// The half that was always right, pinned so the other half's split cannot be made by taking this
+/// one away: the author can only fix a located diagnostic if it is handed over located.
+#[test]
+fn a_rejected_module_hands_the_model_the_diagnostic() {
+    let error = refused_load(&format!("def parse(text)\n  x = {}\n", fixture::MISTYPED));
+
+    assert!(!error.is_toolchain_failure());
+    let told = error.to_string();
+    assert!(told.contains("did not compile"), "{told}");
+    assert!(
+        told.contains(fixture::MISTYPED),
+        "the diagnostic is the whole of what the author can act on: {told}"
+    );
+    assert_eq!(
+        error.operator_detail(),
+        None,
+        "the model already has all of it; a second copy on the operator's stream says nothing new"
+    );
+}
+
+/// **A compiler that could not finish tells the model nothing about its source, and tells the
+/// operator everything.**
+///
+/// The misattribution this split exists to prevent, on the seam's *other* consumer: a skill read or
+/// a memory write whose compiler crashed must not come back reading like "your code is wrong". The
+/// model is told the module was not compiled and that nothing about it was rejected; the crash
+/// detail — which is real, and which only the person who can fix the image can use — goes to the
+/// operator instead of to nobody.
+#[test]
+fn a_crashed_compiler_is_the_operators_problem_not_the_authors() {
+    let error = refused_load(&format!("def parse(text)\n  {}\n", fixture::NO_COMPILER));
+
+    assert!(error.is_toolchain_failure());
+    let told = error.to_string();
+    assert!(
+        told.contains("was not compiled") && told.contains("Nothing about it was rejected"),
+        "the model must be told its source was never judged: {told}"
+    );
+    assert!(
+        !told.contains("SIGSEGV"),
+        "the compiler's crash detail is not the author's to read: {told}"
+    );
+
+    let operator = error
+        .operator_detail()
+        .expect("a crash the model is not shown must reach somebody");
+    assert!(
+        operator.contains("SIGSEGV") && operator.contains("csv-tools"),
+        "the operator gets the detail, and which load produced it: {operator}"
+    );
+}
+
+/// Both halves of a load carry the split, not just the module half.
+///
+/// An on-use script is prepared by the same step through the same seam, and it is the half that is
+/// easier to leave behind: it fails after the module has already succeeded.
+#[test]
+fn an_on_use_script_whose_compiler_crashed_is_reported_the_same_way() {
+    let error = KnowledgeModules::new()
+        .load(
+            compiling(),
+            KnowledgeOrigin::Memory,
+            "the-plan",
+            Some("def parse(text)\n"),
+            Some(format!("{}\n", fixture::NO_COMPILER).as_str()),
+        )
+        .expect_err("the on-use half does not prepare");
+
+    assert!(error.is_toolchain_failure());
+    assert_eq!(error.half, "onUse");
+    let operator = error.operator_detail().expect("the operator is told");
+    assert!(
+        operator.contains("onUse") && operator.contains("memory"),
+        "{operator}"
+    );
 }
