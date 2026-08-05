@@ -29,9 +29,12 @@
 //! * [`no_code_reachable_template_names_a_bare_gg_tool`] — a gg tool name is the right identity in
 //!   the tool-calling prompt and nowhere else, because a program calls a method on an object.
 //!
-//! And one reads what is actually **rendered**, for every language including the seam's fixture:
+//! And two read what is actually **rendered**, for every language including the seam's fixture:
 //!
-//! * [`every_call_a_rendered_prompt_names_is_one_that_language_binds`].
+//! * [`every_call_a_rendered_prompt_names_is_one_that_language_binds`];
+//! * [`every_argument_a_rendered_prompt_names_is_one_that_signature_takes`] — the argument names a
+//!   template writes beside a resolved call, which are the last hand-typed fragment of a signature
+//!   left anywhere and are exactly the half `view.openText(slug, contents)` got wrong.
 //!
 //! Together they are what makes "the model reads the code's own words" a property rather than an
 //! intention.
@@ -319,4 +322,119 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
         "a rendered prompt names a call the language's SDK does not bind:\n{}",
         offenders.join("\n"),
     );
+}
+
+/// **Every argument a rendered prompt names is one that signature really takes, in that order.**
+///
+/// A template quotes a call's *name* through the catalogue and then, where the argument matters more
+/// than the return type does, writes the argument list beside it by hand:
+/// `` `{{api.programs.rerun.call}}(source)` ``. That fragment is a signature typed into a template —
+/// the same defect [`no_template_spells_an_sdk_call_by_hand`] exists to remove, in the one shape that
+/// rule cannot see, because the span begins with a `{{api.…}}` reference rather than with a spelling.
+/// An SDK that renamed `rerun`'s argument would put a wrong argument name in front of every code
+/// agent with every other gate green.
+///
+/// It reads the **rendered** prompt, so it covers the argument names that arrive through the context
+/// as well as the ones written in the template, and it runs per language, so an argument list correct
+/// for TypeScript and wrong for a second arm is caught on the arm it is wrong for.
+///
+/// # What is judged, and what is deliberately not
+///
+/// Only a span whose head is a bound call **and** whose arguments are all bare identifiers: that
+/// shape is a *quotation of the signature*, and nothing else it could be. A span carrying a literal,
+/// an object, a nested call or a qualified name — `view.openText("fs", JSON.stringify(…))`,
+/// `view.openFile(path, { offset: 400 })` — is a worked **example**, whose argument names are the
+/// template's own local variables and are none of the catalogue's business. Judging those would be
+/// judging prose.
+///
+/// The names are matched as a **prefix** of some signature's parameters, so quoting the required
+/// arguments and leaving the optional ones off — which is what every one of these does — is correct,
+/// and quoting them in the wrong order is not.
+#[test]
+fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
+    let mut offenders = Vec::new();
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let bound = catalogue_functions(language);
+        let rendered = format!(
+            "{}\n{}",
+            render_system_for(
+                language,
+                &super::tests::every_code_section_on(GgProgramLanguage::TypeScript)
+            ),
+            render_code_nothing_shown_for(language),
+        );
+        for span in backticked(&rendered) {
+            let Some((object, name)) = call_head(span) else {
+                continue;
+            };
+            let Some(function) = bound
+                .iter()
+                .find(|function| function.object == object && function.name == name)
+            else {
+                // Not a bound call: `every_call_a_rendered_prompt_names_is_one_that_language_binds`
+                // is the rule that has an opinion about that, and saying it twice would diagnose one
+                // defect in two sentences.
+                continue;
+            };
+            let Some(quoted) = quoted_arguments(&span[object.len() + 1 + name.len()..]) else {
+                continue;
+            };
+            let takes = function.signatures.iter().any(|entry| {
+                entry.parameters.len() >= quoted.len()
+                    && entry
+                        .parameters
+                        .iter()
+                        .zip(&quoted)
+                        .all(|(parameter, name)| parameter.name == *name)
+            });
+            if !takes {
+                offenders.push(format!(
+                    "{}: `{span}` — `{object}.{name}` takes {}",
+                    language.display_name(),
+                    function
+                        .signatures
+                        .iter()
+                        .map(|entry| entry.signature.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" / "),
+                ));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a rendered prompt names an argument the signature does not take, in the order it does not \
+         take it. Quote the whole `{{{{api.<object>.<key>.signature}}}}` instead of typing the \
+         argument list:\n{}",
+        offenders.join("\n"),
+    );
+}
+
+/// The bare identifiers a span's argument list quotes, or `None` when the list is empty or is a
+/// worked example rather than a quotation of the signature.
+///
+/// `text` begins at the `(` that follows the call's name. Everything up to its matching close is
+/// split on commas; the answer is `Some` only when every part is a plain identifier — no literal, no
+/// bracket, no dot, no whitespace inside a part.
+fn quoted_arguments(text: &str) -> Option<Vec<&str>> {
+    let inner = text.strip_prefix('(')?;
+    let close = inner.find(')')?;
+    let inner = &inner[..close];
+    if inner.trim().is_empty() {
+        return None;
+    }
+    let mut out = Vec::new();
+    for part in inner.split(',') {
+        let part = part.trim();
+        let identifier = !part.is_empty()
+            && !part.starts_with(|c: char| c.is_ascii_digit())
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+        if !identifier {
+            return None;
+        }
+        out.push(part);
+    }
+    Some(out)
 }

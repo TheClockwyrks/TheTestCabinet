@@ -309,12 +309,40 @@ fn code_mode_teaches_views_rather_than_logging() {
 
 /// One function's signature as TypeScript's committed catalogue declares it, qualified by its
 /// object — what a prompt that quotes a signature must be quoting.
+fn catalogued_signature(object: &str, key: &str) -> String {
+    catalogued_signature_in(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        object,
+        key,
+    )
+}
+
+/// One function's **name**, qualified by its object, as `language`'s catalogue spells it — the
+/// `object.name` head a template renders from an `{{api.…}}.call` reference.
+fn catalogued_call_in(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+    object: &str,
+    key: &str,
+) -> String {
+    let function = crate::sandbox::catalogue_functions(language)
+        .into_iter()
+        .find(|function| function.object == object && function.key == key)
+        .unwrap_or_else(|| panic!("`{object}.{key}` is catalogued"));
+    format!("{object}.{}", function.name)
+}
+
+/// The same, for any language the seam registers — including the
+/// [fixture](crate::sandbox::fixture_languages), which is the only way to assert that a prompt
+/// quoted *that* language's shape rather than TypeScript's.
 ///
 /// Written this way rather than as a literal because the literal is the defect: a signature typed
 /// into a test is a second copy of the SDK's declaration, and a test that pinned one would go on
 /// passing after the SDK's argument was renamed and the prompt started describing a call nobody has.
-fn catalogued_signature(object: &str, key: &str) -> String {
-    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+fn catalogued_signature_in(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+    object: &str,
+    key: &str,
+) -> String {
     let function = crate::sandbox::catalogue_functions(language)
         .into_iter()
         .find(|function| function.object == object && function.key == key)
@@ -1826,8 +1854,15 @@ fn each_language_renders_its_own_prompt_and_not_another_languages() {
         "one language's prompt leaked into the other's:\n{typescript}"
     );
 
+    // Both shapes the fixture's template quotes, each read from the fixture's own catalogue: the
+    // call with its argument named, and the whole signature. A test that spelled either of them out
+    // would stop being a statement about what the fixture declares the moment the fixture's
+    // arguments were renamed — which is the defect the templates themselves were fixed for.
     assert!(
-        rendered.contains("fs.read_file(path)") && rendered.contains("view.open_text("),
+        rendered.contains(&format!(
+            "{}(path)",
+            catalogued_call_in(fixture, "fs", "read_file")
+        )) && rendered.contains(&catalogued_signature_in(fixture, "view", "open_text")),
         "the fixture's prompt quotes the fixture's spellings:\n{rendered}"
     );
     assert!(

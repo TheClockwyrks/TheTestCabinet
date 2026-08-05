@@ -355,7 +355,7 @@ verbatim. It had already gone wrong in exactly that way with one language regist
 TypeScript template quoted `view.openText(slug: str, contents: str)`, whose two argument names
 were never those and whose type name is Python's.
 
-Four gates hold the line, and each of them can be shown to catch something:
+Five gates hold the line, and each of them can be shown to catch something:
 
 - **No template spells an SDK call by hand.** Read off the template *sources*, so it covers a
   `{{#if}}` branch no test context renders — which is where a stale spelling survives longest.
@@ -367,9 +367,23 @@ Four gates hold the line, and each of them can be shown to catch something:
   the tool-calling prompt and a wrong answer everywhere else, because a program calls a method
   on an object. The context-pressure block — the one message whose whole purpose is to tell an
   agent how to reclaim its window — named two gg tools at every code agent gg had ever run.
+- **Every argument a rendered prompt names is one that signature takes, in that order.**
+  Where the argument shape matters more than the return type does, a template writes the name
+  through the catalogue and the argument list beside it — `` `{{api.programs.rerun.call}}(source)` ``.
+  That fragment is a signature typed into a template, in the one shape the first rule cannot
+  see, since the span begins with an `{{api.…}}` reference rather than with a spelling. Only a
+  span whose arguments are all bare identifiers is judged: one carrying a literal, an object or
+  a nested call is a worked *example*, whose names are the template's own.
 - **No literal in gg's own Rust names an SDK call.** The same rule on the host side, with a
   short allow-list: a language's own module (where its syntax belongs, and which resolves the
   call's name even so) and the mock model's canned fixtures.
+
+One thing a model reads is deliberately outside the rule, and it is worth naming so nobody
+audits it as a miss. A **built-in skill family's description** — the sentence under each of
+the eleven skills gg seeds — is gg's own prose about a *grouping of capabilities*, not about
+an SDK function: there is no declaration it could be reflected from, and deriving one by
+concatenating the members' summaries would read worse than what is written. It carries no
+spelling of any call, so it is language-independent by construction.
 
 ### What the host checks, and what a language must not be trusted with
 

@@ -132,11 +132,6 @@ const SPELLING_EXEMPT: &[(&str, &str)] = &[
         "the mock model's canned programs, which are developer-facing fixtures rather than \
          anything gg says to a model",
     ),
-    (
-        "skills.builtin.rs",
-        "a built-in skill family's own `id` — `gg-project` names a grouping of gg capabilities, \
-         not a function on an API object",
-    ),
 ];
 
 /// **No sentence gg puts in front of a model spells an SDK call by hand.**
