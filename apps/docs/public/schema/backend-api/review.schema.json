@@ -204,17 +204,17 @@
         },
         {
           "const": "poor",
-          "description": "Graded 🙁: not great. Worth 1 point.",
+          "description": "Graded 🙁: not great. Worth 2 points.",
           "type": "string"
         },
         {
           "const": "neutral",
-          "description": "Graded 😐: neutral. Worth 3 points.",
+          "description": "Graded 😐: neutral. Worth 5 points.",
           "type": "string"
         },
         {
           "const": "great",
-          "description": "Graded 😀: great. Worth 5 points.",
+          "description": "Graded 😀: great. Worth 8 points.",
           "type": "string"
         },
         {

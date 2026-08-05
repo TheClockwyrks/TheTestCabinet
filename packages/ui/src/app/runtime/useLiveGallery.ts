@@ -588,6 +588,11 @@ export function useLiveGallery(
       const toDetail = (stored: StoredRun): RunDetail => ({
         record: stored.record,
         reviews: stored.reviews ?? [],
+        // The store's own publish flag, not the produced worklist: a run this
+        // console did not produce (or one produced before the worklist loaded)
+        // must still read as published so the review surfaces don't offer to
+        // publish it a second time.
+        published: stored.published ?? false,
       });
       try {
         // Prefer the worker (execution) client whenever one is connected. In the

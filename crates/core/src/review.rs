@@ -19,7 +19,7 @@
 //!
 //! A [game jam](crate::test_case::TestType::GameJam) reviews differently: it has
 //! no domains, its review items are graded on a five-level scale
-//! ([`VerdictStatus::GRADES`], worth 0/1/3/5/10 points) rather than pass/fail, and
+//! ([`VerdictStatus::GRADES`], worth 0/2/5/8/10 points) rather than pass/fail, and
 //! the reviewer supplies a single whole-game **overall** grade directly (the
 //! reserved [`OVERALL_VERDICT_ID`] verdict; see [`aggregate_overall_grade`]) that
 //! becomes the run's rating badge in place of a domain rating.
@@ -134,11 +134,11 @@ pub enum VerdictStatus {
     Fail,
     /// Graded 💩: broken. Worth 0 points.
     Broken,
-    /// Graded 🙁: not great. Worth 1 point.
+    /// Graded 🙁: not great. Worth 2 points.
     Poor,
-    /// Graded 😐: neutral. Worth 3 points.
+    /// Graded 😐: neutral. Worth 5 points.
     Neutral,
-    /// Graded 😀: great. Worth 5 points.
+    /// Graded 😀: great. Worth 8 points.
     Great,
     /// Graded 💎: incredible. Worth 10 points.
     Incredible,
@@ -188,14 +188,18 @@ impl VerdictStatus {
         }
     }
 
-    /// The points one of the five graded tiers is worth (0/1/3/5/10), or `None`
+    /// The points one of the five graded tiers is worth (0/2/5/8/10), or `None`
     /// for the binary [`Pass`](VerdictStatus::Pass)/[`Fail`](VerdictStatus::Fail).
+    ///
+    /// The scale is centred: a neutral category earns half its available points
+    /// and a great one four fifths, so a jam's percentage reads comparably to a
+    /// pass/fail case's earned-over-declared score.
     pub fn grade_points(self) -> Option<u32> {
         match self {
             VerdictStatus::Broken => Some(0),
-            VerdictStatus::Poor => Some(1),
-            VerdictStatus::Neutral => Some(3),
-            VerdictStatus::Great => Some(5),
+            VerdictStatus::Poor => Some(2),
+            VerdictStatus::Neutral => Some(5),
+            VerdictStatus::Great => Some(8),
             VerdictStatus::Incredible => Some(10),
             VerdictStatus::Pass | VerdictStatus::Fail => None,
         }

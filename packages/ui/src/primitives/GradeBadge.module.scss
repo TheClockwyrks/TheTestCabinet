@@ -2,11 +2,10 @@
 
 // A game jam's overall (or category) grade, shown as a color-coded chip. The tier
 // color is picked by the `data-grade` attribute so the markup stays a single
-// element — mirroring RatingBadge, but pairing the tier emoji with its label.
+// element — the same chrome as RatingBadge, over the grade tokens.
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: t.$space-xs;
   padding: 0 t.$space-sm;
   border: t.$border-hairline solid var(--grade-color);
   border-radius: t.$radius-sm;
@@ -33,11 +32,4 @@
   &[data-grade="incredible"] {
     --grade-color: var(--tcab-rating-flawless);
   }
-}
-
-// The tier emoji keeps its own colors (no uppercase/letter-spacing transform).
-.emoji {
-  font-size: t.$font-md;
-  letter-spacing: normal;
-  line-height: 1;
 }
