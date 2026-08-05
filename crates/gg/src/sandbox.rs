@@ -406,8 +406,9 @@ fn bounded_store<A: ToolApi>(
     store
 }
 
-/// Compile `language`'s interpreter component into the process-wide cache without running anything,
-/// so the first code turn does not pay the cold compile on its critical path.
+/// Compile `language`'s interpreter component into the process-wide cache, and warm whatever its
+/// [prepare step](ProgramLanguage::warm_prepare) would otherwise unpack on its first call, without
+/// running anything — so the first code turn pays neither on its critical path.
 ///
 /// Best-effort and idempotent (the `OnceLock` makes a second call free): fired once when
 /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) is enabled, never by a
@@ -422,6 +423,10 @@ fn bounded_store<A: ToolApi>(
 pub fn precompile(
     language: &'static dyn ProgramLanguage,
 ) -> Result<Option<Duration>, SandboxError> {
+    // Before the component, because it is the cheaper of the two and a failure in it is not
+    // reported here at all: a language that could not warm its prepare step fails in the step
+    // itself, on a turn, where the failure is classified and the model is told.
+    language.warm_prepare();
     engine::component(language).map(|(_, compiled_in)| compiled_in)
 }
 

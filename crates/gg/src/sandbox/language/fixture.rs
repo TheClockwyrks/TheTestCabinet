@@ -94,6 +94,13 @@ pub(crate) const NO_COMPILER: &str = "nocompiler";
 pub(crate) struct FixtureLanguage {
     /// This instance's catalogue, leaked so it can be handed out as `&'static`.
     catalogue: &'static SignatureCatalogue,
+    /// What this instance answers [`prepare_compiles`](ProgramLanguage::prepare_compiles) with.
+    ///
+    /// Per instance because both answers now need a subject. Every *registered* language compiles —
+    /// TypeScript runs `tsc` over the model's program — so without a fixture that says `false`, the
+    /// seam's other branch would be a promise nothing exercises: that a language which compiles
+    /// nothing reports **nothing** rather than a zero.
+    compiles: bool,
 }
 
 impl ProgramLanguage for FixtureLanguage {
@@ -154,15 +161,16 @@ impl ProgramLanguage for FixtureLanguage {
         })
     }
 
-    /// Yes — the fixture stands in for the **compiled** shape of a second language.
+    /// Whatever this instance was built to answer.
     ///
-    /// It compiles nothing, of course; nothing here evaluates anything. But TypeScript answers
-    /// `false`, and a question every registered language answers the same way is a question no test
-    /// can show the seam actually asks. Declaring `true` here is what makes "a language that
-    /// compiles has its programs timed, including the one its compiler rejected" an assertion
-    /// rather than a promise.
+    /// The agreeing fixture says `true` and stands in for the **compiled** shape of a second
+    /// language — it compiles nothing, of course, since nothing here evaluates anything, but that is
+    /// what makes "a language that compiles has its programs timed, including the one its compiler
+    /// rejected" an assertion rather than a promise.
+    /// [`a_language_that_does_not_compile`] says `false` and is the only subject the opposite claim
+    /// has left, now that every registered language compiles.
     fn prepare_compiles(&self) -> bool {
-        true
+        self.compiles
     }
 
     /// A module's namespace is whatever it `def`s, and its prepared source says so in a trailing
@@ -260,6 +268,22 @@ pub(crate) fn fixture_language() -> &'static FixtureLanguage {
     static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
     FIXTURE.get_or_init(|| FixtureLanguage {
         catalogue: leak(respelled_catalogue(|_| {})),
+        compiles: true,
+    })
+}
+
+/// The agreeing fixture's surface, from a language whose prepare step **compiles nothing**.
+///
+/// The subject of every assertion about the free branch of the seam: that such a language reports
+/// `None` for what preparing a program cost, rather than `Some(0)`. The two are different claims —
+/// "compiled, in under a millisecond" against "there is no compiler on this path at all" — and a
+/// zero on every turn of every run would put a column of noise in front of the one study the field
+/// exists for.
+pub(crate) fn a_language_that_does_not_compile() -> &'static FixtureLanguage {
+    static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
+    FIXTURE.get_or_init(|| FixtureLanguage {
+        catalogue: leak(respelled_catalogue(|_| {})),
+        compiles: false,
     })
 }
 
@@ -274,6 +298,7 @@ pub(crate) fn a_language_whose_catalogue(
 ) -> &'static FixtureLanguage {
     Box::leak(Box::new(FixtureLanguage {
         catalogue: leak(respelled_catalogue(edit)),
+        compiles: true,
     }))
 }
 

@@ -7,6 +7,8 @@
 //! * [`prepare`](self::prepare) — the `oxc` type-strip, the early-error check, the refusals for
 //!   module syntax and top-level `await`, and the stack sizing an unguarded recursive-descent parser
 //!   forces on untrusted input;
+//! * [`check`](self::check) — the `tsc` pass that reads the whole program against the SDK's own
+//!   declarations and rejects it if the types do not hold;
 //! * [`modules`](self::modules) — turning a file with `export`s into a function body that returns
 //!   its namespace, which is what a code [skill](crate::skills) or [memory](crate::memories) is
 //!   bound from;
@@ -16,7 +18,9 @@
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in this language's syntax;
 //! * `guests/typescript.component.wasm` — the committed `componentize-js` guest;
-//! * `guests/typescript.signatures.json` — the catalogue reflected out of that guest's SDK.
+//! * `guests/typescript.signatures.json` — the catalogue reflected out of that guest's SDK;
+//! * `checkers/typescript.*` — the committed `tsc` the check runs, its standard library, and the
+//!   two globals no SDK declaration covers.
 //!
 //! # Why the guest is a componentized JavaScript engine
 //!
@@ -29,12 +33,29 @@
 //! built with no network and no module system, so a program reaches gg through the membrane and
 //! nowhere else.
 //!
-//! # Stripped, not checked
+//! # Stripped **and** checked
 //!
-//! The program is TypeScript, but nothing type-*checks* it: [`prepare`](self::prepare) erases the
-//! types and hands the JavaScript to the guest. The signatures the system prompt shows are therefore
-//! a contract the SDK enforces at run time (an options object that arrived as a bare number, a
-//! negative `offset`) rather than one a compiler enforced beforehand.
+//! Two passes, in this order, and each does something the other cannot:
+//!
+//! 1. [`prepare`](self::prepare) parses with `oxc` and erases the types, in ~0.2 ms. It is what
+//!    produces the JavaScript the guest evaluates, what catches a syntax error and an ECMAScript
+//!    early error in gg's own located rendering, what refuses module syntax and top-level `await`,
+//!    and what notices the statements a program wrote after the one that ends it.
+//! 2. [`check`](self::check) runs `tsc` over the **unstripped** source against the SDK's own
+//!    declarations. It is what turns the signatures the system prompt shows from a contract the SDK
+//!    enforces at run time — an options object that arrived as a bare number, a misspelled function
+//!    — into one the model is told about before its program does any work. Measured end to end, the
+//!    two passes together take ~91 ms against a representative program.
+//!
+//! The cheap pass runs first, so a program with a syntax error costs a parse rather than a compiler,
+//! and every failure lands in the kind that names its cause: a typo is
+//! [`Syntax`](super::PrepareError::Syntax), two programs in one reply are usually
+//! [`Semantic`](super::PrepareError::Semantic), and a program the compiler read whole and rejected
+//! is [`Compile`](super::PrepareError::Compile).
+//!
+//! This is what makes TypeScript a **checked** arm of a cross-language study, and it is why
+//! [`prepare_compiles`](ProgramLanguage::prepare_compiles) answers `true` here: the time both passes
+//! take is charged to the program that paid it.
 
 use std::sync::OnceLock;
 
@@ -49,6 +70,9 @@ use super::{
 
 #[path = "typescript.prepare.rs"]
 mod prepare;
+
+#[path = "typescript.check.rs"]
+mod check;
 
 #[path = "typescript.healing.rs"]
 mod healing;
@@ -91,7 +115,8 @@ static PROMPT: PromptDialect = PromptDialect {
 /// `OnceLock` state above.
 pub(super) static TYPESCRIPT: TypeScript = TypeScript;
 
-/// TypeScript, type-stripped to JavaScript and evaluated in the committed `componentize-js` guest.
+/// TypeScript: type-checked with the committed `tsc`, type-stripped to JavaScript, and evaluated in
+/// the committed `componentize-js` guest.
 pub(super) struct TypeScript;
 
 impl ProgramLanguage for TypeScript {
@@ -103,21 +128,43 @@ impl ProgramLanguage for TypeScript {
         GgProgramLanguage::TypeScript.display_name()
     }
 
-    /// Never a [toolchain failure](PrepareFailure::Toolchain): this step spawns nothing that could
-    /// fail to run, so every failure it has is the model's text.
+    /// The `oxc` type-strip, then the `tsc` type check — in that order, because the first is a
+    /// parse and the second is a compiler, and a program with a syntax error should not cost one.
+    ///
+    /// The checked text is the model's own **unstripped** source, so what `tsc` reads is what the
+    /// model wrote, at the coordinates it wrote it at.
     fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure> {
-        Ok(prepare::prepare_program(source)?)
+        let prepared = prepare::prepare_program(source)?;
+        check::check_program(source)?;
+        Ok(prepared)
     }
 
-    /// No. Preparing TypeScript is an in-process parse and type-strip — no checker runs, nothing
-    /// is spawned, and the whole step is over in well under a millisecond. Timing it would report a
-    /// zero on every turn of every run.
+    /// Yes. [`prepare_program`](Self::prepare_program) spawns `tsc`, which takes ~91 ms against a
+    /// representative program and grows with the program — a real per-turn cost, on the failing path
+    /// as much as the succeeding one, and the number a study comparing a checked arm against an
+    /// unchecked one is comparing.
     fn prepare_compiles(&self) -> bool {
-        false
+        true
     }
 
+    /// Write the committed checker — ~6.7 MB of compiler and declarations — into the directory every
+    /// check runs against, so the first code turn is not charged for unpacking it.
+    ///
+    /// Idempotent and best effort: the result is cached for the process, and a failure here is
+    /// dropped rather than reported, because the first check makes the same attempt and fails there
+    /// as a [toolchain failure](PrepareFailure::Toolchain) the run is told about properly.
+    fn warm_prepare(&self) {
+        check::warm();
+    }
+
+    /// The same two passes a program gets, with the module's own coordinates: a code
+    /// [skill](crate::skills) or [memory](crate::memories) is source a model wrote too, and a module
+    /// that does not type-check would otherwise bind a `lib.<key>` whose every call fails later, in
+    /// a turn that has nothing to do with the one that wrote it.
     fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure> {
-        Ok(prepare::prepare_module(source)?)
+        let prepared = prepare::prepare_module(source)?;
+        check::check_module(source)?;
+        Ok(prepared)
     }
 
     /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.

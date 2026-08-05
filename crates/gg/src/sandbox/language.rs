@@ -138,6 +138,17 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// without answering.
     fn prepare_compiles(&self) -> bool;
 
+    /// Do whatever this language's [prepare step](Self::prepare_program) would otherwise do on its
+    /// first call — unpack a toolchain, warm a cache — so the first code turn does not pay for it.
+    ///
+    /// Called once per run, from [`precompile`](super::precompile), on the same blocking task that
+    /// compiles the interpreter component and for the same reason: a one-off cost that lands inside
+    /// a turn is a cost a cross-language study reads as that turn's compile time. Best-effort and
+    /// idempotent; a language whose prepare step needs no warming does nothing, which is why this
+    /// has a default and [`prepare_compiles`](Self::prepare_compiles) does not — one is an
+    /// optimisation and the other is a measurement.
+    fn warm_prepare(&self) {}
+
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
     /// that module's namespace, bound at `lib.<key>`.
     fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure>;
@@ -654,11 +665,9 @@ pub enum PrepareError {
     /// [`SandboxError::Compile`](super::SandboxError::Compile), which is the committed interpreter
     /// component failing to compile — an artifact defect that ends the session.
     ///
-    /// No **registered** language constructs it yet: TypeScript's prepare step is an in-process
-    /// type-strip that checks nothing, and the first compiled arm is what will raise it. The
-    /// fixture language raises it under test, which is why the allowance below is
-    /// `not(test)` rather than blanket — the variant is exercised, just not by a shipped language.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// TypeScript raises it: its prepare step runs `tsc` over the model's own source against the
+    /// SDK's declarations, and hands back the compiler's diagnostics unaltered but for the one line
+    /// number the wrapper it is checked in made wrong.
     #[error("{0}")]
     Compile(String),
     /// It could not be lowered into what the guest evaluates. Distinct from
@@ -723,10 +732,9 @@ pub enum PrepareFailure {
     /// signal, the tail of the compiler's stderr. It reaches the model only as a system notice
     /// saying its program was not run, never as a compiler error.
     ///
-    /// Unconstructed by any registered language for the reason [`PrepareError::Compile`] is: a
-    /// prepare step that spawns no compiler has no compiler that can fail to finish. The fixture
-    /// language raises it under test.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// TypeScript raises it: its checker is `node` running a committed `tsc`, and a `node` that is
+    /// not on `PATH`, a check that outran its timeout, and a compiler killed by a signal are all
+    /// failures with nothing in them for a model to fix.
     #[error("{0}")]
     Toolchain(String),
 }

@@ -1,0 +1,664 @@
+//! **The type check** — TypeScript's answer to
+//! [`prepare_compiles`](super::ProgramLanguage::prepare_compiles), and the reason this language
+//! answers `true`.
+//!
+//! A model's reply is TypeScript, and until this module existed nothing checked it: the types were
+//! erased by [`prepare`](super::prepare) and the JavaScript underneath was handed to the guest, so a
+//! call that passed a string where the SDK declared a number ran anyway and failed — if it failed at
+//! all — somewhere in the middle of a turn's work, as a `TypeError` with a stack frame instead of a
+//! sentence naming the argument. Now `tsc` reads the whole program first, against the SDK's own
+//! declarations, and a program that does not type-check never reaches the guest: the model is handed
+//! the compiler's diagnostics, at the coordinates of the text it wrote, and writes another program.
+//!
+//! # Why a subprocess, and why this one
+//!
+//! The check runs **inside the run container**, on gg's own blocking thread, on every code turn.
+//! Three candidates were measured against a representative program before this shape was chosen,
+//! each driven the same way from a shell (this repository's dev container, aarch64, warm):
+//!
+//! | Checker | Per program | Ships as |
+//! | --- | --- | --- |
+//! | `node` + `_tsc.js`, `noLib`, one concatenated library | **87 ms** | 6.7 MB, one artifact, every platform |
+//! | `tsgo` (`@typescript/native-preview`) | 93 ms | 26 MB **per platform**, a `7.0.0-dev` preview |
+//! | `node` + `typescript.js` through `ts.createProgram` | 785 ms | as above, plus a host to write |
+//!
+//! So the fastest option is also the one that needs no per-platform binary and no preview compiler:
+//! the reference implementation, pinned at one release, invoked exactly as npm's own `tsc` shim
+//! invokes it. `node` is the one interpreter every run image already has — the shared base *is*
+//! `node:24-bookworm-slim`, and the one image not built from it installs Node explicitly — so this
+//! adds nothing to any image.
+//!
+//! End to end through [`prepare_program`](super::ProgramLanguage::prepare_program) — the strip, this
+//! module's file writes, the spawn, and the check — a representative program measures **~91 ms**
+//! (median of 12, unoptimised build, same machine, with Node's compile cache warm). That is the
+//! figure a run records. The **first** check of a process pays ~450 ms instead, materialising the
+//! checker and filling that cache, and a run normally pays it before its first turn (see
+//! [`warm`]).
+//!
+//! A **persistent checker process** would save most of it and was rejected: it is a process gg would
+//! have to own, health-check, cancel and reap, on a turn path where 91 ms is well under 1 % of a
+//! turn and is now *measured* — [`SandboxOutcome::compile`](crate::sandbox::SandboxOutcome::compile)
+//! carries it, so an arm that pays for checking is compared on what it paid.
+//!
+//! # What the program is checked against
+//!
+//! Three declaration files, assembled once per process and reused by every check:
+//!
+//! 1. `lib.gg.d.ts` — the ES2022 standard library, the 57 `lib.*.d.ts` files concatenated at build
+//!    time so one open replaces 57. The check runs `noLib` and names it explicitly.
+//! 2. `gg.d.ts` — the **whole** SDK surface, generated here from this language's committed
+//!    [signature catalogue](crate::sandbox::signatures): every catalogued type, and every API object
+//!    as an object literal of the functions that hang off it. Nothing is hand-written; the same
+//!    reflected signatures the model is shown in its prompt are the ones it is checked against, so
+//!    the two cannot disagree.
+//! 3. `globals.d.ts` — `console`, `lib`, `performance` and `crypto`: the names a program reaches
+//!    that no SDK declaration covers, authored beside the shim that installs or shadows them and
+//!    committed verbatim. The rule there is one rule — a name a program can **call** is declared and
+//!    a name it cannot is not — which is why `setTimeout` and `fetch` are absent and the host's clock
+//!    and entropy are present.
+//!
+//! ## The surface is the whole one, not the run's
+//!
+//! `gg.d.ts` declares every object and every function the catalogue carries, including the ones this
+//! run's toolset withholds and the ending calls of roles this agent does not have. That is
+//! deliberate, and it is the opposite of what the *prompt* does — a withheld capability contributes
+//! no prompt text at all.
+//!
+//! Two reasons, both load-bearing:
+//!
+//! * **A withheld name must stay reachable as a withheld name.** A tool this run does not offer is
+//!   not in the program's scope, so calling it is a `ReferenceError` the turn records as
+//!   `program_unknown_name` — "the model reached for something it was not given", which is the
+//!   measurement [toolset ablation](crate::tools) exists to take. If the checker refused those
+//!   programs instead, that measurement would be recorded as `transpile_compile` in a checked
+//!   language and as `program_unknown_name` in an unchecked one, and the two arms of a study would
+//!   no longer be counting the same event.
+//! * **A verdict must depend on the program alone.** The same text must check the same way whether
+//!   it arrives as a turn's program, as a skill's on-use script, or as the code half of a memory
+//!   being written — none of which is prepared with a run's toolset in hand.
+//!
+//! # Coordinates
+//!
+//! The guest evaluates a program as the **body of a function** (`new Function(...names, source)`),
+//! which is why a top-level `return` is legal in one. `tsc` has no such notion, so the source is
+//! wrapped in a function declaration before it is checked — one line, added at the top, with the
+//! program's own text unindented underneath. Every diagnostic therefore arrives one line low, and
+//! exactly one line low, so the fix is exact: [`shift_lines`] rewrites `program.ts(12,8)` to
+//! `program.ts(11,8)` and touches nothing else, including the indented continuation lines a
+//! multi-part diagnostic carries. The model reads coordinates into the reply it wrote.
+//!
+//! # Isolation
+//!
+//! Several agents run programs at once — up to `limits.maxParallel` of them, each able to chain
+//! programs within a turn — and every one of them may be in this module simultaneously. So each
+//! check gets **its own directory**, holding its own `tsconfig.json` and its own `program.ts`, and
+//! is removed afterwards. Nothing is shared but the read-only checker itself, which is written once
+//! per version into a content-keyed directory by a rename, so two processes racing to materialise it
+//! either both win or one overwrites the other with identical bytes.
+
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+
+use serde::Deserialize;
+
+use crate::sandbox::language::{PrepareError, PrepareFailure, ProgramLanguage};
+use crate::sandbox::signatures::{SignatureCatalogue, SignatureEntry};
+
+/// The compiler behind the `tsc` CLI, at the release
+/// `packages/gg-sandbox/tools/checker.mjs` pins — committed and embedded for the reason the
+/// component is: gg is copied as a single file into an ephemeral run container and must carry
+/// everything it needs with it.
+const TSC_JS: &str = include_str!("../checkers/typescript.tsc.js");
+
+/// The ES2022 standard library, concatenated at build time.
+const LIB_DTS: &str = include_str!("../checkers/typescript.lib.d.ts");
+
+/// `console`, `lib`, `performance` and `crypto` — the globals no SDK declaration covers.
+const GLOBALS_DTS: &str = include_str!("../checkers/typescript.globals.d.ts");
+
+/// What the committed checker is, so gg can say which compiler judged a program.
+const MANIFEST_JSON: &str = include_str!("../checkers/typescript.checker.json");
+
+/// The interpreter the checker is run with, overridable for a host whose `node` is not on `PATH`.
+const NODE_ENV: &str = "TCAB_GG_NODE";
+
+/// How long a single check may take before it is killed and reported as a
+/// [toolchain failure](PrepareFailure::Toolchain).
+///
+/// Generous on purpose. gg refuses no program for its length, and checking scales with it: a
+/// representative program takes about a tenth of a second, a 100 KB one about a second, and an
+/// 800 KB one several. A bound is still needed — a compiler that hangs would otherwise hold a
+/// blocking thread for the rest of the run — and a minute is far past any program a model has
+/// produced while being unmistakably a hang rather than a slow check.
+const CHECK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How often the wait loop looks at a running check. Small enough that a sub-hundred-millisecond
+/// check is not rounded up noticeably, large enough that waiting costs nothing.
+const POLL_INTERVAL: Duration = Duration::from_millis(2);
+
+/// The file name a program is checked under, and the one its diagnostics are located in.
+const PROGRAM_FILE: &str = "program.ts";
+
+/// The file name a code module is checked under.
+const MODULE_FILE: &str = "module.ts";
+
+/// The wrapper that makes a program's top-level `return` legal, matching the guest's own
+/// `new Function(...names, source)`. Exactly one line, so the shift is exactly one line.
+const PROGRAM_PROLOGUE: &str = "function __ggProgram__() {\n";
+
+/// What closes it.
+const PROGRAM_EPILOGUE: &str = "\n}\n";
+
+/// What the committed checker is: the TypeScript release it was cut from and the language level it
+/// checks at.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckerManifest {
+    /// The pinned TypeScript version (`5.9.3`).
+    typescript: String,
+    /// The standard library a program is checked against, and the language level it is checked at
+    /// (`ES2022`). Both, because the concatenated library *is* that level: reading one value for
+    /// both is what stops a program from being checked against a library its target does not match.
+    lib: String,
+}
+
+/// The parsed manifest, read once per process.
+fn manifest() -> &'static CheckerManifest {
+    static MANIFEST: OnceLock<CheckerManifest> = OnceLock::new();
+    MANIFEST.get_or_init(|| {
+        serde_json::from_str(MANIFEST_JSON)
+            .expect("the committed checker manifest is valid JSON of the expected shape")
+    })
+}
+
+/// The TypeScript release a program is checked with, for the run's own record and for an operator
+/// reading a diagnostic and wondering whose it is.
+pub(super) fn checker_version() -> &'static str {
+    &manifest().typescript
+}
+
+/// Materialise the checker now, so the first check does not.
+///
+/// The whole of [`ProgramLanguage::warm_prepare`](super::ProgramLanguage::warm_prepare) for this
+/// language. The result is dropped: a failure here is the same failure the first check will make,
+/// and there it is classified, counted and reported.
+pub(super) fn warm() {
+    let _ = checker();
+}
+
+/// Type-check a **program** — a model's reply, as the guest will evaluate it.
+///
+/// `Ok(())` means `tsc` found nothing. A program the compiler read and rejected is
+/// [`PrepareError::Compile`] carrying the compiler's own diagnostics; a compiler that could not run
+/// at all is [`PrepareFailure::Toolchain`], which is not the model's failure and is never shown to
+/// it as one.
+pub(super) fn check_program(source: &str) -> Result<(), PrepareFailure> {
+    let wrapped = format!("{PROGRAM_PROLOGUE}{source}{PROGRAM_EPILOGUE}");
+    check(PROGRAM_FILE, &wrapped, 1)
+}
+
+/// Type-check a **code module** — the source of a code [skill](crate::skills) or
+/// [memory](crate::memories), which the guest evaluates to produce the namespace bound at
+/// `lib.<key>`.
+///
+/// Checked as a module rather than as a function body, because that is what it is: it declares
+/// `export`s, and its coordinates are its own with nothing added, so no shift is applied.
+pub(super) fn check_module(source: &str) -> Result<(), PrepareFailure> {
+    check(MODULE_FILE, source, 0)
+}
+
+/// Run one check of `source`, filed as `file`, and translate what `tsc` said.
+///
+/// `shift` is how many lines the checked text has that the model's text does not; every diagnostic
+/// located in `file` is moved back by it.
+fn check(file: &str, source: &str, shift: usize) -> Result<(), PrepareFailure> {
+    let checker = checker().map_err(PrepareFailure::Toolchain)?;
+    let work = WorkDir::new(checker).map_err(PrepareFailure::Toolchain)?;
+
+    write(&work.path.join(file), source).map_err(PrepareFailure::Toolchain)?;
+    write(&work.path.join("tsconfig.json"), &tsconfig(checker, file))
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let report = invoke(checker, &work.path).map_err(PrepareFailure::Toolchain)?;
+    classify(file, shift, report)
+}
+
+/// What one `tsc` invocation left behind.
+struct Report {
+    /// Whether the process exited zero. A `tsc` that found something exits non-zero, so this alone
+    /// does not say whose failure it was.
+    ok: bool,
+    /// How it ended, for an operator: `exit status: 2`, `signal: 6`, `timed out after 60s`.
+    status: String,
+    /// Its diagnostics, which `tsc` writes to stdout.
+    stdout: String,
+    /// Anything it wrote to stderr, which a healthy `tsc` leaves empty.
+    stderr: String,
+}
+
+/// Turn a finished invocation into a verdict.
+///
+/// The exit status alone cannot decide: `tsc` exits non-zero both for "your program has errors" and
+/// for "I could not run". What decides is whether it produced a diagnostic **about the file gg gave
+/// it**:
+///
+/// * diagnostics in `file` — the model's program was read and rejected: [`PrepareError::Compile`].
+/// * diagnostics only in gg's own declaration files — those are generated by gg from its own
+///   catalogue and are never the model's doing, so this is [`PrepareError::Lowering`], the kind that
+///   exists to keep "the model's text failed" and "gg's pipeline failed" from being read as one
+///   number.
+/// * no diagnostics at all and a non-zero exit — the compiler did not get far enough to have an
+///   opinion: [`PrepareFailure::Toolchain`].
+fn classify(file: &str, shift: usize, report: Report) -> Result<(), PrepareFailure> {
+    let diagnostics = report.stdout.trim();
+    if report.ok && diagnostics.is_empty() {
+        return Ok(());
+    }
+    if diagnostics.is_empty() {
+        let stderr = tail(&report.stderr);
+        return Err(PrepareFailure::Toolchain(format!(
+            "tsc {} without reporting a diagnostic ({}){stderr}",
+            report.status,
+            checker_version(),
+        )));
+    }
+    let located_in_program = diagnostics
+        .lines()
+        .any(|line| line.starts_with(&format!("{file}(")));
+    if !located_in_program {
+        return Err(PrepareFailure::Program(PrepareError::Lowering(format!(
+            "the generated declarations gg checks a program against were rejected by tsc \
+             {}: {diagnostics}",
+            checker_version(),
+        ))));
+    }
+    Err(PrepareFailure::Program(PrepareError::Compile(shift_lines(
+        diagnostics,
+        file,
+        shift,
+    ))))
+}
+
+/// Move every diagnostic located in `file` back by `shift` lines, leaving everything else — the
+/// message, the column, and the indented continuation lines a multi-part diagnostic carries —
+/// exactly as `tsc` wrote it.
+///
+/// The compiler's own text is what the model is meant to read; the only thing gg corrects is the one
+/// number the wrapper made wrong.
+fn shift_lines(diagnostics: &str, file: &str, shift: usize) -> String {
+    if shift == 0 {
+        return diagnostics.to_string();
+    }
+    let prefix = format!("{file}(");
+    diagnostics
+        .lines()
+        .map(|line| shift_line(line, &prefix, shift).unwrap_or_else(|| line.to_string()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// One `<file>(<line>,<column>): …` rendered at `line - shift`, or `None` when the line is not one.
+fn shift_line(line: &str, prefix: &str, shift: usize) -> Option<String> {
+    let rest = line.strip_prefix(prefix)?;
+    let (number, rest) = rest.split_once(',')?;
+    let number: usize = number.parse().ok()?;
+    Some(format!(
+        "{prefix}{},{rest}",
+        number.saturating_sub(shift).max(1)
+    ))
+}
+
+/// The last few lines of a compiler's stderr, prefixed for an operator's log, or nothing when it
+/// said nothing. Bounded because a crashing toolchain can print a great deal and none of it belongs
+/// in a run's error record.
+fn tail(stderr: &str) -> String {
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        return String::new();
+    }
+    let lines: Vec<&str> = stderr.lines().rev().take(10).collect();
+    let text: Vec<&str> = lines.into_iter().rev().collect();
+    format!(": {}", text.join(" | "))
+}
+
+/// The project file one check runs under.
+///
+/// `noLib` with the concatenated library named explicitly, `skipLibCheck` because gg's declarations
+/// and the standard library are checked at build time rather than on a turn path, and `types: []`
+/// so nothing an `@types` directory happens to contain can reach a program that could never import
+/// it. `moduleDetection: force` makes the checked file a module whatever it contains, which is what
+/// stops a program's own top-level names from colliding with the standard library's.
+fn tsconfig(checker: &Checker, file: &str) -> String {
+    let lib = escape(&checker.lib_dts);
+    let globals = escape(&checker.globals_dts);
+    let surface = escape(&checker.surface_dts);
+    let target = &manifest().lib;
+    format!(
+        r#"{{
+  "compilerOptions": {{
+    "strict": true,
+    "target": "{target}",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "noLib": true,
+    "types": [],
+    "noEmit": true,
+    "skipLibCheck": true
+  }},
+  "files": ["{lib}", "{globals}", "{surface}", "{file}"]
+}}
+"#
+    )
+}
+
+/// A path as a JSON string body — the one escaping a generated `tsconfig.json` needs.
+fn escape(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    let quoted = serde_json::Value::String(text.into_owned()).to_string();
+    quoted[1..quoted.len() - 1].to_string()
+}
+
+/// Spawn `tsc` over the project in `dir` and wait for it, killing it at [`CHECK_TIMEOUT`].
+///
+/// Both streams are redirected to files rather than pipes. A pipe would have to be drained while the
+/// process runs, and this loop is watching the clock instead — a check whose diagnostics filled the
+/// pipe buffer would deadlock against its own timeout.
+fn invoke(checker: &Checker, dir: &Path) -> Result<Report, String> {
+    let node = std::env::var(NODE_ENV).unwrap_or_else(|_| "node".to_string());
+    let out_path = dir.join("tsc.out");
+    let err_path = dir.join("tsc.err");
+    let capture = |path: &Path| {
+        std::fs::File::create(path)
+            .map_err(|error| format!("could not open {} for the checker: {error}", path.display()))
+    };
+    let stdout = capture(&out_path)?;
+    let stderr = capture(&err_path)?;
+
+    let mut child = Command::new(&node)
+        .arg(&checker.tsc_js)
+        .arg("--project")
+        .arg("tsconfig.json")
+        .arg("--pretty")
+        .arg("false")
+        // The compiler is 6.2 MB of JavaScript and every check parses it again. Node's on-disk
+        // compile cache keeps the compiled bytecode beside the checker, which it re-uses from the
+        // second check onward — measured at roughly a quarter of the time of parsing it cold. It is
+        // a cache and nothing depends on it: a Node too old to know the variable ignores it, and a
+        // directory it cannot write to turns it off rather than failing a check.
+        .env("NODE_COMPILE_CACHE", &checker.node_cache)
+        .current_dir(dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .map_err(|error| spawn_failure(&node, &error))?;
+
+    let started = Instant::now();
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => {}
+            Err(error) => break Err(format!("waiting for tsc failed: {error}")),
+        }
+        if started.elapsed() >= CHECK_TIMEOUT {
+            // The process is killed and reaped before the failure is reported, so a timed-out check
+            // leaves nothing behind for the rest of the run to trip over.
+            let _ = child.kill();
+            let _ = child.wait();
+            break Err(format!(
+                "timed out after {}s",
+                CHECK_TIMEOUT.as_secs_f64().round()
+            ));
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    };
+
+    let stdout = std::fs::read_to_string(&out_path).unwrap_or_default();
+    let stderr = std::fs::read_to_string(&err_path).unwrap_or_default();
+    match status {
+        Ok(status) => Ok(Report {
+            ok: status.success(),
+            status: describe(&status),
+            stdout,
+            stderr,
+        }),
+        Err(status) => Ok(Report {
+            ok: false,
+            status,
+            stdout: String::new(),
+            stderr,
+        }),
+    }
+}
+
+/// How a finished process ended, in the words an operator needs: the code, or the signal that killed
+/// it, which is the difference between a compiler that disagreed and one that crashed.
+fn describe(status: &std::process::ExitStatus) -> String {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return format!("was killed by signal {signal}");
+        }
+    }
+    match status.code() {
+        Some(code) => format!("exited with status {code}"),
+        None => "ended without a status".to_string(),
+    }
+}
+
+/// The one failure worth naming precisely, because it is the one an operator can fix: `node` is not
+/// where gg looked for it.
+fn spawn_failure(node: &str, error: &std::io::Error) -> String {
+    format!(
+        "could not run the TypeScript checker with `{node}`: {error}. gg type-checks every \
+         TypeScript program, and needs Node on PATH or {NODE_ENV} pointing at it"
+    )
+}
+
+/// Write `contents` to `path`, naming the path in any failure so an operator is not left guessing
+/// which of the checker's files could not be written.
+fn write(path: &Path, contents: &str) -> Result<(), String> {
+    std::fs::write(path, contents)
+        .map_err(|error| format!("could not write {}: {error}", path.display()))
+}
+
+/// The materialised checker: where its four read-only inputs ended up on this machine.
+struct Checker {
+    /// The compiler bundle `node` is pointed at.
+    tsc_js: PathBuf,
+    /// The concatenated ES2022 standard library.
+    lib_dts: PathBuf,
+    /// `console`, `lib`, `performance` and `crypto`.
+    globals_dts: PathBuf,
+    /// The SDK surface, generated from this language's catalogue.
+    surface_dts: PathBuf,
+    /// Where Node keeps the compiler's compiled bytecode between checks.
+    node_cache: PathBuf,
+    /// The directory the four sit in, and the parent of every check's own directory.
+    root: PathBuf,
+}
+
+/// The materialised checker for this process, materialising it on first use.
+///
+/// Materialisation is ~6.7 MB of writes and happens once. A run normally pays it before its first
+/// turn, off the critical path, because [`warm`] is called from
+/// [`precompile`](crate::sandbox::precompile) beside the component compile; a run whose warm-up lost
+/// the race pays it inside the first check, where it lands in that turn's
+/// [compile measurement](crate::sandbox::SandboxOutcome::compile) rather than hidden beside it.
+///
+/// The directory is keyed by the checker's version **and** by a hash of the declarations gg
+/// generates, so a gg with a different SDK surface never reads another's files, and two processes
+/// with the same ones share.
+fn checker() -> Result<&'static Checker, String> {
+    static CHECKER: OnceLock<Result<Checker, String>> = OnceLock::new();
+    CHECKER
+        .get_or_init(materialise)
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// Write the checker's read-only inputs into a content-keyed directory under the system temporary
+/// directory.
+///
+/// Each file is written to a process-unique name and then **renamed** into place. Rename is atomic
+/// within a directory, so a second gg process materialising the same version concurrently can only
+/// ever replace a complete file with an identical complete file — a reader never sees a half-written
+/// compiler.
+fn materialise() -> Result<Checker, String> {
+    let surface = surface(super::TYPESCRIPT.catalogue());
+    let root = std::env::temp_dir().join(format!(
+        "gg-typescript-checker-{}-{:016x}",
+        manifest().typescript,
+        fingerprint(&surface)
+    ));
+    std::fs::create_dir_all(&root)
+        .map_err(|error| format!("could not create {}: {error}", root.display()))?;
+
+    let checker = Checker {
+        tsc_js: root.join("tsc.js"),
+        lib_dts: root.join("lib.gg.d.ts"),
+        globals_dts: root.join("globals.d.ts"),
+        surface_dts: root.join("gg.d.ts"),
+        node_cache: root.join("node-cache"),
+        root,
+    };
+    place(&checker.tsc_js, TSC_JS)?;
+    place(&checker.lib_dts, LIB_DTS)?;
+    place(&checker.globals_dts, GLOBALS_DTS)?;
+    place(&checker.surface_dts, &surface)?;
+    Ok(checker)
+}
+
+/// Write one of the checker's read-only inputs, atomically.
+fn place(path: &Path, contents: &str) -> Result<(), String> {
+    let staged = path.with_extension(format!("{}.staged", std::process::id()));
+    write(&staged, contents)?;
+    std::fs::rename(&staged, path).map_err(|error| {
+        let _ = std::fs::remove_file(&staged);
+        format!("could not place {}: {error}", path.display())
+    })
+}
+
+/// A stable digest of the generated surface, so a change to it changes the directory it is written
+/// into. Not cryptographic and not required to be: it distinguishes builds, it does not defend
+/// against one.
+fn fingerprint(surface: &str) -> u64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    surface.hash(&mut hasher);
+    LIB_DTS.len().hash(&mut hasher);
+    GLOBALS_DTS.hash(&mut hasher);
+    hasher.finish()
+}
+
+/// One check's own directory, removed when the check is over.
+struct WorkDir {
+    path: PathBuf,
+}
+
+impl WorkDir {
+    /// A directory nothing else will write to: this process, and a counter no two checks share.
+    fn new(checker: &Checker) -> Result<Self, String> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let path = checker.root.join(format!(
+            "check-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&path)
+            .map_err(|error| format!("could not create {}: {error}", path.display()))?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for WorkDir {
+    fn drop(&mut self) {
+        // Best effort: a run container is thrown away, and a directory left behind by a machine that
+        // could not remove one is not worth failing a turn over.
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// The whole SDK surface as a declaration file: every catalogued type, then every API object as an
+/// object literal of the functions that hang off it.
+///
+/// Generated from the committed catalogue rather than written out, for the reason nothing about this
+/// SDK is written out: the catalogue is reflected from the SDK's own declarations, so what a program
+/// is *checked* against is the same text the model is *shown*, with no second copy to drift. It
+/// carries no documentation — the model never reads this file, and a comment would only be a
+/// megabyte of text for `tsc` to skip.
+fn surface(catalogue: &SignatureCatalogue) -> String {
+    let mut out = String::from(
+        "// Generated by gg from this language's committed signature catalogue. Not for reading.\n",
+    );
+    for declaration in &catalogue.types {
+        out.push_str(&declare(&declaration.declaration));
+        out.push('\n');
+    }
+    for object in &catalogue.objects {
+        out.push_str(&format!("declare const {}: {{\n", object.object));
+        for signature in members(catalogue, &object.object) {
+            out.push_str(&format!("  {signature};\n"));
+        }
+        out.push_str("};\n");
+    }
+    out
+}
+
+/// Every signature bound on `object`, in catalogue order, with the meta function every object
+/// carries appended.
+///
+/// One entry may contribute several signatures — that is what an overload group is — so they are
+/// emitted in order and TypeScript reads them as the overload set the language declared.
+fn members(catalogue: &SignatureCatalogue, object: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push = |entry_object: &str, signatures: &[SignatureEntry]| {
+        if entry_object == object {
+            out.extend(signatures.iter().map(|entry| entry.signature.clone()));
+        }
+    };
+    for entry in &catalogue.session {
+        push(&entry.object, &entry.signatures);
+    }
+    for entry in &catalogue.views {
+        push(&entry.object, &entry.signatures);
+    }
+    for entry in &catalogue.programs {
+        push(&entry.object, &entry.signatures);
+    }
+    for entry in &catalogue.tools {
+        push(&entry.object, &entry.signatures);
+    }
+    for entry in &catalogue.helpers {
+        push(&entry.object, &entry.signatures);
+    }
+    for entry in &catalogue.meta {
+        out.extend(entry.signatures.iter().map(|entry| entry.signature.clone()));
+    }
+    out
+}
+
+/// A catalogued declaration as a **declaration file** states it.
+///
+/// `interface` and `type` are already ambient wherever they appear; a `class`, a `function` or a
+/// `const` needs `declare` in front of it, because without one TypeScript expects an implementation
+/// this file does not have.
+fn declare(declaration: &str) -> String {
+    const NEEDS_DECLARE: [&str; 5] = ["class ", "abstract class ", "function ", "const ", "let "];
+    if NEEDS_DECLARE
+        .iter()
+        .any(|prefix| declaration.starts_with(prefix))
+    {
+        format!("declare {declaration}")
+    } else {
+        declaration.to_string()
+    }
+}
+
+#[cfg(test)]
+#[path = "typescript.check.test.rs"]
+mod tests;

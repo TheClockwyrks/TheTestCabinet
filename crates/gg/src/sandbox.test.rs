@@ -306,17 +306,22 @@ fn a_memory_search_hands_a_program_its_hits_as_data() {
 /// rest of WASI are the **host's**, linked ambiently, and nothing shadows them.
 #[test]
 fn the_sandbox_denies_only_what_it_cannot_honour() {
+    // Reached through `globalThis` rather than by name, because the type checker declares none of
+    // them: `setTimeout(…)` in a TypeScript program is a compile error before it is ever a throw,
+    // which is the earlier and better answer. The thrower these reach is the same object a bare call
+    // resolves to, so this is still the denial an unchecked arm — or a value typed `any` — meets.
+    let global = "const host = globalThis as any;\n";
     let denied = [
-        "setTimeout(() => 1, 0);",
-        "setInterval(() => 1, 0);",
-        "clearTimeout(1);",
-        "clearInterval(1);",
-        "queueMicrotask(() => 1);",
-        "requestAnimationFrame(() => 1);",
-        "fetch(\"https://example.com\");",
+        "host.setTimeout(() => 1, 0);",
+        "host.setInterval(() => 1, 0);",
+        "host.clearTimeout(1);",
+        "host.clearInterval(1);",
+        "host.queueMicrotask(() => 1);",
+        "host.requestAnimationFrame(() => 1);",
+        "host.fetch(\"https://example.com\");",
     ];
     for program in denied {
-        let (outcome, _) = run(program);
+        let (outcome, _) = run(&format!("{global}{program}"));
         let error = program_error(&outcome);
         assert!(
             error.message.contains("not available in the sandbox"),
@@ -330,8 +335,9 @@ fn the_sandbox_denies_only_what_it_cannot_honour() {
     }
 
     // A denial is an ordinary throw, so a program can handle it and carry on.
-    let (outcome, _) =
-        run("try { fetch(\"https://example.com\"); } catch (e) { console.log(\"caught\"); }");
+    let (outcome, _) = run(&format!(
+        "{global}try {{ host.fetch(\"https://example.com\"); }} catch (e) {{ console.log(\"caught\"); }}"
+    ));
     assert_eq!(logs(&outcome), ["caught"]);
 
     // Work deferred past the end of the program still executes — its effects are real and are
@@ -701,7 +707,7 @@ fn a_returned_value_is_discarded_and_the_model_is_told() {
     for program in [
         "return 42;",
         "return { deep: \"structure\" };",
-        "const cycle = {}; cycle.self = cycle; return cycle;",
+        "const cycle: Record<string, unknown> = {}; cycle.self = cycle; return cycle;",
         "return () => 1;",
         "return JSON.parse(\"[\".repeat(400) + \"1\" + \"]\".repeat(400));",
     ] {
@@ -899,7 +905,8 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
     // typed arguments `fs.readFile` does — one read, not two, for the bytes and the view together.
     let (outcome, log) = run(
         "const read = view.openFile(\"src/a.ts\", { offset: 2, limit: 5 });\n\
-         console.log(JSON.stringify({ kind: read.kind, first: read.firstLine }));",
+         const first = read.kind === \"text\" ? read.firstLine : null;\n\
+         console.log(JSON.stringify({ kind: read.kind, first }));",
     );
     assert_eq!(logged_json(&outcome), json!({ "kind": "text", "first": 1 }));
     assert_eq!(log.names(), ["read_file"]);
@@ -942,7 +949,7 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
     // A refused view arrives as a catchable `ToolError` naming the function the program called —
     // there is no gg tool name to report, and `openText` is what the model wrote.
     let (outcome, _) = run("try { view.openText(\"\", \"body\"); }\n\
-         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: e.tool, code: e.code })); }");
+         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: (e as ToolError).tool, code: (e as ToolError).code })); }");
     assert_eq!(
         logged_json(&outcome),
         json!({ "isToolError": true, "tool": "openText", "code": "invalid-argument" }),
@@ -1038,7 +1045,7 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
     // made rather than after a gg tool that does not exist.
     let outcome = run_with_library(
         "try { programs.get(99); }\n\
-         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: e.tool, code: e.code })); }",
+         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: (e as ToolError).tool, code: (e as ToolError).code })); }",
         &[(1, "first")],
     );
     assert_eq!(

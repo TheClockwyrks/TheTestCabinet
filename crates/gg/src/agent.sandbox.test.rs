@@ -889,7 +889,7 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
              \x20 try {
              \x20   view.openFile(p);
              \x20 } catch (error) {
-             \x20   refused.push(p + \": \" + error.code);
+             \x20   refused.push(p + \": \" + (error as ToolError).code);
              \x20 }
              }
              fs.writeFile(\"refused.txt\", refused.join(\"\\n\"));",
@@ -1005,7 +1005,7 @@ async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
              try {
              \x20 view.openFile(\"a.png\");
              } catch (error) {
-             \x20 reopened = \"no: \" + error.code;
+             \x20 reopened = \"no: \" + (error as ToolError).code;
              }
              fs.writeFile(\"reopened.txt\", reopened);",
         )],
@@ -1064,7 +1064,7 @@ async fn each_agents_image_cap_is_its_own() {
              \x20 try {{
              \x20   view.openFile(p);
              \x20 }} catch (error) {{
-             \x20   refused.push(p + \":\" + error.code);
+             \x20   refused.push(p + \":\" + (error as ToolError).code);
              \x20 }}
              }}
              fs.writeFile(\"{into}\", refused.join(\",\") || \"none\");"
@@ -2225,7 +2225,7 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
                 "view.openFile(\"a.ts\");\n\
                  view.openFile(\"b.ts\");\n\
                  view.openText(\"progress\", \"read both files\");\n\
-                 missingFunction();",
+                 throw new Error(\"the program failed after opening its views\");",
             ),
             code_reply(FINISHING_PROGRAM),
         ],
@@ -2253,7 +2253,7 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
         .strip_prefix("Runtime error\n----\n")
         .unwrap_or_else(|| panic!("the turn ends on the runtime error: {bodies:#?}"));
     assert!(
-        error.contains("missingFunction"),
+        error.contains("failed after opening its views"),
         "the error names what went wrong: {error}"
     );
     for absent in ["a.ts", "the first file", "progress", "view call"] {
@@ -2370,7 +2370,7 @@ async fn a_hand_over_is_cancelled_when_the_program_then_throws() {
         vec![
             code_reply(
                 "programs.rerun('fs.writeFile(\"never.txt\", \"x\");');\n\
-                 missingFunction();",
+                 throw new Error(\"the program failed after handing over\");",
             ),
             code_reply(FINISHING_PROGRAM),
         ],

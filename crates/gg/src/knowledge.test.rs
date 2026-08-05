@@ -316,12 +316,32 @@ fn a_load_that_failed_to_compile_still_reports_what_it_spent() {
     assert!(modules.take_compile().is_some());
 }
 
-/// A language whose prepare step is free reports **nothing**, not a zero: `None` and
-/// `Some(0)` are different claims, and only the first is true of a type-strip.
+/// A language whose prepare step is free reports **nothing**, not a zero: `None` and `Some(0)` are
+/// different claims, and only the first is true of a language that compiles nothing.
+///
+/// Its subject is the fixture built to say so, because every registered language now compiles —
+/// TypeScript type-checks the code it prepares, so a load in it is charged like any other compile.
 #[test]
 fn a_load_in_a_language_that_does_not_compile_reports_nothing() {
-    let (mut modules, _) = with_csv_tools();
+    let mut modules = KnowledgeModules::new();
+    modules
+        .load(
+            crate::sandbox::fixture::a_language_that_does_not_compile(),
+            KnowledgeOrigin::Skill,
+            "csv-tools",
+            Some("def parse(text)\n"),
+            None,
+        )
+        .expect("a valid module loads");
     assert_eq!(modules.take_compile(), None);
+}
+
+/// **A load in a language that compiles is charged.** TypeScript type-checks a code skill's module
+/// exactly as it type-checks a program, so the reading is there to be taken.
+#[test]
+fn a_load_in_typescript_reports_what_checking_the_module_cost() {
+    let (mut modules, _) = with_csv_tools();
+    assert!(modules.take_compile().is_some_and(|spent| !spent.is_zero()));
 }
 
 // ---------------------------------------------------------------------------------------------

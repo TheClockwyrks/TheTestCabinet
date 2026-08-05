@@ -69,7 +69,8 @@ fn program_faults_are_reported_not_trapped() {
             "try {\n",
             "  fs.readTextFile(\"missing.ts\");\n",
             "} catch (e) {\n",
-            "  console.log(JSON.stringify({ code: e.code, tool: e.tool, caught: true }));\n",
+            "  const failure = e as ToolError;\n",
+            "  console.log(JSON.stringify({ code: failure.code, tool: failure.tool, caught: true }));\n",
             "}\n",
         ),
         &all_tools(),
@@ -163,7 +164,10 @@ fn program_faults_are_reported_not_trapped() {
     //
     // The options object, passed positionally — the shape the native tool-calling schema would have
     // taken. Left alone this silently uses the default and the model never learns.
-    let (outcome, _) = run("system.shell(\"npm test\", 300);");
+    // `as any` is how the value reaches the wrapper now that the arm is checked: a bare positional
+    // `300` is a compile error first, and this guard is what still catches the same mistake when the
+    // value arrives untyped.
+    let (outcome, _) = run("system.shell(\"npm test\", 300 as any);");
     let error = program_error(&outcome);
     assert!(
         error.message.contains("options object"),
@@ -228,8 +232,8 @@ fn a_bad_return_value_is_explained_rather_than_lost() {
     // more, because nothing carries one. The same is true of a two-hundred-deep tree, of a function,
     // and of every other shape that used to have its own rule and its own message.
     for program in [
-        "const a = { name: \"x\" };\na.self = a;\nreturn a;",
-        "let node = 1;\nfor (let i = 0; i < 200; i++) { node = [node]; }\nreturn node;",
+        "const a: Record<string, unknown> = { name: \"x\" };\na.self = a;\nreturn a;",
+        "let node: unknown = 1;\nfor (let i = 0; i < 200; i++) { node = [node]; }\nreturn node;",
     ] {
         let (outcome, _) = run(program);
         assert!(
@@ -292,7 +296,7 @@ fn a_bad_return_value_is_explained_rather_than_lost() {
 #[test]
 fn a_mistyped_argument_names_the_function_and_the_fault() {
     // A record missing a required field. `addTask` takes an `id`, and this program has none.
-    let (outcome, _) = run("tasks.addTask({ title: \"ship it\" });");
+    let (outcome, _) = run("tasks.addTask({ title: \"ship it\" } as any);");
     let error = program_error(&outcome);
     assert_ne!(error.message, "{}", "the fault that used to arrive empty");
     assert_eq!(error.kind, ProgramErrorKind::ToolFailure);
@@ -308,8 +312,10 @@ fn a_mistyped_argument_names_the_function_and_the_fault() {
     // and normalising it a second time must not replace the stack that knows where that was.
     assert_eq!(error.location.as_deref(), Some("line 1, column 7"));
 
-    // A plain scalar in place of a string, on a different object, reported the same way.
-    let (outcome, _) = run("fs.readFile(123);");
+    // A plain scalar in place of a string, on a different object, reported the same way. Cast for
+    // the reason above: in a checked language this is a compile error before it is ever a call, and
+    // the guard is what catches it when the value arrives typed `any`.
+    let (outcome, _) = run("fs.readFile(123 as any);");
     let error = program_error(&outcome);
     assert!(
         error
@@ -331,9 +337,12 @@ fn a_mistyped_argument_names_the_function_and_the_fault() {
 /// The argument is refused instead, by the last layer that can still see what the value was.
 #[test]
 fn a_docs_lookup_of_a_non_function_is_refused_on_the_argument() {
+    // Both arrive through a value the type checker cannot see into, because it would otherwise
+    // refuse them outright — which is the better answer for a checked arm and no answer at all for
+    // the guard this test is about, which exists for every value that reaches the call as `any`.
     for program in [
-        "view.openDocsView(fs.thereIsNoSuchFunction);",
-        "view.openDocsView(undefined);",
+        "view.openDocsView((fs as any).thereIsNoSuchFunction);",
+        "view.openDocsView(undefined as any);",
     ] {
         let (outcome, _) = run(program);
         let error = program_error(&outcome);
@@ -353,7 +362,7 @@ fn a_docs_lookup_of_a_non_function_is_refused_on_the_argument() {
     }
 
     // A value of the wrong type entirely is named for what it is.
-    let (outcome, _) = run("view.openDocsView(42);");
+    let (outcome, _) = run("view.openDocsView(42 as any);");
     let error = program_error(&outcome);
     assert!(
         error

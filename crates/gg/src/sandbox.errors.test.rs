@@ -255,18 +255,22 @@ fn a_compiler_that_could_not_finish_is_its_own_kind_of_failure() {
 /// A language whose prepare step compiles nothing reports **nothing**, rather than a zero.
 ///
 /// `Some(0)` and `None` are different claims — "compiled, in under a millisecond" against "there is
-/// no compiler on this path at all" — and only the second is true of TypeScript's type-strip. A zero
-/// on every turn of every run would put a column of noise in front of the one study the field exists
-/// for, and would make an arm that genuinely compiles instantly indistinguishable from one that does
-/// not compile.
+/// no compiler on this path at all" — and a zero on every turn of every run would put a column of
+/// noise in front of the one study the field exists for, making an arm that genuinely compiles
+/// instantly indistinguishable from one that does not compile at all.
+///
+/// Its subject is a fixture, because every **registered** language now compiles: TypeScript's
+/// prepare step runs `tsc`. That is exactly why the branch needs one — a claim with no subject is a
+/// claim nothing has ever checked.
 #[test]
-fn a_type_strip_reports_no_compile_time_at_all() {
-    assert!(!typescript().prepare_compiles());
+fn a_language_that_compiles_nothing_reports_no_compile_time_at_all() {
+    let free = fixture::a_language_that_does_not_compile();
+    assert!(!free.prepare_compiles());
 
     let log = CallLog::default();
     let (outcome, _api) = run_program(
-        typescript(),
-        "const x: = ;",
+        free,
+        "use tools\n",
         ProgramScope {
             enabled: &[],
             modules: &[],
@@ -280,6 +284,42 @@ fn a_type_strip_reports_no_compile_time_at_all() {
 
     assert!(outcome.result.is_err());
     assert_eq!(outcome.compile, None);
+}
+
+/// **TypeScript compiles, and says so.** Its prepare step runs `tsc` over the model's own source
+/// against the SDK's declarations, so every program it prepares — including the one the compiler
+/// rejected, which is the reading that would otherwise be reported as nothing — is timed.
+#[test]
+fn typescript_reports_what_checking_a_program_cost() {
+    assert!(typescript().prepare_compiles());
+
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        typescript(),
+        "view.openText(\"x\", 42);\n",
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+
+    let Err(SandboxError::Prepare(PrepareError::Compile(diagnostics))) = &outcome.result else {
+        panic!("a number is not a string: {:?}", outcome.result);
+    };
+    assert!(
+        diagnostics.starts_with("program.ts(1,20): error TS2345:"),
+        "the model is handed tsc's own diagnostic at its own coordinates: {diagnostics}"
+    );
+    assert!(
+        outcome.compile.is_some_and(|spent| spent > Duration::ZERO),
+        "and the check it paid for is charged to the program that paid it"
+    );
+    assert_eq!(outcome.elapsed, Duration::ZERO, "nothing ran");
 }
 
 /// How the loop disposes of a sandbox failure: whose fault it was, and therefore what the turn was.
