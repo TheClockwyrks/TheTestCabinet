@@ -1324,11 +1324,22 @@ was dispatched.
 ## What a program can and cannot reach
 
 A program runs with the **host's** WASI: the wall clock, the host's randomness, the
-container's filesystem and its network sockets are all there, and gg links them for every
-guest unconditionally. A model reaching for its language's ordinary date, random or file
-APIs is a model using the language it was told to write in, and an agent with a `shell`
-tool already has all of it anyway — so withholding the guest's own runtime would deny
-nothing and cost a great deal of naturalness.
+container's filesystem, its network sockets and the process's own **environment** are all
+there, and gg links them for every guest unconditionally. A model reaching for its
+language's ordinary date, random or file APIs is a model using the language it was told to
+write in, and an agent with a `shell` tool already has all of it anyway — so withholding the
+guest's own runtime would deny nothing and cost a great deal of naturalness.
+
+The environment is inherited because a language runtime needs it to work at all — `HOME`,
+`PATH`, `TMPDIR`, the locale — and a guest handed an empty one behaves like a guest on a
+broken machine. The honest consequence, and it is an accepted one rather than an oversight:
+whatever this process's environment holds, **including the run's model credentials**, is
+readable from inside a program. That is the same reach a program has through the preopened
+filesystem. It is worth knowing when configuring a run that deliberately withholds `shell`,
+because unlike the filesystem and the network — which such a run still reaches through its
+language's standard library — [the shell really is
+withheld](/gg/toolset-ablation/#one-confound-this-page-cannot-remove-a-code-agents-own-runtime),
+while the environment is not.
 
 Two things are still out of reach, and both are named to the model as an ordinary located
 program error rather than left to fail silently:
