@@ -559,7 +559,7 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   const counts = shown.map((entry) => entryCount(entry, calls));
   const notes = [
     counts.some((count) => count === 0)
-      ? "Dimmed entries were offered and never called."
+      ? "Dimmed entries read a real 0×: offered, and not used."
       : null,
     shown.some((entry) => entry.offeredBy < surface.reportingInstances)
       ? `A fraction marks an entry only some of the ${plural(surface.reportingInstances, "instance")} were offered — where an instance stands in its state machine gates what it may call.`

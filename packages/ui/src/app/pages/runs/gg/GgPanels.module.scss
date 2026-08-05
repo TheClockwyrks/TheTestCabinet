@@ -3454,7 +3454,7 @@ details[open] > summary .reqCaret {
 // row, the name, the figure's typography — and departs from it in exactly two places, both
 // because this file answers a different question. It puts the figure FIRST (see
 // `.toolCallCount`), and it carries the two states a usage list has no need for: a row for
-// something offered and never called, and a row for something the run withheld.
+// something offered and not used, and a row for something the run withheld.
 //
 // Both files' rows read the same way *within* a file, which is the property that matters:
 // the Tools file and the APIs file are one component, so what an agent was offered reads
@@ -3497,7 +3497,7 @@ details[open] > summary .reqCaret {
   margin-top: t.$space-2xs;
 }
 
-// Offered and never called. Muted rather than dropped, and muted with the palette's own
+// Offered and not used — a real `0×`. Muted rather than dropped, and muted with the palette's own
 // secondary text token rather than by fading the row out: the contrast between this row and
 // the one above it is the whole reason the file exists, and it has to survive being read.
 // (An opacity on top of a muted colour is what would not — the two compound, and the row

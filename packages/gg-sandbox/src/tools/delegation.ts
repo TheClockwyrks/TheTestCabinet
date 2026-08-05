@@ -48,7 +48,7 @@ function brief(fn: string, request: BriefInput): SubagentBrief {
  * parallel while your program continues. Name the `agent` to run it as (one of the agents you may
  * spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and
  * brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue).
- * The child shares your workspace. Throws `refused` at the delegation depth cap, and
+ * The child shares your workspace. Throws `limit-exceeded` at the delegation depth cap, and
  * `invalid-argument` if `agent` is not one you may spawn.
  */
 export function spawnSubagent(

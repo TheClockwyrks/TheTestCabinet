@@ -1171,8 +1171,9 @@ function ToolSurface({
           className={panels.toolsRate}
           title={
             "Every tool this instance was offered, after its capabilities, the modules it " +
-            "bound and any ablation were resolved. A tool it never called is dimmed, not " +
-            "dropped — offered and unused is a different finding from never offered."
+            "bound and any ablation were resolved. A tool it did not use reads a real 0× " +
+            "and is dimmed, not dropped — offered and unused is a different finding from " +
+            "never offered."
           }
         >
           {used} of {tools.length} called
@@ -1213,8 +1214,8 @@ function ApiSurface({
             "The objects this instance's programs are bound against. Every call a program " +
             "makes is recorded under the function the model wrote, so each row carries its " +
             "own figure — a view, an ending and a documentation lookup are counted exactly " +
-            "as a file read is — and a function offered and never called reads as a real " +
-            "zero rather than as an absence."
+            "as a file read is — and a function it was offered and did not use reads a " +
+            "real 0× rather than an absence."
           }
         >
           {apis.length} object{apis.length === 1 ? "" : "s"} · {functions}{" "}
@@ -1305,8 +1306,8 @@ function WithheldTools({ tools }: { tools: readonly string[] }) {
 // straight down the list, where a trailing one hangs off names of every length and has to
 // be hunted along each row.
 //
-// Two states, and keeping them visually distinct is the feature: called (its count), and
-// offered and never called — a real `0×`, dimmed. It used to say "never called" in words,
+// Two states, and keeping them visually distinct is the feature: used (its count), and
+// offered and not used — a real `0×`, dimmed. It used to name the second state in words,
 // on the argument that a bare zero reads as a measurement rather than as a finding. It IS
 // a measurement, and now an exact one: gg records every model-facing call under its own
 // identity, so a zero here is the same kind of fact as a three, taken the same way, and

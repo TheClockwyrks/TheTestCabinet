@@ -32,20 +32,24 @@ interface types {
     enum error-code {
         /// The arguments were malformed, ill-typed, or out of range.
         invalid-argument,
-        /// The named file, skill, memory, task, epic, issue, subagent, or model slot does not exist.
+        /// The named file, skill, memory, task, epic, issue, subagent, stored program, or
+        /// documentation entry does not exist.
         not-found,
         /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency
         /// cycle, a duplicate id, a subagent that already returned.
         conflict,
-        /// gg refused the call: the delegation depth cap, a memory instance this agent holds
-        /// read-only, or a second succession in a turn that already declared one.
+        /// gg refused the call: a memory instance this agent holds read-only, a call a pending
+        /// compaction does not admit, a second succession in a turn that already declared one, or
+        /// a hook that blocked it. Each is a rule about this agent's *state*; a ceiling the call
+        /// ran into is `limit-exceeded`, including the delegation depth cap.
         refused,
         /// The tool exists but this run's capability set does not offer it. A program cannot
         /// normally reach this — a withheld tool is not bound into its scope at all — so it is the
         /// host's defensive backstop.
         unavailable,
-        /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, or the run's
-        /// wall-clock budget running out mid-program.
+        /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation
+        /// depth cap, one of the view caps a program spends, or the run's wall-clock budget
+        /// running out mid-program.
         limit-exceeded,
         /// The underlying I/O or process failed.
         io-error,

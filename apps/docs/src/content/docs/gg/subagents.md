@@ -33,8 +33,9 @@ surface earning nothing.
 Requirements:
 
 - **Recursion.** An agent that lists itself can spawn copies of its own profile, up
-  to a **maximum depth**; a spawn that would exceed the depth limit is refused rather
-  than queued.
+  to a **maximum depth**; a spawn that would exceed the depth limit fails with
+  `limit-exceeded` rather than queueing. It is a *ceiling*, not a refusal: the
+  request was well-formed and the run simply has no room left below that agent.
 - **Bounded parallelism.** Unbounded fan-out would melt the run, so a **scheduler**
   enforces a global cap on how many agents run at once; a spawn beyond the cap
   **blocks until a slot frees** (see [scheduling](#scheduling) below) rather than
@@ -82,7 +83,7 @@ still honored, but the run-level value wins when both are set.
 
 [`fork`](/gg/fork-and-exec/) — run a copy of yourself — produces an ordinary child of this
 machinery, and that is deliberate rather than incidental. A copy takes its own id one level
-deeper, contends for a slot under the same `maxParallel` cap, is refused at the same maximum
+deeper, contends for a slot under the same `maxParallel` cap, stops at the same maximum
 depth, returns through the same channel, and answers `wait_for_subagents` and `send_message`
 like anything else. The only difference is where it starts: a subagent opens on a brief
 somebody had to write, a copy opens already holding everything its forker worked out.

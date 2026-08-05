@@ -1050,7 +1050,7 @@
     {
       "name": "spawn_subagent",
       "category": "gg-delegation",
-      "description": "Delegate a scoped piece of work to a child agent that runs in parallel with you. Provide an `agent` — the name of the agent to run it as, which configures the subagent's model, tools, and instructions — and a `prompt`, a self-contained brief telling the subagent exactly what to do and what 'done' means. The agents you may spawn: `<agent>`. (Board issues are not dispatched this way: submitting an issue automatically spawns an agent for it once its blockers are done.) Returns the new subagent's id immediately — it is scheduled and runs on its own; call `wait_for_subagents` to collect its result, or `send_message` to guide it while it runs. A subagent shares your workspace, so give concurrent subagents non-overlapping briefs. Spawning is refused if you are already at the maximum delegation depth.",
+      "description": "Delegate a scoped piece of work to a child agent that runs in parallel with you. Provide an `agent` — the name of the agent to run it as, which configures the subagent's model, tools, and instructions — and a `prompt`, a self-contained brief telling the subagent exactly what to do and what 'done' means. The agents you may spawn: `<agent>`. (Board issues are not dispatched this way: submitting an issue automatically spawns an agent for it once its blockers are done.) Returns the new subagent's id immediately — it is scheduled and runs on its own; call `wait_for_subagents` to collect its result, or `send_message` to guide it while it runs. A subagent shares your workspace, so give concurrent subagents non-overlapping briefs. Spawning fails if you are already at the maximum delegation depth.",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -1158,7 +1158,7 @@
     {
       "name": "fork",
       "category": "gg-delegation",
-      "description": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy is you: your model, your tools, your instructions, and a private copy of your whole conversation, so it already knows everything you know and needs no briefing — pass only what it should do *differently*. It is an ordinary subagent from there: it gets its own id, works in your workspace, and you collect it with `wait_for_subagents` or guide it with `send_message`. Prefer it over `spawn_subagent` exactly when the context is the expensive part — when briefing a fresh agent would mean re-explaining what you have already worked out. Its own copies of your task list, notes and thread archive diverge from yours the moment either of you writes; shared memories stay shared. The copy starts once this turn's tool results are recorded, so wait for it on a later turn rather than this one. Refused at the maximum delegation depth.",
+      "description": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy is you: your model, your tools, your instructions, and a private copy of your whole conversation, so it already knows everything you know and needs no briefing — pass only what it should do *differently*. It is an ordinary subagent from there: it gets its own id, works in your workspace, and you collect it with `wait_for_subagents` or guide it with `send_message`. Prefer it over `spawn_subagent` exactly when the context is the expensive part — when briefing a fresh agent would mean re-explaining what you have already worked out. Its own copies of your task list, notes and thread archive diverge from yours the moment either of you writes; shared memories stay shared. The copy starts once this turn's tool results are recorded, so wait for it on a later turn rather than this one. Fails at the maximum delegation depth.",
       "parameters": {
         "additionalProperties": false,
         "properties": {
@@ -1765,7 +1765,7 @@
       "category": "gg-delegation",
       "summary": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues.",
       "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; })): SubagentHandle",
-      "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue). The child shares your workspace. Throws `refused` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
+      "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue). The child shares your workspace. Throws `limit-exceeded` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
       "gate": "spawn_subagent",
       "library": false,
       "types": [

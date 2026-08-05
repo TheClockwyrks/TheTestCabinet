@@ -3345,20 +3345,28 @@ pub enum GgToolFailure {
     /// The arguments were malformed, ill-typed, or out of range — including a path that is absolute
     /// or climbs out of the workspace.
     InvalidArgument,
-    /// The named file, skill, memory, task, epic, issue, subagent or model slot does not exist.
+    /// The named file, skill, memory, task, epic, issue, subagent, stored program or documentation
+    /// entry does not exist. A *model slot* is not one of them: a slot is launch configuration, and
+    /// an agent name a run does not declare is `invalid-argument`.
     NotFound,
     /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle,
     /// a duplicate id, a subagent that already returned.
     Conflict,
-    /// gg refused the call: the delegation depth cap, a memory instance this agent holds read-only,
-    /// a call a pending compaction does not admit, a session that already ended this turn, or a
-    /// [hook](GgHook) that blocked it.
+    /// gg refused the call: a memory tool reached while this agent holds its memories read-only, a
+    /// call a pending compaction does not admit, a session that already ended (or was already
+    /// handed on) this turn, or a [hook](GgHook) that blocked it. Every one of those is gg
+    /// declining a call it *could* have served, on a rule about this agent's state; a ceiling the
+    /// call ran into is `limit-exceeded` instead, and the delegation depth cap in particular is a
+    /// ceiling rather than a refusal.
     Refused,
     /// The call exists but this run's capability set does not offer it. On the API surface this is
     /// the membrane's backstop refusing a name a program reached anyway.
     Unavailable,
-    /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, or the run's wall-clock
-    /// budget running out mid-program.
+    /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation depth
+    /// cap, one of the view caps a program spends, or the run's wall-clock budget running out
+    /// mid-program. The depth cap belongs here rather than under `refused` because the request was
+    /// well-formed and gg had no objection to it: the run simply has no room left below this
+    /// agent, which is a quantity and not a rule.
     LimitExceeded,
     /// The underlying I/O or process failed.
     IoError,

@@ -9,7 +9,7 @@
 // refactor that reorders JSX is free to break that silently, so it is asserted directly.
 //
 // The second is the offered surface: what the agent *could* call, as against what it did.
-// The section is only meaningful in the contrasts it draws — a tool offered and never called
+// The section is only meaningful in the contrasts it draws — a tool offered and not used
 // must stay in the list and read differently from one that was called, an entry only some of
 // the profile's instances were offered must say so rather than being folded in with the rest,
 // and a record written before gg reported any of this must produce no section at all rather
@@ -494,7 +494,7 @@ describe("GgAgentsSummary offered surface", () => {
 
     // The legend is only printed where the section actually dims something.
     expect(
-      within(section).getByText(/Dimmed entries were offered and never called/),
+      within(section).getByText(/Dimmed entries read a real 0×/),
     ).toBeInTheDocument();
   });
 

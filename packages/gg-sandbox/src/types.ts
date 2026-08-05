@@ -32,21 +32,45 @@
  * other, so `tsc` rejects a membrane arm this union has not learned about.
  */
 export type ToolErrorCode =
-  /** The arguments were malformed, ill-typed, or out of range. */
+  /**
+   * The arguments were malformed, ill-typed, or out of range — including a path that is absolute
+   * or climbs out of the workspace, and an agent name this run does not declare.
+   */
   | "invalid-argument"
-  /** The named file, skill, memory, task, epic, issue, subagent, or model slot does not exist. */
+  /**
+   * The named file, skill, memory, task, epic, issue, subagent, stored program, or documentation
+   * entry does not exist.
+   */
   | "not-found"
-  /** Well-formed, but in conflict with the current state: an ambiguous edit, a cycle, a duplicate. */
+  /**
+   * Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle, a
+   * duplicate id, a subagent that already returned.
+   */
   | "conflict"
-  /** gg refused the call: a compaction in flight, or the delegation depth cap. */
+  /**
+   * gg refused the call on a rule about your state: a compaction in flight that this call is not
+   * the one it asked for, a memory call while your memories are read-only, a second ending or
+   * hand-over in a turn that already declared one, or a hook that blocked it. A ceiling you ran
+   * into is `limit-exceeded`, not this.
+   */
   | "refused"
-  /** The tool exists but this run's capability set does not offer it. */
+  /**
+   * The call exists but this run's capability set does not offer it. You cannot normally reach
+   * this: a withheld function is not bound into your scope at all, so it is the host's backstop
+   * for a name a program reached anyway.
+   */
   | "unavailable"
-  /** A gg-side ceiling was hit: a shell timeout, a store cap, or the run's wall-clock budget. */
+  /**
+   * A gg-side ceiling was hit: a shell timeout, a store cap, the delegation depth cap, one of the
+   * view caps this program spends, or the run's wall-clock budget.
+   */
   | "limit-exceeded"
   /** The underlying I/O or process failed. */
   | "io-error"
-  /** The failure was not classified. */
+  /**
+   * The failure was not classified. Reserved for outcomes raised outside a tool implementation
+   * (gg's own bridge and degradation paths); nothing you call produces it.
+   */
   | "other";
 
 /** What a command `shell` ran reported when it finished. */
@@ -292,7 +316,6 @@ export interface SubagentResult {
   /** Its final message. */
   summary: string;
 }
-
 
 /**
  * One program you have already run, as `programs.history()` lists it.

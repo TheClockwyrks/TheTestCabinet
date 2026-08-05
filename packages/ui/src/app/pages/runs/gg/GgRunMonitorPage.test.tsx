@@ -283,7 +283,7 @@ function sessionStartedAblating(
 
 // The row one offered thing reads on, found by its name inside the section it belongs to.
 // Its state is carried on data attributes rather than on a class, because the test
-// environment stubs CSS modules away — and "offered but never called" is a state, not a
+// environment stubs CSS modules away — and "offered but not used" is a state, not a
 // look.
 // One model-facing call, as a responses-as-code program's turn streams it. The opening
 // half is emitted before the work, so anything the call runs — a bridged tool, a whole
@@ -1365,7 +1365,7 @@ describe("GgRunMonitorPage", () => {
     expect(view).not.toHaveAttribute("data-uncalled");
     expect(view).toHaveAttribute("title", "view.openFile was called 1 time.");
     // `list` is bound on every object, and now reads as a real zero rather than as a blank:
-    // "offered and never called" is an answer, "no count" was not.
+    // "offered and not used" is an answer, "no count" was not.
     const list = surfaceRow("offered apis", "fs.list");
     expect(list).toHaveAttribute("data-uncalled");
     expect(list).toHaveTextContent(/^0×fs\.list$/);
@@ -1435,8 +1435,8 @@ describe("GgRunMonitorPage", () => {
     }
   });
 
-  it("counts a function offered and never called as a real zero", () => {
-    // The never-called half of the contrast, which is the half an ablation is read for: it
+  it("counts a function offered and not used as a real zero", () => {
+    // The unused half of the contrast, which is the half an ablation is read for: it
     // has to be a real finding about the model rather than an absence of measurement. So it
     // is stated as the measurement it is — `0×`, in the same column as every other figure —
     // rather than in prose that cannot be compared against the row above it, with the
@@ -1478,8 +1478,10 @@ describe("GgRunMonitorPage", () => {
     // hover text, which is where a replaced wording usually survives. The tooltip says the
     // same zero the cell does and spends its length on what the cell cannot say: that this
     // is a finding about an entry the agent HELD.
-    expect(screen.queryByText("never called")).toBeNull();
-    expect(row.getAttribute("title")).not.toMatch(/never called/);
+    // The pattern is whitespace-tolerant on purpose: the phrase must be gone however a
+    // legend happens to wrap, and a literal two-word string would pass on a line break.
+    expect(screen.queryByText(/never\s+call(ed)?/)).toBeNull();
+    expect(row.getAttribute("title")).not.toMatch(/never\s+call(ed)?/);
   });
 
   it("offers no surface file to an instance that never reported one", () => {

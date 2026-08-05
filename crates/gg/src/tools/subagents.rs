@@ -106,7 +106,7 @@ impl Tool for SpawnSubagentTool {
                  subagent's id immediately — it is scheduled and runs on its own; call \
                  `wait_for_subagents` to collect its result, or `send_message` to guide it while it \
                  runs. A subagent shares your workspace, so give concurrent subagents \
-                 non-overlapping briefs. Spawning is refused if you are already at the maximum \
+                 non-overlapping briefs. Spawning fails if you are already at the maximum \
                  delegation depth.",
                 menu = agent_menu(&self.agents),
             ),

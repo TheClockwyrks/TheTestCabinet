@@ -235,7 +235,7 @@ impl Tool for ForkTool {
              have already worked out. Its own copies of your task list, notes and thread archive \
              diverge from yours the moment either of you writes; shared memories stay shared. The \
              copy starts once this turn's tool results are recorded, so wait for it on a later turn \
-             rather than this one. Refused at the maximum delegation depth."
+             rather than this one. Fails at the maximum delegation depth."
                 .to_string(),
             json!({
                 "type": "object",

@@ -269,7 +269,7 @@
   border-radius: t.$radius-sm;
   padding: 0 t.$space-xs;
 
-  // Offered and never called — dimmed, never dropped. The contrast between this and the
+  // Offered and not used — a real `0×`, dimmed, never dropped. The contrast between this and the
   // withheld chip above it (`.disabledTool`, marked negative) is the reason the section
   // exists at all, so it is drawn the way a deleted memory is on the module views: still
   // there, plainly not live.

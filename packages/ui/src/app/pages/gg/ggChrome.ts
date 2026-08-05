@@ -23,7 +23,7 @@ export const GG_CHROME: TopbarChrome = {
     // Reference is not an analysis surface — it answers "what can gg's models
     // actually do" rather than "what did they do" — but it belongs behind the same
     // chrome, because it is the document every other tab's findings are read
-    // against: a session that never called `compact` reads differently once you
+    // against: a session that did not call `compact` reads differently once you
     // have seen what `compact` is offered as. It sits last, after the four
     // question-asking tabs.
     { label: "Reference", to: routes.ggReference() },

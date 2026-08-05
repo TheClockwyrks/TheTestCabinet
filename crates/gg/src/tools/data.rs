@@ -461,19 +461,23 @@ pub enum ToolFailure {
     /// The arguments were malformed, ill-typed, or out of range — including a path that is
     /// absolute or climbs out of the workspace.
     InvalidArgument,
-    /// The named file, skill, memory, task, epic, issue, or subagent does not exist.
+    /// The named file, skill, memory, task, epic, issue, subagent, stored program, or
+    /// documentation entry does not exist.
     NotFound,
     /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle,
     /// a duplicate id, a subagent that already returned.
     Conflict,
-    /// gg refused the call: a compaction the loop is waiting for, the delegation depth cap, a
-    /// memory this agent holds read-only, a session that already ended this turn, or a
-    /// [hook](crate::hooks) that blocked it.
+    /// gg refused the call: a compaction the loop is waiting for and this call is not the one it
+    /// asked for, a memory tool reached while this agent holds its memories read-only, a session
+    /// that already ended (or was already handed on) this turn, or a [hook](crate::hooks) that
+    /// blocked it. Each is gg declining a call it could have served, on a rule about this agent's
+    /// state; a ceiling the call ran into is [`LimitExceeded`](Self::LimitExceeded) instead —
+    /// including the delegation depth cap, which reads as a refusal in English and is not one here.
     Refused,
     /// The tool exists but this run's capability set does not offer it.
     Unavailable,
-    /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, or the run's
-    /// wall-clock budget running out.
+    /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation depth
+    /// cap, one of the view caps a program spends, or the run's wall-clock budget running out.
     LimitExceeded,
     /// The underlying I/O or process failed.
     IoError,

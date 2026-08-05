@@ -1062,7 +1062,7 @@
         },
         {
           "const": "not-found",
-          "description": "The named file, skill, memory, task, epic, issue, subagent or model slot does not exist.",
+          "description": "The named file, skill, memory, task, epic, issue, subagent, stored program or documentation\nentry does not exist. A *model slot* is not one of them: a slot is launch configuration, and\nan agent name a run does not declare is `invalid-argument`.",
           "type": "string"
         },
         {
@@ -1072,7 +1072,7 @@
         },
         {
           "const": "refused",
-          "description": "gg refused the call: the delegation depth cap, a memory instance this agent holds read-only,\na call a pending compaction does not admit, a session that already ended this turn, or a\n[hook](GgHook) that blocked it.",
+          "description": "gg refused the call: a memory tool reached while this agent holds its memories read-only, a\ncall a pending compaction does not admit, a session that already ended (or was already\nhanded on) this turn, or a [hook](GgHook) that blocked it. Every one of those is gg\ndeclining a call it *could* have served, on a rule about this agent's state; a ceiling the\ncall ran into is `limit-exceeded` instead, and the delegation depth cap in particular is a\nceiling rather than a refusal.",
           "type": "string"
         },
         {
@@ -1082,7 +1082,7 @@
         },
         {
           "const": "limit-exceeded",
-          "description": "A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, or the run's wall-clock\nbudget running out mid-program.",
+          "description": "A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation depth\ncap, one of the view caps a program spends, or the run's wall-clock budget running out\nmid-program. The depth cap belongs here rather than under `refused` because the request was\nwell-formed and gg had no objection to it: the run simply has no room left below this\nagent, which is a quantity and not a rule.",
           "type": "string"
         },
         {

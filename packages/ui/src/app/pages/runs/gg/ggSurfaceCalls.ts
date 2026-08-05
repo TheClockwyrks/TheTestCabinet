@@ -25,10 +25,10 @@ const numberFmt = new Intl.NumberFormat("en-US");
  * How often an offered entry was called, said plainly.
  *
  * The zero says the same thing the cell does, in the same vocabulary: the cell reads `0×`
- * because a zero here is a measurement of the same kind as a three, and a sentence that
- * called it *never called* would have put the finding in one register on the row and
- * another on hover — the wording the figures replaced, surviving in the tooltip. What the
- * tooltip adds is the contrast the muting cannot state on its own: a zero is a fact about
+ * because a zero here is a measurement of the same kind as a three, and a sentence naming
+ * the state in words would have put the finding in one register on the row and another on
+ * hover — the wording the figures replaced, surviving in the tooltip. What the tooltip
+ * adds is the contrast the muting cannot state on its own: a zero is a fact about
  * what the model did with something it HAD, which is a different finding from an entry it
  * was not offered at all and which therefore has no row here.
  *
