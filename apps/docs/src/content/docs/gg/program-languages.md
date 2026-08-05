@@ -477,10 +477,10 @@ gg builds an **identity** for each function a language's catalogue describes, an
 the sets:
 
 - **Identity** — the section it sits in, the **object** it hangs off (`fs`, `view`,
-  `harness`), its language-independent **key** (a tool's is its gg tool name;
-  `request_changes` and `open_text` are the carve-outs' own), the gg tool that **gates**
-  it, the ending **role** whose programs bind it, and whether it belongs to the
-  [program library](/gg/program-library/). None of it may differ.
+  `harness`) or *no* object at all for a `meta` function, its language-independent **key**
+  (a tool's is its gg tool name; `request_changes` and `open_text` are the carve-outs' own),
+  the gg tool that **gates** it, the ending **role** whose programs bind it, and whether it
+  belongs to the [program library](/gg/program-library/). None of it may differ.
 - **Spelling** — everything else, and deliberately a great deal: the name a program calls,
   the prose that documents it, the object's own description, and the whole **shape of the
   call**. Argument names, argument descriptions, whether an argument is positional or passed
@@ -515,9 +515,13 @@ brackets to look inside, as an ML-style `readFile :: String -> Effect FileRead` 
 Each language is additionally anchored to **gg's own vocabularies**: its tools in exact
 bijection with the tool registry's, its component binding exactly those tools, its ending
 calls exactly the four the tool-calling arm dispatches and each bound to the role gg gives
-it, every gate a real tool name, `view.openFile` gated on `read_file` and the rest of the
-view surface gated on nothing, and every type a signature mentions declared in its own
-catalogue.
+it, its `meta` section exactly the one function gg seeds onto every object (`list`), every
+gate a real tool name, `view.openFile` gated on `read_file` and the rest of the view surface
+gated on nothing, and every type a signature mentions declared in its own catalogue.
+
+A `meta` function is checked in one more way the others are not, because it is bound on
+*every* object rather than on one: its name may not collide with any catalogued function's,
+since a collision would shadow silently on whichever object carried it.
 
 **Why it is load-bearing for the experiment:** its absence is *silent*. Each language's own
 drift gates compare it to gg's tool vocabulary and to its own committed component — never

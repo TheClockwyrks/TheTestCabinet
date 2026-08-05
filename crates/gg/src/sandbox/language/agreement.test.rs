@@ -427,6 +427,46 @@ fn a_second_language_that_disagrees_is_caught() {
             "`system.shell` has no documentation",
         ),
         (
+            "the meta function the SDK never declared",
+            Box::new(|document: &mut Value| {
+                document["meta"]
+                    .as_array_mut()
+                    .expect("meta is an array")
+                    .clear();
+            }),
+            "the meta function `list` is not catalogued",
+        ),
+        (
+            "a meta function gg does not bind",
+            Box::new(|document: &mut Value| {
+                let mut invented = document["meta"][0].clone();
+                invented["key"] = json!("enumerate");
+                invented["name"] = json!("enumerate");
+                invented["signatures"][0]["signature"] = json!("enumerate() -> [FunctionSummary]");
+                document["meta"]
+                    .as_array_mut()
+                    .expect("meta is an array")
+                    .push(invented);
+            }),
+            "`enumerate` is catalogued as a meta function, and gg binds no such function",
+        ),
+        (
+            "a meta function with no description",
+            Box::new(|document: &mut Value| {
+                document["meta"][0]["doc"] = json!("");
+            }),
+            "`list` has no documentation",
+        ),
+        (
+            "a meta function spelled as a function some object already binds",
+            Box::new(|document: &mut Value| {
+                document["meta"][0]["name"] = json!("current");
+                document["meta"][0]["signatures"][0]["signature"] =
+                    json!("current() -> [FunctionSummary]");
+            }),
+            "`view.current` is spelled exactly as the meta function bound on every object",
+        ),
+        (
             "a program-library function the other arm does not have",
             Box::new(|document: &mut Value| {
                 document["programs"]

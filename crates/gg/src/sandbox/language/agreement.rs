@@ -29,7 +29,8 @@
 //! * the **object** it hangs off (`fs`, `view`, `harness`), which is on the wire in
 //!   [`AgentSurface`](test_cabinet_core::gg::AgentSurface), is what the console groups by, is what
 //!   [`reference`](crate::reference) joins capability families to, and is what the
-//!   [docs runtime](crate::docs) routes a lookup by;
+//!   [docs runtime](crate::docs) routes a lookup by — or *no* object, for a
+//!   [meta](Section::Meta) function, which is bound onto every one of them;
 //! * the **gate** — the gg tool whose being enabled binds it;
 //! * the **ending role** whose programs bind it, and whether it belongs to the
 //!   [program library](crate::programs), which is the one family a capability rather than a tool
@@ -69,8 +70,9 @@
 //! The cross-language half degenerates to "equals itself" — and the gate still asserts a great deal,
 //! because most of what it checks anchors a language's catalogue to **gg's own vocabularies** rather
 //! than to another language: the tool bijection against [`ALL_TOOL_NAMES`], the session keys against
-//! the four [ending tools](crate::completion), the ending roles against the three the
-//! [docs runtime](crate::docs) filters by, and every gate against the tool vocabulary. Those hold,
+//! the four [ending tools](crate::completion), the meta keys against the one the
+//! [docs runtime](crate::docs) binds on every object, the ending roles against the three that
+//! runtime filters by, and every gate against the tool vocabulary. Those hold,
 //! and fail, with one language registered. The comparative half is dormant until a second language
 //! lands, which is the correct state for an assertion whose subject does not yet exist — and it is
 //! exercised today against the [fixture language](super::fixture), which is a second surface built
@@ -93,10 +95,14 @@ use crate::tools::ALL_TOOL_NAMES;
 use super::ProgramLanguage;
 use crate::sandbox::signatures::{Parameter, SignatureEntry};
 
-/// The five sections of a catalogue, which are themselves identity: a function that is a `view` in
-/// one language and a `tool` in another is not the same function, whatever it is called.
+/// The six function-carrying sections of a catalogue, which are themselves identity: a function that
+/// is a `view` in one language and a `tool` in another is not the same function, whatever it is
+/// called.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Section {
+    /// The functions bound onto **every** API object rather than declared on one — today just
+    /// `list`. The one section whose entries carry no object at all.
+    Meta,
     /// The calls that end a session, one group per [role](crate::ending::EndingRole).
     Session,
     /// The `view` object — the calls that put material into the agent's own context window.
@@ -112,6 +118,7 @@ pub(crate) enum Section {
 impl fmt::Display for Section {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::Meta => "meta",
             Self::Session => "session",
             Self::Views => "views",
             Self::Programs => "programs",
@@ -128,10 +135,13 @@ impl fmt::Display for Section {
 /// match.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Identity {
-    /// Which of the catalogue's five sections it came from.
+    /// Which of the catalogue's [sections](Section) it came from.
     pub section: Section,
     /// The API object it hangs off. Identity, never spelling.
-    pub object: String,
+    ///
+    /// `None` for a [meta](Section::Meta) function, which hangs off no object because it hangs off
+    /// all of them: naming one would be a claim about the eleven it is equally bound on.
+    pub object: Option<String>,
     /// The language-independent key: a tool's gg tool name, or the entry's own `key`.
     pub key: String,
     /// The gg tool whose being enabled binds it, when one does.
@@ -145,7 +155,12 @@ pub(crate) struct Identity {
 
 impl fmt::Display for Identity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{} [{}", self.object, self.key, self.section)?;
+        write!(
+            f,
+            "{} [{}",
+            qualified(self.object.as_deref(), &self.key),
+            self.section
+        )?;
         if let Some(gate) = &self.gate {
             write!(f, ", gated on {gate}")?;
         }
@@ -178,14 +193,33 @@ impl fmt::Display for Disagreement {
     }
 }
 
+/// How a complaint names one function: `fs.read_file` for the entries that hang off an object, and
+/// the bare key for a [meta](Section::Meta) function, which hangs off none.
+fn qualified(object: Option<&str>, key: &str) -> String {
+    match object {
+        Some(object) => format!("{object}.{key}"),
+        None => key.to_string(),
+    }
+}
+
 /// The [identity](Identity) of every function one language's catalogue describes, sorted.
 pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
     let catalogue = language.catalogue();
     let mut out = Vec::new();
+    for entry in &catalogue.meta {
+        out.push(Identity {
+            section: Section::Meta,
+            object: None,
+            key: entry.key.clone(),
+            gate: None,
+            ending: None,
+            library: false,
+        });
+    }
     for entry in &catalogue.session {
         out.push(Identity {
             section: Section::Session,
-            object: entry.object.clone(),
+            object: Some(entry.object.clone()),
             key: entry.key.clone(),
             gate: None,
             ending: Some(entry.ending.clone()),
@@ -195,7 +229,7 @@ pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
     for entry in &catalogue.views {
         out.push(Identity {
             section: Section::Views,
-            object: entry.object.clone(),
+            object: Some(entry.object.clone()),
             key: entry.key.clone(),
             gate: entry.requires.clone(),
             ending: None,
@@ -205,7 +239,7 @@ pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
     for entry in &catalogue.programs {
         out.push(Identity {
             section: Section::Programs,
-            object: entry.object.clone(),
+            object: Some(entry.object.clone()),
             key: entry.key.clone(),
             gate: None,
             ending: None,
@@ -215,7 +249,7 @@ pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
     for entry in &catalogue.tools {
         out.push(Identity {
             section: Section::Tools,
-            object: entry.object.clone(),
+            object: Some(entry.object.clone()),
             key: entry.tool.clone(),
             gate: Some(entry.tool.clone()),
             ending: None,
@@ -225,7 +259,7 @@ pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
     for entry in &catalogue.helpers {
         out.push(Identity {
             section: Section::Helpers,
-            object: entry.object.clone(),
+            object: Some(entry.object.clone()),
             key: entry.key.clone(),
             gate: Some(entry.requires.clone()),
             ending: None,
@@ -288,6 +322,30 @@ fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagree
             "the catalogue has {} tool entries for {} distinct tools",
             catalogue.tools.len(),
             catalogued.len()
+        ));
+    }
+
+    // The meta vocabulary is gg's own, exactly: the [documentation carve-out](crate::docs) seeds
+    // `list` onto every object the guest creates and answers a lookup for that key by it. A
+    // catalogue that omits it leaves the one function every object carries undocumented — the
+    // directory a model reaches for first — and one that invents a second names a function no guest
+    // binds. Neither is visible to any other check, because a meta entry hangs off no object and so
+    // appears in none of the per-object counts.
+    let meta_vocabulary: BTreeSet<&str> = [crate::docs::LIST_FUNCTION].into_iter().collect();
+    let meta: BTreeSet<&str> = catalogue.meta.iter().map(|e| e.key.as_str()).collect();
+    for missing in meta_vocabulary.difference(&meta) {
+        complain(format!("the meta function `{missing}` is not catalogued"));
+    }
+    for extra in meta.difference(&meta_vocabulary) {
+        complain(format!(
+            "`{extra}` is catalogued as a meta function, and gg binds no such function"
+        ));
+    }
+    if meta.len() != catalogue.meta.len() {
+        complain(format!(
+            "the catalogue has {} meta entries for {} distinct meta functions",
+            catalogue.meta.len(),
+            meta.len()
         ));
     }
 
@@ -370,53 +428,66 @@ fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagree
     // this SDK's spelling of one. Two vocabularies share one program scope, so a collision would be
     // resolved by bind order rather than by anyone's decision; and a model shown two unrelated
     // functions under one word has no way to tell which it is calling. Ending calls, view calls,
-    // program-library calls and helpers alike, since none of them has a gg tool name of its own.
+    // program-library calls, helpers and meta functions alike, since none of them has a gg tool name
+    // of its own — and a meta function most of all, since it is bound on *every* object and so
+    // collides with a tool spelling wherever that tool is grouped.
     let tool_spellings: BTreeSet<&str> = catalogue
         .tools
         .iter()
         .map(|tool| tool.name.as_str())
         .collect();
     for (family, object, name) in catalogue
-        .session
+        .meta
         .iter()
-        .map(|e| ("ending call", e.object.as_str(), e.name.as_str()))
+        .map(|e| ("meta function", None, e.name.as_str()))
+        .chain(
+            catalogue
+                .session
+                .iter()
+                .map(|e| ("ending call", Some(e.object.as_str()), e.name.as_str())),
+        )
         .chain(
             catalogue
                 .views
                 .iter()
-                .map(|e| ("view call", e.object.as_str(), e.name.as_str())),
+                .map(|e| ("view call", Some(e.object.as_str()), e.name.as_str())),
         )
-        .chain(
-            catalogue
-                .programs
-                .iter()
-                .map(|e| ("program-library call", e.object.as_str(), e.name.as_str())),
-        )
+        .chain(catalogue.programs.iter().map(|e| {
+            (
+                "program-library call",
+                Some(e.object.as_str()),
+                e.name.as_str(),
+            )
+        }))
         .chain(
             catalogue
                 .helpers
                 .iter()
-                .map(|e| ("helper", e.object.as_str(), e.name.as_str())),
+                .map(|e| ("helper", Some(e.object.as_str()), e.name.as_str())),
         )
     {
+        let where_ = qualified(object, name);
         if ALL_TOOL_NAMES.contains(&name) {
             complain(format!(
-                "the {family} `{object}.{name}` is spelled as one of gg's own tool names"
+                "the {family} `{where_}` is spelled as one of gg's own tool names"
             ));
         }
         if tool_spellings.contains(name) {
             complain(format!(
-                "the {family} `{object}.{name}` is spelled exactly as this SDK spells a gg tool"
+                "the {family} `{where_}` is spelled exactly as this SDK spells a gg tool"
             ));
         }
     }
 }
 
 /// Every API object at least one of a catalogue's functions hangs off.
+///
+/// A [meta](Section::Meta) function contributes none: it is bound onto whatever objects the rest of
+/// the catalogue creates, so it can neither introduce an object nor keep one alive.
 fn grouped_objects(language: &'static dyn ProgramLanguage) -> BTreeSet<&'static str> {
     spellings(language)
         .into_iter()
-        .map(|spelling| spelling.object)
+        .filter_map(|spelling| spelling.object)
         .collect()
 }
 
@@ -445,7 +516,7 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
 
     // Spelled once each, per object. A program's scope is one namespace per object, so two entries
     // on `fs` sharing a name is one of them silently shadowing the other at bind time.
-    let mut seen: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut seen: BTreeSet<(Option<&str>, &str)> = BTreeSet::new();
     for entry in spellings(language) {
         let Spelling {
             object,
@@ -454,23 +525,25 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
             doc,
             key,
         } = entry;
+        let where_ = qualified(object, key);
         if name.trim().is_empty() {
-            complain(format!("`{object}.{key}` has no name a program could call"));
+            complain(format!("`{where_}` has no name a program could call"));
         }
         if doc.trim().is_empty() {
-            complain(format!("`{object}.{key}` has no documentation"));
+            complain(format!("`{where_}` has no documentation"));
         }
         if !seen.insert((object, name)) {
-            complain(format!(
-                "two functions on `{object}` are both spelled `{name}`"
-            ));
+            complain(match object {
+                Some(object) => format!("two functions on `{object}` are both spelled `{name}`"),
+                None => format!("two meta functions are both spelled `{name}`"),
+            });
         }
         // Every shape the language offers this function in, checked on its own. The COUNT is
         // spelling — an overload pair and a default argument are two idioms for one capability —
         // so what is asserted is that each of them is callable and documented, never how many
         // there are.
         if signatures.is_empty() {
-            complain(format!("`{object}.{key}` has no signature"));
+            complain(format!("`{where_}` has no signature"));
         }
         for SignatureEntry {
             signature,
@@ -478,21 +551,38 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
         } in signatures
         {
             if signature.trim().is_empty() {
-                complain(format!("`{object}.{key}` has an empty signature"));
+                complain(format!("`{where_}` has an empty signature"));
             } else if !signature.starts_with(name) {
                 complain(format!(
-                    "`{object}.{key}`'s signature does not start with the name a program calls \
+                    "`{where_}`'s signature does not start with the name a program calls \
                      (`{name}`): {signature}"
                 ));
             }
             if parameters.is_empty() && declares_arguments(signature) {
                 complain(format!(
-                    "`{object}.{key}` takes arguments and documents none: {signature}"
+                    "`{where_}` takes arguments and documents none: {signature}"
                 ));
             }
             for parameter in parameters {
-                check_parameter(parameter, object, key, signature, &mut complain);
+                check_parameter(parameter, &where_, signature, &mut complain);
             }
+        }
+    }
+
+    // And a meta function is spelled once against *every* object, not just against the other meta
+    // functions: it is seeded onto each object the guest creates, so a name it shares with any
+    // catalogued function is a collision on that object — the same silent shadowing the per-object
+    // rule above catches, in the one shape that rule cannot see.
+    let meta_names: BTreeSet<&str> = catalogue.meta.iter().map(|e| e.name.as_str()).collect();
+    for spelling in spellings(language) {
+        let Some(object) = spelling.object else {
+            continue;
+        };
+        if meta_names.contains(spelling.name) {
+            complain(format!(
+                "`{object}.{}` is spelled exactly as the meta function bound on every object",
+                spelling.name
+            ));
         }
     }
 
@@ -546,9 +636,10 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
         ));
     }
     let referenced = catalogue
-        .session
+        .meta
         .iter()
         .flat_map(|e| e.types.iter())
+        .chain(catalogue.session.iter().flat_map(|e| e.types.iter()))
         .chain(catalogue.views.iter().flat_map(|e| e.types.iter()))
         .chain(catalogue.programs.iter().flat_map(|e| e.types.iter()))
         .chain(catalogue.tools.iter().flat_map(|e| e.types.iter()))
@@ -571,27 +662,25 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
 /// a parameter's name into its own signature whichever side of the type it puts it on.
 fn check_parameter(
     parameter: &'static Parameter,
-    object: &'static str,
-    key: &'static str,
+    where_: &str,
     signature: &'static str,
     complain: &mut impl FnMut(String),
 ) {
     let name = parameter.name.trim();
     if name.is_empty() {
-        complain(format!("`{object}.{key}` has an argument with no name"));
+        complain(format!("`{where_}` has an argument with no name"));
         return;
     }
     if parameter.doc.trim().is_empty() {
-        complain(format!("`{object}.{key}`'s `{name}` has no documentation"));
+        complain(format!("`{where_}`'s `{name}` has no documentation"));
     }
     if !signature.contains(name) {
         complain(format!(
-            "`{object}.{key}` documents an argument `{name}` its signature does not name: \
-             {signature}"
+            "`{where_}` documents an argument `{name}` its signature does not name: {signature}"
         ));
     }
     for field in &parameter.fields {
-        check_parameter(field, object, key, signature, complain);
+        check_parameter(field, where_, signature, complain);
     }
 }
 
@@ -634,7 +723,7 @@ fn declares_arguments(signature: &str) -> bool {
 /// takes an argument.
 fn documented_arguments(
     language: &'static dyn ProgramLanguage,
-) -> BTreeMap<(&'static str, &'static str), bool> {
+) -> BTreeMap<(Option<&'static str>, &'static str), bool> {
     let mut out = BTreeMap::new();
     for spelling in spellings(language) {
         let documented = spelling
@@ -649,7 +738,8 @@ fn documented_arguments(
 /// One entry's spellings, beside the identity they belong to, so a complaint can name both.
 struct Spelling {
     /// The object it hangs off — identity, and here only so a complaint can qualify the name.
-    object: &'static str,
+    /// `None` for a [meta](Section::Meta) function, which hangs off every object rather than one.
+    object: Option<&'static str>,
     /// The name a program calls it by.
     name: &'static str,
     /// Every shape this language's SDK declares it in. Never compared across languages — the count
@@ -661,29 +751,36 @@ struct Spelling {
     key: &'static str,
 }
 
-/// Every catalogue entry's [spellings](Spelling), across all five sections.
+/// Every catalogue entry's [spellings](Spelling), across all six function-carrying sections.
 fn spellings(language: &'static dyn ProgramLanguage) -> Vec<Spelling> {
     let catalogue = language.catalogue();
     let mut out: Vec<Spelling> = catalogue
-        .session
+        .meta
         .iter()
         .map(|e| Spelling {
-            object: e.object.as_str(),
+            object: None,
             name: e.name.as_str(),
             signatures: e.signatures.as_slice(),
             doc: e.doc.as_str(),
             key: e.key.as_str(),
         })
         .collect();
+    out.extend(catalogue.session.iter().map(|e| Spelling {
+        object: Some(e.object.as_str()),
+        name: e.name.as_str(),
+        signatures: e.signatures.as_slice(),
+        doc: e.doc.as_str(),
+        key: e.key.as_str(),
+    }));
     out.extend(catalogue.views.iter().map(|e| Spelling {
-        object: e.object.as_str(),
+        object: Some(e.object.as_str()),
         name: e.name.as_str(),
         signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
         key: e.key.as_str(),
     }));
     out.extend(catalogue.programs.iter().map(|e| Spelling {
-        object: e.object.as_str(),
+        object: Some(e.object.as_str()),
         name: e.name.as_str(),
         signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
@@ -691,14 +788,14 @@ fn spellings(language: &'static dyn ProgramLanguage) -> Vec<Spelling> {
     }));
     // A tool's identity is its own gg tool name, which is why it alone carries no separate `key`.
     out.extend(catalogue.tools.iter().map(|e| Spelling {
-        object: e.object.as_str(),
+        object: Some(e.object.as_str()),
         name: e.name.as_str(),
         signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
         key: e.tool.as_str(),
     }));
     out.extend(catalogue.helpers.iter().map(|e| Spelling {
-        object: e.object.as_str(),
+        object: Some(e.object.as_str()),
         name: e.name.as_str(),
         signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
@@ -760,7 +857,8 @@ fn agrees_with(
             out.push(Disagreement {
                 language: name,
                 detail: format!(
-                    "documents {here} for `{object}.{key}`, where {} documents {there}",
+                    "documents {here} for `{}`, where {} documents {there}",
+                    qualified(object, key),
                     reference.display_name()
                 ),
             });
@@ -790,10 +888,15 @@ fn agrees_with(
 }
 
 /// How many functions hang off each object.
+///
+/// A [meta](Section::Meta) function counts against none of them: it is bound on every object equally,
+/// so counting it would add one to each and say nothing.
 fn objects(identities: &[Identity]) -> BTreeMap<&str, usize> {
     let mut out: BTreeMap<&str, usize> = BTreeMap::new();
     for identity in identities {
-        *out.entry(identity.object.as_str()).or_default() += 1;
+        if let Some(object) = identity.object.as_deref() {
+            *out.entry(object).or_default() += 1;
+        }
     }
     out
 }

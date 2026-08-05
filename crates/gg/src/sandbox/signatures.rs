@@ -152,8 +152,8 @@ pub(crate) struct ToolSignature {
     /// The gg tool name (`read_file`), which is what the run's enabled set is expressed in.
     ///
     /// It is also this entry's language-independent identity, which is why a tool — alone among the
-    /// catalogue's five sections — carries no separate `key`: every language's guest catalogues the
-    /// same [`ALL_TOOL_NAMES`], under its own spellings.
+    /// catalogue's function-carrying sections — carries no separate `key`: every language's guest
+    /// catalogues the same [`ALL_TOOL_NAMES`], under its own spellings.
     pub tool: String,
     /// The name a program calls it by, in this catalogue's language (`readFile`).
     pub name: String,
@@ -576,10 +576,12 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
 /// it — the signature a lookup renders, the paragraph under it, and the one-line summary every
 /// object's directory carries for it.
 ///
-/// `None` for a key this language's catalogue does not carry. The [agreement gate](super::language)
-/// asserts every registered language catalogues the same meta keys, so a miss is a corrupt committed
-/// artifact rather than a runtime condition — and the two callers degrade rather than panic, because
-/// one word missing from a directory is a smaller failure than a run that stops.
+/// `None` for a key this language's catalogue does not carry. The
+/// [agreement gate](super::language::agreement) asserts that every registered language's meta
+/// section is exactly gg's own meta vocabulary — [`list`](crate::docs::LIST_FUNCTION) and nothing
+/// else — so a miss is a corrupt committed artifact rather than a runtime condition, and the callers
+/// degrade rather than panic, because one word missing from a directory is a smaller failure than a
+/// run that stops.
 pub fn meta_function(language: &dyn ProgramLanguage, key: &str) -> Option<&'static MetaSignature> {
     language
         .catalogue()
