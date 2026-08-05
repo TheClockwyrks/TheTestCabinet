@@ -3876,8 +3876,9 @@ async fn handle_subagent_call(
 
 /// Handle `spawn_subagent`: resolve the brief and slot, [dispatch the child](dispatch_child) on the
 /// scheduler (spawning its task), and return its id immediately — the parent keeps running (parallel
-/// by default). A spawn at the [max depth](SubagentConfig::max_depth) is **refused** (a tool error),
-/// not queued.
+/// by default). A spawn at the [max depth](SubagentConfig::max_depth) fails as a
+/// **limit** ([`ToolFailure::LimitExceeded`]), not queued — the request was well-formed and the run
+/// simply has no room left below the spawner, which is a ceiling rather than a refusal.
 ///
 /// A subagent is always driven by a free-form `prompt` brief: board **issues** are no longer
 /// hand-dispatched to subagents — the [project-management](crate::board) capability
@@ -4027,7 +4028,8 @@ fn resolve_delegation_target(
 /// Dispatch one child agent — the spawn path behind `spawn_subagent` and every review
 /// dispatch.
 ///
-/// Enforces the [depth cap](SubagentConfig::max_depth) (a structural refusal, not a queue),
+/// Enforces the [depth cap](SubagentConfig::max_depth) (a structural ceiling, not a queue — it
+/// fails as a [limit](ToolFailure::LimitExceeded) rather than a refusal),
 /// resolves the child's [effective slot](effective_slot) and client, optionally creates an isolated
 /// [worktree](make_worktree) (refused with guidance when the capability is off or git is
 /// unavailable), then builds the child's identity/wiring/role, schedules its task on the scheduler,

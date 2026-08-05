@@ -2949,7 +2949,10 @@ export type GgTelemetryKind =
       /**
        * The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
        * `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
-       * the configured maximum depth is refused (Phase 4B).
+       * the configured maximum depth fails as a
+       * [limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
+       * [refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no
+       * room left below the spawner.
        */
       depth: number;
       /**
@@ -3982,7 +3985,10 @@ export type GgTelemetryEvent = {
       /**
        * The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
        * `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
-       * the configured maximum depth is refused (Phase 4B).
+       * the configured maximum depth fails as a
+       * [limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
+       * [refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no
+       * room left below the spawner.
        */
       depth: number;
       /**

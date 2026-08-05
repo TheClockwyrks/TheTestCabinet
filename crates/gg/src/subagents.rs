@@ -40,9 +40,9 @@
 //!   slot and re-takes it when it resumes — so a persistent agent waiting on a child of its own
 //!   profile cannot deadlock against itself.
 //!
-//! The depth cap is **not** enforced here — it is a *structural* check made at spawn time (an
-//! agent at [`max_depth`](SubagentConfig::max_depth) is refused, not queued); see
-//! [`crate::agent`].
+//! The depth cap is **not** enforced here — it is a *structural* check made at spawn time (a spawn
+//! below [`max_depth`](SubagentConfig::max_depth) fails as a *limit*, not queued, because the
+//! request was well-formed and the run simply has no room left under it); see [`crate::agent`].
 
 use std::collections::BTreeSet;
 use std::sync::Arc;

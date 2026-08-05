@@ -1991,7 +1991,7 @@
           "type": ["string", "null"]
         },
         "depth": {
-          "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth is refused (Phase 4B).",
+          "description": "The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):\n`0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed\nthe configured maximum depth fails as a\n[limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a\n[refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no\nroom left below the spawner.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"

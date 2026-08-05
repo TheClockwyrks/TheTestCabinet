@@ -5742,7 +5742,10 @@ pub enum GgTelemetryKind {
         model_id: String,
         /// The agent's depth in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/):
         /// `0` for the root, `parent.depth + 1` for a spawned child. A spawn that would exceed
-        /// the configured maximum depth is refused (Phase 4B).
+        /// the configured maximum depth fails as a
+        /// [limit](GgToolFailure::LimitExceeded) rather than being queued — a *ceiling*, not a
+        /// [refusal](GgToolFailure::Refused): the request was well-formed, the run simply has no
+        /// room left below the spawner.
         depth: u64,
         /// The task/issue brief the agent was dispatched with, when it is a subagent spawned to
         /// do a scoped piece of work. Absent for the root agent, which is driven by the run's
