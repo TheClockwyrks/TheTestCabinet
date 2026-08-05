@@ -29,7 +29,7 @@
 //!
 //! [`RunLimits`] carries one further ceiling that is **not** in that table and never ends a run:
 //! [`replay_max_bytes`](RunLimits::replay_max_bytes) bounds the
-//! [capture journal](crate::replay) that observes the run. It is resolved here because there is
+//! [capture journal](crate::capture) that observes the run. It is resolved here because there is
 //! one resolver for everything an operator can declare under `capabilitySet.limits`, not because
 //! it is an execution ceiling.
 //!
@@ -331,8 +331,6 @@ pub enum TurnErrorType {
     ModelVisionUnsupported,
     /// A successful response could not be parsed into a reply.
     ModelParse,
-    /// A [playback](crate::playback) could not answer the call from the record.
-    ModelPlayback,
     /// The program is not valid source in its language.
     TranspileSyntax,
     /// The program parses but breaks an early error the language enforces.
@@ -380,8 +378,7 @@ impl TurnErrorType {
             | Self::ModelRetryExhausted
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
-            | Self::ModelParse
-            | Self::ModelPlayback => TurnErrorKind::ModelApi,
+            | Self::ModelParse => TurnErrorKind::ModelApi,
             Self::TranspileSyntax
             | Self::TranspileSemantic
             | Self::TranspileCompile
@@ -410,7 +407,6 @@ impl TurnErrorType {
             Self::ModelResponseLoop => GgTurnErrorType::ModelResponseLoop,
             Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
             Self::ModelParse => GgTurnErrorType::ModelParse,
-            Self::ModelPlayback => GgTurnErrorType::ModelPlayback,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
             Self::TranspileSemantic => GgTurnErrorType::TranspileSemantic,
             Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
@@ -477,7 +473,7 @@ pub const DEFAULT_MAX_ERROR_RATE: f64 = 0.4;
 /// the minimum sample, so the default ceiling cannot fire before an agent's fiftieth turn.
 pub const DEFAULT_ERROR_RATE_WINDOW: usize = 50;
 
-/// The per-run ceiling on the [replay capture journal](crate::replay) when a run declares none:
+/// The per-run ceiling on the [replay capture journal](crate::capture) when a run declares none:
 /// **256 MiB**.
 ///
 /// Sized to be unreachable by any run that is behaving, and reachable by one that is not. A pooled
@@ -512,7 +508,7 @@ pub struct RunLimits {
     /// The run's accumulated-cost ceiling, when configured. Measured against the run-wide
     /// [spend](RunSpend), never against one agent's share of it.
     pub max_cost: Option<f64>,
-    /// The per-run byte ceiling on the [replay capture journal](crate::replay), defaulting to
+    /// The per-run byte ceiling on the [replay capture journal](crate::capture), defaulting to
     /// [`DEFAULT_REPLAY_MAX_BYTES`] and `None` only when the run explicitly declared a ceiling
     /// that cannot bound anything.
     ///

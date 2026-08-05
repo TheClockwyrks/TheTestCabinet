@@ -168,14 +168,6 @@ export const routes = {
   // the `/runs/:runId` dynamic route, so no collision).
   ggMonitor: (jobId: string): string =>
     `/runs/gg/${encodeURIComponent(jobId)}/live`,
-  // The step-through replay debug view for a finished gg run (consoles only,
-  // debug-only). Reached from a finished run whose recorded capability set had the
-  // `replay` capability on; loads the run's stored replay record and lets a
-  // developer walk exactly what each agent saw and did. Keyed by the produced run
-  // id, under the same literal `/runs/gg` prefix (more specific than `/runs/:runId`,
-  // so no collision), a sibling of `ggMonitor`.
-  ggReplay: (runId: string): string =>
-    `/runs/gg/${encodeURIComponent(runId)}/replay`,
   // The gg **analysis** section (consoles only): its own top-level `/gg` space,
   // entered from the topbar's analyze control. It keeps the app's chrome but swaps
   // the mark for a back arrow and the section nav for gg's own tabs. It opens on
@@ -395,9 +387,6 @@ export const routePatterns = {
   // a ran one, and a pasted link is as likely to be one as the other.
   ggAnalysisAggregateLegacy: "/gg/aggregate",
   ggAnalysisAggregateResultsLegacy: "/gg/aggregate/results",
-  // The debug-only step-through replay view, a sibling of `ggMonitor` under the
-  // literal `/runs/gg` prefix (both outrank the `/runs/:runId` dynamic route).
-  ggReplay: "/runs/gg/:runId/replay",
   runMonitor: "/runs/:runId/live",
   runDetail: "/runs/:runId",
   runReview: "/runs/:runId/reviews/:reviewerId",

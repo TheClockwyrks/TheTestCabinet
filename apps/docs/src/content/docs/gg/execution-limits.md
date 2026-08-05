@@ -313,7 +313,7 @@ telemetry off an exec stream. What it can always do is put a file inside the con
 the host names a sentinel path in the [invocation](/gg/overview/) document (`cancelFile`)
 and creates that file when the run is killed. Signalling the process instead would be
 worse in the way that matters: gg's result *is* its telemetry, and the most valuable part
-of it — the session summary, the per-slot rollups, the [replay](/gg/replay/) sidecar — is
+of it — the session summary, the per-slot rollups, the [replay](/gg/session-record/) sidecar — is
 emitted in the session's epilogue. A signal that cut the process down would throw away
 precisely what the operator killed the run to look at.
 
@@ -368,7 +368,7 @@ that half.
    an error breach — which is that agent's own — they run to their natural end, still
    bounded by their own turn ceiling and the run deadline.
 5. The session tail runs **unchanged**: slot rollups, the closing log, the
-   [replay](/gg/replay/) record, the session summary, the session-ended event. A limit
+   [replay](/gg/session-record/) record, the session summary, the session-ended event. A limit
    stop is a normal loop ending, not an exception path.
 6. The process exits **0**. Of the sessions that actually ran, only one with a refused
    credential exits non-zero, and a spent budget is not a rejected credential — so a

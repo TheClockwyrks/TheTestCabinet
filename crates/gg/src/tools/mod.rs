@@ -102,8 +102,8 @@ pub use filesystem::{
     ReadFileTool, ReadPolicy, WriteFileTool,
 };
 /// Crate-visible, unlike the rest of this module's surface: the only consumer of either is
-/// [replay capture](crate::replay). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and
-/// asserts the relation at compile time, and it types a [seeded file](crate::replay::RecordedSeed)
+/// [replay capture](crate::capture). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and
+/// asserts the relation at compile time, and it types a [seeded file](crate::capture::RecordedSeed)
 /// with the same [`sniff_image`] `read_file` types an attachment with — so an image the model was
 /// shown and the seed that placed it on disk agree about what it is, which is what lets the two
 /// collapse into one blob-pool entry. Neither is part of the tool API.
@@ -277,20 +277,16 @@ pub struct ToolContext {
     /// The id of the agent whose turn this call belongs to — empty for a dispatch with no agent
     /// behind it (a bare [`new`](Self::new) context, which is what most tests build).
     ///
-    /// Carried because a substituted [`shell`](Self::shell) is keyed **per agent**: a runner given
-    /// only a workspace path cannot know whose recorded commands to draw from, and a
-    /// [hook's](crate::hooks) commands in particular have to be attributed to the agent it fired
-    /// for or they land on an unattributed queue.
+    /// Carried because every command is **attributed per agent**: a runner given only a workspace
+    /// path cannot say whose command it ran, and a [hook's](crate::hooks) commands in particular
+    /// have to be attributed to the agent it fired for or they are filed unattributed.
     pub agent_id: String,
-    /// What actually starts a process for this call. [`RealShellRunner`] in a live run;
-    /// substituted wholesale by a
-    /// [playback](https://docs.testcabinet.ai/gg/analysis/playback/), which is the only way to
-    /// reconstruct a session without re-running its `npm install`.
+    /// What actually starts a process for this call. [`RealShellRunner`] in a live run, and
+    /// substituted wholesale by gg's own suite.
     ///
     /// Shared (`Arc`) because gg builds a context per agent per turn and clones it into every
     /// [responses-as-code](crate::sandbox) program's api, all of which must reach the *same*
-    /// runner — a per-context copy of a recorded queue would hand every turn the first command
-    /// again.
+    /// runner.
     pub shell: Arc<dyn ShellRunner>,
 }
 

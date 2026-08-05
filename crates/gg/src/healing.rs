@@ -41,9 +41,7 @@
 //! Nothing here does I/O, reads a clock, allocates a `Store`, or is `async`; its only imports are
 //! `serde_json::Value` and the two capability types the resolver reads. Two things follow. Every
 //! case in this module's tests is a microsecond-scale unit test with no component compile behind it,
-//! and the ablation is honest: turning a strategy off changes only what [`heal`] returns. (Replay is
-//! unaffected either way — the [replay driver](crate::replay_driver) reconstructs a code turn from
-//! the captured record and never re-runs healing.)
+//! and the ablation is honest: turning a strategy off changes only what [`heal`] returns.
 //!
 //! # The skeleton and the [dialect](Dialect)
 //!

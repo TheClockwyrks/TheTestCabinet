@@ -344,7 +344,7 @@ pub enum PromptSlot {
 }
 
 /// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
-/// the [message log](crate::message_log) and to [replay capture](crate::replay): the message
+/// the [message log](crate::message_log) and to [replay capture](crate::capture): the message
 /// that is sent, the band it occupies, what it is estimated to cost, its
 /// [selector tag](ContextItem::label), and the four typed fields describing *where in the
 /// window model it came from*.
@@ -358,7 +358,7 @@ pub enum PromptSlot {
 /// [`region`](Self::region) are recoverable from **nowhere else** once a turn has gone out:
 /// not from the rendered `Vec<Message>`, not from the telemetry stream, not from gg's raw
 /// output. They are what lets a
-/// [reconstruction](https://docs.testcabinet.ai/gg/analysis/replay-records/) compare the window
+/// [reconstruction](https://docs.testcabinet.ai/gg/analysis/session-records/) compare the window
 /// it *builds* against the one the record pinned — a drift in which items a compaction kept, or
 /// which page of a file a view covers, is otherwise invisible until it changes what the model
 /// says.
@@ -1198,7 +1198,7 @@ impl ContextModel {
     }
 
     /// The per-item view of the current prompt for the [message log](crate::message_log) and
-    /// for [replay capture](crate::replay): each item's [`source`](GgContextSource) band, its
+    /// for [replay capture](crate::capture): each item's [`source`](GgContextSource) band, its
     /// [`Message`], its cached token estimate, its [selector tag](ContextItem::label), and the
     /// [slot](PromptSlot), [retention](Retention), [turn](Self::begin_turn) and
     /// [region](FileRegion) it carries in the window model — in the order they are sent.

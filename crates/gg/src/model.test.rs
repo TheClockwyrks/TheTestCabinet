@@ -146,10 +146,6 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
             ModelError::Parse("bad json".to_string()),
             TurnErrorType::ModelParse,
         ),
-        (
-            ModelError::Playback("recorded turns exhausted".to_string()),
-            TurnErrorType::ModelPlayback,
-        ),
     ];
 
     for (error, expected) in &cases {
@@ -182,8 +178,8 @@ fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
         .collect();
     assert_eq!(
         distinct.len(),
-        7,
-        "all seven `ModelError` shapes have their own type: {distinct:?}"
+        6,
+        "all six `ModelError` shapes have their own type: {distinct:?}"
     );
 }
 

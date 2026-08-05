@@ -12,10 +12,7 @@ path = "src/main.rs"
 [dependencies]
 test-cabinet-core = { path = "../core" }
 test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
-# gg's harness library — `tcab gg-replay` drives its debug-only replay driver
-# (`replay_driver`) in-process to reconstruct a run from a captured replay record, and
-# `tcab gg-playback` drives its `playback` entrypoint, which re-runs the recorded session
-# through gg's real turn loop.
+# gg's harness library.
 test-cabinet-gg = { path = "../gg" }
 # The static code analyzer — `tcab analyze` runs it in-process over a directory. The
 # dependency lives here rather than in core on purpose: core owns the contract types, and
@@ -23,17 +20,15 @@ test-cabinet-gg = { path = "../gg" }
 # binary that touches a run record.
 test-cabinet-code-analysis = { path = "../code-analysis" }
 clap = { workspace = true }
-# Downloading an older `gg` release for `tcab gg-replay --gg <VERSION>`. The backend client in
-# `core` already links this exact client, so this is a direct dependency on a crate `tcab` carries
-# either way — not a second HTTP or TLS stack.
+# HTTP. The backend client in `core` already links this exact client, so this is a direct
+# dependency on a crate `tcab` carries either way — not a second HTTP or TLS stack.
 reqwest = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 # Scratch workspace an asset-generation reference is drawn into before its frames
 # are uploaded. The bytes are derived from the committed script, so the directory
-# is discarded once the upload finishes. Also the default `tcab gg-playback` workspace: a
-# reconstruction's product is its report and its telemetry, not the tree it built.
+# is discarded once the upload finishes.
 tempfile = { workspace = true }
 anstyle = { workspace = true }
 anstream = { workspace = true }

@@ -363,7 +363,7 @@ Three rules govern what is in it, and they are the reason it can be published:
   and the whole object then passes the [secret scrubber](/components/backend/overview/)
   like every other published document.
 
-**A [replay record](/gg/analysis/replay-records/) is never exported.** A document is
+**A [replay record](/gg/analysis/session-records/) is never exported.** A document is
 configuration and outcomes; a record is the complete model conversation verbatim.
 The distinction is what makes the corpus publishable and the record console-only.
 

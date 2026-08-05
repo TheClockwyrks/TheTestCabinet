@@ -316,5 +316,6 @@ saved, launched, and analyzed in the console is
 - [Telemetry](/gg/telemetry/) — the custom, first-party stream the console renders.
 - [Result aggregation](/gg/result-aggregation/) — Kibana-style queries across many
   gg sessions.
-- [Replay](/gg/replay/) — always-on capture of every run's non-deterministic inputs,
-  so a session can be replayed exactly.
+- [The session record](/gg/session-record/) — always-on capture of what each agent
+  was asked and what came back, salvaged out of a run that hung so the one outcome
+  that collects nothing can still be explained.

@@ -68,7 +68,7 @@ still **counted for size**. A 300 KB god-file is precisely the interesting case;
 dropping it entirely would bias every size metric against the worst outcomes.
 
 A free consequence of honouring the ignore files: the [replay
-journal](/gg/analysis/replay-records/#the-journal-must-be-invisible-to-the-run-it-observes)
+journal](/gg/analysis/session-records/#the-journal-must-be-invisible-to-the-run-it-observes)
 is excluded at seed time through the same mechanism, so it can never pollute a code
 analysis. No coordination between the two features was needed.
 
@@ -165,7 +165,7 @@ catches it**.
 - **A full exploration document** is served per run and carries the unbounded
   detail: every file, every symbol with its complexity and reference count, every
   import edge, every cycle, every clone group. Same posture, and the same reason,
-  as the [replay record](/gg/analysis/replay-records/#serving-and-consuming).
+  as the [replay record](/gg/analysis/session-records/#serving-and-consuming).
 
 ### Why a typed struct and not an open bag
 

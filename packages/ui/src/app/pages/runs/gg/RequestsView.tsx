@@ -29,11 +29,10 @@ import { ExpandablePre } from "./MessageOverlay";
  * The two non-band members are spelled out rather than left as `null` because they mean
  * different things and read differently. `"reply"` is the model's answer — an assistant
  * message not yet placed in a band this turn. `{ unattributed: role }` is a message whose
- * band the *source* does not record: a [replay record](./replayModel) captured before
- * format v2 pins the exact messages but carries no prompt frame, so there is no band to
- * colour it by. It falls back to the message's own **role**, which is a different fact
- * and is labelled as one — inferring a band from a role would put a colour on the row
- * that the record never claimed.
+ * band the *source* does not record — a turn recorded before the prompt frame existed —
+ * so there is no band to colour it by. It falls back to the message's own **role**, which
+ * is a different fact and is labelled as one: inferring a band from a role would put a
+ * colour on the row that the source never claimed.
  */
 export type MessageBand = GgContextSource | "reply" | { unattributed: string };
 
@@ -90,12 +89,6 @@ function shortBytes(bytes: number): string {
  * aligns into fixed columns — a colored band tag, the content preview, and the token
  * count — so a request reads as a table, and the leading edge is tinted with the band's
  * color (the same palette the stacked Context graph uses) so the two line up.
- *
- * Shared with the [Replay view](./GgReplayView), which resolves a replay record's pooled
- * bodies into the same {@link PooledMessage} shape and renders them through this one
- * component rather than a second, near-identical one: two renderers of the same thing
- * drift, and the display narrowers the old Replay view needed existed only because it
- * read opaque JSON. `context` is the extra column that view adds.
  */
 export function MessageRow({
   message,

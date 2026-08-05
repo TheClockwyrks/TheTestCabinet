@@ -1,11 +1,9 @@
 import { useMemo } from "react";
-import { Link } from "react-router";
 import { ProgressBar } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
 import { useRunEvents } from "../../../data/useRunEvents";
 import { useCaseMaxRuntime } from "../../../data/useCaseMaxRuntime";
-import { routes } from "../../../routes";
 import { GgDashboard } from "../gg/GgDashboard";
 import { GgRunPanels } from "../gg/GgRunPanels";
 import { useGgRuntime } from "../gg/ggRuntime";
@@ -108,17 +106,6 @@ function RunGgBody({ run }: { run: RunRecord }) {
             runtime={runtime}
             timeoutSeconds={timeoutSeconds}
           >
-            {/* Offered on every gg run, not on the ones somebody thought to switch
-                recording on for: capture is unconditional (see gg/replay), and the old
-                capability gate read the root agent alone, so it was wrong even on its
-                own terms. A run recorded before always-on capture has no record, and the
-                Replay view says exactly that rather than being unreachable. */}
-            <p className={styles.notice}>
-              <Link to={routes.ggReplay(run.id)}>
-                Step through what each agent saw and did
-              </Link>{" "}
-              — every input this run consumed, turn by turn.
-            </p>
           </GgDashboard>
         }
       />

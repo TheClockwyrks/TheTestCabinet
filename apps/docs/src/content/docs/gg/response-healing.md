@@ -87,10 +87,6 @@ filed off. The same cases are run through a second, non-inert dialect, whose dif
 fence tags and different import keyword pick a different block out of the same reply and
 drop a different line from it.
 
-Healing does not run on the [replay](/gg/replay/) path at all. The replay driver
-*reconstructs* a code turn from the record; it does not re-drive the text through the
-pipeline.
-
 ## The invariant that makes it honest
 
 > **Healing only ever deletes.** Every strategy removes contiguous text; `unwrap-async`

@@ -113,14 +113,6 @@ export function GgRunMonitorPage() {
                   see its metrics
                 </Link>
                 .
-                {/* Unconditional, because capture is: every gg run records the inputs
-                    it consumed (see gg/replay), so this is offered on any finished run
-                    rather than only where a debug capability happened to be set. */}{" "}
-                You can also{" "}
-                <Link to={routes.ggReplay(status.outcome.record.id)}>
-                  step through what each agent saw and did
-                </Link>
-                .
               </p>
             )}
             {status.kind === "done" && status.outcome.kind === "canceled" && (
@@ -146,12 +138,7 @@ export function GgRunMonitorPage() {
                     <Link to={routes.runMetrics(status.outcome.record.id)}>
                       see its metrics
                     </Link>
-                    . The replay journal is salvaged before teardown, so you can
-                    also{" "}
-                    <Link to={routes.ggReplay(status.outcome.record.id)}>
-                      step through what each agent saw and did
-                    </Link>{" "}
-                    up to the kill.
+                    .
                   </>
                 ) : (
                   jobId && (

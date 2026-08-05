@@ -4,9 +4,8 @@
 //! and the shell — and between them they account for ~all of a run's wall clock and ~all of its
 //! cost. The model call has had a seam since the beginning (the
 //! [client factory](crate::client::ClientFactory) every agent resolves through); this module gives
-//! the shell the matching one, so a
-//! [playback](https://docs.testcabinet.ai/gg/analysis/playback/) can answer a recorded session's
-//! commands from its record instead of running them.
+//! the shell the matching one, so gg's own suite can drive the loop against a substituted runner
+//! instead of starting real processes.
 //!
 //! # Why the seam is here and not at the tool
 //!
@@ -16,8 +15,8 @@
 //! is the [`ToolContext`](super::ToolContext). So the runner travels on the context, and both
 //! [`run_command`](super::run_command) and
 //! [`run_command_capturing`](super::run_command_capturing) reach it from there. Splitting the seam
-//! any lower (at the `shell` tool) would leave the other two paths running real commands during a
-//! reconstruction; splitting it any higher would need three seams that could disagree.
+//! any lower (at the `shell` tool) would leave the other two paths starting real processes behind
+//! a substituted seam; splitting it any higher would need three seams that could disagree.
 //!
 //! # What is on each side of it
 //!
@@ -25,9 +24,8 @@
 //! timeout, and report what happened. Everything a model actually reads — merging the two streams,
 //! the [output policy](super::OffloadPolicy), gg's truncation notes, the [`ToolOutcome`] shape — is
 //! on the *caller's* side, in [`shell`](super). That line is deliberate: a substituted runner
-//! replaces what a command *did*, and inherits gg's presentation of it verbatim. A recorded session
-//! played back through a newer gg therefore shows the newer gg's truncation footer over the
-//! recorded bytes, which is the comparison a playback exists to make.
+//! replaces what a command *did*, and inherits gg's presentation of it verbatim — so a test that
+//! substitutes one is testing gg's presentation rather than re-implementing it.
 //!
 //! [`ToolOutcome`]: super::ToolOutcome
 
@@ -49,10 +47,9 @@ const OUTPUT_GRACE: Duration = Duration::from_millis(250);
 
 /// One command line, as handed to whatever is going to run it.
 ///
-/// Owned rather than borrowed because a substituted runner keeps what it was asked for — a
-/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) matches the pair
-/// (command, directory) against the recorded queue and reports the misses — and because the cost
-/// of two allocations is nothing beside starting a process.
+/// Owned rather than borrowed because a substituted runner keeps what it was asked for — the pair
+/// (command, directory) is what a test asserts against — and because the cost of two allocations is
+/// nothing beside starting a process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShellRequest {
     /// The command line, run as `sh -c <command>`.
@@ -81,7 +78,7 @@ pub struct ShellRequest {
     /// keeps a hook's command off the agent's ordinary queue — a hook command and
     /// a `shell` tool call are different inputs even when the text is identical — and it is the one
     /// field [`RealShellRunner`] ignores and a
-    /// [recording](crate::replay::RecordingShellRunner) one exists for.
+    /// [recording](crate::capture::RecordingShellRunner) one exists for.
     pub origin: GgShellOrigin,
 }
 
@@ -150,8 +147,7 @@ impl ShellExecution {
 /// Runs a command line and reports what the process did.
 ///
 /// The **only** implementation in a live run is [`RealShellRunner`]; the reason the trait exists is
-/// that a [playback](https://docs.testcabinet.ai/gg/analysis/playback/) substitutes one that
-/// answers from a [record](test_cabinet_core::gg_replay) instead. `Debug` is required so the
+/// that gg's own suite substitutes one that answers without starting a process. `Debug` is required so the
 /// [`ToolContext`](super::ToolContext) carrying it stays printable, which several tool errors rely
 /// on.
 #[async_trait]
@@ -291,9 +287,7 @@ where
 /// The test double for the seam itself, kept beside the trait rather than in one test file because
 /// three of gg's modules need it — the seam is only meaningful if the `shell` tool, a
 /// [responses-as-code](crate::sandbox) program and a [hook](crate::hooks) all
-/// reach it, and proving that means substituting it from each of their tests. It is also the shape
-/// a playback's recorded runner takes, minus the queue: record what was asked, answer without
-/// touching the machine.
+/// reach it, and proving that means substituting it from each of their tests.
 #[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct StubShellRunner {

@@ -45,10 +45,8 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
-  GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
 import type { GgReference } from "@test-cabinet/run-record/gg-reference";
-import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
   GgDashboard,
@@ -143,49 +141,6 @@ export interface ComparisonPublishOutcome {
 // references, and published results. Every runner and reporter resolves the
 // catalog from here — never from a worker. Mirrors the backend HTTP API
 // (components/backend/api.md).
-/**
- * The replay-record format this app reads — mirrors `GG_REPLAY_FORMAT_VERSION` in
- * `crates/core/src/gg_replay.rs`.
- *
- * The compatibility contract, and the only identity a reader may branch on: not the
- * recorder's `ggVersion` (a version bump with no prompt change must not invalidate every
- * record on every release) and not its `commit`.
- */
-export const GG_REPLAY_FORMAT_VERSION = 2;
-
-/**
- * The format an **absent** `formatVersion` means — mirrors `GG_REPLAY_FORMAT_V1`.
- *
- * Every record captured before the field existed carries no version at all, and the
- * backend stores and serves them as opaque bytes, so this default is what keeps them
- * readable rather than unparseable.
- */
-export const GG_REPLAY_FORMAT_V1 = 1;
-
-/**
- * What the run's replay slot (`GET /runs/{id}/replay`) held, tagged by the format it is in.
- *
- * The stored document is **versioned**, and the tag is what keeps a version check from becoming
- * the bug. Every format shares its outer field names — `sessionId`, `capabilitySet`, `entries` —
- * so an untagged cast to whichever shape the app happens to read deserializes without complaint
- * and then renders a full session as an empty one, with nothing raised anywhere. Tagging the read
- * turns that silence into a statement: a legacy record is walked as the transcript it is, and a
- * record from a build newer than this app is refused rather than guessed at.
- */
-export type StoredGgReplay =
-  /** A pooled [format-v2](https://docs.testcabinet.ai/gg/analysis/replay-records/) record. */
-  | { format: "v2"; record: GgReplayRecord }
-  /**
-   * A legacy transcript record, written before pooling. Walked — the console reads it behind an
-   * older-gg banner — but it carries only model I/O and tool results.
-   */
-  | { format: "v1"; record: GgReplayRecordV1 }
-  /**
-   * A record from a newer recorder. Carries only the version, because nothing else in it can be
-   * trusted to mean what this app would take it to mean.
-   */
-  | { format: "newer"; formatVersion: number };
-
 export interface BackendClient {
   /** Identify and health-check the backend (`GET /healthz`). */
   identity(): Promise<BackendIdentity>;
@@ -287,24 +242,6 @@ export interface BackendClient {
     id: string,
     onProgress?: ProgressCallback,
   ): Promise<RunEventStreams>;
-
-  /**
-   * A gg run's stored **replay record** (`GET /runs/{id}/replay`), or `null` when the
-   * run has none. Backs the console's step-through Replay view: the record pins each
-   * agent's model I/O, every tool result and the window gg built each turn, so a
-   * developer can walk exactly what each agent saw and did.
-   *
-   * [Capture is unconditional](https://docs.testcabinet.ai/gg/replay/) from gg 0.7.0
-   * onward, so a `null` here means the run predates that (it was recorded only if the
-   * `replay` capability happened to be on) or is not a gg run at all — not that the
-   * feature was switched off. Optional so a transport that cannot reach per-run debug
-   * media (the static site) omits it and the console hides the affordance — the same
-   * pattern the other console-only reads use.
-   *
-   * Resolves to a {@link StoredGgReplay} rather than a bare record because the slot is
-   * versioned and the reader must know which version it holds — see that type.
-   */
-  readGgReplay?(id: string): Promise<StoredGgReplay | null>;
 
   /**
    * A run's stored **code-analysis document** (`GET /runs/{id}/code-analysis`), or `null`

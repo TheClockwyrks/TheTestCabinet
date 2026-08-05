@@ -112,6 +112,7 @@ use tokio::task::JoinHandle;
 use crate::archive::ArchiveStore;
 use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
+use crate::capture::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile,
@@ -139,7 +140,6 @@ use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
     ModuleResolveCtx, ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
 };
-use crate::observer::SessionObserver;
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
     self, ApiView, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView,
@@ -147,7 +147,6 @@ use crate::prompts::{
     ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView,
     SystemContext, TasksView,
 };
-use crate::replay::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::sandbox::{
     self, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
     SandboxOutcome, run_program, scope_tools,
@@ -688,22 +687,14 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
 /// The two inputs a gg session has that are **not** a function of its own state: the model call and
 /// the shell.
 ///
-/// Between them they are ~all of a run's wall clock and ~all of its cost, and replacing both is
-/// what makes a [playback](https://docs.testcabinet.ai/gg/analysis/playback/) — a recorded session
-/// re-run through the *real* turn loop in seconds, for free — possible at all.
+/// Between them they are ~all of a run's wall clock and ~all of its cost, which is why they are the
+/// two things gg's own suite substitutes.
 ///
-/// **They travel together, in one parameter, on purpose.** A reconstruction that answered the
-/// model from a record while running the shell for real would run real installs against a scratch
-/// tree while claiming to reconstruct a session, and there must be no way to assemble that by
-/// forgetting an argument. Hence one constructor taking [both](Self::substituted) and no
-/// field-by-field builder — [`live`](Self::live) is a name for one particular pair, not a way to
-/// fill in half.
-///
-/// It is deliberately **not** a capability and **not** an invocation field. An unrecognized
-/// capability value is a warning rather than a launch failure, and an older gg deserializing a
-/// newer invocation ignores the unknown field — so under either spelling a "run from the record"
-/// request handed to a gg that does not have this feature would resolve silently to the real thing
-/// and make real, paid API calls. A parameter cannot be ignored.
+/// **They travel together, in one parameter, on purpose.** A suite that scripted the model while
+/// running the shell for real would run real installs against a scratch tree, and there must be no
+/// way to assemble that by forgetting an argument. Hence one constructor taking
+/// [both](Self::substituted) and no field-by-field builder — [`live`](Self::live) is a name for one
+/// particular pair, not a way to fill in half.
 pub struct SessionSeams {
     /// Where every agent's model client comes from.
     pub factory: Arc<dyn ClientFactory>,
@@ -711,11 +702,6 @@ pub struct SessionSeams {
     /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
     /// [hook's](crate::hooks) commands alike.
     pub shell: Arc<dyn ShellRunner>,
-    /// Who is told about each agent's creation and ending, and about each tool call's final
-    /// outcome. **Not a third seam** — see [`SessionObserver`] for the distinction — which is why
-    /// it is an `Option` set by a builder rather than a third constructor argument: a session with
-    /// no observer is the session gg has always run.
-    pub observer: Option<Arc<dyn SessionObserver>>,
 }
 
 impl SessionSeams {
@@ -737,26 +723,9 @@ impl SessionSeams {
     ///
     /// gg's own suite uses it with a scripted factory and [`real_shell`], which is a deliberate
     /// pairing rather than an accidental one: a scripted model answering real commands in a
-    /// `TempDir` is what the loop tests have always been. A playback passes substitutes for both.
+    /// `TempDir` is what the loop tests have always been.
     pub fn substituted(factory: Arc<dyn ClientFactory>, shell: Arc<dyn ShellRunner>) -> Self {
-        Self {
-            factory,
-            shell,
-            observer: None,
-        }
-    }
-
-    /// The same pair, with `observer` told about every agent's creation and ending and every tool
-    /// call's final outcome.
-    ///
-    /// A builder rather than a third constructor parameter because it is not a seam: it substitutes
-    /// nothing, and a session that has none runs exactly as it always has. What it does buy is the
-    /// only place a live agent's id and its [provenance](GgReplayAgentOrigin) are both in hand,
-    /// which is what a [playback](crate::playback) binds its recorded queues through.
-    #[must_use]
-    pub fn observed_by(mut self, observer: Arc<dyn SessionObserver>) -> Self {
-        self.observer = Some(observer);
-        self
+        Self { factory, shell }
     }
 }
 
@@ -789,11 +758,7 @@ pub(crate) async fn run_with_seams(
     emitter: &Emitter,
     seams: SessionSeams,
 ) -> SessionOutcome {
-    let SessionSeams {
-        factory,
-        shell,
-        observer,
-    } = seams;
+    let SessionSeams { factory, shell } = seams;
     let set = &invocation.capability_set;
 
     // Scope the stream to the root up front, so every event (launch diagnostics included) is
@@ -869,7 +834,6 @@ pub(crate) async fn run_with_seams(
         emitter,
         factory,
         shell,
-        observer,
         worktrees,
         &mut launch_warnings,
     ));
@@ -1119,7 +1083,7 @@ pub(crate) async fn run_with_seams(
     SessionOutcome::Ran
 }
 
-/// Start [replay capture](crate::replay) for this run, opening the
+/// Start [replay capture](crate::capture) for this run, opening the
 /// [journal](test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) under the run workspace.
 ///
 /// Called for **every** run: capture is no longer gated on a capability, because
@@ -1155,19 +1119,18 @@ fn start_replay_capture(
     }
 }
 
-/// Pin the run's [seed](test_cabinet_core::gg_replay::GgReplaySeed) — the invocation envelope a
-/// reconstruction starts from — into the [replay journal](crate::replay).
+/// Pin the run's [seed](test_cabinet_core::gg_replay::GgReplaySeed) — the fixed identity the
+/// session started from — into the [capture journal](crate::capture).
 ///
-/// A no-op for a run whose journal could not be opened. Reading the seeded files is the only I/O
-/// here, and it happens once, at launch, before the first turn: a record has to be self-contained
-/// (a playback seeds an empty workspace from this alone), and the bytes are very nearly free
-/// because an autoloaded case's reference mockups reach the blob pool anyway.
+/// A no-op for a run whose journal could not be opened. It happens once, at launch, before the
+/// first turn, for the reason every other line is written as it happens: the sessions whose
+/// envelope is most worth having are the ones that never reach a teardown.
 fn record_replay_seed(orch: &Orchestrator, invocation: &GgInvocation, warnings: &mut Vec<String>) {
     let Some(recorder) = &orch.replay else {
         return;
     };
     let provided_files =
-        crate::replay::read_seed_files(&orch.workspace_dir, &orch.provided_files, warnings);
+        crate::capture::read_seed_files(&orch.workspace_dir, &orch.provided_files, warnings);
     recorder.record_seed(RecordedSeed {
         prompt: &orch.prompt,
         // gg's own observation of the workspace, kept alongside — not merged with — the host-side
@@ -1232,31 +1195,19 @@ fn replay_model_ids(invocation: &GgInvocation) -> BTreeSet<String> {
         .collect()
 }
 
-/// Write one [provenance row](GgReplayAgent) for an agent into the run's replay journal, and tell
-/// the session's [observer](SessionObserver) about the same event.
+/// Write one [provenance row](GgReplayAgent) for an agent into the run's capture journal.
 ///
 /// Called twice for every agent: once as it comes into existence, with `terminal` `None`, and once
 /// when its loop ends, with the [end](LoopEnd) it reached. Assembly upserts the row, so the second
 /// supersedes the first — and an agent that never reaches an ending (a killed run, an agent still
 /// queued behind the parallelism cap) keeps the row it was born with, which is the whole reason
 /// the first write exists.
-///
-/// The observer is notified **before** the recorder and independently of it, because the two answer
-/// different questions and can be present separately: capture writes a row for a run that will be
-/// reconstructed later, while an observer is how a reconstruction *happening now* learns that the
-/// agent it just created is the record's. A `None` recorder must not silence it.
 fn record_replay_agent(
     orch: &Orchestrator,
     agent: &Agent,
     origin: &GgReplayAgentOrigin,
     terminal: Option<&LoopEnd>,
 ) {
-    if let Some(observer) = &orch.observer {
-        match terminal {
-            None => observer.agent_created(&agent.id, origin),
-            Some(_) => observer.agent_ended(&agent.id),
-        }
-    }
     let Some(recorder) = &orch.replay else {
         return;
     };
@@ -1277,7 +1228,7 @@ fn record_replay_agent(
     });
 }
 
-/// Close the run's [replay capture](crate::replay) journal and say on the root stream what it
+/// Close the run's [replay capture](crate::capture) journal and say on the root stream what it
 /// achieved.
 ///
 /// The `info` line is emitted even for a complete capture, for the same reason the armed-ceiling
@@ -1493,10 +1444,6 @@ struct Orchestrator {
     /// wrapped in a [`RecordingShellRunner`] rooted at that agent's own workspace — see
     /// [`shell_for`](Self::shell_for).
     shell: Arc<dyn ShellRunner>,
-    /// Who is told about each agent's creation and ending and about each tool call's final
-    /// outcome. `None` for every live run; `Some` only under a [playback](crate::playback), which
-    /// is what binds its recorded queues through it.
-    observer: Option<Arc<dyn SessionObserver>>,
     /// The shared skills library (loaded once), cloned into each agent's own skills runtime.
     skills_library: Arc<SkillLibrary>,
     /// Whether the [skills](CAPABILITY_SKILLS) capability is on.
@@ -1569,12 +1516,11 @@ struct Orchestrator {
     /// The per-key ordinals a [replay agent origin](GgReplayAgentOrigin) is keyed by: a spawn's
     /// position within its parent, a review round within its issue, a merge within its issue.
     ///
-    /// Deliberately **not** the [agent counter](Self::next_seq). Every origin has to be a function
-    /// of something a reconstruction re-derives on its own — a parent's own ordered turn loop,
-    /// board state — because agent ids come off a global counter in the order agents happen to
-    /// reach their spawn, and a playback that removes model latency entirely will interleave two
-    /// concurrent agents differently. An origin keyed on the global counter would bind the wrong
-    /// agent, and an unbound agent dies on its first turn.
+    /// Deliberately **not** the [agent counter](Self::next_seq). An origin is meant to *explain*
+    /// an agent — the third spawn of this parent, the second review round of that issue — and agent
+    /// ids come off a global counter in the order agents happen to reach their spawn, so two
+    /// concurrent agents take different ids from one run to the next. An origin keyed on the global
+    /// counter would say nothing about where the agent came from.
     ordinals: Mutex<BTreeMap<String, u32>>,
     /// The shared [replay recorder](GgRecorder) every agent's model I/O, tool results and prompt
     /// frames are pinned into. Present on **every** run — capture is not a capability any more, only
@@ -1589,7 +1535,7 @@ struct Orchestrator {
 }
 
 impl Orchestrator {
-    /// The [replay capture](crate::replay) gg's own [`git`](crate::git) invocations are reported
+    /// The [replay capture](crate::capture) gg's own [`git`](crate::git) invocations are reported
     /// through, stamped with `agent_id`.
     ///
     /// Orchestration git is the run's bookkeeping rather than any one agent's turn — a worktree is
@@ -1611,7 +1557,7 @@ impl Orchestrator {
     /// about to make.
     fn shell_for(&self, workspace: &Path) -> Arc<dyn ShellRunner> {
         match &self.replay {
-            Some(recorder) => Arc::new(crate::replay::RecordingShellRunner::new(
+            Some(recorder) => Arc::new(crate::capture::RecordingShellRunner::new(
                 Arc::clone(&self.shell),
                 Arc::clone(recorder),
                 workspace,
@@ -1620,24 +1566,17 @@ impl Orchestrator {
         }
     }
 
-    /// The [`git`](git::GitCapture) capture for `agent_id`: where its invocations are recorded, and
-    /// who is told they happened.
+    /// The [`git`](git::GitCapture) capture for `agent_id`: where its invocations are recorded.
     ///
-    /// The two halves are independent. Recording needs a recorder and is off in a run that is not
-    /// capturing; the [observer](SessionObserver) is how a *reconstruction* learns that gg's own
-    /// `git` has caught up with the record — an issue's accept-and-merge moves the board, which is
-    /// rendered into every agent's pinned prompt — and it is attached whether or not this run is
-    /// writing a journal.
+    /// A run that is not capturing still names the agent, because the capture is the choke point
+    /// every one of gg's own `git` invocations goes through whether or not a journal is being
+    /// written.
     fn git_capture(&self, agent_id: &str) -> git::GitCapture {
-        let capture = match &self.replay {
+        match &self.replay {
             Some(recorder) => {
                 git::GitCapture::new(Arc::clone(recorder), agent_id, &self.workspace_dir)
             }
             None => git::GitCapture::unrecorded(agent_id, &self.workspace_dir),
-        };
-        match &self.observer {
-            Some(observer) => capture.observed_by(Arc::clone(observer)),
-            None => capture,
         }
     }
 
@@ -1656,7 +1595,6 @@ impl Orchestrator {
         emitter: &Emitter,
         factory: Arc<dyn ClientFactory>,
         shell: Arc<dyn ShellRunner>,
-        observer: Option<Arc<dyn SessionObserver>>,
         worktrees: WorktreesSetup,
         warnings: &mut Vec<String>,
     ) -> Self {
@@ -1885,7 +1823,6 @@ impl Orchestrator {
             base_emitter: emitter.clone(),
             factory,
             shell,
-            observer,
             skills_library: skills.library(),
             skills_enabled: set.is_enabled(CAPABILITY_SKILLS),
             estimator: Arc::new(BpeTokenEstimator::new()),
@@ -2738,7 +2675,7 @@ struct ProjectContext {
 /// `origin` is how this agent came to exist, supplied by the caller because only the caller knows
 /// it: the role says an agent is a subagent, not whether it is a delegation, an issue's reviewer or
 /// the merge agent, and the latter two carry keys (a round, a position) that exist nowhere on the
-/// role. It is recorded into the [replay journal](crate::replay) here — at the one point every
+/// role. It is recorded into the [replay journal](crate::capture) here — at the one point every
 /// agent goes through — rather than at each of the five sites that create one, and it is
 /// *re-pointed* at each [succession](Handoff), which is the sixth.
 async fn run_agent(
@@ -3424,7 +3361,6 @@ async fn run_agent(
                     opening,
                     turn_base: turns_taken,
                     replay: orch.replay.clone(),
-                    observer: orch.observer.clone(),
                 },
                 &orch.provided_files,
                 &profile,
@@ -3472,7 +3408,7 @@ async fn run_agent(
         let successor_profile = orch.profile_or_root(&successor_slot).clone();
         // The fifth way an agent comes into existence, and the one that happens *inside* this
         // function. Keyed on the predecessor and its own ordered position within it — never on the
-        // successor's id, which comes off the global agent counter a playback assigns differently.
+        // successor's id, which comes off the global agent counter and says nothing about lineage.
         //
         // Minted here, before the client resolution, because the resolution has to say whose client
         // it is. A resolution that fails ends this agent's loop for good, so an ordinal spent on a
@@ -5038,7 +4974,7 @@ struct DetachedDispatch<'a> {
     worktree: Option<Worktree>,
     /// Which ending vocabulary it declares its result in.
     ending: EndingRole,
-    /// How it came to exist, for the [replay](crate::replay) provenance table. Carried here rather
+    /// How it came to exist, for the [replay](crate::capture) provenance table. Carried here rather
     /// than derived inside, because *why* an orchestrator dispatched an agent is knowledge only the
     /// dispatching site has: a reviewer and a merge agent arrive through this one function.
     origin: GgReplayAgentOrigin,
@@ -5319,7 +5255,6 @@ impl Agent {
             opening,
             turn_base,
             replay,
-            observer,
         } = setup;
         // The window and the capability modules, borrowed apart for the whole session: the loop
         // pushes into the one and refreshes the others' pinned blocks into it at each boundary, and
@@ -6191,7 +6126,6 @@ impl Agent {
                     amc: &amc,
                     emitter,
                     replay: replay.as_ref(),
-                    observer: observer.as_ref(),
                     pending_compaction,
                     ending_role,
                     exec_roster: &profile.subagents,
@@ -6863,23 +6797,13 @@ impl Agent {
                     emitter.emit(event);
                 }
 
-                // Replay capture: this is the one point every dispatched tool call funnels through
-                // with its final outcome (after any agent-managed-context reclaim rewrote it), so
-                // recording here pins ordinary registry dispatch and the intercepted
-                // delegation/review/advance tools alike — a decorator at the choke point,
-                // not a call scattered per tool. Recorded before the outcome is moved into the
-                // context.
+                // Session capture: this is the one point every dispatched tool call funnels
+                // through with its final outcome (after any agent-managed-context reclaim rewrote
+                // it), so recording here pins ordinary registry dispatch and the intercepted
+                // delegation/review/advance tools alike — a decorator at the choke point, not a
+                // call scattered per tool. Recorded before the outcome is moved into the context.
                 if let Some(recorder) = &replay {
                     recorder.record_tool_result(&self.id, call, &outcome);
-                }
-                // ...and the same choke point is where a reconstruction compares what this build's
-                // tool just produced against what the record says it produced, and — when they
-                // differ — feeds the **recorded** outcome forward. Re-running is what builds the
-                // workspace the next call reads; preferring the record is what keeps the
-                // reconstructed context window equal to the recorded one. After the recorder, so a
-                // playback's own capture pins what the *reconstruction* actually did.
-                if let Some(observer) = &observer {
-                    observer.tool_completed(&self.id, call, &mut outcome).await;
                 }
 
                 // Project management: a successful board mutation may have made issues actionable
@@ -7911,11 +7835,8 @@ struct DriveSetup {
     /// budget between its incarnations rather than one each — a machine with five states is not
     /// five times the run.
     turn_base: usize,
-    /// The [replay](crate::replay) recorder, when the capability is on.
+    /// The [replay](crate::capture) recorder, when the capability is on.
     replay: Option<Arc<GgRecorder>>,
-    /// The session's [observer](SessionObserver), when one is watching — a
-    /// [playback](crate::playback)'s, and nothing else.
-    observer: Option<Arc<dyn SessionObserver>>,
 }
 
 /// The [execution ceilings](RunLimits) threaded into the [turn loop](Agent::drive), together with
@@ -7961,7 +7882,7 @@ impl LimitsSetup {
         self.limits.check_cost(&self.spend, agent_id, turns)
     }
 
-    /// One read of the run's wall-clock deadline, for the [replay record](crate::replay) — or
+    /// One read of the run's wall-clock deadline, for the [replay record](crate::capture) — or
     /// `None` when the run declared no wall-clock budget, in which case the loop reads no clock at
     /// all and a record that carried one would be inventing it.
     ///

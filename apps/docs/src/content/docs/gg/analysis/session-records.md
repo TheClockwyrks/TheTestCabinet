@@ -1,15 +1,15 @@
 ---
-title: "Replay records"
+title: "Session records"
 ---
 
-A **replay record** pins the non-deterministic inputs a gg session consumed, so
-the session can be reconstructed afterward. This page specifies **format v2**,
+A **session record** pins what a gg session consumed, so a run that explains
+nothing on its own can still be explained. This page specifies **format v2**,
 which rewrites the record from a per-turn transcript into a content-addressed
-lockstep input log — and, because that removes the quadratic term, makes capture
+input log — and, because that removes the quadratic term, makes capture
 **always-on** rather than an opt-in debugging capability.
 
-The existing [replay](/gg/replay/) page describes the capability as it stands
-today. This is its redesign.
+The [session record](/gg/session-record/) page describes what the capture is for.
+This is its format.
 
 ## The problem with v1
 
@@ -44,8 +44,7 @@ four images are 2.7 MB, flat.
 > `seed` (fixed identity) + four content-addressed pools + an ordered input log
 
 This is [Foray's](/testing/adversarial/foray/architecture/) replay shape applied to
-gg: a fixed header plus the ordered non-deterministic inputs, re-run through the
-same engine, with a drift check. Size becomes
+gg: a fixed header plus the ordered inputs the session consumed. Size becomes
 `O(unique bytes) + O(Σ window items)`.
 
 **The four pools.** Messages, toolsets, texts, and image blobs. Each entry is
@@ -75,8 +74,8 @@ consumed the input and a globally monotonic `seq`.
 ## What counts as an input
 
 The reason to enumerate this exhaustively is that v1 silently dropped four
-categories that change control flow — so a reconstruction diverged precisely where
-a developer was most likely to be looking.
+categories that change control flow — so the record was blank precisely where a
+developer was most likely to be looking.
 
 | Input | Changes control flow? | v1 | v2 |
 | --- | --- | --- | --- |
@@ -97,20 +96,11 @@ That handoff-summarizer row was a straight bug: gg's second compaction client wa
 never wrapped in the recording decorator, so **every handoff-compaction model call
 in every record captured before v2 is missing**. Fixing it needed a discriminator
 on the entry — otherwise a compaction turn and the agent's own turn interleave into
-one indistinguishable queue, and a reconstruction would consume the wrong one. The
-client role is that discriminator, and it is why the second queue is
-*representable* rather than merely labelled.
+one indistinguishable queue. The client role is that discriminator.
 
-Two categories are *inherently* unreproducible and are handled by recording the
-**decision** rather than the mechanism: thread interleaving (recorded as `seq`,
-imposed on playback) and provider non-determinism (recorded as the response).
-
-One category is unreproducible and **not** handled, and this is stated rather than
-papered over: gg uses `std::collections::HashMap`, whose iteration order varies per
-process. Any iteration whose output reaches a prompt or a tool argument is a live
-non-determinism source. It does not affect a passive walk of a record; it will
-surface as spurious drift the moment [playback](/gg/analysis/playback/) drives the
-real loop. The fix is `BTreeMap`, and it belongs to playback's first step.
+Two categories are recorded as the **decision** rather than the mechanism: thread
+interleaving (recorded as `seq`) and provider non-determinism (recorded as the
+response).
 
 ## The prompt frame
 
@@ -136,7 +126,7 @@ image turn produces `error → call → frame`, so the frame attaches to the cal
 was actually sent.
 
 The recorder does **not** thread through the telemetry emitter to get this. The
-emitter is telemetry and stays unaware of replay.
+emitter is telemetry and stays unaware of capture.
 
 ## Capture is a journal, and assembly is somebody else's job
 
@@ -157,7 +147,7 @@ serialized the lot in one shot at the end. v2 splits capture from assembly:
 ### Capture stops atomically — it never drops a line
 
 A dropped pool line leaves a hole that positional assembly silently shifts,
-substituting the wrong message body into a reconstructed prompt. That is
+substituting the wrong message body into a recorded prompt. That is
 unacceptable, so nothing is ever dropped individually. Index minting and line
 sending happen under **one** critical section, and any failure — a size ceiling, a
 stalled disk, a dead writer — stops capture for the **whole run**. The pool arrays
@@ -200,13 +190,13 @@ This also fixes a **pre-existing** exposure: today a replay-captured run's
 published repositories are not retroactively cleaned; any containing a
 `.gg/replay.json` need a separate audit.
 
-## Salvaging the runs replay exists for
+## Salvaging the runs the record exists for
 
 Streaming capture does not, on its own, rescue the runs that most need rescuing. A
 `hung` or `timed_out` run **never reaches artifact collection** — the engine's
 error path stops the container and returns before the collector runs — so there is
 no collected tree and therefore no journal to assemble. Those are precisely the
-surprising outcomes replay was built for.
+surprising outcomes the record was built for.
 
 So the artifact collector grows one narrowly-scoped method: copy a single sidecar
 file out of a possibly-dying container, best-effort, returning "not found" rather
@@ -231,12 +221,9 @@ no prompt change must not invalidate every record on every release, and an
 uncommitted prompt edit _within_ one build must not pass.
 
 `formatVersion` is `#[serde(default)]`, and its absence means format 1. This is
-not cosmetic — every record captured to date has no version field, the backend
-stores and serves them as opaque bytes, and both the CLI and the console's Replay
-tab deserialize them directly. A required field would fail to parse all of them. v1
-records are upgraded into the v2 shape **on read**, through the same hand-written
-deserializer pattern the capability set already uses, so there is exactly one
-consumer code path and zero data migration.
+not cosmetic — every record captured to date has no version field, and the backend
+stores and serves them as opaque bytes. A required field would fail to parse all of
+them.
 
 Foray writes a replay version and never checks it. Do not copy that omission: a
 record from a newer gg is **refused**, not guessed at.
@@ -252,8 +239,8 @@ So **standard capture is always on**, and the `replay`
 fidelity — every clock read, and no payload clipping. Three reasons, in order of
 weight:
 
-1. **An opt-in debugging capture is never on when you need it.** Replay exists for
-   surprising outcomes, which are by definition not predicted.
+1. **An opt-in debugging capture is never on when you need it.** The record exists
+   for surprising outcomes, which are by definition not predicted.
 2. **It is now the only artifact from which the four typed context fields exist at
    all.** Making that opt-in makes gg's own context construction unauditable by
    default.
@@ -273,11 +260,8 @@ worth having if what it captures is enough on its own, so **every input that
 changes control flow is recorded at both fidelities** — including the deadline
 clock, which is the one clock read the loop branches on.
 
-**Full adds two things.** It stores every text payload whole; and it records each
-model call's measured latency. The latency is here rather than in the standard set
-for the same reason it is worth recording at all: a playback removes model latency
-entirely and compares everything *but* it, so a standard capture would be spending
-bytes on the one number a reconstruction deliberately does not reproduce.
+**Full adds two things.** It stores every text payload whole, and it records each
+model call's measured latency.
 
 **A clipped payload says so.** The text pool is a flat array of strings with
 nowhere to record that an entry is a fragment, and a reader handed 32 KiB of a
@@ -286,9 +270,9 @@ from one that printed forty megabytes — which is precisely the case where the
 missing part is the part worth having. So the record carries a sparse **clip
 table**: for each clipped pool entry, how many bytes the whole payload had and
 **its content address**. That address is what keeps a clipped record *checkable*:
-a reconstruction that re-executes the command has the whole output in hand, and
-hashing it answers "is this the same output?" exactly, from a record that kept a
-fraction of it. It is also what makes the pool's dedup unambiguous — interning
+anyone holding the whole output can hash it and answer "is this the same output?"
+exactly, from a record that kept a fraction of it. It is also what makes the pool's
+dedup unambiguous — interning
 keys on the address of the original, so two payloads that happen to share a tail
 are two entries with two rows rather than one entry whose single row could
 describe only one of them.
@@ -301,9 +285,7 @@ decomposes into four parts, none of which is a fidelity distinction:
 
 - **Prompt templates** are embedded in the gg binary at compile time. They are
   never read from a filesystem, so there is nothing to digest; which templates a
-  run used is exactly what the recorder's `commit` answers, and a
-  [turn fingerprint](#what-this-hands-to-playback) is what detects one having
-  changed.
+  run used is exactly what the recorder's `commit` answers.
 - **Memories** are created during the session, not loaded at startup. Every
   mutation is already a recorded tool outcome and every rendered index is already
   a pooled message.
@@ -315,7 +297,7 @@ decomposes into four parts, none of which is a fidelity distinction:
   run reaches the record verbatim regardless: the description listing is part of
   the pooled system message, and reading one is a recorded tool outcome. What a
   verbatim capture would add is the body of a skill the session *never read* —
-  inventory rather than input, and not something a reconstruction can diverge on.
+  inventory rather than input, and not something the session ever consumed.
 
 ## Serving and consuming
 
@@ -330,31 +312,7 @@ This is the artifact convention the rest of gg analysis follows —
 [code analysis](/gg/analysis/code-analysis/) uses the same store slot shape, route
 pair, driver mirror, and negotiation helper.
 
-The console's Replay view is rewritten onto the pooled format, reusing the live
-monitor's pooled-message components rather than the bespoke display narrowers v1
-needed for opaque JSON payloads, and gains a **Context column** — band, pinned or
-ephemeral, session turn, and `path@offset+limit` for a paged view — which is the
-prompt frame's payoff made visible.
-
-## What this hands to playback
-
-[Playback](/gg/analysis/playback/) is a hard downstream consumer. Five things it
-cannot be built without, all of which are v2 additions:
-
-- **Per-turn fingerprints**, so a reconstruction can prove a recorded response is
-  still an answer to the question the loop is asking. Under pooling these are
-  nearly free: the pooled message and toolset ids are _already_ SHA-256 content
-  addresses, so a turn's fingerprint is a fold over pool ids rather than a second
-  hash over full bodies.
-- **An agent provenance table** — one row per agent, not per turn — covering all
-  five creation paths. Three of them (issue attempts, reviewers, merge agents) are
-  created with no parent, so they are bindable only by the board work they were
-  dispatched for.
-- **The seed**, as blob references. Because an autoloaded case's reference mockups
-  are *already* in the blob pool — they were sent to the model — recording the seed
-  costs **zero additional bytes**, which resolves what would otherwise be a real
-  record-size-versus-self-containedness trade.
-- **The client-role discriminator**, so a compaction turn cannot consume an agent's
-  next real turn.
-- **The global `seq`**, which is what lets a reconstruction impose the recorded
-  cross-agent interleaving.
+The record has no console view. Every gg surface the console renders — live and
+post-run alike — is folded from the [telemetry](/gg/telemetry/) stream, which is
+what keeps a finished run's page identical to the page its live monitor showed. The
+record is the diagnostic underneath, reachable in a run's downloadable archive.

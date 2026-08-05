@@ -57,7 +57,7 @@ use std::sync::Arc;
 
 use tokio::task;
 
-use crate::replay::{GgRecorder, RecordedCommand, shell_cwd};
+use crate::capture::{GgRecorder, RecordedCommand, shell_cwd};
 
 /// The committer/author identity gg stamps its own commits with (the baseline commit, a worktree's
 /// work commit, and a merge commit), passed as one-shot `-c` overrides so gg never depends on a
@@ -90,7 +90,7 @@ const GG_IDENTITY: &[&str] = &[
 /// that the date means nothing, rather than that the run happened in 1970.
 const GG_COMMIT_DATE: &str = "1970-01-01T00:00:00Z";
 
-/// Where a `git` invocation is reported for [replay capture](crate::replay), and under whose name.
+/// Where a `git` invocation is reported for [replay capture](crate::capture), and under whose name.
 ///
 /// Threaded into every function in this module as an explicit parameter rather than reached for
 /// through run-global state, for the reason the module already threads emitters: gg's orchestration
@@ -100,33 +100,17 @@ const GG_COMMIT_DATE: &str = "1970-01-01T00:00:00Z";
 /// A [`disabled`](Self::disabled) capture records nothing and is the shape every test and every
 /// pre-orchestrator call takes, so no call site needs an `Option`.
 ///
-/// # Why gg's own git is an input at all
+/// # Why gg's own git is captured at all
 ///
-/// A `git` invocation here is gg's bookkeeping, not model-visible non-determinism, and a
-/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) re-runs it for real rather than
-/// replaying its result. It is recorded because the *result* is what a reconstruction is compared
-/// against: a merge that conflicted changes the run, and a speculation judge scores whatever
-/// `git diff` printed. In format v1 these bypassed tool dispatch entirely and were captured
-/// nowhere, so a run that ended in a conflict left no trace of the conflict.
-///
-/// # And why a reconstruction watches it
-///
-/// A playback re-runs every one of these for real, so it needs none of their *results* — but it
-/// does need to know **when** they happened. An [issue](https://docs.testcabinet.ai/gg/project-management/)'s accept-and-merge is a `git`
-/// sequence that moves the board, and the board is rendered into every agent's pinned prompt, so a
-/// reconstruction that let the next agent take its turn before the merge landed would build a
-/// window the run never had. That is what the
-/// [observer](crate::observer::SessionObserver::git_invoked) is for, and it is why it rides this
-/// struct rather than living beside the recorder: the two want exactly the same choke point, under
-/// exactly the same agent.
+/// A `git` invocation here is gg's bookkeeping rather than anything the model asked for, which is
+/// why it bypasses tool dispatch — and bypassing dispatch is exactly why it has to be captured
+/// here. Its *result* is what explains a session that went wrong: a merge that conflicted changes
+/// the run, and a speculation judge scores whatever `git diff` printed. A run that ended in a
+/// conflict and recorded nothing leaves no trace of the conflict.
 #[derive(Clone, Default)]
 pub struct GitCapture {
     /// The run's recorder, or `None` for a capture that records nothing.
     recorder: Option<Arc<GgRecorder>>,
-    /// Who is told that an invocation finished, for the
-    /// [ordering barrier](crate::replay_inputs::ReplayInputs::await_turn)'s sake. `None` for every
-    /// run that is not a reconstruction, which is all of them but one.
-    observer: Option<Arc<dyn crate::observer::SessionObserver>>,
     /// The agent every invocation made through this capture is stamped with.
     agent_id: String,
     /// The workspace root recorded working directories are expressed relative to.
@@ -143,7 +127,6 @@ impl GitCapture {
     ) -> Self {
         Self {
             recorder: Some(recorder),
-            observer: None,
             agent_id: agent_id.into(),
             workspace_dir: workspace_dir.into(),
         }
@@ -154,7 +137,6 @@ impl GitCapture {
     pub fn unrecorded(agent_id: impl Into<String>, workspace_dir: impl Into<PathBuf>) -> Self {
         Self {
             recorder: None,
-            observer: None,
             agent_id: agent_id.into(),
             workspace_dir: workspace_dir.into(),
         }
@@ -165,32 +147,17 @@ impl GitCapture {
         Self::default()
     }
 
-    /// The same capture, additionally telling `observer` about every invocation it sees.
-    #[must_use]
-    pub fn observed_by(mut self, observer: Arc<dyn crate::observer::SessionObserver>) -> Self {
-        self.observer = Some(observer);
-        self
-    }
-
     /// Record one finished invocation: `git <args>` run in `dir`.
     ///
     /// Called from [`git_output`], the single seam every invocation in this module goes through,
     /// so *every* command is recorded rather than the handful the callers thought to name — a
     /// `git status --porcelain` that unexpectedly reported a clean tree is exactly the kind of
     /// thing a record is opened to find.
-    ///
-    /// The [observer](crate::observer::SessionObserver::git_invoked) is told first and
-    /// unconditionally — before the recorder, and whether or not there is one — because it is the
-    /// half that has to work in a run where capture is answering a *reconstruction* rather than
-    /// writing a journal.
     fn record(&self, dir: &Path, args: &[String], output: &Output) {
-        let command = format!("git {}", args.join(" "));
-        if let Some(observer) = &self.observer {
-            observer.git_invoked(&self.agent_id, &command);
-        }
         let Some(recorder) = &self.recorder else {
             return;
         };
+        let command = format!("git {}", args.join(" "));
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         recorder.record_git(

@@ -3142,16 +3142,19 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers the Replay step-through on a finished run whatever its capabilities", () => {
-    // Capture is unconditional (see gg/replay), so the link is not gated on the
-    // `replay` capability — which `ALL_CAPABILITIES` deliberately does not include.
-    // The gate it replaces read the root agent's set alone, so it was wrong even on
-    // its own terms: enabling replay on a subagent silently did nothing.
+  it("sends a finished run to the views rebuilt from its telemetry", () => {
+    // A finished run is read through the very panels its live monitor rendered — the
+    // telemetry stream is the source for both, so the post-run view carries exactly
+    // what the live one did rather than a second, separately captured account of it.
     renderMonitor(EVENTS, completingWorkersValue);
-    const link = screen.getByRole("link", {
-      name: /step through what each agent saw and did/i,
-    });
-    expect(link).toHaveAttribute("href", "/runs/gg/run-1/replay");
+    expect(
+      screen.getByRole("link", { name: /keep reading this view/i }),
+    ).toHaveAttribute("href", "/runs/run-1/gg");
+    expect(
+      screen.queryByRole("link", {
+        name: /step through what each agent saw and did/i,
+      }),
+    ).toBeNull();
   });
 
   // --- What a responses-as-code agent is reported to have DONE --------------------

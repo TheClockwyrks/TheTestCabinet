@@ -1,7 +1,6 @@
 import { Route } from "react-router";
 import { routePatterns } from "../../../routes";
 import { GgRunMonitorPage } from "./GgRunMonitorPage";
-import { GgReplayView } from "./GgReplayView";
 
 // The gg run-execution routes: the live gg run monitor (`/runs/gg/:jobId/live`) and
 // the debug-only step-through replay (`/runs/gg/:runId/replay`). A gg run is
@@ -19,7 +18,6 @@ export function ggRoutes(canExecute: boolean) {
   return (
     <>
       <Route path={routePatterns.ggMonitor} element={<GgRunMonitorPage />} />
-      <Route path={routePatterns.ggReplay} element={<GgReplayView />} />
     </>
   );
 }

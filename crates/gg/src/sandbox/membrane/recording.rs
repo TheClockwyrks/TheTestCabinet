@@ -10,7 +10,7 @@
 //! they answer different questions:
 //!
 //! * the [tool record](super::capture) — what *ran*: `read_file`, dispatched, streamed as a
-//!   `ToolCall`/`ToolResult` pair, pinned in the [replay](crate::replay) so a re-run feeds the
+//!   `ToolCall`/`ToolResult` pair, pinned in the [replay](crate::capture) so a re-run feeds the
 //!   recorded outcome back;
 //! * the API record — what the *model wrote*: `view.open_file`, which happens to bridge to
 //!   `read_file`, and `context.list`, which bridges to nothing at all.

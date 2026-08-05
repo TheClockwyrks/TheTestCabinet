@@ -1820,7 +1820,7 @@ export type GgTurnErrorKind =
  *
  * A bucket that is permanently zero in every console is a defect, so each variant below documents
  * the exact site that raises it. The set is exactly the distinctions gg *already makes internally*
- * and used to discard at the recording seam: seven shapes of `ModelError`, five of `PrepareError`,
+ * and used to discard at the recording seam: six shapes of `ModelError`, five of `PrepareError`,
  * three of the sandbox's own ceilings, the three classes the guest already types an uncaught throw
  * with over WIT, and the two structurally different ways a turn can end without declaring work.
  *
@@ -1842,7 +1842,6 @@ export type GgTurnErrorType =
   | "model_response_loop"
   | "model_vision_unsupported"
   | "model_parse"
-  | "model_playback"
   | "transpile_syntax"
   | "transpile_semantic"
   | "transpile_compile"
@@ -4559,7 +4558,7 @@ export type GgTelemetryEvent = {
  * as JSON [`Value`]s — the same way the [telemetry stream](GgTelemetryKind::ToolCall) carries a tool
  * call's `args` — because their concrete shapes are owned by the `gg` binary (its `Message`,
  * `ToolDefinition`, `ModelResponse`, `ToolCall`, and `ToolOutcome` types), not by this contract
- * crate; the [replay driver](https://docs.testcabinet.ai/gg/replay/) deserializes each back into
+ * crate; the [replay driver](https://docs.testcabinet.ai/gg/session-record/) deserializes each back into
  * those types. The variant tag is the `type` field (`model_io` / `tool_result`), inline with the
  * entry's `agentId`/`seq` envelope.
  */
@@ -4670,7 +4669,7 @@ export type GgReplayEntryV1 = {
  * (`GET /runs/{id}/replay`). It pairs the run's *configuration* — its [`capability_set`](Self::capability_set),
  * the same slice-by dimension the [session summary](GgSessionSummary) carries — with the ordered
  * [`entries`](Self::entries) that pin every non-deterministic input (each agent's model I/O and every
- * tool result). A [replay driver](https://docs.testcabinet.ai/gg/replay/) re-runs the session from
+ * tool result). A [replay driver](https://docs.testcabinet.ai/gg/session-record/) re-runs the session from
  * this record, feeding each agent the recorded response and each tool call the recorded outcome, so
  * a developer can step through exactly what each agent saw and did. The record is *additive* to the
  * telemetry: the stream is identical whether replay was captured or not.
@@ -4724,7 +4723,7 @@ export type GgReplayToolStep = {
  * A step is one **model turn** of one **agent**: what the agent [`saw`](Self::saw) (the
  * `{ messages, tools }` request it was given) and what it [`did`](Self::did) (the model response),
  * plus [`tool_results`](Self::tool_results) — each tool call the turn made paired with the recorded
- * outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/replay/)
+ * outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/session-record/)
  * walks the agent tree turn by turn and produces exactly this sequence, so a developer can step
  * through what each agent saw and did without re-deriving it from the raw
  * [entries](GgReplayRecordV1::entries).
@@ -4836,7 +4835,6 @@ export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
   model_response_loop: "model looped every attempt",
   model_vision_unsupported: "model cannot see images",
   model_parse: "unparseable model response",
-  model_playback: "playback diverged",
   transpile_syntax: "syntax error",
   transpile_semantic: "semantic error",
   transpile_compile: "compiler rejected the program",
@@ -4866,7 +4864,6 @@ export const GG_TURN_ERROR_TYPE_BASE: Readonly<
   model_response_loop: "model_api",
   model_vision_unsupported: "model_api",
   model_parse: "model_api",
-  model_playback: "model_api",
   transpile_syntax: "transpile",
   transpile_semantic: "transpile",
   transpile_compile: "transpile",
@@ -4895,7 +4892,6 @@ export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
   "model_response_loop",
   "model_vision_unsupported",
   "model_parse",
-  "model_playback",
   "transpile_syntax",
   "transpile_semantic",
   "transpile_compile",

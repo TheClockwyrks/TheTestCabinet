@@ -590,26 +590,24 @@ export default defineConfig({
                 "gg/program-library",
                 "gg/telemetry",
                 "gg/result-aggregation",
-                "gg/replay",
+                "gg/session-record",
               ],
             },
             // The analysis layer — what makes a gg run answerable after the fact.
             // A sibling of Capabilities rather than a member of it: none of these
             // is an ablatable run configuration. They are the capture format, the
-            // reconstruction that drives the real loop from it, the query language
-            // over every recorded session, and the static measurement of the source
-            // a run produced. Grouped together because they share one contract
-            // surface, one run-tree artifact convention, and one post-run stage.
+            // query language over every recorded session, and the static
+            // measurement of the source a run produced. Grouped together because
+            // they share one contract surface, one run-tree artifact convention,
+            // and one post-run stage.
             {
               label: "Analysis",
               collapsed: true,
               items: [
                 "gg/analysis/overview",
-                // Format v2 of the replay record. First because everything in the
-                // reconstruction track is built on it.
-                "gg/analysis/replay-records",
-                // Consumes that format — read the record page first.
-                "gg/analysis/playback",
+                // Format v2 of the session record — the capture a hung run is
+                // explained from.
+                "gg/analysis/session-records",
                 "gg/analysis/query-language",
                 "gg/analysis/code-analysis",
               ],

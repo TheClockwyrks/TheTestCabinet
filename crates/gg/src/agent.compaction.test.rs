@@ -60,7 +60,6 @@ async fn drive_compaction(
                 opening: Opening::Fresh,
                 turn_base: 0,
                 replay: None,
-                observer: None,
             },
             &[],
             &GgAgentConfig::root(),

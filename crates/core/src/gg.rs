@@ -1196,7 +1196,7 @@ pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
 /// at — and capture **degrades, it never fails the run it observes**: a journal that cannot be
 /// opened is a warning and the run proceeds without one.
 ///
-/// [replay]: https://docs.testcabinet.ai/gg/replay/
+/// [replay]: https://docs.testcabinet.ai/gg/session-record/
 pub const CAPABILITY_REPLAY: &str = "replay";
 
 /// The workspace-relative dotdir gg keeps **its own** files in during a run: the replay
@@ -3126,7 +3126,7 @@ impl GgTurnErrorKind {
 ///
 /// A bucket that is permanently zero in every console is a defect, so each variant below documents
 /// the exact site that raises it. The set is exactly the distinctions gg *already makes internally*
-/// and used to discard at the recording seam: seven shapes of `ModelError`, five of `PrepareError`,
+/// and used to discard at the recording seam: six shapes of `ModelError`, five of `PrepareError`,
 /// three of the sandbox's own ceilings, the three classes the guest already types an uncaught throw
 /// with over WIT, and the two structurally different ways a turn can end without declaring work.
 ///
@@ -3168,11 +3168,6 @@ pub enum GgTurnErrorType {
     /// A `2xx` response could not be parsed into a reply. Retrying an already-successful-but-
     /// malformed response would not help, so the turn ends on it.
     ModelParse,
-    /// A [reconstruction](CAPABILITY_REPLAY) could not answer the call from the record: the
-    /// recorded turns ran out, or the live request is no longer the recorded question. Reachable
-    /// only on a playback, which is the point — the run stops at the divergence rather than
-    /// inventing an answer.
-    ModelPlayback,
     /// The program is not valid source in its [language](GgProgramLanguage) — the parser's own
     /// diagnostics. Nothing ran.
     TranspileSyntax,
@@ -3256,14 +3251,13 @@ impl GgTurnErrorType {
     ///
     /// The grouping is the reading order a console ranks and labels from, and it is what makes
     /// "every type has a base, and every base has at least one type" checkable rather than asserted.
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 20] = [
         Self::ModelAuth,
         Self::ModelRejected,
         Self::ModelRetryExhausted,
         Self::ModelResponseLoop,
         Self::ModelVisionUnsupported,
         Self::ModelParse,
-        Self::ModelPlayback,
         Self::TranspileSyntax,
         Self::TranspileSemantic,
         Self::TranspileCompile,
@@ -3293,8 +3287,7 @@ impl GgTurnErrorType {
             | Self::ModelRetryExhausted
             | Self::ModelResponseLoop
             | Self::ModelVisionUnsupported
-            | Self::ModelParse
-            | Self::ModelPlayback => GgTurnErrorKind::ModelApi,
+            | Self::ModelParse => GgTurnErrorKind::ModelApi,
             Self::TranspileSyntax
             | Self::TranspileSemantic
             | Self::TranspileLowering
@@ -3327,7 +3320,6 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model_response_loop",
             Self::ModelVisionUnsupported => "model_vision_unsupported",
             Self::ModelParse => "model_parse",
-            Self::ModelPlayback => "model_playback",
             Self::TranspileSyntax => "transpile_syntax",
             Self::TranspileSemantic => "transpile_semantic",
             Self::TranspileCompile => "transpile_compile",
@@ -3358,7 +3350,6 @@ impl GgTurnErrorType {
             Self::ModelResponseLoop => "model looped every attempt",
             Self::ModelVisionUnsupported => "model cannot see images",
             Self::ModelParse => "unparseable model response",
-            Self::ModelPlayback => "playback diverged",
             Self::TranspileSyntax => "syntax error",
             Self::TranspileSemantic => "semantic error",
             Self::TranspileCompile => "compiler rejected the program",
@@ -4956,7 +4947,7 @@ pub struct GgSessionSummary {
 /// as JSON [`Value`]s — the same way the [telemetry stream](GgTelemetryKind::ToolCall) carries a tool
 /// call's `args` — because their concrete shapes are owned by the `gg` binary (its `Message`,
 /// `ToolDefinition`, `ModelResponse`, `ToolCall`, and `ToolOutcome` types), not by this contract
-/// crate; the [replay driver](https://docs.testcabinet.ai/gg/replay/) deserializes each back into
+/// crate; the [replay driver](https://docs.testcabinet.ai/gg/session-record/) deserializes each back into
 /// those types. The variant tag is the `type` field (`model_io` / `tool_result`), inline with the
 /// entry's `agentId`/`seq` envelope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -5049,7 +5040,7 @@ pub struct GgReplayEntryV1 {
 /// (`GET /runs/{id}/replay`). It pairs the run's *configuration* — its [`capability_set`](Self::capability_set),
 /// the same slice-by dimension the [session summary](GgSessionSummary) carries — with the ordered
 /// [`entries`](Self::entries) that pin every non-deterministic input (each agent's model I/O and every
-/// tool result). A [replay driver](https://docs.testcabinet.ai/gg/replay/) re-runs the session from
+/// tool result). A [replay driver](https://docs.testcabinet.ai/gg/session-record/) re-runs the session from
 /// this record, feeding each agent the recorded response and each tool call the recorded outcome, so
 /// a developer can step through exactly what each agent saw and did. The record is *additive* to the
 /// telemetry: the stream is identical whether replay was captured or not.
@@ -5073,7 +5064,7 @@ pub struct GgReplayRecordV1 {
 
 impl GgReplayRecordV1 {
     /// Derive the ordered, per-agent [step](GgReplayStep) list — the **step-through data model** a
-    /// [replay](https://docs.testcabinet.ai/gg/replay/) debugging view renders.
+    /// [replay](https://docs.testcabinet.ai/gg/session-record/) debugging view renders.
     ///
     /// A [model-I/O](GgReplayEntryKindV1::ModelIo) entry opens a step for its agent (what it **saw**:
     /// the request; and what it **did**: the response), and each following
@@ -5086,7 +5077,7 @@ impl GgReplayRecordV1 {
     /// null request/response rather than dropped. The [replay driver] performs the *strict* variant
     /// that reconstructs the run and reports such a record as an incomplete-capture gap.
     ///
-    /// [replay driver]: https://docs.testcabinet.ai/gg/replay/
+    /// [replay driver]: https://docs.testcabinet.ai/gg/session-record/
     pub fn steps(&self) -> Vec<GgReplayStep> {
         let mut entries: Vec<&GgReplayEntryV1> = self.entries.iter().collect();
         entries.sort_by_key(|entry| entry.seq);
@@ -5156,7 +5147,7 @@ pub struct GgReplayToolStep {
 /// A step is one **model turn** of one **agent**: what the agent [`saw`](Self::saw) (the
 /// `{ messages, tools }` request it was given) and what it [`did`](Self::did) (the model response),
 /// plus [`tool_results`](Self::tool_results) — each tool call the turn made paired with the recorded
-/// outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/replay/)
+/// outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/session-record/)
 /// walks the agent tree turn by turn and produces exactly this sequence, so a developer can step
 /// through what each agent saw and did without re-deriving it from the raw
 /// [entries](GgReplayRecordV1::entries).

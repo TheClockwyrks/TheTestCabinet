@@ -1,6 +1,6 @@
 //! gg **replay capture**: streaming the non-deterministic inputs of a run into an on-disk
 //! [journal](test_cabinet_core::gg_replay_journal) so the session can be
-//! [reconstructed](https://docs.testcabinet.ai/gg/replay/) afterward.
+//! [reconstructed](https://docs.testcabinet.ai/gg/session-record/) afterward.
 //!
 //! The [telemetry stream](crate::telemetry) is already most of the capture, but it carries
 //! *summaries*, not the exact inputs a faithful re-run needs. So gg additionally pins each agent's
@@ -411,25 +411,13 @@ fn replay_model_error(error: &ModelError) -> GgReplayModelError {
             attempts: Some(*attempts),
             model_id: None,
         },
-        // A [playback](crate::playback) synthesized it, so the run being captured is itself a
-        // reconstruction. Recorded as the class the loop branched on — it is fatal and
-        // non-retryable, exactly like a refused request — with the message carrying the truth.
-        // The contract enum is deliberately *not* widened for it: no live run can produce this
-        // variant, and a record captured by a playback is never served anywhere.
-        ModelError::Playback(_) => GgReplayModelError {
-            kind: GgReplayModelErrorKind::Fatal,
-            message,
-            status: None,
-            attempts: None,
-            model_id: None,
-        },
     }
 }
 
 /// The mutable half of a capture, holding everything that must move together.
 ///
 /// One mutex over the interner, the sequence counter and the queue is the whole of
-/// [R12](https://docs.testcabinet.ai/gg/analysis/replay-records/): an index minted without its line
+/// [R12](https://docs.testcabinet.ai/gg/analysis/session-records/): an index minted without its line
 /// queued, or a line queued out of index order, is a hole in a pool — and a hole is not a missing
 /// entry, it is *every later entry referencing the wrong body*.
 struct Capture {
@@ -1477,5 +1465,5 @@ impl ShellRunner for RecordingShellRunner {
 }
 
 #[cfg(test)]
-#[path = "replay.test.rs"]
+#[path = "capture.test.rs"]
 mod tests;

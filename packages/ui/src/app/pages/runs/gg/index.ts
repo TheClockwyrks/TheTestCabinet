@@ -6,6 +6,5 @@
 // gg tab, since a saved configuration is what a run is launched from), while the
 // cross-run analysis surfaces are their own `/gg` section. See apps/docs `gg/`.
 export { GgRunMonitorPage } from "./GgRunMonitorPage";
-export { GgReplayView } from "./GgReplayView";
 export { GgConfigEditor } from "./GgConfigEditor";
 export { ggRoutes } from "./router";

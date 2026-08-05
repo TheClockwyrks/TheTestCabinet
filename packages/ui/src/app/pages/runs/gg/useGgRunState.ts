@@ -351,9 +351,9 @@ export interface ContextAction {
 // The telemetry stream carries the *descriptor* alone — `context_message` records each
 // image's media type and decoded size and deliberately never its bytes, because the
 // stream is recorded with every run and a base64 payload re-sent on every turn it
-// survives is exactly the term that made the v1 replay record quadratic. A
-// [replay record](./replayModel) pools each image's bytes **once**, so a view backed by
-// one can show the picture itself; `dataBase64` is what tells the two sources apart.
+// survives would dominate it. `dataBase64` is therefore absent for every source the
+// console reads today; it stays on the type because the descriptor and the bytes are
+// different facts and a renderer must be able to say which it has.
 export interface PooledImage extends GgLoggedImage {
   // The image's bytes, base64-encoded (no `data:` prefix), when the source carries them.
   dataBase64?: string;
@@ -361,8 +361,7 @@ export interface PooledImage extends GgLoggedImage {
 
 // One pooled message from the message log (`context_message`) — the full body of a
 // single message in the window, recorded once and referenced by id from each turn's
-// prompt (see gg/context-visibility). This is also the shape the Replay view resolves a
-// replay record's pooled bodies into, so one renderer serves both sources.
+// prompt (see gg/context-visibility).
 export interface PooledMessage {
   id: string;
   // system | user | assistant | tool.
@@ -374,9 +373,8 @@ export interface PooledMessage {
   // The message's estimated share of the window — the same per-item estimate the
   // context-breakdown bands are summed from.
   //
-  // Absent rather than zero when the source does not carry one: a replay record pins the
-  // exact message bodies but not gg's token estimate of them, and rendering that as `0`
-  // would report a real message as costing nothing.
+  // Absent rather than zero when the source does not carry one: rendering an unmeasured
+  // message as `0` would report a real message as costing nothing.
   tokens?: number;
   // The window item's selector tag, when it carried one — the workspace path a file view
   // shows, or the label an agent gave a text view it composed. It is what makes the

@@ -116,7 +116,6 @@ async fn drive_instance_in(
                 opening: Opening::Fresh,
                 turn_base: 0,
                 replay: None,
-                observer: None,
             },
             &[],
             profile,

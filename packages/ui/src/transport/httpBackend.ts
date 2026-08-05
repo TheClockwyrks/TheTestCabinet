@@ -45,7 +45,6 @@ import type {
   RunSummaryPage,
   Specification,
   SpecRole,
-  StoredGgReplay,
   StoredReview,
   StoredRun,
   TestCase,
@@ -53,7 +52,6 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
-import { GG_REPLAY_FORMAT_V1, GG_REPLAY_FORMAT_VERSION } from "../client";
 import type {
   AssetSheet,
   ModelSpec,
@@ -67,10 +65,8 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
-  GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
 import type { GgReference } from "@test-cabinet/run-record/gg-reference";
-import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
   GgDashboard,
@@ -924,37 +920,6 @@ export function createHttpBackend(baseUrl: string): BackendClient {
         onProgress,
       );
       return { events, raw: null };
-    },
-
-    async readGgReplay(id: string): Promise<StoredGgReplay | null> {
-      // The backend serves the stored replay record as JSON, and 404s for a run that
-      // has none — every gg run is captured from 0.7.0 on, so that is now an older run
-      // rather than the ordinary case. A raw fetch lets the 404 resolve to `null` (a
-      // tidy "no replay" state) while any other non-2xx still surfaces as an error.
-      //
-      // The request advertises no `accept-encoding` of its own: the browser always sends
-      // one, and the route negotiates the stored gzip against the *request's* header.
-      const res = await fetch(
-        joinUrl(baseUrl, `/runs/${encodeURIComponent(id)}/replay`),
-        { headers: { accept: "application/json" } },
-      );
-      if (res.status === 404) return null;
-      if (!res.ok) {
-        throw new Error(`replay fetch failed: ${res.status} ${res.statusText}`);
-      }
-      // Tagged, never assumed — see `StoredGgReplay`. An absent `formatVersion` is 1,
-      // which is what every record stored before the field existed carries; anything
-      // past the version this app knows is refused rather than walked, because a newer
-      // record may hold entry kinds this build has never heard of and a partial walk of
-      // one is a plausible-looking lie.
-      const body = (await res.json()) as { formatVersion?: number };
-      const formatVersion = body.formatVersion ?? GG_REPLAY_FORMAT_V1;
-      if (formatVersion > GG_REPLAY_FORMAT_VERSION) {
-        return { format: "newer", formatVersion };
-      }
-      return formatVersion >= GG_REPLAY_FORMAT_VERSION
-        ? { format: "v2", record: body as GgReplayRecord }
-        : { format: "v1", record: body as GgReplayRecordV1 };
     },
 
     async readCodeAnalysis(id: string): Promise<CodeAnalysisDocument | null> {

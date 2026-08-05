@@ -3545,14 +3545,13 @@ pub trait ClientFactory: Send + Sync {
     /// Build a fresh client for `binding` on behalf of `identity` — the resolution gg's turn loop
     /// actually makes.
     ///
-    /// The identity is the whole reason this method exists. A
-    /// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers each agent's calls
-    /// from *that agent's* recorded queue, and it cannot key on the agent id: ids come off a global
-    /// counter in the order agents reach their spawn, and a playback removes model latency
-    /// entirely, so two concurrent agents interleave differently and an id-keyed lookup would hand
-    /// agent A the responses recorded for agent B. So the caller states the agent's
-    /// [provenance](AgentIdentity::origin) — which is a function of things a reconstruction
-    /// re-derives on its own — and which of gg's [two clients](GgClientRole) it is asking for.
+    /// The identity is the whole reason this method exists. A scripted factory answers each agent's
+    /// calls from *that agent's* script, and it cannot key on the agent id: ids come off a global
+    /// counter in the order agents reach their spawn, so two concurrent agents interleave
+    /// differently from run to run and an id-keyed lookup would hand agent A the replies written
+    /// for agent B. So the caller states the agent's [provenance](AgentIdentity::origin) — which is
+    /// a function of the run's own structure rather than of its scheduling — and which of gg's
+    /// [two clients](GgClientRole) it is asking for.
     ///
     /// The default ignores it and delegates, which is exactly right for every factory that does
     /// not care who is asking ([`DefaultClientFactory`] and the test suite's scripted ones): the

@@ -372,23 +372,6 @@ pub enum ModelError {
         /// line for each discarded attempt describe the same event identically.
         detail: String,
     },
-    /// A [playback](crate::playback) could not answer this call from the record: its
-    /// agent's recorded turns are exhausted, the live request is no longer the recorded
-    /// question, or the client was never bound to a recorded agent at all.
-    ///
-    /// Fatal by construction, and that is the point. A reconstruction ends the agent here
-    /// rather than inventing an answer, so the run stops at the divergence and the report
-    /// says what stopped it. It is also the only shape in which a playback can express
-    /// "the recorded run ended on its wall clock and this one did not": the turns simply
-    /// run out, the agent ends on this error, and the terminal comparison reports
-    /// `max_runtime → model_error` rather than faking a clock gg has no seam for.
-    ///
-    /// No live client can produce it, which is why it does **not** widen the recorded
-    /// [error kind](test_cabinet_core::gg_replay::GgReplayModelErrorKind) contract — a
-    /// playback's own capture is never served, and the class a consumer branches on is
-    /// still `fatal`.
-    #[error("playback: {0}")]
-    Playback(String),
 }
 
 impl ModelError {
@@ -430,7 +413,6 @@ impl ModelError {
             ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
             ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
             ModelError::Parse(_) => TurnErrorType::ModelParse,
-            ModelError::Playback(_) => TurnErrorType::ModelPlayback,
         }
     }
 

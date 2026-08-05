@@ -285,9 +285,8 @@ fn default_local_candidates() -> Vec<PathBuf> {
 /// The `owner/repo` a `gg` release is fetched from: `TCAB_GG_RELEASE_REPO` when set,
 /// otherwise `TheClockwyrks/test-cabinet`.
 ///
-/// Public because the run path is not the only thing that resolves a release: `tcab gg-replay
-/// --gg <VERSION>` downloads an *older* gg to reconstruct a record that gg wrote, and it has to
-/// look in the same place a run would. Two independent copies of "which repo" is precisely the
+/// Public because the run path is not the only thing that resolves a release, and every caller has
+/// to look in the same place a run would. Two independent copies of "which repo" is precisely the
 /// drift that makes one of them fetch from a repository nothing is published to.
 pub fn release_repo() -> String {
     release_repo_with(&|key| std::env::var(key).ok())

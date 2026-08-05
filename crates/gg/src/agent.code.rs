@@ -976,11 +976,6 @@ pub(super) struct CodeTurn<'a> {
     pub(super) emitter: &'a Emitter,
     /// The replay recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
-    /// The session's [observer](crate::observer::SessionObserver), when one is watching — a
-    /// [playback](crate::playback)'s, and nothing else. A program's composed calls reach it at the
-    /// same servicing tail the recorder does, so a reconstruction compares a program's tool
-    /// outcomes exactly as it compares a tool-calling turn's.
-    pub(super) observer: Option<&'a Arc<dyn SessionObserver>>,
     /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
     /// is in flight. While it is set the program's calls are narrowed to the one family that
     /// satisfies it — everything else is refused, because everything else adds to a window that is
@@ -1142,7 +1137,6 @@ async fn run_code_program(
         amc: turn.amc.clone(),
         emitter: turn.emitter.clone(),
         replay: turn.replay.cloned(),
-        observer: turn.observer.cloned(),
         handle: Handle::current(),
         pending_compaction: turn.pending_compaction,
         serviced: 0,
@@ -1726,9 +1720,6 @@ pub(super) struct LoopToolApi {
     amc: AmcSetup,
     emitter: Emitter,
     replay: Option<Arc<GgRecorder>>,
-    /// The session's observer, when one is watching. Cloned in from the turn so a program's
-    /// composed calls are compared against the record exactly as a native call's are.
-    observer: Option<Arc<dyn SessionObserver>>,
     handle: Handle,
     pending_compaction: Option<PendingCompaction>,
     serviced: u64,
@@ -1960,18 +1951,6 @@ impl LoopToolApi {
         }
         if let Some(recorder) = &self.replay {
             recorder.record_tool_result(&self.spawner.id, &call, &outcome);
-        }
-        // The same comparison the native path makes, at the same point in the tail. `block_on` is
-        // how a program reaches anything async at all — it runs on a `spawn_blocking` thread, so
-        // parking it waits on the runtime rather than wedging it — which is exactly how its
-        // `system.shell(…)` already reaches the shell seam.
-        let mut outcome = outcome;
-        if let Some(observer) = &self.observer {
-            self.handle.clone().block_on(observer.tool_completed(
-                &self.spawner.id,
-                &call,
-                &mut outcome,
-            ));
         }
         // Every call made while a compaction is in flight is counted, and every one that did not
         // succeed — a refusal included, since a refusal is a call that did not run — is counted as a
@@ -2381,7 +2360,7 @@ impl ToolApi for LoopToolApi {
     /// is an identity and an ordering, and this is both — emitted before the work, so a bridged
     /// `ToolCall`/`ToolResult` pair and a delegation's whole subtree of child events nest inside it.
     ///
-    /// It is not recorded for [replay](crate::replay): replay re-feeds a *tool's* recorded outcome
+    /// It is not recorded for [replay](crate::capture): replay re-feeds a *tool's* recorded outcome
     /// to a re-run, and an API call has no outcome of its own to feed — the call is re-made and
     /// re-recorded when the program runs again.
     fn begin_api_call(&mut self, object: &str, function: &str) {

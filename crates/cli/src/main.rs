@@ -31,10 +31,9 @@ use crate::cli::{Cli, Command};
 /// rather than calling [`std::process::exit`], which would skip the guard's
 /// destructor and lose any buffered spans, metrics, and logs.
 ///
-/// Returning an [`ExitCode`] rather than `()` is what lets a subcommand whose *result* is a
-/// verdict — today only [`gg-playback`](commands::gg_playback), whose code distinguishes a
-/// faithful reconstruction from a diverged one from a relaxed one — report it through the process
-/// status without reaching for `std::process::exit` and losing that flush.
+/// Returning an [`ExitCode`] rather than `()` is what lets a subcommand whose *result* is a verdict
+/// report it through the process status without reaching for `std::process::exit` and losing that
+/// flush.
 #[tokio::main]
 async fn main() -> anyhow::Result<ExitCode> {
     load_dotenv()?;
@@ -63,15 +62,11 @@ async fn main() -> anyhow::Result<ExitCode> {
 
 /// Route a parsed subcommand to its handler.
 ///
-/// Every handler but one reports success or an error, and a subcommand that ran is a subcommand
-/// that exits `0`. [`gg-playback`](commands::gg_playback) is the exception: it *ran fine* and still
-/// has something to say — whether the reconstruction was faithful, and under which mode — so it
-/// returns early with its own code rather than being flattened into `0`.
+/// Every handler reports success or an error, and a subcommand that ran is a subcommand that
+/// exits `0`.
 async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
     match command {
-        Command::GgPlayback(args) => return commands::gg_playback::execute(args).await,
         Command::Run(args) => commands::run::execute(args).await?,
-        Command::GgReplay(args) => commands::gg_replay::execute(args).await?,
         Command::Validate(args) => commands::validate::execute(args).await?,
         Command::Register(args) => commands::auth::register(args).await?,
         Command::Login(args) => commands::auth::login(args).await?,
@@ -93,8 +88,6 @@ async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
 fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Run(_) => "run",
-        Command::GgReplay(_) => "gg-replay",
-        Command::GgPlayback(_) => "gg-playback",
         Command::Validate(_) => "validate",
         Command::Register(_) => "register",
         Command::Login(_) => "login",

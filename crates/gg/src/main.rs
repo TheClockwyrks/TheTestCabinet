@@ -27,10 +27,8 @@
 //! [`GgTelemetryEvent`](test_cabinet_core::gg::GgTelemetryEvent) per line); stderr
 //! carries only pre-telemetry fatal errors (for example a malformed config file).
 //!
-//! The whole harness lives in the [`test_cabinet_gg`] library (so `tcab gg-replay`
-//! can drive the [replay driver](test_cabinet_gg::replay_driver) in-process); this
-//! binary is a thin entrypoint that forwards to
-//! [`run_from_args`](test_cabinet_gg::run_from_args).
+//! The whole harness lives in the [`test_cabinet_gg`] library; this binary is a thin
+//! entrypoint that forwards to [`run_from_args`](test_cabinet_gg::run_from_args).
 
 use std::process::ExitCode;
 

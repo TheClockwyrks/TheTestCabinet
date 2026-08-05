@@ -389,7 +389,7 @@ JSON survives in exactly one place, and it is deliberately **inside the host**: 
 the membrane implementation and gg's existing tool registry, which has always dispatched
 on a name and a JSON value. That is what keeps the compaction gate, delegation
 routing through the subagent scheduler, `ToolCall`/`ToolResult` telemetry and
-[replay](/gg/replay/) capture completely untouched while the model-facing surface
+[replay](/gg/session-record/) capture completely untouched while the model-facing surface
 becomes typed functions.
 
 None of this is TypeScript's to give up. The WIT is a language-neutral IDL — other guest
@@ -1117,7 +1117,7 @@ still stay out, because `fs.readFile` still does not open a view. What changed i
 program now says *which* of its material is worth carrying, one item at a time, instead of gg
 guessing "all of it" or "none of it". Logs did not stop being captured; they stopped being the
 model's business. They still reach [telemetry](/gg/telemetry/), the operator's stream, the
-[replay](/gg/replay/) record and the console — nothing an operator or an analysis could
+[replay](/gg/session-record/) record and the console — nothing an operator or an analysis could
 previously see is lost.
 
 There is deliberately **no configuration toggle** for the old behaviour. The two arrangements
@@ -1257,7 +1257,7 @@ would be the arrangement that made a roster necessary.
 
 None of this is lost — it changed audience. `report_to_operator` writes every fact the old
 report carried to the run's stream, where it reaches [telemetry](/gg/telemetry/), the run
-record, the [replay](/gg/replay/) capture and the console's activity feed:
+record, the [replay](/gg/session-record/) capture and the console's activity feed:
 
 - every call the program refused or had refused, and how many further ones a cap suppressed;
 - every view opened, replaced or closed, with its selector and token estimate, and every view
@@ -1556,7 +1556,7 @@ They live on the capability set, apply to both execution modes, and have
 
 ## Replay
 
-A program's composed calls are captured for [replay](/gg/replay/) exactly as native tool
+A program's composed calls are captured for [replay](/gg/session-record/) exactly as native tool
 calls are: each streams its own `ToolCall`/`ToolResult` pair and is recorded. They carry
 a synthetic call id prefixed `program:` — a program's call has no provider-assigned id,
 and the ordinal in that id is what keeps two calls to the same tool in one program

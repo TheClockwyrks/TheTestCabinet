@@ -28,11 +28,9 @@
 //! # The seam
 //!
 //! Starting the process is **not** this module's job: it belongs to the
-//! [`ShellRunner`] the [`ToolContext`] carries, so a
-//! [playback](https://docs.testcabinet.ai/gg/analysis/playback/) can answer a recorded session's
-//! commands from its record while everything here — the merge, the policy, the truncation notes,
-//! the [`ToolOutcome`] — stays this build of gg's. See [`runner`] for where the line is drawn and
-//! why.
+//! [`ShellRunner`] the [`ToolContext`] carries, so what a command *did* can be substituted while
+//! everything here — the merge, the policy, the truncation notes, the [`ToolOutcome`] — stays this
+//! build of gg's. See [`runner`] for where the line is drawn and why.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -376,16 +374,15 @@ fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
 /// budget-clamped timeout a program passed. Because the [output policy](OffloadPolicy) is applied
 /// here rather than in either adapter, a program's `system.shell(…)` is offloaded on exactly the
 /// terms a tool call is — and because the *process* is started behind
-/// [`ctx.shell`](ToolContext::shell) rather than here, a
-/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers all three call paths —
-/// those two and gg's own [hook](crate::hooks) runner, which reaches this function with the command
-/// line an operator configured — from one substitution.
+/// [`ctx.shell`](ToolContext::shell) rather than here, all three call paths — those two and gg's
+/// own [hook](crate::hooks) runner, which reaches this function with the command line an operator
+/// configured — go through one substitution.
 ///
 /// `origin` says **which** of the three this is. The seam is where they meet and the caller is gone
 /// by the time a command reaches a runner, so the path has to travel on the request: a
-/// [recording](crate::replay::RecordingShellRunner) runner files a hook's command on a queue of its
-/// own rather than on the agent's ordinary one, and a reconstruction that mixed them would answer a
-/// `shell` tool call with the output of an agent-stop hook's build — the command gg runs *without
+/// [recording](crate::capture::RecordingShellRunner) runner files a hook's command under its own
+/// origin rather than on the agent's ordinary one, so a session record does not attribute an
+/// agent-stop hook's build to a `shell` tool call — the command gg runs *without
 /// the model asking*. (A record written before that gate became a hook stamps the same command
 /// [`CompletionValidation`](GgShellOrigin::CompletionValidation), which is why the origin outlives
 /// the capability that produced it; nothing live stamps it.)

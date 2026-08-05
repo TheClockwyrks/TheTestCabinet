@@ -39,7 +39,7 @@ pub fn auth_url() -> String {
 /// directory is known).
 ///
 /// Public because it is also where the CLI caches things it downloads — today the older `gg`
-/// binaries `tcab gg-replay --gg <VERSION>` resolves. One directory, honoring one override, is
+/// binaries the CLI resolves. One directory, honoring one override, is
 /// what keeps a container or a CI job able to relocate *everything* `tcab` writes with a single
 /// environment variable.
 pub fn config_dir() -> PathBuf {

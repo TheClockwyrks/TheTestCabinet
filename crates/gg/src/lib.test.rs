@@ -175,57 +175,13 @@ fn a_bare_gg_still_requires_a_config() {
     );
 }
 
-/// `gg replay --record <FILE>` parses, with `--steps` optional.
-///
-/// This subcommand is what makes `tcab gg-replay --gg <VERSION|PATH>` possible: the delegation is
-/// literally `gg replay --record <FILE>`, so a release that cannot be asked to replay cannot be
-/// delegated to. The flag names are therefore part of a cross-version contract, not a local choice.
-#[test]
-fn the_replay_subcommand_takes_a_record_and_optional_steps() {
-    let cli = Cli::try_parse_from(["gg", "replay", "--record", "/tmp/replay.json"])
-        .expect("`gg replay --record` parses");
-    match cli.command {
-        Some(Command::Replay(args)) => {
-            assert_eq!(args.record, std::path::PathBuf::from("/tmp/replay.json"));
-            assert!(args.steps.is_none());
-        }
-        other => panic!("expected the replay subcommand, got {other:?}"),
-    }
-
-    let cli = Cli::try_parse_from([
-        "gg",
-        "replay",
-        "--record",
-        "/tmp/replay.json",
-        "--steps",
-        "/tmp/steps.json",
-    ])
-    .expect("`--steps` parses");
-    match cli.command {
-        Some(Command::Replay(args)) => {
-            assert_eq!(
-                args.steps,
-                Some(std::path::PathBuf::from("/tmp/steps.json"))
-            );
-        }
-        other => panic!("expected the replay subcommand, got {other:?}"),
-    }
-}
-
 /// A subcommand and a top-level `--config` are mutually exclusive rather than both-applied: naming
 /// both is a mistake, and a parse error is the only reading of it that cannot silently run the
 /// wrong thing.
 #[test]
 fn a_subcommand_and_a_bare_config_conflict() {
-    let err = Cli::try_parse_from([
-        "gg",
-        "--config",
-        "/tmp/invocation.json",
-        "replay",
-        "--record",
-        "/tmp/replay.json",
-    ])
-    .expect_err("a bare --config alongside a subcommand is rejected");
+    let err = Cli::try_parse_from(["gg", "--config", "/tmp/invocation.json", "reference"])
+        .expect_err("a bare --config alongside a subcommand is rejected");
     assert_eq!(
         err.kind(),
         clap::error::ErrorKind::ArgumentConflict,
