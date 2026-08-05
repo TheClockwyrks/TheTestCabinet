@@ -248,15 +248,30 @@ interface SnapshotReviewItem {
   sequences?: string[];
   frames?: number[];
   weight: number;
+  // Whether the item is graded on the five-level scale (a game-jam category)
+  // rather than pass/fail — it is then worth `weight × 10` points and earns its
+  // graded tier's points times its weight. Absent on snapshots written before the
+  // field existed; treated as false (every pre-jam case is pass/fail).
+  graded?: boolean;
   domain?: string | null;
-  // Name-only sub-items this item is graded by, each an independently scored
-  // pass/fail point. Absent on snapshots written before sub-items existed.
+  // The sub-items this item is graded by, each an independently scored pass/fail
+  // point. Absent on snapshots written before sub-items existed.
   subItems?: SnapshotSubReviewItem[];
 }
 
 interface SnapshotSubReviewItem {
   id: string;
   title: string;
+  // Prose for this point (categories grammar); null/absent for a legacy name-only
+  // sub-item.
+  description?: string | null;
+  // How many points this point is worth; the parent category's weight is the sum
+  // of its sub-items' weights. Absent on snapshots written before sub-items
+  // carried their own weight; treated as 1.
+  weight?: number;
+  // The reference view / proof id paired with this point, when it declares them.
+  reference?: string | null;
+  proof?: string | null;
 }
 
 interface SnapshotDomain {
@@ -338,6 +353,12 @@ interface AssembledReviewItem {
   sequences: string[];
   frames: number[];
   weight: number;
+  // Whether the item is graded on the five-level scale (a game-jam category). The
+  // whole jam presentation hangs off this: the verdict page shows the reviewer's
+  // whole-game overall grade in place of a rating, each category is scored
+  // `weight × 10` rather than one pass/fail point, and the checklist rows render
+  // the grade tier. Omitted (treated as false) for a pass/fail case.
+  graded?: boolean;
   domain: string | null;
   // Whether this item contributes to the run's score. Omitted (treated as true)
   // unless a version erratum's `excludeFromScore` links its verdict id, in which case
@@ -349,6 +370,13 @@ interface AssembledReviewItem {
 interface AssembledSubReviewItem {
   id: string;
   title: string;
+  // This point's own prose and point weight (the categories grammar), null/omitted
+  // for a legacy name-only sub-item. The weight is what the site scores the point
+  // by, so carrying it keeps the public score in step with the backend's.
+  description?: string | null;
+  weight?: number;
+  reference?: string | null;
+  proof?: string | null;
   // Whether this sub-item contributes to the score (see `AssembledReviewItem.scored`).
   scored?: boolean;
 }
@@ -656,11 +684,16 @@ function mapCase(base: string, file: SnapshotCaseFile): AssembledTestCase {
         sequences: item.sequences ?? [],
         frames: item.frames ?? [],
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain ?? null,
         scored: itemExcluded ? false : undefined,
         subItems: (item.subItems ?? []).map((sub) => ({
           id: sub.id,
           title: sub.title,
+          description: sub.description ?? null,
+          weight: sub.weight,
+          reference: sub.reference ?? null,
+          proof: sub.proof ?? null,
           scored:
             itemExcluded || excludedVerdictIds.has(`${item.id}.${sub.id}`)
               ? false
