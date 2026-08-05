@@ -80,23 +80,6 @@ fn every_registered_language_carries_its_committed_artifacts() {
     }
 }
 
-/// **Every registered language declares what its guest needs from the host linker.**
-///
-/// The requirement is data rather than a linker method because
-/// [`linker`](crate::sandbox::run_program) is generic over the tool API, and this is the assertion
-/// that the data is actually stated: a guest whose imports the linker does not satisfy fails at
-/// *instantiation*, deep inside a turn, with an error about a missing import rather than about a
-/// language nobody finished registering.
-#[test]
-fn every_registered_language_declares_its_host_requirements() {
-    for language in all_languages() {
-        // Exhaustive on purpose: a new surface has to be considered here as well as in the linker.
-        match language.host_requirements().wasi {
-            WasiSurface::SandboxOnly => {}
-        }
-    }
-}
-
 /// **A run that names no language gets the default**, whether the capability is off, on with no
 /// params, or on with a null one — and none of those is reported as an unreadable setting.
 #[test]

@@ -13,7 +13,8 @@
  *
  * 1. **`console.*` is rebound** to `feedback.log`. The component is built `--disable stdio` because
  *    gg's telemetry stream *is* this process's stdout; without the rebinding a program's logging
- *    would go nowhere at all.
+ *    would go nowhere at all. Everything else the host has — the clock, the RNG, the filesystem, the
+ *    network sockets — the guest simply gets, through WASI, and nothing here stands in the way.
  * 2. **The globals this sandbox cannot honour are shadowed with throwers** ({@link installDenials}).
  *    This is the difference between a model getting a sentence it can act on and gg reporting an
  *    opaque trap — see that function's own comment, which is the most important one in the file.
@@ -192,36 +193,35 @@ function firstProgramFrame(thrown: unknown): { line: number; column: number } | 
 /**
  * The globals this engine defines but that this component cannot honour, mapped to the reason.
  *
- * `--disable clocks random http fetch-event` removes the WASI *imports* these builtins call, but the
- * builtins themselves are still **defined** — so calling one reaches a missing import and **traps the
- * whole store**. A trap is uncatchable: no `feedback` call happens, the program's effects so far are
- * reported without explanation, and the model is told only that the sandbox trapped. Since
- * `await new Promise((r) => setTimeout(r, 100))` is the single most common reflex a model brings to
- * a new runtime, that failure would be routine.
+ * Two different failures are covered, and both are silent without a thrower.
  *
- * Replacing each with a thrower turns it into an ordinary, located program error the model can read
- * and correct on its next turn.
+ * The **timers** are the worse of the two. gg's `run` export is *synchronous*: the host calls it,
+ * it returns, and nothing polls afterwards — so there is no event loop for a scheduled callback to
+ * run on. `setTimeout` is defined, accepts the callback, returns a handle, and then never fires it.
+ * Measured: `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at `0` and produces no error at all. A
+ * model that writes `await new Promise((r) => setTimeout(r, 100))` — the single most common reflex
+ * anyone brings to a new runtime — would get a program that silently did nothing.
+ *
+ * `--disable http fetch-event` is the other: it removes the WASI *imports* `fetch` calls but leaves
+ * the builtin **defined**, so an unshadowed call reaches a missing import and **traps the whole
+ * store**. A trap is uncatchable: no `feedback` call happens, the program's effects so far are
+ * reported without explanation, and the model is told only that the sandbox trapped.
+ *
+ * Replacing each with a thrower turns both into an ordinary, located program error the model can
+ * read and correct on its next turn.
+ *
+ * Nothing here denies a *capability the host has*. The clock, the RNG, `crypto` and the filesystem
+ * are all real and all reachable — `Date.now()` is the wall clock, `Math.random()` and
+ * `crypto.randomUUID()` are seeded from the host's entropy.
  */
 const DENIED_GLOBALS: readonly (readonly [string, string])[] = [
-  ["setTimeout", "there is no clock and no event loop"],
-  ["setInterval", "there is no clock and no event loop"],
-  ["clearTimeout", "there is no clock and no event loop"],
-  ["clearInterval", "there is no clock and no event loop"],
+  ["setTimeout", "there is no event loop, so a scheduled callback would never run"],
+  ["setInterval", "there is no event loop, so a scheduled callback would never run"],
+  ["clearTimeout", "there is no event loop, so a scheduled callback would never run"],
+  ["clearInterval", "there is no event loop, so a scheduled callback would never run"],
   ["queueMicrotask", "deferred work is not part of your program's result"],
-  ["requestAnimationFrame", "there is no clock and no event loop"],
+  ["requestAnimationFrame", "there is no event loop, so a scheduled callback would never run"],
   ["fetch", "there is no network"],
-];
-
-/**
- * The denied members of an object-valued global, replaced by a stub carrying only those members.
- *
- * `crypto` matters as much as the timers do, and for a subtler reason: unshadowed, this engine's
- * `crypto.randomUUID()` returns the *same* UUID on every run of every study, forever — and unlike
- * `Math.random()` it looks authoritative. Denying it outright is the only honest answer.
- */
-const DENIED_MEMBERS: readonly (readonly [string, readonly string[], string])[] = [
-  ["performance", ["now"], "there is no clock"],
-  ["crypto", ["getRandomValues", "randomUUID"], "there is no randomness"],
 ];
 
 /** A function that throws the denial for `name`, naming what the sandbox does not have. */
@@ -235,13 +235,15 @@ function denier(name: string, why: string): () => never {
  * Replace a global with `value`, whatever kind of property it is.
  *
  * A plain assignment is not enough, and getting this wrong is catastrophic rather than cosmetic.
- * Some of these globals are accessor properties with no setter (`crypto` is one), so assigning to
- * one throws a `TypeError` out of the shim's own setup — which `componentize-js` turns into an
- * opaque trap, i.e. exactly the failure this function exists to prevent. Measured:
+ * Some globals in this engine are accessor properties with no setter, so assigning to one throws a
+ * `TypeError` out of the shim's own setup — which `componentize-js` turns into an opaque trap, i.e.
+ * exactly the failure this function exists to prevent. Measured with `crypto`, which is one of them:
  * `globalThis.crypto = {}` at module scope trapped **every** program, including `return 40 + 2;`.
  *
- * A global that refuses even `defineProperty` keeps its engine behaviour. That is still sound — the
- * underlying capability is absent either way — so setup must never fail because of one name.
+ * A global that refuses even `defineProperty` keeps its engine behaviour. Setup must never fail
+ * because of one name: for a denied global that means the model gets the engine's own
+ * `is not defined` rather than this file's sentence, which is a worse message and not a worse
+ * outcome.
  */
 function replaceGlobal(name: string, value: unknown): void {
   try {
@@ -251,14 +253,9 @@ function replaceGlobal(name: string, value: unknown): void {
   }
 }
 
-/** Shadow every denied global and denied member with a thrower. */
+/** Shadow every denied global with a thrower. */
 function installDenials(): void {
   for (const [name, why] of DENIED_GLOBALS) replaceGlobal(name, denier(name, why));
-  for (const [object, members, why] of DENIED_MEMBERS) {
-    const stub: Record<string, unknown> = {};
-    for (const member of members) stub[member] = denier(`${object}.${member}`, why);
-    replaceGlobal(object, stub);
-  }
 }
 
 /**

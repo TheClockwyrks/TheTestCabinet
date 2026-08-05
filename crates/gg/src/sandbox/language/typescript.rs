@@ -25,10 +25,9 @@
 //! force every tool through one untyped door. Componentizing a real JavaScript engine instead means
 //! the model writes the language it already knows, and the trust boundary becomes a **WIT
 //! interface** in which each tool is its own typed function with its own typed result and its own
-//! typed failure. Nothing the interface does not declare is reachable: the component is built with
-//! every WASI capability disabled, so inside the guest there is no filesystem, no clock, no
-//! randomness, no network and no module system — only the membrane. That is also this language's
-//! answer to [`HostRequirements`](super::HostRequirements): nothing beyond the sandbox world.
+//! typed failure. Nothing the interface does not declare is reachable *as a tool*: the component is
+//! built with no network and no module system, so a program reaches gg through the membrane and
+//! nowhere else.
 //!
 //! # Stripped, not checked
 //!
@@ -44,8 +43,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, HostRequirements, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    PromptDialect,
+    FileWindow, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, PromptDialect,
 };
 
 #[path = "typescript.prepare.rs"]
@@ -163,17 +161,6 @@ impl ProgramLanguage for TypeScript {
 
     fn guest_component(&self) -> &'static [u8] {
         COMPONENT
-    }
-
-    /// Nothing beyond the sandbox world.
-    ///
-    /// The committed component is baked with every WASI capability disabled, which is both what
-    /// makes a code turn reproducible for [replay](crate::replay) and what lets gg's linker be
-    /// exactly the membrane and nothing else.
-    fn host_requirements(&self) -> HostRequirements {
-        HostRequirements {
-            wasi: super::WasiSurface::SandboxOnly,
-        }
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

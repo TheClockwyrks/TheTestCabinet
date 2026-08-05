@@ -57,20 +57,22 @@ npx --yes tsc -p "$ROOT/$PACKAGE/tsconfig.json"
 #    Each `--disable` removes a WASI capability the guest would otherwise inherit:
 #      stdio        gg's telemetry IS this process's stdout (newline-delimited JSON); a guest write
 #                   would corrupt the stream, so `console.*` is rebound to a host call instead
-#      random       a code turn has to be reproducible for the replay capability
-#      clocks       likewise
 #      http,
 #      fetch-event  no network from inside a program; `shell` is the only way out of the sandbox
 #
-#    The shim shadows the globals these leave behind (`setTimeout`, `fetch`, `crypto`, …): disabling
-#    a capability removes the WASI import, not the builtin that calls it, so an unshadowed call
-#    reaches a missing import and traps the whole store instead of raising a catchable error.
+#    Everything else the engine offers — the clock, the RNG — is left in place: a program that asks
+#    what time it is gets the answer, and gg's host linker supplies the rest of WASI ambiently.
+#
+#    The shim shadows the globals these disables leave behind (`fetch`, and the timers, which need
+#    an event loop this synchronous export does not run): disabling a capability removes the WASI
+#    import, not the builtin that calls it, so an unshadowed call reaches a missing import and traps
+#    the whole store instead of raising a catchable error.
 echo "Building the component with componentize-js@$COMPONENTIZE_VERSION ..."
 npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 	"$ROOT/$PACKAGE/dist/shim.js" \
 	--wit "$ROOT/crates/gg/wit" \
 	--world-name sandbox \
-	--disable stdio random clocks http fetch-event \
+	--disable stdio http fetch-event \
 	-o "$ROOT/$COMPONENT"
 
 # 3. Reflect the signature catalogue out of the SDK's own emitted declarations, so the system prompt

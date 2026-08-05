@@ -12,9 +12,9 @@
 //!
 //! The language is a per-agent configuration knob rather than a fact about gg — the axis a
 //! cross-language study compares its arms on. [`language`] is the seam: it owns how a reply becomes
-//! evaluable source, which committed component evaluates it, what that component needs from the
-//! linker, and how its SDK spells the surface. Everything in *this* module is written against that
-//! seam, so nothing here knows which language is running.
+//! evaluable source, which committed component evaluates it, and how its SDK spells the surface.
+//! Everything in *this* module is written against that seam, so nothing here knows which language is
+//! running.
 //!
 //! What does not vary is the surface itself. The trust boundary is a **WIT interface** in which each
 //! tool is its own typed function with its own typed result and its own typed failure, and every
@@ -101,18 +101,18 @@ pub use invoker::ToolApi;
 pub use language::{
     FileWindow, HARNESS_FINISH, PROGRAMS_GET, PROGRAMS_RERUN, PrepareFailure, PreparedModule,
     PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SurfaceCall,
-    UnreachableTail, VIEW_CLOSE, VIEW_OPEN_TEXT, WasiSurface, all_languages, language,
-    resolve_program_language, spell,
+    UnreachableTail, VIEW_CLOSE, VIEW_OPEN_TEXT, all_languages, language, resolve_program_language,
+    spell,
 };
 
 // Named only in documentation and in the seam's own tests today, but exported all the same: they
-// are half the contract a second language implements, and a type a reader has to reach into a
+// are part of the contract a second language implements, and a type a reader has to reach into a
 // private module to read is a type nobody reads. `#[allow(unused_imports)]` because the crate
 // denies warnings and none is *called* from outside `sandbox` yet — `PrepareError` reaches its
 // consumers wrapped in a `PrepareFailure`, and is named here because a language implementer picking
 // which of its five shapes a diagnostic is has to be able to see them.
 #[allow(unused_imports)]
-pub use language::{HostRequirements, PrepareError, PromptDialect, ResolvedProgramLanguage};
+pub use language::{PrepareError, PromptDialect, ResolvedProgramLanguage};
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
 // outside `sandbox` that has to know about it: the prompt engine cannot render a template it never
@@ -251,7 +251,7 @@ pub fn run_program<A: ToolApi>(
         Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
 
-    let linker = match linker::<A>(language) {
+    let linker = match linker::<A>() {
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
@@ -297,36 +297,36 @@ pub fn run_program<A: ToolApi>(
 /// program puts material into its own window with, and the [program library](crate::programs) it
 /// reaches back through for a program it already ran), and the shim's feedback channel.
 ///
-/// Building it per run rather than once per process is deliberate and free: a `Linker` is cheap,
-/// and the expensive artifact (the compiled [`Component`](wasmtime::component::Component)) is the
-/// one that is cached. Sharing a linker would buy microseconds and cost the guarantee that a run's
-/// imports are assembled from nothing but its own state.
+/// Building it per run rather than once per process is deliberate and nearly free: the whole thing,
+/// WASI included, measures ~50 µs — the same order as the instantiate it precedes, and a couple of
+/// percent of a typical invoke — and the expensive artifact (the compiled
+/// [`Component`](wasmtime::component::Component)) is the one that is cached. Sharing a linker would
+/// buy microseconds and cost the guarantee that a run's imports are assembled from nothing but its
+/// own state.
 ///
-/// # Why the language arrives as a requirement rather than as a method call
+/// # Why WASI is here at all, and why it is ambient
 ///
-/// A guest is not obliged to be as frugal as this one. TypeScript's component is baked with every
-/// WASI capability disabled — which is what makes a code turn reproducible for
-/// [replay](crate::replay) — but a guest produced by another toolchain imports the whole WASI p2
-/// surface whether or not a program touches it, and a linker that provided none of it could not
-/// instantiate one. So *what a guest needs from the host* is part of what a language is, and it
-/// travels here as [`HostRequirements`].
+/// A guest toolchain emits a component that imports the WASI p2 surface —
+/// `wasi:io`, `wasi:filesystem`, `wasi:clocks`, `wasi:random`, `wasi:sockets`, `wasi:cli` — whether
+/// or not a program touches any of it, so a linker that defined none of it could not instantiate
+/// one at all. gg therefore defines the whole surface, for every guest, unconditionally: a model
+/// reaching for its language's ordinary file APIs instead of an SDK call is a model using the
+/// language it was told to write in, and an agent already has [`shell`](crate::tools) in nearly
+/// every configuration, so withholding the guest's own filesystem would deny nothing.
 ///
-/// It arrives as **data** rather than as a trait method because this function is generic over the
-/// tool API and an object-safe trait cannot have a generic method. The `match` below is exhaustive,
-/// so the seam is enforced by the compiler: a new [`WasiSurface`] variant does not compile until
-/// this function decides what to do about it.
-fn linker<A: ToolApi>(
-    language: &'static dyn ProgramLanguage,
-) -> Result<Linker<MembraneState<A>>, SandboxError> {
+/// A component is only affected by imports it *declares*, and the two namespaces do not overlap, so
+/// this is inert for a guest that imports nothing beyond `test-cabinet:gg/*`.
+///
+/// The one thing the host does not hand over is **stdout**: gg's telemetry stream *is* this
+/// process's stdout (`crate::telemetry`, newline-delimited JSON), so a guest write to fd 1 would
+/// corrupt the run's event stream. [`MembraneState`]'s context is built without it, and
+/// `console.*` is rebound to the feedback channel instead.
+fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
     let mut linker = Linker::new(engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
-    match language.host_requirements().wasi {
-        // Nothing beyond the membrane above. There is no `wasmtime-wasi` dependency to add one
-        // with, which is deliberate: an ambient host is exactly what a reproducible code turn
-        // cannot have.
-        WasiSurface::SandboxOnly => {}
-    }
+    wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
+        .map_err(|error| SandboxError::Engine(error.to_string()))?;
     Ok(linker)
 }
 
@@ -460,7 +460,7 @@ pub(crate) fn component_bound_tools(
     language: &'static dyn ProgramLanguage,
 ) -> Result<Vec<String>, SandboxError> {
     let (component, _) = engine::component(language)?;
-    let linker = linker::<fake::FakeToolApi>(language)?;
+    let linker = linker::<fake::FakeToolApi>()?;
     let limits = SandboxLimits::default();
     let log = fake::CallLog::default();
     // Nothing at all is offered: the guest reports what it *can* bind, which does not depend on

@@ -62,3 +62,24 @@ appears in an instance's offered set is a configuration that did not do what it 
 a `disabledTools` entry that reaches neither list — absent from the offered set and absent
 from the withheld one — is a name gg never recognized, which the run log will have warned
 about.
+
+## One confound this page cannot remove: a code agent's own runtime
+
+Under [responses as code](/gg/responses-as-code/) the guest is linked against the full
+WASI surface, so a program has the host's filesystem, clock, randomness and sockets
+through **the language's own standard library** — not through a gg tool. That is
+deliberate ([why](/gg/program-languages/#what-the-host-links-and-why-it-is-the-same-for-every-language)),
+and it has a consequence an ablation has to be told about rather than discover.
+
+Withholding the filesystem tools from a code agent does **not** withhold the workspace. It
+withholds gg's *typed, recorded* way of reaching it: an arm without `read_file` still has
+whatever its language spells `open(path)`, and nothing about that call appears in the
+offered set, in the call counts, or in the run's tool records. The same is true of `shell`
+and of the network.
+
+So for a code agent, an ablation of the filesystem or shell families measures **whether
+the model reaches for gg's surface**, not whether it can reach the resource. That is still
+a real and interesting question — it is the question of whether the typed surface earns its
+place — but it is not the question the same ablation answers for a tool-calling agent, and
+the two arms must not be read as the same experiment. An ablation that needs the resource
+genuinely absent has to be run in an environment that lacks it.

@@ -28,7 +28,6 @@
 //! * how a code [skill](crate::skills)'s or [memory](crate::memories)'s file becomes a namespace
 //!   bound at `lib.<key>` ([`ProgramLanguage::prepare_module`]);
 //! * which committed component evaluates it ([`ProgramLanguage::guest_component`]);
-//! * what that component needs from the host linker ([`ProgramLanguage::host_requirements`]);
 //! * and how its SDK spells the surface ([`ProgramLanguage::catalogue`]).
 //!
 //! # Why the registry is trait objects
@@ -156,9 +155,6 @@ pub trait ProgramLanguage: Send + Sync + 'static {
 
     /// This language's committed guest component, embedded in the binary.
     fn guest_component(&self) -> &'static [u8];
-
-    /// What this language's component needs from the host linker beyond gg's own sandbox world.
-    fn host_requirements(&self) -> HostRequirements;
 
     /// The committed signature catalogue for this language's SDK, parsed once per process.
     fn catalogue(&self) -> &'static SignatureCatalogue;
@@ -730,43 +726,6 @@ pub enum PrepareFailure {
     #[cfg_attr(not(test), allow(dead_code))]
     #[error("{0}")]
     Toolchain(String),
-}
-
-/// What one language's guest component needs from the host linker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HostRequirements {
-    /// Which WASI surface the component's imports need beyond gg's own `sandbox` world.
-    pub wasi: WasiSurface,
-}
-
-/// The WASI surface a guest imports.
-///
-/// This type exists because a language is not merely a source dialect plus an SDK. The committed
-/// TypeScript component is baked with **every** WASI capability disabled — no filesystem, no clock,
-/// no randomness, no network, no module system — which is what makes a code turn reproducible for
-/// gg's [replay](crate::replay) capability, and gg's [`linker`](super::linker) therefore provides no
-/// WASI at all. A guest built by another toolchain need not be so frugal: a `componentize-py` guest
-/// imports the full WASI p2 surface (`wasi:cli`, `wasi:filesystem`, `wasi:sockets`, `wasi:clocks`,
-/// `wasi:random`, `wasi:io`) whether or not the program uses any of it. So the requirement has to
-/// travel *with the language* rather than being a property of the one host that exists today.
-///
-/// # How a second variant lands
-///
-/// A language needing WASI requires three things, in this order. **First**, a new variant here that
-/// names the surface *and how each nondeterministic capability is pinned* — a fixed clock, a seeded
-/// RNG, a denied filesystem and socket set — because replay's exactness rests on it and a guest
-/// handed the ambient host is a guest whose turns cannot be reproduced. **Second**,
-/// [`MembraneState`](super::membrane) growing a `wasmtime_wasi::WasiCtx` and the corresponding view
-/// impls. **Third**, a `wasmtime-wasi` dependency, which gg does not carry today.
-///
-/// Adding a variant makes [`linker`](super::linker) fail to compile until it is handled, which is
-/// the pressure this type exists to apply: the seam is enforced by the compiler rather than by this
-/// paragraph.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WasiSurface {
-    /// Nothing beyond the `sandbox` world. TypeScript's answer, and the only reproducible one.
-    SandboxOnly,
 }
 
 /// A resolved [program language](GgProgramLanguage) together with the `language` value gg could not

@@ -56,8 +56,8 @@ use crate::healing::{CodeMask, Dialect, Unwrapped};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, HostRequirements, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, WasiSurface,
+    FileWindow, PrepareError, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
+    PromptDialect,
 };
 
 /// TypeScript's committed catalogue, read a second time rather than reached for through
@@ -190,12 +190,6 @@ impl ProgramLanguage for FixtureLanguage {
 
     fn guest_component(&self) -> &'static [u8] {
         COMPONENT
-    }
-
-    fn host_requirements(&self) -> HostRequirements {
-        HostRequirements {
-            wasi: WasiSurface::SandboxOnly,
-        }
     }
 
     fn catalogue(&self) -> &'static SignatureCatalogue {

@@ -239,7 +239,6 @@ instantly in every gate that iterates languages.
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |
-| Its **host requirements** | What that component needs from gg's linker. [Below](#the-linker-requirement). |
 | Its **signature catalogue** | The committed JSON reflected out of its own SDK — the signatures and documentation the model reads through `object.list()` and `view.openDocsView()`. |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and the handful of spellings gg itself has to quote back — the four [ending calls](/gg/ending-a-session/#ending-calls) and the call that closes a view. |
@@ -307,34 +306,33 @@ Two consequences for a language being added:
   field stays gg's own name for the call, because it is an **identity** a catch site
   reports rather than a name the program writes.
 
-### The linker requirement
+### What the host links, and why it is the same for every language
 
 This is the part that is easy to miss, and the empirical finding that shaped the seam: **a
-language is not merely a source dialect plus an SDK.** It also has to declare what its
-component needs from the host.
-
-gg's TypeScript component is baked with *every* WASI capability disabled — no filesystem,
-no clock, no randomness, no network, no module system — so gg's linker provides no WASI at
-all. That is not frugality for its own sake. It is half of the trust boundary (what the
-membrane does not declare does not exist inside the guest) and half of
-[determinism](/gg/responses-as-code/#determinism): a code turn has to be reproducible, both
-so two runs of the same program are comparable and so [replay](/gg/replay/) means what it
-says.
-
-A guest built from a general-purpose runtime is not so frugal. A component built with
-`componentize-py` imports the **full WASI p2 surface** — `wasi:cli`, `wasi:filesystem`,
-`wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io` — whether or not the program uses
-any of it, because the runtime it embeds is linked against the whole of it. The host would
-have to answer for every one of those imports before such a component could instantiate at
+component built by a general-purpose toolchain imports far more than the program uses.** A
+component built with `componentize-py` imports the **full WASI p2 surface** — `wasi:cli`,
+`wasi:filesystem`, `wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io` — whether or not
+the program touches any of it, because the runtime it embeds is linked against the whole of
+it. A host that answered for none of those imports could not instantiate such a component at
 all.
 
-So the requirement travels **with the language**, as data, and gg's linker matches on it
-exhaustively. TypeScript's answer is "nothing beyond the sandbox world". A second variant
-is where a WASI-needing language lands, and it must name not just the surface but **how
-each nondeterministic capability is pinned** — a fixed clock, a seeded RNG, a denied
-filesystem and socket set — because that is what replay's exactness rests on. Adding the
-variant makes the linker fail to compile until it is handled, which is the pressure the
-type exists to apply: the seam is enforced by the compiler, not by this paragraph.
+So gg's linker defines the whole surface, for every guest, unconditionally. A language
+declares nothing about it, and nothing about a new language's guest can fail to link.
+
+That is a deliberate choice, not merely the convenient one. A model reaching for its
+language's ordinary file, clock or socket APIs instead of a bespoke SDK call is a model
+writing the language it was told to write in — plausibly *better* than one steered around
+its own standard library. And an agent has a `shell` tool in nearly every configuration, so
+denying the guest what the process already has would be theatre.
+
+The one thing the host withholds is **stdout**: gg's [telemetry](/gg/telemetry/) stream is
+the process's own stdout, so a guest write to it would corrupt the run's event stream. The
+TypeScript component is baked `--disable stdio` for that reason and rebinds `console.*` to
+gg's feedback channel; the host's WASI context is built without stdout to match.
+
+A component is only affected by the imports it **declares**, and gg's own
+`test-cabinet:gg/*` namespace does not overlap WASI's, so a frugal guest — TypeScript's,
+which imports nothing beyond the membrane — is unaffected by any of this.
 
 ## The agreement gate
 
@@ -404,33 +402,17 @@ addition, and the answers were good:
 | How big is the artifact? | **~17.5 MB**, against the JavaScript guest's ~13.4 MB. Larger, and the same *kind* of number: both embed a whole runtime. |
 | What does it import? | The **full WASI p2 surface** — `wasi:cli`, `wasi:filesystem`, `wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io`. |
 
-The first three are cheap facts. The fourth is the open question.
+All four are cheap facts. The fourth was once the open question; gg's linker now defines
+that whole surface for every guest.
 
-### The open decision: WASI, and what it costs determinism
+### WASI: settled
 
-gg's linker provides no WASI, so a `componentize-py` guest **cannot instantiate today**.
-There are three ways out, and this is deliberately recorded as an *open* decision rather
-than a settled one, because the trade is real:
-
-1. **Bake the imports away.** Investigate whether the guest can be built (or post-processed)
-   against a stubbed WASI, in the way the JavaScript guest is baked with every capability
-   disabled. Best outcome if it works — determinism is preserved by construction and
-   nothing about the host changes — and the least certain, because the imports come from
-   the embedded runtime rather than from the program.
-2. **Provide a pinned, deterministic WASI.** Add the new `WasiSurface` variant and give the
-   guest a host implementation in which every nondeterministic capability is nailed down: a
-   fixed clock, a seeded RNG, a denied filesystem, denied sockets. Workable, and the cost is
-   that determinism stops being structural and starts being a thing gg maintains — every
-   capability is a place where an unpinned answer would make a code turn irreproducible and
-   [replay](/gg/replay/) subtly wrong.
-3. **Provide ambient WASI and give up replay for that arm.** Cheapest to build and the only
-   option that changes what the capability *means*. A guest with the ambient host is a guest
-   whose turns cannot be reproduced, which would make the Python arm of a study a different
-   kind of object from the TypeScript arm — so this is listed for completeness and is the
-   least attractive of the three.
-
-Whichever is chosen is the language's declared `HostRequirements`, and the exhaustive match
-in gg's linker makes the choice explicit rather than incidental.
+gg's linker provides the **whole** WASI p2 surface to every guest, so a `componentize-py`
+guest instantiates with nothing added to the host and nothing stubbed out of the guest. This
+was once an open question with three candidate answers — bake the imports away, pin every
+capability, or hand over the ambient host — and it is now settled on the third. See
+[what the host links](#what-the-host-links-and-why-it-is-the-same-for-every-language) for
+the reasoning and for the one thing that is still withheld.
 
 ### The steps
 
@@ -455,8 +437,7 @@ in gg's linker makes the choice explicit rather than incidental.
    step and [whether it compiles](#what-compiling-costs-and-where-it-is-recorded), the
    binding-name convention, the synthesized file-view statement, the healing dialect,
    the prompt dialect, the two templates (`system-code.python.hbs`,
-   `code-nothing-shown.python.hbs`), the host requirements, and the healing fixtures its dialect
-   must survive.
+   `code-nothing-shown.python.hbs`), and the healing fixtures its dialect must survive.
 8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue, so
    the drift gate covers it rather than only diffing it.
 9. **Add the console's row**: an option in `PROGRAM_LANGUAGE_OPTIONS`

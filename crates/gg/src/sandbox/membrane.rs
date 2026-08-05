@@ -65,6 +65,8 @@ use std::collections::{BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use test_cabinet_core::gg::GgToolFailure;
+use wasmtime::component::ResourceTable;
+use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
 use super::language::{
@@ -294,6 +296,63 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// [`revoked_completion`](Self::revoked_completion) is: a model whose replacement program simply
     /// never ran, with nothing said about it, would sit waiting for a turn that already happened.
     revoked_rerun: bool,
+    /// This program's WASI context — the environment, the clock, the RNG, the network, and the
+    /// container's filesystem preopened at `/`.
+    ///
+    /// gg's own surface is the membrane above; this is the *language's* surface, and a guest gets it
+    /// whole so that a program written in the language's ordinary idiom works. See
+    /// [`linker`](super::linker) for why it is ambient rather than pinned.
+    ///
+    /// Built without stdout. gg's telemetry stream is this process's stdout, so a guest write to
+    /// fd 1 would corrupt the run's event stream — which is also why the component is baked
+    /// `--disable stdio` and `console.*` is rebound to the feedback channel. Do not "fix" the
+    /// omission by inheriting stdio.
+    wasi: WasiCtx,
+    /// The resource table backing the [WASI context](Self::wasi)'s handles — open files, streams,
+    /// sockets. Separate from gg's own state because the two vocabularies never meet: nothing in the
+    /// membrane hands a guest a WASI resource, and nothing here reads one.
+    wasi_table: ResourceTable,
+}
+
+/// The WASI half of a program's store.
+///
+/// Everything the guest's own language runtime reaches for goes through here; everything gg offers
+/// goes through the membrane. The two are separate namespaces in the linker and separate state on
+/// this struct, which is why adding the whole WASI surface changed nothing about a guest that
+/// imports none of it.
+impl<A: ToolApi> WasiView for MembraneState<A> {
+    fn ctx(&mut self) -> WasiCtxView<'_> {
+        WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.wasi_table,
+        }
+    }
+}
+
+/// The WASI context every program gets: the process's environment, a real clock and RNG, the
+/// network, and the filesystem preopened at `/`.
+///
+/// **Stdout is deliberately absent** — see [`MembraneState::wasi`].
+///
+/// The environment is inherited because a language runtime needs it to work at all — `HOME`,
+/// `PATH`, `TMPDIR`, the locale — and a guest handed an empty one behaves like a guest on a broken
+/// machine. The honest consequence is that whatever this process's environment holds, including the
+/// run's model credentials, is readable from inside a program. That is the same reach a program
+/// already has through the preopened filesystem, and the same reach an agent has through
+/// [`shell`](crate::tools) in nearly every configuration.
+///
+/// The preopen is the one part that can fail, and it fails only if the host cannot open `/` at all.
+/// That is not a reason to refuse to run the program: a guest that never touches the filesystem is
+/// unaffected, and one that does gets an ordinary WASI error from its own runtime rather than a
+/// sandbox that would not start. So the failure is ignored and the context simply has no preopen.
+fn wasi_context() -> WasiCtx {
+    let mut builder = WasiCtxBuilder::new();
+    builder
+        .inherit_env()
+        .inherit_network()
+        .allow_ip_name_lookup(true);
+    let _ = builder.preopened_dir("/", "/", DirPerms::all(), FilePerms::all());
+    builder.build()
 }
 
 /// Everything one program accumulated, reclaimed from the store on the way out.
@@ -393,6 +452,8 @@ impl<A: ToolApi> MembraneState<A> {
             program_error: None,
             rerun: None,
             revoked_rerun: false,
+            wasi: wasi_context(),
+            wasi_table: ResourceTable::new(),
         }
     }
 

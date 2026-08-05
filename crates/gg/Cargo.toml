@@ -69,6 +69,12 @@ wasmtime = { workspace = true, features = [
 	"component-model",
 	"parallel-compilation",
 ] }
+# WASI preview 2 for the sandbox's guests (`src/sandbox.rs`). A guest toolchain emits a
+# component that imports `wasi:io`, `wasi:filesystem`, `wasi:clocks`, `wasi:random` and the
+# rest whether or not a program touches them, so a linker that provided none of it could not
+# instantiate one at all. gg links the whole surface, ambiently, with one exception the host
+# owns: stdout stays closed, because gg's telemetry stream is this process's stdout.
+wasmtime-wasi = { workspace = true }
 # In-process TypeScript type-stripping for the sandbox's TypeScript program language
 # (`src/sandbox/language/typescript.prepare.rs`): the model writes TypeScript, the guest
 # evaluates JavaScript, and oxc strips the types in microseconds without a Node process

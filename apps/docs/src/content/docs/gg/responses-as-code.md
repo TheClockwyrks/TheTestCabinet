@@ -378,10 +378,11 @@ family. That has three consequences worth the effort:
 - **The model gets a real API.** `readFile(p, { limit: 200 })` is discoverable,
   auto-completable in the model's head, and wrong in ways the SDK can name. A JSON blob
   is none of those.
-- **Nothing else is reachable.** The component imports the membrane and nothing else,
-  and is built with every WASI capability disabled — no filesystem, no clock, no
-  randomness, no network, no module system. What the interface does not declare does
-  not exist inside the guest.
+- **Nothing else is reachable *as a tool*.** The component imports the membrane and
+  nothing else, and is built with no network and no module system. What the interface
+  does not declare is not something a program can ask gg to do. (The language's own
+  runtime is a separate matter — see
+  [what a program can and cannot reach](#what-a-program-can-and-cannot-reach).)
 
 JSON survives in exactly one place, and it is deliberately **inside the host**: between
 the membrane implementation and gg's existing tool registry, which has always dispatched
@@ -1319,45 +1320,33 @@ what the cap suppressed, so it always equals the number of `ToolCall`/`ToolResul
 the turn actually streamed. Refusals are counted separately and never inflate it: nothing
 was dispatched.
 
-## Determinism
+## What a program can and cannot reach
 
-The TypeScript component is built with clocks and randomness disabled, so inside a program:
+A program runs with the **host's** WASI: the wall clock, the host's randomness, the
+container's filesystem and its network sockets are all there, and gg links them for every
+guest unconditionally. A model reaching for its language's ordinary date, random or file
+APIs is a model using the language it was told to write in, and an agent with a `shell`
+tool already has all of it anyway — so withholding the guest's own runtime would deny
+nothing and cost a great deal of naturalness.
 
-- `Date.now()` and `new Date()` are **frozen** at a fixed instant (the component's own
-  build instant), and return the same value on every run of every study;
-- `Math.random()` returns the same sequence every time;
-- `crypto.getRandomValues()` and `crypto.randomUUID()` **throw** rather than returning
-  the same value forever while looking authoritative.
+Two things are still out of reach, and both are named to the model as an ordinary located
+program error rather than left to fail silently:
 
-None of that is stated in the system prompt: a program discovers it by reaching for a
-clock that does not move or a `crypto` call that throws, and the throw is an ordinary
-located program error naming what is missing (see below). A run that genuinely needs the
-real time, a random value or the network still has `system.shell` as the way to it, when
-the capability set offers one — but nothing tells the model so in advance, and a program
-that wants the wall clock has to think of `date` on its own.
+- **the timers** — `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`,
+  `requestAnimationFrame` — because gg's guest export is *synchronous*: it is called, it
+  returns, and nothing polls afterwards, so a scheduled callback would simply never run.
+  Unshadowed, `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at `0` and reports no error
+  at all, which is the worst possible answer to the single most common reflex a model
+  brings to a new runtime;
+- **`fetch`**, and `queueMicrotask`, which does run but runs *after* the program has ended
+  — outside the turn, where a failure inside it would be invisible.
 
-This is what makes two runs of the same program **comparable**: given the same tool
-outcomes, it takes the same path and composes the same calls in the same order, so a
-difference between two arms of a study is a difference in the model, not in the sandbox.
-It is *not* what makes replay exact — see [replay](#replay) below, which reconstructs a
-recorded turn rather than re-running it.
-
-It is also why a language has to declare
-[what its guest needs from the host linker](/gg/program-languages/#the-linker-requirement).
-This one needs nothing: gg's linker provides no WASI at all, and the capabilities above are
-absent by construction rather than by policy. A guest built from a general-purpose runtime
-imports a great deal more, and every one of those imports is a clock, a source of
-randomness or an ambient resource somebody then has to pin — so the requirement travels
-with the language, and a language that needs WASI has to say how each nondeterministic
-capability is nailed down before this section could be written about it.
-
-Disabling a WASI capability removes the underlying import but leaves the JavaScript
-builtin defined, so an unshadowed `setTimeout` would reach a missing import and **trap
-the whole store** — uncatchable, unreportable, and the single most common reflex a model
-brings to a new runtime. The guest therefore shadows every such global with a thrower, so
-`setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `queueMicrotask`,
-`requestAnimationFrame`, `fetch`, `performance.now` and the two `crypto` methods each
-produce an ordinary, located, catchable program error naming what is missing and why.
+The mechanism is worth knowing because it is where a guest's failures come from. Baking
+the component without a WASI capability removes the underlying **import** but leaves the
+JavaScript **builtin** defined, so an unshadowed `fetch` reaches a missing import and
+**traps the whole store** — uncatchable, unreportable. The guest therefore shadows every
+such global with a thrower, so each produces an ordinary, located, catchable program error
+naming what is missing and why.
 
 ## What can go wrong
 
@@ -1385,7 +1374,7 @@ record.
 | An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, and the line of the program that made the call. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
 | A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |
-| A denied global (`setTimeout`, `fetch`, `crypto.randomUUID`, …) | the guest's throwers | a `Runtime error`: the denied name, what the sandbox does not have (a clock, randomness, the network), and the line |
+| A denied global (`setTimeout`, `fetch`, …) | the guest's throwers | a `Runtime error`: the denied name, why the sandbox cannot honour it (there is no event loop; there is no network), and the line |
 | The program returned a Promise | the guest | a `Runtime error` naming what came back and that the sandbox is synchronous |
 | The program `return`ed a value | the guest | nothing. That a returned value is discarded is a standing rule in the system prompt; that this program returned one goes to the operator |
 | A view call broke one of [its caps](#the-caps-and-why-none-of-them-truncates) — a body or label over the ceiling, a fifty-first text view, a hundred-and-first view operation, an empty label | the host, which owns the window | a catchable `limit-exceeded` (or `invalid-argument`) thrown at the call site, **naming the cap**, and nothing afterwards: material that never reached the window is refused where the program can still do something about it |
@@ -1506,14 +1495,6 @@ serves another's artifacts — and, by being handed to the gate with a dozen del
 damaged catalogues, what proves the gate catches a disagreement rather than merely
 reporting agreement.
 
-A language also declares **what its guest needs from the host linker**, because that is
-not a property of the host. This component is baked with every WASI capability disabled,
-which is what makes a code turn reproducible for [replay](/gg/replay/), and gg's linker
-accordingly provides no WASI at all. A guest built by another toolchain need not be so
-frugal, so the requirement travels with the language; a language that needs WASI must
-also say how each nondeterministic capability is pinned, or replay stops being exact.
-TypeScript's answer is "nothing beyond the sandbox world".
-
 Adding one is additive: a sibling guest directory — not necessarily an npm package —
 that binds the same `crates/gg/wit/gg-sandbox.wit`, commits
 `crates/gg/src/sandbox/guests/<language>.{component.wasm,signatures.json}`, and
@@ -1569,8 +1550,8 @@ open turn's program rather than to a native tool call the model never made.
 
 Replaying a code turn is exact because the driver **reconstructs** it: it walks the record
 and re-emits the recorded call/outcome pairs in recorded order. No program is prepared,
-no reply is healed and no sandbox is instantiated, so the record — not the guest's
-determinism — is what makes the reconstruction faithful. The attribution rule is scoped
+no reply is healed and no sandbox is instantiated, so the record is the whole of what makes
+the reconstruction faithful. The attribution rule is scoped
 to a run the record's own
 capability set says was in code mode, so a `program:` id appearing in a tool-calling record
 is still reported as the divergence it is.

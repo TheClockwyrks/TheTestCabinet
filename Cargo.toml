@@ -260,6 +260,15 @@ wasmtime = { version = "45", default-features = false, features = [
 	"runtime",
 ] }
 
+# The WASI preview-2 host implementation gg's responses-as-code sandbox links into
+# every guest (`crates/gg/src/sandbox.rs`). Only the `p2` feature: the default set
+# additionally pulls the preview-1 adapter and `wiggle`, which no guest here imports.
+# Same major version as `wasmtime` above, and it requires the patch release it names,
+# so adding it moves the whole workspace's wasmtime to that patch — including the two
+# wasm hosts, which also inherit the `async` feature `p2` turns on. Neither uses an
+# async entry point, so this changes their build surface and not their behaviour.
+wasmtime-wasi = { version = "45", default-features = false, features = ["p2"] }
+
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }

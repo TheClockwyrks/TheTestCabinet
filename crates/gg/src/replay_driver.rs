@@ -75,12 +75,6 @@
 //! re-emits the recorded `(call, outcome)` pairs the program composed, in recorded order. No
 //! program is transpiled and no sandbox is instantiated here, so replay is exact for the same
 //! reason the native path is — the record pins the answer to every non-deterministic question.
-//!
-//! The guest's own determinism (no clock, no randomness — see
-//! [the sandbox](https://docs.testcabinet.ai/gg/responses-as-code/)) is a *different*, also-real
-//! property: it is what makes a live **re-run** of the same program compose the same calls again,
-//! and therefore what makes two live runs comparable. It is not what makes this reconstruction
-//! faithful.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;

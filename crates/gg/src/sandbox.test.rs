@@ -229,9 +229,9 @@ fn a_program_runs_typed_calls_in_order() {
         }))
     );
 
-    // The same program twice takes the same path and composes the same calls. Elapsed time is
-    // deliberately *not* compared: it is a measurement of wall clock, and the machine is free to run
-    // slightly differently each time. What must be identical is everything a replay depends on.
+    // The same program twice takes the same path and composes the same calls: the host dispatches
+    // identically for identical tool outcomes. Elapsed time is deliberately *not* compared — it is a
+    // measurement of wall clock, and the machine is free to run slightly differently each time.
     let program = concat!(
         "const entries = fs.listDir(\"src\");\n",
         "console.log(entries.filter((e) => e.kind === \"file\").map((e) => e.name).join(\", \"));",
@@ -240,19 +240,6 @@ fn a_program_runs_typed_calls_in_order() {
     let (second, second_log) = run(program);
     assert_eq!(logs(&first), logs(&second));
     assert_eq!(first_log.names(), second_log.names());
-
-    // No clock, no randomness — which is what makes replaying a code turn exact rather than
-    // approximate. `Date.now()` reports the artifact's build instant, forever.
-    let program =
-        "console.log(JSON.stringify([Date.now(), new Date().toISOString(), Math.random()]));";
-    let (first, _) = run(program);
-    let (second, _) = run(program);
-    let first = logged_json(&first);
-    assert_eq!(first, logged_json(&second));
-    assert!(
-        first[0].as_u64().is_some_and(|millis| millis > 0),
-        "the frozen clock still reports a real instant: {first}"
-    );
 }
 
 /// A memory search's results reach a program as **data it can rank, filter and index**, not as the
@@ -304,14 +291,21 @@ fn a_memory_search_hands_a_program_its_hits_as_data() {
     assert_eq!(reported["index"], json!(null));
 }
 
-/// **Denied globals become located program errors, never traps.**
+/// **What the sandbox cannot honour becomes a located program error, never a trap — and everything
+/// else the host has, the guest simply gets.**
 ///
-/// The component is built with the WASI imports these builtins call disabled, so an *unshadowed*
-/// call reaches a missing import and traps the whole store — uncatchable, no feedback, and the
-/// model is told only that the sandbox trapped. Since `await new Promise((r) => setTimeout(r, 100))`
-/// is the first reflex a model brings to a new runtime, that failure would be routine.
+/// Two things would fail silently without a thrower. The timers are *defined* and never fire, because
+/// gg's `run` export is synchronous and nothing polls after it returns: measured,
+/// `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at `0` with no error at all. And `fetch` reaches a
+/// WASI import the component is baked without, which traps the whole store — uncatchable, no
+/// feedback, and the model is told only that the sandbox trapped. Since
+/// `await new Promise((r) => setTimeout(r, 100))` is the first reflex a model brings to a new
+/// runtime, both would be routine.
+///
+/// The second half of this test is the other side of that line: the clock, the randomness and the
+/// rest of WASI are the **host's**, linked ambiently, and nothing shadows them.
 #[test]
-fn the_sandbox_globals_are_denied_not_trapped() {
+fn the_sandbox_denies_only_what_it_cannot_honour() {
     let denied = [
         "setTimeout(() => 1, 0);",
         "setInterval(() => 1, 0);",
@@ -320,9 +314,6 @@ fn the_sandbox_globals_are_denied_not_trapped() {
         "queueMicrotask(() => 1);",
         "requestAnimationFrame(() => 1);",
         "fetch(\"https://example.com\");",
-        "performance.now();",
-        "crypto.getRandomValues(new Uint8Array(4));",
-        "crypto.randomUUID();",
     ];
     for program in denied {
         let (outcome, _) = run(program);
@@ -357,6 +348,32 @@ fn the_sandbox_globals_are_denied_not_trapped() {
         .as_deref()
         .expect("the deferred call was reported");
     assert!(note.contains("ran after your program ended"), "{note}");
+
+    // The clock is the host's own wall clock, not a constant the artifact snapshotted at build time.
+    // Compared against this process's clock rather than against a hard-coded date, because a frozen
+    // build instant would also be "after 2026" and would pass that.
+    let host = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the host clock is after the epoch")
+        .as_millis();
+    let (outcome, _) = run("console.log(JSON.stringify(Date.now()));");
+    let guest = u128::from(logged_json(&outcome).as_u64().expect("a millisecond count"));
+    assert!(
+        guest.abs_diff(host) < 60_000,
+        "the guest's clock reports {guest} against the host's {host}, so it is not reading the host's"
+    );
+
+    // Randomness is the host's too, and differs between two runs of the same program. Both sources
+    // are checked because they reach the guest by different routes — `Math.random()` through the
+    // engine's own seeding, `crypto.randomUUID()` through `wasi:random` directly.
+    let program = "console.log(JSON.stringify([Math.random(), crypto.randomUUID()]));";
+    let (first, _) = run(program);
+    let (second, _) = run(program);
+    assert_ne!(
+        logged_json(&first),
+        logged_json(&second),
+        "two runs drew the same random values, so the guest is not reading the host's entropy"
+    );
 }
 
 /// The two ceilings stop a runaway program, and everything it did first is still reported.

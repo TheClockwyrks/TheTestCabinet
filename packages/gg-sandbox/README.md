@@ -92,12 +92,10 @@ It takes a few seconds. `componentize-js` is intentionally *not* a dependency of
 this package: it is ~208 MB of `node_modules`, and `npm ci` runs in three CI jobs
 that have no use for it.
 
-A rebuild is **not** byte-reproducible even when nothing changed: the component
-snapshots its own build instant (which is also why a program's `Date.now()` is
-frozen at that instant, and why a code turn is reproducible for replay). Two
-refreshes of identical source were measured a few dozen bytes apart, so a diff on
-this artifact proves nothing on its own — do not re-run the script just to see
-whether it would produce something different.
+A rebuild is **not** byte-identical even when nothing changed: the component
+snapshots its own build instant. Two refreshes of identical source were measured a
+few dozen bytes apart, so a diff on this artifact proves nothing on its own — do not
+re-run the script just to see whether it would produce something different.
 
 Nothing in a normal build runs this script. `cargo build` embeds the committed
 artifacts, and this package deliberately has **no `build` npm script** so that a
@@ -189,13 +187,12 @@ ones this SDK obeys, and they are about what reaches the model:
 - **optional arguments use the language's own idiom**; **required arguments are
   positional**.
 
-One more thing travels with a language, and it is easy to miss: **what its component
-needs from the host linker**. This component is baked with *every* WASI capability
-disabled, which is what makes a code turn reproducible for gg's replay capability,
-and gg's linker accordingly provides no WASI at all. A `componentize-py` guest is not
-so frugal — it imports the full WASI p2 surface (`wasi:cli`, `wasi:filesystem`,
-`wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io`) — so a language declares its
-requirement to the host as data (`HostRequirements` in
-`crates/gg/src/sandbox/language.rs`), and a language that needs WASI must also say
-how each nondeterministic capability is pinned. TypeScript's answer is "nothing
-beyond the sandbox world".
+**What the host links** is not a language's business. A `componentize-py` guest
+imports the full WASI p2 surface (`wasi:cli`, `wasi:filesystem`, `wasi:sockets`,
+`wasi:clocks`, `wasi:random`, `wasi:io`) whether or not the program touches any of
+it, so gg's linker defines the whole of that surface for every guest,
+unconditionally — a program gets the host's clock, randomness, filesystem and
+sockets. The one exception the host owns is **stdout**, which is gg's telemetry
+stream; the component is baked `--disable stdio` for the same reason and rebinds
+`console.*` to the feedback channel. This component imports nothing beyond the
+membrane, so none of the WASI half applies to it.
