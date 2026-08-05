@@ -7,10 +7,13 @@ interface GradeBadgeProps {
 }
 
 // A game jam's whole-game overall grade (or a category grade), shown as a
-// color-coded chip pairing the tier's emoji with its label — the graded analogue
-// of {@link RatingBadge}, which a jam has in place of a per-domain rating. The
-// tier color comes from the `data-grade` attribute so the markup stays a single
-// element; the point value is exposed as the title.
+// color-coded chip — the graded analogue of {@link RatingBadge}, which a jam has
+// in place of a per-domain rating. It deliberately renders exactly like a rating
+// badge (label only, tinted by tier) so a jam's badge reads as the same thing as
+// a regular run's wherever the two sit side by side — a run log row, a run's
+// verdict header, a leaderboard. The tier emoji belongs to the *input* scale (the
+// reviewer's grade buttons and the per-category checklist rows), not to this
+// badge; the tier's point value is exposed as the title.
 export function GradeBadge({ status, className }: GradeBadgeProps) {
   const meta = GRADE_META[status];
   return (
@@ -19,9 +22,6 @@ export function GradeBadge({ status, className }: GradeBadgeProps) {
       data-grade={status}
       title={`${meta.label} — ${meta.points} ${meta.points === 1 ? "pt" : "pts"}`}
     >
-      <span className={styles.emoji} aria-hidden="true">
-        {meta.emoji}
-      </span>
       {meta.label}
     </span>
   );
