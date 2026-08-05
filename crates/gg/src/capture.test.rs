@@ -319,7 +319,7 @@ fn agent_rows(lines: &[GgJournalLine]) -> Vec<&GgSessionAgent> {
 }
 
 #[test]
-fn the_seed_records_the_envelope_a_reconstruction_starts_from() {
+fn the_seed_records_the_envelope_the_session_started_from() {
     let (dir, recorder) = recorder_in(None);
     recorder.record_seed(recorded_seed("Build a tiny game.", true));
     recorder.finish();
@@ -537,11 +537,11 @@ fn a_tool_outcome_interns_its_payloads_into_the_text_pool() {
     }
 }
 
-/// The staleness detector is only worth anything if both ends compute it the same way. Both go
-/// through `GgSessionInterner::intern_request`, so the recorder's fingerprint is by construction the
-/// one a playback recomputes from the live request.
+/// The recorded request is whatever the shared interner folds a live one into — the recorder adds
+/// no interning of its own, so a request in the record indexes the same pools as every other
+/// reference to those bodies.
 #[test]
-fn the_recorded_fingerprint_is_the_one_the_shared_interner_folds() {
+fn the_recorded_request_is_the_one_the_shared_interner_folds() {
     let (dir, recorder) = recorder_in(None);
     let conversation = vec![Message::system("you are gg"), Message::user("build it")];
     let tools = vec![ToolDefinition::new(
@@ -695,8 +695,8 @@ fn a_prompt_frame_records_the_window_model_fields_the_request_cannot_carry() {
             .all(|(position, item)| (position == 2) == item.region.is_some()),
         "only the paged view carries a region"
     );
-    // The items index the message pool in send order, so the frame reconstructs the window
-    // rather than merely describing it.
+    // The items index the message pool in send order, so the frame *is* the window rather than a
+    // description of it: a reader follows each item into the body the model was sent.
     assert_eq!(
         items.iter().map(|item| item.message).collect::<Vec<_>>(),
         vec![0, 1, 2, 3]
@@ -708,9 +708,9 @@ fn a_prompt_frame_records_the_window_model_fields_the_request_cannot_carry() {
 ///
 /// The frame was built to carry a file view's `(path, region)` key, and a text view fits it because
 /// the three fields were never file-specific — the label *is* the selector for both bands. Pinned
-/// here because it is the whole justification for adding no replay contract for views: a playback
-/// that could not name which view a band's tokens belonged to would reconstruct a window it could
-/// not attribute.
+/// here because it is the whole justification for adding no separate view contract to the record: a
+/// reader that could not name which view a band's tokens belonged to could not attribute the
+/// window it is looking at.
 #[test]
 fn a_prompt_frame_records_a_text_view_by_its_label_with_no_region() {
     let (dir, recorder) = recorder_in(None);
@@ -739,7 +739,7 @@ fn a_prompt_frame_records_a_text_view_by_its_label_with_no_region() {
     let raw = serde_json::to_value(items[0].source).unwrap();
     assert_eq!(raw, serde_json::json!("text_view"));
 
-    // The body reaches the pool intact, heading and all, so a playback renders what the model read.
+    // The body reaches the pool intact, heading and all, so the record holds what the model read.
     let body = message_body(&lines, items[0].message);
     assert_eq!(
         body, "View: changed-files\n----\nsrc/main.rs\nsrc/lib.rs",
@@ -783,7 +783,7 @@ fn a_prompt_frame_reuses_the_bodies_its_turns_model_io_already_pooled() {
         panic!("expected a prompt-frame entry");
     };
     // Identical indices, because both seams intern through the one `GgSessionInterner` — which is
-    // what lets a reconstruction line the frame's items up with the request's messages at all.
+    // what lets a reader line the frame's items up with the request's messages at all.
     assert_eq!(
         items.iter().map(|item| item.message).collect::<Vec<_>>(),
         request.messages
@@ -848,7 +848,7 @@ fn a_stopped_capture_records_no_prompt_frame() {
 // --- capture stops atomically -----------------------------------------------
 
 /// The core of R12. A ceiling reached mid-run must not drop *individual* lines: a hole in a pool
-/// shifts every later reference, silently substituting the wrong message body into a reconstructed
+/// shifts every later reference, silently substituting the wrong message body into a recorded
 /// prompt. So capture stops for the whole run, the pools stay a contiguous prefix, and no entry
 /// references a body that was never written.
 #[test]
@@ -1016,8 +1016,35 @@ async fn recording_client_delegates_and_records_each_turn() {
     assert_eq!(request.shape, GgSessionRequestShape::Complete);
 }
 
-/// A required tool call must not be silently replayed as an offered one, so the call shape is part
-/// of the record.
+/// Every recorded call carries the provider's latency. The clock is read around the inner call and
+/// nowhere else, so `duration_ms` is what the provider took rather than what the recorder did —
+/// and it is recorded on every run, because "how long did this model take to answer" is one of the
+/// four things a session is compared on.
+#[tokio::test]
+async fn a_recorded_call_carries_the_providers_latency() {
+    let (dir, recorder) = recorder_in(None);
+    let recorder = Arc::new(recorder);
+    let client = RecordingClient::new(
+        Box::new(StubClient::new("mock/echo", stop_response("hi"))),
+        Arc::clone(&recorder),
+        "root",
+    );
+
+    client.complete(&[Message::user("go")], &[]).await.unwrap();
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let GgSessionEntryKind::ModelIo { duration_ms, .. } = &entries(&lines)[0].kind else {
+        panic!("expected a model-io entry");
+    };
+    assert!(
+        duration_ms.is_some(),
+        "a recorded call states how long it took"
+    );
+}
+
+/// A required tool call and an offered one are different turns, so the call shape is part of the
+/// record rather than something a reader has to infer from the response.
 #[tokio::test]
 async fn a_required_tool_call_records_its_shape() {
     let (dir, recorder) = recorder_in(None);
@@ -1040,8 +1067,8 @@ async fn a_required_tool_call_records_its_shape() {
     assert_eq!(request.toolset, Some(0));
 }
 
-/// A recorded body is the message as the client sent it, so it round-trips back to the gg type a
-/// reconstruction feeds the loop.
+/// A recorded body is the message as the client sent it, so it round-trips back to the gg type the
+/// loop was handed.
 #[test]
 fn a_pooled_body_round_trips_back_to_the_message_that_was_sent() {
     let (dir, recorder) = recorder_in(None);
@@ -1109,8 +1136,8 @@ impl ModelClient for FailingOnceClient {
 }
 
 /// A failed model call is an **input**, and one this build records: v1 dropped every one of them,
-/// so a reconstruction of a run that recovered from a vision refusal diverged at exactly the turn
-/// a developer had opened the record to look at.
+/// so a run that recovered from a vision refusal had nothing in its record at exactly the turn a
+/// developer had opened the record to look at.
 ///
 /// This is the vision-recovery shape end to end: the refused call and the stripped retry both go
 /// through the same wrapped client, so the record reads `model_error → model_io`, and the class
@@ -1164,7 +1191,7 @@ async fn a_refused_turn_records_its_error_before_the_call_that_replaced_it() {
 }
 
 /// Every [`ModelError`] class the loop branches on survives into the record as a class, not as a
-/// rendered sentence — a reconstruction has to know that a call failed for a reason that strips
+/// rendered sentence — a reader has to be able to tell that a call failed for a reason that strips
 /// images and retries, not merely that it failed.
 #[test]
 fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
@@ -1240,7 +1267,7 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
 /// It was never wrapped at all before this, so every handoff-compaction call in every record
 /// captured to date is missing. The [role](GgClientRole) is what makes capturing it *safe*:
 /// without the discriminator a summarizer call and the agent's own next turn interleave into one
-/// indistinguishable queue and a reconstruction serves the wrong one to whichever asks first.
+/// indistinguishable queue and a reader cannot tell which of the two a recorded call was.
 #[tokio::test]
 async fn the_compaction_summarizers_calls_are_recorded_on_their_own_queue() {
     let (dir, recorder) = recorder_in(None);
@@ -1454,8 +1481,8 @@ fn a_standard_capture_clips_a_large_payload_and_records_what_it_dropped() {
     assert_eq!(
         clip.original_id,
         fingerprint_exact(huge.as_bytes()),
-        "the whole payload's content address is what lets a reconstruction that re-runs the \
-         command prove its own output matches, from a record that kept a fraction of it"
+        "the whole payload's content address is what lets a reader match a rerun of the command \
+         against the original, from a record that kept a fraction of it"
     );
 }
 
@@ -1509,8 +1536,8 @@ fn two_payloads_sharing_a_tail_are_clipped_to_two_pool_entries() {
 /// The two seams record different things: a stream is what a process printed, of which the model
 /// sees the last 16 KiB, while a tool outcome *is* what the model saw. Clipping the second at the
 /// first's ceiling recorded a 100 KB file the model read in its entirety as a 32 KiB tail cut
-/// mid-file — and a reconstruction feeding that back presents the model with a different file than
-/// the run did, then reports the divergence as model drift.
+/// mid-file — so the record said the model read a fragment of a file it had read whole, which is
+/// the one thing a record of a tool outcome must not get wrong.
 #[test]
 fn a_standard_capture_records_a_whole_file_read_without_clipping_it() {
     let (dir, recorder) = recorder_in(None);
@@ -1625,13 +1652,13 @@ fn a_structured_file_payload_is_pooled_with_the_output_it_duplicates() {
     assert_eq!(
         data.pointer("/data/totalLines").and_then(Value::as_u64),
         Some(64),
-        "while everything a reconstruction actually branches on stays inline"
+        "while everything a reader actually branches on stays inline"
     );
 }
 
 /// The working directory a recorded command ran in is stored **relative to the workspace**, so a
-/// reconstruction building in a different directory can still compare it — and a path genuinely
-/// outside the workspace is kept verbatim rather than silently matched.
+/// reader comparing two runs that built in different directories still sees one path — and a path
+/// genuinely outside the workspace is kept verbatim rather than silently matched.
 #[test]
 fn a_recorded_working_directory_is_relative_to_the_workspace_where_it_can_be() {
     let workspace = Path::new("/work/impl");
@@ -1683,11 +1710,11 @@ fn the_turn_boundary_probes_are_recorded_as_inputs() {
     );
 }
 
-/// The deadline clock is recorded at **both** fidelities, unlike the latency clock beside it: it
-/// is the one clock read the loop branches on, so a standard capture that dropped it would leave a
-/// reconstruction running past the point the run stopped.
+/// The deadline clock is recorded because it is the one clock read the loop *branches* on: the run
+/// stops at the turn boundary where the budget is spent, so a record that dropped it could not
+/// explain why the session ended where it did.
 #[test]
-fn the_deadline_clock_is_recorded_at_standard_fidelity_too() {
+fn the_deadline_clock_is_recorded() {
     let (dir, recorder) = recorder_in(None);
     recorder.record_clock("root", 42, None);
     recorder.finish();
@@ -1711,13 +1738,12 @@ fn the_deadline_clock_is_recorded_at_standard_fidelity_too() {
 /// first milestones the only commands captured were the ones gg ran *without the model asking* —
 /// then the completion capability's validation build, today an [agent-stop
 /// hook's](crate::hooks) — because that was the only call site that happened to hold a recorder, so
-/// a record of a session that used the `shell` tool had no answer for a single one of its commands,
-/// and every one of them replayed as a miss.
+/// a record of a session that used the `shell` tool had no answer for a single one of its commands.
 ///
 /// [`CompletionValidation`](GgShellOrigin::CompletionValidation) is exercised alongside the three
-/// live origins rather than dropped with the capability: a reconstruction reads records it did not
-/// write, and one that stopped recognising the origin those commands were filed under would replay
-/// them onto the agent's own queue — the exact confusion the stamp exists to prevent.
+/// live origins rather than dropped with the capability: records written before it was retired are
+/// still read, and an origin this build no longer recognised would read back as an agent's own
+/// command — the exact confusion the stamp exists to prevent.
 #[tokio::test]
 async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
     let (dir, recorder) = recorder_in(None);
@@ -1773,8 +1799,8 @@ async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
 /// The root it measures against is the whole reason there is one of these per agent rather than one
 /// per run: an agent working in an [issue worktree](crate::board) has its own, and a command it ran
 /// in `web/` has to read back as `web/` rather than as `worktrees/AUTH-1/web/` — otherwise the same
-/// command issued by two agents records as two different commands and a reconstruction matches
-/// neither.
+/// command issued by two agents records as two different commands and a reader comparing them sees
+/// a difference that is not there.
 #[tokio::test]
 async fn the_shell_decorator_relativizes_against_the_agents_own_root() {
     let (dir, recorder) = recorder_in(None);
@@ -1821,8 +1847,8 @@ async fn the_shell_decorator_relativizes_against_the_agents_own_root() {
 }
 
 /// A command that never started is still recorded, as exit `-1` with empty streams: the record's
-/// field is a plain `i32` and every consumer of it branches on "zero or not", so what a
-/// reconstruction needs from it is that the command did not succeed.
+/// field is a plain `i32` and every consumer of it branches on "zero or not", so what the record
+/// has to say is that the command did not succeed.
 #[tokio::test]
 async fn a_command_that_never_started_is_still_recorded() {
     let (dir, recorder) = recorder_in(None);

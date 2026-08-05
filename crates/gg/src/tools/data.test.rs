@@ -88,8 +88,8 @@ fn one_of_each() -> Vec<ToolData> {
 }
 
 /// Every variant survives a JSON round trip. The session recorder captures the whole outcome
-/// verbatim and a replay driver feeds it back, so a payload that cannot make that trip is a
-/// payload that silently disappears from a replayed session.
+/// verbatim, so a payload that cannot make that trip is a payload that silently disappears from
+/// the record of the session that produced it.
 #[test]
 fn every_payload_round_trips_through_json() {
     for data in one_of_each() {

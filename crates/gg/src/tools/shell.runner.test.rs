@@ -137,8 +137,8 @@ async fn a_substituted_runner_replaces_the_process_entirely() {
         "the stub's output should be what the model reads: {}",
         outcome.output
     );
-    // The whole point: the command did not run. A playback that left this file behind would be
-    // building a tree out of side effects it claims to have stubbed.
+    // The whole point: the command did not run. A substituted runner that left this file behind
+    // would be building a tree out of side effects it claims to have stubbed.
     assert!(
         !dir.path().join("the-command-really-ran").exists(),
         "a substituted runner must not start the process"

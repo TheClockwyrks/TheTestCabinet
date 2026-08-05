@@ -1858,10 +1858,6 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
     ("the issue agent's description", "implements issues"),
     ("the reviewer agent's name", "`critic`"),
     ("the reviewer agent's description", "reviews finished work"),
-    (
-        "that a reviewer is mandatory",
-        "must name one or more `reviewers`",
-    ),
     // ## Your assigned issue — which issue this agent was dispatched to implement.
     ("the assigned issue's id", "`issue-1`"),
 ];
@@ -1888,6 +1884,44 @@ fn every_language_prompt_states_what_the_run_configured() {
                 "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
             );
         }
+    }
+}
+
+/// **A run that requires reviewers says so, and one that does not says the opposite.**
+///
+/// Deliberately *not* in [`REQUIRED_PHRASES`], and this is the reason the table stays exceptionless:
+/// `reviewers_required` carries no value into the prompt. It picks between two sentences that name
+/// the same identifier, so the only thing that distinguishes them is their wording, and asserting on
+/// wording belongs in a test that says it is doing that rather than in a table whose stated rule is
+/// that rewording must never fail.
+///
+/// It still earns its place: the two sentences are the difference between an agent that must name a
+/// reviewer on every issue and one that may, and a template collapsing them would silently make a
+/// mandatory review optional.
+#[test]
+fn a_run_that_requires_reviewers_tells_the_model_it_must_name_one() {
+    fn board(reviewers_required: bool) -> SystemContext {
+        let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
+        context
+            .board
+            .as_mut()
+            .expect("the board section is on")
+            .reviewers_required = reviewers_required;
+        context
+    }
+
+    for language in all_languages() {
+        let name = language.display_name();
+        let required = flat(&render_system_for(language, &board(true)));
+        assert!(
+            required.contains("Every issue must name one or more `reviewers`"),
+            "{name}: a run requiring reviewers no longer says so:\n{required}"
+        );
+        let optional = flat(&render_system_for(language, &board(false)));
+        assert!(
+            optional.contains("An issue may name one or more `reviewers`"),
+            "{name}: a run not requiring reviewers no longer says they are optional:\n{optional}"
+        );
     }
 }
 
