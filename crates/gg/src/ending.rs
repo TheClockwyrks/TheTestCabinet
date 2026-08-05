@@ -25,7 +25,9 @@
 //! [sandbox membrane](crate::sandbox) calls them for a program's `review.approve()` /
 //! `harness.finish(…)`, and the [loop](crate::agent) calls them for the
 //! equivalent tool call. So a model cannot reach a laxer check by picking an execution mode, and the
-//! message it is told off with is the same sentence either way.
+//! message it is told off with is the same sentence either way — with the **calls it names** written
+//! the way the caller's mode writes them, since a sentence that says "call this instead" is only
+//! useful if the model can write what it names.
 
 use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 
@@ -86,10 +88,17 @@ impl Ending {
     /// The summary becomes the session's final text and, for a subagent, its entire answer to
     /// whoever asked for the work — so "I am done and have nothing to say about it" is not an ending
     /// gg accepts on the model's behalf.
-    pub(crate) fn finished(summary: String) -> Result<Self, String> {
+    ///
+    /// `finish` is how **this caller's execution mode** names the call: the bare
+    /// [tool name](FINISH_TOOL) on the tool-calling path, and the run's
+    /// [program language](crate::sandbox::spell)'s own object-qualified spelling under
+    /// responses-as-code. It is a parameter and not a constant because the sentence tells the model
+    /// to call it again, and an instruction naming a call the model's protocol does not offer is an
+    /// instruction it cannot follow.
+    pub(crate) fn finished(summary: String, finish: &str) -> Result<Self, String> {
         if summary.trim().is_empty() {
             return Err(format!(
-                "`{FINISH_TOOL}` takes a non-empty summary — one or two sentences saying what you \
+                "`{finish}` takes a non-empty summary — one or two sentences saying what you \
                  did. Your session is NOT over; write the summary and call it again."
             ));
         }
@@ -101,7 +110,14 @@ impl Ending {
     /// Blank entries are dropped and an empty result is an **error**, because the list is dispatched
     /// verbatim to the agent that must fix the work: a rejection with nothing in it would send that
     /// agent back to re-read criteria it already believed it had met.
-    pub(crate) fn changes_requested(items: Vec<String>) -> Result<Self, String> {
+    ///
+    /// `request_changes` and `approve` are named by the caller for the reason
+    /// [`finished`](Self::finished)'s `finish` is.
+    pub(crate) fn changes_requested(
+        items: Vec<String>,
+        request_changes: &str,
+        approve: &str,
+    ) -> Result<Self, String> {
         let items: Vec<String> = items
             .into_iter()
             .map(|item| item.trim().to_string())
@@ -109,8 +125,8 @@ impl Ending {
             .collect();
         if items.is_empty() {
             return Err(format!(
-                "`{REQUEST_CHANGES_TOOL}` takes at least one change, each saying what is wrong and \
-                 what to change. If the work needs nothing, call `{APPROVE_TOOL}` instead. Your \
+                "`{request_changes}` takes at least one change, each saying what is wrong and \
+                 what to change. If the work needs nothing, call `{approve}` instead. Your \
                  session is NOT over."
             ));
         }

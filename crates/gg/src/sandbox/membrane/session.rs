@@ -48,7 +48,8 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// does not do, and for the role check every one of these three passes through first.
     fn finish(&mut self, summary: String) -> Result<(), ToolError> {
         self.recorded(HARNESS_FINISH, |state, rec| {
-            state.declare(rec, Ending::finished(summary), HARNESS_FINISH)
+            let ending = Ending::finished(summary, &state.spelled(HARNESS_FINISH));
+            state.declare(rec, ending, HARNESS_FINISH)
         })
     }
 
@@ -65,11 +66,12 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// that has to fix the work, and an empty one would give it nothing to do.
     fn request_changes(&mut self, items: Vec<String>) -> Result<(), ToolError> {
         self.recorded(REVIEW_REQUEST_CHANGES, |state, rec| {
-            state.declare(
-                rec,
-                Ending::changes_requested(items),
-                REVIEW_REQUEST_CHANGES,
-            )
+            let ending = Ending::changes_requested(
+                items,
+                &state.spelled(REVIEW_REQUEST_CHANGES),
+                &state.spelled(REVIEW_APPROVE),
+            );
+            state.declare(rec, ending, REVIEW_REQUEST_CHANGES)
         })
     }
 }

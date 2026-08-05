@@ -12,11 +12,12 @@ use std::time::{Duration, Instant};
 use super::super::ErrorCode;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::*;
-use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::EndingRole;
 use crate::sandbox::fake::{
-    CallLog, all_tools, canned_outcome, membrane, membrane_as, membrane_ending, membrane_with,
+    CallLog, all_tools, canned_outcome, membrane, membrane_as, membrane_ending, membrane_in,
+    membrane_with, typescript,
 };
+use crate::sandbox::language::fixture::fixture_language;
 use crate::sandbox::{FINISH_FUNCTION, RunEnding};
 
 /// The summary a [`Finished`](Ending::Finished) ending carries, or a panic naming what it was
@@ -311,7 +312,7 @@ fn a_reviewer_declares_a_verdict() {
 }
 
 /// A rejection with nothing to act on is refused, and the refusal names the call that *was*
-/// appropriate.
+/// appropriate — spelled the way this program would write it, not in gg's own vocabulary.
 #[test]
 fn a_rejection_with_no_changes_is_refused() {
     let log = CallLog::default();
@@ -322,10 +323,13 @@ fn a_rejection_with_no_changes_is_refused() {
             .request_changes(empty)
             .expect_err("a rejection with nothing in it is not a verdict");
         assert_eq!(refused.code, ErrorCode::InvalidArgument);
-        assert_eq!(refused.tool, REQUEST_CHANGES_TOOL);
+        assert_eq!(
+            refused.tool, "request_changes",
+            "the identity field is gg's own name for the call, as it is for every bound tool"
+        );
         assert!(
-            refused.message.contains(APPROVE_TOOL),
-            "{}",
+            refused.message.contains("`review.approve`"),
+            "the instruction is TypeScript's spelling: {}",
             refused.message
         );
     }
@@ -361,7 +365,7 @@ fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
     ] {
         assert_eq!(refused.code, ErrorCode::Unavailable);
         assert!(
-            refused.message.contains(FINISH_TOOL),
+            refused.message.contains("harness.finish"),
             "it is told which ending it does have: {}",
             refused.message
         );
@@ -381,11 +385,64 @@ fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
     assert_eq!(refused.code, ErrorCode::Unavailable);
     assert_eq!(refused.tool, FINISH_FUNCTION);
     assert!(
-        refused.message.contains(APPROVE_TOOL) && refused.message.contains(REQUEST_CHANGES_TOOL),
+        refused.message.contains("review.approve")
+            && refused.message.contains("review.requestChanges"),
         "it is told which endings it does have: {}",
         refused.message
     );
     assert!(state.into_parts().completion.is_none());
+}
+
+/// **A refusal names the calls this program could have made in that program's own language**, not in
+/// gg's.
+///
+/// gg's [vocabulary](crate::sandbox::language::SurfaceCall) is `snake_case` and belongs to no SDK:
+/// `request_changes` is a name TypeScript does not bind and a model could not write. A sentence whose
+/// whole job is to say "call this instead" has to say something callable, so it goes through
+/// [`spell`](crate::sandbox::language::spell) — and the two spellings below are the same three calls
+/// under two languages, which is the only way to prove the sentence follows the language rather than
+/// happening to match one.
+#[test]
+fn a_refusal_names_the_endings_the_way_this_program_would_write_them() {
+    let log = CallLog::default();
+    let mut state = membrane_in(typescript(), &log, EndingRole::Review);
+
+    let refused = state
+        .finish("the work is done".to_string())
+        .expect_err("a reviewer does not finish");
+
+    assert!(
+        refused.message.contains("harness.finish")
+            && refused.message.contains("review.approve")
+            && refused.message.contains("review.requestChanges"),
+        "TypeScript's own spellings, qualified by object: {}",
+        refused.message
+    );
+    assert!(
+        !refused.message.contains("request_changes"),
+        "and never gg's internal name, which no SDK binds: {}",
+        refused.message
+    );
+
+    // The same refusal in a language that spells every function in `snake_case`. Nothing here is
+    // hard-coded twice: the fixture's catalogue is what decides, exactly as TypeScript's did above.
+    let log = CallLog::default();
+    let mut state = membrane_in(fixture_language(), &log, EndingRole::Review);
+
+    let refused = state
+        .finish("the work is done".to_string())
+        .expect_err("a reviewer does not finish");
+
+    assert!(
+        refused.message.contains("review.request_changes"),
+        "the fixture language's spelling: {}",
+        refused.message
+    );
+    assert!(
+        !refused.message.contains("requestChanges"),
+        "and not TypeScript's: {}",
+        refused.message
+    );
 }
 
 /// The role is checked **before** the declaration's shape, and the order is what makes the refusal
@@ -432,7 +489,7 @@ fn an_on_use_script_may_declare_no_ending_at_all() {
         state.request_changes(vec!["rewrite it".to_string()]).err(),
     ];
 
-    for (call, refused) in [FINISH_TOOL, APPROVE_TOOL, REQUEST_CHANGES_TOOL]
+    for (call, refused) in ["harness.finish", "review.approve", "review.requestChanges"]
         .into_iter()
         .zip(refusals)
     {

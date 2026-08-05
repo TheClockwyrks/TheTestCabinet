@@ -5156,18 +5156,25 @@ fn issue_review_event(
 /// it deliberately goes through the very same [`Ending`] constructors: an empty change list is
 /// refused in one sentence, written once, whichever execution mode the reviewer that produced it was
 /// running in. Nothing here re-reads prose — the arguments *are* the verdict.
+///
+/// The call names handed to those constructors are gg's **bare tool names**, because on this path
+/// that is what the model wrote and what it would write again. The membrane's copy of this passes
+/// its program language's spellings instead.
 fn parse_ending_call(name: &str, args: &Value, _role: EndingRole) -> Result<Ending, String> {
     match name {
         completion::APPROVE_TOOL => Ok(Ending::Approved),
-        completion::REQUEST_CHANGES_TOOL => {
-            Ending::changes_requested(parse_string_array(args, "items"))
-        }
+        completion::REQUEST_CHANGES_TOOL => Ending::changes_requested(
+            parse_string_array(args, "items"),
+            completion::REQUEST_CHANGES_TOOL,
+            completion::APPROVE_TOOL,
+        ),
         // `finish`, and — defensively — anything else the role claimed to own.
         _ => Ending::finished(
             args.get("summary")
                 .and_then(Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
+            completion::FINISH_TOOL,
         ),
     }
 }

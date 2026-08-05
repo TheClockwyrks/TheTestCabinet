@@ -165,7 +165,8 @@ fn a_second_succession_in_one_turn_is_refused_and_the_first_stands() {
 #[test]
 fn an_ending_declared_this_turn_beats_a_later_exec() {
     let agent = Agent::root("Before");
-    let ending = Some(Ending::finished("all done".to_string()).unwrap());
+    let ending =
+        Some(Ending::finished("all done".to_string(), crate::completion::FINISH_TOOL).unwrap());
     let mut declared = None;
 
     let outcome = handle_exec(

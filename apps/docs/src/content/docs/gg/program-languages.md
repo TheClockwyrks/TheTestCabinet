@@ -209,6 +209,15 @@ Two consequences for a language being added:
   from what the guest made of the throw — otherwise the identical event would be counted
   one way in a language that can withhold a name and another way in a language that
   cannot.
+- **A refusal that names a call names it in this language.** Every one of these sentences
+  ends by telling the model what to call *instead* — an agent doing work is pointed at
+  `harness.finish`, a reviewer at `review.approve` — and an instruction is only useful if
+  the model can write what it names. gg's own vocabulary is `snake_case` and belongs to no
+  SDK, so the alternatives are resolved from the run language's catalogue at the moment of
+  the refusal, the same way the prompt resolves them. Both fields of the error say
+  something different on purpose: the message is that instruction, and the error's `tool`
+  field stays gg's own name for the call, because it is an **identity** a catch site
+  reports rather than a name the program writes.
 
 ### The linker requirement
 

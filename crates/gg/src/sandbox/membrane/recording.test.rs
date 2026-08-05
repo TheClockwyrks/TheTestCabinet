@@ -299,6 +299,7 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
     let recorded = api.api_log();
     let mut state = MembraneState::new(
         api,
+        crate::sandbox::fake::typescript(),
         crate::sandbox::ProgramScope {
             enabled: &["shell".to_string()],
             modules: &[],

@@ -886,8 +886,19 @@ pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
 /// guest that links its SDK as a library has no scope to withhold one from. So this parameter is the
 /// subject of the tests that pass it, not decoration on them.
 pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<FakeToolApi> {
+    membrane_in(typescript(), log, role)
+}
+
+/// A membrane state as [`membrane_as`], written in `language` — what a test asserting on a
+/// **spelling** needs, since a refusal that names a call names it the way that language writes it.
+pub(crate) fn membrane_in(
+    language: &'static dyn ProgramLanguage,
+    log: &CallLog,
+    role: EndingRole,
+) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::new(log),
+        language,
         scope_of(&all_tools(), RunEnding::Role(role), true),
         SandboxLimits::default(),
         None,
@@ -899,6 +910,7 @@ pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<Fake
 pub(crate) fn membrane_ending(log: &CallLog, ending: RunEnding) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::new(log),
+        typescript(),
         scope_of(&all_tools(), ending, true),
         SandboxLimits::default(),
         None,
@@ -914,6 +926,7 @@ pub(crate) fn membrane_with(
 ) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::with(log, responder),
+        typescript(),
         scope_of(enabled, RunEnding::Role(EndingRole::Standard), true),
         SandboxLimits::default(),
         deadline,
@@ -929,8 +942,19 @@ pub(crate) fn membrane_from(api: FakeToolApi) -> MembraneState<FakeToolApi> {
 /// [`membrane_from`], with the [program library](crate::programs) bound or withheld — the one scope
 /// variation the library's own tests turn on.
 pub(crate) fn membrane_from_scope(api: FakeToolApi, library: bool) -> MembraneState<FakeToolApi> {
+    membrane_from_scope_in(typescript(), api, library)
+}
+
+/// [`membrane_from_scope`], written in `language` — the spelling seam the library refusals are
+/// asserted through.
+pub(crate) fn membrane_from_scope_in(
+    language: &'static dyn ProgramLanguage,
+    api: FakeToolApi,
+    library: bool,
+) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         api,
+        language,
         scope_of(&all_tools(), RunEnding::Role(EndingRole::Standard), library),
         SandboxLimits::default(),
         None,

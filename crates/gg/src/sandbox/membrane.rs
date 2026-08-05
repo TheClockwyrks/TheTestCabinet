@@ -67,10 +67,11 @@ use std::time::{Duration, Instant};
 use test_cabinet_core::gg::GgToolFailure;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
-use super::language::SurfaceCall;
+use super::language::{
+    HARNESS_FINISH, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SurfaceCall, spell,
+};
 use super::limits::{MemoryLimiter, SandboxLimits};
 use super::{ProgramCompletion, ProgramError, ProgramErrorKind, ProgramScope};
-use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::{Ending, EndingRole};
 use crate::tools::{ToolData, ToolFailure, ToolOutcome};
 
@@ -127,17 +128,31 @@ impl RunEnding {
     /// It names the endings the program does have rather than only the one it does not: an agent
     /// that reached for the wrong ending has a right one, and being told which is the difference
     /// between a turn it recovers from and a turn it spends guessing.
-    fn withheld(self, call: &str) -> String {
+    ///
+    /// Every call it names is [spelled](spell) in `language`, because naming one is an
+    /// **instruction** — "call this instead" — and an instruction written in gg's own `snake_case`
+    /// vocabulary would tell the model to make a call its SDK does not bind. gg's vocabulary and a
+    /// language's spelling coincide today only because there is one language; they are guaranteed
+    /// to diverge as soon as there is a second.
+    fn withheld(self, language: &'static dyn ProgramLanguage, call: SurfaceCall) -> String {
+        let call = spell(language, call);
         match self {
-            Self::Role(EndingRole::Standard) => format!(
-                "`{call}` is not available to you: you were dispatched to do work, not to review \
-                 it. Report what you did with `{FINISH_TOOL}` instead."
-            ),
-            Self::Role(EndingRole::Review) => format!(
-                "`{call}` is not available to you: you were dispatched to review work, so your \
-                 session ends with a verdict — `{APPROVE_TOOL}`, or `{REQUEST_CHANGES_TOOL}` \
-                 naming every change the work needs."
-            ),
+            Self::Role(EndingRole::Standard) => {
+                let finish = spell(language, HARNESS_FINISH);
+                format!(
+                    "`{call}` is not available to you: you were dispatched to do work, not to \
+                     review it. Report what you did with `{finish}` instead."
+                )
+            }
+            Self::Role(EndingRole::Review) => {
+                let approve = spell(language, REVIEW_APPROVE);
+                let request_changes = spell(language, REVIEW_REQUEST_CHANGES);
+                format!(
+                    "`{call}` is not available to you: you were dispatched to review work, so your \
+                     session ends with a verdict — `{approve}`, or `{request_changes}` naming every \
+                     change the work needs."
+                )
+            }
             Self::None => format!(
                 "`{call}` is not available here: this code is a skill or a memory being loaded \
                  rather than your own turn, so it cannot end your session."
@@ -170,6 +185,10 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// Behind a [guard](recording::GuardedApi) rather than in the open, so that no host function can
     /// reach it without first opening the API-call bracket that records what the model called.
     api: GuardedApi<A>,
+    /// The [language](ProgramLanguage) this program is written in, held for one reason: a refusal
+    /// that tells the model which call to make instead has to name it the way *this* program would
+    /// write it. See [`spell`].
+    language: &'static dyn ProgramLanguage,
     /// How many model-facing API calls this program has made — every host function, dispatching or
     /// not, refused or serviced. See [`recording`].
     api_calls: u64,
@@ -328,8 +347,8 @@ pub(crate) struct MembraneParts {
 }
 
 impl<A: ToolApi> MembraneState<A> {
-    /// The state for one program: bridged through `api`, offering exactly what `scope` says this
-    /// program was given, bounded by `limits`, and stopping at `deadline`.
+    /// The state for one program: bridged through `api`, written in `language`, offering exactly
+    /// what `scope` says this program was given, bounded by `limits`, and stopping at `deadline`.
     ///
     /// It takes the whole [`ProgramScope`] rather than the tool names alone because everything in it
     /// is one decision — what this program may reach — and every part of that decision is checked
@@ -337,12 +356,14 @@ impl<A: ToolApi> MembraneState<A> {
     /// the program-library flag came to be handed to the guest and to nobody else.
     pub(crate) fn new(
         api: A,
+        language: &'static dyn ProgramLanguage,
         scope: ProgramScope<'_>,
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
         Self {
             api: GuardedApi::new(api),
+            language,
             api_calls: 0,
             enabled: scope.enabled.iter().cloned().collect(),
             ending: scope.ending,
@@ -564,7 +585,7 @@ impl<A: ToolApi> MembraneState<A> {
         call: SurfaceCall,
     ) -> Result<(), ToolError> {
         if !self.ending.permits(call.key) {
-            let message = self.ending.withheld(call.key);
+            let message = self.ending.withheld(self.language, call);
             return Err(self.withhold(call, message));
         }
         let ending = ending.map_err(|message| ToolError {
@@ -633,6 +654,12 @@ impl<A: ToolApi> MembraneState<A> {
         Ok(outcome)
     }
 
+    /// How this program's [language](ProgramLanguage) spells `call` — the qualified name any
+    /// sentence put in front of the model quotes back.
+    fn spelled(&self, call: SurfaceCall) -> String {
+        spell(self.language, call)
+    }
+
     /// Refuse a [program-library](programs) call from an agent that keeps no library.
     ///
     /// One helper rather than three copies, called as the **first** statement inside each library
@@ -640,13 +667,17 @@ impl<A: ToolApi> MembraneState<A> {
     /// failure. That count is the point: "the model reached for something this run does not offer
     /// it" is precisely what a toolset ablation is run to measure, and a refusal that closed no
     /// bracket would be invisible to it.
+    ///
+    /// The call is [spelled](spell) in the program's own language for the same reason
+    /// [`RunEnding::withheld`]'s replacements are: the sentence is put in front of a model, and a
+    /// model reads a name it could write.
     fn library_bound(&mut self, call: SurfaceCall) -> Result<(), ToolError> {
         if self.library {
             return Ok(());
         }
         let message = format!(
             "`{}` is not available to you: this agent keeps no library of the programs it has run.",
-            call.key
+            self.spelled(call)
         );
         Err(self.withhold(call, message))
     }
@@ -659,6 +690,15 @@ impl<A: ToolApi> MembraneState<A> {
     /// identity rather than a tool name that would answer to nothing. It is [`Unavailable`] in every
     /// case, which is the same class — and the same recovery — a guest that could withhold the name
     /// would have produced by leaving it out of scope.
+    ///
+    /// # Why `tool` is gg's name and the message is the language's
+    ///
+    /// [`ToolError::tool`] is an **identity**: the thing that failed, in gg's own vocabulary, so a
+    /// catch site can report it without parsing prose — exactly as it carries `read_file` for the
+    /// twenty-nine bound tools whose SDK spelling is `fs.readFile`. The `message` is an
+    /// **instruction**, and an instruction naming a call has to name it the way this program would
+    /// write it, so its caller [spells](spell) every call it quotes. The two fields differ on
+    /// purpose; they are not two attempts at the same thing.
     ///
     /// [`Unavailable`]: ErrorCode::Unavailable
     fn withhold(&mut self, call: SurfaceCall, message: String) -> ToolError {

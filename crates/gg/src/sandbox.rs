@@ -234,7 +234,10 @@ pub fn run_program<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
-    let mut store = bounded_store(MembraneState::new(api, scope, limits, deadline), limits);
+    let mut store = bounded_store(
+        MembraneState::new(api, language, scope, limits, deadline),
+        limits,
+    );
 
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
@@ -447,7 +450,7 @@ pub(crate) fn component_bound_tools(
         ending: RunEnding::None,
         library: false,
     };
-    let state = MembraneState::new(fake::FakeToolApi::new(&log), scope, limits, None);
+    let state = MembraneState::new(fake::FakeToolApi::new(&log), language, scope, limits, None);
     let mut store = bounded_store(state, limits);
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)

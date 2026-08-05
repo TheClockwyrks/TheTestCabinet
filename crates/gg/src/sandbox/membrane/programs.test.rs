@@ -73,9 +73,19 @@ fn every_library_call_is_refused_without_the_capability() {
     for (call, refused) in ["history", "get", "rerun"].into_iter().zip(refusals) {
         let refused = refused.unwrap_or_else(|| panic!("`{call}` is not available to this agent"));
         assert_eq!(refused.code, ErrorCode::Unavailable, "`{call}`");
-        assert_eq!(refused.tool, call);
+        assert_eq!(
+            refused.tool, call,
+            "the identity field is gg's own name for the call"
+        );
         assert!(
             refused.message.contains("no library"),
+            "`{call}`: {}",
+            refused.message
+        );
+        // ...and the sentence names the call the way the program would have written it, object and
+        // all, rather than under the bare key gg files it by.
+        assert!(
+            refused.message.contains(&format!("`programs.{call}`")),
             "`{call}`: {}",
             refused.message
         );
