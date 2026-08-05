@@ -8,9 +8,20 @@
 // or "something removed a bullet", and this item can only mean the first if the second
 // is impossible. So the lane is chosen to rule the second out: the ship sits low on the
 // left firing due right, 260 px below the star's row, so no bullet passes near enough to
-// the core to be absorbed, and the furthest one has only reached the middle of the field
-// when the volley ends, so none of them wraps. Every bullet is also well inside its 1.5 s
-// lifetime, and `newGame` has cleared the field, so nothing can be collided with.
+// the core to be absorbed, and the furthest one is still short of the right edge when the
+// volley ends, so none of them wraps. The oldest bullet is 1.25 s old by then, inside its
+// 1.5 s lifetime, and `newGame` has cleared the field, so nothing can be collided with.
+//
+// THE TAPS ARE SPACED WELL CLEAR OF THE FIRE INTERVAL, not merely past it. They used to
+// sit at 24 ticks, which was the tightest spacing the old spec left room for: it read
+// "at least 0.18 seconds apart ... roughly 5 to 6 shots per second", so an interval
+// anywhere in 0.167-0.2 s was conformant and 24 ticks was exactly 0.2 s. A build at the
+// slow end of that band rejected every second tap — the more so if it accumulated its
+// clock in floating point, where 24 steps of 1/120 sum to 0.19999999999999998 and fall
+// short of a `>= 0.2` gate — so it fired three shots, peaked at three, and this item
+// called a correct cap too tight. `specs/ship.md` now fixes the gate at a whole 22 ticks,
+// and 30 leaves eight ticks of room above it, so no rounding or accumulation order can
+// put a tap on the wrong side.
 //
 // It used to fire up-left from (200, 200), which sent the volley diagonally into the
 // top-left corner about half a second in — inside the volley, so the count this item
@@ -42,9 +53,9 @@ export default function item() {
       maxSeen = 0;
       for (let i = 0; i < 5; i += 1) {
         await api.call("press", "Space");
-        // 0.2 s x 120 Hz = 24 ticks, which clears the ~0.18 s fire interval so each tap
+        // 30 ticks (0.25 s), comfortably clear of the 22-tick fire interval, so each tap
         // is allowed to fire and the cap — not the rate limit — is what holds the count.
-        await api.advance(24);
+        await api.advance(30);
         maxSeen = Math.max(maxSeen, (await api.snapshot()).bullets.length);
       }
       final = (await api.snapshot()).bullets.length;
