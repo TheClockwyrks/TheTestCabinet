@@ -169,6 +169,7 @@ Worked examples, which double as the editor's example menu:
 | Score distribution, speculation on vs off | `\| stats dist(score) by cap."speculative-execution"` |
 | Sessions per day | `started >= now-90d \| stats count() by bucket(started, 1d)` |
 | Which runs never got the edit tool | `has.summary:true and not tool.editFile:*` |
+| What compiling cost each [language arm](/gg/program-languages/), per run | `has.summary:true \| stats avg(summary.compileMs) as compiling by summary.programLanguage` |
 | A code metric, once code analysis lands | `\| stats median(code.functions.cognitive.p90) by model` |
 
 ## Where the parser lives, and why the evaluator is mirrored

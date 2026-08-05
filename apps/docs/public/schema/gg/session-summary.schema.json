@@ -281,6 +281,13 @@
       "minimum": 0,
       "type": "integer"
     },
+    "compileMs": {
+      "default": 0,
+      "description": "How many milliseconds the run's programs spent **being compiled**, in total — folded from\nthe same [`CodeExecution`](GgTelemetryKind::CodeExecution) events\n[`code_executions`](Self::code_executions) counts, so the sum and the turn count it is read\nagainst cannot come from different mechanisms and drift.\n\n`0` for a language whose prepare step invokes no compiler, and for a tool-calling run — the\nhonest answer rather than an absence, because \"this arm compiled nothing\" is a measurement\nand a missing field is not. It counts the rejected programs too: what a compiled arm pays\nfor a program the compiler refused is part of what that arm costs.\n\nThis is the run-level figure a cross-language study divides by\n[`code_executions`](Self::code_executions) to ask what a turn of arm A costs in compile time\nagainst a turn of arm B, and it is the only place that question is answerable — the per-turn\ntime is on the events, but a query works on the run document.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
     "contextOverflowCount": {
       "description": "How many turns the window fullness hit the ceiling (`>= 1.0`) — the count behind\n[`ran_out_of_context`](Self::ran_out_of_context), so a query can distinguish a run that\nbrushed the ceiling once from one that spent many turns overflowing.",
       "format": "uint64",

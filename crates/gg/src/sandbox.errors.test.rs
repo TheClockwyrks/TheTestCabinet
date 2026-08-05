@@ -83,6 +83,85 @@ fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
     }
 }
 
+/// **The program a compiler rejected is still a program that was compiled**, and the sandbox reports
+/// what that cost.
+///
+/// This is the path the figure exists for. A compile that spends four seconds and then refuses the
+/// program spent them: the model gets its turn back, the run pays the wall clock, and every other
+/// reading of the turn is zero — the membrane's clock never started, so `elapsed` is
+/// [`Duration::ZERO`] and the whole cost would otherwise be absorbed into the turn's response time.
+/// Asserted against the fixture language, which is the one implementation of the seam that declares
+/// it compiles.
+#[test]
+fn a_compiler_that_rejected_the_program_still_reports_what_it_cost() {
+    let language = super::fixture_languages()
+        .next()
+        .expect("the fixture language is registered under test");
+    assert!(
+        language.prepare_compiles(),
+        "this assertion is about a language that compiles"
+    );
+
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        language,
+        "def f\n  a ?? b",
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+
+    let error = outcome
+        .result
+        .expect_err("`??` is not a token in that language");
+    assert!(matches!(error, SandboxError::Prepare(_)), "{error:?}");
+    assert!(
+        outcome.compile.is_some(),
+        "a compiling language reports what preparing the program cost, even when it refused it"
+    );
+    assert_eq!(
+        outcome.elapsed,
+        Duration::ZERO,
+        "nothing ran, so the only non-zero reading of this turn is the compile"
+    );
+}
+
+/// A language whose prepare step compiles nothing reports **nothing**, rather than a zero.
+///
+/// `Some(0)` and `None` are different claims — "compiled, in under a millisecond" against "there is
+/// no compiler on this path at all" — and only the second is true of TypeScript's type-strip. A zero
+/// on every turn of every run would put a column of noise in front of the one study the field exists
+/// for, and would make an arm that genuinely compiles instantly indistinguishable from one that does
+/// not compile.
+#[test]
+fn a_type_strip_reports_no_compile_time_at_all() {
+    assert!(!typescript().prepare_compiles());
+
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        typescript(),
+        "const x: = ;",
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+
+    assert!(outcome.result.is_err());
+    assert_eq!(outcome.compile, None);
+}
+
 /// How the loop disposes of a sandbox failure: whose fault it was, and therefore what the turn was.
 ///
 /// A test-local mirror of the loop's four choices, written here so this file can assert the mapping

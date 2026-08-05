@@ -347,6 +347,13 @@ pub(super) async fn run_code_turn(
         compile_wait_ms: outcome
             .compile_wait
             .map(|waited| saturating_u64(waited.as_millis())),
+        // What compiling *this* program cost, for a language that compiles at all. It is time the
+        // clock behind `duration_ms` never sees — that clock starts once the program is prepared —
+        // so without this the whole of a compiled arm's per-turn compile cost would be absorbed
+        // into the turn's response time, alongside minutes of `shell`.
+        compile_ms: outcome
+            .compile
+            .map(|compiling| saturating_u64(compiling.as_millis())),
         healing: healing_record(&healed),
     });
 
@@ -1168,9 +1175,10 @@ async fn run_code_program(
                 rerun: None,
                 revoked_rerun: false,
                 elapsed: Duration::ZERO,
-                // Both are observations the sandbox makes on its way through, and the task that would
-                // have made them died — so neither is known, and neither is invented.
+                // All three are observations the sandbox makes on its way through, and the task that
+                // would have made them died — so none is known, and none is invented.
                 unreachable: None,
+                compile: None,
                 compile_wait: None,
                 result: Err(SandboxError::Host(format!(
                     "the code sandbox task did not complete: {join}"
@@ -1274,6 +1282,7 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         revoked_rerun: earlier_revoked_rerun,
         elapsed: earlier_elapsed,
         unreachable: earlier_unreachable,
+        compile: earlier_compile,
         compile_wait: earlier_compile_wait,
         // The earlier program ran to its end — that is the only way the chain continued — so its
         // result says nothing the later one's does not.
@@ -1318,6 +1327,14 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         // rather than reporting only its last link.
         elapsed: earlier_elapsed.saturating_add(later.elapsed),
         unreachable: later.unreachable.or(earlier_unreachable),
+        // **Summed**, unlike `compile_wait` below and for the opposite reason: the shared component
+        // is compiled at most once, but every link of a chain is a program of its own and a
+        // compiling language compiles each one. Reporting only a link's worth would make a turn
+        // that compiled four programs look like a turn that compiled one.
+        compile: match (earlier_compile, later.compile) {
+            (Some(earlier), Some(later)) => Some(earlier.saturating_add(later)),
+            (earlier, later) => earlier.or(later),
+        },
         // The earlier link is the one that could have paid the one shared component compile; by the
         // time the second ran it was warm.
         compile_wait: earlier_compile_wait.or(later.compile_wait),

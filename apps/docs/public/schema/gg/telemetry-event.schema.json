@@ -2288,6 +2288,12 @@
           "minimum": 0,
           "type": "integer"
         },
+        "compileMs": {
+          "description": "How long **this program's own compilation** took, in milliseconds — the whole of the\nlanguage's prepare step, including any compiler it shells out to.\n\nAbsent for a language whose prepare step is in-process and free (TypeScript's\ntype-strip), where the figure would be a zero on every turn of every run. Present on\n**every** turn of a language that compiles, including the turn whose program the\ncompiler rejected — a compile that failed after four seconds cost those four seconds,\nand that turn is the one that would otherwise report nothing.\n\nDistinct from [`compile_wait_ms`](Self::CodeExecution::compile_wait_ms), which is the\none shared *interpreter component* compile and belongs to the process rather than to\nthis program. This field exists because without it a compiled language's per-turn cost\nis invisible: the sandbox's own clock starts after the program is prepared, so the time\nlands in neither [`duration_ms`](Self::CodeExecution::duration_ms) nor `compileWaitMs`\nand is absorbed into the turn's [response time](Self::TurnTiming::response_ms) alongside\nminutes of `shell` — which is to say a compiled arm and an interpreted one could not be\ncompared on what compiling cost them, which is the first thing such a study asks.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
         "compileWaitMs": {
           "description": "How long **this** program spent obtaining the sandbox's compiled interpreter component,\nin milliseconds — absent (the ordinary case) when the component was already compiled and\nnothing here was on the turn's critical path.\n\nThe component is compiled once per process, and a run that enables the capability starts\nthat compile before its first model request. But starting it early only **overlaps** it\nwith the request rather than eliminating it: on a run container with one or two cores the\ncompile takes seconds, so a model that answers quickly gets its first program back before\nthe warm-up has finished, and that program compiles the component itself. This is the\nfigure that says so — without it, \"did this program wait on the one shared compile or is\nit genuinely slow?\" is only answerable by comparing timestamps across sibling runs.",
           "format": "uint64",

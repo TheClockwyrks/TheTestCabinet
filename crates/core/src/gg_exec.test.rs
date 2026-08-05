@@ -265,6 +265,7 @@ fn a_finished_code_execution_reaches_the_human_facing_feed() {
             logs: Vec::new(),
             logs_suppressed: 0,
             compile_wait_ms: None,
+            compile_ms: None,
             healing: Default::default(),
         },
     );
@@ -296,6 +297,7 @@ fn a_code_execution_without_a_completion_maps_to_nothing() {
                 logs: Vec::new(),
                 logs_suppressed: 0,
                 compile_wait_ms: None,
+                compile_ms: None,
                 healing: Default::default(),
             },
         );

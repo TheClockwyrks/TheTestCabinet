@@ -87,6 +87,12 @@ struct SummaryState {
     issues_reopened: u64,
     /// One per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn).
     code_executions: u64,
+    /// The milliseconds those same [`CodeExecution`](GgTelemetryKind::CodeExecution) events
+    /// reported spending in their language's compiler, summed — so
+    /// [`code_executions`](Self::code_executions) is the exact denominator for the per-turn compile
+    /// cost, by the same construction the healing rates use. A turn whose language compiles nothing
+    /// carries no figure and adds nothing.
+    compile_ms: u64,
     /// The run's [response-healing](GgHealingSummary) rollup, folded from the healing record on
     /// each of those same [`CodeExecution`](GgTelemetryKind::CodeExecution) events — so
     /// [`code_executions`](Self::code_executions) is the exact denominator for every rate over it,
@@ -425,9 +431,17 @@ impl SessionSummaryTracker {
             // One event per code-shaped *turn*, including a turn whose reply did not compile — so
             // this count is the exact denominator for the healing rates folded alongside it, and
             // the two are incremented by the same statement.
-            GgTelemetryKind::CodeExecution { healing, .. } => {
+            GgTelemetryKind::CodeExecution {
+                healing,
+                compile_ms,
+                ..
+            } => {
                 state.code_executions += 1;
                 state.fold_healing(healing);
+                // Folded from the same statement as the count it is read against, for the reason
+                // the healing rates are: a compile-cost-per-turn assembled from two mechanisms is a
+                // ratio whose halves can drift.
+                state.compile_ms = state.compile_ms.saturating_add(compile_ms.unwrap_or(0));
             }
             // One event per *turn* of every agent, code-shaped or not — the mode-agnostic judgement
             // the error ceilings are enforced on, folded here so the run records how error-prone it
@@ -505,6 +519,7 @@ impl SessionSummaryTracker {
                 .unwrap_or_else(|| "tool_calling".to_string()),
             program_language: state.program_language,
             code_executions: state.code_executions,
+            compile_ms: state.compile_ms,
             healing: GgHealingSummary {
                 enabled: state.healing_enabled.clone(),
                 ..state.healing.clone()

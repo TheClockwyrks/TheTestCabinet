@@ -191,7 +191,11 @@ pub struct ProgramScope<'a> {
 /// model emitted, `scope` is everything the evaluated function's parameters are built from, and
 /// `deadline` is the run's wall-clock budget, consulted before every bridged call so a program
 /// cannot outlive the run it belongs to. Synchronous and CPU-bound, so the [loop](crate::agent) runs
-/// it on `spawn_blocking`; it performs no I/O of its own — every effect goes through `invoker`.
+/// it on `spawn_blocking`; every effect a *program* has goes through `invoker`, and the only work
+/// this function does outside the engine is the language's own
+/// [prepare step](ProgramLanguage::prepare_program) — which for a language that
+/// [compiles](ProgramLanguage::prepare_compiles) is a compiler, and is timed as
+/// [`SandboxOutcome::compile`](outcome::SandboxOutcome::compile) precisely because it is not free.
 pub fn run_program<A: ToolApi>(
     language: &'static dyn ProgramLanguage,
     program: &str,
@@ -211,15 +215,21 @@ pub fn run_program<A: ToolApi>(
     // stand-in for a before-start failure, which never runs the program and never touches state.
     #[cfg(test)]
     if let Some(error) = forced_fault() {
-        return (SandboxOutcome::before_start(error), api);
+        return (SandboxOutcome::before_start(error, None), api);
     }
 
     // A program that does not prepare never touches the engine: no store, no instantiate, no timer.
-    let prepared = match language.prepare_program(program) {
+    // It may still have cost real time: for a language that compiles, this is the compiler, and the
+    // reading is taken around both outcomes because a rejected program is the one whose cost would
+    // otherwise be reported as nothing.
+    let started = Instant::now();
+    let prepared = language.prepare_program(program);
+    let compile = language.prepare_compiles().then(|| started.elapsed());
+    let prepared = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             return (
-                SandboxOutcome::before_start(SandboxError::Prepare(error)),
+                SandboxOutcome::before_start(SandboxError::Prepare(error), compile),
                 api,
             );
         }
@@ -227,12 +237,12 @@ pub fn run_program<A: ToolApi>(
     let unreachable = prepared.unreachable;
     let (component, compile_wait) = match engine::component(language) {
         Ok(component) => component,
-        Err(error) => return (SandboxOutcome::before_start(error), api),
+        Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
 
     let linker = match linker::<A>(language) {
         Ok(linker) => linker,
-        Err(error) => return (SandboxOutcome::before_start(error), api),
+        Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
     let mut store = bounded_store(
         MembraneState::new(api, language, scope, limits, deadline),
@@ -246,7 +256,7 @@ pub fn run_program<A: ToolApi>(
             // committed artifact importing something this membrane does not provide — i.e. the
             // component and the WIT have drifted apart.
             let error = engine::classify(&store, limits, &error, SandboxError::Instantiate);
-            return reclaim(store, Err(error), unreachable, compile_wait);
+            return reclaim(store, Err(error), unreachable, compile, compile_wait);
         }
     };
 
@@ -267,7 +277,7 @@ pub fn run_program<A: ToolApi>(
     if returned.is_err() {
         store.data_mut().revoke_completion();
     }
-    reclaim(store, returned, unreachable, compile_wait)
+    reclaim(store, returned, unreachable, compile, compile_wait)
 }
 
 /// A linker carrying the whole membrane and nothing else: every one of the thirty-two typed gg tool
@@ -473,6 +483,7 @@ fn reclaim<A: ToolApi>(
     store: Store<MembraneState<A>>,
     returned: Result<(), SandboxError>,
     unreachable: Option<UnreachableTail>,
+    compile: Option<Duration>,
     compile_wait: Option<Duration>,
 ) -> (SandboxOutcome, A) {
     // Read the guest's own execution time before the store is consumed — the same figure the
@@ -528,6 +539,7 @@ fn reclaim<A: ToolApi>(
         revoked_rerun,
         elapsed,
         unreachable,
+        compile,
         compile_wait,
         result: returned.map(|()| ProgramResult {
             error: program_error,

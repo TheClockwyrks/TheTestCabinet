@@ -731,9 +731,21 @@ directly:
   with one or two cores, gets its first program back before the warm-up has finished and
   that program compiles the component inside its own span. The field is what separates
   "this program was slow" from "this program paid the one shared compile", and it is
-  absent on every turn that did not. A run's conclusion lives in `finished` and nowhere
-  else, which is why the console's event feed surfaces it as the agent's own message:
-  under this capability every assistant message is a page of TypeScript.
+  absent on every turn that did not. Beside it is `compileMs`, which is the *other*
+  compile and belongs to the program rather than to the process: what this program's own
+  [language](/gg/program-languages/) spent preparing it, including any compiler that step
+  shells out to. It is absent for a language whose prepare step is in-process and free —
+  TypeScript's type-strip, where the figure would be a zero on every turn of every run —
+  and present on every turn of a language that compiles, **including the turn whose
+  program the compiler rejected**. That turn is the one the field exists for, because it
+  is the only reading of that turn which is not zero. The sandbox's own clock starts once
+  a program is prepared, so without this field a compiled arm's per-turn compile cost
+  would land in neither `durationMs` nor `compileWaitMs` and would be absorbed into the
+  turn's response time alongside minutes of `shell` — which is to say two language arms
+  could not be compared on what compiling cost them. A run's conclusion lives in
+  `finished` and nowhere else, which is why the console's event feed surfaces it as the
+  agent's own message: under this capability every assistant message is a page of
+  TypeScript.
 - **`limit_exceeded`** — emitted once by each agent that stops on an
   [execution ceiling](/gg/execution-limits/), immediately before its loop returns,
   carrying which ceiling, what it was set to, what was observed, and after how many

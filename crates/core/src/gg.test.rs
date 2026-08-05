@@ -1217,6 +1217,7 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
         logs: Vec::new(),
         logs_suppressed: 0,
         compile_wait_ms: None,
+        compile_ms: None,
         healing: GgResponseHealing::default(),
     };
     let value = serde_json::to_value(&kind).expect("serialize");
@@ -1248,6 +1249,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         logs: Vec::new(),
         logs_suppressed: 0,
         compile_wait_ms: None,
+        compile_ms: None,
         healing: GgResponseHealing {
             strategies: vec![
                 GgHealingStrategy::StripFences,
@@ -1286,6 +1288,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         logs: Vec::new(),
         logs_suppressed: 0,
         compile_wait_ms: None,
+        compile_ms: None,
         healing: GgResponseHealing::default(),
     };
     let value = serde_json::to_value(&uncompiled).expect("serialize");

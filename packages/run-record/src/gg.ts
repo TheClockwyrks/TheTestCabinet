@@ -2345,6 +2345,23 @@ export type GgSessionSummary = {
    */
   codeExecutions: number;
   /**
+   * How many milliseconds the run's programs spent **being compiled**, in total — folded from
+   * the same [`CodeExecution`](GgTelemetryKind::CodeExecution) events
+   * [`code_executions`](Self::code_executions) counts, so the sum and the turn count it is read
+   * against cannot come from different mechanisms and drift.
+   *
+   * `0` for a language whose prepare step invokes no compiler, and for a tool-calling run — the
+   * honest answer rather than an absence, because "this arm compiled nothing" is a measurement
+   * and a missing field is not. It counts the rejected programs too: what a compiled arm pays
+   * for a program the compiler refused is part of what that arm costs.
+   *
+   * This is the run-level figure a cross-language study divides by
+   * [`code_executions`](Self::code_executions) to ask what a turn of arm A costs in compile time
+   * against a turn of arm B, and it is the only place that question is answerable — the per-turn
+   * time is on the events, but a query works on the run document.
+   */
+  compileMs: number;
+  /**
    * What gg had to do to the models' responses before it could run them — the run's
    * [response-healing](GgHealingSummary) rollup, folded from the same
    * [`CodeExecution`](GgTelemetryKind::CodeExecution) events
@@ -3312,6 +3329,26 @@ export type GgTelemetryKind =
        * it genuinely slow?" is only answerable by comparing timestamps across sibling runs.
        */
       compileWaitMs?: number;
+      /**
+       * How long **this program's own compilation** took, in milliseconds — the whole of the
+       * language's prepare step, including any compiler it shells out to.
+       *
+       * Absent for a language whose prepare step is in-process and free (TypeScript's
+       * type-strip), where the figure would be a zero on every turn of every run. Present on
+       * **every** turn of a language that compiles, including the turn whose program the
+       * compiler rejected — a compile that failed after four seconds cost those four seconds,
+       * and that turn is the one that would otherwise report nothing.
+       *
+       * Distinct from [`compile_wait_ms`](Self::CodeExecution::compile_wait_ms), which is the
+       * one shared *interpreter component* compile and belongs to the process rather than to
+       * this program. This field exists because without it a compiled language's per-turn cost
+       * is invisible: the sandbox's own clock starts after the program is prepared, so the time
+       * lands in neither [`duration_ms`](Self::CodeExecution::duration_ms) nor `compileWaitMs`
+       * and is absorbed into the turn's [response time](Self::TurnTiming::response_ms) alongside
+       * minutes of `shell` — which is to say a compiled arm and an interpreted one could not be
+       * compared on what compiling cost them, which is the first thing such a study asks.
+       */
+      compileMs?: number;
       /**
        * What gg had to do to this reply before running it, and whether it was a program at all.
        * Defaulted and omitted from the wire for a clean response, so the presence of this
@@ -4348,6 +4385,26 @@ export type GgTelemetryEvent = {
        * it genuinely slow?" is only answerable by comparing timestamps across sibling runs.
        */
       compileWaitMs?: number;
+      /**
+       * How long **this program's own compilation** took, in milliseconds — the whole of the
+       * language's prepare step, including any compiler it shells out to.
+       *
+       * Absent for a language whose prepare step is in-process and free (TypeScript's
+       * type-strip), where the figure would be a zero on every turn of every run. Present on
+       * **every** turn of a language that compiles, including the turn whose program the
+       * compiler rejected — a compile that failed after four seconds cost those four seconds,
+       * and that turn is the one that would otherwise report nothing.
+       *
+       * Distinct from [`compile_wait_ms`](Self::CodeExecution::compile_wait_ms), which is the
+       * one shared *interpreter component* compile and belongs to the process rather than to
+       * this program. This field exists because without it a compiled language's per-turn cost
+       * is invisible: the sandbox's own clock starts after the program is prepared, so the time
+       * lands in neither [`duration_ms`](Self::CodeExecution::duration_ms) nor `compileWaitMs`
+       * and is absorbed into the turn's [response time](Self::TurnTiming::response_ms) alongside
+       * minutes of `shell` — which is to say a compiled arm and an interpreted one could not be
+       * compared on what compiling cost them, which is the first thing such a study asks.
+       */
+      compileMs?: number;
       /**
        * What gg had to do to this reply before running it, and whether it was a program at all.
        * Defaulted and omitted from the wire for a clean response, so the presence of this

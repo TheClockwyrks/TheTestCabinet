@@ -48,10 +48,16 @@ fn breakdown(fullness: f64) -> GgTelemetryKind {
     }
 }
 
-/// A `CodeExecution` event carrying `healing` — one code-shaped turn. The summary reads only the
-/// healing record and the event's existence, so every other field is the shape a turn that ran would
+/// A `CodeExecution` event carrying `healing` — one code-shaped turn of a language that compiles
+/// nothing, which is what TypeScript's type-strip is. The summary reads the healing record, the
+/// compile figure and the event's existence, so every other field is the shape a turn that ran would
 /// really carry.
 fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
+    code_turn_compiling(healing, None)
+}
+
+/// The same turn, from a language whose prepare step invoked a compiler and reported what it cost.
+fn code_turn_compiling(healing: GgResponseHealing, compile_ms: Option<u64>) -> GgTelemetryKind {
     GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 0,
@@ -62,6 +68,7 @@ fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
         logs: Vec::new(),
         logs_suppressed: 0,
         compile_wait_ms: None,
+        compile_ms,
         healing,
     }
 }
@@ -502,6 +509,73 @@ fn a_tool_calling_run_reports_a_zeroed_healing_rollup() {
     assert_eq!(summary.execution_mode, "tool_calling");
     assert_eq!(summary.code_executions, 0);
     assert_eq!(summary.healing, GgHealingSummary::default());
+    assert_eq!(
+        summary.compile_ms, 0,
+        "a tool-calling run compiles nothing, and says so rather than saying nothing"
+    );
+}
+
+/// **What compiling cost the run is folded from the very events `code_executions` counts**, which is
+/// what makes the two an honest ratio: a cross-language study divides one by the other to ask what a
+/// turn of arm A costs against a turn of arm B, and a numerator and denominator assembled from
+/// different mechanisms could drift.
+///
+/// A turn whose language compiles nothing carries no figure and contributes nothing, while still
+/// counting as a turn — so an arm that compiles on some turns and not others reports the compile
+/// time it actually paid over the whole of its turns, not over a subset of them.
+#[test]
+fn the_compile_rollup_folds_every_code_execution_that_reported_one() {
+    let tracker = SessionSummaryTracker::new();
+
+    tracker.observe(&code_turn_compiling(
+        GgResponseHealing::default(),
+        Some(1_400),
+    ));
+    // A repaired reply compiles like any other, and its cost counts the same.
+    tracker.observe(&code_turn_compiling(
+        healed(&[GgHealingStrategy::StripFences]),
+        Some(1_100),
+    ));
+    // The turn the compiler rejected: it cost real seconds and is exactly the turn whose cost would
+    // otherwise vanish, because nothing else about it is non-zero.
+    tracker.observe(&code_turn_compiling(
+        GgResponseHealing::default(),
+        Some(3_900),
+    ));
+    // A turn that reported no figure at all — the shape every TypeScript turn has.
+    tracker.observe(&code_turn(GgResponseHealing::default()));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(
+        summary.code_executions, 4,
+        "the turn that reported no compile figure is still a turn"
+    );
+    assert_eq!(
+        summary.compile_ms, 6_400,
+        "every reported compile, including the one the compiler refused the program on"
+    );
+}
+
+/// A whole run of a language that compiles nothing reports `0`, not an absence. The distinction the
+/// per-turn event draws — `null` means "there is no compiler on this path" — is deliberately *not*
+/// drawn at the run level: `0` is a measurement a query can average, and a missing field is a run a
+/// query silently drops out of its denominator.
+#[test]
+fn a_run_that_compiled_nothing_reports_zero_rather_than_nothing() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&code_turn(GgResponseHealing::default()));
+    tracker.observe(&code_turn(GgResponseHealing::default()));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.code_executions, 2);
+    assert_eq!(summary.compile_ms, 0);
+
+    let value = serde_json::to_value(&summary).expect("serialize");
+    assert_eq!(
+        value.get("compileMs").and_then(serde_json::Value::as_u64),
+        Some(0),
+        "the figure is on the wire, so a query can average it across arms"
+    );
 }
 
 /// The resolved ceilings and the ceiling that stopped the run are recorded (not folded) and survive

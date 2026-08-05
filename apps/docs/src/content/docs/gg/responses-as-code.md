@@ -1460,7 +1460,11 @@ This exists so a study can compare **arms that differ only in the language**. Th
 record carries the answer as a scalar in two places — `summary.programLanguage` and each
 `agent_surface` event's `programLanguage` — so a query slices on it with no new
 vocabulary. Both are absent for a tool-calling agent, which has no program language at
-all, as against an unknown one.
+all, as against an unknown one. What each arm *paid* to compile is recorded on the same
+terms: `compileMs` on every `code_execution` event and `summary.compileMs` on the run,
+because the sandbox's clock starts once a program is prepared and a compile would
+otherwise be invisible. See
+[what compiling costs](/gg/program-languages/#what-compiling-costs-and-where-it-is-recorded).
 
 What a second language may and may not change is the point of the seam. Free to differ:
 how a function is spelled (`requestChanges` against `request_changes`), how optional

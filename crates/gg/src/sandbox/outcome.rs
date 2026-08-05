@@ -140,6 +140,26 @@ pub struct SandboxOutcome {
     /// `None` for a program its language could not prepare, because a program that did not
     /// compile has no statements at all.
     pub unreachable: Option<UnreachableTail>,
+    /// How long **this program's own compilation** took — the whole of its language's
+    /// [prepare step](super::ProgramLanguage::prepare_program), including any compiler that step
+    /// shells out to — for a language that declares it
+    /// [compiles](super::ProgramLanguage::prepare_compiles).
+    ///
+    /// `None` for a language whose prepare step is in-process and free (TypeScript's type-strip),
+    /// where the figure would be a sub-millisecond zero on every turn and would say nothing.
+    ///
+    /// Reported on **every** path, including the one where the compiler rejected the program: a
+    /// compile that failed after four seconds of `swiftc` is exactly the cost a compiled arm has to
+    /// answer for, and it is the path that would otherwise report nothing at all.
+    ///
+    /// It is not [`compile_wait`](Self::compile_wait), which is the one shared *interpreter
+    /// component* compile and belongs to the process rather than to this program. Without this
+    /// field a compiled language's per-turn cost is invisible: the membrane's clock starts after
+    /// the prepare step, so the time appears in neither [`elapsed`](Self::elapsed) nor
+    /// `compile_wait` and is absorbed into the turn's response time alongside minutes of
+    /// `system.shell` — which is to say a compiled arm and an interpreted one could not be compared
+    /// on what compiling cost them.
+    pub compile: Option<Duration>,
     /// How long this program spent obtaining the compiled interpreter component, when it was the
     /// program that had to compile it.
     ///
@@ -157,7 +177,12 @@ pub struct SandboxOutcome {
 impl SandboxOutcome {
     /// The outcome of a program that never started: it did not compile, or the engine or the
     /// committed component could not be prepared. Nothing ran, so nothing was accumulated.
-    pub(super) fn before_start(error: SandboxError) -> Self {
+    ///
+    /// `compile` is the exception to "nothing was accumulated", and the reason it is a parameter
+    /// rather than a `None` written in here: the prepare step ran on every one of these paths, and
+    /// on the first of them it is what failed. A compiler that spent four seconds rejecting the
+    /// program spent them whether or not the program ever reached the engine.
+    pub(super) fn before_start(error: SandboxError, compile: Option<Duration>) -> Self {
         Self {
             tool_calls: Vec::new(),
             tool_calls_suppressed: 0,
@@ -179,6 +204,7 @@ impl SandboxOutcome {
             revoked_rerun: false,
             elapsed: Duration::ZERO,
             unreachable: None,
+            compile,
             compile_wait: None,
             result: Err(error),
         }

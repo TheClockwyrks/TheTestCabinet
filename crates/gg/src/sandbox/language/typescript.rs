@@ -116,6 +116,13 @@ impl ProgramLanguage for TypeScript {
         prepare::prepare_program(source)
     }
 
+    /// No. Preparing TypeScript is an in-process parse and type-strip — no checker runs, nothing
+    /// is spawned, and the whole step is over in well under a millisecond. Timing it would report a
+    /// zero on every turn of every run.
+    fn prepare_compiles(&self) -> bool {
+        false
+    }
+
     fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareError> {
         prepare::prepare_module(source)
     }

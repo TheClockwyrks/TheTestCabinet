@@ -44,6 +44,7 @@ fn quiet_outcome() -> SandboxOutcome {
         revoked_rerun: false,
         elapsed: Duration::ZERO,
         unreachable: None,
+        compile: None,
         compile_wait: None,
         result: Ok(ProgramResult { error: None }),
     }
@@ -326,5 +327,62 @@ fn a_chained_turn_accumulates_its_records_and_takes_the_last_result() {
     assert!(
         matches!(&merged.result, Ok(result) if result.error.is_some()),
         "the last program's verdict is the turn's"
+    );
+}
+
+/// **A chained turn's compile cost is every program's, added up** — the one figure that moves the
+/// opposite way from `compile_wait` beside it. The shared interpreter component is compiled at most
+/// once, so the first link's wait is the turn's; but a compiling language compiles each program in
+/// the chain, so a turn that handed over three times paid three compiles and has to say so. Taking
+/// the last link's figure, or the first's, would report a quarter of what the turn cost.
+#[test]
+fn a_chained_turn_sums_what_compiling_its_programs_cost() {
+    let mut earlier = quiet_outcome();
+    earlier.compile = Some(Duration::from_millis(1_200));
+    earlier.compile_wait = Some(Duration::from_millis(700));
+
+    let mut later = quiet_outcome();
+    later.compile = Some(Duration::from_millis(900));
+
+    let merged = merge_chain(earlier, later);
+
+    assert_eq!(
+        merged.compile,
+        Some(Duration::from_millis(2_100)),
+        "every link of the chain compiled a program of its own"
+    );
+    assert_eq!(
+        merged.compile_wait,
+        Some(Duration::from_millis(700)),
+        "the shared component is compiled once, however long the chain"
+    );
+}
+
+/// A language that compiles nothing reports nothing, and merging two of its programs must not
+/// invent a zero: `Some(0)` and `None` are different claims — "compiled, instantly" against "this
+/// language does not compile" — and only the second is true of a type-strip.
+#[test]
+fn a_chain_of_uncompiled_programs_reports_no_compile_time() {
+    let merged = merge_chain(quiet_outcome(), quiet_outcome());
+    assert_eq!(merged.compile, None);
+}
+
+/// A chain that begins in a compiling language and ends without a figure — the shape a partial
+/// reading takes if a link ever fails to produce one — keeps what it does know rather than
+/// discarding it.
+#[test]
+fn a_chain_keeps_the_one_compile_figure_it_has() {
+    let mut earlier = quiet_outcome();
+    earlier.compile = Some(Duration::from_millis(400));
+    assert_eq!(
+        merge_chain(earlier, quiet_outcome()).compile,
+        Some(Duration::from_millis(400))
+    );
+
+    let mut later = quiet_outcome();
+    later.compile = Some(Duration::from_millis(400));
+    assert_eq!(
+        merge_chain(quiet_outcome(), later).compile,
+        Some(Duration::from_millis(400))
     );
 }

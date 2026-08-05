@@ -124,6 +124,17 @@ impl ProgramLanguage for FixtureLanguage {
         })
     }
 
+    /// Yes — the fixture stands in for the **compiled** shape of a second language.
+    ///
+    /// It compiles nothing, of course; nothing here evaluates anything. But TypeScript answers
+    /// `false`, and a question every registered language answers the same way is a question no test
+    /// can show the seam actually asks. Declaring `true` here is what makes "a language that
+    /// compiles has its programs timed, including the one its compiler rejected" an assertion
+    /// rather than a promise.
+    fn prepare_compiles(&self) -> bool {
+        true
+    }
+
     /// A module's namespace is whatever it `def`s, and its prepared source says so in a trailing
     /// comment — the fixture's analogue of the `return { … }` epilogue TypeScript generates.
     fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareError> {

@@ -117,6 +117,22 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// has no implementation of.
     fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareError>;
 
+    /// Whether this language's [prepare step](Self::prepare_program) invokes a **compiler** — a
+    /// separate process, or an in-process checker, whose cost belongs to the program that paid it.
+    ///
+    /// It decides one thing: whether the sandbox reports what preparing this program took, as
+    /// [`SandboxOutcome::compile`](super::SandboxOutcome::compile). A language that answers `true`
+    /// has every one of its programs timed, on the failing path as well as the succeeding one; a
+    /// language that answers `false` reports nothing, because a sub-millisecond zero on every turn
+    /// is noise rather than a measurement.
+    ///
+    /// Required rather than defaulted, and answered by the language rather than inferred from a
+    /// measurement, because the two arms of a cross-language study are compared on what compiling
+    /// cost them: a language whose compile time went unrecorded because nobody remembered to
+    /// declare it would be an arm that looks free and is not. A new language cannot be registered
+    /// without answering.
+    fn prepare_compiles(&self) -> bool;
+
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
     /// that module's namespace, bound at `lib.<key>`.
     fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareError>;

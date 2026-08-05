@@ -52,6 +52,42 @@ rather than a variable. So the language is one:
   absent for a tool-calling agent, which has no program language at all, as against an
   unknown one.
 
+## What compiling costs, and where it is recorded
+
+A language is free to spend real time turning a model's reply into something its guest can
+evaluate. TypeScript spends almost none — its
+[prepare step](#what-a-language-supplies) is an in-process parse and type-strip, about
+0.2 ms — but a language that hands the reply to a compiler spends whatever that compiler
+takes, and an arm cannot be compared on cost against an arm that does not.
+
+That time is **recorded per program and rolled up per run**, because nothing else records
+it. The sandbox's own clock starts once a program is prepared, so a compile lands in
+neither the turn's `durationMs` nor its `compileWaitMs` — the latter is the one shared
+interpreter-component compile, which belongs to the process — and would otherwise be
+absorbed into the turn's response time, indistinguishable from a `shell` build that took
+four minutes.
+
+- each [`code_execution`](/gg/telemetry/) event carries **`compileMs`**: what compiling
+  *that* program cost. A turn that handed over to a replacement program compiled each of
+  them, and the figure is their sum.
+- the session summary carries **`summary.compileMs`**: the run's total, folded from those
+  very events, so it and `summary.codeExecutions` are an honest ratio — what a turn of
+  arm A costs in compile time against a turn of arm B is one query.
+
+Two deliberate asymmetries in how absence is spelled. Per turn, a language that compiles
+nothing reports **nothing at all** rather than a zero: `null` says "there is no compiler on
+this path", which a zero would not, and a column of zeroes on every turn of every
+TypeScript run would be noise in front of the one study the field exists for. Per run, the
+same arm reports **`0`** rather than omitting the field, because a query averages a
+measurement and silently drops a run that has none.
+
+And the figure is reported for the turn whose program the compiler **rejected**, which is
+the turn it most exists for: a compile that spent four seconds refusing the program spent
+them, the model gets its turn back, and every other reading of that turn is zero.
+
+A language declares whether it compiles at all — it is a required answer, not an inferred
+one, so a language cannot be registered with its compile time going quietly unrecorded.
+
 ## The rules an agent-facing surface obeys in every language
 
 A language is free to spell things its own way. It is not free to change **what the model
@@ -149,6 +185,7 @@ instantly in every gate that iterates languages.
 | --- | --- |
 | An **id** and a **display name** | The id is the config value, the telemetry value and the stem of its committed artifacts; the display name is what the model reads in its prompt and its diagnostics. |
 | **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, and the stack sizing an unguarded recursive-descent parser forces on untrusted text. |
+| **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |
 | Its **host requirements** | What that component needs from gg's linker. [Below](#the-linker-requirement). |
@@ -364,7 +401,8 @@ in gg's linker makes the choice explicit rather than incidental.
    own position against `ALL` in a `const` block, so an arm for a language missing from the list
    is a build failure. gg then does not compile until the registry has an arm for it either.
 7. **Implement the trait** in `crates/gg/src/sandbox/language/python.rs`: the preparation
-   step, the binding-name convention, the synthesized file-view statement, the healing dialect,
+   step and [whether it compiles](#what-compiling-costs-and-where-it-is-recorded), the
+   binding-name convention, the synthesized file-view statement, the healing dialect,
    the prompt dialect, the two templates (`system-code.python.hbs`,
    `code-nothing-shown.python.hbs`), the host requirements, and the healing fixtures its dialect
    must survive.
