@@ -48,10 +48,14 @@ Context Usage:
   - `src/sim/world.rs`: 4.6%
 - Text Views: 3.4%
 - Tasks: 2.0%
-Use `evict_file_view` to drop file views you no longer need; you can always read the file again.
+Use `context.evictFileView` to drop file views you no longer need; you can always read the file again.
 Use `view.close` to close views you no longer need, naming a file view's path or a text view's label. A file view you can always open again; a text view holds the only copy of what you composed, so write anything you still need to a file before closing it.
-Use `archive_thread` to move whole turns into the searchable archive, naming them by the turn numbers on your results.
+Use `context.archiveThread` to move whole turns into the searchable archive, naming them by the turn numbers on your results.
 ```
+
+That sample is a [responses-as-code](/gg/responses-as-code/) agent's, writing TypeScript. A
+tool-calling agent reads the same block with the same numbers and the closing lines spelled
+`evict_file_view` and `archive_thread` — and without the `view.close` line at all.
 
 It reports the share of the window each [source](/gg/context-visibility/) holds, as a
 percentage to one decimal place, in the same fixed source order the context graph uses,
@@ -64,11 +68,17 @@ a run whose programs are running leaves empty. When they do appear they sit dire
 `Tool Output`, where the fixed order puts them, so a run that is losing its window to failing
 programs says so in the same place every turn. The figures are computed over the
 conversation items alone, so the block never accounts for itself. The closing lines name
-only the reclaim calls this agent actually has — `evict_file_view` and `archive_thread` are
-separately [ablatable](/gg/toolset-ablation/) and are read off the registry, `view.close`
-appears only under [responses-as-code](/gg/responses-as-code/) because that is where the
-`view` object exists at all, and pointing an agent at a call it was not given is worse than
-saying nothing at all.
+only the reclaim calls this agent actually has — eviction and archiving are separately
+[ablatable](/gg/toolset-ablation/) and are read off the registry, the close line appears only
+under [responses-as-code](/gg/responses-as-code/) because that is where the `view` object
+exists at all, and pointing an agent at a call it was not given is worse than saying nothing
+at all.
+
+Each of the three is also spelled for the arm reading it. A code agent is shown the method its
+own SDK binds, [resolved from that language's catalogue](/gg/program-languages/#nothing-quotes-a-call-by-hand)
+rather than typed into the template; a tool-calling agent is shown gg's tool name, which is
+the identity it actually requests. The block spent its whole life naming two gg tools at every
+code agent gg had ever run, which is a name a program cannot call.
 
 **Text Views** is the band a [responses-as-code](/gg/responses-as-code/) agent fills itself,
 with `view.openText`, and — together with the documentation it looked up — it is what such an
