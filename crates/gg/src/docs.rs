@@ -50,7 +50,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, FunctionSummary, Parameter, ProgramLanguage, TypeDeclaration,
+    CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, TypeDeclaration,
     catalogue_functions, language, type_declaration,
 };
 
@@ -228,6 +228,12 @@ fn assemble(function: &CatalogueFunction, language: &'static dyn ProgramLanguage
 }
 
 /// One argument, indented under the signature that takes it, and its fields indented under it.
+///
+/// A **keyword** argument says so, because it is the one property of an argument that changes what
+/// the model has to type: under Python or Kotlin the call site writes the argument's name as well as
+/// its value, and a model that read only the name and the type would write it positionally. It is
+/// silent for a positional argument rather than labelled, since that is every argument in every
+/// language that passes by position and a label on all of them would say nothing.
 fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
     let indent = "  ".repeat(depth);
     let optional = if parameter.optional { "?" } else { "" };
@@ -235,8 +241,12 @@ fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
         Some(value) => format!(" = {value}"),
         None => String::new(),
     };
+    let passing = match parameter.kind {
+        ParameterKind::Positional => "",
+        ParameterKind::Keyword => " (passed by name)",
+    };
     text.push_str(&format!(
-        "{indent}{}{optional}: {}{default} — {}\n",
+        "{indent}{}{optional}: {}{default}{passing} — {}\n",
         parameter.name, parameter.r#type, parameter.doc
     ));
     for field in &parameter.fields {

@@ -158,6 +158,14 @@ export function ApiParameterList({
             {parameter.default !== undefined && (
               <span className={styles.paramType}>= {parameter.default}</span>
             )}
+            {/* How the argument is passed is marked only when it changes what a model
+                types. Positional is every argument in every language that passes by
+                position, so labelling those would say nothing; `by name` is Python's
+                keyword arguments and Kotlin's named ones, where the call site writes the
+                name too. */}
+            {parameter.passing === "keyword" && (
+              <span className={styles.paramType}>by name</span>
+            )}
           </span>
           <p className={styles.paramDesc}>{parameter.doc}</p>
           {parameter.fields.length > 0 && (

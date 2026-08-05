@@ -450,8 +450,9 @@ fn main() -> Result<()> {
             file: "gg-reference.ts",
             decls: ts_decls![&cfg;
                 ggref::GgReferenceCategory, ggref::GgToolVariant, ggref::GgToolReference,
-                ggref::GgApiTypeMember, ggref::GgApiType, ggref::GgApiParameter,
-                ggref::GgApiSignature, ggref::GgApiFunction, ggref::GgReference,
+                ggref::GgApiTypeMember, ggref::GgApiType, ggref::GgApiParameterPassing,
+                ggref::GgApiParameter, ggref::GgApiSignature, ggref::GgApiFunction,
+                ggref::GgReference,
             ],
         },
         // The code-analysis contract: the deterministic, execute-nothing static read of
@@ -861,6 +862,7 @@ fn main() -> Result<()> {
                 "GgApiFunction",
                 "GgApiSignature",
                 "GgApiParameter",
+                "GgApiParameterPassing",
                 "GgApiType",
                 "GgApiTypeMember",
             ],

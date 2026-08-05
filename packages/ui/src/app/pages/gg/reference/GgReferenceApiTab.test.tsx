@@ -127,10 +127,13 @@ const REFERENCE: GgReference = {
               fields: [],
             },
             {
+              // Passed by name, the way Python and Kotlin spell an optional argument.
+              // No registered language does yet, so the fixture is the only place the
+              // marker's rendering can be exercised at all.
               name: "options",
               type: "{ offset: number }",
               optional: true,
-              passing: "positional",
+              passing: "keyword",
               doc: "The window of lines to read.",
               fields: [
                 {
@@ -258,6 +261,14 @@ describe("GgReferenceApiTab", () => {
     // And a structured argument's fields, nested under it.
     expect(screen.getByText("The window of lines to read.")).toBeInTheDocument();
     expect(screen.getByText("The 1-based line to start at.")).toBeInTheDocument();
+  });
+
+  it("marks an argument a language passes by name, and only that one", async () => {
+    renderAt("/gg/reference/api?fn=fs.readFile");
+    await screen.findByRole("heading", { name: "fs.readFile" });
+    // Exactly one row is keyword-passed in the fixture: `options` on the second shape.
+    // Positional is every other argument, and a marker on all of them would say nothing.
+    expect(screen.getAllByText("by name")).toHaveLength(1);
   });
 
   it("names the ending role for a call a role binds rather than a tool", async () => {

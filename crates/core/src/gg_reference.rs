@@ -252,9 +252,8 @@ pub struct GgApiParameter {
     pub kind: String,
     /// Whether the call is legal without it.
     pub optional: bool,
-    /// How it is passed: `positional`, or `keyword` for a language whose call site writes the
-    /// argument's name as well as its value.
-    pub passing: String,
+    /// How it is passed. See [`GgApiParameterPassing`].
+    pub passing: GgApiParameterPassing,
     /// The value it takes when it is left out, for a language that says so in the signature.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
@@ -265,6 +264,23 @@ pub struct GgApiParameter {
     /// own right. Empty for an argument typed by name, whose documentation is on that
     /// [type](GgApiType)'s members instead.
     pub fields: Vec<GgApiParameter>,
+}
+
+/// How an [argument](GgApiParameter) is passed — the one axis of calling convention that changes
+/// what a model has to *write* at the call site.
+///
+/// An enum rather than a string because a consumer switches on it: a page that marks a keyword
+/// argument has to be sure it is reading `keyword` and not `named`, and the schema is what makes a
+/// future language's projection say so or fail to deserialize.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgApiParameterPassing {
+    /// By position, as TypeScript, Java, Rust and Swift pass every argument.
+    Positional,
+    /// By name — Python's keyword arguments, Kotlin's named ones — so the call site writes the
+    /// argument's name as well as its value.
+    Keyword,
 }
 
 /// One type declaration an [API function](GgApiFunction)'s signature refers to.

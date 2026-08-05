@@ -89,8 +89,8 @@
           "type": "boolean"
         },
         "passing": {
-          "description": "How it is passed: `positional`, or `keyword` for a language whose call site writes the\nargument's name as well as its value.",
-          "type": "string"
+          "$ref": "#/$defs/GgApiParameterPassing",
+          "description": "How it is passed. See [`GgApiParameterPassing`]."
         },
         "type": {
           "description": "Its type, as the SDK writes it.",
@@ -99,6 +99,21 @@
       },
       "required": ["name", "type", "optional", "passing", "doc", "fields"],
       "type": "object"
+    },
+    "GgApiParameterPassing": {
+      "description": "How an [argument](GgApiParameter) is passed — the one axis of calling convention that changes\nwhat a model has to *write* at the call site.\n\nAn enum rather than a string because a consumer switches on it: a page that marks a keyword\nargument has to be sure it is reading `keyword` and not `named`, and the schema is what makes a\nfuture language's projection say so or fail to deserialize.",
+      "oneOf": [
+        {
+          "const": "positional",
+          "description": "By position, as TypeScript, Java, Rust and Swift pass every argument.",
+          "type": "string"
+        },
+        {
+          "const": "keyword",
+          "description": "By name — Python's keyword arguments, Kotlin's named ones — so the call site writes the\nargument's name as well as its value.",
+          "type": "string"
+        }
+      ]
     },
     "GgApiSignature": {
       "description": "One way an [API function](GgApiFunction) may be called.",

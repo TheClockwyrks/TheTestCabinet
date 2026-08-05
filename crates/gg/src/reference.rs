@@ -66,8 +66,8 @@ use test_cabinet_core::gg::{
     SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_reference::{
-    GgApiFunction, GgApiParameter, GgApiSignature, GgApiType, GgApiTypeMember, GgReference,
-    GgReferenceCategory, GgToolReference, GgToolVariant,
+    GgApiFunction, GgApiParameter, GgApiParameterPassing, GgApiSignature, GgApiType,
+    GgApiTypeMember, GgReference, GgReferenceCategory, GgToolReference, GgToolVariant,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -571,8 +571,8 @@ fn argument(parameter: &'static Parameter) -> GgApiParameter {
         kind: parameter.r#type.clone(),
         optional: parameter.optional,
         passing: match parameter.kind {
-            ParameterKind::Positional => "positional".to_string(),
-            ParameterKind::Keyword => "keyword".to_string(),
+            ParameterKind::Positional => GgApiParameterPassing::Positional,
+            ParameterKind::Keyword => GgApiParameterPassing::Keyword,
         },
         default: parameter.default.clone(),
         doc: parameter.doc.clone(),

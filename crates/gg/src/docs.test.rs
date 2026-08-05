@@ -139,6 +139,47 @@ fn a_lookup_explains_every_argument_and_every_field() {
     );
 }
 
+/// **An argument passed by name says so, and a positional one is silent.**
+///
+/// The one property of an argument that changes what the model has to *type*: under a language that
+/// passes by name, the call site writes the argument's name as well as its value, and a model that
+/// read only the name and the type would write it positionally and be refused.
+///
+/// Built from a parameter rather than read out of a catalogue because no registered language passes
+/// by name yet — TypeScript is positional throughout, so a catalogue-driven test could only assert
+/// the silent half. The point of the test is that the renderer is ready for the first language that
+/// is not, rather than carrying the distinction as far as the JSON and dropping it.
+#[test]
+fn an_argument_passed_by_name_is_marked_and_a_positional_one_is_not() {
+    let parameter = |kind: &str| -> Parameter {
+        serde_json::from_value(serde_json::json!({
+            "name": "limit",
+            "type": "number",
+            "optional": true,
+            "kind": kind,
+            "default": null,
+            "doc": "How many lines to read.",
+            "fields": [],
+        }))
+        .expect("a parameter")
+    };
+
+    let mut positional = String::new();
+    describe(&mut positional, &parameter("positional"), 1);
+    assert_eq!(
+        positional, "  limit?: number — How many lines to read.\n",
+        "a positional argument carries no marker: it is every argument in every language that \
+         passes by position"
+    );
+
+    let mut keyword = String::new();
+    describe(&mut keyword, &parameter("keyword"), 1);
+    assert_eq!(
+        keyword,
+        "  limit?: number (passed by name) — How many lines to read.\n"
+    );
+}
+
 /// A union's arms are members too — named by the literal, with no type beside them, because the arm
 /// *is* the value. A model choosing between `pending` and `in_progress` is choosing between two
 /// values whose difference is prose, and nothing but the prose can tell it which to write.

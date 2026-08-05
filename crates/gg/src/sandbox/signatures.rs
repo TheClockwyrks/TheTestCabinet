@@ -345,8 +345,9 @@ pub enum ParameterKind {
     /// the parameter's name as well as its value.
     #[allow(
         dead_code,
-        reason = "no registered language passes arguments by name yet; the schema carries the \
-                  distinction so the first one that does needs no schema change"
+        reason = "no registered language passes arguments by name yet, so nothing constructs this \
+                  variant; the doc view and the reference page already render it, so the first \
+                  language that does needs no change beyond its own reflector"
     )]
     Keyword,
 }

@@ -167,6 +167,16 @@ export type GgApiType = {
 };
 
 /**
+ * How an [argument](GgApiParameter) is passed — the one axis of calling convention that changes
+ * what a model has to *write* at the call site.
+ *
+ * An enum rather than a string because a consumer switches on it: a page that marks a keyword
+ * argument has to be sure it is reading `keyword` and not `named`, and the schema is what makes a
+ * future language's projection say so or fail to deserialize.
+ */
+export type GgApiParameterPassing = "positional" | "keyword";
+
+/**
  * One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.
  */
 export type GgApiParameter = {
@@ -183,10 +193,9 @@ export type GgApiParameter = {
    */
   optional: boolean;
   /**
-   * How it is passed: `positional`, or `keyword` for a language whose call site writes the
-   * argument's name as well as its value.
+   * How it is passed. See [`GgApiParameterPassing`].
    */
-  passing: string;
+  passing: GgApiParameterPassing;
   /**
    * The value it takes when it is left out, for a language that says so in the signature.
    */
