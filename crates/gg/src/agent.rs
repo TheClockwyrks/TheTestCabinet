@@ -8460,16 +8460,7 @@ struct PromptInputs<'a> {
     fences_are_stripped: bool,
 }
 
-/// The system prompt for a run: the [system template](crate::prompts::render_system) for the run's
-/// execution mode, rendered against the run's actual configuration.
-///
-/// Every capability section is gated on that capability being enabled, so the prompt describes
-/// exactly what this run can do — the tools it offers (and, when it offers none, that the model
-/// can only reply in text), the catalog of available [skills](crate::skills), and how to use the
-/// [memories](crate::memories), [tasks](crate::tasks) and [board](crate::board) capabilities,
-/// each stating that run's configured limits. A
-/// disabled capability contributes nothing at all: no tools, no prose, no context.
-/// The API objects a code program has this run, in a fixed display order, each with the one-line
+/// The API objects a code program has this run, in the catalogue's own order, each with the one-line
 /// description the prompt names it by, and the functions it actually binds.
 ///
 /// An object appears exactly when the agent binds at least one of its functions — derived from the
@@ -8480,11 +8471,15 @@ struct PromptInputs<'a> {
 /// `view` always appears, because it carries the one thing nothing gates: the channel a program puts
 /// material into its own window with — including documentation, which is why the object that used to
 /// exist purely to hold the doc lookup no longer has to. A run that offers no tools at all must
-/// still be able to show its model something. The descriptions are stable product surface authored
-/// here.
+/// still be able to show its model something.
 ///
-/// This is the one place the objects, their prose and the binding rule live, and it has two
-/// consumers with opposite needs. The [prompt](api_views) takes objects and descriptions **without**
+/// The objects, the order they are shown in and the sentence each is introduced by are the
+/// **catalogue's**, reflected from the doc comment written on that object's declaration in the guest
+/// SDK — the same material `object.list()` and the [reference](crate::reference) render. Nothing
+/// about an object is authored here, because a table here would be a second copy of prose the model
+/// also meets by two other routes and nothing would keep the copies equal. What this function
+/// decides is only which of those objects *this* agent binds, and it has two consumers with opposite
+/// needs. The [prompt](api_views) takes objects and descriptions **without**
 /// the functions, because a model discovers those on demand with `object.list()` and
 /// `view.openDocsView()` rather than being shown every signature up front; the
 /// [surface event](GgTelemetryKind::AgentSurface) takes the functions too, because a console reader
@@ -8505,11 +8500,7 @@ fn api_surface(
     library: bool,
     program_language: GgProgramLanguage,
 ) -> Vec<GgAgentApi> {
-    // The objects and the sentences a model meets them by are the CATALOGUE's, in the catalogue's
-    // order — reflected from the doc comment on each object's declaration in the guest SDK, exactly
-    // as every function's description is. A table here would be a second copy of prose the model
-    // also reads through `object.list()` and through the reference, and nothing would keep the
-    // copies equal.
+    // In the catalogue's order, which is the order the SDK declares them in.
     let objects = crate::sandbox::catalogue_objects(crate::sandbox::language(program_language));
     let enabled: BTreeSet<String> = scope_tools(registry).into_iter().collect();
     let ending = match role {
