@@ -386,3 +386,60 @@ fn a_chain_keeps_the_one_compile_figure_it_has() {
         Some(Duration::from_millis(400))
     );
 }
+
+/// **An on-use script's compile is the turn's, exactly as its execution time is.**
+///
+/// A script is a whole program of its own — a compiling language hands its source to the compiler
+/// like any other — and the turn is what triggered it. The `elapsed` beside it has always been
+/// summed for that reason; a compile figure that was not would leave a skill-heavy compiled arm
+/// reporting less than it spent, silently and always in the direction that makes it look cheap.
+#[test]
+fn an_on_use_scripts_compile_is_charged_to_the_turn_that_triggered_it() {
+    let mut turn = quiet_outcome();
+    turn.compile = Some(Duration::from_millis(800));
+    turn.elapsed = Duration::from_millis(12);
+
+    let mut script = quiet_outcome();
+    script.compile = Some(Duration::from_millis(500));
+    script.elapsed = Duration::from_millis(3);
+    script.tool_calls = vec![sandbox_call("write_file")];
+
+    assert_eq!(absorb_on_use_script(&mut turn, script), None);
+
+    assert_eq!(
+        turn.compile,
+        Some(Duration::from_millis(1_300)),
+        "the turn paid for the script it triggered, compiler included"
+    );
+    assert_eq!(turn.elapsed, Duration::from_millis(15));
+    assert_eq!(turn.tool_calls.len(), 1, "and for what the script called");
+}
+
+/// A script in a language that compiles nothing must not invent a figure for a turn that has none —
+/// the same "`None` is not a zero" rule the chain merge keeps, at the second site that folds one.
+#[test]
+fn an_on_use_script_that_compiled_nothing_leaves_the_turn_reporting_nothing() {
+    let mut turn = quiet_outcome();
+    assert_eq!(absorb_on_use_script(&mut turn, quiet_outcome()), None);
+    assert_eq!(turn.compile, None);
+}
+
+/// A script that **failed** still hands back what it spent — the cost is not conditional on the
+/// script working — and its failure comes back as the sentence the turn names the skill with.
+#[test]
+fn a_failed_on_use_script_is_still_charged_and_still_reported() {
+    let mut turn = quiet_outcome();
+    turn.compile = Some(Duration::from_millis(100));
+
+    let mut script = quiet_outcome();
+    script.compile = Some(Duration::from_millis(400));
+    script.result = Ok(threw("nope", None));
+
+    let failure = absorb_on_use_script(&mut turn, script).expect("a throw is reported");
+    assert!(failure.contains("nope"));
+    assert_eq!(turn.compile, Some(Duration::from_millis(500)));
+    assert!(
+        matches!(&turn.result, Ok(result) if result.error.is_none()),
+        "the turn's own verdict is untouched by what a skill's script did"
+    );
+}

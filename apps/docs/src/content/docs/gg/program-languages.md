@@ -68,11 +68,29 @@ absorbed into the turn's response time, indistinguishable from a `shell` build t
 four minutes.
 
 - each [`code_execution`](/gg/telemetry/) event carries **`compileMs`**: what compiling
-  *that* program cost. A turn that handed over to a replacement program compiled each of
+  cost *that turn*. A turn that handed over to a replacement program compiled each of
   them, and the figure is their sum.
 - the session summary carries **`summary.compileMs`**: the run's total, folded from those
   very events, so it and `summary.codeExecutions` are an honest ratio — what a turn of
   arm A costs in compile time against a turn of arm B is one query.
+
+**Everything a turn made its compiler do is in that figure, not just the model's own
+reply.** Three things reach a compiler on a code turn, and all three are charged to the
+turn that caused them:
+
+- the program the model wrote, and each replacement it
+  [handed over](/gg/program-library/#what-rerun-actually-does) to;
+- the code half of every [skill](/gg/skills/) or [memory](/gg/memories/) the turn brought
+  into use — a code skill is compiled again on each agent that reads it, which is a real
+  recurring cost of a compiled arm rather than a one-off;
+- and each [on-use script](/gg/skills/) such a read queued, which is a whole program of
+  its own.
+
+The middle one is the reason the field is folded rather than simply read off the sandbox: a
+read happens *inside* a call the program made, after the sandbox has taken its reading and
+while the turn's own clock is stopped. Nothing else is running a clock at that moment, so a
+figure that skipped it would be short by exactly what a skill-heavy run spends — silently,
+and always in the direction that makes the arm look cheap.
 
 Two deliberate asymmetries in how absence is spelled. Per turn, a language that compiles
 nothing reports **nothing at all** rather than a zero: `null` says "there is no compiler on

@@ -255,3 +255,70 @@ fn modules_are_handed_over_in_a_stable_order() {
     // itself between turns would make a program's behaviour depend on nothing the model can see.
     assert_eq!(keys, vec!["alpha", "mid", "zeta"]);
 }
+
+/// A language that **compiles** — the fixture, which is the only registered-or-not language whose
+/// [`prepare_compiles`](ProgramLanguage::prepare_compiles) answers `true`, and therefore the only
+/// one against which "what a load cost is charged to the run" is an assertion rather than a promise.
+fn compiling() -> &'static dyn ProgramLanguage {
+    crate::sandbox::fixture_languages()
+        .next()
+        .expect("there is a fixture language")
+}
+
+/// **A code half a load prepared is charged to the run, both halves of it.**
+///
+/// The cost is real for a compiled arm — a skill's module is compiled again on every agent that
+/// reads it — and it is spent inside a membrane call, where the sandbox has already taken its own
+/// reading. If it were not accumulated here, nothing else would ever record it and it would be
+/// absorbed into the turn's response time, which is the exact hole
+/// [`SandboxOutcome::compile`](crate::sandbox::SandboxOutcome::compile) exists to close.
+#[test]
+fn what_a_load_spent_compiling_is_charged_to_the_agent() {
+    let mut modules = KnowledgeModules::new();
+    modules
+        .load(
+            compiling(),
+            KnowledgeOrigin::Skill,
+            "csv-tools",
+            Some("def parse(text)\n"),
+            Some("view.open_text(\"hello\", \"there\")\n"),
+        )
+        .expect("both halves prepare");
+    assert!(
+        modules.take_compile().is_some(),
+        "preparing a module and an on-use script is time the run spent compiling"
+    );
+    assert_eq!(
+        modules.take_compile(),
+        None,
+        "the figure is drained, not repeated: charging the next program for this load would move \
+         the cost onto a program that did not cause it"
+    );
+}
+
+/// **A load whose compiler rejected the code is still charged.**
+///
+/// The path that would otherwise report nothing: a compiler that spent its time refusing a module
+/// spent it, and the error return is what makes it the reading nothing else could take.
+#[test]
+fn a_load_that_failed_to_compile_still_reports_what_it_spent() {
+    let mut modules = KnowledgeModules::new();
+    modules
+        .load(
+            compiling(),
+            KnowledgeOrigin::Skill,
+            "broken",
+            Some("def parse(text) ?? nope\n"),
+            None,
+        )
+        .expect_err("the fixture language has no `??`");
+    assert!(modules.take_compile().is_some());
+}
+
+/// A language whose prepare step is free reports **nothing**, not a zero: `None` and
+/// `Some(0)` are different claims, and only the first is true of a type-strip.
+#[test]
+fn a_load_in_a_language_that_does_not_compile_reports_nothing() {
+    let (mut modules, _) = with_csv_tools();
+    assert_eq!(modules.take_compile(), None);
+}

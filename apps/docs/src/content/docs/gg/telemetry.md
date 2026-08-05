@@ -732,9 +732,11 @@ directly:
   that program compiles the component inside its own span. The field is what separates
   "this program was slow" from "this program paid the one shared compile", and it is
   absent on every turn that did not. Beside it is `compileMs`, which is the *other*
-  compile and belongs to the program rather than to the process: what this program's own
-  [language](/gg/program-languages/) spent preparing it, including any compiler that step
-  shells out to. It is absent for a language whose prepare step is in-process and free —
+  compile and belongs to the turn rather than to the process: what this turn's
+  [language](/gg/program-languages/) spent compiling for it, including any compiler that
+  step shells out to — the program itself, each replacement it handed over to, the code
+  half of every skill or memory it brought into use, and each on-use script such a read
+  queued. It is absent for a language whose prepare step is in-process and free —
   TypeScript's type-strip, where the figure would be a zero on every turn of every run —
   and present on every turn of a language that compiles, **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it

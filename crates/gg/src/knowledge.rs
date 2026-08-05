@@ -40,8 +40,11 @@
 //! guess is a binding path it will guess wrong.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::time::{Duration, Instant};
 
-use crate::sandbox::{CodeModule, PrepareError, ProgramLanguage, prepare_module, prepare_program};
+use crate::sandbox::{
+    CodeModule, PrepareError, ProgramLanguage, SandboxOutcome, prepare_module, prepare_program,
+};
 
 /// Where a piece of loaded code came from — what a failure names, and what the reply to the read
 /// that loaded it calls the thing.
@@ -106,6 +109,21 @@ pub struct KnowledgeModules {
     used: BTreeSet<(KnowledgeOrigin, String)>,
     /// The on-use scripts queued this turn.
     pending: Vec<PendingOnUse>,
+    /// What the language has spent **compiling for this agent** since the figure was last drained —
+    /// the prepare step of every code half [`load`](Self::load) has taken, for a language that
+    /// declares it [compiles](ProgramLanguage::prepare_compiles).
+    ///
+    /// It accumulates here rather than being returned by `load` because a load happens *inside* a
+    /// membrane call, where there is no outcome to put it on: the program that caused it is still
+    /// running. The [loop](crate::agent) drains it with [`take_compile`](Self::take_compile) once
+    /// that program has ended and charges the program for it, which is the honest attribution —
+    /// nothing prepares a module except a program that asked for one.
+    ///
+    /// `None` for a language whose prepare step is free, for the same reason
+    /// [`SandboxOutcome::compile`](crate::sandbox::SandboxOutcome::compile) is: a sub-millisecond
+    /// zero on every read is noise, and "did not compile" and "compiled instantly" are different
+    /// claims.
+    compiled: Option<Duration>,
 }
 
 /// What loading a code skill or memory produced — the binding key its code got, and whether an
@@ -195,6 +213,14 @@ impl KnowledgeModules {
     /// memory can be updated), and the on-use script is **not** queued again. "Once" means once per
     /// agent, not once per read.
     ///
+    /// Both preparations are **timed** for a language that
+    /// [compiles](ProgramLanguage::prepare_compiles), and the reading is accumulated on
+    /// [`compiled`](Self::compiled) for the loop to charge to the program that read the thing. A
+    /// code skill whose module is recompiled on every agent that reads it is a real per-run cost,
+    /// and it is one no other clock in gg is running for: this happens inside a membrane call, after
+    /// the sandbox has taken its own reading and while the turn's own clock is stopped in a bridged
+    /// call.
+    ///
     /// # A code half is prepared in the **reader's** language
     ///
     /// `language` is the language of the agent doing the reading, because that is the language the
@@ -222,12 +248,14 @@ impl KnowledgeModules {
         let first_use = !self.used.contains(&identity);
 
         if let Some(source) = code {
-            let prepared = prepare_module(language, source).map_err(|error| KnowledgeError {
-                origin,
-                name: name.to_string(),
-                half: "code",
-                error,
-            })?;
+            let prepared = self
+                .timed(language, || prepare_module(language, source))
+                .map_err(|error| KnowledgeError {
+                    origin,
+                    name: name.to_string(),
+                    half: "code",
+                    error,
+                })?;
             let key = match self.keys.get(&identity) {
                 Some(key) => key.clone(),
                 None => {
@@ -244,7 +272,8 @@ impl KnowledgeModules {
         if let Some(source) = on_use
             && first_use
         {
-            let script = prepare_program(language, source)
+            let script = self
+                .timed(language, || prepare_program(language, source))
                 .map(|prepared| prepared.source)
                 .map_err(|error| KnowledgeError {
                     origin,
@@ -277,6 +306,36 @@ impl KnowledgeModules {
     /// turn's program has ended.
     pub fn take_pending(&mut self) -> Vec<PendingOnUse> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// What the language has spent compiling for this agent since the last drain, and zero it.
+    ///
+    /// Drained by the [loop](crate::agent) after each of its programs, so the figure lands on the
+    /// program that caused the load rather than on whichever one happens to run next. `None` both
+    /// for a language that does not compile and for a program that loaded nothing — in the second
+    /// case there is nothing to add, and adding a zero would say a compile happened.
+    pub fn take_compile(&mut self) -> Option<Duration> {
+        self.compiled.take()
+    }
+
+    /// Run one of the language's prepare steps, charging what it cost to
+    /// [`compiled`](Self::compiled) when this language compiles.
+    ///
+    /// The clock is read around both outcomes: a module the compiler *rejected* cost whatever it
+    /// spent rejecting it, and it is the reading that would otherwise be lost — the error path
+    /// returns before anything else could take one.
+    fn timed<T>(
+        &mut self,
+        language: &'static dyn ProgramLanguage,
+        prepare: impl FnOnce() -> Result<T, PrepareError>,
+    ) -> Result<T, PrepareError> {
+        if !language.prepare_compiles() {
+            return prepare();
+        }
+        let started = Instant::now();
+        let prepared = prepare();
+        self.compiled = SandboxOutcome::summed_compile(self.compiled, Some(started.elapsed()));
+        prepared
     }
 
     /// A `lib` key for `name` that nothing else has taken, spelled the way `language` spells an

@@ -1072,7 +1072,7 @@ async fn run_code_program(
         let mut chain = ProgramChain::first(&source);
         let (mut merged, chain, mut api) = loop {
             let modules = api.knowledge.code_modules();
-            let (mut outcome, returned) = run_program(
+            let (mut outcome, returned) = run_program_charged(
                 language,
                 &source,
                 ProgramScope {
@@ -1331,10 +1331,7 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         // is compiled at most once, but every link of a chain is a program of its own and a
         // compiling language compiles each one. Reporting only a link's worth would make a turn
         // that compiled four programs look like a turn that compiled one.
-        compile: match (earlier_compile, later.compile) {
-            (Some(earlier), Some(later)) => Some(earlier.saturating_add(later)),
-            (earlier, later) => earlier.or(later),
-        },
+        compile: SandboxOutcome::summed_compile(earlier_compile, later.compile),
         // The earlier link is the one that could have paid the one shared component compile; by the
         // time the second ran it was warm.
         compile_wait: earlier_compile_wait.or(later.compile_wait),
@@ -1390,6 +1387,58 @@ fn pin_read_skill(
     }
 }
 
+/// Run one program and charge it for **everything** compiling for it cost.
+///
+/// [`run_program`] times the language's prepare step for the program's own source, which is the
+/// whole of it for the ordinary program. A program that reads a code skill or writes a code memory
+/// makes the language prepare *more* source part-way through — inside a membrane call, at a point
+/// where the sandbox has already taken its reading and cannot take another. That cost is
+/// accumulated on the [knowledge registry](KnowledgeModules) instead, and drained here.
+///
+/// It is a wrapper rather than two lines at each call site because the failure it prevents is
+/// invisible: a caller that forgets the drain reports a figure that is merely *too small*, never
+/// absent, and the next program to run gets charged for the modules this one loaded.
+fn run_program_charged(
+    language: &'static dyn ProgramLanguage,
+    program: &str,
+    scope: ProgramScope<'_>,
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    api: LoopToolApi,
+) -> (SandboxOutcome, LoopToolApi) {
+    let (mut outcome, mut api) = run_program(language, program, scope, limits, deadline, api);
+    outcome.compile = SandboxOutcome::summed_compile(outcome.compile, api.knowledge.take_compile());
+    (outcome, api)
+}
+
+/// Fold what an on-use script did into the turn that triggered it, and hand back the sentence its
+/// failure earns, if it failed.
+///
+/// Every accumulation here is the same claim: **the turn pays for the scripts it triggered.** They
+/// happened on this turn, against this agent's window, and an operator reading the run must see them
+/// — so a script's calls join the turn's roster, its views join the turn's window, its execution
+/// time joins the turn's, and what its language spent compiling it joins the turn's compile figure.
+/// A script is a whole program of its own: for a compiling language it is a whole trip through the
+/// compiler, and leaving it out would make a skill-heavy run's compile cost read low.
+///
+/// `result` is deliberately **not** folded: the turn succeeded or failed on the model's own program,
+/// whatever a skill's script then did.
+fn absorb_on_use_script(outcome: &mut SandboxOutcome, script: SandboxOutcome) -> Option<String> {
+    outcome.tool_calls.extend(script.tool_calls);
+    outcome.refusals.extend(script.refusals);
+    outcome.logs.extend(script.logs);
+    outcome.views_opened.extend(script.views_opened);
+    outcome.views_closed.extend(script.views_closed);
+    outcome.view_refusals.extend(script.view_refusals);
+    outcome.module_errors.extend(script.module_errors);
+    outcome.elapsed = outcome.elapsed.saturating_add(script.elapsed);
+    outcome.compile = SandboxOutcome::summed_compile(outcome.compile, script.compile);
+    match &script.result {
+        Ok(result) => result.error.as_ref().map(|error| error.message.clone()),
+        Err(error) => Some(error.to_string()),
+    }
+}
+
 /// Run every on-use script this turn queued, one sandbox run each, and record what they did.
 ///
 /// Called once, after the turn's last program has ended and before its outcome is assembled. Each
@@ -1426,7 +1475,7 @@ fn run_on_use_scripts(
     } in pending
     {
         let modules: Vec<_> = module.into_iter().collect();
-        let (script, returned) = run_program(
+        let (script, returned) = run_program_charged(
             language,
             &source,
             ProgramScope {
@@ -1441,19 +1490,7 @@ fn run_on_use_scripts(
             api,
         );
         api = returned;
-        outcome.tool_calls.extend(script.tool_calls);
-        outcome.refusals.extend(script.refusals);
-        outcome.logs.extend(script.logs);
-        outcome.views_opened.extend(script.views_opened);
-        outcome.views_closed.extend(script.views_closed);
-        outcome.view_refusals.extend(script.view_refusals);
-        outcome.module_errors.extend(script.module_errors);
-        outcome.elapsed = outcome.elapsed.saturating_add(script.elapsed);
-        let failure = match &script.result {
-            Ok(result) => result.error.as_ref().map(|error| error.message.clone()),
-            Err(error) => Some(error.to_string()),
-        };
-        if let Some(failure) = failure {
+        if let Some(failure) = absorb_on_use_script(outcome, script) {
             outcome.module_errors.push((
                 format!("{} `{name}`", origin.noun()),
                 format!("its on-use script failed: {failure}"),

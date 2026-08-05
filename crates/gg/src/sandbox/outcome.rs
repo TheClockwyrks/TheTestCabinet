@@ -140,7 +140,7 @@ pub struct SandboxOutcome {
     /// `None` for a program its language could not prepare, because a program that did not
     /// compile has no statements at all.
     pub unreachable: Option<UnreachableTail>,
-    /// How long **this program's own compilation** took — the whole of its language's
+    /// How long **compiling for this program** took — the whole of its language's
     /// [prepare step](super::ProgramLanguage::prepare_program), including any compiler that step
     /// shells out to — for a language that declares it
     /// [compiles](super::ProgramLanguage::prepare_compiles).
@@ -151,6 +151,17 @@ pub struct SandboxOutcome {
     /// Reported on **every** path, including the one where the compiler rejected the program: a
     /// compile that failed after four seconds of `swiftc` is exactly the cost a compiled arm has to
     /// answer for, and it is the path that would otherwise report nothing at all.
+    ///
+    /// # Everything a program made its language compile, not just its own source
+    ///
+    /// The sandbox sets this to what preparing the program's own source cost, which is the whole of
+    /// it for the ordinary program. A program that reads a code
+    /// [skill](crate::skills) or writes a code [memory](crate::memories) makes its language prepare
+    /// *more* source mid-run, inside a membrane call — and an on-use script queued by such a read is
+    /// a second program the turn runs. Both are charged here, by the
+    /// [loop](crate::agent) folding them in with [`summed_compile`](Self::summed_compile), because
+    /// otherwise a compiled arm's figure would be short by exactly the amount a skill-heavy run
+    /// spends — silently, and in the direction that makes the arm look cheap.
     ///
     /// It is not [`compile_wait`](Self::compile_wait), which is the one shared *interpreter
     /// component* compile and belongs to the process rather than to this program. Without this
@@ -207,6 +218,26 @@ impl SandboxOutcome {
             compile,
             compile_wait: None,
             result: Err(error),
+        }
+    }
+
+    /// Two [compile](Self::compile) figures folded into the one a turn reports: **summed** when both
+    /// are present, and the one that exists when only one is.
+    ///
+    /// Summed rather than replaced because every figure this folds is a *separate* trip through a
+    /// compiler — the next link of a chained turn, an on-use script, the module a read prepared —
+    /// and a turn that compiled four times must not report the cost of compiling once. It is the
+    /// opposite rule to [`compile_wait`](Self::compile_wait)'s, where the shared interpreter
+    /// component is compiled at most once however many programs a turn runs.
+    ///
+    /// `None` and `Some(Duration::ZERO)` are different claims — "this language does not compile"
+    /// against "it compiled, instantly" — so a `None` never becomes a zero here. It exists as one
+    /// function because the rule has four call sites and a fifth that gets it wrong is a number
+    /// nobody can spot: too small, never absent.
+    pub fn summed_compile(earlier: Option<Duration>, later: Option<Duration>) -> Option<Duration> {
+        match (earlier, later) {
+            (Some(earlier), Some(later)) => Some(earlier.saturating_add(later)),
+            (earlier, later) => earlier.or(later),
         }
     }
 }

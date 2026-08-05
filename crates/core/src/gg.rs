@@ -4795,8 +4795,9 @@ pub struct GgSessionSummary {
     /// every rate in the run's [healing rollup](Self::healing). Numerator and denominator are folded
     /// from the same event, so they cannot come from different mechanisms and drift.
     pub code_executions: u64,
-    /// How many milliseconds the run's programs spent **being compiled**, in total — folded from
-    /// the same [`CodeExecution`](GgTelemetryKind::CodeExecution) events
+    /// How many milliseconds the run spent **compiling**, in total — its programs, the code halves
+    /// of the skills and memories they brought into use, and the on-use scripts those queued.
+    /// Folded from the same [`CodeExecution`](GgTelemetryKind::CodeExecution) events
     /// [`code_executions`](Self::code_executions) counts, so the sum and the turn count it is read
     /// against cannot come from different mechanisms and drift.
     ///
@@ -6220,8 +6221,14 @@ pub enum GgTelemetryKind {
         /// it genuinely slow?" is only answerable by comparing timestamps across sibling runs.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         compile_wait_ms: Option<u64>,
-        /// How long **this program's own compilation** took, in milliseconds — the whole of the
+        /// How long **compiling for this turn** took, in milliseconds — the whole of the
         /// language's prepare step, including any compiler it shells out to.
+        ///
+        /// Everything the turn made its compiler do is in it: the program the model wrote, each
+        /// replacement it handed over to, the code half of every skill or memory the turn brought
+        /// into use, and each on-use script such a read queued. A code skill is compiled again on
+        /// every agent that reads it, so leaving those out would make a skill-heavy compiled arm
+        /// report less than it spent.
         ///
         /// Absent for a language whose prepare step is in-process and free (TypeScript's
         /// type-strip), where the figure would be a zero on every turn of every run. Present on
