@@ -279,6 +279,15 @@ program consults in order to decide what to do next, in the turn it is deciding.
 unchanged, and it is the reason every API object carries a `list` and the view API's own
 listing call had to be named [`current`](#showing-yourself-things) instead.
 
+`list` is the one function that hangs off **no** object, because it hangs off all of them: the
+guest seeds it onto each object it creates with that object's name closed over. It is
+catalogued all the same, in a
+[`meta` section](/gg/program-languages/#the-catalogue) of its own, and for the reason
+everything else is — its signature and its description are read by a model, and every word a
+model reads about this SDK is reflected out of the declaration that states it. Answering for
+it from a constant on gg's side was the one description in the whole surface that no gate could
+compare against the code.
+
 What it returns inline it returns **to the program**, which is the whole distinction between
 the two calls and the one the [prompt](/gg/prompts/) now draws in as many words. A directory
 is an ordinary return value, so it reaches the model's window not at all unless the program
@@ -1438,7 +1447,7 @@ than for the package, because every registered language commits a pair:
 
 | Artifact | What it is |
 | --- | --- |
-| `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (13,941,785 bytes as committed). |
+| `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (14,004,036 bytes as committed). |
 | `crates/gg/src/sandbox/guests/typescript.signatures.json` | The signature catalogue the model reads through `object.list()` and `view.openDocsView()`. |
 
 Committing them follows the precedent the `foray-ref-*` guests already set, and it is

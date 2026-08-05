@@ -147,10 +147,13 @@ The code arm teaches five things the tool-calling arm has no need of:
 - **How to show itself something.** A program's values live and die inside the turn, so
   the opening paragraphs name the
   [`view` object](/gg/responses-as-code/#showing-yourself-things) as the channel that
-  carries — `view.openText(slug, contents)` for a value the program computed,
+  carries — `view.openText`'s own signature for a value the program computed,
   `view.openFile(path)` for a file — and say plainly that `console.log()` will not be
   visible, which is the one sentence keeping a model from writing its answer somewhere
-  only the operator can read it. The `openFile` line grows a second half when, and only
+  only the operator can read it. Neither call is *typed into* the template: it writes
+  `{{api.view.open_text.signature}}` and the run's own catalogue answers, so what the model
+  reads is what its SDK really declares. See
+  [nothing quotes a call by hand](/gg/program-languages/#nothing-quotes-a-call-by-hand). The `openFile` line grows a second half when, and only
   when, this run's [read mode](/gg/filesystem/#read-modes) caps a read: the windowed form,
   `view.openFile(path, { offset: 400, limit: 200 })`, with the run's own line cap
   interpolated and the promise that a larger `limit` is honored. Under `unlimited` the

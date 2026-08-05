@@ -241,7 +241,7 @@ instantly in every gate that iterates languages.
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |
 | Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reads through `object.list()` and `view.openDocsView()`. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
-| A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and the handful of spellings gg itself has to quote back — the four [ending calls](/gg/ending-a-session/#ending-calls) and the call that closes a view. |
+| A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and nothing else. Not one function name: every call a template quotes is resolved from that language's catalogue when the template renders — see [nothing quotes a call by hand](#nothing-quotes-a-call-by-hand). |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
 
 Its two committed artifacts follow one convention:
@@ -250,11 +250,11 @@ Its two committed artifacts follow one convention:
 build or CI step ever needs a componentizing toolchain.
 
 The prompt is **per language and not one template with branches**, which looks like
-duplication and is not. The shared tail quotes the SDK's own spellings at nearly every
-bullet — `skills.readSkill(name)`, `project.createIssue`, `view.openText`,
-`JSON.stringify` — and function spelling is precisely what the seam declares free to
-differ. A merged template would need a branch at almost every line, and adding a language
-would mean editing the one file every language shares. It is also operator-facing surface:
+duplication and is not. Its example programs are written in one language's syntax — a list
+literal, a statement terminator, a trailing options object — and its sentences describe that
+language's own protocol. A merged template would need a branch at almost every line, and
+adding a language would mean editing the one file every language shares. It is also
+operator-facing surface:
 the console's prompt-override editor is seeded from it, and an operator overriding the
 prompt is overriding it for the language they are running. What a copied template can lose
 is a whole section, so that is [asserted](#the-agreement-gate) rather than trusted: every
@@ -293,11 +293,12 @@ convention is the language's) written on that argument, and a type member's from
 above the member. A description kept anywhere else is a description that drifts, and nothing
 would catch it.
 
-It has seven sections:
+It has eight sections:
 
 | Section | What it carries |
 | --- | --- |
 | `objects` | Every API object a program's surface is divided into, **in the order the surface is presented in**, each with the sentence the system prompt introduces it by. The order is model-facing: it is what the prompt's API list and the run's [agent surface](/gg/agent-surface/) both render. |
+| `meta` | The functions that hang off **no** object because they hang off all of them — today just `list`, the directory every object carries. Its entries have no `object` field, because any object one of them named would be a claim about the eleven it is also on. |
 | `session` | The [ending calls](/gg/ending-a-session/), one group per role. |
 | `views` | The `view` object — the calls that put material into the agent's own context window. |
 | `programs` | The [program library](/gg/program-library/)'s calls. |
@@ -329,6 +330,46 @@ inline at the call site — the same again for each of its fields. An argument t
 carries no fields: that type is catalogued in its own right and its members carry its
 documentation, so filling both would be two copies of one sentence with nothing keeping
 them equal.
+
+### Nothing quotes a call by hand
+
+The catalogue is where every word about the SDK lives, and the rule that keeps it that way is
+blunt: **no name a model reads is written anywhere but on the declaration it describes.** Not
+in a prompt template, not in a `const` in gg's Rust, not in a table. gg names a call by its
+language-independent identity — an object and a catalogue key — and resolves the spelling from
+the run's own catalogue at the moment it renders.
+
+So a template writes `` `{{api.view.open_text.signature}}` `` and gets
+`view.openText(label: string, body: string): void` under TypeScript and whatever the next
+language's SDK declares under that. Three fields are available for each call: `.name` (the bare
+name, for the places a prompt quotes one as a string argument), `.call` (the name qualified by
+its object, which is how a program writes it), and `.signature` (the qualified signature).
+`{{meta.<key>.…}}` does the same for the object-less [meta functions](#the-catalogue). A path
+that names nothing is a strict-mode render failure rather than a sentence quietly describing a
+call nobody has.
+
+The rule is not aesthetic. A spelling frozen in a template is *stale* the day the SDK renames
+the function and *false* the day a second language is registered — rendered for a Python agent,
+a TypeScript spelling names a call that agent's scope does not bind, and the model copies it
+verbatim. It had already gone wrong in exactly that way with one language registered: the
+TypeScript template quoted `view.openText(slug: str, contents: str)`, whose two argument names
+were never those and whose type name is Python's.
+
+Four gates hold the line, and each of them can be shown to catch something:
+
+- **No template spells an SDK call by hand.** Read off the template *sources*, so it covers a
+  `{{#if}}` branch no test context renders — which is where a stale spelling survives longest.
+- **Every `{{api.…}}` a template writes resolves in every registered language.** Also read off
+  the sources, so a typo in a rarely-rendered branch is a build failure rather than a mid-run
+  panic — and per language, so a reference that resolves for one arm of a study and not the
+  other is caught.
+- **No template a code agent reads names a bare gg tool.** A tool name is the right identity in
+  the tool-calling prompt and a wrong answer everywhere else, because a program calls a method
+  on an object. The context-pressure block — the one message whose whole purpose is to tell an
+  agent how to reclaim its window — named two gg tools at every code agent gg had ever run.
+- **No literal in gg's own Rust names an SDK call.** The same rule on the host side, with a
+  short allow-list: a language's own module (where its syntax belongs, and which resolves the
+  call's name even so) and the mock model's canned fixtures.
 
 ### What the host checks, and what a language must not be trusted with
 
@@ -551,7 +592,8 @@ one.**
 4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in
    [the same shape](#the-catalogue), with `language: "python"` and the same `key`s: the
    `objects` section in presentation order, one entry per function with its `signatures` and
-   each signature's arguments, and every type with its own description and its members'. It
+   each signature's arguments, every type with its own description and its members', and the
+   `meta` section carrying `list`. It
    need not use the TypeScript package's reflector — only the emitted JSON is contractual,
    and a Python guest would reflect its own docstrings and type hints with its own script —
    but it must reflect them rather than list them, because the completeness half of the
@@ -566,9 +608,12 @@ one.**
    is a build failure. gg then does not compile until the registry has an arm for it either.
 7. **Implement the trait** in `crates/gg/src/sandbox/language/python.rs`: the preparation
    step and [whether it compiles](#what-compiling-costs-and-where-it-is-recorded), the
-   binding-name convention, the synthesized file-view statement, the healing dialect,
-   the prompt dialect, the two templates (`system-code.python.hbs`,
-   `code-nothing-shown.python.hbs`), and the healing fixtures its dialect must survive.
+   binding-name convention, the synthesized file-view statement, the **program that opens a
+   documentation view per name** (the on-use script of every built-in family skill, and the one
+   thing gg generates rather than quotes), the healing dialect, the prompt dialect, the two
+   templates (`system-code.python.hbs`, `code-nothing-shown.python.hbs`) — whose every quoted
+   call is an `{{api.…}}` reference and never a literal — and the healing fixtures its dialect
+   must survive.
 8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue, so
    the drift gate covers it rather than only diffing it.
 9. **Add the console's row**: an option in `PROGRAM_LANGUAGE_OPTIONS`
@@ -580,8 +625,11 @@ one.**
 10. **Run the gates.** The agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
-    capability's call and every rule a program runs under; the healing invariant re-earns
-    delete-only over the new dialect's own fixtures **and** over the shared round-1 corpus.
+    capability's call and every rule a program runs under; the
+    [prompt-resolution gate](#nothing-quotes-a-call-by-hand) reads the new templates' sources
+    and refuses a hand-typed spelling or an unresolvable reference; the healing invariant
+    re-earns delete-only over the new dialect's own fixtures **and** over the shared round-1
+    corpus.
 
 Every step in that list is either a new file the language owns, or a one-line registration the
 compiler refuses to let anyone skip. Nothing edits another language's implementation, which is
