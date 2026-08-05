@@ -378,10 +378,11 @@ family. That has three consequences worth the effort:
 - **The model gets a real API.** `readFile(p, { limit: 200 })` is discoverable,
   auto-completable in the model's head, and wrong in ways the SDK can name. A JSON blob
   is none of those.
-- **Nothing else is reachable *as a tool*.** The component imports the membrane and
-  nothing else, and is built with no network and no module system. What the interface
-  does not declare is not something a program can ask gg to do. (The language's own
-  runtime is a separate matter — see
+- **Nothing else is reachable *as a tool*.** The membrane is the only way to ask *gg*
+  for anything: what the interface does not declare is not something a program can ask
+  gg to do, and the component is built with no module system to reach around it. That is
+  a statement about gg's surface, not about the language's — the guest also imports the
+  WASI its runtime needs, and the host links the rest of WASI besides. (See
   [what a program can and cannot reach](#what-a-program-can-and-cannot-reach).)
 
 JSON survives in exactly one place, and it is deliberately **inside the host**: between

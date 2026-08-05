@@ -314,8 +314,14 @@ pub fn run_program<A: ToolApi>(
 /// language it was told to write in, and an agent already has [`shell`](crate::tools) in nearly
 /// every configuration, so withholding the guest's own filesystem would deny nothing.
 ///
-/// A component is only affected by imports it *declares*, and the two namespaces do not overlap, so
-/// this is inert for a guest that imports nothing beyond `test-cabinet:gg/*`.
+/// A component is only affected by the imports it *declares*, and the two namespaces do not
+/// overlap, so what a guest does not ask for costs it nothing. The TypeScript guest asks for part of
+/// this surface and not the rest: it imports `wasi:clocks`, `wasi:random` and `wasi:io` — which is
+/// how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and entropy —
+/// and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked without
+/// them. Those two are therefore *unused* by it rather than withheld from it, a distinction that
+/// matters the moment a second guest imports them. The exact list is asserted by
+/// `the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with`.
 ///
 /// The one thing the host does not hand over is **stdout**: gg's telemetry stream *is* this
 /// process's stdout (`crate::telemetry`, newline-delimited JSON), so a guest write to fd 1 would

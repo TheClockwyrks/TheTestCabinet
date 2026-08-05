@@ -318,8 +318,9 @@ pub(crate) struct MembraneState<A: ToolApi> {
 ///
 /// Everything the guest's own language runtime reaches for goes through here; everything gg offers
 /// goes through the membrane. The two are separate namespaces in the linker and separate state on
-/// this struct, which is why adding the whole WASI surface changed nothing about a guest that
-/// imports none of it.
+/// this struct, so a guest is reached only by the part of this it actually imports — the TypeScript
+/// component reads the clock and the RNG through here and never opens a file, while a
+/// `componentize-py` guest imports the whole surface and gets all of it.
 impl<A: ToolApi> WasiView for MembraneState<A> {
     fn ctx(&mut self) -> WasiCtxView<'_> {
         WasiCtxView {

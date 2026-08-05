@@ -331,8 +331,17 @@ TypeScript component is baked `--disable stdio` for that reason and rebinds `con
 gg's feedback channel; the host's WASI context is built without stdout to match.
 
 A component is only affected by the imports it **declares**, and gg's own
-`test-cabinet:gg/*` namespace does not overlap WASI's, so a frugal guest — TypeScript's,
-which imports nothing beyond the membrane — is unaffected by any of this.
+`test-cabinet:gg/*` namespace does not overlap WASI's, so what a guest does not ask for costs
+it nothing. A frugal guest asks for only part of the surface. TypeScript's is one: alongside
+the fifteen membrane interfaces it declares `wasi:clocks`, `wasi:random` and `wasi:io` — which
+is exactly how a program's `Date.now()` reads the host's wall clock and `crypto.randomUUID()`
+draws the host's entropy — and declares neither `wasi:filesystem` nor `wasi:sockets`, because
+it is baked without them. Those two are **unused** by that guest, not withheld from it: the
+host defines them all the same, and a `componentize-py` guest importing them gets them.
+
+That list is asserted against the committed artifact on every test run, because it is decided
+by the `--disable` flags in `packages/gg-sandbox/build.sh` and a flag changed there rewrites
+what a program can reach without touching a line of readable diff.
 
 ## The agreement gate
 

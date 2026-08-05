@@ -194,5 +194,9 @@ it, so gg's linker defines the whole of that surface for every guest,
 unconditionally — a program gets the host's clock, randomness, filesystem and
 sockets. The one exception the host owns is **stdout**, which is gg's telemetry
 stream; the component is baked `--disable stdio` for the same reason and rebinds
-`console.*` to the feedback channel. This component imports nothing beyond the
-membrane, so none of the WASI half applies to it.
+`console.*` to the feedback channel. This component imports part of that surface
+and not the rest: alongside the membrane it declares `wasi:clocks`, `wasi:random`
+and `wasi:io`, which is why a program's `Date.now()` is the host's wall clock and
+`crypto.randomUUID()` draws the host's entropy. It does not declare
+`wasi:filesystem` or `wasi:sockets` — it is baked without them — so those are
+unused by this guest rather than withheld from it.

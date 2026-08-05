@@ -123,6 +123,70 @@ fn bad_component_bytes_are_a_compile_error() {
     );
 }
 
+/// **What the committed artifact actually imports**, named rather than assumed.
+///
+/// A component is only affected by the imports it *declares*, so this list is the whole of what the
+/// TypeScript guest can reach — and several pages of prose describe the sandbox in terms of it. It
+/// is not stable under a rebuild: the `--disable` set in `packages/gg-sandbox/build.sh` decides it,
+/// and a flag added or dropped there silently changes what a program can do. That already happened
+/// once — dropping `random clocks` is what made `Date.now()` and `crypto.randomUUID()` read the
+/// *host's* clock and entropy — and it was invisible in the diff, because the artifact is a 13 MB
+/// binary nobody reads. Asserting the list is what makes the next such change deliberate.
+///
+/// Two halves, and both matter:
+///
+/// - **gg's own membrane**, one import per capability family. A family missing here is a family the
+///   guest could not call however well the host implements it.
+/// - **The WASI it was baked with**: clocks, randomness, `io` (which `wasi:clocks`' pollables and
+///   the engine's own plumbing need) and `cli/stderr`. Notably *absent* are `wasi:filesystem`,
+///   `wasi:sockets` and `wasi:http` — the linker
+///   [defines all three for every guest](super::linker), and this guest simply does not ask for
+///   them. That is the difference between a capability withheld and a capability unused, and it is
+///   why this component is unaffected by the ambient half while a `componentize-py` guest is not.
+///
+/// Versions are stripped: a WASI point release is not the change this guards against.
+#[test]
+fn the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with() {
+    let (component, _) = component(typescript()).expect("the committed component is ready");
+    let component_type = component.component_type();
+    let mut imports: Vec<&str> = component_type
+        .imports(shared_engine())
+        .map(|(name, _)| name.split('@').next().unwrap_or(name))
+        .collect();
+    imports.sort_unstable();
+
+    assert_eq!(
+        imports,
+        [
+            "test-cabinet:gg/board",
+            "test-cabinet:gg/context",
+            "test-cabinet:gg/delegation",
+            "test-cabinet:gg/docs",
+            "test-cabinet:gg/feedback",
+            "test-cabinet:gg/files",
+            "test-cabinet:gg/helpers",
+            "test-cabinet:gg/memories",
+            "test-cabinet:gg/programs",
+            "test-cabinet:gg/session",
+            "test-cabinet:gg/shell",
+            "test-cabinet:gg/skills",
+            "test-cabinet:gg/tasks",
+            "test-cabinet:gg/types",
+            "test-cabinet:gg/views",
+            "wasi:cli/stderr",
+            "wasi:clocks/monotonic-clock",
+            "wasi:clocks/wall-clock",
+            "wasi:io/error",
+            "wasi:io/poll",
+            "wasi:io/streams",
+            "wasi:random/random",
+        ],
+        "the committed component's imports changed; if that was intended, update the prose that \
+         describes what this guest can reach (`packages/gg-sandbox/README.md`, \
+         `gg/program-languages.md`, `gg/responses-as-code.md`) in the same commit"
+    );
+}
+
 /// The committed artifact is within the documented size band.
 ///
 /// It is ~13.4 MB because it embeds a JavaScript engine. A build that produced something far
