@@ -75,8 +75,8 @@ export default function item() {
   return {
     id: "surge.single-type-waves",
 
-    // The sampling is skipped; only a beat of the last released wave is filmed.
-    clipMs: 5500,
+    // The sampling is skipped; what is filmed is a beat of each released wave.
+    clipMs: 9000,
 
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
@@ -93,17 +93,29 @@ export default function item() {
         if (types.length === 1) previewed.push(types[0]);
       }
 
-      // Spot-check that what actually spawns is the single previewed type.
+      // Spot-check that what actually spawns is the single previewed type — and film a
+      // beat of EACH of them.
+      //
+      // The sampling itself is skipped (it is half a minute of mostly-empty floor
+      // between spawns), so without a beat per wave the only filmed part was a tail on
+      // the LAST wave sampled: one wave, one type, and no way to see that the next wave
+      // fields a different one. Since half of what this item claims is that the waves
+      // are not all the same — "the roster cycles, so each wave presses a different
+      // answer" — a clip of one wave cannot carry it. A beat after each release shows
+      // both waves in the same clip, each uniform in itself and plainly different from
+      // the other.
       for (const w of RELEASED) {
         const want = await preview(api, w);
         const got = await spawnedTypes(api, w);
         released.push({ wave: w, want, got });
+        // Re-release the wave and hold on it, so what was sampled invisibly is also
+        // shown. `spawnedTypes` left the floor at the far end of its own window, so this
+        // poses the wave fresh and films its opening.
+        await api.call("setWave", w);
+        await api.call("startWave");
+        await api.skipUntil((s2) => s2.surge.length > 0, { max: 600, poll: 6 });
+        await actTail(api, 150); // 2.5 s of this wave's single type on the floor
       }
-
-      // The sampling above is skipped, so this is the only filmed part: a beat of the
-      // last released wave still on the floor, one intruder type across the whole of
-      // it. That is what the item claims, and it is legible in a few seconds.
-      await actTail(api, 180);
     },
 
     async assert(api, check) {

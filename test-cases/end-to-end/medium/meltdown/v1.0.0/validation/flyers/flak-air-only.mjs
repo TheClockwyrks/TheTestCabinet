@@ -12,47 +12,48 @@
 // survives the unit and answers the question directly, and it is the same counter
 // `info.counts` checks the build maintains.
 
-// The Flak is set into a vent corridor rather than parked on an assumed lane. The
-// ground half of this item is a claim about a unit that walks THROUGH the Flak's range
-// and comes out the far side untouched, and it is worth nothing if the Mote never
-// entered the range at all — which is what happens on a build whose shortest route out
-// of the vent is a diagonal one, since the spec fixes the vent and the exhaust but not
-// the lane between them. The corridor walls the vent so the Mote has to cross the
-// Flak's range whatever its pathfinder prefers, and the item can go back to asking
-// whether the Flak shoots at it. See the note above `buildVentCorridor` in `_helpers`.
+// The Flak stands at the gate rather than parked on an assumed lane. The ground half of
+// this item is a claim about a unit that walks THROUGH the Flak's range and comes out
+// the far side untouched, and it is worth nothing if the Mote never entered the range at
+// all — which is what happens on a build whose shortest route out of the vent is a
+// diagonal one, since the spec fixes the vent and the exhaust but not the lane between
+// them. The gate walls the floor top to bottom with a two-row gap in front of the Flak,
+// so the Mote has to cross its range whatever its pathfinder prefers, and the item can
+// go back to asking whether the Flak shoots at it. See the note above `buildGate` in
+// `_helpers`.
 
 import {
   newGame,
   restartGame,
-  buildVentCorridor,
+  buildGate,
   spawn,
   tower,
   fpCenter,
   actTail,
-  CORRIDOR_COL,
-  CORRIDOR_ROW,
-  CORRIDOR_WALLS,
+  gateCell,
+  GATE_WALLS,
   TILE,
   TOWER_SIZE,
   TICK,
 } from "../_helpers.mjs";
 
-// The Flak's corridor position, and the range it covers from there (specs/towers.md).
+// The Flak's position at the gate, and the range it covers from there (specs/towers.md).
 const FLAK_RANGE_PX = 8 * TILE;
-const FLAK_CENTER = fpCenter(CORRIDOR_COL, CORRIDOR_ROW, TOWER_SIZE.flak);
+const FLAK_CELL = gateCell("flak");
+const FLAK_CENTER = fpCenter(FLAK_CELL.col, FLAK_CELL.row, TOWER_SIZE.flak);
 
-// Pose a hot Flak in a vent corridor with a unit of `surgeType` walking or flying into
-// its range. `start` is the fresh-match helper to use: `newGame` in arrange, and
+// Pose a hot Flak at the gate with a unit of `surgeType` walking or flying into its
+// range. `start` is the fresh-match helper to use: `newGame` in arrange, and
 // `restartGame` in act — this item is a genuine two-configuration comparison (ground
 // unit, then flyer), so the second setup has to be posed mid-drive, where `reset()`
 // (and therefore `newGame`) throws.
 async function poseFlakAgainst(api, start, surgeType) {
   await start(api, "containment", "medium", 100000);
   await api.call("setLives", 100000);
-  const corridor = await buildVentCorridor(api, "flak");
-  await api.call("setHeat", corridor.id, 80);
+  const gate = await buildGate(api, "flak");
+  await api.call("setHeat", gate.id, 80);
   const target = await spawn(api, surgeType, "left");
-  return { flak: corridor.id, target, walls: corridor.walls };
+  return { flak: gate.id, target, walls: gate.walls };
 }
 
 export default function item() {
@@ -136,9 +137,9 @@ export default function item() {
     },
 
     async assert(api, check) {
-      // A hole in the corridor lets the Mote walk round the Flak's range entirely,
-      // which is the one thing this scenario cannot allow.
-      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
+      // A hole in the gate lets the Mote walk round the Flak's range entirely, which is
+      // the one thing this scenario cannot allow.
+      check.expectEq("the gate wall was built", walls, GATE_WALLS);
       // Hard: without a Mote inside the Flak's range there was never an opportunity
       // to shoot it, and "no damage" below would mean nothing.
       check.assertOk("the Mote walked into the Flak's range", sawInRange);

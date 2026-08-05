@@ -268,7 +268,7 @@ description = "From the redline up to the 100 trip the multiplier holds flat at 
 # Automated validation: read the heat multiplier at the redline, between the redline
 # and 100, and just below 100 — all ~3.5. See validation/heat/plateau.mjs.
 validation = { script = "validation/heat/plateau.mjs", outputs = [
-  { id = "plateau", name = "Damage flat above the redline", kind = "image" },
+  { id = "plateau", name = "Heat climbing past the redline while the multiplier holds at 3.5x", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "glow-ramp"
@@ -313,7 +313,7 @@ description = "While offline a tripped tower is drawn strobing red, so a gapped 
 # Automated validation: sample the rendered pixels of a tripped tower — red
 # dominates. See validation/trip/strobing-red.mjs.
 validation = { script = "validation/trip/strobing-red.mjs", outputs = [
-  { id = "strobe", name = "A tripped tower drawn red", kind = "image" },
+  { id = "strobe", name = "A tripped tower strobing red", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "only-failure"
@@ -371,15 +371,13 @@ description = "Rotating a tower 90 degrees turns its radiator faces, so the same
 validation = { script = "validation/rotation/aims-faces.mjs", outputs = [
   { id = "faces", name = "Radiator faces at two rotations", kind = "image" },
 ] }
-[[review.categories.items]]
-id = "changes-outcome"
-title = "Rotation changes the outcome"
-description = "In the same spot with the same faces blocked, aiming the radiator faces at open air cools better than aiming the plain faces there — so orientation is a real cooling lever."
-# Automated validation: two identical blocked placements differing only in rotation
-# reach different heats. See validation/rotation/changes-outcome.mjs.
-validation = { script = "validation/rotation/changes-outcome.mjs", outputs = [
-  { id = "outcome", name = "The same spot cooling differently by rotation", kind = "video" },
-] }
+# There is deliberately no "rotation changes the outcome" point here. It used to sit
+# between these two and made exactly the claim `cooling.radiator-better` already makes —
+# that in the same spot, with the same faces blocked, a radiator face on the open air
+# cools better than a plain one — differing only in how many faces it blocked. Two points
+# scoring one behavior double-count it, and this category is about the CONTROL (that a
+# quarter turn aims the faces, and that the choice is locked at placement); the thermal
+# consequence of aiming them belongs with surface cooling, which is where it is checked.
 [[review.categories.items]]
 id = "locked"
 title = "Orientation is locked at placement"
@@ -510,7 +508,7 @@ description = "The Rime's slow fraction falls as it heats, degrading to nothing 
 # Automated validation: sweep the Rime's heat and read its slow fraction fall toward
 # zero. See validation/rime/degrades-with-heat.mjs.
 validation = { script = "validation/rime/degrades-with-heat.mjs", outputs = [
-  { id = "degrade", name = "The Rime's slow fading with heat", kind = "image" },
+  { id = "degrade", name = "The Rime's slow fading as its own firing heats it", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "core-immune"
@@ -528,7 +526,7 @@ description = "Upgrading a Rime raises its cold-slow ceiling (rather than its da
 # Automated validation: the Rime's cold slow fraction rises across its three levels.
 # See validation/rime/ceiling-scales.mjs.
 validation = { script = "validation/rime/ceiling-scales.mjs", outputs = [
-  { id = "ceiling", name = "The cold-slow ceiling rising with level", kind = "image" },
+  { id = "ceiling", name = "The cold-slow ceiling rising as the Rime is upgraded", kind = "video" },
 ] }
 
 # --- Upgrades ----------------------------------------------------------------
@@ -560,7 +558,8 @@ description = "Upgrading to level II costs the build cost; to level III costs 1.
 # Automated validation: the money spent on each upgrade matches 1.0x then 1.8x the
 # build cost. See validation/upgrades/cost.mjs.
 validation = { script = "validation/upgrades/cost.mjs", outputs = [
-  { id = "cost", name = "The two upgrade costs", kind = "image" },
+  { id = "level-2", name = "The inspector after the 15 upgrade to level II", kind = "image" },
+  { id = "level-3", name = "The inspector after the 27 upgrade to level III", kind = "image" },
 ] }
 
 # --- Towers are walls --------------------------------------------------------
@@ -653,7 +652,7 @@ description = "No tower can be built off the tile grid onto the enclosing casing
 # Automated validation: a footprint that runs off the grid onto the casing fails the
 # placement check. See validation/casing/no-build.mjs.
 validation = { script = "validation/casing/no-build.mjs", outputs = [
-  { id = "casing", name = "A placement off the grid refused", kind = "image" },
+  { id = "casing", name = "A held tower stopped at the floor edge by the casing", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "openings"
@@ -938,7 +937,7 @@ description = "A unit's HP scales up with the wave number, so a deep-wave unit i
 # Automated validation: the same type spawned at a deeper wave reports scaled-up HP.
 # See validation/surge/hp-scales.mjs.
 validation = { script = "validation/surge/hp-scales.mjs", outputs = [
-  { id = "scale", name = "A tankier deep-wave unit", kind = "image" },
+  { id = "scale", name = "The same emitter grinding down a wave-1 and a wave-6 Mote", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "single-type-waves"
@@ -1058,7 +1057,9 @@ description = "Containment Easy, Medium, and Hard change the starting money and 
 # Automated validation: each difficulty starts with its own money and wave count.
 # See validation/modes/difficulty-values.mjs.
 validation = { script = "validation/modes/difficulty-values.mjs", outputs = [
-  { id = "difficulty", name = "The three difficulty presets", kind = "image" },
+  { id = "easy", name = "Easy: 350 starting money over 15 waves", kind = "image" },
+  { id = "medium", name = "Medium: 250 starting money over 20 waves", kind = "image" },
+  { id = "hard", name = "Hard: 200 starting money over 26 waves", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "hundred"
@@ -1076,7 +1077,8 @@ description = "Deep Pockets starts flush with 10,000 funds and pays no interest 
 # Automated validation: Deep Pockets starts with 10,000 and a cleared wave pays no
 # interest. See validation/modes/deep-pockets.mjs.
 validation = { script = "validation/modes/deep-pockets.mjs", outputs = [
-  { id = "deep", name = "Deep Pockets' vault with no interest", kind = "image" },
+  { id = "opening", name = "Deep Pockets opening with 10,000 funds", kind = "image" },
+  { id = "deep", name = "The balance after a wave clear, with no interest paid", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "bottleneck"
@@ -1085,7 +1087,8 @@ description = "Bottleneck restricts building to a central zone — placements ou
 # Automated validation: placement inside the zone is valid, outside it is refused.
 # See validation/modes/bottleneck.mjs.
 validation = { script = "validation/modes/bottleneck.mjs", outputs = [
-  { id = "zone", name = "The restricted build zone", kind = "image" },
+  { id = "inside", name = "A placement inside the build zone, shown valid", kind = "image" },
+  { id = "outside", name = "The same tower outside the zone, shown invalid", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "sudden-death"
@@ -1142,7 +1145,7 @@ id = "speed-toggle"
 title = "F toggles game speed"
 description = "F toggles the game-speed control between 1x and 2x."
 validation = { script = "validation/controls/speed-toggle.mjs", outputs = [
-  { id = "speed", name = "Toggling to 2x speed", kind = "image" },
+  { id = "speed", name = "The surge speeding up as F toggles to 2x", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "pause-p"
@@ -1177,7 +1180,7 @@ id = "mute"
 title = "M toggles mute"
 description = "M toggles mute on any screen."
 validation = { script = "validation/controls/mute.mjs", outputs = [
-  { id = "mute", name = "Toggling mute", kind = "image" },
+  { id = "mute", name = "The mute control before and after M is pressed", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "cancel-placement"

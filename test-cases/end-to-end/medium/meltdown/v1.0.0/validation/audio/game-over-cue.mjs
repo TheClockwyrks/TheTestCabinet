@@ -15,12 +15,23 @@
 // comparison below is sound either way — a build that plays nothing at all fails it,
 // because then neither window grows.
 
+//
+// EVERY READ OF THE AUDIO LOG IS A SETTLED ONE (`audioSettled`, not `audioCount`).
+// The validate pass advances the simulation instantly, so a count taken on the tick an
+// event happens gives the build no wall clock in which to schedule anything — and a
+// build that raises its cues from its render frame, or rate-limits them against
+// `AudioContext.currentTime`, has scheduled nothing yet. Both are conformant, and
+// reading unsettled reported a full set of working cues as silence. See the note above
+// `armAudio` in `_helpers`.
+
 import {
   newGame,
   spawn,
   armAudio,
-  audioCount,
+  audioSettled,
   skipToApproach,
+  giveClockToBuild,
+  untilOnOwnClock,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -49,22 +60,22 @@ export default function item() {
     // on. Both counts are taken after their skip, so the walk contributes nothing to
     // either window and the two stay comparable.
     async act(api) {
-      const leakBefore = await audioCount(api);
-      const first = await api.until((s) => s.lives <= 1, {
-        max: 300,
-        poll: 6,
+      await giveClockToBuild(api);
+      const leakBefore = await audioSettled(api);
+      const first = await untilOnOwnClock(api, (s) => s.lives <= 1, {
+        maxMs: 8000,
       });
-      onLeak = (await audioCount(api)) - leakBefore;
+      onLeak = (await audioSettled(api)) - leakBefore;
       survived = first.hit && (await api.snapshot()).screen === "playing";
 
       const fatalMote = await spawn(api, "mote", "left");
       await skipToApproach(api, fatalMote);
-      const fatalBefore = await audioCount(api);
-      const over = await api.until((s) => s.screen === "gameover", {
-        max: 300,
-        poll: 6,
+      await giveClockToBuild(api);
+      const fatalBefore = await audioSettled(api);
+      const over = await untilOnOwnClock(api, (s) => s.screen === "gameover", {
+        maxMs: 8000,
       });
-      onFatal = (await audioCount(api)) - fatalBefore;
+      onFatal = (await audioSettled(api)) - fatalBefore;
       ended = over.hit;
       await api.advance(120); // 2 s on the Game-over screen the sting belongs to
     },

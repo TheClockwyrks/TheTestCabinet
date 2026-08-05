@@ -23,6 +23,15 @@ export default function item() {
     async act(api) {
       await press(api, "Digit1"); // arm the Arc
       held = (await api.snapshot()).build.type;
+
+      // A LEAD-IN BEFORE THE CANCEL. `act` is where the record pass starts filming, and
+      // arming and cancelling both resolve instantly, so back to back they landed inside
+      // a single frame: the clip opened on a floor with nothing held and never showed
+      // the placement that Esc was supposed to consume. Two seconds with the preview
+      // visibly held is the before state this item's claim is a comparison against. It
+      // costs the verdict nothing — `held` is read before it and `s` on the press.
+      await actTail(api, 120); // 2 s with the Arc visibly held on the cursor
+
       await press(api, "Escape");
       s = await api.snapshot();
 

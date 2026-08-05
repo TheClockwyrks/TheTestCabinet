@@ -119,3 +119,10 @@ dying, a unit leaking an exhaust, placing a tower, clearing a wave, and the Vict
 Game-over stings. The game stays fully playable with sound muted and never fails to run
 or load if audio cannot start. Provide a mute toggle (`specs/controls.md`), and do not
 start audio until the player first interacts (browsers block autoplay).
+
+The mute control shows which state it is in. It is a control in the build panel
+(`specs/controls.md`), and it reads on screen as on or off — a struck-through or
+otherwise distinctly drawn icon, a label that changes, a lit/unlit button, whatever fits
+the HUD — so a player who has muted the game can see that they have, and can tell a
+muted game from one whose audio failed to start. The toggle changes that read
+immediately, whether it was operated by the on-screen control or by the mute hotkey.

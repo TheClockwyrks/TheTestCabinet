@@ -23,9 +23,9 @@
 //
 // A helper that only poses state or reads it instantly (`newGame`, `restartGame`,
 // `build`, `spawn`, `tower`, `unit`, `heatOf`, `press`, `combatSetup`,
-// `buildCorridorWalls`, `buildVentCorridor`, `corridorSetup`) is unpaired: it is
+// `buildGateWall`, `buildGate`, `gateSetup`) is unpaired: it is
 // arrange-callable on its own, and the instant READS are callable from any phase.
-// `restartGame` is additionally act-safe — see its note, as are the corridor builders,
+// `restartGame` is additionally act-safe — see its note, as are the gate builders,
 // which place towers and nothing else.
 //
 // UNITS ARE TICKS. Meltdown is a 60 Hz fixed timestep and the debug API's `step`
@@ -411,7 +411,90 @@ export async function press(api, code) {
 // clip now: the runtime replays the same `act` in real time for the record pass, so
 // an item films exactly the drive that decided its verdict. Delete every
 // `liveClip(api, ms)` call rather than translating it — the timed work belongs in
-// `act`, and `setAutoStep` is the runtime's to call, never an item's.
+// `act`.
+
+// ---- Running on the build's own clock (the audio items) ---------------------
+//
+// `setAutoStep` is the runtime's to call, with ONE exception, and this is it.
+//
+// Everywhere else an item advances the simulation with `advance`/`until`/`skip`, which
+// bottom out in the debug API's `step`. `specs/instrumentation.md` says exactly what that
+// advances: "firing, heat, cooling, conduction, movers, surge movement, pathing, and the
+// build-phase and wave timers". That list is the SIMULATION, and audio is not on it — nor
+// should it be, because `specs/gameplay.md` requires the sim be "decoupled from rendering"
+// with "rendering only read[ing] the state, so the core makes progress without a canvas or
+// the wall clock". A cue is played through the Web Audio API by a presentation layer
+// reading events the sim emitted; it sits on the same side of that line as the canvas.
+//
+// So a build is free to raise its cues from its frame loop and not from inside `step`, and
+// one that does is following the architecture the spec asks for rather than cutting a
+// corner. Driving such a build with `step` and then asking what it played is asking the
+// wrong half of it: the sim ran, the presentation layer never did, and the audio log is
+// empty for a game whose cues work perfectly for a player. That failed a conformant build
+// on all six of its differenced cue items.
+//
+// The reference happens to drain its cues inside `step`, which is why these items ever
+// worked. That is one valid choice, and the items had quietly encoded it as though it were
+// the requirement.
+//
+// The fix is to measure the cue where a player hears it: hand the clock to the build for
+// the window being counted, and let its own frame loop run the simulation and play the
+// sound. What that costs is exactness — a window is then "however many ticks fit in this
+// many milliseconds" rather than an exact tick count — so an item that needs its windows to
+// hold the same EVENTS polls on state (`damageDealt`, `tripped`, `lives`) rather than on
+// time. What it costs in wall clock is bounded by keeping the approach on `skip`, which
+// stays instant and unfilmed; only the measured window runs in real time.
+//
+// The clock is deliberately LEFT with the build afterwards. That reads like a leak and is
+// not one: in the validate pass the next `advance`/`skip` calls `step`, which the debug
+// contract has switch back to manual on its own, and in the record pass the clip needs the
+// game running anyway. Restoring it by hand would need to know which pass is running, which
+// an item cannot ask and should not care about.
+
+/**
+ * Hand the clock to the build, so its own frame loop drives the simulation — and then let
+ * the handover settle before anything is measured.
+ *
+ * THE FIRST FRAME AFTER THE HANDOVER IS NOT A NORMAL FRAME. The simulation has been on the
+ * manual clock for the whole of `arrange`, which is many round trips of wall clock, so the
+ * build's loop comes back to a large elapsed delta and catches up in one go — ordinary
+ * accumulator behaviour, and every build here clamps it, but the clamp is generous. On one
+ * of them that first frame ran a full second of firing at once, which took a pair of cold
+ * Stutters from 0 heat to 98: over the redline on the very poll a window opened on, leaving
+ * the rest of it silent by design and the item blaming the cue for it.
+ *
+ * So the burst is spent here, before the caller's first reading. `settleMs` is a beat of
+ * real time for the build to work through whatever it accumulated; a caller that also poses
+ * state (heat, say) should do it AFTER this returns, so the catch-up cannot undo the pose.
+ */
+export async function giveClockToBuild(api, { settleMs = 250 } = {}) {
+  await api.call("setAutoStep", true);
+  await api.settle(settleMs);
+}
+
+/**
+ * Run the build's own frame loop until `predicate(snapshot)` holds, or `maxMs` of real time
+ * has passed. The counterpart to `api.until` for a window that has to be driven by the
+ * build rather than stepped — pair it with {@link giveClockToBuild}.
+ *
+ * Returns `{ snap, hit, spentMs }`. `stepMs` is how long to let the build run between
+ * reads: 80 ms is about five frames at 60 Hz, fine enough to stop within a few frames of
+ * an event and coarse enough that the round trips do not dominate the window.
+ */
+export async function untilOnOwnClock(
+  api,
+  predicate,
+  { maxMs = 4000, stepMs = 80 } = {},
+) {
+  let snap = await api.snapshot();
+  if (predicate(snap)) return { snap, hit: true, spentMs: 0 };
+  for (let spent = 0; spent < maxMs; spent += stepMs) {
+    await api.settle(stepMs);
+    snap = await api.snapshot();
+    if (predicate(snap)) return { snap, hit: true, spentMs: spent + stepMs };
+  }
+  return { snap, hit: false, spentMs: maxMs };
+}
 
 // ---- Pixel / color sampling (reads the rendered canvas) --------------------
 //
@@ -610,23 +693,23 @@ export function glowBetween(before, after) {
  * under the redline so a few steps of real firing carry it over. Lives are posed high
  * so a leak during the drive cannot end the run out from under the check.
  *
- * `corridor: true` sets the emitter into a vent corridor (see `buildVentCorridor`)
- * instead of parking it at `col,row` beside the lane a build may or may not walk, and
- * makes `walls` part of the result for the item to assert on. An item whose subject is
- * the trip itself wants that: engagement stops being a coincidence of the build's
- * pathfinding. `col`/`row` are ignored when it is set — the corridor fixes the spot.
+ * `gate: true` stands the emitter at the gate (see `buildGate`) instead of parking it
+ * at `col,row` beside the lane a build may or may not walk, and makes `walls` part of
+ * the result for the item to assert on. An item whose subject is the trip itself wants
+ * that: engagement stops being a coincidence of the build's pathfinding. `col`/`row`
+ * are ignored when it is set — the gate fixes the spot.
  *
  * Pair with `actUntilTripped` / `actTripAndRecover`. Returns `{ id, coreId }`, plus
- * `walls` in the corridor form.
+ * `walls` in the gate form.
  */
 export async function arrangeNearRedline(
   api,
   type,
-  { heat = 92, col = 3, row = 20, rot = 0, corridor = false } = {},
+  { heat = 92, col = 3, row = 20, rot = 0, gate = false } = {},
 ) {
   await api.call("setLives", 100000);
-  const c = corridor
-    ? await corridorSetup(api, type, rot)
+  const c = gate
+    ? await gateSetup(api, type, rot)
     : await combatSetup(api, type, col, row, rot);
   await api.call("setHeat", c.id, heat);
   return c;
@@ -729,8 +812,8 @@ export async function actTripAndRecover(
  *
  * The default (col, row) sits below the lane and a few tiles in, which reaches a unit
  * that crosses the floor along the rows it entered on. That is a route the spec
- * permits but does not require — see `ventGuard` for the placement an item should use
- * when it needs the emitter to engage WHATEVER route the build takes.
+ * permits but does not require — see the gate below for the placement an item should
+ * use when it needs the emitter to engage WHATEVER route the build takes.
  */
 export async function combatSetup(api, type, col = 3, row = 20, rot = 0) {
   const id = await build(api, type, col, row, rot);
@@ -738,7 +821,7 @@ export async function combatSetup(api, type, col = 3, row = 20, rot = 0) {
   return { id, coreId };
 }
 
-// ---- The vent corridor: engaging a left-vent unit on ANY route ---------------
+// ---- The gate: engaging a left-vent unit on ANY route -----------------------
 //
 // WHY A SCENARIO CANNOT ASSUME THE SURGE CROSSES ON THE ROWS IT ENTERED ON.
 //
@@ -763,99 +846,133 @@ export async function combatSetup(api, type, col = 3, row = 20, rot = 0) {
 // about tripping, baking, splash, bounty and targeting all report their own subject as
 // broken when what actually happened is that the check was aimed at empty floor.
 //
-// THE FIX IS TO BUILD THE LANE RATHER THAN ASSUME IT. Towers are walls
-// (`specs/playfield.md`) and the surge re-paths around them, so a scenario can put the
-// unit where it needs it using nothing but the game's own rules: wall the vent above
-// and below and the only way out is the corridor between, whatever the build's
-// pathfinder would have preferred. The walls are SINKS, which never fire and have no
-// heat of their own, and they are held one tile clear of the emitter on every side, so
-// they shape the route and do nothing else — a Sink cools only a TOUCHING emitter
-// (`specs/heat.md`), and a corridor that quietly drained the tower under test would
-// wreck every heat item that uses it. The emitter keeps all four faces open to the air
-// exactly as it would standing alone.
+// THE FIX IS TO BUILD THE LANE RATHER THAN ASSUME IT, AND TO BUILD IT ACROSS THE WHOLE
+// FLOOR. Towers are walls (`specs/playfield.md`) and the surge re-paths around them, so
+// a scenario can force the unit through a chosen tile using nothing but the game's own
+// rules — but only if the wall it builds spans every route, and that is where the
+// earlier version of this helper fell down. It roofed the vent with two rows of sinks
+// and called the rows below them a corridor, which assumes the unit STARTS in the
+// corridor. A build that spawns its unit on a vent tile the roof covers (and one of the
+// three reference-grade builds does exactly that) drops the unit out of the opening
+// ABOVE the roof, where the floor is wide open, and it walks the length of the map
+// three rows clear of a gun that never sees it. The check then reports the emitter as
+// broken for a spawn-placement defect that `sealing.partial-opening-ok` owns.
 //
-//   col   0 1 2 3 4 5 6 7 8 9
-//   r14
-//   r16   S S S S S S S S S S   <- five sinks; the leftmost covers the vent's top half
-//   r17   S S S S S S S S S S
-//   r18   . . . . . . . . . .   <- the corridor: every left-vent unit walks this
-//   r19   . . . . . . . . . .
-//   r20   S S . E E . S S S S   <- sink, gap, the emitter under test, gap, two sinks
-//   r21   S S . E E . S S S S
+// So the wall runs the FULL HEIGHT of the floor, from row 0 to row 35, with a two-row
+// gap at rows 18-19 and nothing else. A left-vent unit has to reach the right exhaust,
+// the exhaust is on the far side of that wall, and rows 18-19 at columns 8-9 are the
+// only open tiles in it — so every route, on every pathfinder, from every spawn tile,
+// runs through the gap. The emitter under test sits one clear column short of the gap,
+// squarely inside its range ring whatever its type.
 //
-// The vent's own tiles stay walkable on rows 18 and 19, so nothing is sealed and the
-// never-seal rule (`specs/playfield.md`) has no reason to refuse any of it. Covering
-// the opening's top half is expressly allowed — the surge then appears only on the
-// tiles still open, which is what `sealing.partial-opening-ok` checks a build honours.
-// A unit that slips down through one of the two gaps rather than running the corridor
-// passes directly under the emitter and is in range there too, so both readings of
-// "shortest" end up in front of the gun.
+//   col      0 1 2 3 4 5 6 7 8 9 10
+//   r0..r17  . . . . . . . . S S .    <- the wall: 2x2 sinks stacked down the column
+//   r18      . . . . E E . . . . .    <- the gap, and the emitter under test
+//   r19      . . . . E E . . . . .
+//   r20..r35 . . . . . . . . S S .    <- the wall again, down to the floor's bottom row
+//
+// The walls are SINKS, which never fire and have no heat of their own, and the emitter
+// is held one clear column short of them, so they shape the route and do nothing else —
+// a Sink cools only a TOUCHING emitter (`specs/heat.md`), and a gate that quietly
+// drained the tower under test would wreck every heat item that uses it. The emitter
+// keeps all four faces open to the air exactly as it would standing alone.
+//
+// Nothing here seals the floor, so the never-seal rule (`specs/playfield.md`) has no
+// reason to refuse any of it: rows 18-19 stay open across the wall, the left vent
+// reaches them over open floor, and the top-vent-to-bottom-exhaust route never crosses
+// column 8 at all.
 
-/** The top-left tile of the emitter under test in a vent corridor. */
-export const CORRIDOR_COL = 3;
-export const CORRIDOR_ROW = 20;
+/** The wall's left column; its 2x2 sinks cover columns 8 and 9. */
+export const GATE_COL = 8;
 
-/** The corridor's roof: five sinks over rows 16-17, the leftmost over the vent. */
-const CORRIDOR_ROOF_COLS = [0, 2, 4, 6, 8];
-const CORRIDOR_ROOF_ROW = 16;
+/** The two rows left open through the wall — the only way across the floor. */
+export const GATE_GAP_ROWS = [18, 19];
 
 /**
- * The walls that make the corridor a corridor: the roof, plus the sink below the vent
- * that stops a unit dropping out of the opening's bottom edge instead of walking.
- * Everything to the emitter's right is scenery on top of that.
+ * The top-left rows of the 2x2 sinks making up the wall: every pair of rows from the
+ * top of the floor to the bottom, except the gap.
  */
-export const CORRIDOR_ROOF_WALLS = CORRIDOR_ROOF_COLS.length + 1;
-
-/** How many sinks a complete corridor is built from — the roof, plus three on the floor. */
-export const CORRIDOR_WALLS = CORRIDOR_ROOF_WALLS + 2;
-
-/**
- * Build the corridor's roof and its below-vent sink, and report how many went down.
- *
- * Separate from {@link buildVentCorridor} because an item whose emitter comes with its
- * own structure — `cooling.boxed-bakes` boxes one in movers on all four faces — cannot
- * use the standard floor, but wants the same funnel above it.
- */
-export async function buildCorridorWalls(api) {
-  let walls = 0;
-  for (const col of CORRIDOR_ROOF_COLS) {
-    if ((await build(api, "sink", col, CORRIDOR_ROOF_ROW)) !== null) walls += 1;
+const GATE_WALL_ROWS = [];
+for (let row = 0; row + 1 < ROWS; row += 2) {
+  if (!GATE_GAP_ROWS.includes(row) && !GATE_GAP_ROWS.includes(row + 1)) {
+    GATE_WALL_ROWS.push(row);
   }
-  if ((await build(api, "sink", 0, CORRIDOR_ROW)) !== null) walls += 1;
+}
+
+/** How many sinks a complete gate wall is built from. An item asserts on this. */
+export const GATE_WALLS = GATE_WALL_ROWS.length;
+
+/** The gap's own tile centre, for range and approach arithmetic. */
+export const GATE_CENTER = tileCenter(GATE_COL, GATE_GAP_ROWS[0]);
+
+/**
+ * Where the emitter under test stands: on the gap's rows, one clear column short of
+ * the wall, so every face is on open air and the gap is well inside its range.
+ *
+ * The column is measured back from the wall by the tower's own size, so a 2x2 Arc, a
+ * 3x3 Bloom and a 4x4 Lance all end up with the same one-column gap to the sinks. The
+ * furthest of them (the Lance) still sits under four tiles from the gap, against the
+ * shortest range in the roster (the Stutter's 5.0), so every emitter type covers it.
+ */
+export function gateCell(type) {
+  return { col: GATE_COL - TOWER_SIZE[type] - 1, row: GATE_GAP_ROWS[0] };
+}
+
+/**
+ * Build the gate's wall and report how many of its sinks actually went down.
+ *
+ * Separate from {@link buildGate} because an item whose emitter comes with its own
+ * structure — `cooling.boxed-bakes` boxes one in movers on all four faces — cannot use
+ * the standard emitter cell, but wants the same forcing wall in front of it.
+ */
+export async function buildGateWall(api) {
+  let walls = 0;
+  for (const row of GATE_WALL_ROWS) {
+    if ((await build(api, "sink", GATE_COL, row)) !== null) walls += 1;
+  }
   return walls;
 }
 
 /**
- * Build the vent corridor with a `type` emitter set into its floor, and report how
- * many of the corridor's sinks actually went down.
+ * Build the gate with a `type` emitter standing at its gap, and report how many of the
+ * wall's sinks actually went down.
  *
  * Returns `{ id, walls }`: the emitter's id (null if its placement was refused), and
- * the sink count, which an item should assert is `CORRIDOR_WALLS`. A refused sink is
- * worth failing on rather than driving through — it opens a way around the emitter,
- * and the item would then report its own subject as broken for a hole in its scenery.
- *
- * The two floor sinks to the emitter's right start one column clear of its footprint,
- * so this works for a 2x2, 3x3 or 4x4 emitter without moving the roof.
+ * the sink count, which an item should assert is `GATE_WALLS`. A missing sink is worth
+ * failing on rather than driving through — it opens a second way across the floor, and
+ * the item would then report its own subject as broken for a hole in its scenery.
  */
-export async function buildVentCorridor(api, type, rot = 0) {
-  let walls = await buildCorridorWalls(api);
-  const id = await build(api, type, CORRIDOR_COL, CORRIDOR_ROW, rot);
-
-  const rightOf = CORRIDOR_COL + TOWER_SIZE[type] + 1;
-  for (const col of [rightOf, rightOf + 2]) {
-    if ((await build(api, "sink", col, CORRIDOR_ROW)) !== null) walls += 1;
-  }
+export async function buildGate(api, type, rot = 0) {
+  const walls = await buildGateWall(api);
+  const cell = gateCell(type);
+  const id = await build(api, type, cell.col, cell.row, rot);
   return { id, walls };
 }
 
 /**
- * The corridor counterpart to {@link combatSetup}: a `type` emitter set into a vent
- * corridor with a real Core walking down it. Returns `{ id, coreId, walls }`.
+ * The gate counterpart to {@link combatSetup}: a `type` emitter standing at the gate
+ * with a real Core walking down to it. Returns `{ id, coreId, walls }`.
  */
-export async function corridorSetup(api, type, rot = 0) {
-  const { id, walls } = await buildVentCorridor(api, type, rot);
+export async function gateSetup(api, type, rot = 0) {
+  const { id, walls } = await buildGate(api, type, rot);
   const coreId = await spawn(api, "core", "left");
   return { id, coreId, walls };
+}
+
+/**
+ * Run the real simulation, unfilmed, until the unit with `id` has come within
+ * `withinPx` of the gate (or has left the floor). The gate is only eight columns in
+ * from the vent, so most items need no skip at all — this is for the ones that film a
+ * WINDOW at the gate and would otherwise spend it watching the walk in.
+ */
+export async function skipToGate(api, id, { withinPx = 90, max = 3600 } = {}) {
+  return api.skipUntil(
+    (s) => {
+      const u = s.surge.find((x) => x.id === id);
+      return !u || u.x >= GATE_CENTER.x - withinPx;
+    },
+    { max, poll: 6 },
+  );
 }
 
 // ---- Audio (reads the Web Audio cues the build actually schedules) ----------
@@ -878,12 +995,98 @@ export async function corridorSetup(api, type, rot = 0) {
 // arming never places a tower, arms/disarms the shop, or fires a menu action,
 // regardless of what the precondition already armed or built. From there a cue
 // is confirmed by the audio log growing across the driven event.
+//
+// A CUE IS NOT SCHEDULED ON THE TICK ITS EVENT HAPPENS, SO THE LOG MUST NOT BE READ
+// THERE.
+//
+// The validate pass advances the simulation INSTANTLY (`advance` is an exact `step`;
+// see `packages/browser-driver/validation.mjs`), so a sweep that stops on the tick a
+// tower fires, a unit leaks or a tower trips has consumed no wall clock at all. That is
+// exactly what makes the verdict deterministic, and it is also why reading `api.audio()`
+// right there measures nothing: how a build gets from a simulation event to a
+// `start()`ed Web Audio source is its own business, and the two common shapes both need
+// real time to have passed.
+//
+//   * Queue-and-flush. The sim records "a tower fired" and the RENDER frame turns the
+//     frame's events into cues — an ordinary way to keep the simulation free of
+//     rendering and audio, and precisely what `specs/gameplay.md` asks for ("rendering
+//     only reads the state"). Between an instant `step` and the very next `evaluate`
+//     round trip there may be no animation frame at all, so the cue has not been
+//     scheduled yet when the log is read.
+//   * Wall-clock rate limiting. A gun firing several times a second gets its cue
+//     throttled against `AudioContext.currentTime` so it does not machine-gun. Under
+//     instant stepping `currentTime` barely moves, so every shot after the first
+//     collapses into the throttle window — and a throttle seeded at 0 swallows the
+//     first one too.
+//
+// Both are conformant. All three of the builds this was re-checked against exhibit one
+// or the other, and on the strictest of them EVERY audio item read zero and reported a
+// game with a full set of working cues as having none.
+//
+// So an audio item spends real time on purpose. `api.settle` is a genuine wall-clock
+// pause in BOTH passes (unlike `advance`, which is instant in the validate pass), and
+// the build's frame loop keeps painting through it, so it is the one lever that lets a
+// deferred cue land before the log is read. Every read below goes through
+// {@link audioSettled}, and {@link armAudio} settles too — a context created a
+// millisecond ago is still starting up, and a throttle measured from its `currentTime`
+// rejects the first cue of the run.
+
+/**
+ * How long to let the build's own frame loop run before reading the audio log.
+ *
+ * 250 ms is about fifteen frames at 60 Hz: comfortably more than the one frame a
+ * queue-and-flush build needs, and past any startup guard on a freshly created
+ * `AudioContext`. It is spent in real time, so it is charged to an item's `clipMs`
+ * budget in the record pass — which is why items keep to one settled read per event
+ * rather than sampling in a loop.
+ */
+export const CUE_SETTLE_MS = 250;
+
 export async function armAudio(api) {
   await api.userKey("KeyZ");
   await api.userClick(1100, 90);
+  // The context is created by the gesture above; give it a moment to actually start
+  // running before anything measures what it has played.
+  await api.settle(CUE_SETTLE_MS);
 }
 
 /** The number of Web Audio sources the build has started so far. */
 export async function audioCount(api) {
   return (await api.audio()).length;
+}
+
+/**
+ * The number of Web Audio sources started so far, read after letting the build's frame
+ * loop run. This is what an audio item should use on both sides of an event — see the
+ * note above.
+ */
+export async function audioSettled(api, ms = CUE_SETTLE_MS) {
+  await api.settle(ms);
+  return audioCount(api);
+}
+
+/**
+ * Advance in short beats until the audio log grows past `from`, and report the count it
+ * reached and whether it ever grew.
+ *
+ * For the cues attached to a REPEATING event rather than a one-off. An emitter firing is
+ * the case that matters: `specs/ui.md` asks for a cue when an emitter fires and says
+ * nothing about every single shot, so a build is free to throttle a gun that fires
+ * seven times a second down to something a person can stand. Reading one shot and
+ * declaring the cue missing fails that build for a reasonable choice; giving the gun a
+ * few seconds of sustained fire and asking whether ANY of it was audible is the claim
+ * the spec actually makes.
+ *
+ * Each beat is `advance` (simulation) followed by a settle (wall clock for the cue to
+ * land), so the sweep costs its caller roughly `beats * (beat/tickHz + CUE_SETTLE_MS)`
+ * of clip budget — keep `beats` small.
+ */
+export async function untilCue(api, from, { beat = 30, beats = 8 } = {}) {
+  let count = from;
+  for (let i = 0; i < beats; i += 1) {
+    await api.advance(beat);
+    count = await audioSettled(api);
+    if (count > from) return { count, hit: true };
+  }
+  return { count, hit: false };
 }

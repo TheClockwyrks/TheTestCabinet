@@ -16,6 +16,12 @@
 
 import { newGame, press, TOWER_TYPES, actTail } from "../_helpers.mjs";
 
+// How long each armed type is held before the next digit. 22 ticks is about 0.37 s, so
+// the eight of them cycle the whole shop in a shade under three seconds — long enough
+// to see each preview, short enough that the clip is still a cycle rather than a
+// slideshow.
+const HOLD = 22;
+
 export default function item() {
   const armed = [];
 
@@ -28,17 +34,25 @@ export default function item() {
 
     // The key presses are the behavior, so they are what the clip shows: each digit
     // swapping the held preview for a different shop tower.
+    //
+    // A BEAT BETWEEN EACH PRESS. All eight presses and their snapshots resolve
+    // instantly, so run together they landed inside a single frame: the clip opened on
+    // whatever the EIGHTH digit had armed and held it, and the seven swaps this item is
+    // about — the shop entry lighting up, the held footprint changing size, the range
+    // ring resizing — were never on screen at all. A short hold on each turns the drive
+    // into what it claims to be: the shop cycling through all eight types, one key at a
+    // time, in about three seconds. It costs the verdict nothing; each reading is still
+    // taken on its own press.
     async act(api) {
       for (let digit = 1; digit <= TOWER_TYPES.length; digit += 1) {
         await press(api, `Digit${digit}`);
         const s = await api.snapshot();
         armed.push(s.build ? s.build.type : null);
+        await api.advance(HOLD);
       }
 
-      // A key press and the state it leaves behind both resolve instantly, so without
-      // this the clip is a still frame of a game that never visibly does anything —
-      // three seconds of the result on screen is what makes it reviewable.
-      await actTail(api, 180);
+      // And a beat on the last one, so the clip does not cut on the eighth press.
+      await actTail(api, 120);
     },
 
     async assert(api, check) {

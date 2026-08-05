@@ -1124,9 +1124,37 @@ export class Game {
 
   // Move the held preview so its footprint top-left sits at (col, row); the
   // valid/invalid state updates through the real placement check.
+  //
+  // This moves the POINTER and then recomputes the preview from it, rather than writing
+  // a preview into the game state directly. Both give the same answer to the very next
+  // `snapshot()`, and only one of them survives to be drawn: `update()` rebuilds
+  // `this.preview` from `input.mouseX/mouseY` on every frame while a tower is armed, so a
+  // directly-written preview is gone by the time the next frame paints. That was
+  // invisible to a check reading `snapshot().build` and glaring in a SCREENSHOT — every
+  // still meant to show a footprint hovering somewhere (a sealing placement being
+  // refused, a build-zone boundary, a tower held against the casing) instead showed the
+  // preview parked wherever the real cursor happened to sit, which under an automated
+  // driver is the top-left corner of the stage.
+  //
+  // Driving the pointer is also what `specs/instrumentation.md` actually asks for —
+  // "moves the held preview ... exactly as moving the mouse over the floor does" — and it
+  // brings the debug path under the same keep-it-on-the-grid clamp `snapTopLeft` applies
+  // to the mouse, so an off-grid request behaves the same either way.
   debugMovePreview(col: number, row: number): void {
     if (!this.armed) return;
-    this.preview = { col, row, valid: this.canPlaceAt(this.armed, col, row) };
+    const size = TOWER_DEFS[this.armed].size;
+    // The pointer sits at the footprint's centre, which is the point `snapTopLeft`
+    // centres that footprint on.
+    this.input.setMouse(
+      FLOOR_X0 + (col + size / 2) * TILE,
+      FLOOR_Y0 + (row + size / 2) * TILE,
+    );
+    const snapped = this.snapTopLeft(this.input.mouseX, this.input.mouseY, size);
+    this.preview = {
+      col: snapped.col,
+      row: snapped.row,
+      valid: this.canPlaceAt(this.armed, snapped.col, snapped.row),
+    };
   }
 
   // Rotate the held preview 90 degrees, turning its radiator faces.
@@ -1154,7 +1182,8 @@ export class Game {
     if (this.state !== "playing") return;
     this.armed = type;
     this.armedRot = rot;
-    this.preview = { col, row, valid: this.canPlaceAt(type, col, row) };
+    // Through the pointer, exactly as `debugMovePreview` does and for the same reason.
+    this.debugMovePreview(col, row);
     this.placeTower(type, col, row, rot);
   }
 

@@ -26,6 +26,23 @@ export class Input {
     return this.held.has(code);
   }
 
+  /**
+   * Put the pointer at a logical-stage position without a real mouse event.
+   *
+   * The placement preview is recomputed from `mouseX`/`mouseY` on every frame (see the
+   * placement-preview block in `Game.update`), so anything that means to move the held
+   * preview has to move the POINTER — writing a preview straight into the game state is
+   * correct for exactly as long as it takes the next frame to overwrite it. The debug
+   * API's `movePreview` is the caller that needs this: `specs/instrumentation.md` has it
+   * move the preview "exactly as moving the mouse over the floor does", and this is what
+   * makes that literally true, including the keep-it-on-the-grid clamp the pointer path
+   * already applies.
+   */
+  setMouse(x: number, y: number): void {
+    this.mouseX = x;
+    this.mouseY = y;
+  }
+
   attach(): void {
     this.canvas.addEventListener("mousemove", (e) => this.updateMouse(e));
     this.canvas.addEventListener("mousedown", (e) => {
