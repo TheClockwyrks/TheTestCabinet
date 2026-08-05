@@ -337,8 +337,8 @@ pub async fn upload_replay_to_backend(
         .join(&record.id)
         .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
     let Ok(bytes) = std::fs::read(&replay_path) else {
-        // No captured replay (the common case: the capability was off, or a run that never produced
-        // one) — nothing to mirror.
+        // No assembled record (a non-gg run, or a gg run whose journal never reached the host)
+        // — nothing to mirror.
         return Ok(());
     };
     HttpBackendClient::new(backend_url)

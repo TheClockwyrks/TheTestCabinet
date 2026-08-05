@@ -5,8 +5,8 @@
 //! This is the other half of the split [format v2](crate::gg_session_record) is built on. In the
 //! container gg appends one line per pinned input and assembles nothing; here, on the
 //! host, after the working tree has been collected and the container is gone, those lines
-//! become the one document a replay driver and the console read. Everything about the
-//! placement is deliberate:
+//! become the one document that explains, afterward, what each agent was asked and what
+//! came back. Everything about the placement is deliberate:
 //!
 //! - **On the host, not in the container.** Assembly is the expensive half — it reads the
 //!   whole journal and gzips a whole record — and doing it in the container would spend

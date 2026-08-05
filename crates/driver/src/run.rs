@@ -310,7 +310,7 @@ where
         // third-party-harness run, which has no journal.
         session_assembler: Some(Box::new(GgSessionAssembler)),
         // …and the static code analysis lands in the same seam, immediately after,
-        // which is the order that matters: the replay assembly lifts gg's journal
+        // which is the order that matters: the session assembly lifts gg's journal
         // *out* of the collected tree first, so a full conversation transcript can
         // never be counted as code the model wrote. It runs for every harness (the
         // pass is harness-agnostic), it writes the run tree's

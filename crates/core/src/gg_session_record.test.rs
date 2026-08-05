@@ -357,8 +357,8 @@ fn every_entry_kind_round_trips_with_its_discriminator_inline() {
 
 #[test]
 fn a_shell_cwd_is_recorded_relative_to_the_workspace() {
-    // An absolute path would never match a playback's (deliberately different) tree, so
-    // every command would fall through to a cross-agent search or a miss.
+    // An absolute path names the container's tree, which nothing reading the record afterward
+    // shares, so two runs of the same command would read back as two different commands.
     assert_eq!(
         serde_json::to_value(GgShellCwd::Workspace).expect("serializes"),
         json!({ "type": "workspace" })
@@ -452,8 +452,8 @@ fn two_payloads_sharing_a_clipped_tail_stay_two_pool_entries() {
     );
 }
 
-/// An unclipped payload dedups exactly as it always did, and mints no clip row — so the table is
-/// empty for a full-fidelity record by construction rather than by luck.
+/// An unclipped payload dedups exactly as it always did, and mints no clip row — so an empty table
+/// is the positive statement "nothing was clipped" by construction rather than by luck.
 #[test]
 fn interning_without_a_ceiling_records_no_clip() {
     let mut pools = GgSessionPools::new();
