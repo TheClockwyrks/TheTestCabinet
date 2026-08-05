@@ -41,19 +41,26 @@
 //!
 //! Gating on the gg version is wrong in **both** directions: a version bump with no
 //! prompt change must not invalidate every record on every release, and an uncommitted
-//! prompt edit *within* one build must not pass. A record from a *newer* gg is refused rather
-//! than guessed at.
+//! prompt edit *within* one build must not pass.
+//!
+//! [`GG_SESSION_FORMAT_VERSION`] is the one format this build reads, and anything else is
+//! refused rather than guessed at — a newer record because it may hold entry kinds this
+//! build has never heard of, and a v1 record (the format an *absent*
+//! [`format_version`](GgSessionRecord::format_version) means) because it is a different,
+//! unpooled shape. v1 was readable only through an upgrade-on-read that existed for the
+//! reconstruction gg no longer has.
 //!
 //! Like the rest of the contract these types are the source of truth: the TypeScript
-//! bindings (`packages/run-record/src/gg-replay.ts`) and the JSON Schemas
-//! (`apps/docs/public/schema/gg/replay-record.schema.json`) are generated from them by
+//! bindings (`packages/run-record/src/gg-session-record.ts`) and the JSON Schemas
+//! (`apps/docs/public/schema/gg/session-record.schema.json`) are generated from them by
 //! `crates/contract-codegen` and are never edited by hand. JSON is camelCase.
 //!
-//! Those two paths, the run tree's `replay.json.gz`, the backend's `replay` artifact slot and
-//! the `GET /runs/{id}/replay` route all keep the word this record used to be named after. They
-//! are **addresses**, not names: every record already in object storage is filed under them, and
-//! the driver in a released image posts to that route. Renaming an address 404s the runs that
-//! were stored at it.
+//! Three names keep the word this record used to be called by: the run tree's
+//! `replay.json.gz`, the backend's `replay` artifact slot and the `GET /runs/{id}/replay`
+//! route. They are **addresses**, not names: every record already in object storage is filed
+//! under them, and the driver in a released image posts to that route. Renaming an address 404s
+//! the runs stored at it. The generated bindings and schema above are not addresses — they are
+//! rewritten from these types on every build, and they say what the record is.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -1019,9 +1026,15 @@ pub struct GgSessionTruncation {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgSessionRecord {
     /// The format **this document** is in. The compatibility contract, and the only
-    /// identity a reader may branch on: a record from a *newer* gg is refused outright
-    /// rather than read on a partial understanding of its entry kinds.
-    #[serde(default = "format_version_v2")]
+    /// identity a reader may branch on. Absent ⇒ **1**, the pre-versioned format.
+    ///
+    /// [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads. A record from a
+    /// *newer* gg is refused rather than read on a partial understanding of its entry kinds,
+    /// and so is a v1 record: v1 was a different, unpooled shape, readable only through an
+    /// upgrade-on-read that existed for the reconstruction that no longer does. Refusing it
+    /// is the honest answer — the alternative is reporting a v1 body as v2 and handing a
+    /// reader entries it cannot mean.
+    #[serde(default = "format_version_v1")]
     pub format_version: u32,
     /// Which build captured it. Explanatory; never a gate.
     #[serde(default)]
@@ -1070,9 +1083,10 @@ pub struct GgSessionRecord {
     pub truncation: Option<GgSessionTruncation>,
 }
 
-/// The [format version](GgSessionRecord::format_version) an absent field means.
-fn format_version_v2() -> u32 {
-    GG_SESSION_FORMAT_VERSION
+/// The [format version](GgSessionRecord::format_version) an absent field means: the
+/// pre-versioned format, which predates the pools and is not readable by this build.
+fn format_version_v1() -> u32 {
+    1
 }
 
 impl GgSessionRecord {
@@ -1354,7 +1368,7 @@ impl GgSessionInterner for GgSessionPools {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct GgSessionRecordRaw {
-    #[serde(default = "format_version_v2")]
+    #[serde(default = "format_version_v1")]
     format_version: u32,
     #[serde(default)]
     recorder: GgSessionRecorder,
@@ -1387,12 +1401,15 @@ impl<'de> Deserialize<'de> for GgSessionRecord {
         use serde::de::Error;
 
         let raw = GgSessionRecordRaw::deserialize(deserializer)?;
-        if raw.format_version > GG_SESSION_FORMAT_VERSION {
-            // Refused rather than guessed at: a record from a newer gg may hold entry
-            // kinds this build has never heard of, and reading a session from a partial
-            // understanding of its inputs is worse than not reading it.
+        if raw.format_version != GG_SESSION_FORMAT_VERSION {
+            // Refused rather than guessed at, in both directions. A record from a newer gg
+            // may hold entry kinds this build has never heard of, and reading a session
+            // from a partial understanding of its inputs is worse than not reading it. An
+            // older one — an absent field means 1 — is a different, unpooled shape whose
+            // upgrade-on-read went with the reconstruction it existed for; accepting it
+            // would report a v1 body as a v2 record.
             return Err(D::Error::custom(format!(
-                "session record format {} is newer than this build supports ({GG_SESSION_FORMAT_VERSION})",
+                "session record format {} is not the format this build reads ({GG_SESSION_FORMAT_VERSION})",
                 raw.format_version
             )));
         }

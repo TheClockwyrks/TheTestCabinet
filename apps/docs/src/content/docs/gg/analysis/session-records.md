@@ -184,7 +184,7 @@ exactly the stated reason: an uncommitted ignore keeps a path out of both the se
 commit and the model's own `git add -A`, and travels with the repository into the
 container and into every worktree.
 
-This also fixes a **pre-existing** exposure: today a replay-captured run's
+This also fixes a **pre-existing** exposure: today a captured run's
 `.gg/replay.json` _is_ caught by the publisher's blanket `git add --all`. Already
 published repositories are not retroactively cleaned; any containing a
 `.gg/replay.json` need a separate audit.
@@ -219,13 +219,19 @@ Using `ggVersion` as the gate is wrong in **both** directions: a version bump wi
 no prompt change must not invalidate every record on every release, and an
 uncommitted prompt edit _within_ one build must not pass.
 
-`formatVersion` is `#[serde(default)]`, and its absence means format 1. This is
-not cosmetic — every record captured to date has no version field, and the backend
-stores and serves them as opaque bytes. A required field would fail to parse all of
-them.
+`formatVersion` is `#[serde(default)]`, and its absence means format 1 — the
+pre-versioned shape, from before pooling. Format 2 is the one format the current
+build reads, and **everything else is refused**, in both directions: a record from a
+newer gg may carry entry kinds this build has never heard of, and a v1 record is a
+different, unpooled shape whose upgrade-on-read went with the reconstruction it was
+written for. Reporting a v1 body as a format-2 record would hand a reader entries it
+cannot mean, so it fails to parse instead.
 
-Foray writes a replay version and never checks it. Do not copy that omission: a
-record from a newer gg is **refused**, not guessed at.
+That refusal costs nothing operationally: the backend stores and serves records as
+opaque bytes, so a v1 record still downloads with a run's archive — it simply is not
+parsed by this build.
+
+Foray writes a replay version and never checks it. Do not copy that omission.
 
 ## Always-on
 

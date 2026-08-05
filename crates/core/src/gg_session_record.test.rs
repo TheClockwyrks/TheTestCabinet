@@ -1,5 +1,5 @@
-//! Tests for the [format v2](super) session record: the pooled shape, the fold that makes
-//! a turn fingerprint, and the upgrade that reads every record captured before v2.
+//! Tests for the [format v2](super) session record: the pooled shape, the content addresses
+//! that make pooling safe, and the version check that refuses everything else.
 
 use serde_json::{Value, json};
 
@@ -34,7 +34,29 @@ fn a_newer_format_version_is_refused_rather_than_guessed_at() {
     let error =
         serde_json::from_value::<GgSessionRecord>(value).expect_err("a newer format is refused");
     assert!(
-        error.to_string().contains("newer than this build supports"),
+        error
+            .to_string()
+            .contains("is not the format this build reads"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn an_absent_format_version_is_a_v1_record_and_is_refused_too() {
+    // Every record this build writes states its version, so an absent field can only be a
+    // capture from before the pools — a different shape, whose upgrade-on-read went with
+    // the reconstruction it existed for. Reading it as v2 would report a v1 body as a v2
+    // record, so it is refused.
+    let mut value =
+        serde_json::to_value(GgSessionRecord::new("run_1", capability_set())).expect("serializes");
+    value
+        .as_object_mut()
+        .expect("an object")
+        .remove("formatVersion");
+    let error =
+        serde_json::from_value::<GgSessionRecord>(value).expect_err("a v1 record is refused");
+    assert!(
+        error.to_string().contains("format 1 is not the format"),
         "unexpected error: {error}"
     );
 }
@@ -60,8 +82,6 @@ fn the_recorder_carries_the_other_two_identities() {
     assert_eq!(round_tripped.recorder.gg_version.as_deref(), Some("0.7.0"));
     assert_eq!(round_tripped.recorder.commit.as_deref(), Some("4af242d9"));
 }
-
-// --- fidelity ---------------------------------------------------------------
 
 // --- pooling ----------------------------------------------------------------
 
@@ -169,11 +189,8 @@ fn the_request_shape_distinguishes_a_required_tool_call() {
 
 #[test]
 fn an_absent_role_reads_as_the_agents_own_client() {
-    let request: GgSessionRequest = serde_json::from_value(json!({
-        "messages": [0],
-        "fingerprint": { "messages": 1, "conversation": "abc" },
-    }))
-    .expect("a request without a role deserializes");
+    let request: GgSessionRequest = serde_json::from_value(json!({ "messages": [0] }))
+        .expect("a request without a role deserializes");
     assert_eq!(request.role, GgClientRole::Agent);
     assert_eq!(request.shape, GgSessionRequestShape::Complete);
 }
