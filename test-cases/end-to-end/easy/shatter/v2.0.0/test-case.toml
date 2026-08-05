@@ -455,7 +455,7 @@ validation = { script = "validation/bullets/max-four.mjs", outputs = [
 [[review.categories.items]]
 id = "fire-rate"
 title = "Fire is rate-limited"
-description = "Fire is rate-limited (~0.18 s between shots): a shot fired too soon after the last does not fire."
+description = "Fire is rate-limited (22 ticks between shots): a shot fired too soon after the last does not fire."
 validation = { script = "validation/bullets/fire-rate.mjs", outputs = [
   { id = "rate", name = "Rate-limited fire", kind = "video" },
 ] }

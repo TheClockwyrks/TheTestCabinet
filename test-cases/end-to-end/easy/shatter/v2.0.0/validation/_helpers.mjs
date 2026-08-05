@@ -104,7 +104,7 @@ export const SHIP_MAX_PLATEAU =
 export const MUZZLE_SPEED = 520; // added along the ship's facing, plus ship velocity
 export const BULLET_LIFE = 1.5; // seconds (the snapshot's `life` field is in seconds)
 export const MAX_BULLETS = 4;
-export const FIRE_INTERVAL = 0.18; // minimum seconds between shots (21.6 ticks — not a whole tick count)
+export const FIRE_INTERVAL_TICKS = 22; // minimum ticks between shots (= 0.18333... s)
 
 export const SAUCER_R = 18;
 export const SAUCER_SCORE = 200;

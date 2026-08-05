@@ -1,3 +1,33 @@
+## The fire interval is a whole number of ticks
+
+`specs/ship.md` asked for shots "at least 0.18 seconds apart", which is 21.6 ticks at the
+120 Hz `specs/simulation.md` fixes — a threshold no build can land on, and the only
+duration in the case that was not a whole tick count. The same bullet then bounded the
+rate at "roughly 5 to 6 shots per second", which admits any interval from 0.167 to 0.2 s,
+so the spec named a precise figure and immediately widened it into a band that did not
+contain it. The gate is now stated once, as 22 ticks (22/120 of a second, about 0.183 s,
+so about 5.5 shots per second), and `specs/instrumentation.md` calls the held-fire cadence
+by the same number.
+
+`bullets/max-four` was failing correct builds on the back of that band. It spaced its five
+taps 24 ticks apart — exactly 0.2 s, the slow end of what the old wording allowed — so a
+build that chose that end rejected every second tap, fired three shots instead of five,
+peaked at three, and was reported as having too tight a cap. A build accumulating its
+cooldown in floating point failed even at exactly 0.2 s, because 24 steps of 1/120 sum to
+0.19999999999999998. The taps are now 30 ticks apart, eight clear of the 22-tick gate.
+
+`bullets/fire-rate` needed no change to its probes — it rejects at 7 ticks and accepts at
+38, either side of the gate with room to spare — but its rationale cited the band that no
+longer exists. The reference implementations count the cooldown down in whole ticks rather
+than subtracting `dt` each step, so they land on the boundary exactly.
+
+The bullet motion trail was the other duration off the tick grid: `specs/ship.md` put its
+span "on the order of 0.12 to 0.18 s", and neither end is a whole tick (14.4 and 21.6). A
+band of unreachable figures leaves a build free to pick a length nothing can be checked
+against, so the trail now spans a stated 18 ticks (0.15 s) and the reference
+implementations cap the history at that many samples rather than dividing a duration by
+`dt`. Every duration the case states is now a whole number of ticks.
+
 ## Validation: four items now fail for their own reasons
 
 Each of these was reporting a fault that belonged to a different item, so a single build
