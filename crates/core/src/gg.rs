@@ -3351,7 +3351,8 @@ pub enum GgToolFailure {
     /// a duplicate id, a subagent that already returned.
     Conflict,
     /// gg refused the call: the delegation depth cap, a memory instance this agent holds read-only,
-    /// a completion gate the call did not satisfy.
+    /// a call a pending compaction does not admit, a session that already ended this turn, or a
+    /// [hook](GgHook) that blocked it.
     Refused,
     /// The call exists but this run's capability set does not offer it. On the API surface this is
     /// the membrane's backstop refusing a name a program reached anyway.

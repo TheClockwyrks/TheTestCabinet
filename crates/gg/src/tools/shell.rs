@@ -377,14 +377,18 @@ fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
 /// here rather than in either adapter, a program's `system.shell(…)` is offloaded on exactly the
 /// terms a tool call is — and because the *process* is started behind
 /// [`ctx.shell`](ToolContext::shell) rather than here, a
-/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers all three call paths from
-/// one substitution.
+/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers all three call paths —
+/// those two and gg's own [hook](crate::hooks) runner, which reaches this function with the command
+/// line an operator configured — from one substitution.
 ///
 /// `origin` says **which** of the three this is. The seam is where they meet and the caller is gone
 /// by the time a command reaches a runner, so the path has to travel on the request: a
-/// [recording](crate::replay::RecordingShellRunner) runner files a validation command on a queue of
-/// its own rather than on the agent's ordinary one, and a reconstruction that mixed them would
-/// answer a `shell` tool call with a completion gate's build.
+/// [recording](crate::replay::RecordingShellRunner) runner files a hook's command on a queue of its
+/// own rather than on the agent's ordinary one, and a reconstruction that mixed them would answer a
+/// `shell` tool call with the output of an agent-stop hook's build — the command gg runs *without
+/// the model asking*. (A record written before that gate became a hook stamps the same command
+/// [`CompletionValidation`](GgShellOrigin::CompletionValidation), which is why the origin outlives
+/// the capability that produced it; nothing live stamps it.)
 pub(crate) async fn run_command(
     command: &str,
     timeout: Duration,

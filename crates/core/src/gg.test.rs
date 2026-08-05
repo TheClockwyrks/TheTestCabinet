@@ -2340,12 +2340,16 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
 
 /// The surface is what makes *"never offered"* and *"offered and never called"* different findings,
 /// so what has to survive the wire is exactly the join a consumer draws that distinction with: the
-/// tool names, and — in code mode — each bound function beside the tool its calls are counted under.
+/// tool names, and — in code mode — each bound function beside its own
+/// [`key`](GgAgentApiFunction::key), the language-independent identity its calls are recorded under.
+/// The join is `(object, key)` and nothing else, which is why a function no tool backs — the ending
+/// call asserted below — carries a figure on exactly the terms a tool-backed read does.
 ///
 /// The absences are as load-bearing as the values. A tool-calling agent sends no `apis` at all
 /// rather than an empty list, because it has no such surface; an agent that ablates nothing sends no
-/// `withheld` for the same reason; and a function no tool backs sends no `tool` rather than null,
-/// because a consumer must show it as bound rather than as never called.
+/// `withheld` for the same reason; and no gg tool name is sent anywhere on the API surface, because
+/// under the tool-keyed join it replaced, the one `read_file` behind three functions counted three
+/// calls where the model had written one.
 #[test]
 fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     let kind = GgTelemetryKind::AgentSurface {

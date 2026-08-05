@@ -1072,7 +1072,7 @@
         },
         {
           "const": "refused",
-          "description": "gg refused the call: the delegation depth cap, a memory instance this agent holds read-only,\na completion gate the call did not satisfy.",
+          "description": "gg refused the call: the delegation depth cap, a memory instance this agent holds read-only,\na call a pending compaction does not admit, a session that already ended this turn, or a\n[hook](GgHook) that blocked it.",
           "type": "string"
         },
         {

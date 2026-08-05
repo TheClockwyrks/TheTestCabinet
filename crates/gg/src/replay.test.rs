@@ -1895,12 +1895,21 @@ fn the_deadline_clock_is_recorded_at_standard_fidelity_too() {
 // The shell decorator
 // ---------------------------------------------------------------------------
 
-/// Every one of gg's three command paths reaches the record, under the origin the caller stamped.
+/// Every one of gg's command paths reaches the record, under the origin the caller stamped — the
+/// three a live run stamps, and the retired one a record written before the ending gate became a
+/// hook still carries.
 ///
 /// Closing this gap is what made the recorded shell possible at all: for the whole of format v2's
-/// first milestones only the completion gate's commands were captured, because it was the only call
-/// site that happened to hold a recorder — so a record of a session that used the `shell` tool had
-/// no answer for a single one of its commands, and every one of them replayed as a miss.
+/// first milestones the only commands captured were the ones gg ran *without the model asking* —
+/// then the completion capability's validation build, today an [agent-stop
+/// hook's](crate::hooks) — because that was the only call site that happened to hold a recorder, so
+/// a record of a session that used the `shell` tool had no answer for a single one of its commands,
+/// and every one of them replayed as a miss.
+///
+/// [`CompletionValidation`](GgShellOrigin::CompletionValidation) is exercised alongside the three
+/// live origins rather than dropped with the capability: a reconstruction reads records it did not
+/// write, and one that stopped recognising the origin those commands were filed under would replay
+/// them onto the agent's own queue — the exact confusion the stamp exists to prevent.
 #[tokio::test]
 async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
     let (dir, recorder) = recorder_in(None);
@@ -1914,6 +1923,7 @@ async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
     for (origin, command) in [
         (GgShellOrigin::Tool, "printf tool"),
         (GgShellOrigin::Program, "printf program"),
+        (GgShellOrigin::Hook, "printf hook"),
         (GgShellOrigin::CompletionValidation, "printf gate"),
     ] {
         runner
@@ -1943,6 +1953,7 @@ async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
         vec![
             (&GgShellOrigin::Tool, "printf tool"),
             (&GgShellOrigin::Program, "printf program"),
+            (&GgShellOrigin::Hook, "printf hook"),
             (&GgShellOrigin::CompletionValidation, "printf gate"),
         ],
     );
