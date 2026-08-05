@@ -422,21 +422,74 @@ its SDK is [hand-written and idiomatic](/gg/program-languages/#the-sdk-is-hand-w
 on top of it. A generic dispatcher would not be a shortcut for a new language; it would be
 the one thing that makes it a different capability.
 
-### Type-stripped, not type-checked — TypeScript's preparation step
+### Stripped and checked
 
-Every language answers the same question — *how does a model's reply become source this
-guest can evaluate?* — and this is TypeScript's answer. It is where a language spends
-whatever it must to make untrusted text safe to hand to a parser, and where it refuses,
-with a sentence the model can act on, anything the sandbox has no implementation of.
+This is TypeScript's **preparation step**. Every language answers the same question —
+*how does a model's reply become source this guest can evaluate?* — and this is
+TypeScript's answer. It is where a language spends whatever it must to make untrusted text
+safe to hand to a parser, and where it refuses, with a sentence the model can act on,
+anything the sandbox has no implementation of.
 
-The program is TypeScript, but nothing type-*checks* it. gg erases the types with
-[`oxc`](https://oxc.rs/) in-process — around 0.2 ms — and hands the JavaScript to the
-guest. An `interface` declaration disappears, `const x: Entry[] = …` becomes
-`const x = …`, and a call that passes a string where a number was declared runs anyway.
+It is two passes, in this order, and each does something the other cannot.
 
-The prompt does not warn about this, and does not claim a check that never happens
-either. What catches the mistakes that actually matter is **run-time validation in the
-SDK wrappers**, on the three shapes that are otherwise silent or unreadable:
+**The strip** erases the types with [`oxc`](https://oxc.rs/) in-process, in around 0.2 ms.
+An `interface` declaration disappears and `const x: Entry[] = …` becomes `const x = …`;
+what comes out is the JavaScript the guest evaluates. This pass is also where a syntax
+error, an [early error](#statements-that-cannot-run), a refused `import` and the
+[unreachable-tail](#statements-that-cannot-run) count come from, each in gg's own located
+rendering.
+
+**The check** runs `tsc` over the model's *unstripped* source, against the SDK's own
+declarations, in around 90 ms. A program that does not type-check is **not executed**: the
+model is handed the compiler's diagnostics, at the coordinates of the text it wrote, and
+writes another program next turn. So a call that passes a string where a number was
+declared no longer runs — it costs a turn and a diagnostic rather than a `TypeError` half
+way through a piece of work.
+
+The cheap pass runs first, so a program with a typo costs a parse rather than a compiler,
+and each failure lands in the [kind that names its cause](#what-can-go-wrong).
+
+#### What the check is, exactly
+
+- **The compiler.** A `tsc` pinned at one release, committed under
+  `crates/gg/src/sandbox/checkers/` and embedded in the gg binary, run with the `node`
+  every run image already ships. gg carries it for the same reason it carries the
+  component: it is copied as a single file into an ephemeral run container and must arrive
+  with everything it needs. Cut from the same pinned `typescript` the SDK's declarations
+  are emitted by, so what a program is judged against and what the model is shown are one
+  release.
+- **The declarations.** The ES2022 standard library, plus the whole SDK surface generated
+  from the [signature catalogue](/gg/program-languages/#the-sdk-is-hand-written-and-native)
+  — so the signatures the prompt shows and the signatures the checker enforces cannot
+  disagree — plus `console`, `lib`, `performance` and `crypto`, the names a program can
+  reach that no SDK declaration covers.
+- **Strict mode**, which is why a caught error is `unknown` until it is narrowed. The
+  prompt says so.
+- **No `DOM`.** `document`, `fetch` and the timers are undeclared, because a program has
+  none of them; naming one is a compile error rather than a surprise at run time.
+- **The whole surface, not the run's.** The declarations carry every object and every
+  function the catalogue has, including the ones this run's toolset withholds — which is
+  the *opposite* of what the prompt does. Two reasons: a withheld name has to stay
+  reachable **as a withheld name**, so that "the model reached for something it was not
+  given" keeps being recorded as `program_unknown_name` in a checked arm and an unchecked
+  one alike (see [toolset ablation](/gg/toolset-ablation/)); and a verdict has to depend on
+  the program alone, since the same text is checked as a turn's program, as a skill's
+  on-use script and as the code half of a memory being written.
+
+A code [skill](/gg/skills/) or [memory](/gg/memories/) is checked too, as what it is — a
+module with exports, in its own coordinates. A module that does not type-check would
+otherwise bind a `lib.<key>` whose every call fails in some later turn that has nothing to
+do with the one that wrote it.
+
+What the check costs is [measured, not assumed](/gg/telemetry/): TypeScript declares that
+its preparation compiles, so every program it prepares is timed — the rejected ones
+included — and the reading reaches the run as `compileMs`.
+
+#### The validators are still there, and still earn their keep
+
+A type checker sees the program; it does not see a value that arrived as `any`, and it
+does not run in an unchecked arm at all. So **run-time validation in the SDK wrappers**
+stays, on the three shapes that are otherwise silent or unreadable:
 
 - `shell("npm test", 300)` — a positional argument where an options object belongs
   would quietly read `timeoutSecs` off a number, get `undefined`, and use the default.
@@ -450,9 +503,6 @@ SDK wrappers**, on the three shapes that are otherwise silent or unreadable:
 
 Bad enum strings and bad variant tags already produce good messages from the generated
 bindings, so the validators cover exactly that gap and nothing more.
-
-Plain JavaScript passes through essentially unchanged, so a model that ignores the word
-"TypeScript" still runs.
 
 One layer *below* types is checked, though, because leaving it to the guest costs the
 model its location: ECMAScript's **early errors** — a `const` declared twice, a `let`
@@ -1406,14 +1456,14 @@ record.
 | The program breaks a rule enforced before any statement runs — for TypeScript an **early error**, most often a `const` declared twice, i.e. two programs in one reply | preparation's scope analysis, before any engine work | a `Compiler error`: the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
 | The reply carried statements after a top-level `return` | preparation, from the tree it already built | a `Notice`: how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
 | `import`, `export`, a dynamic `import()`, or a top-level `await` — TypeScript's spelling of "something this sandbox has no implementation of" | preparation, which refuses it | a `Compiler error` saying the sandbox has no module system and is synchronous, and what to write instead |
-| The language's compiler read the whole program and **rejected** it — a type error, a borrow error, a name that does not resolve. Only a language whose preparation type-checks has this failure; TypeScript's type-strip checks nothing | preparation, before any engine work | a `Compiler error` carrying the compiler's own diagnostics and nothing else. It is the model's to fix and the turn is recorded as `transpile_compile`; it must never be confused with the committed **component** failing to compile, which is an artifact defect that ends the session |
+| The language's compiler read the whole program and **rejected** it — a type error, a name that does not resolve, an argument of the wrong shape. TypeScript's `tsc` pass is what raises it | preparation, before any engine work | a `Compiler error` carrying the compiler's own diagnostics and nothing else. It is the model's to fix and the turn is recorded as `transpile_compile`; it must never be confused with the committed **component** failing to compile, which is an artifact defect that ends the session |
 | The language's compiler **could not finish** — it crashed, its timeout killed it, or it is not installed in the run's image | preparation, which reports the compiler rather than the program | a `Notice`: that the program was not run, that this is the environment rather than anything it wrote, and that nothing about it was rejected. **Not** a `Compiler error`, because nothing read the program. The turn is an error, under its own `toolchain` base kind rather than `transpile` |
 | A TypeScript program nests brackets past 200 deep | that language's nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
 | An unknown identifier (usually a withheld tool) | the guest | a `Runtime error`: the name, the program line — **and the API objects this run binds**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
 | An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, and the line of the program that made the call. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
 | A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |
-| A denied global (`setTimeout`, `fetch`, …) | the guest's throwers | a `Runtime error`: the denied name, why this guest cannot honour it (there is no event loop; this runtime is built without an HTTP client), and the line |
+| A denied global (`setTimeout`, `fetch`, …) | in a checked language, the checker, which declares none of them; otherwise the guest's throwers | a `Compiler error` saying the name cannot be found, or — for a value the checker could not see into — a `Runtime error`: the denied name, why this guest cannot honour it (there is no event loop; this runtime is built without an HTTP client), and the line |
 | The program returned a Promise | the guest | a `Runtime error` naming what came back and that the sandbox is synchronous |
 | The program `return`ed a value | the guest | nothing. That a returned value is discarded is a standing rule in the system prompt; that this program returned one goes to the operator |
 | A view call broke one of [its caps](#the-caps-and-why-none-of-them-truncates) — a body or label over the ceiling, a fifty-first text view, a hundred-and-first view operation, an empty label | the host, which owns the window | a catchable `limit-exceeded` (or `invalid-argument`) thrown at the call site, **naming the cap**, and nothing afterwards: material that never reached the window is refused where the program can still do something about it |

@@ -27,9 +27,10 @@ toggle, and the difference is attributable to the shape of the response.
 The moment that question is worth asking, a second one follows it: **does the language a
 model writes its program in change how well it works?** It is not an idle question. The
 arms differ in how much of the language was in the model's training data and how recently
-its idioms moved; in how much a model has to write before it has said anything (a
-TypeScript type annotation costs tokens a Python signature does not, and buys nothing here
-because nothing type-checks it); in what a model's *reflexes* cost it — `await` is the
+its idioms moved; in how much a model has to write before it has said anything, and in
+what those tokens buy — a type annotation costs tokens and buys a
+[checked program](/gg/responses-as-code/#stripped-and-checked); in what a model's
+*reflexes* cost it — `await` is the
 first thing many models reach for in JavaScript, and the sandbox is synchronous, so the
 reflex costs a [healing](/gg/response-healing/) repair or a refusal; in how a language
 handles a failure, and therefore how naturally a program written in it composes calls that
@@ -55,10 +56,12 @@ rather than a variable. So the language is one:
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
-evaluate. TypeScript spends almost none — its
-[prepare step](#what-a-language-supplies) is an in-process parse and type-strip, about
-0.2 ms — but a language that hands the reply to a compiler spends whatever that compiler
-takes, and an arm cannot be compared on cost against an arm that does not.
+evaluate, and every registered one does. TypeScript's
+[prepare step](#what-a-language-supplies) is an in-process parse and type-strip of about
+0.2 ms **and** a `tsc` pass that brings the step to about 90 ms in total, and that
+[type-checks the program](/gg/responses-as-code/#stripped-and-checked) before the guest
+sees it; a compiled language spends whatever its compiler takes. An arm cannot be compared
+on cost against an arm that spends less.
 
 That time is **recorded per program and rolled up per run**, because nothing else records
 it. The sandbox's own clock starts once a program is prepared, so a compile lands in
@@ -94,10 +97,11 @@ and always in the direction that makes the arm look cheap.
 
 Two deliberate asymmetries in how absence is spelled. Per turn, a language that compiles
 nothing reports **nothing at all** rather than a zero: `null` says "there is no compiler on
-this path", which a zero would not, and a column of zeroes on every turn of every
-TypeScript run would be noise in front of the one study the field exists for. Per run, the
-same arm reports **`0`** rather than omitting the field, because a query averages a
-measurement and silently drops a run that has none.
+this path", which a zero would not, and a column of zeroes on every turn of such a run
+would be noise in front of the one study the field exists for. Per run, the same arm
+reports **`0`** rather than omitting the field, because a query averages a measurement and
+silently drops a run that has none. No registered language takes that branch today — every
+one of them compiles — which is exactly why the branch is declared rather than inferred.
 
 And the figure is reported for the turn whose program the compiler **rejected**, which is
 the turn it most exists for: a compile that spent four seconds refusing the program spent
@@ -235,7 +239,7 @@ instantly in every gate that iterates languages.
 | What it supplies | Why it belongs to the language |
 | --- | --- |
 | An **id** and a **display name** | The id is the config value, the telemetry value and the stem of its committed artifacts; the display name is what the model reads in its prompt and its diagnostics. |
-| **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, and the stack sizing an unguarded recursive-descent parser forces on untrusted text. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
+| **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, the stack sizing an unguarded recursive-descent parser forces on untrusted text, and then a `tsc` pass over the unstripped source. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |
@@ -618,22 +622,30 @@ one.**
    agreement gate fails a catalogue with a blank in it — and, for an argument, with a gap
    where one should be: a signature that takes arguments and documents none fails, as does an
    entry documenting no argument where another arm documents one.
-5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`.
+5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`. If the language
+   type-checks the model's program, commit the compiler that does it under
+   `crates/gg/src/sandbox/checkers/` as well, pinned at one release — gg is copied as a single
+   file into a run container, so a compiler it needs on the turn path is a compiler it carries.
+   TypeScript's is a `tsc` cut out of the same pinned `typescript` its catalogue is reflected
+   with, which is what stops a program from being judged by one release and described by
+   another.
 6. **Add the enum variant** in `crates/core/src/gg.rs`, and list it in `GgProgramLanguage::ALL`
    with an `ordinal()` arm. Neither is optional and neither can be forgotten: `ordinal()` is an
    exhaustive `match`, so the variant does not compile without an arm, and each arm checks its
    own position against `ALL` in a `const` block, so an arm for a language missing from the list
    is a build failure. gg then does not compile until the registry has an arm for it either.
 7. **Implement the trait** in `crates/gg/src/sandbox/language/python.rs`: the preparation
-   step and [whether it compiles](#what-compiling-costs-and-where-it-is-recorded), the
+   step, [whether it compiles](#what-compiling-costs-and-where-it-is-recorded) and what
+   preparing it needs warmed before the first turn, the
    binding-name convention, the synthesized file-view statement, the **program that opens a
    documentation view per name** (the on-use script of every built-in family skill, and the one
    thing gg generates rather than quotes), the healing dialect, the prompt dialect, the two
    templates (`system-code.python.hbs`, `code-nothing-shown.python.hbs`) — whose every quoted
    call is an `{{api.…}}` reference and never a literal — and the healing fixtures its dialect
    must survive.
-8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue, so
-   the drift gate covers it rather than only diffing it.
+8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
+   and re-cutting its checker, if it has one — so the drift gate covers them rather than only
+   diffing them.
 9. **Add the console's row**: an option in `PROGRAM_LANGUAGE_OPTIONS`
    (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`) so an operator can configure the arm, and a
    name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are typed over the

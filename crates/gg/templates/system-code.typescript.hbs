@@ -28,6 +28,23 @@ will not be visible. Returning a value does nothing — the value is discarded.
 All functions are synchronous. Do not use `await` or treat return values as
 promises.
 
+### Your program is type-checked
+
+Before it runs, your program is compiled with `tsc` in strict mode against the
+declarations these APIs are written in. A program that does not type-check is
+**not executed**: you get the compiler's own errors, at the line and column of
+the code you wrote, and write another program.
+
+So the signatures below are guarantees rather than suggestions, and a mistake in
+one costs you a turn instead of half-finished work. Two consequences worth
+knowing:
+
+- a caught error is `unknown` until you narrow it — `catch (e) { if (e instanceof
+  ToolError) … }` is the shape that reads its `tool` and `code`;
+- the standard library is ES2022 and nothing else. There is no `document`, no
+  `fetch`, and no timers; reaching for one is a compile error rather than a
+  surprise at run time.
+
 ### Ending your session
 
 Turns continue until you end your session.

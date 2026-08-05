@@ -226,10 +226,15 @@ fn code_mode_names_objects_and_teaches_discovery() {
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
     }
-    // The signature dump is gone: no TypeScript signatures, no type declarations, no `ToolError`.
+    // The signature dump is gone: no return types, no type declarations, and no declaration of
+    // `ToolError`. The *name* is allowed — the type-check section names it, because narrowing a
+    // caught error is the one thing a model has to spell to read a failure at all, and a prompt that
+    // withheld it would buy a strict-mode diagnostic every time a program caught something. What is
+    // banned is the block of declarations the prompt used to carry, which is what the on-demand
+    // documentation lookup replaced.
     assert!(!prompt.contains("): FileRead"), "{prompt}");
     assert!(!prompt.contains("interface DirEntry"), "{prompt}");
-    assert!(!prompt.contains("ToolError"), "{prompt}");
+    assert!(!prompt.contains("class ToolError"), "{prompt}");
 }
 
 /// **The code prompt teaches views, not `console.log`.**
@@ -1792,6 +1797,42 @@ fn every_language_renders_a_complete_system_prompt() {
             assert!(
                 rendered.contains(section),
                 "{language}: the responses-as-code prompt is missing `{section}`:\n{rendered}"
+            );
+        }
+    }
+}
+
+/// **A checked language's prompt says its programs are checked, and what that means for a model.**
+///
+/// Deliberately outside [`REQUIRED_SECTIONS`] and [`REQUIRED_RULES`], which are the *universal*
+/// tables: whether a program is type-checked is precisely the axis a cross-language study varies, so
+/// a language that checks nothing must be free to render no such section. What is not free is
+/// checking a program and not saying so — a model that believes its types are erased writes
+/// differently (and worse) than one that knows a mistake in a signature costs it a turn before any
+/// work happens.
+///
+/// The phrases are the terms the statement cannot be made without, on the same discipline
+/// [`REQUIRED_RULES`] keeps: the paragraph may be rewritten or re-emphasized around them.
+#[test]
+fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
+    for language in all_languages().filter(|language| language.prepare_compiles()) {
+        let name = language.display_name();
+        let rendered = plain(&render_system_for(
+            language,
+            &every_code_section_on(language.id()),
+        ));
+        for (what, phrase) in [
+            ("that the program is checked before it runs", "type-check"),
+            (
+                "that a program which fails the check does not run",
+                "not executed",
+            ),
+            ("which compiler judges it", "tsc"),
+            ("that a caught error has to be narrowed", "unknown"),
+        ] {
+            assert!(
+                rendered.contains(phrase),
+                "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
             );
         }
     }

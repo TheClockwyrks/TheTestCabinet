@@ -571,7 +571,7 @@ favour of "the program faulted". Twenty-one types, one per distinction gg alread
 | Base kind | Types under it |
 | --- | --- |
 | `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse` |
-| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (a language whose preparation type-checks read the whole program and rejected it), `transpile_lowering`, `transpile_unsupported` |
+| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (the language's compiler read the whole program and rejected it — TypeScript's `tsc` pass), `transpile_lowering`, `transpile_unsupported` |
 | `program_fault` | `program_tool_error` (an **uncaught failed call** — the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it: a name that is not in scope, or a call the host refused as `unavailable` — [the same fact](/gg/responses-as-code/#capability-gating), told two ways by two kinds of guest), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
 | `toolchain` | `toolchain_failed` (the language's compiler crashed, was killed by its timeout, or is not installed — nothing was decided about the program, so this is the one base kind that is **not** the model's; see [execution limits](/gg/execution-limits/#a-broken-compiler-counts-but-is-not-the-models-error)) |
@@ -737,9 +737,10 @@ directly:
   [language](/gg/program-languages/) spent compiling for it, including any compiler that
   step shells out to — the program itself, each replacement it handed over to, the code
   half of every skill or memory it brought into use, and each on-use script such a read
-  queued. It is absent for a language whose prepare step is in-process and free —
-  TypeScript's type-strip, where the figure would be a zero on every turn of every run —
-  and present on every turn of a language that compiles, **including the turn whose
+  queued. It is absent for a language whose prepare step is in-process and free, where the
+  figure would be a zero on every turn of every run — no registered language is one, since
+  TypeScript type-checks with `tsc` — and present on every turn of a language that
+  compiles, **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it
   is the only reading of that turn which is not zero. The sandbox's own clock starts once
   a program is prepared, so without this field a compiled arm's per-turn compile cost
