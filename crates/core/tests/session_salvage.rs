@@ -1,9 +1,9 @@
-//! Integration test over the **salvage** path: a gg run that hangs keeps its replay.
+//! Integration test over the **salvage** path: a gg run that hangs keeps its session record.
 //!
 //! A run whose harness session ends in an error never reaches artifact collection or the
 //! [post-run seam](test_cabinet_core::post_run) — the engine's error path stops the
 //! container and returns. That makes a `hung` or `timed_out` run the one run with no
-//! replay record, which is exactly backwards: an unexplained stall is what a replay is
+//! record, which is exactly backwards: an unexplained stall is the outcome a record is
 //! most worth having for.
 //!
 //! So the engine copies the journal out of the container *before* teardown and assembles
@@ -260,7 +260,7 @@ fn killed_session_journal() -> Vec<u8> {
 
 /// Read the assembled record back out of its gzipped artifact.
 fn read_record(path: &std::path::Path) -> serde_json::Value {
-    let bytes = std::fs::read(path).expect("read the assembled replay artifact");
+    let bytes = std::fs::read(path).expect("read the assembled record artifact");
     let mut json = String::new();
     std::io::Read::read_to_string(&mut flate2::read::GzDecoder::new(&bytes[..]), &mut json)
         .expect("the artifact should be gzip");
@@ -269,7 +269,7 @@ fn read_record(path: &std::path::Path) -> serde_json::Value {
 
 /// Drive a gg run whose session hangs and assert the four properties of the salvage.
 #[tokio::test]
-async fn a_hung_gg_run_keeps_the_replay_journal_it_had_written() {
+async fn a_hung_gg_run_keeps_the_capture_journal_it_had_written() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let test_case = catalog
         .resolve_latest("carom")
@@ -374,7 +374,7 @@ async fn a_hung_gg_run_keeps_the_replay_journal_it_had_written() {
     let artifact = run_dir.join(GG_SESSION_TREE_ARTIFACT);
     assert!(
         artifact.is_file(),
-        "a hung run's salvaged replay should be assembled at {}",
+        "a hung run's salvaged record should be assembled at {}",
         artifact.display(),
     );
 
