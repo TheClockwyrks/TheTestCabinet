@@ -41,7 +41,9 @@ styling is yours, matching `specs/overview.md` and the reference image):
 
 - SCORE: the running score (`specs/gameplay.md`), the most prominent readout.
 - LIVES: the crosser lives remaining, shown as a small row of critter icons or a
-  count.
+  count. This is the total the run has left, counting the critter currently
+  crossing — not the spares behind it — so a new run reads three
+  (`specs/gameplay.md`), and it drops to two the first time a life is lost.
 - LEVEL: the current level as `LEVEL n / 8` (`specs/gameplay.md`).
 - TIME: the per-crossing timer, as a draining bar or countdown
   (`specs/gameplay.md`).

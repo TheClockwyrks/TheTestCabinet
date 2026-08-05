@@ -954,6 +954,12 @@ export class Game implements WorldView {
     if (!d) return;
     const col = clampCol(bear.targetCol + d[0]);
     const row = Math.max(0, Math.min(ROW_NEAR, bear.targetRow + d[1]));
+    // A tile a vehicle covers is closed to the bear, exactly as it is to the critter
+    // (specs/hunter.md, specs/hazards.md): the step is refused and the bear stays
+    // where it is, unharmed. Only a vehicle whose own motion arrives on a tile the
+    // bear occupies resets it. This is the same predicate the critter's hop is
+    // refused by, so the two actors read the same board.
+    if (this.blockedByVehicle(col, row)) return;
     const swimming = isWaterRow(row) && !this.hasFloe(col, row);
     const tilesPerSec =
       (swimming ? BEAR_SWIM_SPEED : BEAR_ICE_SPEED) *

@@ -232,6 +232,15 @@ export class Game {
   }
 
   private loseLife(): void {
+    // A run that has already ended cannot lose another life. The per-tick contact
+    // tests are each followed by a `phase !== "active"` guard, which is what stops a
+    // life loss being processed twice in the tick it happens — but only the RESPAWN
+    // branch below sets `phase`; the game-over branch has no respawn to sequence and
+    // leaves it "active". So on the fatal contact both guards passed and
+    // `checkCursorHit` ran a second time in the same tick, against a worm that (on
+    // game over) is deliberately left standing: one touch, two decrements, and a
+    // snapshot reporting -1 lives.
+    if (this.state !== "playing") return;
     this.lives--;
     this.audio.play("life");
     if (this.lives <= 0) {

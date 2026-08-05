@@ -11,12 +11,15 @@
 // the act keeps filming afterwards, long enough for both bears to be seen moving on
 // the critter together.
 
+import { arrangeLevel } from "../_helpers.mjs";
+
 // How long the clip keeps filming once both bears are out.
 const TAIL_TICKS = 240; // 2 s
 
 export default function item() {
   // How many hunter slots level 5 fields (read instantly in `arrange`), and the sweep
   // that waited for both to emerge.
+  let posed;
   let slots;
   let r;
 
@@ -27,8 +30,7 @@ export default function item() {
     // advanced onto a safe floe up top, which is the precondition both bears' emerge
     // logic is waiting on.
     async arrange(api) {
-      await api.reset();
-      await api.call("setLevel", 5);
+      posed = await arrangeLevel(api, 5);
       // The pursuit is suspended for the sweep. What is under test is that both bears
       // COME OUT, and emergence is not the pursuit: specs/instrumentation.md keeps the
       // rest of a bear's life running with the brain off. Left running, a bear that
@@ -60,6 +62,10 @@ export default function item() {
     },
 
     async assert(api, check) {
+      check.expectOk(
+        "posing the level begins a fresh crossing on it, rather than leaving the run on a menu",
+        posed.began,
+      );
       check.expectEq("level 5 fields two hunter slots", slots, 2);
       check.expectOk("both bears eventually emerge", r.hit);
     },

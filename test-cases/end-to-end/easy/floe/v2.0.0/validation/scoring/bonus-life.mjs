@@ -5,7 +5,16 @@
 // real bay-filling hop pushes the score across the milestone through the normal
 // scoring path — awarding a life, which the snapshot reads back. See _helpers.mjs.
 
-import { startCrossing, poseClimb, actClimbByPress } from "../_helpers.mjs";
+import {
+  startCrossing,
+  poseClimb,
+  actClimbByPress,
+  BAY_COL,
+} from "../_helpers.mjs";
+
+// The bay the milestone-crossing hop fills, entered at the column its opening
+// straddles under either reading of the bay layout (see `BAY_COL`).
+const COL = BAY_COL[1];
 
 export default function item() {
   // The life count just before the milestone-crossing hop, and the state after it.
@@ -21,7 +30,7 @@ export default function item() {
     async arrange(api) {
       await startCrossing(api);
       await api.call("setLives", 3);
-      await poseClimb(api, 11);
+      await poseClimb(api, COL);
     },
 
     // The climb, then the bay-filling hop that tips the score over the milestone —

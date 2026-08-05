@@ -4,10 +4,24 @@
 // that grow as it fights (specs/playfield.md). We drive a real Arc into a stream of
 // Motes and read its kill and damage tallies climb.
 
-import { newGame, build, spawn, tower, actTail } from "../_helpers.mjs";
+// The Arc stands at the gate rather than beside the lane a Mote is assumed to walk.
+// This item needs KILLS, and a build is free to route its Motes off the rows they
+// entered on without being wrong (see the note above `buildGate` in `_helpers`) — aimed
+// at the assumed lane, the Arc never fires, nothing dies, and an inspector item reports
+// tallies that never moved for an emitter that had nothing in range.
+
+import {
+  newGame,
+  buildGate,
+  spawn,
+  tower,
+  actTail,
+  GATE_WALLS,
+} from "../_helpers.mjs";
 
 export default function item() {
   let id;
+  let walls;
   let r;
   let t;
 
@@ -18,8 +32,8 @@ export default function item() {
     // ceiling stops a build that routes them the long way round from stretching it.
     clipMs: 7000,
 
-    // An Arc on the lane, hot enough to actually kill, with a stream of real Motes
-    // walking into it.
+    // An Arc at the gate, hot enough to actually kill, with a stream of real Motes
+    // filing through the gap in front of it.
     //
     // The Arc is SELECTED, because the tallies live in the selected-tower inspector
     // (`specs/ui.md`) and that is the only place they are drawn. Without the selection
@@ -30,7 +44,9 @@ export default function item() {
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
-      id = await build(api, "arc", 3, 20);
+      const gate = await buildGate(api, "arc");
+      id = gate.id;
+      walls = gate.walls;
       await api.call("setHeat", id, 80); // real damage so it kills
       await api.call("selectTower", id); // so the clip shows the inspector's tallies
       for (let i = 0; i < 5; i += 1) await spawn(api, "mote", "left");
@@ -51,6 +67,9 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A hole in the gate lets the Motes walk round the Arc, and tallies stuck at zero
+      // would then be about the scenery rather than about the counters.
+      check.expectEq("the gate wall was built", walls, GATE_WALLS);
       check.expectOk("the tower recorded a kill", r.hit);
       check.expectGt("its lifetime kill count is above zero", t.kills, 0);
       check.expectGt("its total damage dealt is above zero", t.damageDealt, 0);

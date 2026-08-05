@@ -239,6 +239,90 @@ export async function actWormSteps(api, n, { max = 480 } = {}) {
   return snap;
 }
 
+/**
+ * ACT: run the real simulation until the worm's head reaches column `c`, and
+ * return the snapshot at that instant.
+ *
+ * This is the RUN-UP an item films before the moment it checks. A posed worm one
+ * tile short of the thing it is about to hit turns on the item's very first tile
+ * step — 0.14 s at level 1 — so the clip opens on the aftermath and a reviewer
+ * never sees the approach that produced it. Posing the worm further back and
+ * walking it in with this puts a readable second of ordinary winding in front of
+ * the event, at the cadence the game actually runs, without touching the verdict:
+ * the tiles crossed on the way are empty, so nothing happens during the run-up.
+ *
+ * It is a COLUMN target rather than a tick count on purpose. The item that fires
+ * at the end of a run-up needs the worm at an exact tile (the bolt is aimed at a
+ * column, and the near/far segments a blast is measured against are counted from
+ * the head), and no fixed number of ticks lands there on a build free to pick its
+ * own frame timing. Polling a tick at a time also means the caller resumes on the
+ * very tick the worm arrives, with a full tile-step interval before it moves
+ * again — which is the window a shot has to resolve in.
+ */
+export async function actWormToColumn(api, c, { max = 720 } = {}) {
+  const r = await api.until((s) => head(s)?.c === c, { max, poll: TICK });
+  return r.snap;
+}
+
+// ---- A worm walking the band into the cursor (act) ---------------------------
+//
+// Where the "something reaches the cursor" items stage their hit. The cursor is
+// parked on the CENTRE of a floor tile (not the stage centre, which straddles two
+// tiles) and the worm walks the floor row into it from `HIT_APPROACH` tiles away.
+
+export const HIT_C = 20;
+export const HIT_R = ROWS - 1; // 19, the floor row
+export const HIT_APPROACH = 6; // tiles of visible run-up before the touch
+
+/**
+ * ARRANGE half of a "a worm reaches the cursor costs a life" item: a clean live
+ * board with the cursor parked on a floor tile and a single-segment worm a few
+ * tiles away in the same row, heading into it.
+ *
+ * The worm is posed APART from the cursor and left to walk in, rather than posed
+ * on top of it. A segment posed already overlapping the cursor asks the build to
+ * notice an overlap that never changed, and nothing in the specs says when it must
+ * look: specs/progression.md costs a life when a segment "reaches the cursor", and
+ * a build that tests that where the reaching happens — inside its worm's tile step,
+ * once per 0.14 s cadence — is conformant. The old arrangement gave the touch 6
+ * ticks (0.05 s) to register and failed such a build for a choice the spec left
+ * open. Walking the worm in produces the hit through the same tile step every
+ * other worm item drives, and it is what a reviewer needs to see anyway: the clip
+ * now shows the worm bearing down on the cursor before the life is lost.
+ *
+ * Pair with `actWormReachesCursor`. The caller sets lives first (`setLives`) —
+ * that is what decides whether the touch respawns or ends the run.
+ */
+export async function arrangeWormIntoCursor(api) {
+  await api.call("setCursor", tileCX(HIT_C), BAND_CY);
+  await setWorm(
+    api,
+    [{ c: HIT_C - HIT_APPROACH, r: HIT_R }],
+    1, // heading right, into the cursor's tile
+    1,
+  );
+}
+
+/**
+ * ACT half: let the worm walk the floor row into the cursor and return the
+ * snapshot at the instant the touch is registered — a life lost, or the run ended
+ * outright when that life was the last.
+ *
+ * The stop condition is the OUTCOME, not a tick count, so the item reads the same
+ * state whether a build registers the touch on the tick the segment lands or on
+ * the tile step that carried it there.
+ *
+ * Pair with `arrangeWormIntoCursor`.
+ */
+export async function actWormReachesCursor(api, { max = 480 } = {}) {
+  const before = await api.snapshot();
+  const r = await api.until(
+    (s) => s.lives < before.lives || s.screen === "gameover",
+    { max, poll: TICK },
+  );
+  return r.snap;
+}
+
 // ---- Firing (act) ------------------------------------------------------------
 
 /**
@@ -256,6 +340,49 @@ export async function actFireAndResolve(api, { max = 180 } = {}) {
   // 180 ticks = the old 1.5s cap.
   await api.call("fire");
   const r = await api.until((s) => s.bolts.length === 0, { max, poll: TICK });
+  return r.snap;
+}
+
+/**
+ * How long a killed foe is given to actually leave `snapshot().foes`.
+ *
+ * A sweep is a tick or two, so this is generous for what it waits on — and, just
+ * as importantly, far too short for the foe to have left by DRIFTING instead. The
+ * foes shot at here are posed mid-board (a glitch on row 13, a corruptor on row 3,
+ * a dropper still in the upper half): each is a second or more of travel from any
+ * edge, so nothing can satisfy this window except a kill. The bounty assertions
+ * each item keeps are the independent half of that evidence.
+ */
+export const FOE_SWEEP_TICKS = 30; // 0.25s
+
+/**
+ * ACT: fire a bolt, run the shot to its resolution, and then wait for the foe of
+ * `kind` to actually leave the board. Returns the snapshot once it has — or, if it
+ * never does, the last one seen, so the caller's assertion fails on the foe that is
+ * still standing.
+ *
+ * The wait is the whole point, and it is the difference between testing the RULE
+ * and testing an implementation detail. Destroying a foe and removing it from the
+ * foe list are two different moments: `actFireAndResolve` returns the instant the
+ * bolt is consumed, and a build that marks its casualties dead and sweeps them once
+ * per tick — mark-dead-then-sweep, an ordinary game-loop idiom — has not reached
+ * the second moment yet. Such a build scored the bounty, played its cue and stopped
+ * drawing the foe on exactly the right tick; it simply had not compacted its array
+ * when the old check looked, one tick early, and reported "the bolt did not kill
+ * it" about a kill the recording plainly shows.
+ *
+ * Nothing in specs/foes.md pins when a destroyed foe leaves the array — it says
+ * only that a foe "dies to a single bolt and pays a bounty when killed" — so the
+ * old reading passed the reference for the incidental reason that its `hitFoe`
+ * splices synchronously, and failed a conformant build for the order it happens to
+ * run its update phases in. Waiting for the outcome tests what the spec states.
+ */
+export async function actShootFoeDead(api, kind, { max = 180 } = {}) {
+  await actFireAndResolve(api, { max });
+  const r = await api.until((s) => foesOf(s, kind).length === 0, {
+    max: FOE_SWEEP_TICKS,
+    poll: TICK,
+  });
   return r.snap;
 }
 
@@ -287,14 +414,22 @@ export async function arrangeMoveControl(api, { startX, startY }) {
  * moment before the key is released (they cannot affect the returned deltas, which
  * were already captured).
  *
+ * `leadTicks` films the posed start BEFORE the key goes down. Nothing moves the
+ * cursor without input, so it cannot affect the deltas either — it exists for the
+ * VERTICAL items, where the band is only ~32 px tall and a 430 px/s cursor crosses
+ * it in about 75 ms: without a run-up the clip opens with the cursor already
+ * pinned against the far bound, which reads as a cursor that never moved. A beat
+ * of the start state first makes the slide legible as a change.
+ *
  * Pair with `arrangeMoveControl`. Returns `{ dx, dy, before, after }` — the same
  * shape the old `holdMove` returned.
  */
 export async function actHoldMove(
   api,
   code,
-  { ticks = 60, tailTicks = 78 } = {},
+  { ticks = 60, tailTicks = 78, leadTicks = 0 } = {},
 ) {
+  if (leadTicks) await api.advance(leadTicks);
   const before = (await api.snapshot()).cursor;
   await api.call("keyDown", code);
   await api.advance(ticks); // 60 ticks = the old 0.5s of measured motion

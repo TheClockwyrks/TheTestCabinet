@@ -6,7 +6,18 @@
 // a bear trails; the real pursuit never catches it before it completes the
 // crossing. See validation/_helpers.mjs.
 
-import { startCrossing, buildSafeColumn } from "../_helpers.mjs";
+import { startCrossing, buildSafeColumn, BAY_COL } from "../_helpers.mjs";
+
+// The bay this crossing climbs to, and the column its opening straddles under either
+// reading of specs/playfield.md's layout (see `BAY_COL`).
+//
+// The corridor used to be built at one reading's LEFT column, which is solid shore on a
+// build that read the sentence the other way: its critter climbed the whole strait
+// cleanly, was correctly refused at the wall, and the item reported that the bear had
+// caught it. That is a verdict about the bay layout wearing the hunter's name — and the
+// layout has an item of its own.
+const BAY_INDEX = 2;
+const COL = BAY_COL[BAY_INDEX];
 
 // How far the bear must actually travel during the climb for "it never caught the
 // critter" to mean anything, in px. THIS ITEM'S CLAIM IS NEGATIVE — the bear does not
@@ -35,8 +46,8 @@ export default function item() {
     // the climb meets no traffic and the only thing that could stop it is the bear.
     async arrange(api) {
       await startCrossing(api);
-      await buildSafeColumn(api, 19); // col 19 is bay 2's left tile
-      await api.call("placeCritter", 19, 19);
+      await buildSafeColumn(api, COL);
+      await api.call("placeCritter", COL, 19);
     },
 
     // Hold Up and let the real climb race the real pursuit all the way to the bay —
@@ -62,7 +73,7 @@ export default function item() {
             dead = true;
             return true;
           }
-          return s.bays[2] === true || s.phase === "clearing";
+          return s.bays[BAY_INDEX] === true || s.phase === "clearing";
         },
         { max: 720, poll: 6 }, // 6 s at a 0.05 s cadence
       );

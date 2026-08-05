@@ -15,7 +15,12 @@
 // (specs/gameplay.md) added when it names the bay being filled. The fish bonus
 // itself is `scoring.bonus-catch`'s item, not this one.
 
-import { startCrossing, poseClimb, actClimbByPress } from "../_helpers.mjs";
+import {
+  startCrossing,
+  poseClimb,
+  actClimbByPress,
+  BAY_COL,
+} from "../_helpers.mjs";
 
 // The bay this check fills, and the bonus-catch fish's award (specs/gameplay.md).
 const BAY_INDEX = 1;
@@ -37,7 +42,7 @@ export default function item() {
     async arrange(api) {
       await startCrossing(api);
       await api.call("setScore", 0);
-      await poseClimb(api, 11); // bay 1 column
+      await poseClimb(api, BAY_COL[BAY_INDEX]); // bay 1's column (see `BAY_COL`)
     },
 
     // The real climb up the corridor and the bay-filling hop at the top — the whole

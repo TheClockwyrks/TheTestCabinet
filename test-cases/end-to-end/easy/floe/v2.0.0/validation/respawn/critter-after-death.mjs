@@ -24,13 +24,20 @@
 // is live, which is the moment specs/gameplay.md is about. Where a held key takes the
 // critter next belongs to `controls.one-tile`, not here.
 //
-// WHICH IS WHAT THE CLIP SHOWS, AND IT IS NOT A BUG. Because this item holds ArrowUp
-// through the second death on purpose, the recording of it can show the fresh critter
-// hop forward the moment it appears — on a build that hands a still-held key straight to
-// it. That is this script's hand on the key, not the build stepping on its own, and both
-// the death pause and the hop cooldown can be intact while it happens. `respawn.
-// death-pause` is the item that decides whether the pause is there at all; do not read
-// this clip as evidence about it.
+// THE KEY COMES UP THE MOMENT THE LIFE DOES. Holding the direction through the DEATH is
+// the point — that is a hand at the keyboard, and it is what a build has to survive —
+// but the hold used to run on through the respawn as well, until after the fresh
+// crossing had been found. On a build that hands a still-held key to the fresh critter,
+// the clip then showed it hop straight off the near shore into the traffic and die
+// again, seconds after an item titled "respawns on the near shore after a death" had
+// finished measuring. Worse, whether it happened at all depended on how many wall-clock
+// milliseconds the record pass spent between two driver calls, so the same script filmed
+// a clean respawn one run and an extra death the next. Releasing on the death instant
+// changes no reading (the respawn is captured after it either way) and leaves the clip
+// showing the one thing the item is about: where the fresh critter comes back.
+//
+// Where a held key takes the critter next is `controls.one-tile`'s item, and whether the
+// pause protects it from one is `respawn.death-pause`'s.
 //
 // THE SWEEP MUST NOT LOOK FOR THE ANSWER. An earlier version waited for
 // `phase === "crossing" && critter.row === ROW_NEAR` and then asserted that the
@@ -99,11 +106,14 @@ export default function item() {
    * would skip past the respawn and read the critter wherever a still-held key had
    * since taken it, failing a build whose respawn landed exactly where it should.
    */
-  const driveDeath = async (api, who, livesBefore) => {
+  const driveDeath = async (api, who, livesBefore, onDeath) => {
     const died = await actUntilDeath(api, livesBefore, {
       max: 240,
       poll: TICK,
     });
+    // Anything the caller wants done the instant the life is spent — releasing a key it
+    // was holding through the death — happens here, before the respawn is waited for.
+    if (onDeath) await onDeath();
     const fresh = await api.until(
       (s) => s.screen === "playing" && s.phase === "crossing",
       { max: 360, poll: TICK }, // 3 s — covers a build that pauses on the death
@@ -154,8 +164,9 @@ export default function item() {
       await api.call("placeCritter", CRITTER_COL, ROW_MEDIAN);
       await api.advance(LEAD_TICKS);
       await api.call("keyDown", "ArrowUp"); // still down as the critter goes in
-      await driveDeath(api, "drowned", LIVES - 1);
-      await api.call("keyUp", "ArrowUp");
+      await driveDeath(api, "drowned", LIVES - 1, () =>
+        api.call("keyUp", "ArrowUp"),
+      );
       await api.advance(TAIL_TICKS);
     },
 
