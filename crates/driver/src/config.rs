@@ -224,6 +224,23 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
         }
         None => defaults.pod_schedule_timeout,
     };
+    // The sandbox-lifetime backstop. `0` disables it (the same "0 means unbounded"
+    // convention the schedule timeout uses); unset keeps the generous default, which
+    // is what makes the leak self-healing without an operator opting in.
+    let pod_active_deadline = match non_empty("TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS") {
+        Some(value) => {
+            let seconds: u64 =
+                value
+                    .parse()
+                    .map_err(|err: std::num::ParseIntError| ConfigError::Invalid {
+                        name: "TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS",
+                        value: value.clone(),
+                        detail: err.to_string(),
+                    })?;
+            (seconds > 0).then(|| Duration::from_secs(seconds))
+        }
+        None => defaults.pod_active_deadline,
+    };
     let image_pull_secrets = non_empty("TCAB_K8S_IMAGE_PULL_SECRETS")
         .map(|value| {
             value
@@ -244,6 +261,7 @@ fn kubernetes_from_env() -> Result<KubernetesConfig, ConfigError> {
         memory_limit: non_empty("TCAB_K8S_RUN_MEMORY_LIMIT"),
         pod_ready_timeout,
         pod_schedule_timeout,
+        pod_active_deadline,
         // The driver is the trusted pod; the sandbox connects back to it for live
         // preview, so its own pod IP (from the downward API) is the hostAlias
         // target.

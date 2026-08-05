@@ -43,7 +43,9 @@ The dispatcher runs a single control loop forever:
    per-harness limit from step 1), and **report** any driver-pod death the driver
    itself could not (`POST /jobs/{id}/status`), reading the dead pod's logs for the
    failure detail.
-4. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
+4. **Reap the sandbox pods** a dead driver orphaned — see
+   [Sandbox reaping](#sandbox-reaping).
+5. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
 
 The dispatcher never executes a run, resolves a definition, or touches a record:
 all of that is the driver's job. It is purely the bridge between the backend's
@@ -62,14 +64,45 @@ queue and the cluster's scheduler.
   which the backend also holds); each driver authenticates its own streaming with
   the per-job token the backend minted at enqueue and the dispatcher passed in.
 
+## Sandbox reaping
+
+The [driver](/components/driver/overview/) normally deletes its own sandbox pod, but
+that cleanup is in-process: a driver killed by `SIGKILL` (OOM kill, eviction, node
+drain, spot preemption) never runs it, and the orphaned sandbox has no
+`ownerReference` to garbage-collect it — so it runs until something deletes it,
+holding its requests against the node the entire time. Left alone this compounds:
+the leaked requests crowd the node, which makes the next driver more likely to be
+killed, which leaks another sandbox.
+
+The dispatcher is the only component positioned to clean this up — it is long-lived
+and already watches every driver `Job` it created — so when one fails terminally it
+deletes that job's sandbox pods, selecting on **both** the job-id label and the
+driver's `managed-by` label. Both are required: the driver `Job`'s own pod carries
+the same job id, and matching it would destroy the logs the failure report reads.
+
+The reap is deliberately independent of the death **report**. Reporting needs a
+retained per-job token and a non-terminal backend job, neither of which is
+guaranteed; a sandbox must be cleaned up regardless, so it is gated only on the
+`Job` having failed. A failed reap is retried on the next tick rather than recorded
+as done.
+
+The driver pod also carries small resource **requests**
+(`TCAB_DISPATCHER_DRIVER_{CPU,MEMORY}_REQUEST`) purely to keep it out of the
+`BestEffort` QoS class, which is what made it the first thing evicted and
+OOM-killed. Limits are deliberately unset by default: a memory limit would
+re-introduce the same `SIGKILL` from the container's own cgroup.
+
 ## RBAC
 
 The dispatcher runs under its own `ServiceAccount` with a namespaced `Role`
 granting exactly: `batch`/`jobs` create/get/list/watch/delete (to create and
-reconcile driver `Job`s) and `core`/`pods` + `pods/log` get/list (to read a dead
-driver pod's status and logs for failure reporting). It creates **no** pods
-directly — the [driver](/components/driver/overview/) does that, under its own
-identity. The manifests are in
+reconcile driver `Job`s), `core`/`pods` get/list/delete (to read a dead driver pod's
+status and to reap orphaned sandbox pods), and `core`/`pods/log` get (for the
+failure detail). It creates **no** pods directly — the
+[driver](/components/driver/overview/) does that, under its own identity. A
+deployment that points the driver at a different sandbox namespace
+(`TCAB_K8S_NAMESPACE`) must grant the same pod `list`/`delete` there, or reaping
+fails in that namespace (logged, never fatal). The manifests are in
 [`deployments/k8s/base/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/rbac.yaml)
 and [Kubernetes: staging & prod](/deployment/kubernetes/#rbac).
 
