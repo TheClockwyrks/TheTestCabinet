@@ -1,18 +1,53 @@
 // Automated validation for foes.glitch-eats: the glitch removes any node it passes
 // over, of any charge (even a critical node).
 //
-// A critical node is the precondition and a glitch is posed over it mid-clip; the eat
-// is produced by the real updateFoe glitch branch (game.eatNode) when the sim steps
-// and read back as the node's disappearance.
+// A row of critical nodes is the precondition and a glitch is released a few rows
+// above it; the eat is produced by the real updateFoe glitch branch (game.eatNode)
+// as the glitch's own zig-zag carries it down onto the row, and is read back as the
+// disappearance of the node on the tile it actually crossed.
 //
-// The node stands alone for the opening of the clip, and the glitch arrives onto it
-// only after that. Posing both up front left the eat over within 50 ms of `act`
-// starting, and the clip — which cannot begin filming the instant the pass does —
-// opened on a bare board, with no node in it at any point to be seen eaten.
+// The glitch ARRIVES rather than appearing on its meal. The old scenario posed it
+// directly onto a single critical node, one sim beat before the eat, which is the
+// only way to make one specific node deterministic: a glitch re-picks a random
+// horizontal dart several times a second (foes.glitch-zigzag checks exactly that),
+// so a glitch released above one node would wander tiles clear of its column and
+// this item would be deciding on a coin toss. But it made the clip read as though
+// the glitch were BORN from the node — the node is there, and then it is a glitch —
+// which says nothing about a foe passing over terrain and eating it.
+//
+// Widening the target fixes that without giving up determinism. A critical node on
+// every column of one row means there is no column the glitch can dart to that
+// misses: wherever it crosses the row, it crosses a node. The item then reads the
+// tile it actually crossed out of the snapshot and checks THAT node — the eat is
+// still decided on a specific node the real systems chose, and the clip now shows
+// the glitch skittering down the board and stripping the charged line it lands on.
 
-import { chargeAt, freshBoard, tileCX, tileCY } from "../_helpers.mjs";
+import {
+  BOARD_Y,
+  COLS,
+  TICK,
+  TILE,
+  chargeAt,
+  foesOf,
+  freshBoard,
+  tileCX,
+  tileCY,
+} from "../_helpers.mjs";
+
+// The charged line, and where the glitch is released above it. Three rows of fall
+// is around a second and a half at the reference's 62 px/s — enough to read the
+// glitch as a separate thing arriving, without spending the clip on the descent.
+const ROW = 12;
+const DROP_ROWS = 3;
+const RELEASE_C = 20;
+
+/** The grid row a foe's centre is on. */
+const foeRow = (f) => Math.floor((f.y - BOARD_Y) / TILE);
+/** The grid column a foe's centre is on. */
+const foeCol = (f) => Math.floor(f.x / TILE);
 
 export default function item() {
+  let crossedC;
   let before;
   let after;
 
@@ -21,33 +56,45 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      await api.call("setNode", 20, 10, 3); // a critical node
+      // A critical node on every column of ROW: whichever way the glitch darts, the
+      // tile it crosses on holds one.
+      for (let c = 0; c < COLS; c++) await api.call("setNode", c, ROW, 3);
+      await api.call("setCursor", 16, 704); // out of the glitch's way
     },
 
     async act(api) {
-      // Two seconds is enough to read the standing critical node and no more: the eat
-      // itself is what the reviewer is here for.
-      await api.advance(240);
-      before = chargeAt(await api.snapshot(), 20, 10);
-      // The glitch is posed directly ONTO the node, exactly as the old verdict did.
-      // It cannot instead be released above and allowed to skitter down onto it — the
-      // way the two costs-a-life items now let their foe arrive — because a glitch
-      // re-picks a random horizontal dart several times a second (foes.glitch-zigzag
-      // checks exactly that), so it would wander tiles clear of the node's column and
-      // this check would be deciding on a coin toss. Nor does the clip lay a row of
-      // nodes for a glitch to skitter across, as an older tail did: that is a
-      // different scenario from the one the assertions drive, and the checked one
-      // wins.
+      // A beat and a half of the charged line standing on its own, so the reviewer
+      // reads the board before anything is on it.
+      await api.advance(180);
+
       await api.call("spawnFoe", "glitch", {
-        x: tileCX(20),
-        y: tileCY(10),
+        x: tileCX(RELEASE_C),
+        y: tileCY(ROW - DROP_ROWS),
         vx: 0,
       });
-      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the eat
-      after = chargeAt(await api.snapshot(), 20, 10);
-      // Both operands are captured; the sim runs on only so the clip shows the
-      // glitch skittering onward rather than ending on a single frame.
+
+      // Follow it down. `prev` trails one sample behind so the BEFORE charge is read
+      // from the last instant the glitch was still above the row — on the sample it
+      // arrives, a build that eats on entry has already taken the node.
+      let prev = await api.snapshot();
+      const arrival = await api.until(
+        (s) => {
+          const g = foesOf(s, "glitch")[0];
+          if (!g) return false;
+          if (foeRow(g) >= ROW) return true;
+          prev = s;
+          return false;
+        },
+        { max: 600, poll: TICK }, // 600 ticks = 5s, ample for a 3-row fall
+      );
+      const glitch = foesOf(arrival.snap, "glitch")[0];
+      crossedC = glitch ? foeCol(glitch) : -1;
+      before = chargeAt(prev, crossedC, ROW);
+
+      // Let the eat land and the glitch skitter on, so the gap it tore in the line
+      // is legible at the end of the clip.
       await api.advance(120); // 1s of visible play
+      after = chargeAt(await api.snapshot(), crossedC, ROW);
     },
 
     async assert(api, check) {

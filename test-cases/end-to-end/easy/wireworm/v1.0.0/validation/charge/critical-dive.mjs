@@ -7,11 +7,18 @@
 
 import {
   actWormStep,
+  actWormToColumn,
   freshBoard,
   head,
   setWorm,
   straightWorm,
 } from "../_helpers.mjs";
+
+const NODE_C = 20;
+const R = 5;
+// Six tiles of run-up, so the clip shows the worm winding along its row before the
+// critical node turns that into a plunge (see `actWormToColumn`).
+const START_C = NODE_C - 7;
 
 export default function item() {
   let s1;
@@ -23,15 +30,16 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      await api.call("setNode", 20, 5, 3); // a critical node
-      await setWorm(api, straightWorm(19, 5, 5, 1), 1, 1); // head heading into it
+      await api.call("setNode", NODE_C, R, 3); // a critical node
+      await setWorm(api, straightWorm(START_C, R, 5, 1), 1, 1); // heading at it
       await api.call("setCursor", 100, 700); // out of the dive column
     },
 
-    // Three real worm tile-steps: the first enters the dive, the next two prove the
-    // plunge continues. This is the clip — the reviewer watches the very dive the
-    // assertions read.
+    // The run-up, then three real worm tile-steps: the first enters the dive, the
+    // next two prove the plunge continues. This is the clip — the reviewer watches
+    // the worm wind in and then the very dive the assertions read.
     async act(api) {
+      await actWormToColumn(api, NODE_C - 1); // ~0.84s of visible approach
       s1 = await actWormStep(api);
       // Keep diving: the column stays fixed and the row keeps increasing.
       s2 = await actWormStep(api);
@@ -47,10 +55,14 @@ export default function item() {
         "the worm enters a dive at the critical node",
         s1.worms[0].diving,
       );
-      check.expectEq("the dive holds the head's column", h1.c, 19);
-      check.expectGt("the head drops a row on the first dive step", h1.r, 5);
+      check.expectEq("the dive holds the head's column", h1.c, NODE_C - 1);
+      check.expectGt("the head drops a row on the first dive step", h1.r, R);
 
-      check.expectEq("the column stays fixed while diving", head(s3).c, 19);
+      check.expectEq(
+        "the column stays fixed while diving",
+        head(s3).c,
+        NODE_C - 1,
+      );
       check.expectGt(
         "the row keeps increasing while diving",
         head(s3).r,

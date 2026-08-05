@@ -21,6 +21,13 @@ export default function item() {
     },
 
     async act(api) {
+      // A LEAD-IN BEFORE THE PRESS. `act` is where the record pass starts filming, so
+      // with the key press as its first statement the clip opened on the frame the state
+      // had already changed — a reviewer saw the AFTER and had nothing to compare it to,
+      // which for a toggle is no evidence at all. Two seconds of the before state first
+      // is what makes the change on screen legible as a change. It costs the verdict
+      // nothing: the reading below is still taken on the press itself.
+      await actTail(api, 120); // 2 s of the state the press is about to leave
       placed = (await tower(api, id)) !== null;
       await press(api, "KeyS");
       sold = (await tower(api, id)) === null;

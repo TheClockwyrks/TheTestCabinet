@@ -9,7 +9,7 @@ import {
   startCrossing,
   armAudio,
   audioCount,
-  BAYS,
+  BAY_COL,
   WATER_TOP,
 } from "../_helpers.mjs";
 
@@ -17,7 +17,7 @@ export default function item() {
   let before;
   let after;
   let didClear;
-  const col = BAYS[4][0]; // the last (rightmost) bay's column
+  const col = BAY_COL[4]; // the last (rightmost) bay's column (see `BAY_COL`)
 
   // "The level cleared" is read as the level ACTUALLY ADVANCING (or the run being
   // won), waited for over a generous window — not as a snapshot of the bays.

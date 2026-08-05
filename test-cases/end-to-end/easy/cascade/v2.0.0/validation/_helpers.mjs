@@ -369,26 +369,35 @@ export async function actWinByDrag(api, from, ticks = WIN_CASCADE_TICKS) {
 }
 
 /**
- * Finish the game by DOUBLE-CLICKING the last card at `at`, as a whole gesture —
- * which means the pointer coming back up afterwards.
+ * Finish the game by DOUBLE-CLICKING the last card at `at` — the real gesture, sent
+ * by the browser (`api.userDoubleClick`), not the `doubleClick` control op.
  *
- * That release is the point of this helper. A double-click is not just the
- * auto-move: it ends with the pointer released over the card. Builds legitimately
- * differ on when they recognize the double — on the DOM `dblclick` event, which
- * fires after the second release, or on the second press — and that choice decides
- * whether the release lands while the game is still playing or already won. On the
- * won screen a click deals a fresh game (specs/states.md), so a build that
- * recognizes the double on the press must not let its OWN gesture's release count
- * as that click, which would clear the win and skip the victory cascade entirely
- * before it drew a frame. Calling `doubleClick` and stopping there would never see
- * it: the release is what completes the gesture a player actually makes.
+ * The op is only the recognition. What decides this item is what a build does with
+ * the rest of the gesture: a double-click is two presses and two releases, and a
+ * build may recognize the double on any of the last three of them — the DOM
+ * `dblclick` event (after the second release), the second release, or the second
+ * press. Whichever it picks, the events after that point land on a game that has
+ * ALREADY been won. On the won screen a click deals a fresh game (specs/states.md),
+ * so a build that recognizes the double on the second press and then lets its own
+ * press-handler run on into the won-screen dismiss deals a new game before the
+ * victory cascade draws a frame — while every rules-level check still passes,
+ * because the win itself was detected correctly. The player never sees the ending.
+ *
+ * Nothing short of the real gesture reaches that. Injected pointer ops call a
+ * build's handlers directly, so they bypass the DOM listeners its double detection
+ * lives in and are never seen as a double at all. `doubleClick` + a hand-written
+ * `pointerUp` is worse than useless: that release is unpaired, with no press before
+ * it, so no player can produce it — and since the specs let a build commit its
+ * won-screen click on either the press or the release, it fails every build that
+ * chose the release, on a distinction the specs do not draw. (It did exactly that
+ * here, passing a build that deals a new game mid-gesture while failing two that
+ * play the gesture correctly.)
+ *
+ * `at` is a logical point (specs/overview.md's 1280 x 720 space); the primitive
+ * takes fractions of the canvas, as `sampleColor` does.
  */
 export async function actWinByDoubleClick(api, at, ticks = WIN_CASCADE_TICKS) {
-  await api.call("doubleClick", at.x, at.y);
-  // No beat: a real release follows its press within milliseconds, and delaying it
-  // would let the cascade run before the gesture is over — the opposite of the
-  // ordering under test.
-  await api.call("pointerUp", at.x, at.y);
+  await api.userDoubleClick(at.x / FIELD_W, at.y / FIELD_H);
 
   const afterGesture = await api.snapshot();
   await api.advance(ticks);

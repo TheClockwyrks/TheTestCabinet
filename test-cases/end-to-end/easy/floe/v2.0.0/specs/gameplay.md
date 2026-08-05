@@ -89,9 +89,12 @@ A score accumulates across the run and shows in the HUD and end screens. It is t
 aggregation of the following:
 
 - `+ 10` for each row advanced upward (net new progress toward the far shore), so
-  pushing forward scores.
+  pushing forward scores. Every row counts the same way, including the bay row
+  (row 1, `specs/playfield.md`), so the hop that completes a crossing scores its row
+  like any other.
 - `+ 50` for reaching a bay, plus a time bonus of `+ 2` per whole second left on the
-  crossing timer.
+  crossing timer. This is on top of that final row, so a crossing completed with `T`
+  whole seconds left scores `10 + 50 + 2 * T` on its last hop.
 - `+ 100 * level` for clearing a level (filling its fifth bay).
 - `+ 250 * livesRemaining` awarded at Victory.
 

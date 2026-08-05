@@ -5,6 +5,13 @@
 // back from the snapshot at three levels and must strictly decrease and hold above
 // the floor.
 
+// How long each level is filmed winding, and how much of each level's worm entry
+// is skipped (run instantly, unfilmed) so the clip opens on a worm already on the
+// board rather than on an empty one.
+const WATCH_TICKS = 300; // 2.5s per level
+const ENTRY_SKIP_L1 = 200; // 10 segments at 0.14s a tile
+const ENTRY_SKIP_L12 = 320; // 32 segments at ~0.08s a tile
+
 export default function item() {
   let i1;
   let i6;
@@ -16,17 +23,17 @@ export default function item() {
     // Every operand is an INSTANT read: `setLevel` sets the level through the real
     // path and `wormStepInterval` is available straight away, with no time to
     // advance. So the whole probe lives in `arrange`, which then leaves the board
-    // posed on level 12 for `act` to film at speed.
+    // posed on level 1 with its worm already wound on, for `act` to film at speed.
     //
     // Note the intervals are the sim's own SECONDS-valued state read out of the
     // snapshot, not durations to step — they are compared as-is against the spec's
     // ~0.14s and ~0.07s, and must not be converted to ticks.
-    // `enterPlay` first is what makes the board LIVE for the still.
+    // `enterPlay` first is what makes the board LIVE for the recording.
     // specs/instrumentation.md is explicit that no control operation starts a run on
     // its own and that `step` only advances live play, so a `reset` + `setLevel`
     // alone leaves the build sitting on its title screen: the intervals below still
     // read correctly (`setLevel` sets the level either way), but `act` would advance
-    // a frozen menu and film it, which is exactly what the still used to show.
+    // a frozen menu and film it.
     async arrange(api) {
       await api.reset({ seed: 1 });
       await api.call("enterPlay");
@@ -39,17 +46,28 @@ export default function item() {
 
       await api.reset({ seed: 1 });
       await api.call("enterPlay");
-      await api.call("setLevel", 12);
+      await api.call("setLevel", 1);
+      // `skip` runs the entry instantly in BOTH passes, so the clip opens on a worm
+      // that is already winding rather than on an empty board.
+      await api.skip(ENTRY_SKIP_L1);
     },
 
-    // Level 12's worm is 32 segments entering one per tile step at about 0.079 s a
-    // step, so 300 ticks (2.5 s) is what carries the whole of it onto the board —
-    // the still is meant to show the longest, fastest worm the run has, and half of
-    // it still off the edge would show neither.
+    // A cadence is a SPEED, and a speed cannot be read off a still. The output used
+    // to be one screenshot of a level-12 worm, which showed a long worm and told a
+    // reviewer nothing about how fast it was moving — the very thing this item is
+    // about. So the clip is a before/after instead: a couple of seconds of level 1
+    // winding at its 0.14 s cadence, then the same stretch of level 12 at ~0.08 s,
+    // with the HUD's level readout saying which is which. Watching the two back to
+    // back is what makes the difference legible.
+    //
+    // `setLevel` spawns that level's worm for it, so the entry is skipped (instant
+    // in both passes, unfilmed) exactly as it was for level 1 — the clip cuts from
+    // one worm at speed to the other, with no empty board in between.
     async act(api) {
-      await api.advance(300);
-      await api.settle(120); // a real pause so the wound-on worm has painted
-      await api.screenshot("cadence");
+      await api.advance(WATCH_TICKS);
+      await api.call("setLevel", 12);
+      await api.skip(ENTRY_SKIP_L12);
+      await api.advance(WATCH_TICKS);
     },
 
     async assert(api, check) {

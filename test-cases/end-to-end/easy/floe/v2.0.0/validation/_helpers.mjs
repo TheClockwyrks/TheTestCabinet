@@ -62,15 +62,31 @@ export const ICE_TOP = 11;
 export const ICE_BOTTOM = 18;
 export const ROW_NEAR = 19;
 
-// The five goal bays, each two tiles wide (specs/playfield.md), left column first.
-export const BAYS = [
-  [3, 4],
-  [11, 12],
-  [19, 20],
-  [27, 28],
-  [35, 36],
-];
-export const BAY_LEFT = BAYS.map((b) => b[0]);
+// The column each of the five goal bays is entered at (specs/playfield.md).
+//
+// THE NAMED COLUMN, NOT A CHOSEN PAIR. specs/playfield.md fixes the bays as five
+// TWO-TILE openings along row 1, "centered near columns 4, 12, 20, 28, and 36",
+// and a two-tile opening centered near column 4 is `[3, 4]` to one reader and
+// `[4, 5]` to another. Both are the same sentence read correctly — the openings
+// straddle the named column either way — and builds audited against this case have
+// shipped each of them. A check that picks one pair and hops at its left column
+// therefore decides a bay item on a one-tile reading the specification never made:
+// against a build that read it the other way the hop lands on solid shore, is
+// correctly refused, and every point that needed a bay — the fill, the level clear,
+// the scoring, the respawn, the hunter's fair reset — fails for a reason that has
+// nothing to do with what it was checking.
+//
+// What the two readings AGREE on is the named column itself: 4 lies in `[3, 4]` and
+// in `[4, 5]`, and likewise for 12, 20, 28, and 36. So every check that needs to get
+// INTO a bay enters at the named column and is right under either reading. WHERE a
+// build put its openings is `bays.layout`'s own item, and the only one that should
+// turn on it.
+export const BAY_COL = [4, 12, 20, 28, 36];
+
+// A far-shore column that is solid shore BETWEEN two bays under either reading
+// above: column 8 sits three tiles clear of bay 0's opening (`[3, 4]` or `[4, 5]`)
+// and three clear of bay 1's (`[11, 12]` or `[12, 13]`).
+export const SHORE_COL = 8;
 
 // The critter's hop cooldown (specs/controls.md: about 0.12 s), in ticks. 0.12 s is
 // 14.4 ticks, which is not a whole tick count, so a scenario that needs to be PAST
@@ -99,6 +115,38 @@ export const HOP_TAIL_TICKS = 108; // 0.9 s holding on the landing
 export async function startCrossing(api, seed) {
   await api.reset(seed === undefined ? undefined : { seed });
   await api.call("startGame");
+}
+
+/**
+ * ARRANGE half of an item that has to begin on a particular level: reset to a known
+ * state, pose `level`, and confirm the build did what posing a level is specified to
+ * do. Returns `{ began }` for the item to assert, and leaves a LIVE crossing behind
+ * either way.
+ *
+ * POSING A LEVEL IS SPECIFIED TO START ONE. specs/instrumentation.md: `setLevel(level)`
+ * "sets the current level and rebuilds the strait for it …, beginning a fresh crossing
+ * at that level". A build can do every part of that except the last — rebuild the
+ * lanes, reset the bays, spawn the critter — and leave the game sitting on the title
+ * screen, and one audited against this case does exactly that. Nothing then advances
+ * (a menu screen does not step), so the whole scenario plays out behind the main menu:
+ * every later assertion fails, and the clip a reviewer opens is a picture of the menu
+ * with no hint of why.
+ *
+ * So the pose is checked rather than assumed, and recovered from rather than abandoned:
+ * a build that did not start the crossing is started explicitly and the level posed
+ * again, which puts the item back on its own subject. The `began` flag is what carries
+ * the contract breach, as one named assertion, instead of it surfacing as an unrelated
+ * item reporting `screen: "title"`.
+ */
+export async function arrangeLevel(api, level) {
+  await api.reset();
+  await api.call("setLevel", level);
+  const began = (await api.snapshot()).screen === "playing";
+  if (!began) {
+    await api.call("startGame");
+    await api.call("setLevel", level);
+  }
+  return { began };
 }
 
 /** Clear every ice-band lane (rows 11..18) — empty, traversable road. */
@@ -231,6 +279,150 @@ export async function actClimbByPress(
     await api.advance(ticks);
   }
   return api.snapshot();
+}
+
+// ---- Lanes (reading what a lane is carrying, and where) ---------------------
+
+/** The ice lane at strait row `row`, from a snapshot. */
+export function iceLaneAt(snap, row) {
+  return ((snap.lanes && snap.lanes.ice) || []).find((l) => l.row === row);
+}
+
+/**
+ * Whether anything in `lane` currently covers the tile at column `col`.
+ *
+ * A lane item is reported by its left edge in strait-local pixels and its length in
+ * tiles (specs/instrumentation.md), and it slides continuously — so it overlaps a
+ * tile whenever the two spans intersect at all, which is the same span a build has to
+ * test to decide whether the tile is occupied.
+ */
+export function laneCovers(lane, col) {
+  const left = col * TILE;
+  return ((lane && lane.items) || []).some(
+    (item) => item.x < left + TILE && left < item.x + item.len * TILE,
+  );
+}
+
+/**
+ * Whether something in `lane` covers the WHOLE tile at column `col` — its span
+ * contains the tile's span outright, with nothing of the tile left over.
+ *
+ * WHICH IS WHAT A CHECK POSING AN OCCUPIED TILE MUST WAIT FOR. Nothing in
+ * specs/hazards.md fixes how much of a tile a sliding vehicle has to be over before
+ * the tile counts as occupied, and builds reasonably differ: one takes any overlap at
+ * all, another insets the tile by a few pixels so a vehicle grazing the edge does not
+ * count, another asks about the tile's centre. A scenario that fires the moment
+ * {@link laneCovers} first turns true is therefore posed on the one reading where the
+ * answer is contested — the vehicle is a pixel onto the tile — and a build that
+ * (legitimately) does not count that as occupied lets the hop through and fails an
+ * item about refusing it. Waiting for the whole tile puts the scenario where every
+ * reading agrees, which is the only place a verdict about the RULE can be read.
+ */
+export function laneCoversWhole(lane, col) {
+  const left = col * TILE;
+  return ((lane && lane.items) || []).some(
+    (item) => item.x <= left && item.x + item.len * TILE >= left + TILE,
+  );
+}
+
+// ---- Refused hops (the blocking rules, on camera) ---------------------------
+//
+// A REFUSED HOP IS A NON-EVENT ON CAMERA. Every Movement item ends with the critter
+// exactly where it started, so a clip that opens on the press and closes a tenth of
+// a second later is a still of a critter that never moved: nothing shows that a hop
+// was attempted, nothing shows what blocked it, and a reviewer cannot tell the check
+// from a build that ignored the key. The three spans below put the posed tile on
+// camera first, hold the direction down long enough that the attempt reads as a
+// deliberate, repeated shove against the block, and then hold on the critter still
+// standing where it was. None of it touches a verdict: the reading is taken on the
+// tick the key comes back up, exactly as it was when the clip was 0.15 s long.
+export const REFUSE_LEAD_TICKS = 60; // 0.5 s of the posed tile before the key goes down
+export const REFUSE_HOLD_TICKS = 72; // 0.6 s held: attempted, and refused, throughout
+export const REFUSE_TAIL_TICKS = 72; // 0.6 s holding on the critter that did not move
+
+/**
+ * ACT half of a refusal check: hold `code` down across the posed block so the hop is
+ * attempted (and, on a build that auto-repeats a held key, re-attempted) rather than
+ * tapped once, and return the snapshot taken as the key comes back up.
+ *
+ * The hold is camera time and margin, not a second assertion: one press is all the
+ * rule needs, and a build that auto-repeats simply refuses the same hop several times
+ * over. Pair the returned snapshot with whatever the item asserts about it.
+ */
+export async function actRefusedHop(
+  api,
+  code,
+  {
+    lead = REFUSE_LEAD_TICKS,
+    hold = REFUSE_HOLD_TICKS,
+    tail = REFUSE_TAIL_TICKS,
+  } = {},
+) {
+  await api.advance(lead); // camera only: the posed tile, before anything is pressed
+  await api.call("keyDown", code);
+  await api.advance(hold);
+  await api.call("keyUp", code);
+  const after = await api.snapshot();
+  await api.advance(tail); // camera only: the critter still standing where it was
+  return after;
+}
+
+// ---- Re-posing mid-clip (control ops that may take the clock) ---------------
+
+/**
+ * ACT-phase control op that leaves the build on the clock it was already on.
+ *
+ * SOME BUILDS TAKE THE CLOCK WHEN THEY ARE RE-POSED. specs/instrumentation.md gives
+ * exactly two operations that switch the game to manual stepping — `reset` and `step` —
+ * and `setAutoStep(true)` is the only way back. But a build can wire the flag into more
+ * than that: one audited against this case clears it inside `setLevel` and `startGame`
+ * too. In the VALIDATE pass that is harmless, since the runtime is stepping the
+ * simulation itself. In the RECORD pass it is not: `act` is filmed with the build
+ * driving itself from the wall clock, so an op that quietly switches it back to manual
+ * stops the game dead and everything after it films a still frame. The verdict is
+ * unaffected (it was decided in the other pass), which is what makes it insidious — the
+ * item passes and hands a reviewer a clip of a frozen strait.
+ *
+ * `api.skip` already hands the clock back after itself, in the record pass and only
+ * there (see `packages/browser-driver/validation.mjs`), so a zero-tick skip is a
+ * no-op that restores whichever clock the pass is supposed to be on. Use this for any
+ * control op driven from `act` that re-poses the run itself; the ops that merely place
+ * things (`setLane`, `placeCritter`, `setBear`, …) need nothing.
+ *
+ * Whether a build should be taking the clock at all is
+ * `controls.advances-in-real-time`'s item, and it fails the build that does.
+ */
+export async function actPose(api, name, ...args) {
+  await api.call(name, ...args);
+  await api.skip(0);
+}
+
+// ---- Footing (read after the simulation has run the tile) -------------------
+
+/**
+ * ACT half of a footing read: the ground under the critter, read after the simulation
+ * has run `ticks` on the tile it is standing on. Returns `null` if the build has no
+ * critter on the board to read.
+ *
+ * FOOTING IS A STEPPED READING, NOT A PLACEMENT'S RETURN VALUE. The tempting read is
+ * `snapshot()` straight after `placeCritter`, and it races the contract.
+ * specs/instrumentation.md describes `placeCritter` as positioning the critter "through
+ * the same placement normal respawns use. From THERE `step` runs the real footing,
+ * drift, and collision on that tile" — so a build is free to derive footing in the
+ * simulation step that follows the placement, which is exactly where the rest of that
+ * tile's consequences (the drift, the drowning, the crush) are decided too. Read
+ * before any step, such a build reports the footing of wherever the critter was
+ * standing a moment ago, and an item that gates on it fails a build whose footing is
+ * correct on every step a player could ever observe — while the rule the item exists
+ * to check (that open water drowns, that a floe carries) passes right beside it.
+ *
+ * One tick is enough: it is the smallest amount of simulation there is, and after it
+ * the reading means the same thing on every build.
+ */
+export async function actFooting(api, { ticks = 1 } = {}) {
+  await api.advance(ticks);
+  const s = await api.snapshot();
+  return s.critter ? s.critter.footing : null;
 }
 
 // ---- Death (read as the life the spec says it costs) ------------------------

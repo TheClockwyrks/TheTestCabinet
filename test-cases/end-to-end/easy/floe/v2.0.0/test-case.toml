@@ -297,7 +297,7 @@ validation = { script = "validation/controls/pause-escape.mjs", outputs = [{ id 
 id = "mute"
 title = "M toggles mute"
 description = "Pressing M toggles mute on and off."
-validation = { script = "validation/controls/mute.mjs", outputs = [{ id = "title", name = "Title after toggling mute", kind = "image" }] }
+validation = { script = "validation/controls/mute.mjs", outputs = [{ id = "game", name = "In game with mute toggled on", kind = "image" }] }
 [[review.categories.items]]
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
@@ -339,7 +339,7 @@ title = "Ice band"
 id = "lanes"
 title = "Eight lanes of alternating traffic"
 description = "The ice band is eight solid lanes (rows 11..18), each carrying sliding multi-tile vehicles (a 3-tile plow, a 2-tile dogsled, a 2-tile car), moving in alternating directions."
-validation = { script = "validation/ice/lanes.mjs", outputs = [{ id = "scene", name = "The ice band of traffic", kind = "image" }] }
+validation = { script = "validation/ice/lanes.mjs", outputs = [{ id = "scene", name = "The ice band of traffic, running", kind = "video" }] }
 [[review.categories.items]]
 id = "slides"
 title = "Vehicles slide at a set speed"
@@ -354,7 +354,7 @@ validation = { script = "validation/ice/crush.mjs", outputs = [{ id = "crush", n
 id = "speeds"
 title = "Lane speeds scale with the level"
 description = "The base lane speeds sit in a slow range, and each level speeds them up (about 1.06x per level)."
-validation = { script = "validation/ice/speeds.mjs", outputs = [{ id = "scene", name = "The ice band", kind = "image" }] }
+validation = { script = "validation/ice/speeds.mjs", outputs = [{ id = "scene", name = "The ice band at level 1, then at level 8", kind = "video" }] }
 
 # --- Water band (drifting floes) ---------------------------------------------
 [[review.categories]]
@@ -409,7 +409,7 @@ validation = { script = "validation/bays/clear-level.mjs", outputs = [{ id = "cl
 id = "layout"
 title = "Five bays at the expected columns"
 description = "There are five bays, each enterable at its own far-shore column, with solid shore between them that cannot be entered."
-validation = { script = "validation/bays/layout.mjs", outputs = [{ id = "scene", name = "The far-shore bays", kind = "image" }] }
+validation = { script = "validation/bays/layout.mjs", outputs = [{ id = "scene", name = "Each bay entered in turn, and the shore between refusing", kind = "video" }] }
 
 # --- Hunter (the signature) ---------------------------------------------------
 # Each check drives the REAL pursuit brain (setBear / placeCritter / setLane, see
@@ -451,8 +451,8 @@ description = "A vehicle sliding into the bear resets it (removed from the strai
 validation = { script = "validation/hunter/reset-on-hit.mjs", outputs = [{ id = "reset", name = "The bear reset by traffic", kind = "video" }] }
 [[review.categories.items]]
 id = "moves-into-vehicle"
-title = "Moving into a vehicle does not reset it"
-description = "The vehicle has to be the one that closed the distance: a bear that travels onto a vehicle is not reset by it, the same way traffic kills the critter by running into it rather than by the critter stepping in. The same car, once moving, still resets the bear."
+title = "A vehicle's tile is closed to the bear"
+description = "A tile a vehicle covers cannot be entered by the bear: its move into one is refused and it stays where it is, unharmed, the same way the critter's hop into occupied traffic is refused. The vehicle has to be the one that closed the distance — that same car, once moving, does reset the bear when it arrives on it."
 validation = { script = "validation/hunter/moves-into-vehicle.mjs", outputs = [{ id = "boundary", name = "The bear on a parked car, then reset by the moving one", kind = "video" }] }
 [[review.categories.items]]
 id = "swims"
@@ -536,8 +536,8 @@ description = "After a death (with lives to spare), a fresh critter respawns on 
 validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a crush and after a drowning", kind = "video" }] }
 [[review.categories.items]]
 id = "death-pause"
-title = "Every death pauses before the respawn"
-description = "A death holds the crossing for a brief pause of about one second — whatever caused it — before the fresh critter appears, and the critter is out of play for its duration. The snapshot reports the phase as dying throughout the pause."
+title = "Every death holds the critter out of play before the respawn"
+description = "A death takes the critter off the board for a brief beat of about one second — whatever caused it — before a fresh one appears. The strait itself is not frozen while that runs: the traffic keeps sliding and the floes keep drifting, and it is the critter alone that is out of play, with nothing able to kill it again. The snapshot reports the phase as dying throughout."
 validation = { script = "validation/respawn/death-pause.mjs", outputs = [{ id = "pause", name = "The pause between a death and the respawn", kind = "video" }] }
 [[review.categories.items]]
 id = "critter-after-score"
@@ -557,7 +557,7 @@ validation = { script = "validation/scoring/row.mjs", outputs = [{ id = "advance
 [[review.categories.items]]
 id = "bay"
 title = "A bay scores 50 plus a time bonus"
-description = "Reaching a bay scores fifty points plus a per-second bonus for the time left on the crossing timer."
+description = "Reaching a bay scores fifty points plus a per-second bonus for the time left on the crossing timer, on top of the ten points for the row the bay sits in — a crossing completed with ten whole seconds left scores eighty on its last hop."
 validation = { script = "validation/scoring/bay.mjs", outputs = [{ id = "bay", name = "Scoring a bay with a time bonus", kind = "video" }] }
 [[review.categories.items]]
 id = "level-clear"

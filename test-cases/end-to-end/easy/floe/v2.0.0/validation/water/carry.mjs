@@ -39,9 +39,8 @@ const LANE_COL = 20;
 const LANE_SPEED = 3; // tiles/second, rightward
 
 export default function item() {
-  // The footing, starting x and starting lives, all read instantly in `arrange` before
-  // the drift, and the state at the end of the measured span.
-  let footing;
+  // The starting x and lives, both read instantly in `arrange` before the drift, and
+  // the state at the end of the measured span (which is where the footing is read).
   let bx;
   let livesBefore;
   let after;
@@ -51,6 +50,13 @@ export default function item() {
 
     // Pose the ride: one floe under the critter's column, drifting right at a known
     // lane speed, with the critter standing on it.
+    //
+    // The footing is NOT read here. It is a stepped reading (see `actFooting`), and
+    // taken off the placement it fails a build that derives footing in the tick that
+    // follows — over a snapshot field, while the carry this item scores runs correctly
+    // beside it. It is read at the END of the ride instead, off the same snapshot the
+    // displacement is measured from, where it says something stronger anyway: the
+    // critter was still standing on the floe when the measured span ended.
     async arrange(api) {
       await startCrossing(api);
       await api.call("setLane", LANE_ROW, {
@@ -60,7 +66,6 @@ export default function item() {
       }); // floe under col 20 drifting right
       await api.call("placeCritter", LANE_COL, LANE_ROW);
       const s = await api.snapshot();
-      footing = s.critter.footing;
       bx = s.critter.x;
       livesBefore = s.lives;
     },
@@ -75,8 +80,6 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectEq("footing on a floe reads 'floe'", footing, "floe");
-
       // Survival first, and led by the life. specs/instrumentation.md does require an
       // observable `dying` for every death, so the phase test below is legitimate — but
       // it is the narrower of the two facts, because it only holds while the pause is
@@ -94,6 +97,11 @@ export default function item() {
       check.expectOk(
         "the critter is still on the board at the end of the ride",
         after.critter != null,
+      );
+      check.expectEq(
+        "footing at the end of the ride still reads 'floe'",
+        after.critter ? after.critter.footing : null,
+        "floe",
       );
       check.expectClose(
         "the floe carries the critter by the lane velocity",

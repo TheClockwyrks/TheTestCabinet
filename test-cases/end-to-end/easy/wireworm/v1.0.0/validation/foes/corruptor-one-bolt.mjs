@@ -5,7 +5,7 @@
 // resolveBolt -> hitFoe path (a corruptor dies on the first hit) and read back as its
 // removal and the score gain.
 
-import { actFireAndResolve, foesOf, freshBoard } from "../_helpers.mjs";
+import { actShootFoeDead, foesOf, freshBoard } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -21,10 +21,12 @@ export default function item() {
     },
 
     // The bolt climbing from the band to row 3 is a long flight, so the resolution
-    // cap is doubled — 240 ticks = the old `fireAndResolve(api, 2)`'s 2s.
+    // cap is doubled — 240 ticks = the old `fireAndResolve(api, 2)`'s 2s. The kill
+    // is then read once the corruptor has actually left the board, not on the tick
+    // the bolt is consumed — see `actShootFoeDead`.
     async act(api) {
       before = (await api.snapshot()).score;
-      snap = await actFireAndResolve(api, { max: 240 });
+      snap = await actShootFoeDead(api, "corruptor", { max: 240 });
       // Both operands are captured; the sim runs on only so the kill is legible at
       // the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

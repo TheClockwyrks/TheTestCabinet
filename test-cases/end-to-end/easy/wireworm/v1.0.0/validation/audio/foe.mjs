@@ -6,7 +6,7 @@
 
 import {
   actAudioCount,
-  actFireAndResolve,
+  actShootFoeDead,
   armAudio,
   foesOf,
   freshBoard,
@@ -34,7 +34,11 @@ export default function item() {
     // event this item drives.
     async act(api) {
       before = await actAudioCount(api);
-      snap = await actFireAndResolve(api);
+      // Waits for the glitch to actually leave the board, not just for the bolt to
+      // be consumed — see `actShootFoeDead`. The cue is read after that, which the
+      // audio probe wants anyway: `actAudioCount` settles for a real paint, and the
+      // kill it is counting is now unambiguously behind it.
+      snap = await actShootFoeDead(api, "glitch");
       after = await actAudioCount(api);
       // Every operand is captured; the sim runs on only so the kill is legible at
       // the end of the clip.

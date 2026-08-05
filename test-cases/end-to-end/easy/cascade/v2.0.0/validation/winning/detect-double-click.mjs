@@ -6,15 +6,18 @@
 // gesture is over. Both places a player can double-click that last card are covered,
 // the waste and a tableau column.
 //
-// "Once the gesture is over" is the whole point of this item, and is why it exists
-// alongside `detect-drag` rather than being folded into it. A double-click ends with
-// the pointer coming back up, and on the won screen a click deals a fresh game
-// (specs/states.md). A build that recognizes the double-click on the second PRESS
-// therefore wins mid-gesture and then has its own release land on the won screen; if
-// that release is treated as an ordinary click, the build deals a new game and the
-// victory cascade never plays at all — while every rules-level check still passes,
-// because the win itself was detected correctly. `actWinByDoubleClick` completes the
-// gesture, and the post-cascade assertions are what catch it.
+// This exists alongside `detect-drag` rather than folded into it because the two are
+// different input paths into the same rule: a drag commits on the release, over a
+// target the player chose, while a double-click hands the card to the auto-move,
+// which picks the foundation itself. A build can wire one correctly and the other
+// not, and the win must fire either way.
+//
+// "Once the gesture is over" is the other half of the point, and is why the gesture
+// is driven as a REAL browser double-click rather than through the `doubleClick`
+// control op — the note on `actWinByDoubleClick` covers why, and why no composition
+// of control ops substitutes for it. The `afterCascade` assertions are what catch a
+// build that detects the win correctly and then tears it down an instant later, with
+// its own gesture, before the cascade draws a frame.
 //
 // The first near-win board is the precondition (`arrange`, which owns the reset);
 // the double-clicks that win, and the cascades they fire, are what `act` films.

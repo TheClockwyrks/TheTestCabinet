@@ -32,11 +32,11 @@
 
 import {
   newGame,
-  buildVentCorridor,
+  buildGate,
   spawn,
   tower,
   actTail,
-  CORRIDOR_WALLS,
+  GATE_WALLS,
   TICK,
   TICK_HZ,
 } from "../_helpers.mjs";
@@ -78,7 +78,7 @@ export default function item() {
     // stretch is skipped and the Core is in range as soon as it is spawned.
     clipMs: 6000,
 
-    // An Arc in a vent corridor with an empty floor, posed cold and then left to sit.
+    // An Arc at the gate with an empty floor, posed cold and then left to sit.
     // Cold matters twice over: `heatMultiplier` is lowest there, so the Core takes the
     // longest possible time to die, and it leaves the whole ramp between the Arc and
     // its own trip, so a correctly-paced Arc cannot reach 100 inside the window and
@@ -86,9 +86,9 @@ export default function item() {
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
-      const corridor = await buildVentCorridor(api, "arc");
-      walls = corridor.walls;
-      await api.call("setHeat", corridor.id, 0);
+      const gate = await buildGate(api, "arc");
+      walls = gate.walls;
+      await api.call("setHeat", gate.id, 0);
       // The quiet spell, run through the real simulation but not filmed.
       await api.skip(IDLE);
     },
@@ -120,9 +120,9 @@ export default function item() {
     },
 
     async assert(api, check) {
-      // A hole in the corridor lets the Core walk round the Arc, and a shot count of
-      // zero would then be about the scenery rather than about the rate.
-      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
+      // A hole in the gate lets the Core walk round the Arc, and a shot count of zero
+      // would then be about the scenery rather than about the rate.
+      check.expectEq("the gate wall was built", walls, GATE_WALLS);
       // Hard: with no shots there is no cadence to measure and both readings below
       // would be vacuously true of a gun that never fired.
       check.assertOk(

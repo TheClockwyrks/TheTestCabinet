@@ -1,9 +1,9 @@
 // Automated validation for the Rime sub-item `core-immune`.
 //
 // A Core boss cannot be slowed (specs/surge.md) — a Rime's slow has no effect on it,
-// "regardless of the Rime's heat". A cold Rime is set into a vent corridor and two
-// windows are run past it: a Core, which must cross its range at full speed, and then a
-// Mote on the identical floor, which must not.
+// "regardless of the Rime's heat". A cold Rime is stood at the gate and two windows are
+// run past it: a Core, which must cross its range at full speed, and then a Mote on the
+// identical floor, which must not.
 //
 // WHY THERE IS A CONTROL WINDOW, AND WHY THE FIRST ONE IS PRECONDITIONED ON RANGE.
 //
@@ -18,8 +18,9 @@
 // effect only and changes nothing about targeting — a Rime treats it as an ordinary
 // target" (specs/surge.md), so a Rime with a Core in range acquires it and fires, and
 // firing warms the tower by `heatPerShot / mass` (specs/heat.md). The Rime is posed at
-// heat 0 and the corridor's walls are Sinks, which never fire and only cool, so nothing
-// on this floor can add heat to it but its own shots: its heat leaving 0 IS its first
+// heat 0 and the gate's walls are Sinks, which never fire and only cool — and stand a
+// clear column off the Rime, so they touch nothing. Nothing on this floor can add heat
+// to it but its own shots: its heat leaving 0 IS its first
 // shot at the Core, and nothing else. Heat is read rather than `firing` because
 // `firing` is a per-step flag a sweep can land either side of, while the heat a shot
 // adds stays on the tower.
@@ -29,22 +30,21 @@
 // the engagement assertion rather than silently satisfying an absence.
 //
 // And the control window rules out an inert Rime from the other side, by running a Mote
-// through the same corridor past the same tower and requiring THAT one to come out
-// slowed. A build passes only if the same Rime, in the same spot, slows what it can and
+// through the same gate past the same tower and requiring THAT one to come out slowed. A build passes only if the same Rime, in the same spot, slows what it can and
 // leaves the Core alone.
 
 import {
   newGame,
   restartGame,
-  buildVentCorridor,
+  buildGate,
+  skipToGate,
   spawn,
   unit,
   heatOf,
   actTail,
   fpCenter,
-  CORRIDOR_COL,
-  CORRIDOR_ROW,
-  CORRIDOR_WALLS,
+  gateCell,
+  GATE_WALLS,
   TOWER_SIZE,
   TILE,
 } from "../_helpers.mjs";
@@ -58,7 +58,8 @@ const MOTE_BASE_SPEED = 60;
 // that specs/towers.md measures it from.
 const RIME_RANGE_PX = 5.5 * TILE;
 
-const RIME_CENTER = fpCenter(CORRIDOR_COL, CORRIDOR_ROW, TOWER_SIZE.rime);
+const RIME_CELL = gateCell("rime");
+const RIME_CENTER = fpCenter(RIME_CELL.col, RIME_CELL.row, TOWER_SIZE.rime);
 
 /** Whether `u` is inside the Rime's range ring — a fact about position, nothing else. */
 function inRimeRange(u) {
@@ -82,23 +83,27 @@ export default function item() {
     // Two windows, each a unit walking the length of the Rime's range ring.
     clipMs: 9000,
 
-    // A cold Rime set into a vent corridor, with a Core walking down it. The corridor
-    // (see `buildVentCorridor` in `_helpers`) is what puts the unit in front of the
-    // tower at all: specs/playfield.md fixes only the two ENDS of a left-vent unit's
-    // journey, so a Rime parked beside the lane a Core is assumed to walk never has it
-    // in range on a build whose pathfinder picks a different shortest route.
+    // A cold Rime at the gate, with a Core walking down to it. The gate (see
+    // `buildGate` in `_helpers`) is what puts the unit in front of the tower at all:
+    // specs/playfield.md fixes only the two ENDS of a left-vent unit's journey, so a
+    // Rime parked beside the lane a Core is assumed to walk never has it in range on a
+    // build whose pathfinder picks a different shortest route.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
-      const corridor = await buildVentCorridor(api, "rime");
-      rimeId = corridor.id;
-      walls = corridor.walls;
+      const gate = await buildGate(api, "rime");
+      rimeId = gate.id;
+      walls = gate.walls;
       await api.call("setHeat", rimeId, 0);
       coreId = await spawn(api, "core", "left");
+      // A Core walks at 30 px/s and the gate is eight columns in, so the approach is
+      // several seconds of nothing happening. Step it through unfilmed so the window
+      // below opens with the Core already in the ring.
+      await skipToGate(api, coreId);
     },
 
     // Window 1: the Core walks into and through the Rime's range, and is read while it
-    // is still inside it. Window 2: the same corridor, re-posed mid-drive, with a Mote
+    // is still inside it. Window 2: the same gate, re-posed mid-drive, with a Mote
     // taking the same walk — the control that proves this Rime slows what it can.
     async act(api) {
       await actTail(api, 120); // 2 s of the Core crossing the range ring
@@ -107,8 +112,8 @@ export default function item() {
 
       await restartGame(api, "containment", "medium", 100000);
       await api.call("setLives", 100000);
-      const corridor = await buildVentCorridor(api, "rime");
-      await api.call("setHeat", corridor.id, 0);
+      const gate = await buildGate(api, "rime");
+      await api.call("setHeat", gate.id, 0);
       const moteId = await spawn(api, "mote", "left");
       // Long enough for the Mote to reach the Rime and be slowed by it; the read is
       // taken while it is still on the floor.
@@ -117,9 +122,9 @@ export default function item() {
     },
 
     async assert(api, check) {
-      // A hole in the corridor lets a unit walk round the Rime, and both windows would
-      // then be about the scenery rather than about the slow.
-      check.expectEq("the vent corridor was built", walls, CORRIDOR_WALLS);
+      // A hole in the gate lets a unit walk round the Rime, and both windows would then
+      // be about the scenery rather than about the slow.
+      check.expectEq("the gate wall was built", walls, GATE_WALLS);
 
       // Hard: everything below reads the two units.
       check.assertOk("the Core is still on the floor", core !== null);
@@ -135,7 +140,7 @@ export default function item() {
         MOTE_BASE_SPEED,
       );
 
-      // The claim: the same Rime, the same corridor, an immune unit.
+      // The claim: the same Rime, the same gate, an immune unit.
       check.expectOk("the Core is inside the Rime's range", inRimeRange(core));
       // And the Rime engaged it. Immunity "changes nothing about targeting"
       // (specs/surge.md), so a Rime with a Core in range fires on it, and firing is the

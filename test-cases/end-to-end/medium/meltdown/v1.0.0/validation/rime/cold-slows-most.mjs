@@ -56,6 +56,14 @@ export default function item() {
       await api.call("setLives", 100000);
       rimeId = await build(api, "rime", 3, 18);
       await api.call("setHeat", rimeId, 0);
+      // SELECTED, because the slow this item measures is an inspector read: "the
+      // heat-averse Rime shows its live slow percentage in place of a damage read"
+      // (specs/controls.md), and its heat — the thing the ceiling depends on — is the
+      // inspector's labelled bar. Without the selection the clip is a Mote walking a
+      // little slower past a tower, with the two numbers that explain why nowhere on
+      // screen. `selectTower` is a control op and consumes no time, so it belongs here
+      // with the rest of the pose.
+      await api.call("selectTower", rimeId);
       // Posed cold and not yet fired, so `slowFactor` here IS the level-I ceiling.
       coldCeiling = (await tower(api, rimeId)).slowFactor;
       moteId = await spawn(api, "mote", "left");
