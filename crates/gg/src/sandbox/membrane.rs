@@ -345,15 +345,32 @@ impl<A: ToolApi> WasiView for MembraneState<A> {
 /// The preopen is the one part that can fail, and it fails only if the host cannot open `/` at all.
 /// That is not a reason to refuse to run the program: a guest that never touches the filesystem is
 /// unaffected, and one that does gets an ordinary WASI error from its own runtime rather than a
-/// sandbox that would not start. So the failure is ignored and the context simply has no preopen.
+/// sandbox that would not start. So the failure is ignored and the context simply has no preopen —
+/// which is why [`preopen_root`] is a named function rather than a line here: an ignored failure
+/// that is also an *unobserved* one would leave a whole capability quietly missing, so a test calls
+/// it and asserts it worked.
 fn wasi_context() -> WasiCtx {
     let mut builder = WasiCtxBuilder::new();
     builder
         .inherit_env()
         .inherit_network()
         .allow_ip_name_lookup(true);
-    let _ = builder.preopened_dir("/", "/", DirPerms::all(), FilePerms::all());
+    // Deliberately ignored; see above.
+    let _rooted = preopen_root(&mut builder);
     builder.build()
+}
+
+/// Preopen the container's root on `builder`, which is what lets a program reach the workspace
+/// through its own language's file APIs rather than only through the [files](crate::tools) tools.
+///
+/// Separate from [`wasi_context`] so that the one call in the sandbox whose failure is swallowed can
+/// still be *exercised*: nothing about a `WasiCtx` is inspectable once built, and no guest gg ships
+/// today imports `wasi:filesystem`, so without this a preopen that stopped succeeding — or a builder
+/// call dropped in a refactor — would go unnoticed until a language months later blamed its own
+/// toolchain.
+fn preopen_root(builder: &mut WasiCtxBuilder) -> wasmtime::Result<()> {
+    builder.preopened_dir("/", "/", DirPerms::all(), FilePerms::all())?;
+    Ok(())
 }
 
 /// Everything one program accumulated, reclaimed from the store on the way out.

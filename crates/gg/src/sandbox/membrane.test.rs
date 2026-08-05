@@ -20,6 +20,27 @@ use super::*;
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
 use crate::tools::ALL_TOOL_NAMES;
 
+/// **The one call in the sandbox whose failure is swallowed actually succeeds.**
+///
+/// [`wasi_context`] preopens `/` so a program can reach the workspace through its own language's
+/// file APIs, and deliberately ignores a failure rather than refusing to run the program over a
+/// capability most guests never touch. That is the right call and it has a cost: a `WasiCtx` exposes
+/// nothing about itself once built, and no guest gg ships today imports `wasi:filesystem`, so a
+/// preopen that stopped working would be invisible from *both* sides until a language months from
+/// now blamed its own toolchain for an empty root.
+///
+/// This is what can honestly be asserted about it: the exact call production makes, with the exact
+/// arguments, works in this environment. It does not prove a program can read a file — no guest here
+/// can — and it says nothing about the inherited network, which is not inspectable either.
+#[test]
+fn the_container_root_is_preopenable_for_every_program() {
+    let mut builder = WasiCtxBuilder::new();
+    assert!(
+        preopen_root(&mut builder).is_ok(),
+        "`/` could not be preopened, so every program's filesystem would be silently empty"
+    );
+}
+
 /// Every tool the model-facing catalogue offers is a real gg tool.
 ///
 /// Together with its sibling below this is the drift gate on the *source* side. The gate on the

@@ -363,17 +363,52 @@ fn the_sandbox_denies_only_what_it_cannot_honour() {
         "the guest's clock reports {guest} against the host's {host}, so it is not reading the host's"
     );
 
-    // Randomness is the host's too, and differs between two runs of the same program. Both sources
-    // are checked because they reach the guest by different routes — `Math.random()` through the
-    // engine's own seeding, `crypto.randomUUID()` through `wasi:random` directly.
-    let program = "console.log(JSON.stringify([Math.random(), crypto.randomUUID()]));";
+    // `performance.now()` is the host's monotonic clock, and it *moves*. Asserted across a busy-wait
+    // rather than across two adjacent calls, so a coarse clock resolution cannot make an advancing
+    // clock look frozen. The wait is measured with the wall clock, which the check above just proved
+    // is the host's, so this cannot pass on a build where both are constants.
+    let (outcome, _) = run(concat!(
+        "const before = performance.now();\n",
+        "const until = Date.now() + 5;\n",
+        "while (Date.now() < until) {}\n",
+        "console.log(JSON.stringify([before, performance.now()]));",
+    ));
+    let readings = logged_json(&outcome);
+    let (before, after) = (
+        readings[0].as_f64().expect("a monotonic reading"),
+        readings[1].as_f64().expect("a monotonic reading"),
+    );
+    assert!(
+        after > before,
+        "`performance.now()` read {before} then {after} across five milliseconds of work, so it is \
+         not reading the host's monotonic clock"
+    );
+
+    // Randomness is the host's too, and differs between two runs of the same program. All three
+    // sources are checked, and checked *separately*, because they reach the guest by different
+    // routes — `Math.random()` through the engine's own seeding, `crypto.randomUUID()` and
+    // `crypto.getRandomValues()` through `wasi:random` directly. Comparing the three as one value
+    // would let any one of them be a constant.
+    let program = concat!(
+        "console.log(JSON.stringify([Math.random(), crypto.randomUUID(),",
+        " Array.from(crypto.getRandomValues(new Uint8Array(8)))]));",
+    );
     let (first, _) = run(program);
     let (second, _) = run(program);
-    assert_ne!(
-        logged_json(&first),
-        logged_json(&second),
-        "two runs drew the same random values, so the guest is not reading the host's entropy"
-    );
+    let (first, second) = (logged_json(&first), logged_json(&second));
+    for (index, source) in [
+        "Math.random()",
+        "crypto.randomUUID()",
+        "crypto.getRandomValues()",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_ne!(
+            first[index], second[index],
+            "two runs drew the same value from `{source}`, so it is not reading the host's entropy"
+        );
+    }
 }
 
 /// The two ceilings stop a runaway program, and everything it did first is still reported.
