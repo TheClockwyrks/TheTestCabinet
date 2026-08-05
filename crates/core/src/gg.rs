@@ -5101,8 +5101,7 @@ pub enum GgTelemetryKind {
         /// The [agent profile](GgAgentConfig) that spent this — the same name
         /// [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
         /// [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-        /// before gg attributed its deltas, or on a [replay](crate::gg_session_record::GgSessionRecord) reconstruction,
-        /// which has no live model binding to name.
+        /// before gg attributed its deltas.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         slot: Option<String>,
         /// The concrete model id that spent this — the model the

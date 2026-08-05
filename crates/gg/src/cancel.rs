@@ -12,7 +12,7 @@
 //!
 //! Killing the process instead would be worse in the way that matters: gg's result is
 //! its telemetry, and the most valuable part of it — the session summary, the per-slot
-//! rollups, the replay sidecar — is emitted in the session's epilogue. A signal that cut
+//! rollups, the session record — is emitted in the session's epilogue. A signal that cut
 //! the process down would throw away precisely what the operator killed the run to look
 //! at.
 //!

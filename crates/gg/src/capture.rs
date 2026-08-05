@@ -3,7 +3,7 @@
 //! [recorded](https://docs.testcabinet.ai/gg/session-record/) afterward.
 //!
 //! The [telemetry stream](crate::telemetry) is already most of the capture, but it carries
-//! *summaries*, not the exact inputs a faithful re-run needs. So gg additionally pins each agent's
+//! *summaries*: what a turn cost, not what it said. So gg additionally pins each agent's
 //! **model I/O** and every **tool result** into a [`GgRecorder`], which appends them to
 //! [`.gg/replay.ndjson`](test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH) as the run
 //! proceeds. The host folds that journal into the served
@@ -62,7 +62,7 @@
 //!   [`Prompt`](test_cabinet_core::gg::GgTelemetryKind::Prompt) event — by calling
 //!   [`GgRecorder::record_prompt_frame`]. The recorder deliberately does **not** thread through
 //!   the [telemetry emitter](crate::telemetry) to get there: telemetry is a summary stream and
-//!   stays unaware of replay.
+//!   stays unaware of capture.
 //! - **Command lines** are captured by wrapping the [`ShellRunner`] in a
 //!   [`RecordingShellRunner`]: all three paths that reach `sh -c` — the
 //!   [`shell`](crate::tools::SHELL_TOOL) tool, a [responses-as-code](crate::sandbox) program's
@@ -745,8 +745,9 @@ impl GgRecorder {
     ///
     /// Both stream payloads are interned under the capture's
     /// [stream ceiling](Self::stream_max_bytes): a build log is the archetype of a payload that is
-    /// megabytes long, was never shown to the model in full, and is worth its bytes only when
-    /// somebody escalated the run to full fidelity.
+    /// megabytes long and was never shown to the model in full, so recording its kept tail with a
+    /// row saying how much was dropped is what keeps one noisy command from spending the whole
+    /// run's journal budget.
     fn record_command(
         &self,
         agent_id: &str,
@@ -792,11 +793,9 @@ impl GgRecorder {
     /// Record one read of the **wall-clock deadline**: how long the session had been running, and
     /// how much of its budget was left.
     ///
-    /// Unlike a latency clock this is recorded at *both* fidelities, because it is the one clock
-    /// read the loop branches on: the run stops at the turn boundary where the budget is spent. A
-    /// reading deliberately does not honor it —  — and reports the
-    /// resulting terminal difference rather than faking a clock, which it can only do by knowing
-    /// what the original observed.
+    /// Recorded because it is the one clock read the loop *branches* on: the run stops at the turn
+    /// boundary where the budget is spent, so a record that omitted it could not explain why a
+    /// session ended where it did.
     pub fn record_clock(&self, agent_id: &str, elapsed_ms: u64, remaining_ms: Option<u64>) {
         let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
@@ -1089,9 +1088,9 @@ fn split_tool_data(data: Option<&ToolData>) -> (Option<Value>, Option<String>) {
 /// A [`ModelClient`] decorator that streams each turn's **model I/O** into a [`GgRecorder`].
 ///
 /// It wraps the agent's real client and is the sole model-I/O recording seam: every `complete` the
-/// agent makes flows through here, so the recorded request/response pairs pin every
-/// non-deterministic model step for a faithful replay. The `model_id` and error behavior pass
-/// straight through, so wrapping is invisible to the loop.
+/// agent makes flows through here, so the record holds the exact request/response pair of every
+/// model step the session took. The `model_id` and error behavior pass straight through, so
+/// wrapping is invisible to the loop.
 pub struct RecordingClient {
     /// The wrapped real client.
     inner: Box<dyn ModelClient>,

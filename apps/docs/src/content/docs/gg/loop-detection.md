@@ -177,7 +177,7 @@ loop:
    replacement.
 3. The retry usually answers properly, and the turn proceeds on that answer. The looping
    reply is never streamed as an assistant message, never enters the context window, and
-   never appears in the [replay record](/gg/analysis/session-records/), which journals the
+   never appears in the [session record](/gg/analysis/session-records/), which journals the
    response a turn was *given*. Only its count survives — which is correct, because a
    record must carry the turn the model actually got.
 4. The turn logs one `warn` naming what was thrown away:
@@ -206,7 +206,7 @@ other, and a kind nothing could distinguish would be a bucket in every console a
 aggregation that is permanently zero. What *is* distinguished is the count of discarded
 replies, which is the figure worth acting on.
 
-The [replay record](/gg/analysis/session-records/) does keep that failure, as a recorded
+The [session record](/gg/analysis/session-records/) does keep that failure, as a recorded
 model error of kind `response_loop` carrying how many replies were discarded — because
 unlike a discarded attempt, a turn that *failed* is a turn that changed the run.
 

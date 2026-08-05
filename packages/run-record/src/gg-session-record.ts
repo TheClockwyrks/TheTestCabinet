@@ -904,8 +904,14 @@ export type GgSessionTruncation = {
 export type GgSessionRecord = {
   /**
    * The format **this document** is in. The compatibility contract, and the only
-   * identity a reader may branch on: a record from a *newer* gg is refused outright
-   * rather than read on a partial understanding of its entry kinds.
+   * identity a reader may branch on. Absent ⇒ **1**, the pre-versioned format.
+   *
+   * [`GG_SESSION_FORMAT_VERSION`] is the one version this build reads. A record from a
+   * *newer* gg is refused rather than read on a partial understanding of its entry kinds,
+   * and so is a v1 record: v1 was a different, unpooled shape, readable only through an
+   * upgrade-on-read that existed for the reconstruction that no longer does. Refusing it
+   * is the honest answer — the alternative is reporting a v1 body as v2 and handing a
+   * reader entries it cannot mean.
    */
   formatVersion: number;
   /**

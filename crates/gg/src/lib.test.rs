@@ -60,9 +60,9 @@ fn the_resolved_download_url_names_this_binarys_release_asset() {
 /// that is ever walked — rather than only looked up in — is a per-process non-determinism source
 /// inside a harness whose whole product is a *comparable* recorded run. The failure is not
 /// theoretical: the orchestrator walks its issue-wait registry to decide which blocked agents to
-/// wake, so the wake order of a multi-agent run was a coin flip. And it is exactly the kind of
-/// defect that a [playback](crate::replay_inputs) surfaces as a spurious turn-fingerprint
-/// mismatch, because run-global state is rendered into every agent's pinned prompt each turn.
+/// wake, so the wake order of a multi-agent run was a coin flip. And it is the kind of defect that
+/// hides, because run-global state is rendered into every agent's pinned prompt each turn: two runs
+/// of the same configuration diverge in their prompts without anything having changed.
 ///
 /// Auditing "is *this* one order-visible?" at each of a dozen sites is how the next one gets
 /// missed, so the rule is the blunt one: gg's non-test code keys its maps and sets on `Ord` and

@@ -165,7 +165,7 @@ catches it**.
 - **A full exploration document** is served per run and carries the unbounded
   detail: every file, every symbol with its complexity and reference count, every
   import edge, every cycle, every clone group. Same posture, and the same reason,
-  as the [replay record](/gg/analysis/session-records/#serving-and-consuming).
+  as the [session record](/gg/analysis/session-records/#serving-and-consuming).
 
 ### Why a typed struct and not an open bag
 

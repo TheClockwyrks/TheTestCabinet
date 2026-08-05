@@ -98,7 +98,7 @@ terms (see [Execution limits](/gg/execution-limits/#cancellation)). The turn alr
 in flight completes, so nothing is abandoned half-applied; the agent ends with the
 terminal status `canceled` and, deliberately, **no limit breach** — nothing was
 measured and nothing was crossed. The session then runs its ordinary epilogue: the
-per-slot rollups, the session summary, the [replay](/gg/session-record/) sidecar, and the
+per-slot rollups, the session summary, the [session-record](/gg/session-record/) sidecar, and the
 session-ended event.
 
 The engine therefore gets back a normal harness outcome marked *canceled*, carrying

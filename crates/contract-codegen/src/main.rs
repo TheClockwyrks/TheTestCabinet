@@ -389,7 +389,7 @@ fn main() -> Result<()> {
         // `GgCapabilitySet`, `GgAgentStatus`, `GgLimitBreach` and `GgContextSource` are
         // owned by `gg.ts`, so those imports resolve cross-module.
         TsModule {
-            file: "gg-replay.ts",
+            file: "gg-session-record.ts",
             decls: ts_decls![&cfg;
                 ggr::GgSessionRecorder,
                 ggr::GgSessionModalities, ggr::GgSessionSeed,
@@ -721,7 +721,7 @@ fn main() -> Result<()> {
         // rewritten to cross-document URLs; the pooled message/toolset/response bodies
         // are free-form JSON (the gg binary owns their concrete shapes).
         SchemaDoc {
-            rel_path: "gg/replay-record.schema.json",
+            rel_path: "gg/session-record.schema.json",
             root: Some("GgSessionRecord"),
             owns: &[
                 "GgSessionRecorder",

@@ -397,9 +397,9 @@ impl ToolContext {
 /// succeeded — it maps straight onto that event's `ok` field and lets the loop
 /// distinguish a productive call from a failed one.
 ///
-/// It derives `Serialize`/`Deserialize` (camelCase) so the [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)
-/// recorder can capture the exact outcome a tool dispatch returned and a replay driver can feed it
-/// back verbatim. Every field added since is therefore `#[serde(default)]` and omitted when empty:
+/// It derives `Serialize`/`Deserialize` (camelCase) so the [session capture](crate::capture) can
+/// record the exact outcome a tool dispatch returned, and so that outcome round-trips out of the
+/// record unchanged. Every field added since is therefore `#[serde(default)]` and omitted when empty:
 /// a record captured by an older gg still deserializes, and one captured by this gg is no larger
 /// for the tools that have nothing extra to say.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

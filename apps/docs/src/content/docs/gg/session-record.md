@@ -49,6 +49,21 @@ configuration says otherwise; the console's editor offers it as
 and marks the record truncated: **capture degrades, it never fails the run it
 observes.**
 
+## Who reads it
+
+**Nothing does, programmatically.** The record is written on every run, mirrored to
+the backend and served at `GET /runs/{id}/replay`, and no code in this repository
+deserializes it: the console is built from telemetry alone, live and post-run, and
+gg has no reconstruction to feed. It is a **diagnostic for a person** — you reach it
+by downloading a run's archive (or that route) and opening the JSON, when a run
+hung, stalled or ended somewhere the telemetry summary cannot explain.
+
+That is a deliberate position, not an oversight. It is also the whole reason capture
+is worth its cost: the record holds the exact model I/O, the exact tool results and
+the exact prompt frame, and those are recoverable from nothing else once the
+container is gone. Any future reader — an analysis tool, a diffing view — reads this
+document; nothing has to be re-captured for it to exist.
+
 ## Salvage: the run the record exists for
 
 Every other post-session read of a run goes through the collected working tree. A

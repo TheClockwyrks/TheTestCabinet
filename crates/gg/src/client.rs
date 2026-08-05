@@ -3569,13 +3569,13 @@ pub trait ClientFactory: Send + Sync {
 /// Who is asking a [`ClientFactory`] for a client, and for which of gg's two clients.
 ///
 /// Not an agent *id*: see [`client_for_agent`](ClientFactory::client_for_agent) for why an id
-/// cannot identify an agent across a reconstruction. Every field is a key a reconstruction
-/// re-derives from a parent's own ordered turn loop or from board state.
+/// cannot name an agent stably. Every field is a key that follows from the run's own structure —
+/// a parent's ordered turn loop, or board state — rather than from its scheduling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentIdentity {
     /// How the agent came to exist — the same value recorded on its
-    /// [replay row](test_cabinet_core::gg_session_record::GgSessionAgent::origin), so a reconstruction
-    /// matches a live resolution against the record with no translation in between.
+    /// [session-record row](test_cabinet_core::gg_session_record::GgSessionAgent::origin), so a
+    /// live resolution and a recorded one name an agent the same way.
     pub origin: GgSessionAgentOrigin,
     /// Which of gg's two model clients is being resolved. A
     /// [handoff compaction](crate::compaction) resolves a *second* client for the same agent, and

@@ -989,7 +989,7 @@
       ]
     }
   },
-  "$id": "https://docs.testcabinet.ai/schema/gg/replay-record.schema.json",
+  "$id": "https://docs.testcabinet.ai/schema/gg/session-record.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A gg run's **session record**: the fixed seed, four content-addressed pools, the agent\nprovenance table, and the ordered log of every non-deterministic input the session\nconsumed.\n\nSee the [module documentation](self) for the shape and for how a\nrecord from a newer gg is refused rather than read on a partial understanding of it.",
   "properties": {
@@ -1022,8 +1022,8 @@
       "type": "array"
     },
     "formatVersion": {
-      "default": 2,
-      "description": "The format **this document** is in. The compatibility contract, and the only\nidentity a reader may branch on: a record from a *newer* gg is refused outright\nrather than read on a partial understanding of its entry kinds.",
+      "default": 1,
+      "description": "The format **this document** is in. The compatibility contract, and the only\nidentity a reader may branch on. Absent ⇒ **1**, the pre-versioned format.\n\n[`GG_SESSION_FORMAT_VERSION`] is the one version this build reads. A record from a\n*newer* gg is refused rather than read on a partial understanding of its entry kinds,\nand so is a v1 record: v1 was a different, unpooled shape, readable only through an\nupgrade-on-read that existed for the reconstruction that no longer does. Refusing it\nis the honest answer — the alternative is reporting a v1 body as v2 and handing a\nreader entries it cannot mean.",
       "format": "uint32",
       "minimum": 0,
       "type": "integer"

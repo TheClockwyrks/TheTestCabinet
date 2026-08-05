@@ -35,9 +35,9 @@
       "types": "./dist/gg-reference.d.ts",
       "default": "./dist/gg-reference.js"
     },
-    "./gg-replay": {
-      "types": "./dist/gg-replay.d.ts",
-      "default": "./dist/gg-replay.js"
+    "./gg-session-record": {
+      "types": "./dist/gg-session-record.d.ts",
+      "default": "./dist/gg-session-record.js"
     },
     "./gg-system-prompt": {
       "types": "./dist/gg-system-prompt.d.ts",
