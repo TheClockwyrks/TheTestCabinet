@@ -322,6 +322,11 @@ title = "Drills straight down, sinking smoothly"
 description = "Holding down over solid rock drills the tile below, the miner sinks into it as it cuts (never teleport-snapping a whole tile at once), and the tile becomes open tunnel when it breaks."
 validation = { script = "validation/movement/drill-down.mjs", outputs = [{ id = "shaft", name = "Drilling a shaft straight down", kind = "video" }] }
 [[review.categories.items]]
+id = "climb-after-drill"
+title = "A drilled shaft can be flown back up"
+description = "Drilling down really removes the rock — the cut tiles become open tunnel — and the miner can then jetpack straight back UP the shaft it just made, returning to the row it set out from. A build whose drill animates without breaking the terrain, or that strands the miner at the bottom of its own hole, fails here."
+validation = { script = "validation/movement/climb-after-drill.mjs", outputs = [{ id = "round-trip", name = "Drilling a shaft, then flying back up it", kind = "video" }] }
+[[review.categories.items]]
 id = "drill-side"
 title = "A side cut begins at the tile edge, not on keypress"
 description = "Pressing sideways in mid-tile WALKS the miner to the tile edge first and only then begins a left/right cut — so lateral movement inside a wider tunnel is possible before committing to a dig."
@@ -356,6 +361,11 @@ id = "sky-open"
 title = "Open sky above the surface — no ceiling"
 description = "Thrusting up off the surface carries the miner into the open, unbounded sky above the camp: there is no invisible lid, so it keeps climbing as long as it has fuel, rising far above the ground before falling back. A hard cap at the surface (unable to overshoot the ground) is a failed build."
 validation = { script = "validation/movement/sky-open.mjs", outputs = [{ id = "climb", name = "Thrusting up into the open sky above the camp", kind = "video" }] }
+[[review.categories.items]]
+id = "spawn-on-surface"
+title = "A new expedition starts on the surface"
+description = "Starting an expedition puts the miner on the surface camp, standing on solid ground at depth 0 with the mine below it unmined — never already inside a shaft, cavern, or other opening under the surface, and never sinking into one the moment play begins."
+validation = { script = "validation/movement/spawn-on-surface.mjs", outputs = [{ id = "start", name = "Where a fresh expedition starts", kind = "video" }] }
 
 # --- Fuel & the Round Trip ----------------------------------------------------
 [[review.categories]]
