@@ -483,7 +483,7 @@ function Stat({
 // --- The error record ----------------------------------------------------------
 
 // How many error types a ranking names before it stops. Three, because the point of a
-// ranking is the narrowing: gg's taxonomy has nineteen specific types, and a scope whose
+// ranking is the narrowing: gg's taxonomy has twenty-odd specific types, and a scope whose
 // failures do not concentrate into a few of them is telling you that on its face.
 export const TOP_ERROR_TYPES_SHOWN = 3;
 

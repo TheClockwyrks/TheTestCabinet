@@ -481,7 +481,7 @@ fn preparing_a_program_is_the_languages_own() {
     assert!(
         matches!(
             typescript().prepare_program(commented),
-            Err(PrepareError::Syntax(_))
+            Err(PrepareFailure::Program(PrepareError::Syntax(_)))
         ),
         "`#` is not TypeScript"
     );
@@ -496,11 +496,11 @@ fn preparing_a_program_is_the_languages_own() {
     // And each refuses what its own guest cannot resolve, in its own syntax.
     assert!(matches!(
         typescript().prepare_program("import fs from \"fs\";\n"),
-        Err(PrepareError::Unsupported(_))
+        Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
     assert!(matches!(
         fixture_language().prepare_program("use tools\n"),
-        Err(PrepareError::Unsupported(_))
+        Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
 }
 

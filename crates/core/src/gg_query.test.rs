@@ -390,6 +390,7 @@ fn session_summary() -> GgSessionSummary {
             transpile: 0,
             program_fault: 2,
             sandbox_limit: 0,
+            toolchain: 0,
             missing_completion: 0,
             loop_aborts: 4,
             by_type: BTreeMap::from([

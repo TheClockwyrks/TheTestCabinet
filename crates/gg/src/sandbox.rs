@@ -99,7 +99,7 @@ mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
-    FileWindow, HARNESS_FINISH, PROGRAMS_GET, PROGRAMS_RERUN, PrepareError, PreparedModule,
+    FileWindow, HARNESS_FINISH, PROGRAMS_GET, PROGRAMS_RERUN, PrepareFailure, PreparedModule,
     PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SurfaceCall,
     UnreachableTail, VIEW_CLOSE, VIEW_OPEN_TEXT, WasiSurface, all_languages, language,
     resolve_program_language, spell,
@@ -108,9 +108,11 @@ pub use language::{
 // Named only in documentation and in the seam's own tests today, but exported all the same: they
 // are half the contract a second language implements, and a type a reader has to reach into a
 // private module to read is a type nobody reads. `#[allow(unused_imports)]` because the crate
-// denies warnings and neither is *called* from outside `sandbox` yet.
+// denies warnings and none is *called* from outside `sandbox` yet — `PrepareError` reaches its
+// consumers wrapped in a `PrepareFailure`, and is named here because a language implementer picking
+// which of its five shapes a diagnostic is has to be able to see them.
 #[allow(unused_imports)]
-pub use language::{HostRequirements, PromptDialect, ResolvedProgramLanguage};
+pub use language::{HostRequirements, PrepareError, PromptDialect, ResolvedProgramLanguage};
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
 // outside `sandbox` that has to know about it: the prompt engine cannot render a template it never
@@ -227,9 +229,12 @@ pub fn run_program<A: ToolApi>(
     let compile = language.prepare_compiles().then(|| started.elapsed());
     let prepared = match prepared {
         Ok(prepared) => prepared,
-        Err(error) => {
+        // Whose failure it was is the language's answer, not this function's: a program the compiler
+        // rejected and a compiler that could not finish arrive here as different variants and stay
+        // different all the way to the turn's record.
+        Err(failure) => {
             return (
-                SandboxOutcome::before_start(SandboxError::Prepare(error), compile),
+                SandboxOutcome::before_start(SandboxError::from(failure), compile),
                 api,
             );
         }
@@ -397,7 +402,7 @@ pub fn precompile(
 pub fn prepare_program(
     language: &'static dyn ProgramLanguage,
     source: &str,
-) -> Result<PreparedProgram, PrepareError> {
+) -> Result<PreparedProgram, PrepareFailure> {
     language.prepare_program(source)
 }
 
@@ -407,7 +412,7 @@ pub fn prepare_program(
 pub fn prepare_module(
     language: &'static dyn ProgramLanguage,
     source: &str,
-) -> Result<PreparedModule, PrepareError> {
+) -> Result<PreparedModule, PrepareFailure> {
     language.prepare_module(source)
 }
 

@@ -684,6 +684,7 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
             transpile: 1,
             program_fault: 1,
             sandbox_limit: 1,
+            toolchain: 0,
             missing_completion: 0,
             loop_aborts: 0,
             by_type: BTreeMap::from([

@@ -419,54 +419,7 @@ pub(super) async fn run_code_turn(
         .collect();
 
     let decision = match &outcome.result {
-        // gg's own machinery, in its two flavours. Both would fail identically on every further
-        // turn, so neither is fed back and neither is ever charged to the model's error budget.
-        Err(error) if error.is_artifact_defect() => CodeTurnOutcome::Fatal {
-            fault: FatalFault::ArtifactDefect,
-            message: format!(
-                "the code sandbox's committed component could not be run ({error}); this is \
-                 artifact drift, not a fault in the model's program, and every further turn would \
-                 fail identically."
-            ),
-        },
-        Err(error) if error.is_host_fault() => CodeTurnOutcome::Fatal {
-            fault: FatalFault::HostFault,
-            message: format!(
-                "the code sandbox could not be operated ({error}); this is a defect in gg's own \
-                 plumbing, not a fault in the model's program, and every further turn would fail \
-                 identically."
-            ),
-        },
-        // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
-        // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
-        // heading already says, so the inner error is what goes out.
-        Err(error @ SandboxError::Prepare(prepare)) => CodeTurnOutcome::Continue {
-            feedback: vec![CodeFeedback::compiler(prepare.to_string())],
-            // Which of the four prepare failures it was, from the error itself rather than from a
-            // blanket "did not compile": a syntax error is a typo, a semantic error is almost
-            // always two programs in one reply, and a lowering failure is a defect in gg's own
-            // pipeline. They have different causes and want different responses, so the record says
-            // which one happened.
-            error: Some(sandbox_error_type(error)),
-            report: "its last program did not compile".to_string(),
-        },
-        // A ceiling the sandbox enforced — a timeout, the memory cap, a trap. The program compiled
-        // and started, so this is a runtime failure and reads as one; the variant's own `Display` is
-        // the error, and gg adds no advice on top of it.
-        Err(error) => {
-            emitter.emit(log(
-                "warn",
-                format!("the code program did not run to a result: {error}"),
-            ));
-            CodeTurnOutcome::Continue {
-                feedback: with_error(&notices, CodeFeedback::runtime(error.to_string())),
-                // Which ceiling stopped it. A runaway loop, a program that allocated past its cap
-                // and a guest trap are three different defects and were one bucket while this arm
-                // ignored the variant it had matched.
-                error: Some(sandbox_error_type(error)),
-                report: "its last program was stopped by a sandbox limit".to_string(),
-            }
-        }
+        Err(error) => sandbox_failure_decision(error, &notices, emitter),
         Ok(result) => {
             let report = program_report(&outcome, result);
             // The class the guest already typed the throw with, rather than the bare fact that
@@ -492,20 +445,125 @@ pub(super) async fn run_code_turn(
 
 /// The [turn error type](TurnErrorType) a sandbox failure the **model** owns is recorded as.
 ///
-/// A thin wrapper over [`SandboxError::turn_error_type`] for the two arms above, which reach it only
-/// after the fatal ones have already been claimed by `is_artifact_defect`/`is_host_fault` — so the
-/// `None` those four return is unreachable here. It is answered rather than `expect`ed because a
+/// A thin wrapper over [`SandboxError::turn_error_type`] for the three non-fatal arms of
+/// [`sandbox_failure_decision`], which reach it only after the fatal ones have already been claimed
+/// by `is_artifact_defect`/`is_host_fault` — so the `None` those four return is unreachable here. It is answered rather than `expect`ed because a
 /// panic inside the turn loop would cost a run that is otherwise fine, and because
 /// [`ProgramThrow`](TurnErrorType::ProgramThrow) is the honest reading of "the program ran and
 /// something gg cannot classify ended it": the base kind it derives is `program_fault`, which is the
 /// one bucket that never charges the failure to a ceiling it did not cause. If it is ever reached,
-/// the arms above have stopped being a partition and
+/// those arms have stopped being a partition and
 /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` says so first.
 fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
     error
         .turn_error_type()
         .unwrap_or(TurnErrorType::ProgramThrow)
 }
+
+/// What a turn becomes when the sandbox could not run its program to a result — **whose** failure it
+/// was, what the model is told about it, and what the run's ceilings are handed.
+///
+/// One function and one `match`, so the dispositions are decided together from the same facts. They
+/// are the ones the sandbox's own taxonomy names — see [`SandboxError`] — and each answers a
+/// different owner:
+///
+/// * the committed **artifact** or gg's own **plumbing**: fatal, fed back to nobody, charged to
+///   nothing, because every further turn would fail identically;
+/// * the **model's program**: the language's diagnostic, verbatim, under `Compiler error`;
+/// * the **compiler**, which could not finish: a `System` notice, because there is no diagnostic and
+///   the model's program was never judged;
+/// * a sandbox **ceiling**: the ceiling's own words under `Runtime error`.
+///
+/// Lifted out of [`run_code_turn`] rather than left inline because the third of those is the one
+/// that is silent when it regresses: routing a compiler's crash into the `Compiler error` band tells
+/// the model its program was rejected when nothing read it, produces no failure anywhere, and sends
+/// the model rewriting a program that was never wrong. A function is a thing a test can hold.
+fn sandbox_failure_decision(
+    error: &SandboxError,
+    notices: &[CodeFeedback],
+    emitter: &Emitter,
+) -> CodeTurnOutcome {
+    match error {
+        // gg's own machinery, in its two flavours. Both would fail identically on every further
+        // turn, so neither is fed back and neither is ever charged to the model's error budget.
+        error if error.is_artifact_defect() => CodeTurnOutcome::Fatal {
+            fault: FatalFault::ArtifactDefect,
+            message: format!(
+                "the code sandbox's committed component could not be run ({error}); this is \
+                 artifact drift, not a fault in the model's program, and every further turn would \
+                 fail identically."
+            ),
+        },
+        error if error.is_host_fault() => CodeTurnOutcome::Fatal {
+            fault: FatalFault::HostFault,
+            message: format!(
+                "the code sandbox could not be operated ({error}); this is a defect in gg's own \
+                 plumbing, not a fault in the model's program, and every further turn would fail \
+                 identically."
+            ),
+        },
+        // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
+        // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
+        // heading already says, so the inner error is what goes out.
+        error @ SandboxError::Prepare(prepare) => CodeTurnOutcome::Continue {
+            feedback: vec![CodeFeedback::compiler(prepare.to_string())],
+            // Which of the five prepare failures it was, from the error itself rather than from a
+            // blanket "did not compile": a syntax error is a typo, a semantic error is almost
+            // always two programs in one reply, a compile error is a whole coherent program written
+            // against the wrong surface, and a lowering failure is a defect in gg's own pipeline.
+            // They have different causes and want different responses, so the record says which one
+            // happened.
+            error: Some(sandbox_error_type(error)),
+            report: "its last program did not compile".to_string(),
+        },
+        // The compiler could not finish, so nothing was decided about the program. There is no
+        // diagnostic to show — which is exactly why this is not a `Compiler error`: that heading
+        // over a compiler's crash would tell the model its program was rejected when nothing read
+        // it. It goes in the `System` band instead, where gg speaks about the session rather than
+        // about the program, saying the one thing the model can act on — that the program did not
+        // run, and that writing it again is the whole of the fix.
+        //
+        // Logged at `error` rather than `warn` because it is the operator's problem, not the
+        // model's: an image whose compiler keeps falling over is a run that should be fixed rather
+        // than watched.
+        error @ SandboxError::Toolchain(_) => {
+            emitter.emit(log("error", format!("{error}")));
+            CodeTurnOutcome::Continue {
+                feedback: with_error(notices, CodeFeedback::notice(TOOLCHAIN_NOTICE.to_string())),
+                error: Some(sandbox_error_type(error)),
+                report: "its last program's compiler could not finish".to_string(),
+            }
+        }
+        // A ceiling the sandbox enforced — a timeout, the memory cap, a trap. The program compiled
+        // and started, so this is a runtime failure and reads as one; the variant's own `Display` is
+        // the error, and gg adds no advice on top of it.
+        error => {
+            emitter.emit(log(
+                "warn",
+                format!("the code program did not run to a result: {error}"),
+            ));
+            CodeTurnOutcome::Continue {
+                feedback: with_error(notices, CodeFeedback::runtime(error.to_string())),
+                // Which ceiling stopped it. A runaway loop, a program that allocated past its cap
+                // and a guest trap are three different defects and were one bucket while this arm
+                // ignored the variant it had matched.
+                error: Some(sandbox_error_type(error)),
+                report: "its last program was stopped by a sandbox limit".to_string(),
+            }
+        }
+    }
+}
+
+/// What a model is told when its language's compiler could not finish.
+///
+/// Three sentences and no diagnostic, because there is none: the compiler never reported on the
+/// program. It says what happened, says explicitly that nothing about the program was rejected — the
+/// one thing a model reading a failed turn will otherwise assume — and names the only action there
+/// is. A `const` so the test that pins the band can pin the words too.
+const TOOLCHAIN_NOTICE: &str = "Your program was not run: this language's compiler could not \
+                                finish, which is a fault in the run's environment rather than in \
+                                what you wrote. Nothing about your program was rejected. Write it \
+                                again.";
 
 /// The one line a **spawner** is given for a turn whose program ran — what it said, or failed to, in
 /// gg's own words rather than in the model's source.

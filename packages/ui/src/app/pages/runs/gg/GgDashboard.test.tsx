@@ -505,8 +505,8 @@ describe("the gg Dashboard's error row", () => {
   });
 
   it("ranks the specific error types by count, most common first", () => {
-    // The ranking is over the nineteen specific types rather than the five base kinds —
-    // "top error types" over five buckets is barely a narrowing.
+    // The ranking is over the twenty-odd specific types rather than the six base kinds —
+    // "top error types" over six buckets is barely a narrowing.
     renderErrors(
       outcome("root", 1, {
         outcome: "error",

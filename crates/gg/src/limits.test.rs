@@ -430,6 +430,7 @@ fn only_error_outcomes_count_as_errors() {
         TurnOutcome::Error(TurnErrorType::TranspileSyntax),
         TurnOutcome::Error(TurnErrorType::ProgramToolError),
         TurnOutcome::Error(TurnErrorType::SandboxTimeout),
+        TurnOutcome::Error(TurnErrorType::ToolchainFailed),
         TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
         TurnOutcome::Fatal(FatalFault::ArtifactDefect),
         TurnOutcome::Fatal(FatalFault::HostFault),
@@ -448,6 +449,7 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::ModelPlayback
                 | TurnErrorType::TranspileSyntax
                 | TurnErrorType::TranspileSemantic
+                | TurnErrorType::TranspileCompile
                 | TurnErrorType::TranspileLowering
                 | TurnErrorType::TranspileUnsupported
                 | TurnErrorType::ProgramToolError
@@ -456,6 +458,7 @@ fn only_error_outcomes_count_as_errors() {
                 | TurnErrorType::SandboxTimeout
                 | TurnErrorType::SandboxOutOfMemory
                 | TurnErrorType::SandboxTrap
+                | TurnErrorType::ToolchainFailed
                 | TurnErrorType::MissingCompletionNoCall
                 | TurnErrorType::MissingCompletionCompaction => true,
             },
@@ -503,6 +506,12 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::SandboxLimit),
             Some(GgTurnErrorType::SandboxOutOfMemory),
+        ),
+        (
+            TurnOutcome::Error(TurnErrorType::ToolchainFailed),
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::Toolchain),
+            Some(GgTurnErrorType::ToolchainFailed),
         ),
         (
             TurnOutcome::Error(TurnErrorType::MissingCompletionCompaction),
@@ -573,15 +582,16 @@ fn a_published_type_always_agrees_with_the_kind_beside_it() {
 /// and retried, and a loop that survives every attempt arrives as an exhausted model call — which
 /// is a `model_api` *kind*, published under its own `model_response_loop` **type**.
 ///
-/// Pinned as the set of kinds gg can publish, so adding a sixth is a deliberate act with a test to
+/// Pinned as the set of kinds gg can publish, so adding a seventh is a deliberate act with a test to
 /// change rather than a silent widening of every console's bucket list.
 #[test]
-fn the_published_kinds_are_exactly_the_five_gg_can_produce() {
+fn the_published_kinds_are_exactly_the_six_gg_can_produce() {
     let published: Vec<GgTurnErrorKind> = [
         TurnErrorKind::ModelApi,
         TurnErrorKind::Transpile,
         TurnErrorKind::ProgramFault,
         TurnErrorKind::SandboxLimit,
+        TurnErrorKind::Toolchain,
         TurnErrorKind::MissingCompletion,
     ]
     .into_iter()
@@ -595,6 +605,7 @@ fn the_published_kinds_are_exactly_the_five_gg_can_produce() {
             GgTurnErrorKind::Transpile,
             GgTurnErrorKind::ProgramFault,
             GgTurnErrorKind::SandboxLimit,
+            GgTurnErrorKind::Toolchain,
             GgTurnErrorKind::MissingCompletion,
         ]
     );
@@ -625,6 +636,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::ModelPlayback,
         TurnErrorType::TranspileSyntax,
         TurnErrorType::TranspileSemantic,
+        TurnErrorType::TranspileCompile,
         TurnErrorType::TranspileLowering,
         TurnErrorType::TranspileUnsupported,
         TurnErrorType::ProgramToolError,
@@ -633,6 +645,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
         TurnErrorType::SandboxTimeout,
         TurnErrorType::SandboxOutOfMemory,
         TurnErrorType::SandboxTrap,
+        TurnErrorType::ToolchainFailed,
         TurnErrorType::MissingCompletionNoCall,
         TurnErrorType::MissingCompletionCompaction,
     ];
@@ -648,6 +661,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::ModelPlayback
             | TurnErrorType::TranspileSyntax
             | TurnErrorType::TranspileSemantic
+            | TurnErrorType::TranspileCompile
             | TurnErrorType::TranspileLowering
             | TurnErrorType::TranspileUnsupported
             | TurnErrorType::ProgramToolError
@@ -656,6 +670,7 @@ fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
             | TurnErrorType::SandboxTimeout
             | TurnErrorType::SandboxOutOfMemory
             | TurnErrorType::SandboxTrap
+            | TurnErrorType::ToolchainFailed
             | TurnErrorType::MissingCompletionNoCall
             | TurnErrorType::MissingCompletionCompaction => {}
         }

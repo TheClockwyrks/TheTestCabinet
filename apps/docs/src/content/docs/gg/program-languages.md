@@ -106,6 +106,31 @@ them, the model gets its turn back, and every other reading of that turn is zero
 A language declares whether it compiles at all — it is a required answer, not an inferred
 one, so a language cannot be registered with its compile time going quietly unrecorded.
 
+### A compiler has two ways to fail
+
+They look alike and they mean opposite things, so the prepare step reports them as different
+values and gg keeps them apart from there to the run record:
+
+| | What happened | What the model is told | How the turn is recorded |
+| --- | --- | --- | --- |
+| **The compiler rejected the program** | It read the reply whole and found a type error, a borrow error, a name that does not resolve | a `Compiler error` carrying the compiler's own diagnostics and nothing else | `transpile_compile`, under the `transpile` base kind — the model's to fix |
+| **The compiler could not finish** | It crashed, its own timeout killed it, or the binary is not in the run's image | a `Notice`: its program was not run, this is the environment, and **nothing about the program was rejected** | `toolchain_failed`, under the `toolchain` base kind — not the model's |
+
+Reporting the second as the first is the failure that matters, because it is silent: the
+model reads "your program did not compile" over a program nothing ever read, and spends its
+next turn rewriting something that was never wrong. Meanwhile the arm's `transpile` rate
+absorbs the image's flakiness and reads as a worse model.
+
+Neither of them is [`SandboxError::Compile`](/gg/responses-as-code/#what-can-go-wrong), which
+is the *committed interpreter component* failing to compile — an artifact defect that ends
+the session, because every further turn would fail identically. Both of these are
+recoverable: the next turn's program may well compile.
+
+A compiler that could not finish is still an **error turn** and still counts against the run's
+[error ceilings](/gg/execution-limits/#a-broken-compiler-counts-but-is-not-the-models-error),
+because a run whose compiler is broken must stop rather than burn to its deadline. The
+separate base kind is what makes the attribution survive that counting.
+
 ## The rules an agent-facing surface obeys in every language
 
 A language is free to spell things its own way. It is not free to change **what the model
@@ -202,7 +227,7 @@ instantly in every gate that iterates languages.
 | What it supplies | Why it belongs to the language |
 | --- | --- |
 | An **id** and a **display name** | The id is the config value, the telemetry value and the stem of its committed artifacts; the display name is what the model reads in its prompt and its diagnostics. |
-| **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, and the stack sizing an unguarded recursive-descent parser forces on untrusted text. |
+| **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, and the stack sizing an unguarded recursive-descent parser forces on untrusted text. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |

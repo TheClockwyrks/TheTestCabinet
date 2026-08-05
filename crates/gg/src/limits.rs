@@ -217,7 +217,9 @@ impl TurnOutcome {
 /// distinguishing kinds, because a run that alternates between five ways of failing is not
 /// healthier than one that fails the same way five times.
 ///
-/// Four of the six are [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+/// Four of the six — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault),
+/// [`SandboxLimit`](Self::SandboxLimit) and [`Toolchain`](Self::Toolchain) — are
+/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
 /// shapes, and that asymmetry is largely real rather than an oversight: a tool-calling turn whose
 /// requested calls are all dispatched and answered cannot declare work that is cut short. The one
 /// tool-calling error shape besides [`ModelApi`](Self::ModelApi) is
@@ -255,6 +257,20 @@ pub enum TurnErrorKind {
     /// mostly working and occasionally too big — is exactly what [`error_rate`](RunLimits::error_rate)
     /// expresses and a consecutive counter cannot, which is *why* it needed an exemption at all.
     SandboxLimit,
+    /// The language's **compiler could not finish** — it crashed, was killed by its timeout, or is
+    /// not installed in this image. Nothing was decided about the program.
+    ///
+    /// The one base kind that is not the model's, and it is a base kind precisely so that stays
+    /// legible. The turn is still an error and is still counted against the run's
+    /// [ceilings](RunLimits) — a run whose compiler is broken must stop rather than burn to its
+    /// deadline — but a study reading the run back can tell it apart from a model that kept writing
+    /// programs its language rejected. Folded under [`Transpile`](Self::Transpile) the two would be
+    /// one indistinguishable rate, and the arm with the flakier toolchain would read as the arm with
+    /// the worse model.
+    ///
+    /// Unreachable for a language whose prepare step invokes no compiler, which is every language
+    /// registered as this is written; the first compiled arm is what produces it.
+    Toolchain,
     /// A tool-calling turn ended with no tool call. [Ending a session](crate::completion) is always
     /// an explicit call, so a text-only reply is not a completion but a failure to end the run the
     /// one way gg allows. Counted as an error so a model that keeps replying in prose instead of calling
@@ -267,7 +283,7 @@ impl TurnErrorKind {
     /// This kind as the contract publishes it — written out by hand, for the reason
     /// [`TurnOutcome::wire`] gives.
     ///
-    /// The two base taxonomies are one-to-one today, and the contract carries no sixth kind for a
+    /// The two base taxonomies are one-to-one today, and the contract carries no seventh kind for a
     /// reply abandoned by [loop detection](crate::loopguard): a discarded attempt is retried rather
     /// than counted, and a loop that survives every attempt reaches the turn loop as a model-client
     /// failure after that client exhausted its own retry budget, which is a
@@ -282,6 +298,7 @@ impl TurnErrorKind {
             Self::Transpile => GgTurnErrorKind::Transpile,
             Self::ProgramFault => GgTurnErrorKind::ProgramFault,
             Self::SandboxLimit => GgTurnErrorKind::SandboxLimit,
+            Self::Toolchain => GgTurnErrorKind::Toolchain,
             Self::MissingCompletion => GgTurnErrorKind::MissingCompletion,
         }
     }
@@ -320,6 +337,9 @@ pub enum TurnErrorType {
     TranspileSyntax,
     /// The program parses but breaks an early error the language enforces.
     TranspileSemantic,
+    /// The language's compiler read the whole program and rejected it — a type error, a borrow
+    /// error, a name that does not resolve.
+    TranspileCompile,
     /// The program could not be lowered into what the guest evaluates.
     TranspileLowering,
     /// The program asks for something the sandbox will not run it with.
@@ -338,6 +358,9 @@ pub enum TurnErrorType {
     SandboxOutOfMemory,
     /// The guest trapped for some other reason.
     SandboxTrap,
+    /// The language's compiler could not finish: it crashed, was killed by its timeout, or is not
+    /// installed. The program was never judged.
+    ToolchainFailed,
     /// A tool-calling turn ended with no call under an explicit-call completion signal.
     MissingCompletionNoCall,
     /// A turn replied with no call while a compaction was pending.
@@ -361,6 +384,7 @@ impl TurnErrorType {
             | Self::ModelPlayback => TurnErrorKind::ModelApi,
             Self::TranspileSyntax
             | Self::TranspileSemantic
+            | Self::TranspileCompile
             | Self::TranspileLowering
             | Self::TranspileUnsupported => TurnErrorKind::Transpile,
             Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
@@ -369,6 +393,7 @@ impl TurnErrorType {
             Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
                 TurnErrorKind::SandboxLimit
             }
+            Self::ToolchainFailed => TurnErrorKind::Toolchain,
             Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
                 TurnErrorKind::MissingCompletion
             }
@@ -388,6 +413,7 @@ impl TurnErrorType {
             Self::ModelPlayback => GgTurnErrorType::ModelPlayback,
             Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
             Self::TranspileSemantic => GgTurnErrorType::TranspileSemantic,
+            Self::TranspileCompile => GgTurnErrorType::TranspileCompile,
             Self::TranspileLowering => GgTurnErrorType::TranspileLowering,
             Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,
             Self::ProgramToolError => GgTurnErrorType::ProgramToolError,
@@ -396,6 +422,7 @@ impl TurnErrorType {
             Self::SandboxTimeout => GgTurnErrorType::SandboxTimeout,
             Self::SandboxOutOfMemory => GgTurnErrorType::SandboxOutOfMemory,
             Self::SandboxTrap => GgTurnErrorType::SandboxTrap,
+            Self::ToolchainFailed => GgTurnErrorType::ToolchainFailed,
             Self::MissingCompletionNoCall => GgTurnErrorType::MissingCompletionNoCall,
             Self::MissingCompletionCompaction => GgTurnErrorType::MissingCompletionCompaction,
         }

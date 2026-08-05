@@ -8,7 +8,8 @@
 //! [`SandboxOutcome`] in, the message the model reads out.
 
 use super::*;
-use crate::sandbox::{ProgramErrorKind, SandboxRefusal, SandboxToolCall};
+use crate::sandbox::{PrepareError, ProgramErrorKind, SandboxRefusal, SandboxToolCall};
+use crate::telemetry::CollectingSink;
 
 /// One serviced call, as a chained turn's merged roster carries it.
 fn sandbox_call(name: &str) -> SandboxToolCall {
@@ -442,4 +443,126 @@ fn a_failed_on_use_script_is_still_charged_and_still_reported() {
         matches!(&turn.result, Ok(result) if result.error.is_none()),
         "the turn's own verdict is untouched by what a skill's script did"
     );
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the sandbox's own failures are told to the model as
+// ---------------------------------------------------------------------------------------------
+
+/// The decision for one sandbox failure, with the operator's stream thrown away.
+fn decision_for(error: SandboxError) -> CodeTurnOutcome {
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+    sandbox_failure_decision(&error, &[], &emitter)
+}
+
+/// The feedback bodies of a decision, paired with the band each landed in.
+fn banded(decision: &CodeTurnOutcome) -> Vec<(GgContextSource, String)> {
+    match decision {
+        CodeTurnOutcome::Continue { feedback, .. } => feedback
+            .iter()
+            .map(|message| (message.source, message.body.clone()))
+            .collect(),
+        _ => panic!("expected a turn the run carries on from, got one that ended the session"),
+    }
+}
+
+/// The turn error type a decision recorded, or `None` if it recorded none.
+fn recorded_type(decision: &CodeTurnOutcome) -> Option<TurnErrorType> {
+    match decision {
+        CodeTurnOutcome::Continue { error, .. } => *error,
+        _ => panic!("expected a turn the run carries on from, got one that ended the session"),
+    }
+}
+
+/// **A program its own compiler rejected reaches the model as a `Compiler error` carrying the
+/// compiler's diagnostic and nothing else** — and the turn carries on.
+///
+/// The whole point of the band. A type error is the model's to fix and the model can only fix it if
+/// it is handed what the compiler said; wrapping gg's prose around it, or ending the session over it,
+/// are the two ways this goes wrong.
+#[test]
+fn a_compilers_rejection_reaches_the_model_as_the_compilers_own_words() {
+    let decision = decision_for(SandboxError::Prepare(PrepareError::Compile(
+        "line 3: `Sprite` is not assignable to `Entity`".to_string(),
+    )));
+
+    assert_eq!(
+        banded(&decision),
+        vec![(
+            GgContextSource::CompilerError,
+            "line 3: `Sprite` is not assignable to `Entity`".to_string()
+        )],
+        "the diagnostic goes out verbatim, under the heading that says nothing ran"
+    );
+    assert_eq!(
+        recorded_type(&decision),
+        Some(TurnErrorType::TranspileCompile),
+        "recorded as a compile error rather than pooled with syntax errors"
+    );
+}
+
+/// **A compiler that could not finish is a `Notice`, never a `Compiler error`.**
+///
+/// The failure this whole variant exists to keep separable, and the one that is silent when it
+/// regresses. Under a `Compiler error` heading the model reads "your program did not compile" over a
+/// program no compiler ever read, and spends its next turn rewriting something that was never wrong.
+/// So the band is `System` — gg speaking about the session — and the words say outright that nothing
+/// about the program was rejected.
+#[test]
+fn a_compiler_that_could_not_finish_is_a_notice_not_a_compiler_error() {
+    let decision = decision_for(SandboxError::Toolchain(
+        "`swiftc` exited with signal 11 (SIGSEGV)".to_string(),
+    ));
+
+    let messages = banded(&decision);
+    assert_eq!(messages.len(), 1, "{messages:?}");
+    let (source, body) = &messages[0];
+    assert_eq!(
+        *source,
+        GgContextSource::System,
+        "a compiler's crash is a fact about the session, not a diagnosis of the program"
+    );
+    assert!(
+        body.contains("was not run") && body.contains("Nothing about your program was rejected"),
+        "the model must be told its program was never judged: {body}"
+    );
+    assert!(
+        !body.contains("signal 11"),
+        "the compiler's own crash detail is the operator's, not the model's: {body}"
+    );
+    assert_eq!(
+        recorded_type(&decision),
+        Some(TurnErrorType::ToolchainFailed),
+        "and the record says whose failure it was"
+    );
+}
+
+/// A compiler that could not finish does **not** end the session, unlike the two failures that do.
+///
+/// The three are one `match` away from each other, and the artifact-defect arm is the one it would
+/// be easiest to fall into: both are "a compile failed". Only one of them recurs identically on every
+/// further turn.
+#[test]
+fn only_the_artifact_and_the_host_end_the_session() {
+    for (error, ends) in [
+        (SandboxError::Toolchain("killed".to_string()), false),
+        (
+            SandboxError::Prepare(PrepareError::Compile("type error".to_string())),
+            false,
+        ),
+        (SandboxError::Compile("not a component".to_string()), true),
+        (
+            SandboxError::Instantiate("missing import".to_string()),
+            true,
+        ),
+        (SandboxError::Host("the task panicked".to_string()), true),
+    ] {
+        let named = error.to_string();
+        let decision = decision_for(error);
+        assert_eq!(
+            matches!(decision, CodeTurnOutcome::Fatal { .. }),
+            ends,
+            "{named}"
+        );
+    }
 }

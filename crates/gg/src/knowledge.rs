@@ -43,7 +43,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
 use crate::sandbox::{
-    CodeModule, PrepareError, ProgramLanguage, SandboxOutcome, prepare_module, prepare_program,
+    CodeModule, PrepareFailure, ProgramLanguage, SandboxOutcome, prepare_module, prepare_program,
 };
 
 /// Where a piece of loaded code came from — what a failure names, and what the reply to the read
@@ -327,8 +327,8 @@ impl KnowledgeModules {
     fn timed<T>(
         &mut self,
         language: &'static dyn ProgramLanguage,
-        prepare: impl FnOnce() -> Result<T, PrepareError>,
-    ) -> Result<T, PrepareError> {
+        prepare: impl FnOnce() -> Result<T, PrepareFailure>,
+    ) -> Result<T, PrepareFailure> {
         if !language.prepare_compiles() {
             return prepare();
         }
@@ -363,19 +363,27 @@ pub struct KnowledgeError {
     pub name: String,
     /// Which half — `code` or `onUse`, spelled as the model writes it.
     pub half: &'static str,
-    /// What the language's prepare step said, already located in the author's own coordinates.
-    pub error: PrepareError,
+    /// Why the language's prepare step did not hand back a namespace: the author's own source, with
+    /// a diagnostic located in its coordinates, or the compiler that was supposed to read it failing
+    /// to run at all.
+    pub error: PrepareFailure,
 }
 
 impl std::fmt::Display for KnowledgeError {
+    /// A compiler that could not *finish* is said differently from a source it read and rejected —
+    /// "did not compile" over the second is a diagnosis, and over the first it is a guess, made
+    /// about a file nothing ever judged.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (verb, error) = match &self.error {
+            PrepareFailure::Program(error) => ("did not compile", error.to_string()),
+            PrepareFailure::Toolchain(detail) => ("could not be compiled", detail.clone()),
+        };
         write!(
             f,
-            "the `{}` of {} `{}` did not compile: {}",
+            "the `{}` of {} `{}` {verb}: {error}",
             self.half,
             self.origin.noun(),
             self.name,
-            self.error
         )
     }
 }

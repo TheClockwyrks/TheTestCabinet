@@ -67,7 +67,8 @@ failures the one capability that cannot survive them.
 | Turn | Why |
 | --- | --- |
 | the model call failed, after the client's own retry/backoff was exhausted | no turn happened at all (and this one is separately fatal — see [below](#a-model-api-error-is-still-fatal)) |
-| the program did not type-strip | nothing ran; the model gets a `Compiler error` carrying the compiler's error and nothing else |
+| the program did not compile — it did not parse, it broke an early error, or the language's compiler read it whole and rejected it | nothing ran; the model gets a `Compiler error` carrying the compiler's error and nothing else |
+| the language's **compiler could not finish** — it crashed, was killed by its timeout, or is not installed | nothing ran, and nothing was decided about the program either. The model gets a `Notice` saying its program was not run and that nothing about it was rejected. It **is** counted, under its own `toolchain` base kind, so a run whose image has a broken compiler stops on its ceilings rather than burning to its deadline — see [below](#a-broken-compiler-counts-but-is-not-the-models-error) |
 | the program threw uncaught | every statement after the throw never ran, so the model must re-declare the remainder; it gets a `Runtime error` carrying the throw and nothing else |
 | the sandbox stopped the program at its execution timeout or memory ceiling, or the guest trapped | the program ran and its landed calls stand, but the work it declared was cut short — reported as the same `Runtime error` an uncaught throw produces |
 
@@ -85,8 +86,29 @@ failures the one capability that cannot survive them.
 
 A tool-calling turn is total in three rows: it requested calls (a good turn), it
 requested none (it ended the session), or the model call failed. That asymmetry — four of
-the five error shapes are code-mode shapes — is real rather than an oversight: a
+the six error shapes are code-mode shapes — is real rather than an oversight: a
 tool-calling turn has no way to declare work that can be cut short.
+
+### A broken compiler counts, but is not the model's error
+
+A language whose [preparation](/gg/program-languages/) runs a real compiler has two ways to
+fail, and gg keeps them apart everywhere:
+
+- **the compiler rejected the program** — a type error, a borrow error, a name that does not
+  resolve. That is the model's, it is handed the compiler's own diagnostics, and it is
+  recorded as `transpile_compile` under the same `transpile` base every other "the program
+  did not compile" turn lands on.
+- **the compiler could not finish** — it crashed, its own timeout killed it, or the binary is
+  not in the run's image. Nothing read the program, so there is no diagnostic and nothing to
+  fix. It is recorded as `toolchain_failed` under the `toolchain` base kind, which exists for
+  exactly this one distinction.
+
+The second is still an error turn, and it is still counted against
+`maxConsecutiveErrors` and `errorRate`: the ceilings count errors without distinguishing
+kinds, and a run whose compiler is broken must stop rather than run to its deadline. What the
+separate base kind buys is that the *attribution* survives the counting. Pooled under
+`transpile`, an arm with a flaky toolchain would read as an arm with a worse model — which is
+precisely the confound a cross-language comparison cannot carry.
 
 ### The same judgement is what the run publishes
 

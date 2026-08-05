@@ -44,7 +44,7 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, HostRequirements, PrepareError, PreparedModule, PreparedProgram, ProgramLanguage,
+    FileWindow, HostRequirements, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
     PromptDialect,
 };
 
@@ -112,8 +112,10 @@ impl ProgramLanguage for TypeScript {
         GgProgramLanguage::TypeScript.display_name()
     }
 
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareError> {
-        prepare::prepare_program(source)
+    /// Never a [toolchain failure](PrepareFailure::Toolchain): this step spawns nothing that could
+    /// fail to run, so every failure it has is the model's text.
+    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure> {
+        Ok(prepare::prepare_program(source)?)
     }
 
     /// No. Preparing TypeScript is an in-process parse and type-strip — no checker runs, nothing
@@ -123,8 +125,8 @@ impl ProgramLanguage for TypeScript {
         false
     }
 
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareError> {
-        prepare::prepare_module(source)
+    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure> {
+        Ok(prepare::prepare_module(source)?)
     }
 
     /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.

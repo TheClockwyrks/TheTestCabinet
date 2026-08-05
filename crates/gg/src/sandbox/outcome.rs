@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
-use super::language::{PrepareError, UnreachableTail};
+use super::language::{PrepareError, PrepareFailure, UnreachableTail};
 use crate::ending::Ending;
 use crate::limits::TurnErrorType;
 
@@ -330,18 +330,41 @@ impl ProgramErrorKind {
 /// The loop reads this taxonomy through the two predicates below rather than by matching variant by
 /// variant, because the question it has to answer is not "which failure was it?" but "**whose**
 /// failure was it?": gg's own machinery ([`is_host_fault`](Self::is_host_fault)), the committed
-/// artifact ([`is_artifact_defect`](Self::is_artifact_defect)), or the model's program (everything
+/// artifact ([`is_artifact_defect`](Self::is_artifact_defect)), or the run's own turn (everything
 /// else). The first two end the session — every further turn would fail identically — and neither is
-/// ever charged to the model's error budget. The rest are turn errors the model is told about and
-/// can write its way out of.
+/// ever charged to the model's error budget. The rest are turn errors the run carries on from, and
+/// all but one of them are the model's to write its way out of; [`Toolchain`](Self::Toolchain) is
+/// the exception, and says so.
 #[derive(Debug, thiserror::Error)]
 pub enum SandboxError {
-    /// The program is not valid source in the run's [program language](super::ProgramLanguage), or
-    /// used a feature the sandbox has no implementation of. **The model's to fix**, and the only
-    /// variant that costs no engine work at all: it is detected before the component is touched, so
-    /// nothing ran and no call landed.
+    /// The program is not valid source in the run's [program language](super::ProgramLanguage), was
+    /// rejected by that language's compiler, or used a feature the sandbox has no implementation of.
+    /// **The model's to fix**, and — with [`Toolchain`](Self::Toolchain) — one of the two variants
+    /// that cost no *engine* work at all: both are settled before the component is touched, so
+    /// nothing ran and no call landed. For a language that compiles it still costs that compiler's
+    /// time, which the outcome reports as [`compile`](SandboxOutcome::compile).
     #[error("the program did not compile: {0}")]
     Prepare(#[from] PrepareError),
+    /// The language's **compiler could not finish**: it crashed, was killed by its own timeout, or
+    /// is not installed in this image. The program was never judged, so there is nothing to show the
+    /// model and nothing for it to fix.
+    ///
+    /// It belongs to neither of the two predicates below, and that is the point. It is not an
+    /// [artifact defect](Self::is_artifact_defect) and not a [host fault](Self::is_host_fault),
+    /// because both of those end the session on the first occurrence and a compiler that fell over
+    /// once may well compile the next program — a `swiftc` that crashed on one constant-folded
+    /// expression, a compile that outran its timeout under load. So the turn is an error the run
+    /// carries on from, recorded as [`ToolchainFailed`](crate::limits::TurnErrorType::ToolchainFailed)
+    /// under its own base kind.
+    ///
+    /// **It is nonetheless counted against the run's error ceilings**, because the ceilings count
+    /// errors without distinguishing kinds — and that is the right answer rather than a compromise:
+    /// a run whose compiler is broken must stop rather than burn to its deadline. What the separate
+    /// base kind buys is that the *attribution* survives the counting, so a study reading the run
+    /// back can tell "this model kept writing programs that did not type-check" from "this image was
+    /// missing a compiler".
+    #[error("the program's compiler could not finish: {0}")]
+    Toolchain(String),
     /// The wasm engine could not be configured or linked.
     ///
     /// Its one producer is unreachable in this build and is kept because the failure it reports is a
@@ -414,13 +437,13 @@ impl SandboxError {
         matches!(self, Self::Engine(_) | Self::Host(_))
     }
 
-    /// The [turn error type](TurnErrorType) this failure is recorded as, for the variants that are
-    /// the **model's** to fix — everything the two predicates above do not claim.
+    /// The [turn error type](TurnErrorType) this failure is recorded as, for the variants the run
+    /// carries on from — everything the two predicates above do not claim.
     ///
     /// `None` for [`Engine`](Self::Engine)/[`Host`](Self::Host) and
     /// [`Compile`](Self::Compile)/[`Instantiate`](Self::Instantiate), which end the session as
     /// fatal and are never charged to the model's error budget, so they have no turn error type at
-    /// all. `Some` for the other four, and exhaustive rather than a catch-all: the turn loop used
+    /// all. `Some` for the other five, and exhaustive rather than a catch-all: the turn loop used
     /// to reach the sandbox ceilings through an `Err(_)` arm that never looked at the variant, so
     /// a timeout, an out-of-memory and a trap were one indistinguishable bucket. Adding a variant
     /// now has to say which it is.
@@ -430,10 +453,27 @@ impl SandboxError {
     pub fn turn_error_type(&self) -> Option<TurnErrorType> {
         match self {
             Self::Prepare(prepare) => Some(prepare.turn_error_type()),
+            Self::Toolchain(_) => Some(TurnErrorType::ToolchainFailed),
             Self::Timeout { .. } => Some(TurnErrorType::SandboxTimeout),
             Self::OutOfMemory { .. } => Some(TurnErrorType::SandboxOutOfMemory),
             Self::Trap(_) => Some(TurnErrorType::SandboxTrap),
             Self::Engine(_) | Self::Host(_) | Self::Compile(_) | Self::Instantiate(_) => None,
+        }
+    }
+}
+
+impl From<PrepareFailure> for SandboxError {
+    /// Split a [prepare failure](PrepareFailure) into the two sandbox failures it is: the model's
+    /// program, or the compiler that was supposed to read it.
+    ///
+    /// The one conversion between the two taxonomies, so the split cannot be made differently at two
+    /// call sites — and so the seam's own vocabulary (`Program`/`Toolchain`, which is what a language
+    /// implementer thinks in) stays separate from the loop's (`Prepare`/`Toolchain`, which is what a
+    /// turn is judged by).
+    fn from(failure: PrepareFailure) -> Self {
+        match failure {
+            PrepareFailure::Program(error) => Self::Prepare(error),
+            PrepareFailure::Toolchain(detail) => Self::Toolchain(detail),
         }
     }
 }

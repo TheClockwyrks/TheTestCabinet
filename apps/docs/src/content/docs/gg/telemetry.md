@@ -555,7 +555,7 @@ here as `missing_completion`.
 
 ### The taxonomy has two levels
 
-The five `error` values are the **base** kinds: *whose layer failed*. They are what an
+The six `error` values are the **base** kinds: *whose layer failed*. They are what an
 execution ceiling acts on, what a cross-run comparison groups by, and what every stored run
 already keys on — so they do not change, ever. `transpile` in particular keeps a name it
 outgrew (it dates from when every program was TypeScript and preparing one meant stripping
@@ -566,14 +566,15 @@ named. gg was already making these distinctions internally and discarding them a
 recording seam — a four-way classification of a model failure was computed only to pick a
 word for a log line, a sandbox ceiling was reached through a branch that never looked at
 *which* ceiling, and the class the guest types every uncaught throw with was thrown away in
-favour of "the program faulted". Nineteen types, one per distinction gg already had:
+favour of "the program faulted". Twenty-one types, one per distinction gg already had:
 
 | Base kind | Types under it |
 | --- | --- |
 | `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse`, `model_playback` (a [reconstruction](/gg/replay/) diverged) |
-| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_lowering`, `transpile_unsupported` |
+| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_compile` (a language whose preparation type-checks read the whole program and rejected it), `transpile_lowering`, `transpile_unsupported` |
 | `program_fault` | `program_tool_error` (an **uncaught failed call** — the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it: a name that is not in scope, or a call the host refused as `unavailable` — [the same fact](/gg/responses-as-code/#capability-gating), told two ways by two kinds of guest), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
+| `toolchain` | `toolchain_failed` (the language's compiler crashed, was killed by its timeout, or is not installed — nothing was decided about the program, so this is the one base kind that is **not** the model's; see [execution limits](/gg/execution-limits/#a-broken-compiler-counts-but-is-not-the-models-error)) |
 | `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending — a different failure, answered differently) |
 
 Every type's id names its base, because a *"top error types"* ranking shows one row per type
@@ -607,7 +608,7 @@ never come from different mechanisms:
 ```jsonc
 "errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
             "modelApi": 1, "transpile": 2, "programFault": 1,
-            "sandboxLimit": 0, "missingCompletion": 0,
+            "sandboxLimit": 0, "toolchain": 0, "missingCompletion": 0,
             "loopAborts": 7,
             "byType": { "model_response_loop": 1, "transpile_syntax": 2,
                         "program_tool_error": 1 },
@@ -616,7 +617,7 @@ never come from different mechanisms:
 
 `turns` is the denominator and counts every turn whatever its outcome — a `fatal` one
 included, so the accounting stays whole even though no ceiling ever observes it. `errors` is
-exactly the sum of the five per-kind counters. `maxConsecutive` is the **maximum over
+exactly the sum of the six per-kind counters. `maxConsecutive` is the **maximum over
 agents** of the per-turn `consecutiveErrors` above, which is the only honest way to summarise
 a per-agent counter on a run-wide record, and the peak of the same counter
 `maxConsecutiveErrors` is enforced on.
@@ -628,7 +629,7 @@ must be trustworthy here is that the numbers add up.
 
 `byType` is the same errors split by their **specific** type, keyed by the `errorType` wire
 id. Two things hold for any run this gg writes: it sums to `errors`, and regrouping it by
-each type's base reproduces the five named counters exactly. It is a **map keyed by a string**
+each type's base reproduces the six named counters exactly. It is a **map keyed by a string**
 rather than by the enum on purpose — a run recorded by a newer gg must still read back in an
 older backend or console, and an unknown enum key would fail the whole summary where an
 unknown string degrades to one unlabelled row in a ranking. It is omitted from the wire when

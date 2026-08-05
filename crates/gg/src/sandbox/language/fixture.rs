@@ -56,8 +56,8 @@ use crate::healing::{CodeMask, Dialect, Unwrapped};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, HostRequirements, PrepareError, PreparedModule, PreparedProgram, ProgramLanguage,
-    PromptDialect, WasiSurface,
+    FileWindow, HostRequirements, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, WasiSurface,
 };
 
 /// TypeScript's committed catalogue, read a second time rather than reached for through
@@ -71,6 +71,15 @@ const TYPESCRIPT_SIGNATURES: &str = include_str!("../guests/typescript.signature
 /// on text and catalogues, strictly before a guest. It is deliberately *different bytes* from
 /// TypeScript's, which is what the "no language serves another's artifacts" assertion compares.
 const COMPONENT: &[u8] = b"gg fixture language: not a component, never compiled";
+
+/// The word that makes this language's "checker" reject a program it parsed cleanly — the fixture's
+/// stand-in for a type error, which is the failure a checked language has and TypeScript does not.
+pub(crate) const MISTYPED: &str = "mistyped";
+
+/// The word that makes this language's "compiler" fall over instead of answering — the fixture's
+/// stand-in for a `swiftc` that segfaults, a compile killed by its timeout, or a toolchain binary
+/// that is not in the image. Nothing is decided about the program.
+pub(crate) const NO_COMPILER: &str = "nocompiler";
 
 // ---------------------------------------------------------------------------------------------
 // The language
@@ -101,22 +110,43 @@ impl ProgramLanguage for FixtureLanguage {
         "Fixture"
     }
 
-    /// Strip comments, refuse an import, refuse a token the fixture's grammar does not have.
+    /// Strip comments, refuse an import, refuse a token the fixture's grammar does not have — and
+    /// stand in for the two failures only a **compiled** language has.
     ///
     /// Deliberately unlike TypeScript's in both directions: a `#` comment prepares cleanly here and
     /// is a syntax error there, while a type annotation is erased there and passed through
     /// untouched here. That asymmetry is what the "preparation is the language's" assertions read.
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareError> {
+    ///
+    /// The last two checks are the fixture's whole reason for declaring that it
+    /// [compiles](Self::prepare_compiles). A source mentioning [`MISTYPED`] is a program this
+    /// language's checker read and rejected — a [`PrepareError::Compile`], which the model is shown
+    /// and can fix. A source mentioning [`NO_COMPILER`] is the compiler itself falling over — a
+    /// [`PrepareFailure::Toolchain`], which the model is *not* blamed for. No registered language
+    /// produces either yet, so without a fixture that does, the split between them would be a
+    /// taxonomy nothing had ever exercised.
+    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure> {
         if source.contains("??") {
-            return Err(PrepareError::Syntax(
-                "`??` is not a token in this language".to_string(),
-            ));
+            return Err(
+                PrepareError::Syntax("`??` is not a token in this language".to_string()).into(),
+            );
         }
         if let Some(line) = source.lines().find(|line| is_use(line)) {
             return Err(PrepareError::Unsupported(format!(
                 "there is no module loader here, so `{}` cannot be resolved",
                 line.trim()
-            )));
+            ))
+            .into());
+        }
+        if source.contains(NO_COMPILER) {
+            return Err(PrepareFailure::Toolchain(
+                "`fixturec` exited with signal 11 (SIGSEGV)".to_string(),
+            ));
+        }
+        if source.contains(MISTYPED) {
+            return Err(PrepareError::Compile(format!(
+                "line 1: `{MISTYPED}` is not assignable to `Word`"
+            ))
+            .into());
         }
         Ok(PreparedProgram {
             source: strip_comments(source),
@@ -137,7 +167,7 @@ impl ProgramLanguage for FixtureLanguage {
 
     /// A module's namespace is whatever it `def`s, and its prepared source says so in a trailing
     /// comment — the fixture's analogue of the `return { … }` epilogue TypeScript generates.
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareError> {
+    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure> {
         let prepared = self.prepare_program(source)?;
         let exports: Vec<String> = prepared
             .source

@@ -640,6 +640,88 @@ async fn a_host_fault_ends_the_session_without_charging_the_model() {
     );
 }
 
+/// **A compiler that could not finish is an error turn the run carries straight on from.**
+///
+/// The counterpart to the fatal test above, and the assertion that keeps the two apart. Both are "a
+/// compile failed"; only one of them recurs identically on every further turn. So this run must lose
+/// exactly one turn, record it under its own base kind so a study can tell it from a model whose
+/// programs would not type-check, and then finish — because the next program compiled.
+///
+/// Armed through the same [seam](crate::sandbox::force_next_program_fault) the host fault is: no
+/// registered language runs a compiler yet, so there is no honest way to make one fall over.
+#[tokio::test]
+async fn a_compiler_that_could_not_finish_costs_one_turn_and_not_the_run() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+
+    crate::sandbox::force_next_program_fault(SandboxError::Toolchain(
+        "`swiftc` exited with signal 11 (SIGSEGV)".to_string(),
+    ));
+
+    let end = drive_root(
+        &MockClient::new(
+            "mock/primary",
+            vec![
+                code_reply("fs.writeFile(\"a.txt\", \"hi\");"),
+                code_reply(FINISHING_PROGRAM),
+            ],
+        ),
+        dir.path(),
+        &registry,
+        &emitter,
+        setup_from(GgRunLimits {
+            max_turns: Some(10),
+            ..GgRunLimits::default()
+        }),
+        code_on(),
+    )
+    .await;
+
+    assert_eq!(
+        end.status, "completed",
+        "a compiler that fell over once must not end the session: the next program compiled"
+    );
+    let events = sink.events();
+    assert_eq!(
+        turn_outcomes(&events),
+        vec![
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::Toolchain),
+                1,
+                1,
+                0
+            ),
+            (GgTurnOutcome::Finished, None, 0, 2, 0),
+        ],
+        "one error turn under the toolchain kind, then the session ends normally"
+    );
+    assert_eq!(
+        turn_error_types(&events),
+        vec![GgTurnErrorType::ToolchainFailed],
+        "and the type says the compiler could not run, not that the program was rejected"
+    );
+
+    // The operator is told what actually happened, in the compiler's own terms — the detail the
+    // model is deliberately not given.
+    let errors: Vec<String> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        errors
+            .iter()
+            .any(|message| message.contains("compiler could not finish")
+                && message.contains("SIGSEGV")),
+        "the failure was not named on the operator's stream: {errors:?}"
+    );
+}
+
 /// **A limit-stopped run keeps everything it built.** gg rolls nothing back: the workspace is
 /// exactly as the last completed turn left it, which is what makes a stopped run scoreable at all.
 #[tokio::test]

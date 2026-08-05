@@ -312,7 +312,7 @@ Per **run**, on the session summary's [error rollup](/gg/telemetry/#the-run-roll
 ```jsonc
 "errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
             "modelApi": 1, "transpile": 2, "programFault": 1,
-            "sandboxLimit": 0, "missingCompletion": 0,
+            "sandboxLimit": 0, "toolchain": 0, "missingCompletion": 0,
             "loopAborts": 7 }
 ```
 

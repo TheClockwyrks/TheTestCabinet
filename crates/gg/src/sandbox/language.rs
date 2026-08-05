@@ -115,7 +115,13 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// This is where a language spends whatever it must to make untrusted text safe to hand to a
     /// parser, and where it refuses — with a sentence the model can act on — anything the sandbox
     /// has no implementation of.
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareError>;
+    ///
+    /// A language that runs a **compiler** here must say which of the two failures it hit: a program
+    /// the compiler read and rejected is a [`PrepareError::Compile`] the model is shown, and a
+    /// compiler that could not finish at all is a [`PrepareFailure::Toolchain`] the model is not
+    /// blamed for. Reporting the second as the first is how a model ends up rewriting a correct
+    /// program to appease a broken image.
+    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure>;
 
     /// Whether this language's [prepare step](Self::prepare_program) invokes a **compiler** — a
     /// separate process, or an in-process checker, whose cost belongs to the program that paid it.
@@ -135,7 +141,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
 
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
     /// that module's namespace, bound at `lib.<key>`.
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareError>;
+    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure>;
 
     /// The identifier a code [skill](crate::skills) or [memory](crate::memories) called `name` is
     /// bound at — the `<key>` of `lib.<key>`.
@@ -598,19 +604,28 @@ pub struct UnreachableTail {
     pub excerpt: String,
 }
 
-/// Why a source could not be prepared for its guest.
+/// Why a source could not be prepared for its guest — because of what the **model wrote**.
 ///
 /// Every variant is **recoverable and model-facing** — the model wrote something it can fix, is told
 /// exactly what, and writes another program next turn. None of them is a run-ending failure, and
-/// none of them costs any engine work: a program that does not prepare never reaches the component
-/// at all.
+/// none of them costs any *engine* work: a program that does not prepare never reaches the
+/// component, so there is no store, no instantiate and no guest. A language whose prepare step
+/// invokes a compiler does spend that compiler's time on the way here, which is why the sandbox
+/// [times the step](super::SandboxOutcome::compile) on the failing path as well as the succeeding
+/// one; "no engine work" is not "free".
 ///
-/// The four kinds are the ones every language's prepare step distinguishes, whatever its toolchain
+/// The five kinds are the ones every language's prepare step distinguishes, whatever its toolchain
 /// calls them, and they are kept apart because they have *different causes*: a syntax error is a
-/// typo, a semantic error is almost always two programs in one reply, a lowering failure is a defect
-/// in the pipeline rather than in the reply, and a refusal is gg declining something the sandbox has
-/// no implementation of. Telling them apart in the telemetry is how each shows up as a rate rather
+/// typo, a semantic error is almost always two programs in one reply, a compile error is a program
+/// the language's checker read whole and rejected, a lowering failure is a defect in the pipeline
+/// rather than in the reply, and a refusal is gg declining something the sandbox has no
+/// implementation of. Telling them apart in the telemetry is how each shows up as a rate rather
 /// than as anecdote.
+///
+/// What is **not** here is a compiler that could not finish — a `swiftc` that crashed, a toolchain
+/// binary that is not installed, a compile that outran its own timeout. That is not the model's
+/// program and there is no diagnostic to show it, so it is [`PrepareFailure::Toolchain`] rather
+/// than a variant of this enum.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum PrepareError {
     /// The source is not valid in this language — the parser's own diagnostics, located in the
@@ -622,6 +637,31 @@ pub enum PrepareError {
     /// rendering a syntax error does.
     #[error("{0}")]
     Semantic(String),
+    /// A **compiler read the whole program and rejected it** on grounds that are neither a parse
+    /// failure nor an early error the language enforces before any statement runs: a type error, a
+    /// borrow error, a name that does not resolve, an interface a class does not satisfy. Carries
+    /// the compiler's own diagnostics, located in the program's own coordinates.
+    ///
+    /// Kept apart from [`Syntax`](Self::Syntax) and [`Semantic`](Self::Semantic) rather than folded
+    /// into either, because the three have different causes and want different answers. A syntax
+    /// error is a typo and a semantic error is almost always two programs in one reply; a compile
+    /// error is a program the model wrote *whole and coherently* and got wrong about the surface it
+    /// was writing against — which is the single most interesting thing a checked language's arm can
+    /// tell a study about the SDK it was handed. Folding it into one of the others would destroy a
+    /// distinction that already earns its keep.
+    ///
+    /// It is **recoverable**, like every variant here: the model is handed the diagnostic and writes
+    /// another program. A model's own type error must never reach
+    /// [`SandboxError::Compile`](super::SandboxError::Compile), which is the committed interpreter
+    /// component failing to compile — an artifact defect that ends the session.
+    ///
+    /// No **registered** language constructs it yet: TypeScript's prepare step is an in-process
+    /// type-strip that checks nothing, and the first compiled arm is what will raise it. The
+    /// fixture language raises it under test, which is why the allowance below is
+    /// `not(test)` rather than blanket — the variant is exercised, just not by a shipped language.
+    #[cfg_attr(not(test), allow(dead_code))]
+    #[error("{0}")]
+    Compile(String),
     /// It could not be lowered into what the guest evaluates. Distinct from
     /// [`Syntax`](Self::Syntax) because it is not the model's text that failed but the transform
     /// over it — a distinction worth keeping when one of the two starts happening and the other does
@@ -638,7 +678,7 @@ pub enum PrepareError {
 impl PrepareError {
     /// The [turn error type](TurnErrorType) this failure is recorded as.
     ///
-    /// It lives here, beside the enum, rather than in the turn loop's `match`: the four causes this
+    /// It lives here, beside the enum, rather than in the turn loop's `match`: the five causes this
     /// type exists to keep apart are this module's knowledge, and a caller re-deriving them would be
     /// a second place for them to be got wrong. Every one lands under
     /// [`Transpile`](crate::limits::TurnErrorKind::Transpile) at the base level, so the wire value
@@ -647,10 +687,49 @@ impl PrepareError {
         match self {
             Self::Syntax(_) => TurnErrorType::TranspileSyntax,
             Self::Semantic(_) => TurnErrorType::TranspileSemantic,
+            Self::Compile(_) => TurnErrorType::TranspileCompile,
             Self::Lowering(_) => TurnErrorType::TranspileLowering,
             Self::Unsupported(_) => TurnErrorType::TranspileUnsupported,
         }
     }
+}
+
+/// Why one of a language's [prepare steps](ProgramLanguage::prepare_program) did not hand back a
+/// prepared source — split by **whose failure it was**.
+///
+/// The two halves are not two flavours of one thing, and the split is the whole reason this type
+/// exists. A [`Program`](Self::Program) failure is the model's: its text was read and found wanting,
+/// there is a diagnostic to hand back, and the next turn's program may well be fine because the
+/// model changed it. A [`Toolchain`](Self::Toolchain) failure is the *compiler's*: nothing was
+/// decided about the program at all, there is no diagnostic, and the next turn's program may well be
+/// fine because nothing was ever wrong with this one.
+///
+/// Before a language compiled, the distinction had no producer and the seam carried
+/// [`PrepareError`] directly. It does now: a compiler is a process, and a process that segfaults, is
+/// killed by its timeout, or is missing from the image is a failure with no model-facing content —
+/// and reporting it to the model as "your program did not compile" would send a model rewriting a
+/// program that was never wrong, which is the one misattribution this codebase spends the most
+/// effort not making.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PrepareFailure {
+    /// The **program** is what failed, in one of the [five ways](PrepareError) a language tells
+    /// apart. Recoverable and model-facing.
+    #[error("{0}")]
+    Program(#[from] PrepareError),
+    /// The **compiler could not finish**: it crashed, was killed by its own timeout, or is not
+    /// installed in this image. Recoverable — the next turn may compile — but not the model's fault
+    /// and not answered with a diagnostic, because there is none.
+    ///
+    /// Carries what gg can say about the failure for the run's *operator*: the exit status, the
+    /// signal, the tail of the compiler's stderr. It reaches the model only as a system notice
+    /// saying its program was not run, never as a compiler error.
+    ///
+    /// Unconstructed by any registered language for the reason [`PrepareError::Compile`] is: a
+    /// prepare step that spawns no compiler has no compiler that can fail to finish. The fixture
+    /// language raises it under test.
+    #[cfg_attr(not(test), allow(dead_code))]
+    #[error("{0}")]
+    Toolchain(String),
 }
 
 /// What one language's guest component needs from the host linker.

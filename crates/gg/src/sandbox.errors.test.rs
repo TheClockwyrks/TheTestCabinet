@@ -10,6 +10,7 @@ use super::*;
 use crate::ending::EndingRole;
 use crate::limits::{TurnErrorKind, TurnErrorType};
 use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
+use crate::sandbox::language::fixture;
 
 /// **A program that does not compile never touches the engine.** It is the only failure that costs
 /// nothing at all — no store, no instantiate, no fuel — so the fact that it short-circuits before the
@@ -132,6 +133,125 @@ fn a_compiler_that_rejected_the_program_still_reports_what_it_cost() {
     );
 }
 
+/// The fixture language, which is the one registered implementation that declares it
+/// [compiles](crate::sandbox::ProgramLanguage::prepare_compiles) — and therefore the only one that
+/// can raise the two failures a compiler has.
+fn compiling_language() -> &'static dyn crate::sandbox::ProgramLanguage {
+    let language = super::fixture_languages()
+        .next()
+        .expect("the fixture language is registered under test");
+    assert!(
+        language.prepare_compiles(),
+        "these assertions are about a language that compiles"
+    );
+    language
+}
+
+/// Run `source` through the compiling language, which is expected to refuse it.
+fn refused(source: &str) -> SandboxOutcome {
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        compiling_language(),
+        source,
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+    outcome
+}
+
+/// **A program the compiler read and rejected is the model's to fix, and never an artifact defect.**
+///
+/// The distinction this band exists for. `SandboxError::Compile` is the *committed interpreter
+/// component* failing to compile — an artifact defect that ends the session on the first occurrence,
+/// because every further turn would fail identically. A model's own type error is the exact opposite:
+/// the next turn's program may well compile, because the model will have changed it. Routing one
+/// through the other would end a run over a typo in a type annotation.
+#[test]
+fn a_program_its_compiler_rejected_is_recoverable_and_the_models_to_fix() {
+    let outcome = refused(&format!("def f\n  x = {}\n", fixture::MISTYPED));
+    let error = outcome
+        .result
+        .as_ref()
+        .expect_err("the fixture's checker rejects this source");
+
+    assert!(
+        matches!(error, SandboxError::Prepare(PrepareError::Compile(_))),
+        "a compiler's rejection of the model's program is a prepare failure: {error:?}"
+    );
+    assert!(
+        !error.is_artifact_defect(),
+        "a model's type error must never read as a defect in the committed component: {error:?}"
+    );
+    assert!(!error.is_host_fault(), "{error:?}");
+    assert_eq!(
+        error.turn_error_type(),
+        Some(TurnErrorType::TranspileCompile),
+        "it is recorded as its own type rather than pooled with syntax errors"
+    );
+    assert_eq!(
+        error.turn_error_type().map(TurnErrorType::kind),
+        Some(TurnErrorKind::Transpile),
+        "and under the base kind every prepare failure lands on"
+    );
+    assert!(
+        error.to_string().contains(fixture::MISTYPED),
+        "the compiler's own diagnostic is what the model gets back: {error}"
+    );
+    assert!(
+        outcome.compile.is_some(),
+        "the compile that produced the rejection cost real time and is reported"
+    );
+}
+
+/// **A compiler that could not finish is charged to the run, not to the model** — and does not end
+/// the session.
+///
+/// Three claims, and each is a different way the failure could be got wrong. It is not the model's
+/// program, so it must not arrive as a `transpile` error beside genuine type errors and skew the one
+/// rate a checked language's arm is read on. It is not gg's plumbing and not the committed artifact,
+/// so it must not end the session — a compiler that fell over on one program may well compile the
+/// next. And it is still an error turn, so a run whose image has no compiler at all stops on its
+/// error ceilings rather than burning to its deadline.
+#[test]
+fn a_compiler_that_could_not_finish_is_its_own_kind_of_failure() {
+    let outcome = refused(&format!("def f\n  {}\n", fixture::NO_COMPILER));
+    let error = outcome
+        .result
+        .as_ref()
+        .expect_err("the fixture's compiler falls over on this source");
+
+    assert!(
+        matches!(error, SandboxError::Toolchain(_)),
+        "the compiler falling over is not a prepare failure: {error:?}"
+    );
+    assert!(
+        !error.is_artifact_defect() && !error.is_host_fault(),
+        "neither predicate may claim it, because both of them end the session: {error:?}"
+    );
+    assert_eq!(
+        error.turn_error_type(),
+        Some(TurnErrorType::ToolchainFailed),
+        "the turn is still an error, so the ceilings can stop a run with a broken compiler"
+    );
+    assert_eq!(
+        error.turn_error_type().map(TurnErrorType::kind),
+        Some(TurnErrorKind::Toolchain),
+        "under its own base kind, which is the whole mechanism by which the attribution survives"
+    );
+    assert!(
+        outcome.compile.is_some(),
+        "the compile was attempted and cost time, whatever it did afterwards"
+    );
+    assert_eq!(outcome.elapsed, Duration::ZERO, "nothing ran");
+}
+
 /// A language whose prepare step compiles nothing reports **nothing**, rather than a zero.
 ///
 /// `Some(0)` and `None` are different claims — "compiled, in under a millisecond" against "there is
@@ -175,6 +295,9 @@ enum Disposition {
     ArtifactDefect,
     /// The reply was not runnable source in the run's program language. An error turn; nothing ran.
     ModelsPrepareError,
+    /// The language's compiler could not finish. An error turn the run carries on from, and the one
+    /// that is charged to the run rather than to the model: nothing was decided about the program.
+    ToolchainFailure,
     /// The sandbox stopped a program that *did* run. An error turn; the calls it landed stand.
     ModelsSandboxLimit,
 }
@@ -192,6 +315,8 @@ fn derived_disposition(error: &SandboxError) -> Disposition {
         Disposition::GgsFault
     } else if matches!(error, SandboxError::Prepare(_)) {
         Disposition::ModelsPrepareError
+    } else if matches!(error, SandboxError::Toolchain(_)) {
+        Disposition::ToolchainFailure
     } else {
         Disposition::ModelsSandboxLimit
     }
@@ -206,6 +331,7 @@ fn derived_disposition(error: &SandboxError) -> Disposition {
 fn declared_disposition(error: &SandboxError) -> Disposition {
     match error {
         SandboxError::Prepare(_) => Disposition::ModelsPrepareError,
+        SandboxError::Toolchain(_) => Disposition::ToolchainFailure,
         SandboxError::Engine(_) => Disposition::GgsFault,
         SandboxError::Host(_) => Disposition::GgsFault,
         SandboxError::Compile(_) => Disposition::ArtifactDefect,
@@ -220,12 +346,13 @@ fn declared_disposition(error: &SandboxError) -> Disposition {
 ///
 /// Kept beside [`declared_disposition`], whose exhaustive `match` is what makes a new variant
 /// impossible to add without coming here.
-const SANDBOX_ERROR_VARIANTS: usize = 8;
+const SANDBOX_ERROR_VARIANTS: usize = 9;
 
 /// One of every [`SandboxError`], for the totality assertions below.
 fn every_sandbox_error() -> Vec<SandboxError> {
     vec![
         SandboxError::Prepare(PrepareError::Syntax("bad".into())),
+        SandboxError::Toolchain("`fixturec` exited with signal 11".into()),
         SandboxError::Engine("no fuel metering".into()),
         SandboxError::Host("the blocking task panicked".into()),
         SandboxError::Compile("not a component".into()),
@@ -291,6 +418,7 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
             // ...and under the base kind the disposition says it is.
             let expected = match declared_disposition(&error) {
                 Disposition::ModelsPrepareError => TurnErrorKind::Transpile,
+                Disposition::ToolchainFailure => TurnErrorKind::Toolchain,
                 Disposition::ModelsSandboxLimit => TurnErrorKind::SandboxLimit,
                 other => panic!("{error:?} is {other:?} and should carry no type"),
             };
@@ -306,7 +434,7 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
     assert_eq!(
         distinct.len(),
         recorded.len(),
-        "the four recordable failures must not share a type: {distinct:?}"
+        "the five recordable failures must not share a type: {distinct:?}"
     );
     assert!(
         distinct.is_superset(&std::collections::BTreeSet::from([
@@ -316,11 +444,18 @@ fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
         ])),
         "the three ceilings are three types: {distinct:?}"
     );
+    // ...and a compiler that could not finish is charged to its own base, not to the model's
+    // transpile rate. That separation is the whole reason the variant exists.
+    assert!(
+        distinct.contains("toolchain_failed"),
+        "a compiler that could not finish carries its own type: {distinct:?}"
+    );
 }
 
-/// The four prepare failures are four recorded types, because they have four different causes: a
-/// syntax error is a typo, a semantic error is almost always two programs in one reply, a lowering
-/// failure is a defect in gg's own pipeline, and a refusal is gg declining a feature.
+/// The five prepare failures are five recorded types, because they have five different causes: a
+/// syntax error is a typo, a semantic error is almost always two programs in one reply, a compile
+/// error is a whole coherent program written against the wrong surface, a lowering failure is a
+/// defect in gg's own pipeline, and a refusal is gg declining a feature.
 ///
 /// The enum's own rustdoc has always claimed that "telling them apart in the telemetry is how each
 /// shows up as a rate rather than as anecdote". Until now the telemetry did not tell them apart.
@@ -334,6 +469,10 @@ fn every_prepare_failure_is_recorded_as_its_own_type() {
         (
             PrepareError::Semantic("`x` declared twice".into()),
             TurnErrorType::TranspileSemantic,
+        ),
+        (
+            PrepareError::Compile("`x` is not assignable to `Word`".into()),
+            TurnErrorType::TranspileCompile,
         ),
         (
             PrepareError::Lowering("could not lower".into()),
@@ -413,6 +552,12 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
             "{error:?} is classified as gg's own failure when it is not (or the reverse)"
         );
     }
+    assert!(
+        !SandboxError::Toolchain("`swiftc` was killed".into()).is_host_fault()
+            && !SandboxError::Toolchain("`swiftc` was killed".into()).is_artifact_defect(),
+        "a compiler that fell over is neither gg's plumbing nor the committed artifact: both of \
+         those end the session, and the next program may well compile"
+    );
     assert!(
         !SandboxError::Trap("wasm trap: unreachable".into()).is_host_fault(),
         "a guest trap is the program's, not gg's"

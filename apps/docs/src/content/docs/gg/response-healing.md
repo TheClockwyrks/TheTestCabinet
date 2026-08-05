@@ -37,8 +37,10 @@ the model's reply, unmodified   ── streamed as its assistant_message, pushed
 ```
 
 Every reply travels the whole way. **gg never asks whether a reply "is a program"** —
-that question belongs to the compiler, which answers it with a located diagnostic over
-the model's own text rather than with gg's reading of it. An empty reply becomes an empty
+that question belongs to the language's own prepare step, which answers it with a located
+diagnostic over the model's own text rather than with gg's reading of it. For a language
+whose preparation runs a real compiler that answer can also be a *type* error rather than a
+parse error; either way it is the compiler's words, not gg's. An empty reply becomes an empty
 program that runs and does nothing. A reply of comments becomes a program that runs and
 does nothing. A reply that is two programs pasted together fails to compile, with the
 redeclaration error that really is what is wrong with it. A reply of prose fails to
@@ -552,6 +554,13 @@ the whole ablation.
 A response is **healed** exactly when at least one repair was applied to it, since every
 healed reply then runs. The denominator for every rate is `codeExecutions`, which is one
 per code-shaped turn — including the turns whose reply did not compile.
+
+It also includes the turns whose **compiler could not finish**, and those say nothing about
+healing at all. A `toolchain_failed` turn is one where the language's compiler crashed, was
+killed by its timeout, or was missing from the image: nothing read the reply, so it is
+neither evidence that a repair failed nor evidence that one was needed. When an ablation
+arm's compiler is flaky, read its healing rates against
+[`errors.toolchain`](/gg/telemetry/) before reading them against each other.
 
 Read the per-strategy counts as **what gg's pipeline did**, not as what the model wrote.
 The pipeline applies its strategies in a fixed order to a fixpoint, so which strategy
