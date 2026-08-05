@@ -885,15 +885,20 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
     assert_eq!(offered(&both, Some(&position)), (false, true));
 }
 
-/// The canonical [`ALL_TOOL_NAMES`] vocabulary stays in lockstep with what the registry can offer:
-/// a maximal capability set (every capability enabled, every store bound, a non-empty skill
-/// library) offers exactly the names in `ALL_TOOL_NAMES`. This guards the per-tool-override
-/// vocabulary against drift when a tool is added or renamed.
-#[test]
-fn all_tool_names_matches_a_maximal_registry() {
+/// **Every registry a maximal run can produce**: every capability enabled, every store bound, a
+/// non-empty skill library — one per memory strategy, and one on each side of the machine-position
+/// split.
+///
+/// Both partitions are why this is a set of registries rather than one. A run picks a single memory
+/// strategy and each offers a different family; and `transition_state` and `exec` are deliberately
+/// **mutually exclusive**, because a state's next move belongs to its machine. So no single registry
+/// can offer every tool gg has, and "every tool gg has" is the union over these.
+///
+/// The [`TempDir`] is handed back with them: the skill library reads from it, so dropping it here
+/// would leave every registry holding a library over a directory that no longer exists.
+fn maximal_registries() -> (TempDir, Vec<ToolRegistry>) {
     use crate::board::BoardCaps;
     use crate::memories::{MemoryCaps, MemoryStrategy};
-    use std::collections::BTreeSet;
     use test_cabinet_core::gg::{
         CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
         CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
@@ -933,15 +938,7 @@ fn all_tool_names_matches_a_maximal_registry() {
     // profile may spawn.
     set.subagents.push(GgSubagentRef::any(ROOT_AGENT));
     let position = fsm_position();
-    // The memory tools are the one family a *strategy* partitions rather than a capability alone
-    // offering all of them: a run picks one strategy, and each offers a different set. So the
-    // maximal toolset is the union over the strategies — every memory tool is offered by exactly
-    // one of these registries, and none of them by none.
-    //
-    // The union is taken over the machine position as well, because `transition_state` and `exec`
-    // are deliberately **mutually exclusive**: a state's next move belongs to its machine, so no
-    // single registry can offer both and "every tool gg can offer" is the union of the two.
-    let offered: BTreeSet<String> = [
+    let registries = [
         MemoryStrategy::Scratchpad,
         MemoryStrategy::Markdown,
         MemoryStrategy::KeywordSearch,
@@ -950,7 +947,7 @@ fn all_tool_names_matches_a_maximal_registry() {
     .flat_map(|strategy| {
         let set = &set;
         let library = &library;
-        [Some(&position), None].into_iter().flat_map(move |fsm| {
+        [Some(&position), None].into_iter().map(move |fsm| {
             ToolRegistry::from_run(
                 set,
                 &skills_modules(library)
@@ -963,16 +960,94 @@ fn all_tool_names_matches_a_maximal_registry() {
                     .with(ModuleHandle::Archive(ArchiveRuntime::new())),
                 &AgentFacts { fsm },
             )
-            .tool_names()
         })
     })
     .collect();
+    (dir, registries)
+}
+
+/// The canonical [`ALL_TOOL_NAMES`] vocabulary stays in lockstep with what the registry can offer:
+/// a [maximal capability set](maximal_registries) offers exactly the names in `ALL_TOOL_NAMES`.
+/// This guards the per-tool-override vocabulary against drift when a tool is added or renamed.
+#[test]
+fn all_tool_names_matches_a_maximal_registry() {
+    use std::collections::BTreeSet;
+
+    let (_dir, registries) = maximal_registries();
+    let offered: BTreeSet<String> = registries
+        .iter()
+        .flat_map(|registry| registry.tool_names())
+        .collect();
 
     let canonical: BTreeSet<String> = ALL_TOOL_NAMES.iter().map(|s| s.to_string()).collect();
     assert_eq!(
         offered, canonical,
         "ALL_TOOL_NAMES must list exactly the tools a maximal registry offers"
     );
+}
+
+/// **Every tool a run offers declares itself well enough to be called**, in the one document a
+/// tool-calling model reads it through.
+///
+/// gg's system prompt deliberately [names no tools](crate::prompts): on that arm the toolset *is*
+/// the declaration, so everything a model knows about `write_file` before calling it — that it
+/// exists, what it is for, what each argument means, which are required — is in this
+/// [`ToolDefinition`] and nowhere else. A tool whose description is empty, or whose arguments are
+/// declared without saying what they are, is a tool the model can see and cannot use, and the
+/// failure shows up as the model reaching for it and getting an argument error it cannot diagnose.
+///
+/// Asserted on the declaration's **shape** rather than its wording: that each part is present and
+/// internally consistent, never that it says any particular thing. Rewriting a description is an
+/// editing pass and must stay one.
+#[test]
+fn every_offered_tool_declares_itself_to_the_model() {
+    let (_dir, registries) = maximal_registries();
+    for registry in &registries {
+        for definition in registry.definitions() {
+            let name = &definition.name;
+            assert!(
+                !definition.description.trim().is_empty(),
+                "`{name}` is offered with no description, so nothing tells the model what it is"
+            );
+            let parameters = definition
+                .parameters
+                .as_object()
+                .unwrap_or_else(|| panic!("`{name}` must declare a JSON-Schema object"));
+            assert_eq!(
+                parameters.get("type").and_then(|value| value.as_str()),
+                Some("object"),
+                "`{name}`'s parameters must be an object schema: a model builds its call as one"
+            );
+            let properties = parameters
+                .get("properties")
+                .and_then(|value| value.as_object())
+                .unwrap_or_else(|| panic!("`{name}` must declare its properties"));
+            for (argument, schema) in properties {
+                let description = schema
+                    .get("description")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default();
+                assert!(
+                    !description.trim().is_empty(),
+                    "`{name}`'s `{argument}` is declared with nothing that says what it is"
+                );
+            }
+            // A required argument the schema never declares is one the model is told to send and
+            // given no way to write: it has neither a type nor a description to build a value from.
+            for required in parameters
+                .get("required")
+                .and_then(|value| value.as_array())
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+            {
+                let required = required.as_str().expect("a required name is a string");
+                assert!(
+                    properties.contains_key(required),
+                    "`{name}` requires `{required}` and never declares it"
+                );
+            }
+        }
+    }
 }
 
 /// Each strategy offers its own memory tools and **only** its own: a model is never shown two ways
