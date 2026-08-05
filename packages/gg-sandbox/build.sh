@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 #
-# Refresh the two COMMITTED artifacts this package produces:
+# Refresh the COMMITTED artifacts this package produces:
 #
-#   crates/gg/src/sandbox/guests/typescript.component.wasm   the baked interpreter component
-#   crates/gg/src/sandbox/guests/typescript.signatures.json  the catalogue the prompt is built from
+#   crates/gg/src/sandbox/guests/typescript.component.wasm    the baked interpreter component
+#   crates/gg/src/sandbox/guests/typescript.signatures.json   the catalogue the prompt is built from
+#   crates/gg/src/sandbox/checkers/typescript.tsc.js          the compiler that type-checks a program
+#   crates/gg/src/sandbox/checkers/typescript.lib.d.ts        the standard library it checks against
+#   crates/gg/src/sandbox/checkers/typescript.globals.d.ts    the globals no SDK declaration covers
+#   crates/gg/src/sandbox/checkers/typescript.checker.json    which compiler, at which level
 #
 # They are named for the PROGRAM LANGUAGE this guest implements, not for this package. gg's
 # responses-as-code capability registers a language per guest, and each one commits its pair under
@@ -22,6 +26,8 @@
 #   * crates/gg/wit/gg-sandbox.wit  (the membrane — a WIT change without a rebuild fails gg's
 #                                    instantiation test, which is the intended failure direction)
 #   * packages/gg-sandbox/src/**    (the SDK, the shim, or the catalogue)
+#   * packages/gg-sandbox/tools/program-globals.d.ts  (the globals a checked program may name)
+#   * the pinned `typescript` version in package.json (which the checker is cut from)
 #
 # Requires Node and network access the first time, to fetch the pinned `componentize-js` through
 # `npx`; nothing else. The build takes a few seconds and emits ~13 MB, because the component embeds a
@@ -84,6 +90,12 @@ npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 #    script, because CI runs that script on its own as the catalogue's drift gate.
 echo "Reflecting the signature catalogue ..."
 npm run --workspace @test-cabinet/gg-sandbox signatures
+
+# 4. Cut the checker gg type-checks a model's program with out of the same pinned `typescript` this
+#    package installs, so what the SDK's declarations were emitted by and what a program is judged
+#    against are one release. It needs neither the component nor `componentize-js`.
+echo "Cutting the TypeScript checker ..."
+npm run --workspace @test-cabinet/gg-sandbox checker
 
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
 echo "Remember to commit the refreshed artifacts together with the source change."

@@ -33,13 +33,16 @@ repos:
         # renders of a case's authored mockups (a full-detail gameplay frame is a
         # large PNG). `reference-impl/<variant>/assets/` holds the sprites, particle
         # systems, and audio the reference build produced with the asset-generation
-        # tools (a music bed is several MB of WAV). `crates/gg/src/sandbox/*.wasm`
-        # is gg's responses-as-code guest component: it embeds a JavaScript engine,
-        # so it is ~13MB by construction, and — like the `foray-ref-*` guests — it is
-        # rebuilt by a documented `build.sh` and committed beside its source so no
-        # build or CI step ever needs Node. All are generated wholesale and tracked
-        # deliberately.
-        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)crates/gg/src/sandbox/[^/]+\.wasm$'
+        # tools (a music bed is several MB of WAV). `crates/gg/src/sandbox/guests/`
+        # and `crates/gg/src/sandbox/checkers/` hold what a gg program language
+        # carries: the guest component that evaluates a program (it embeds a
+        # JavaScript engine, so it is ~13MB by construction) and, for a language that
+        # type-checks, the compiler that judges one (~6MB). Both are rebuilt by a
+        # documented `build.sh` and committed beside their source — like the
+        # `foray-ref-*` guests — so no build or CI step ever needs Node, and so gg
+        # arrives in a run container carrying everything it needs. All are generated
+        # wholesale and tracked deliberately.
+        exclude: '(^|/)(validation-baseline|reference/screenshots)/|(^|/)reference-impl/[^/]+/assets/|(^|/)crates/gg/src/sandbox/(guests|checkers)/'
       - id: check-case-conflict
       - id: check-executables-have-shebangs
       - id: check-illegal-windows-names

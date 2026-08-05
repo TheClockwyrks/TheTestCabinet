@@ -1,0 +1,172 @@
+// Emit the two COMMITTED artifacts gg type-checks a TypeScript program with.
+//
+// A model's reply is TypeScript, and gg checks it: `crates/gg/src/sandbox/language/typescript.rs`
+// runs `tsc` over the program before the guest evaluates it, so a type error comes back as a
+// located diagnostic the model can fix rather than as a `TypeError` half way through a turn's work.
+// That check runs INSIDE THE RUN CONTAINER, where the only thing gg can rely on is the `node` every
+// run image already ships and gg's own single copied-in binary. So the checker travels with gg:
+//
+//   node_modules/typescript/lib/_tsc.js      --this script-->  checkers/typescript.tsc.js
+//   node_modules/typescript/lib/lib.*.d.ts   --this script-->  checkers/typescript.lib.d.ts
+//   tools/program-globals.d.ts               --this script-->  checkers/typescript.globals.d.ts
+//                                            --this script-->  checkers/typescript.checker.json
+//
+// under `crates/gg/src/sandbox/`, where `typescript.check.rs` embeds all four with `include_str!`
+// exactly as `typescript.rs` embeds the component and the catalogue. Committed rather than fetched,
+// for the reason every other guest artifact is: a run container has no npm and may have no network,
+// and a checker resolved from the workspace would be whatever version the model happened to install.
+//
+// # Why the compiler bundle and not the whole package
+//
+// `_tsc.js` is the compiler behind the `tsc` CLI — 6.2 MB against `typescript.js`'s 9.1 MB, which
+// additionally carries the language service (completions, refactors, a watch server) that a
+// one-shot `--noEmit` check has no use for. Everything a check needs is in it, and it is invoked
+// exactly as npm's own `tsc` shim invokes it.
+//
+// # Why the default library arrives concatenated
+//
+// `lib: ["ES2022"]` is 57 separate `lib.*.d.ts` files that reference each other, and `tsc` resolves
+// them by name from the directory the executing script sits in. Shipping 57 files would mean 57
+// writes on gg's side and 57 opens on every check. Concatenating them into ONE file and checking
+// with `noLib` instead — the concatenation named in `files`, the `/// <reference lib=…/>` lines that
+// join them removed — is the same declarations in the same order, one write and one open, and it is
+// measurably the faster of the two.
+//
+// The set is not hand-listed: it is whatever `tsc` itself loads for `lib: ["ES2022"]`, read back out
+// of a throwaway program in dependency order, so a TypeScript upgrade that adds a library file picks
+// it up rather than silently checking against a shorter language.
+//
+// # Usage
+//
+//   npm run --workspace @test-cabinet/gg-sandbox checker
+//
+// It is run by `packages/gg-sandbox/build.sh` alongside the component and the catalogue, and its
+// outputs are committed with the change that motivated them.
+
+import fs from "node:fs";
+import { createRequire } from "node:module";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
+/** @type {import("typescript")} */
+const ts = require("typescript");
+
+const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = path.resolve(PACKAGE_DIR, "..", "..");
+const OUT_DIR = path.join(REPO_ROOT, "crates", "gg", "src", "sandbox", "checkers");
+
+/**
+ * The TypeScript release the committed checker is cut from, pinned here the way the component's
+ * `componentize-js` release is pinned in `build.sh`.
+ *
+ * Pinned rather than floating because the checker is a multi-megabyte binary artifact in the
+ * repository AND a variable in a cross-language study: a silent minor bump would land as an
+ * unexplained diff and would change what a model's program is judged against half way through a
+ * sweep. It must equal the version `packages/gg-sandbox/package.json` installs — this script fails
+ * rather than quietly emitting a checker nobody chose.
+ */
+const TYPESCRIPT_VERSION = "5.9.3";
+
+/**
+ * The language level a model's program is checked at.
+ *
+ * ES2022 because that is what the rest of this repository targets (`tsconfig.base.json`) and what
+ * the guest's JavaScript engine implements. `DOM` is deliberately absent: a program runs in a wasm
+ * component with no document and no `fetch`, so declaring the browser would type-check calls that
+ * cannot resolve at run time — the one thing a checker must never do.
+ */
+const TARGET_LIB = "ES2022";
+
+/** The bundle behind the `tsc` CLI, resolved out of the pinned package. */
+function compilerBundle() {
+  const lib = path.dirname(require.resolve("typescript"));
+  return path.join(lib, "_tsc.js");
+}
+
+/**
+ * Every default-library file `tsc` loads for {@link TARGET_LIB}, in the order it loads them.
+ *
+ * Read out of a real program rather than listed: `getSourceFiles()` returns the libraries first, in
+ * dependency order, which is exactly the order a concatenation needs.
+ */
+function defaultLibraryFiles() {
+  const libDir = path.dirname(require.resolve("typescript"));
+  const options = {
+    target: ts.ScriptTarget.ES2022,
+    lib: [`lib.${TARGET_LIB.toLowerCase()}.d.ts`],
+    types: [],
+    noEmit: true,
+  };
+  const host = ts.createCompilerHost(options, false);
+  const emptyProgram = "probe.ts";
+  const inner = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, languageVersion) =>
+    name === emptyProgram
+      ? ts.createSourceFile(name, "", languageVersion)
+      : inner(name, languageVersion);
+  host.fileExists = (name) => name === emptyProgram || fs.existsSync(name);
+  const program = ts.createProgram([emptyProgram], options, host);
+  const libs = program
+    .getSourceFiles()
+    .map((file) => file.fileName)
+    .filter((name) => path.dirname(path.resolve(name)) === path.resolve(libDir));
+  if (libs.length === 0) {
+    throw new Error(`no default library files resolved for lib: ["${TARGET_LIB}"]`);
+  }
+  return libs;
+}
+
+/** One `.d.ts` with its inter-file `/// <reference lib=…/>` directives removed. */
+function withoutReferences(file) {
+  return fs
+    .readFileSync(file, "utf8")
+    .replace(/^\/\/\/\s*<reference\s+lib=.*$/gm, "");
+}
+
+function main() {
+  if (ts.version !== TYPESCRIPT_VERSION) {
+    throw new Error(
+      `this script emits the checker for TypeScript ${TYPESCRIPT_VERSION}, but the installed ` +
+        `compiler is ${ts.version}. Update the pin here and in packages/gg-sandbox/package.json ` +
+        `together, and commit the refreshed artifacts.`,
+    );
+  }
+
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  const bundle = compilerBundle();
+  fs.writeFileSync(path.join(OUT_DIR, "typescript.tsc.js"), fs.readFileSync(bundle));
+
+  const libs = defaultLibraryFiles();
+  const declarations = libs.map(withoutReferences).join("\n");
+  fs.writeFileSync(path.join(OUT_DIR, "typescript.lib.d.ts"), declarations);
+
+  // The two names a program reaches that no SDK declaration covers. Authored beside the shim that
+  // installs them; copied rather than generated, because they are declarations already.
+  fs.copyFileSync(
+    path.join(PACKAGE_DIR, "tools", "program-globals.d.ts"),
+    path.join(OUT_DIR, "typescript.globals.d.ts"),
+  );
+
+  const manifest = {
+    language: "typescript",
+    typescript: TYPESCRIPT_VERSION,
+    lib: TARGET_LIB,
+    libraryFiles: libs.map((file) => path.basename(file)),
+    generatedFrom: "packages/gg-sandbox/tools/checker.mjs",
+  };
+  fs.writeFileSync(
+    path.join(OUT_DIR, "typescript.checker.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+  );
+
+  process.stdout.write(
+    `Wrote the TypeScript ${TYPESCRIPT_VERSION} checker: ` +
+      `tsc.js (${fs.statSync(bundle).size} bytes), ` +
+      `lib.d.ts (${Buffer.byteLength(declarations)} bytes, ${libs.length} files).\n`,
+  );
+}
+
+main();

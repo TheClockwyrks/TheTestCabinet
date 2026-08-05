@@ -16,7 +16,7 @@ is a **sibling directory**, not a change here. What every guest shares, and what
 new one has to satisfy, is in [Another language](#another-language) below and in
 [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
 
-It is not published and has no runtime dependents. Its output is two **committed
+It is not published and has no runtime dependents. Its output is a set of **committed
 binary/generated artifacts** in the Rust crate, named for the language rather than
 for this package:
 
@@ -24,6 +24,10 @@ for this package:
 | --- | --- |
 | [`crates/gg/src/sandbox/guests/typescript.component.wasm`](../../crates/gg/src/sandbox/guests/) | The baked component, `include_bytes!`d by the host. **14,004,036 bytes** (13.4 MiB) as committed. |
 | [`crates/gg/src/sandbox/guests/typescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
+| [`crates/gg/src/sandbox/checkers/typescript.tsc.js`](../../crates/gg/src/sandbox/checkers/) | The compiler gg type-checks a model's program with, cut from the pinned `typescript`. **6.2 MB**, `include_str!`d and written out once per process. |
+| [`crates/gg/src/sandbox/checkers/typescript.lib.d.ts`](../../crates/gg/src/sandbox/checkers/) | The ES2022 standard library, 57 files concatenated so a check opens one. |
+| [`crates/gg/src/sandbox/checkers/typescript.globals.d.ts`](../../crates/gg/src/sandbox/checkers/) | `tools/program-globals.d.ts`, verbatim: the names a program reaches that no SDK declaration covers. |
+| [`crates/gg/src/sandbox/checkers/typescript.checker.json`](../../crates/gg/src/sandbox/checkers/) | Which compiler, at which language level. |
 
 ## Layout
 
@@ -38,7 +42,9 @@ for this package:
 | `src/session.ts` | `finish(summary)` and the two verdict endings — model-facing functions that are not gg tools. |
 | `src/shim.ts` | The component's entry point: `run(program, tools)` and `boundTools()`. |
 | `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files. |
-| `build.sh` | Refreshes both committed artifacts. |
+| `tools/checker.mjs` | Cuts the committed `tsc` and its standard library out of the pinned `typescript`. |
+| `tools/program-globals.d.ts` | `console`, `lib`, `performance`, `crypto` — declared for the checker, beside the shim that installs them. |
+| `build.sh` | Refreshes every committed artifact. |
 
 There is deliberately **one** copy of the WIT, and it lives in the Rust crate that
 embeds the component (`crates/gg/wit/`); `build.sh` points `componentize-js` at it.
@@ -91,16 +97,19 @@ the catalogue cannot disagree quietly.
 packages/gg-sandbox/build.sh
 ```
 
-Run it — and commit both outputs with the source change — after editing:
+Run it — and commit every output with the source change — after editing:
 
 - `crates/gg/wit/gg-sandbox.wit` (the membrane),
-- anything under `src/` (the SDK, the shim, or the catalogue).
+- anything under `src/` (the SDK, the shim, or the catalogue),
+- `tools/program-globals.d.ts` (the globals a checked program may name),
+- the pinned `typescript` version in `package.json`.
 
 The script type-checks the guest, bakes the component with the **pinned**
-`componentize-js@0.21.0` through `npx`, and regenerates the signature catalogue.
-It takes a few seconds. `componentize-js` is intentionally *not* a dependency of
-this package: it is ~208 MB of `node_modules`, and `npm ci` runs in three CI jobs
-that have no use for it.
+`componentize-js@0.21.0` through `npx`, regenerates the signature catalogue, and
+cuts the **checker** gg type-checks a model's program with out of the pinned
+`typescript`. It takes a few seconds. `componentize-js` is intentionally *not* a
+dependency of this package: it is ~208 MB of `node_modules`, and `npm ci` runs in
+three CI jobs that have no use for it.
 
 A rebuild is **not** byte-identical even when nothing changed: the component
 snapshots its own build instant. Two refreshes of identical source were measured a
@@ -190,6 +199,9 @@ measuring the surfaces rather than the languages.
 **3. The artifact convention.**
 `crates/gg/src/sandbox/guests/<language-id>.{component.wasm,signatures.json}`, both
 committed, both embedded by that language's module in `crates/gg/src/sandbox/language/`.
+A language that type-checks the model's program commits its checker beside them, under
+`crates/gg/src/sandbox/checkers/<language-id>.*` — gg is copied as a single file into a run
+container, so a compiler it needs is a compiler it carries.
 
 Everything else is that language's own. In particular its **SDK is hand-written and
 idiomatic for it** — `snake_case` names, keyword arguments where TypeScript takes a

@@ -2,7 +2,7 @@
 # Regenerates every generated-and-committed contract artifact from its source of
 # truth and fails if a committed copy is stale.
 #
-# Three artifacts are checked here, because each is generated from source that a
+# Four artifacts are checked here, because each is generated from source that a
 # change can edit without remembering to regenerate:
 #
 #  1. The data contract. The TS bindings (packages/run-record/src/) and the JSON
@@ -42,6 +42,14 @@
 #     therefore sit in the diffed directory untouched: nothing here regenerates one,
 #     so one cannot cause a false positive, and if one ever does diff then something
 #     rewrote a binary CI must not touch and failing is right.
+#
+#  4. gg's program CHECKERS, under crates/gg/src/sandbox/checkers/. A language that
+#     type-checks a model's program carries its compiler and that compiler's standard
+#     library, because gg is copied as a single file into a run container. TypeScript's
+#     is cut straight out of the pinned `typescript` — the same one the catalogue is
+#     reflected with — so bumping the pin without re-cutting the checker would leave a
+#     model's program judged by one release and its prompt written from another. It is
+#     the same regenerate-and-diff rule, and it needs only `typescript` too.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -97,11 +105,14 @@ done
 log "regenerate gg's sandbox signature catalogues (tsc + tools/signatures.mjs)"
 npm run --workspace @test-cabinet/gg-sandbox signatures
 
-log "check for signature drift"
-if ! git diff --exit-code -- crates/gg/src/sandbox/guests; then
+log "re-cut gg's program checkers (tools/checker.mjs)"
+npm run --workspace @test-cabinet/gg-sandbox checker
+
+log "check for signature and checker drift"
+if ! git diff --exit-code -- crates/gg/src/sandbox/guests crates/gg/src/sandbox/checkers; then
 	cat >&2 <<'EOF'
 
-error: a committed gg sandbox signature catalogue is out of date.
+error: a committed gg sandbox catalogue or program checker is out of date.
 crates/gg/src/sandbox/guests/<language>.signatures.json no longer matches that
 language's guest SDK declarations, so the responses-as-code prompt would show
 models a surface the sandbox does not export.
@@ -112,6 +123,11 @@ If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script
 — for TypeScript, packages/gg-sandbox/build.sh — and commit
 crates/gg/src/sandbox/guests/<language>.component.wasm alongside.
+
+If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's
+program is type-checked with no longer matches the one installed here — usually a
+`typescript` version bump. Run `npm run -w @test-cabinet/gg-sandbox checker` and
+commit the result.
 EOF
 	exit 1
 fi
