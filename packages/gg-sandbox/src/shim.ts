@@ -210,9 +210,12 @@ function firstProgramFrame(thrown: unknown): { line: number; column: number } | 
  * Replacing each with a thrower turns both into an ordinary, located program error the model can
  * read and correct on its next turn.
  *
- * Nothing here denies a *capability the host has*. The clock, the RNG, `crypto` and the filesystem
- * are all real and all reachable — `Date.now()` is the wall clock, `Math.random()` and
- * `crypto.randomUUID()` are seeded from the host's entropy.
+ * Nothing here denies a *capability this component has*. The clock, the RNG and `crypto` are all
+ * real and all reachable — `Date.now()` is the host's wall clock, `Math.random()` and
+ * `crypto.randomUUID()` draw the host's entropy. `fetch`'s reason is therefore about **this
+ * artifact**, not about the sandbox: gg's host linker defines `wasi:sockets` for every guest, and a
+ * guest that imported it would have the network. This one is baked without an HTTP client, so it
+ * does not.
  */
 const DENIED_GLOBALS: readonly (readonly [string, string])[] = [
   ["setTimeout", "there is no event loop, so a scheduled callback would never run"],
@@ -221,7 +224,7 @@ const DENIED_GLOBALS: readonly (readonly [string, string])[] = [
   ["clearInterval", "there is no event loop, so a scheduled callback would never run"],
   ["queueMicrotask", "deferred work is not part of your program's result"],
   ["requestAnimationFrame", "there is no event loop, so a scheduled callback would never run"],
-  ["fetch", "there is no network"],
+  ["fetch", "this program's runtime is built without an HTTP client"],
 ];
 
 /** A function that throws the denial for `name`, naming what the sandbox does not have. */

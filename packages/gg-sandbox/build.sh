@@ -58,7 +58,10 @@ npx --yes tsc -p "$ROOT/$PACKAGE/tsconfig.json"
 #      stdio        gg's telemetry IS this process's stdout (newline-delimited JSON); a guest write
 #                   would corrupt the stream, so `console.*` is rebound to a host call instead
 #      http,
-#      fetch-event  no network from inside a program; `shell` is the only way out of the sandbox
+#      fetch-event  this guest gets no HTTP client. Not a sandbox-wide denial: gg's host linker
+#                   defines the whole WASI surface, `wasi:sockets` included, for every guest — a
+#                   guest that imports it has the network. This one does not import it, and the two
+#                   flags are what keep `fetch` from reaching an import that is not there
 #
 #    Everything else the engine offers — the clock, the RNG — is left in place: a program that asks
 #    what time it is gets the answer, and gg's host linker supplies the rest of WASI ambiently.

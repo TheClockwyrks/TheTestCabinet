@@ -1350,8 +1350,11 @@ program error rather than left to fail silently:
   Unshadowed, `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at `0` and reports no error
   at all, which is the worst possible answer to the single most common reflex a model
   brings to a new runtime;
-- **`fetch`**, and `queueMicrotask`, which does run but runs *after* the program has ended
-  — outside the turn, where a failure inside it would be invisible.
+- **`fetch`**, because the TypeScript component is baked without an HTTP client. That is a
+  fact about *this guest*, not about the sandbox: the host links `wasi:sockets` for every
+  guest, so a guest that imported it would have the network;
+- **`queueMicrotask`**, which does run but runs *after* the program has ended — outside the
+  turn, where a failure inside it would be invisible.
 
 The mechanism is worth knowing because it is where a guest's failures come from. Baking
 the component without a WASI capability removes the underlying **import** but leaves the
@@ -1386,7 +1389,7 @@ record.
 | An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, and the line of the program that made the call. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
 | A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |
-| A denied global (`setTimeout`, `fetch`, …) | the guest's throwers | a `Runtime error`: the denied name, why the sandbox cannot honour it (there is no event loop; there is no network), and the line |
+| A denied global (`setTimeout`, `fetch`, …) | the guest's throwers | a `Runtime error`: the denied name, why this guest cannot honour it (there is no event loop; this runtime is built without an HTTP client), and the line |
 | The program returned a Promise | the guest | a `Runtime error` naming what came back and that the sandbox is synchronous |
 | The program `return`ed a value | the guest | nothing. That a returned value is discarded is a standing rule in the system prompt; that this program returned one goes to the operator |
 | A view call broke one of [its caps](#the-caps-and-why-none-of-them-truncates) — a body or label over the ceiling, a fifty-first text view, a hundred-and-first view operation, an empty label | the host, which owns the window | a catchable `limit-exceeded` (or `invalid-argument`) thrown at the call site, **naming the cap**, and nothing afterwards: material that never reached the window is refused where the program can still do something about it |
