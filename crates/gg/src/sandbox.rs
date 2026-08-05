@@ -28,8 +28,12 @@
 //! language**: the [`Engine`](wasmtime::Engine) and each compiled
 //! [`Component`](wasmtime::component::Component) live behind a `OnceLock`, and every program pays
 //! only instantiate (24–124 µs) and invoke (0.7–3 ms). [`precompile`] moves even that one compile
-//! off the first turn's critical path. Nothing on the hot path shells out — TypeScript's type-strip
-//! is `oxc`, in-process, at ~0.2 ms.
+//! off the first turn's critical path.
+//!
+//! What a turn *does* pay is its own language's prepare step. TypeScript's is two passes: the `oxc`
+//! type-strip, in-process at ~0.2 ms, and a `tsc` type check that spawns `node` against the
+//! committed checker at ~90 ms. That is a real per-turn cost on the hot path, which is why it is
+//! measured rather than assumed — see [`SandboxOutcome::compile`].
 //!
 //! ## What a program costs, and what bounds it
 //!

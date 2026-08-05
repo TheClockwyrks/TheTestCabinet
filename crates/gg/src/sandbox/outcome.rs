@@ -145,8 +145,10 @@ pub struct SandboxOutcome {
     /// shells out to — for a language that declares it
     /// [compiles](super::ProgramLanguage::prepare_compiles).
     ///
-    /// `None` for a language whose prepare step is in-process and free (TypeScript's type-strip),
-    /// where the figure would be a sub-millisecond zero on every turn and would say nothing.
+    /// `None` for a language that compiles nothing — one whose prepare step is in-process and free,
+    /// where the figure would be a sub-millisecond zero on every turn and would say nothing. No
+    /// registered language is one: TypeScript's prepare step type-checks with `tsc`, so it takes
+    /// the `Some` branch on every turn, and the fixture language is the only subject left.
     ///
     /// Reported on **every** path, including the one where the compiler rejected the program: a
     /// compile that failed after four seconds of `swiftc` is exactly the cost a compiled arm has to

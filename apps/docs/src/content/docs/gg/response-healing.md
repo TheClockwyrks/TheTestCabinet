@@ -407,6 +407,12 @@ What the model needs from a repaired turn is the diagnostic, which it gets. A ty
 error is located in the **healed** source; a model told "line 4" fixes line 4, which is
 the line gg compiled.
 
+Healing only ever gets a reply as far as *preparation*, and for a language that checks its
+programs that is two passes, not one. A repaired reply that survives the strip is still put
+through the [type check](/gg/responses-as-code/#stripped-and-checked), so a repair can be
+followed by a compile error rather than by a run — the strip's arms below name the failure
+they cause first, not the only failure left.
+
 What a *study* needs is the record, and that is telemetry rather than prompt text. A
 repaired reply logs an `info` line naming the strategies that fired, so a live run shows
 that the program gg compiled was not byte-for-byte the one the model sent; the raw reply

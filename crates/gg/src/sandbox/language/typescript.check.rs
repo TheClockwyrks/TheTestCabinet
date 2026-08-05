@@ -92,9 +92,17 @@
 //! Several agents run programs at once — up to `limits.maxParallel` of them, each able to chain
 //! programs within a turn — and every one of them may be in this module simultaneously. So each
 //! check gets **its own directory**, holding its own `tsconfig.json` and its own `program.ts`, and
-//! is removed afterwards. Nothing is shared but the read-only checker itself, which is written once
-//! per version into a content-keyed directory by a rename, so two processes racing to materialise it
-//! either both win or one overwrites the other with identical bytes.
+//! is removed afterwards. No check can see, or be seen by, another one's input or output.
+//!
+//! Two things are shared, and both are shared deliberately. The **checker inputs** — the compiler,
+//! the standard library, the globals and the surface — are written once per version into a
+//! content-keyed directory by a rename, so two processes racing to materialise them either both
+//! win or one overwrites the other with identical bytes, and are read-only from then on. Node's
+//! **compile cache** is one writable directory every concurrent check points `NODE_COMPILE_CACHE`
+//! at; it is safe to share because it is content-addressed and validated on read, so a torn or
+//! stale entry is discarded and re-earned rather than believed. Sharing it is the point: it holds
+//! the compiled bytecode of the 6.2 MB compiler, which is identical for every check in the process.
+//! Nothing in it can change a verdict — the worst outcome is a wasted parse.
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};

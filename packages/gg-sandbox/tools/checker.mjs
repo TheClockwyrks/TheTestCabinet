@@ -1,4 +1,4 @@
-// Emit the two COMMITTED artifacts gg type-checks a TypeScript program with.
+// Emit the four COMMITTED artifacts gg type-checks a TypeScript program with.
 //
 // A model's reply is TypeScript, and gg checks it: `crates/gg/src/sandbox/language/typescript.rs`
 // runs `tsc` over the program before the guest evaluates it, so a type error comes back as a
@@ -143,7 +143,7 @@ function main() {
   const declarations = libs.map(withoutReferences).join("\n");
   fs.writeFileSync(path.join(OUT_DIR, "typescript.lib.d.ts"), declarations);
 
-  // The two names a program reaches that no SDK declaration covers. Authored beside the shim that
+  // The names a program reaches that no SDK declaration covers. Authored beside the shim that
   // installs them; copied rather than generated, because they are declarations already.
   fs.copyFileSync(
     path.join(PACKAGE_DIR, "tools", "program-globals.d.ts"),

@@ -6007,8 +6007,9 @@ pub enum GgTelemetryKind {
         /// every agent that reads it, so leaving those out would make a skill-heavy compiled arm
         /// report less than it spent.
         ///
-        /// Absent for a language whose prepare step is in-process and free (TypeScript's
-        /// type-strip), where the figure would be a zero on every turn of every run. Present on
+        /// Absent for a language that compiles nothing — one whose prepare step is in-process and
+        /// free, where the figure would be a zero on every turn of every run. No registered
+        /// language is one, since TypeScript type-checks with `tsc`. Present on
         /// **every** turn of a language that compiles, including the turn whose program the
         /// compiler rejected — a compile that failed after four seconds cost those four seconds,
         /// and that turn is the one that would otherwise report nothing.

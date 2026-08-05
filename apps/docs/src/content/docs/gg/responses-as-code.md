@@ -652,8 +652,9 @@ own outcome untouched.
 ```text
 the model's whole reply
    └─ heal it (deletion only; it never refuses a reply)
-        └─ prepare it for this language's guest, in process
-             (TypeScript: the oxc type-strip, ~0.2 ms; size and nesting bounded first)
+        └─ prepare it for this language's guest
+             (TypeScript: the oxc type-strip in process, ~0.2 ms, then the `tsc`
+              type check in a `node` subprocess, ~90 ms; size and nesting bounded first)
              └─ instantiate this language's compiled component  (24–124 µs)
                   └─ run the program against exactly this run's tools
                        │  fs.readFile("a.ts", { limit: 200 })
@@ -698,16 +699,22 @@ hand-rolled ABI. The cost is a **~13 MB component** — it embeds a whole JavaSc
 
 ### The latency design
 
-The non-negotiable property is that a turn never pays for a compile. The wasm `Engine` is
-process-wide, and each registered language's compiled `Component` lives behind a `OnceLock`
-of its own, so a language's artifact is compiled **at most once per process** and every
+The non-negotiable property is that a turn never pays for the **component** compile. The wasm
+`Engine` is process-wide, and each registered language's compiled `Component` lives behind a
+`OnceLock` of its own, so a language's artifact is compiled **at most once per process** and every
 program thereafter pays instantiate plus invoke and nothing else. A run that never drives an
-agent in a given language never compiles that language's component at all. There is no
-`componentize-js`, no Node, no `tsc`, and no disk cache anywhere on the turn path.
+agent in a given language never compiles that language's component at all. `componentize-js`
+never runs on the turn path, and nothing about the component is cached to disk.
+
+What a turn *does* pay is its own language's [prepare step](#stripped-and-checked), and for
+TypeScript that is now a real cost rather than a rounding error: the strip is in-process, but
+the check spawns `node` against the committed `tsc`. It is measured for exactly that reason and
+reported per turn as [`compileMs`](/gg/telemetry/).
 
 | Stage | Measured |
 | --- | --- |
-| Prepare the program (TypeScript's `oxc` type-strip, in process) | ~0.2 ms |
+| Prepare, pass 1 — TypeScript's `oxc` type-strip, in process | ~0.2 ms |
+| Prepare, pass 2 — TypeScript's `tsc` type check, in a `node` subprocess | ~90 ms |
 | Compile the component — **once per process, per language** | 658 ms (18 cores), 1.29 s (4), 2.36 s (2), 4.84 s (1) |
 | Instantiate a store from the compiled component | 24–124 µs |
 | Evaluate an ordinary program (excluding its tool calls) | 0.7–3 ms |
@@ -717,10 +724,14 @@ fires a warm-up compile once at session start, concurrently with the first model
 request, which takes far longer. It never fires from a subagent, and the `OnceLock`
 makes a second call free. A run **without** the capability compiles nothing at all.
 
-There is deliberately no on-disk compilation cache. gg runs one process per run inside
-an ephemeral container, so a disk cache would be written once and thrown away with the
+The component is deliberately never cached to disk. gg runs one process per run inside
+an ephemeral container, so such a cache would be written once and thrown away with the
 container — while the wasmtime `cache` feature would drag `zstd`'s C compile onto a
-binary that is release-built for three platforms and statically linked against musl.
+binary that is release-built for three platforms and statically linked against musl. The
+type checker's `NODE_COMPILE_CACHE` is not a counter-example: it caches nothing about the
+*program*, only Node's bytecode for the 6.2 MB compiler that reads it, it is re-earned in
+the first check of every run, and a Node that ignores it or a directory it cannot write to
+costs time and changes no verdict.
 
 The "compiled once" property is asserted by a **counter**, not a stopwatch: a static
 compile count is checked to be exactly 1 after two component fetches and after two
