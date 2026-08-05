@@ -48,14 +48,17 @@ interface RunDetailLayoutProps {
    */
   fill?: boolean;
   /**
-   * The tab body, given the resolved run, its framed review (if any), and the raw
+   * The tab body, given the resolved run, its framed review (if any), the raw
    * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
-   * tabs read reviews from here rather than the console's global reviews map.
+   * tabs read reviews from here rather than the console's global reviews map —
+   * and whether the run is already published (the review editor offers no Publish
+   * action once it is).
    */
   children: (ctx: {
     run: RunRecord;
     review: ParsedWriteup | undefined;
     reviews: StoredReview[];
+    published: boolean;
   }) => ReactNode;
 }
 
@@ -387,7 +390,7 @@ export function RunDetailLayout({
         </div>
       </div>
 
-      {children({ run, review, reviews })}
+      {children({ run, review, reviews, published: detail?.published ?? false })}
     </PageLayout>
   );
 }
