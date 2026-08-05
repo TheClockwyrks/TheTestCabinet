@@ -297,6 +297,13 @@ argument** saying what to put there, then its documentation, then the declaratio
 type it mentions, each with **a line per member**. All of it arrives under the
 [`Documentation`](#three-kinds-of-view) heading qualified by the function's name.
 
+Each argument's line carries its name, its type, its default where the language states one,
+and its description. It also says **`(passed by name)`** where the language passes that
+argument by name rather than by position — Python's keyword arguments, Kotlin's named ones —
+because that is the one property of an argument that changes what the model has to type. It
+is silent for a positional argument, which is every argument in TypeScript and would be a
+label on every line.
+
 The per-argument and per-member lines are not commentary gg wrote: every one of them is
 reflected out of the doc comment on the argument or member it describes, in the SDK's own
 source, by the same build that produced the component. A declaration says what fields a
@@ -1508,6 +1515,11 @@ defaults to, or how many signatures an entry carries. A language that must expre
 optional argument as an overload pair offers the same capability as one that expresses it as
 a default, and a gate that said otherwise would make the first kind of language impossible
 to register.
+
+The one exception is whether a call *has* a shape: a function that takes arguments must
+document them, and an entry documenting none where another arm documents some fails. A
+capability that needs a path needs it in every language, so an arm whose model is told what
+to put in `fs.readFile` and an arm whose model is not are not two spellings of one surface.
 
 It is load-bearing because its absence is silent. Each language's own drift gates compare
 it to gg's tool vocabulary and to its own committed component — never to another language

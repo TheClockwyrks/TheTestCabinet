@@ -321,7 +321,32 @@ fn a_second_language_that_disagrees_is_caught() {
             Box::new(|document: &mut Value| {
                 document["tools"][0]["signatures"][0]["parameters"][0]["doc"] = json!("");
             }),
-            "has no documentation",
+            "`system.shell`'s `command` has no documentation",
+        ),
+        (
+            "a signature whose arguments are documented nowhere",
+            Box::new(|document: &mut Value| {
+                document["tools"][0]["signatures"][0]["parameters"] = json!([]);
+            }),
+            "`system.shell` takes arguments and documents none",
+        ),
+        (
+            "a whole catalogue that documents no argument anywhere",
+            Box::new(|document: &mut Value| {
+                // What a reflector for a language with no per-argument doc slot emits if nobody
+                // makes it carry one — and, crucially, one whose signatures have no brackets to
+                // look inside, so the internal check cannot see it and only the comparison can.
+                for section in ["session", "views", "programs", "tools", "helpers"] {
+                    for entry in document[section].as_array_mut().expect("an array") {
+                        let name = entry["name"].as_str().expect("a name").to_string();
+                        for signature in entry["signatures"].as_array_mut().expect("an array") {
+                            signature["signature"] = json!(format!("{name} :: Effect Unit"));
+                            signature["parameters"] = json!([]);
+                        }
+                    }
+                }
+            }),
+            "documents no arguments for `fs.read_file`, where TypeScript documents some",
         ),
         (
             "a FIELD of a structured argument with no description",
@@ -347,7 +372,7 @@ fn a_second_language_that_disagrees_is_caught() {
             Box::new(|document: &mut Value| {
                 document["types"][0]["doc"] = json!("");
             }),
-            "has no documentation",
+            "the type `ToolError` has no documentation",
         ),
         (
             "a type member with no description",
@@ -399,7 +424,7 @@ fn a_second_language_that_disagrees_is_caught() {
             Box::new(|document: &mut Value| {
                 document["tools"][0]["doc"] = json!("");
             }),
-            "has no documentation",
+            "`system.shell` has no documentation",
         ),
         (
             "a program-library function the other arm does not have",

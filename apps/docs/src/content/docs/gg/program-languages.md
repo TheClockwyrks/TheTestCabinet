@@ -316,6 +316,12 @@ entry with two signatures**, each with its own argument list; the other three ar
 entry with one. Nothing downstream compares the count, because the count is spelling — see
 [the agreement gate](#the-agreement-gate).
 
+An overload group is **one entry with many signatures, never two entries sharing a name**,
+and a reflector that emits the second shape is rejected at load: two entries on one object
+spelled the same is one of them silently shadowing the other at bind time, and every
+consumer that routes on `(object, name)` — the doc lookup, `object.list()`, the reference
+projection — would show the first and lose the rest.
+
 Each signature carries its arguments in order, and each argument carries its name, its type,
 whether it is optional, whether it is passed by position or **by name**, the default the
 language states for it if any, its description, and — for a structured argument written
@@ -428,6 +434,11 @@ the sets:
   signatures where one expressing it as a default carries one, and that is not a difference
   in what the function does — so the gate does not compare the count.
 
+The one thing about the call shape that is **not** free is whether there is one. A capability
+that needs a path needs it in every language, so *whether an entry documents any argument at
+all* is compared across arms: an arm whose model is told what to put in `fs.readFile` and an
+arm whose model is not are not two spellings of one surface.
+
 What the gate asserts about spelling is that it is **there**. Every argument, every field of
 a structured argument, every type, every one of a type's members and every API object must
 carry documentation; a signature must begin with the name a program calls; an argument must
@@ -437,6 +448,14 @@ and no two functions on one object may share a name. Those checks run over the *
 catalogue**, so they are one gate for every language: a language whose compiler enforced its
 doc comments (Swift's `docc`, Java's `-Xdoclint`) and one whose convention did (Rust's
 `# Arguments`, PureScript's `@param`) land in the same shape here.
+
+An **omission** is caught as well as a blank, which matters because the languages with no
+per-argument doc slot of their own are exactly the ones whose reflector is most likely to
+emit an empty argument list and call it done. Two checks catch it, and between them they
+cover every notation: a signature that writes a non-empty argument list between brackets and
+documents nothing fails on its own, and an entry documenting no argument where another arm
+documents one fails comparatively — which is what covers a signature written without
+brackets to look inside, as an ML-style `readFile :: String -> Effect FileRead` is.
 
 Each language is additionally anchored to **gg's own vocabularies**: its tools in exact
 bijection with the tool registry's, its component binding exactly those tools, its ending
@@ -536,7 +555,9 @@ one.**
    need not use the TypeScript package's reflector — only the emitted JSON is contractual,
    and a Python guest would reflect its own docstrings and type hints with its own script —
    but it must reflect them rather than list them, because the completeness half of the
-   agreement gate fails a catalogue with a blank in it.
+   agreement gate fails a catalogue with a blank in it — and, for an argument, with a gap
+   where one should be: a signature that takes arguments and documents none fails, as does an
+   entry documenting no argument where another arm documents one.
 5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`.
 6. **Add the enum variant** in `crates/core/src/gg.rs`, and list it in `GgProgramLanguage::ALL`
    with an `ordinal()` arm. Neither is optional and neither can be forgotten: `ordinal()` is an

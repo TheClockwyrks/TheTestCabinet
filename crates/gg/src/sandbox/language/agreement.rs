@@ -43,6 +43,11 @@
 //! expressing it as a default carries one, and that is not a difference in what the function does —
 //! so nothing here compares the count. Those are the language's own, and the whole point of the seam.
 //!
+//! The one thing about the call shape that is **not** free is whether there is one: a capability that
+//! needs a path needs it in every language, so *whether an entry documents any argument at all* is
+//! compared across arms. An arm whose model is told what to put in `fs.read_file` and an arm whose
+//! model is not are not two spellings of one surface.
+//!
 //! # What is asserted about spelling, then
 //!
 //! That it is *there*. Every parameter, every field of a structured argument, every type, every one
@@ -51,6 +56,13 @@
 //! same check for a language whose compiler enforced its doc comments and one whose convention did —
 //! Swift's `docc`, Java's `-Xdoclint`, Rust's `# Arguments` heading and PureScript's `@param` all
 //! land in one shape here, and one gate covers every language that will ever be added.
+//!
+//! An **omission** is caught as well as a blank, which matters because the languages with no
+//! per-argument doc slot of their own are exactly the ones whose reflector is most likely to emit an
+//! empty list and call it done. Two checks catch it: a signature that writes a non-empty argument
+//! list and documents nothing fails on its own ([`declares_arguments`]), and an entry that documents
+//! no argument where another arm documents one fails comparatively — so a language whose signatures
+//! carry no brackets to look inside is covered too.
 //!
 //! # With exactly one registered language
 //!
@@ -473,6 +485,11 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
                      (`{name}`): {signature}"
                 ));
             }
+            if parameters.is_empty() && declares_arguments(signature) {
+                complain(format!(
+                    "`{object}.{key}` takes arguments and documents none: {signature}"
+                ));
+            }
             for parameter in parameters {
                 check_parameter(parameter, object, key, signature, &mut complain);
             }
@@ -578,6 +595,57 @@ fn check_parameter(
     }
 }
 
+/// Whether a signature writes an argument list at all: its first parenthesised group, matched to its
+/// own closing bracket, with something in it.
+///
+/// Deliberately shallow, and deliberately not a parser — a parser would be one per language. Every
+/// language that writes its arguments between brackets is covered by this one rule, which is every
+/// language that has a call syntax at all: `shell(command: string)`, `fn read_file(path: &str)`,
+/// `func readFile(path: String) throws`. A signature written in ML notation
+/// (`readFile :: String -> Effect FileRead`) has no bracket to look inside and reads as taking
+/// nothing; that blind spot is covered instead by the comparative check in [`agrees_with`], which
+/// asks whether the *other* arms document arguments for the same identity.
+fn declares_arguments(signature: &str) -> bool {
+    let Some(open) = signature.find('(') else {
+        return false;
+    };
+    let mut depth = 0usize;
+    for (offset, character) in signature[open..].char_indices() {
+        match character {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return !signature[open + 1..open + offset].trim().is_empty();
+                }
+            }
+            _ => {}
+        }
+    }
+    // Unbalanced brackets: malformed rather than argument-free. Complaining here would be a second
+    // sentence about one defect, and the name and doc checks above already have it.
+    false
+}
+
+/// Whether each entry documents any argument at all, keyed by the identity it belongs to.
+///
+/// Folded across an entry's signatures, because an overload group legitimately contains a nullary
+/// shape beside one that takes a path — `listDir()` and `listDir(String)` are one capability, and it
+/// takes an argument.
+fn documented_arguments(
+    language: &'static dyn ProgramLanguage,
+) -> BTreeMap<(&'static str, &'static str), bool> {
+    let mut out = BTreeMap::new();
+    for spelling in spellings(language) {
+        let documented = spelling
+            .signatures
+            .iter()
+            .any(|entry| !entry.parameters.is_empty());
+        *out.entry((spelling.object, spelling.key)).or_default() |= documented;
+    }
+    out
+}
+
 /// One entry's spellings, beside the identity they belong to, so a complaint can name both.
 struct Spelling {
     /// The object it hangs off — identity, and here only so a complaint can qualify the name.
@@ -666,6 +734,37 @@ fn agrees_with(
                 reference.display_name()
             ),
         });
+    }
+
+    // Whether an entry takes arguments at all. How many there are, what they are called and how they
+    // are passed are the language's own — but a capability that needs a path needs one in every
+    // language, so an arm documenting arguments for `fs.read_file` and an arm documenting none are
+    // not two spellings of one surface: a model reads what to put in the call on one arm and guesses
+    // on the other, which is a difference in surface in the middle of a study measuring the language.
+    // It is also the check that covers what `declares_arguments` cannot see: a reflector for a
+    // language whose signature notation has no bracket, emitting an empty `parameters` for
+    // everything, passes the internal half and fails here.
+    let theirs_arguments = documented_arguments(reference);
+    for ((object, key), mine) in documented_arguments(language) {
+        // Absent means the reference arm does not offer this identity at all, which the comparison
+        // above has already said in the sentence that diagnoses it.
+        let Some(yours) = theirs_arguments.get(&(object, key)).copied() else {
+            continue;
+        };
+        if mine != yours {
+            let (here, there) = if mine {
+                ("arguments", "none")
+            } else {
+                ("no arguments", "some")
+            };
+            out.push(Disagreement {
+                language: name,
+                detail: format!(
+                    "documents {here} for `{object}.{key}`, where {} documents {there}",
+                    reference.display_name()
+                ),
+            });
+        }
     }
 
     // The objects, and how many functions hang off each. Implied by the identity comparison above,
