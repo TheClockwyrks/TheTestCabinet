@@ -311,19 +311,31 @@
   gap: t.$space-sm;
 }
 
-// The grid of dedicated param controls (implementation, sliders, selects), wrapping
-// so several compact fields sit on a row.
-.capParamGrid {
-  display: flex;
-  flex-wrap: wrap;
+// A grid of labelled fields — a capability's params, the run's ceilings, a hook's
+// command. One rule for every one of them, because they are the same control repeated
+// and an operator who learns the shape in one panel should meet it again in the next.
+//
+// A real grid, and a track floor wide enough for a *label*. These fields are labelled in
+// phrases ("Saturated words before abandoning", "Execution timeout (seconds)"), not in
+// words, and the wrapping flex row this used to be packed four and five of them onto a
+// line by their inputs' width: every label then wrapped to two rows, which unlevels the
+// inputs beside it and makes the row unreadable. `auto-fit` takes as many equal columns
+// as the form is actually wide enough for — three in the editor, one on a phone — so the
+// count follows the width instead of being fixed at a number that is wrong somewhere.
+@mixin param-grid($min: 18rem) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax($min, 1fr));
   gap: t.$space-md;
+}
+
+.capParamGrid {
+  @include param-grid;
 }
 
 .capParamField {
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
-  flex: 1 1 12rem;
   min-width: 0;
 }
 
@@ -332,15 +344,15 @@
 // labels carry a clause of explanation each and would wrap to shreds in a column
 // beside a number field.
 .toggleField {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
 }
 
 // A `model` param (compaction's handoff model) is two controls — where the model comes
 // from, and which one — laid out exactly like an agent's own binding. It takes a whole
 // row of the param grid for the same reason the agent binding takes its own row: a model
-// id is long, and a slot picker beside it in a 12rem column would be unreadable.
+// id is long, and a slot picker beside it in one column would be unreadable.
 .modelParamField {
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
   gap: t.$space-xs;
 }
 
@@ -373,12 +385,14 @@
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
-  flex: 1 1 100%;
+  grid-column: 1 / -1;
   min-width: 0;
 }
 
+// The machine itself, inside the wrapper that claims the row. It takes no width rule of
+// its own: `.fsmWrapper` is the grid cell and this is a block inside it, so it is already
+// as wide as the row the wrapper spans.
 .fsmField {
-  flex: 1 1 100%;
   align-items: flex-start;
   gap: t.$space-sm;
 }
@@ -534,18 +548,16 @@
   }
 }
 
-// The execution ceilings, laid out as a wrapping grid of compact numeric fields.
+// The execution ceilings — and a command hook's four fields, which are the same kind of
+// row — on the shared param grid. A narrower track than a capability's params: these
+// labels are two or three words ("Max consecutive errors", "Working directory") rather
+// than phrases, so a wider floor would only leave columns half empty.
+//
 // The bottom margin sets the grid off from a trailing error/warning; the widget's
 // `:last-child` rule zeroes it away when the grid is the last thing in the panel.
 .limitGrid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-md;
+  @include param-grid(15rem);
   margin-bottom: t.$space-md;
-
-  .capParamField {
-    flex: 1 1 14rem;
-  }
 }
 
 // The decision object a custom hook script must print, quoted verbatim under the script
@@ -829,6 +841,66 @@
 .subagentDescription {
   flex: 1 1 100%;
   min-width: 0;
+}
+
+// --- Hooks ------------------------------------------------------------------------
+//
+// A hook is a record, not a line: an event, a kind, a name, and then whichever body that
+// kind needs — up to four more fields, or a whole script. It used to borrow the roster's
+// `.subagentRow` and the agent-name `.agentHeading`, neither of which lays anything out
+// (one is a centred flex row written for a single line naming one agent, the other is a
+// bare bottom margin written for one input), so a hook's controls stacked one per line,
+// its Remove button sat flush against the Name input, and nothing said where one hook
+// ended and the next began. These four rules are the hook's own.
+
+// The list of hook cards. Its gap is a step wider than the gap inside a card, so the
+// boundary between two hooks always reads as larger than the boundary between one hook's
+// own fields.
+.hookList {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  margin-bottom: t.$space-md;
+}
+
+// One hook: the same panelled block a model slot (`.slotBlock`) and a machine's state
+// wear, which is this form's vocabulary for "one record". The border is what groups the
+// Command field with the Event it belongs to.
+.hookRow {
+  padding: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  align-self: stretch;
+}
+
+// What the hook *is*: its three identifying fields on one row, aligned to their inputs'
+// bottom edge so a two-row label never leaves the controls beside it hanging, and the
+// remove control at the trailing edge.
+.hookHeading {
+  display: flex;
+  align-items: flex-end;
+  gap: t.$space-md;
+  flex-wrap: wrap;
+}
+
+.hookField {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+// The note saying whether this event can be blocked. A one-line annotation on the picker
+// above it, so it carries no margin of its own and the card's gap is the whole of the
+// space around it — the browser's default `1em 0` on a `<p>` does not collapse inside a
+// flex column, and stacked on the borrowed classes' own margins it left the note adrift
+// in about three lines of empty card.
+.hookBlocking {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
 }
 
 // The custom-instructions and system-prompt editors: a full-width monospace-friendly

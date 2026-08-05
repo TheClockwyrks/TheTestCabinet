@@ -16,6 +16,8 @@ import {
   FSM_CAP,
   LOOP_DETECTION_HINT,
   LOOP_DETECTION_SPECS,
+  REPLAY_CAP,
+  REPLAY_CAP_ID,
   RESPONSES_AS_CODE_CAP,
   RESPONSES_AS_CODE_CAP_ID,
   SUBAGENT_SCOPES,
@@ -452,13 +454,14 @@ export function GgAgentEditor({
                 </p>
               )}
 
-              {/* Loop detection — the other half of how gg talks to this agent's model,
-                  and so directly under the binding it belongs to. Not a capability: it
-                  changes nothing about what the agent can do, only whether gg watches the
-                  reply arrive and abandons one that has degenerated into repetition. It
-                  is nonetheless authored exactly like one — a switch, a purpose, and a
-                  body of knobs revealed once it is on — because that is the shape an
-                  operator already knows for "a thing gg does that you turn on". */}
+              {/* Two things gg does *around* this agent, rather than anything the agent
+                  may do: watch its reply arrive, and write down what happened. Neither
+                  belongs on the Tools or APIs tab, which answers "what is this agent
+                  offered?" — nothing here is offered to the model, and the model is told
+                  about none of it. They are nonetheless authored exactly like a
+                  capability — a switch, a purpose, and a body revealed once it is on —
+                  because that is the shape an operator already knows for "a thing gg does
+                  that you turn on". */}
               <div className={gg.capList}>
                 <div
                   className={`${gg.capRow}${
@@ -500,7 +503,12 @@ export function GgAgentEditor({
                               onChange={(e) =>
                                 setLoopKnob(spec.key, e.target.value)
                               }
-                              placeholder={`gg's default: ${spec.ggDefault.toLocaleString("en-US")}`}
+                              // The bare figure. A placeholder is already read as
+                              // "what you get if you leave this empty", and prefixing
+                              // it doubled the width of every one of these fields to
+                              // say so five times over; each knob's hint says it in
+                              // words for anyone who wants it spelled out.
+                              placeholder={spec.ggDefault.toLocaleString("en-US")}
                             />
                           </label>
                         ))}
@@ -514,6 +522,36 @@ export function GgAgentEditor({
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Full-fidelity replay. A capability on the wire — that is how gg reads
+                    it and how a study slices on it — but it is not one of the things this
+                    agent may do, so it is not offered on the Tools or APIs tab: it says
+                    what gg writes down while the agent works. Its purpose deliberately
+                    says "the run" and not "this agent", because enabling it on any one
+                    agent escalates the whole run's record; keep that wording wherever
+                    this row moves. */}
+                <div
+                  className={`${gg.capRow}${
+                    agent.capabilities[REPLAY_CAP_ID]?.enabled
+                      ? ""
+                      : ` ${gg.capOff}`
+                  }`}
+                >
+                  <label className={gg.capHeader}>
+                    <Switch
+                      checked={Boolean(
+                        agent.capabilities[REPLAY_CAP_ID]?.enabled,
+                      )}
+                      disabled={readOnly}
+                      onChange={(next) =>
+                        updateCap(REPLAY_CAP_ID, { enabled: next })
+                      }
+                    />
+                    <span className={gg.capName}>{REPLAY_CAP.name}</span>
+                    <span className={gg.capId}>{REPLAY_CAP.id}</span>
+                  </label>
+                  <p className={gg.capPurpose}>{REPLAY_CAP.purpose}</p>
                 </div>
               </div>
 
@@ -588,40 +626,22 @@ export function GgAgentEditor({
       )}
 
       {/* Tools / APIs — the same capability catalog, named for the shape this agent's
-          type meets it in. The RaC arm additionally carries the sandbox's own settings,
-          which are the type's configuration rather than a capability of it. */}
+          type meets it in. The tab strip already names the section, so the groups are the
+          whole of it. The RaC arm leads with the sandbox's own settings, which are the
+          type's configuration rather than a capability of it — panelled, and left
+          unheaded for the same reason: the tab it can only appear on is called APIs. */}
       {(activeTab === "tools" || activeTab === "apis") && (
         <>
           {activeTab === "apis" && (
-            <>
-              <p
-                className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
-              >
-                Responses as code
-              </p>
-              <p className={`${runExec.muted} ${gg.backdropNote}`}>
-                {RESPONSES_AS_CODE_CAP.purpose}
-              </p>
-              <div
-                className={gg.modePanel}
-                role="group"
-                aria-label="Responses as code"
-              >
-                <CapabilityBody {...capabilityFields(RESPONSES_AS_CODE_CAP)} />
-              </div>
-            </>
+            <div
+              className={gg.modePanel}
+              role="group"
+              aria-label="Responses as code"
+            >
+              <CapabilityBody {...capabilityFields(RESPONSES_AS_CODE_CAP)} />
+            </div>
           )}
 
-          <p
-            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
-          >
-            {activeTab === "apis" ? "APIs" : "Tools"}
-          </p>
-          <p className={`${runExec.muted} ${gg.backdropNote}`}>
-            {activeTab === "apis"
-              ? "What this agent's programs can call. Each capability that is on contributes a namespaced object to the sandbox; one that is off is not bound at all."
-              : "What this agent is offered as tools. Each capability that is on contributes its tools to the model's toolset; one that is off is not offered and not dispatchable."}
-          </p>
           {CAP_GROUPS.map(({ group }) => {
             const groupCaps = modeCaps.filter((c) => c.group === group);
             // A group every capability of which belongs to another type is not an empty
@@ -760,18 +780,12 @@ export function GgAgentEditor({
             Hooks
             <HelpTip text="Commands and scripts gg runs around what this agent does — a file write, a shell command, a compaction, and its own start and stop. A hook can stop the operation it precedes and put text in front of the model. The model is never told a hook exists, is offered no tool for one, and cannot decline one." />
           </p>
-          <p className={runExec.muted}>
-            These fire for <strong>this agent only</strong>. The run&rsquo;s own
-            two ends — session start and session end — are declared on the
-            configuration, because they happen once per run rather than for any
-            one agent.
-          </p>
           <GgHookList
             hooks={agent.hooks}
             scope="agent"
             readOnly={readOnly}
             onChange={(hooks: GgHookDraft[]) => onPatch({ hooks })}
-            emptyNote="No hooks. This agent is held to nothing beyond what its capabilities allow — the control arm every gated agent is read against."
+            emptyNote="No hooks."
           />
         </section>
       )}

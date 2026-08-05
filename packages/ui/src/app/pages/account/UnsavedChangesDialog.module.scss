@@ -20,7 +20,12 @@
 }
 
 .panel {
-  width: min(32rem, 100%);
+  // Wide enough for the three choices on one line. The dialog's whole point is that
+  // leaving unsaved work is a three-way decision, and the three are only comparable when
+  // they are read as a row — so the panel is sized against the widest set of labels it
+  // carries ("Keep editing" + "Discard changes" + "Create configuration") rather than
+  // against the prose above them, which would wrap harmlessly at any width.
+  width: min(40rem, 100%);
   padding: t.$space-lg;
   border: t.$border-hairline solid t.$color-border;
   border-radius: t.$radius-md;
@@ -49,10 +54,19 @@
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
+  // One row or a column, never a broken row: a set of three buttons wrapping two-and-one
+  // reads as two groups of choices, which is exactly what this dialog must not say. The
+  // narrow-screen rule below is the only place they stack, and there they stack all
+  // three. The labels hold their own line for the same reason.
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: t.$space-sm;
   margin-top: t.$space-lg;
+
+  > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
 
   // Stacked on a narrow screen, safest choice first — the same order the row
   // reads in, so the button under a thumb is never the destructive one by

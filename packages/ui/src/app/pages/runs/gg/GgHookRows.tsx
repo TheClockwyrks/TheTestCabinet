@@ -9,7 +9,7 @@ import {
   hookEventsForScope,
   type GgHookScope,
 } from "./ggCatalog";
-import { FieldLabel, HelpTip } from "./GgCapabilityFields";
+import { FieldLabel } from "./GgCapabilityFields";
 import { blankHookDraft, type GgHookDraft } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
@@ -35,7 +35,7 @@ export function GgHookList({
   scope: GgHookScope;
   readOnly: boolean;
   onChange: (next: GgHookDraft[]) => void;
-  /** What to say when there are none — the control arm, in this site's terms. */
+  /** What to say when there are none, in this site's terms ("No session hooks."). */
   emptyNote: string;
 }) {
   const patch = (id: string, next: Partial<GgHookDraft>) =>
@@ -49,7 +49,7 @@ export function GgHookList({
       {hooks.length === 0 ? (
         <p className={runExec.muted}>{emptyNote}</p>
       ) : (
-        <div className={gg.subagentList}>
+        <div className={gg.hookList}>
           {hooks.map((hook) => (
             <HookRow
               key={hook.id}
@@ -72,8 +72,13 @@ export function GgHookList({
 }
 
 /**
- * One hook's row: the event it fires at, which of the three kinds it is, and the fields
+ * One hook's card: the event it fires at, which of the three kinds it is, and the fields
  * that kind needs.
+ *
+ * A card, and not a run of fields, because a hook is several controls and a list of them
+ * is several hooks: without a border to say where one ends, an operator reading down the
+ * list cannot tell which Command belongs to which Event. It wears the same panel a model
+ * slot and a machine's state wear, which is this form's vocabulary for "one record".
  *
  * Every kind's fields are held in the draft at once and only the current kind's are
  * rendered, so switching kind and switching back does not lose what was typed. The
@@ -99,9 +104,9 @@ function HookRow({
   const kind = HOOK_KINDS.find((k) => k.value === hook.kind);
   const blocks = BLOCKING_HOOK_EVENTS.includes(hook.event);
   return (
-    <div className={gg.subagentRow}>
-      <div className={gg.agentHeading}>
-        <label className={`${runExec.field} ${gg.slotNameField}`}>
+    <div className={gg.hookRow}>
+      <div className={gg.hookHeading}>
+        <label className={`${runExec.field} ${gg.hookField}`}>
           <FieldLabel
             label="Event"
             hint={event?.hint ?? "Which point of the run this hook fires at."}
@@ -126,7 +131,7 @@ function HookRow({
             ))}
           </select>
         </label>
-        <label className={`${runExec.field} ${gg.slotNameField}`}>
+        <label className={`${runExec.field} ${gg.hookField}`}>
           <FieldLabel
             label="Kind"
             hint={
@@ -148,7 +153,7 @@ function HookRow({
             ))}
           </select>
         </label>
-        <label className={`${runExec.field} ${gg.slotNameField}`}>
+        <label className={`${runExec.field} ${gg.hookField}`}>
           <FieldLabel
             label="Name"
             hint="An operator's label, shown wherever gg reports this hook running or blocking. Optional — gg falls back to describing what it runs."
@@ -162,13 +167,24 @@ function HookRow({
           />
         </label>
         {!readOnly && (
-          <button type="button" className={runExec.secondary} onClick={onRemove}>
-            Remove
+          // The same ✕ every other removable record in this form carries (a model slot,
+          // an agent, a machine's state), so "get rid of this one" is one control an
+          // operator learns once. Its accessible name says which hook, because a list of
+          // them presents several.
+          <button
+            type="button"
+            className={gg.slotRemove}
+            onClick={onRemove}
+            aria-label={`Remove the ${hook.name.trim() || event?.label || hook.event} hook`}
+          >
+            ✕
           </button>
         )}
       </div>
 
-      <p className={runExec.muted}>
+      {/* An annotation on the event picked above, not a section: it takes the card's own
+          gap and nothing more. */}
+      <p className={gg.hookBlocking}>
         {blocks
           ? "This event can be blocked: a hook that refuses stops the operation, and the reason it gives is what the model reads."
           : "This event cannot be blocked — whatever the hook says, the operation goes ahead."}
@@ -285,26 +301,5 @@ function HookRow({
         </label>
       )}
     </div>
-  );
-}
-
-/** The heading a hooks section carries, with its explanation. */
-export function GgHooksHeading({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint: string;
-  children?: React.ReactNode;
-}) {
-  return (
-    <>
-      <p className={runExec.sectionLabel}>
-        {title}
-        <HelpTip text={hint} />
-      </p>
-      {children}
-    </>
   );
 }

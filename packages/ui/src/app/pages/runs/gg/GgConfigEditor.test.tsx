@@ -726,10 +726,13 @@ describe("an agent's loop detection", () => {
     // Empty, not seeded: an empty field IS "take gg's default", and writing 256 into every
     // stored configuration would freeze today's number into all of them.
     expect(window.value).toBe("");
-    expect(window.placeholder).toContain("256");
+    // The bare figure. A placeholder already reads as "what you get if you leave this
+    // empty", so it does not spend the width of the field saying so as well — five
+    // times over, in a row of five knobs.
+    expect(window.placeholder).toBe("256");
     expect(
       (screen.getByLabelText(/Reply ceiling/) as HTMLInputElement).placeholder,
-    ).toContain("250,000");
+    ).toBe("250,000");
   });
 
   it("keeps a tuned knob when the detector is switched back off", () => {
@@ -769,6 +772,58 @@ describe("an agent's loop detection", () => {
       />,
     );
     expect(screen.queryByText("Loop detection")).toBeNull();
+  });
+});
+
+// Full-fidelity replay is a capability on the wire — that is how gg reads it, and how a
+// study slices on it — but it is not one of the things an agent may *do*: it says what gg
+// writes down while the agent works, and enabling it on any one agent escalates the whole
+// run's record. So it is authored on the Agent tab beside loop detection, not among the
+// tools and APIs, and the group it used to be the only member of is gone.
+describe("full-fidelity replay", () => {
+  function replaySwitch(): HTMLInputElement {
+    return within(
+      screen.getByText("Full-fidelity replay").closest("label")!,
+    ).getByRole("checkbox") as HTMLInputElement;
+  }
+
+  it("is a switch on the Agent tab, saying what it does to the run and not to the agent", () => {
+    render(<Harness initial={emptyDraft()} />);
+    expect(replaySwitch().checked).toBe(false);
+    // The copy has to keep saying "the run": one agent's switch escalates all of it.
+    expect(
+      screen.getByText(/Escalate the whole run's replay record/),
+    ).toBeInTheDocument();
+  });
+
+  it("writes the capability the wire format records, under either agent type", () => {
+    for (const mode of ["tools", "rac"] as const) {
+      const draft = emptyDraft();
+      const { unmount } = render(
+        <Harness
+          initial={{ ...draft, agents: [{ ...draft.agents[0]!, mode }] }}
+        />,
+      );
+      fireEvent.click(replaySwitch());
+      expect(replaySwitch().checked).toBe(true);
+      unmount();
+    }
+  });
+
+  it("is not listed among the capabilities, and takes its empty group with it", () => {
+    renderCaps(emptyDraft());
+    expect(screen.queryByText("Full-fidelity replay")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Debugging/i })).toBeNull();
+  });
+
+  it("is absent under a machine, which records nothing of its own", () => {
+    const draft = emptyDraft();
+    render(
+      <Harness
+        initial={{ ...draft, agents: [{ ...draft.agents[0]!, mode: "fsm" }] }}
+      />,
+    );
+    expect(screen.queryByText("Full-fidelity replay")).toBeNull();
   });
 });
 
@@ -819,5 +874,58 @@ describe("the two hook lists", () => {
         .getAllByRole("tab")
         .map((tab) => tab.firstElementChild?.textContent?.trim()),
     ).not.toContain("Hooks");
+  });
+
+  // A hook is a record of several fields and a list of them is several records, so each
+  // one is a card with its own remove control — named, because "Remove" repeated down a
+  // list says nothing about which hook it removes.
+  it("gives each hook its own card, with a remove control that names it", () => {
+    render(<Harness initial={emptyDraft()} />);
+    openTab("Hooks");
+    fireEvent.click(screen.getByRole("button", { name: "Add hook" }));
+
+    // A fresh hook has no name of its own, so the control falls back to its event.
+    const remove = screen.getByRole("button", { name: /^Remove the .* hook$/ });
+    fireEvent.change(screen.getByLabelText(/^Name/), {
+      target: { value: "build must pass" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Remove the build must pass hook" }),
+    ).toBe(remove);
+
+    fireEvent.click(remove);
+    expect(screen.queryByLabelText(/^Event/)).toBeNull();
+  });
+});
+
+// The form's tabs are named by the tab strip, and its controls by their own labels. Copy
+// that repeats either — a heading saying "Tools" on the Tools tab, a paragraph explaining
+// that the Tools tab lists tools — pushes the first control further down the page and is
+// read once and never again.
+describe("the sections that no longer explain themselves", () => {
+  it("heads neither capability tab, under either agent type", () => {
+    renderCaps(emptyDraft());
+    expect(screen.queryByText(/What this agent is offered as tools/)).toBeNull();
+
+    const draft = emptyDraft();
+    renderCaps({
+      ...draft,
+      agents: [{ ...draft.agents[0]!, mode: "rac" }],
+    });
+    expect(screen.queryByText(/What this agent's programs can call/)).toBeNull();
+    // The sandbox settings keep the accessible name their panel is found by; what goes
+    // is the heading and the blurb above it.
+    expect(screen.queryByText(/whole reply is a program/)).toBeNull();
+    expect(
+      screen.getAllByRole("group", { name: "Responses as code" }).length,
+    ).toBe(1);
+  });
+
+  it("says only that an agent has no hooks, and not what having none means", () => {
+    render(<Harness initial={emptyDraft()} />);
+    openTab("Hooks");
+    expect(screen.getByText("No hooks.")).toBeInTheDocument();
+    expect(screen.queryByText(/These fire for/)).toBeNull();
+    expect(screen.queryByText(/control arm/)).toBeNull();
   });
 });

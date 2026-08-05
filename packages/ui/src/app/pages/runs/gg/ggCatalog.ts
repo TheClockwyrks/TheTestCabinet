@@ -108,8 +108,7 @@ export type CapGroup =
   | "Knowledge"
   | "Work tracking"
   | "Delegation"
-  | "Models & tools"
-  | "Debugging";
+  | "Models & tools";
 
 export const CAP_GROUPS: ReadonlyArray<{
   group: CapGroup;
@@ -121,7 +120,6 @@ export const CAP_GROUPS: ReadonlyArray<{
   { group: "Knowledge", startOpen: true },
   { group: "Work tracking", startOpen: true },
   { group: "Delegation", startOpen: false },
-  { group: "Debugging", startOpen: false },
 ];
 
 // --- Agent type -------------------------------------------------------------------
@@ -299,7 +297,14 @@ const TOGGLES_HINT =
 export interface CapSpec {
   id: string;
   name: string;
-  group: CapGroup;
+  // Which group of the Tools/APIs list this capability is listed under. Optional
+  // because the list is not the only place a capability is authored: `replay` is a
+  // property of the *run's record* rather than of what an agent may do, so it is a
+  // switch on the Agent tab, and the two [mode markers](isModeCapability) are the
+  // agent type itself. A spec with no group is not rendered by the group loop at all,
+  // which is what keeps "listed here" and "authored somewhere else" from drifting
+  // apart — an entry cannot end up in both places, or in neither by accident.
+  group?: CapGroup;
   purpose: string;
   // The [agent types](GgAgentMode) that offer this capability, when it is not offered
   // under every type a worker can be. `program-library` is the case that matters: there
@@ -853,6 +858,12 @@ export const FSM_STATES_PARAM = "states";
 // the editor never offers it as a capability row.
 export const RESPONSES_AS_CODE_CAP_ID = "responses-as-code";
 
+// The capability that escalates the run's replay record to full fidelity
+// (`CAPABILITY_REPLAY` in `crates/core/src/gg.rs`). Named because the editor reaches for
+// this one entry by id: it is authored as a switch on the Agent tab rather than listed
+// among the tools and APIs, which is what having no [group](CapSpec) says.
+export const REPLAY_CAP_ID = "replay";
+
 // The two capabilities that record an [agent type](GgAgentMode) rather than a feature of
 // one. Their `enabled` flag is read off (and written from) the agent's type; nothing
 // else in the editor may switch them.
@@ -1243,9 +1254,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   {
     id: RESPONSES_AS_CODE_CAP_ID,
     name: "Responses as code",
-    group: "Models & tools",
-    // Never rendered as a capability row: this entry is the RaC [agent
-    // type](GgAgentMode)'s settings panel, and the type selector is its switch.
+    // No group: this entry is the RaC [agent type](GgAgentMode)'s settings panel, and
+    // the type selector is its switch, so it is never listed as a capability row. See
+    // `group`.
+    //
+    // `purpose` is required of every spec and this one is now read nowhere: the APIs
+    // tab used to head its settings panel with it, and the panel is the tab — the tab
+    // strip already says what it is.
     purpose:
       "The agent's whole reply is a program over the tools, run in a wasm sandbox.",
     params: [
@@ -1679,7 +1694,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   {
     id: FSM_CAP_ID,
     name: "Process",
-    group: "Delegation",
+    // No group: this entry is never listed among an agent's capabilities. See `group`.
     // A machine is its `states`: gg refuses to launch an agent that enables this and
     // declares none, because an FSM agent has no turns of its own.
     requiresAuthoring: true,
@@ -1700,11 +1715,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // No ablation slider: withholding `transition_state` leaves a machine that can
     // only ever sit in its entry state, which is not an arm anyone would run.
   },
-  // --- Debugging --------------------------------------------------------------
+  // --- Not listed: authored on the Agent tab -----------------------------------
   {
-    id: "replay",
+    id: REPLAY_CAP_ID,
     name: "Full-fidelity replay",
-    group: "Debugging",
+    // No group, because this is not a thing the agent may *do* — it is what gg writes
+    // down about the run while the agent works, so it sits on the Agent tab beside loop
+    // detection rather than among the tools and APIs. It stays a capability on the wire:
+    // that is how gg reads it, and how a study slices on it.
+    //
     // Not the switch that turns capture on: every run is recorded. Enabling this on *any*
     // agent escalates the whole run, which is why the copy says "the run" rather than
     // "this agent" — the previous gate read the root alone and silently did nothing here.
@@ -1713,14 +1732,18 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   },
 ];
 
-// The two [mode-marker](isModeCapability) entries, resolved once. They are not listed
-// among an agent's capabilities — the [agent type](GgAgentMode) selector is what turns
-// them on — but their params are still authored, in the panel the selected type opens,
-// so the editor needs the specs themselves.
+// The entries the editor renders somewhere other than the capability list, resolved
+// once. None of them is listed among an agent's capabilities — the two
+// [mode-markers](isModeCapability) are turned on by the [agent type](GgAgentMode)
+// selector and their params authored in the panel that type opens, and `replay` is a
+// switch on the Agent tab — but all three are still specs, so the editor needs them.
 export const RESPONSES_AS_CODE_CAP: CapSpec = CAPABILITIES.find(
   (c) => c.id === RESPONSES_AS_CODE_CAP_ID,
 )!;
 export const FSM_CAP: CapSpec = CAPABILITIES.find((c) => c.id === FSM_CAP_ID)!;
+export const REPLAY_CAP: CapSpec = CAPABILITIES.find(
+  (c) => c.id === REPLAY_CAP_ID,
+)!;
 
 export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,
