@@ -1022,6 +1022,25 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
         "instantiating and evaluating a Ruby program took {best:?}; Opal's runtime or gg's SDK is \
          being built per turn rather than coming out of the component's pre-initialised snapshot",
     );
+
+    // One thing the threshold above is too coarse to catch, and which was measured costing ~3 ms of
+    // the reading — a third of a turn — before it was moved: the calling shape of every SDK
+    // function, which `GG::ApiObject` needs to refuse a wrong argument count or an unknown keyword.
+    // Reflecting it with `Method#parameters` when a run binds its objects is per-turn work;
+    // reflecting it at the SDK's top level puts it in the snapshot `wizer` takes. That it really is
+    // in the snapshot is asserted rather than assumed, because the two are indistinguishable from
+    // inside a program and the slow one is the one that happens by default.
+    let outcome = run("puts GG::ApiObject::SHAPES.size
+puts GG::ApiObject::SHAPES.frozen?
+");
+    let baked = logs(&outcome);
+    assert_eq!(baked[1], "true", "the table is closed once it is built");
+    assert!(
+        baked[0].parse::<usize>().expect("a count") >= 35,
+        "the shape table came out of the snapshot with only {} entries, so it is being built per \
+         turn instead",
+        baked[0]
+    );
 }
 
 #[test]
@@ -1385,20 +1404,25 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
 
 #[test]
 fn an_argument_mistake_is_an_argument_error_rather_than_silence() {
-    // The defect this arm shipped with, and the reason this is its own function rather than another
-    // program appended to one above: Opal defaults `arity_check` OFF, so every `def` in a compiled
-    // program — the model's own and gg's SDK's alike — bound a missing parameter to JavaScript
-    // `undefined` and carried on. `def two(a, b)` called with one argument did not raise; it died
-    // further down with `can't access property "$inspect", b is undefined`, a message naming a
-    // variable of the COMPILED JavaScript, which is the one leak the source map exists to prevent.
-    // `tasks.add_task("id")` reached the membrane and came back as `TypeError: expected a string,
-    // received [undefined]` — a sentence about the wire, for a mistake in the program.
+    // The defect this arm shipped with. Opal defaults `arity_check` OFF, so every `def` in a
+    // compiled program — the model's own and gg's SDK's alike — bound a missing parameter to
+    // JavaScript `undefined` and carried on. `def two(a, b)` called with one argument did not
+    // raise; it died further down with `can't access property "$inspect", b is undefined`, a
+    // message naming a variable of the COMPILED JavaScript, which is the one leak the source map
+    // exists to prevent. `tasks.add_task("id")` reached the membrane and came back as
+    // `TypeError: expected a string, received [undefined]` — a sentence about the wire, for a
+    // mistake in the program.
     //
     // gg now compiles both halves with `arity_check`, and `GG::ApiObject` checks the surface it
-    // binds before the call is made. What follows is measured through the real compiler and the
-    // real membrane, because the claim is about the committed artifacts and nothing else can say it.
+    // binds before the call is made. All of what follows is measured through the real compiler and
+    // the real membrane, because the claim is about the committed artifacts and nothing else can
+    // say it.
+    //
+    // Programs are batched — one compile drives many mistakes, each rescued and logged — because a
+    // compile here spawns a real `node` over the 2.9 MB Opal bundle, and this file's own rule is
+    // that a case is a program rather than a function.
 
-    // A user-defined method: Ruby's own exception, at the line of the model's own Ruby, naming the
+    // A user-defined method, UNCAUGHT: Ruby's own exception, in the model's own file, naming the
     // count. This is what `arity_check` buys, and nothing else in the arm can produce it.
     let outcome = run(r##"
 def two(a, b)
@@ -1436,126 +1460,122 @@ two("only")
     );
     assert_eq!(outcome.logs, ["before"], "what ran before it still reports");
 
-    // Too MANY is refused as well, which is the half that says this is an arity check rather than a
-    // nil guard.
-    let outcome = run("def one(a)\n  a\nend\n\none(1, 2, 3)\n");
-    assert!(
-        program_error(&outcome)
-            .message
-            .contains("given 3, expected 1"),
-        "too many positionals is refused too: {:?}",
-        program_error(&outcome).message
-    );
+    // Too MANY is refused as well — which is what says this is an arity check rather than a nil
+    // guard — and an `ArgumentError` is a `StandardError`, so a bare `rescue` catches it and the
+    // program carries on. That is the half a model needs in order to recover inside one turn.
+    let outcome = run(r##"
+def one(a)
+  a
+end
 
-    // An SDK call short of a required argument never reaches the membrane, and the refusal names
-    // the call THE MODEL WROTE. `fs.read_file` rather than `GG::Files.read_file` is the whole point
-    // of checking in the forwarder as well as in the compiler: the model has no idea `GG::Files`
-    // exists, and Opal's own message would also have rendered Ruby's negative arity encoding
-    // (`expected -3`), a number no CRuby message ever prints.
-    let (outcome, log) = run_with("fs.read_file\n", &all_tools(), &[], canned_outcome);
-    let error = program_error(&outcome);
+begin
+  one(1, 2, 3)
+rescue => failure
+  puts "#{failure.class}: #{failure.message}"
+end
+puts "carried on"
+"##);
+    let logged = logs(&outcome);
     assert!(
-        error.message.contains("ArgumentError")
-            && error.message.contains("given 0, expected 1")
-            && error.message.contains("`fs.read_file`"),
-        "the SDK refusal names the model's own spelling: {}",
-        error.message
+        logged[0].starts_with("ArgumentError:") && logged[0].contains("given 3, expected 1"),
+        "too many positionals is a rescuable ArgumentError: {logged:?}"
+    );
+    assert_eq!(logged[1], "carried on");
+
+    // THE SDK, positional. Every refusal names the call THE MODEL WROTE — `fs.read_file`, not the
+    // internal `GG::Files.read_file` — which is why the forwarder checks as well as the compiler:
+    // the model has no idea `GG::Files` exists, and Opal's own message would also have rendered
+    // Ruby's negative arity encoding (`expected -3`), a number no CRuby message ever prints.
+    let (outcome, log) = run_with(
+        r##"
+def why
+  yield
+  puts "NOT REFUSED"
+rescue ArgumentError => failure
+  puts failure.message
+end
+
+why { fs.read_file }
+why { tasks.add_task("just-an-id") }
+why { fs.write_file("a.rb", "b", "c") }
+why { tasks.set_blocked_by }
+why { fs.edit_file("a.rb", "old") }
+"##,
+        &all_tools(),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "wrong number of arguments (given 0, expected 1) — `fs.read_file`",
+            "wrong number of arguments (given 1, expected 2) — `tasks.add_task`",
+            // An optional positional widens the accepted count rather than defeating the check.
+            "wrong number of arguments (given 3, expected 1..2) — `fs.write_file`",
+            // A splat removes the ceiling without removing the floor.
+            "wrong number of arguments (given 0, expected 1+) — `tasks.set_blocked_by`",
+            "wrong number of arguments (given 2, expected 3) — `fs.edit_file`",
+        ]
     );
     assert!(
         log.calls().is_empty(),
-        "and nothing crossed the membrane: {:?}",
+        "not one of them reached the membrane: {:?}",
         log.names()
-    );
-
-    let (outcome, log) = run_with(
-        "tasks.add_task(\"just-an-id\")\n",
-        &all_tools(),
-        &[],
-        canned_outcome,
-    );
-    assert!(
-        program_error(&outcome)
-            .message
-            .contains("given 1, expected 2"),
-        "a two-argument tool called with one is refused: {:?}",
-        program_error(&outcome).message
-    );
-    assert!(log.calls().is_empty(), "and never reached the membrane");
-
-    // An optional positional widens the accepted count rather than defeating the check, and a splat
-    // removes the ceiling without removing the floor.
-    let (outcome, _log) = run_with(
-        "fs.write_file(\"a.rb\", \"b\", \"c\")\n",
-        &all_tools(),
-        &[],
-        canned_outcome,
-    );
-    assert!(
-        program_error(&outcome)
-            .message
-            .contains("given 3, expected 1..2"),
-        "an optional argument is a range, not an escape: {:?}",
-        program_error(&outcome).message
-    );
-    let (outcome, _log) = run_with("tasks.set_blocked_by\n", &all_tools(), &[], canned_outcome);
-    assert!(
-        program_error(&outcome)
-            .message
-            .contains("given 0, expected 1+"),
-        "a splat still requires what comes before it: {:?}",
-        program_error(&outcome).message
     );
 
     // THE KEYWORD HALF, which `arity_check` does not cover at all: Opal lowers keyword arguments to
     // a trailing hash and never reads the extra keys. `reviewer:` for `reviewers:` — the
     // singular/plural typo a model makes constantly — was ACCEPTED, and the issue was created with
-    // `"reviewers": []` while the program believed it had named one. Silently losing an argument the
-    // model did supply is worse than refusing the call, so it is refused, in CRuby's own words.
+    // `"reviewers": []` while the program believed it had named one. Silently losing an argument
+    // the model did supply is worse than refusing the call, so it is refused, in CRuby's own words
+    // and naming the set that would have worked.
     let (outcome, log) = run_with(
-        "project.create_issue(\"t\", \"in\", \"out\", \"done\", \"worker\", reviewer: [\"r1\"])\n",
+        r##"
+def why
+  yield
+  puts "NOT REFUSED"
+rescue ArgumentError => failure
+  puts failure.message
+end
+
+why { project.create_issue("t", "in", "out", "done", "worker", reviewer: ["r1"]) }
+why { tasks.add_task("id", "t", desc: "oops") }
+why { fs.read_file("a.rb", start: 3) }
+why { fs.list_dir("src", deep: true) }
+why { view.list(deep: true) }
+"##,
         &all_tools(),
         &[],
         canned_outcome,
     );
-    let error = program_error(&outcome);
+    let refusals = logs(&outcome);
     assert!(
-        error.message.contains("ArgumentError")
-            && error.message.contains("unknown keyword: :reviewer")
-            && error.message.contains(":reviewers"),
-        "the typo is refused and the accepted set is named: {}",
-        error.message
+        refusals[0].contains("unknown keyword: :reviewer")
+            && refusals[0].contains(":reviewers")
+            && refusals[0].contains("`project.create_issue`"),
+        "the typo is refused and the accepted set is named: {refusals:?}"
+    );
+    assert!(
+        refusals[1].contains("unknown keyword: :desc"),
+        "{refusals:?}"
+    );
+    assert!(
+        refusals[2].contains("unknown keyword: :start"),
+        "{refusals:?}"
+    );
+    assert!(
+        refusals[3].contains("unknown keyword: :deep"),
+        "{refusals:?}"
+    );
+    // A function that declares no keyword at all says so, rather than listing an empty set.
+    assert!(
+        refusals[4].contains("takes no keyword arguments"),
+        "a nullary function names its own shape: {refusals:?}"
     );
     assert!(
         log.calls().is_empty(),
         "and no issue was created with an empty reviewer list: {:?}",
         log.args("create_issue")
-    );
-
-    // The same, one argument deeper in the surface, so this is a property of every bound function
-    // rather than of one wrapper.
-    for (program, unknown) in [
-        ("tasks.add_task(\"id\", \"t\", desc: \"oops\")", ":desc"),
-        ("fs.read_file(\"a.rb\", start: 3)", ":start"),
-        ("fs.list_dir(\"src\", deep: true)", ":deep"),
-    ] {
-        let (outcome, log) = run_with(&format!("{program}\n"), &all_tools(), &[], canned_outcome);
-        let error = program_error(&outcome);
-        assert!(
-            error.message.contains("unknown keyword") && error.message.contains(unknown),
-            "`{program}` should refuse {unknown}: {}",
-            error.message
-        );
-        assert!(log.calls().is_empty(), "`{program}` reached the membrane");
-    }
-
-    // A function that declares no keyword at all says so, rather than listing an empty set.
-    let (outcome, _log) = run_with("view.list(deep: true)\n", &all_tools(), &[], canned_outcome);
-    assert!(
-        program_error(&outcome)
-            .message
-            .contains("takes no keyword arguments"),
-        "a nullary function names its own shape: {:?}",
-        program_error(&outcome).message
     );
 
     // And none of this refuses what is correct — the check has to be invisible to a program that

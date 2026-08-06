@@ -385,6 +385,13 @@ artifact:
   `GG::Files.read_file`, and renders `expected 1..2` rather than Ruby's negative arity encoding
   (`expected -3`), which is a number no CRuby message ever prints.
 
+Knowing what each function declares is reflection, and reflection is not free: `Method#parameters`
+over the thirty-five bound functions cost **~3 ms of a ~9 ms turn** when the forwarder did it as a
+run bound its objects. It is reflected at the SDK's top level instead, so the table is in the heap
+`wizer` snapshots and a turn pays nothing — the same argument the baked Opal runtime rests on, one
+level down, and asserted the same way: a test reads the table's size out of a running program,
+because a per-turn rebuild and a baked one are indistinguishable from inside one.
+
 One difference runs the *other* way from Python's, and is worth naming beside that arm's
 [caution about a parked guest](#wasi): Ruby's `sleep` is a **busy wait** in Opal rather than a park
 in a host call, so the execution deadline reaches it exactly as it reaches any other runaway. A

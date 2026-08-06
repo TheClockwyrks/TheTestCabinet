@@ -32,8 +32,7 @@ module GG
       # that knows both what was passed and what the target declares, so it is where CRuby's
       # `ArgumentError: unknown keyword:` is put back.
       members.each do |name, callable|
-        accepted = ApiObject.keywords(callable)
-        arity = ApiObject.arity(callable)
+        accepted, arity = ApiObject.shape(callable)
         define_singleton_method(name) do |*args, **kwargs, &block|
           fn = "#{object}.#{name}"
           ApiObject.check_arity(fn, arity, args.length)
@@ -43,6 +42,54 @@ module GG
           callable.call(*args, **kwargs, &block)
         end
       end
+    end
+
+    # Every SDK method's calling shape, keyed by the module it is defined on and its name, and
+    # filled by {precompute} AT LOAD TIME.
+    #
+    # `componentize-js` runs this file's top level under `wizer` and snapshots the heap, so a table
+    # built here is *in the artifact* and costs a turn nothing. Reflecting it per turn instead is
+    # not free and was measured: `Method#parameters` over the thirty-five bound functions, twice
+    # each, cost about 3 ms of the roughly 9 ms a whole turn takes — a third of it, on the arm whose
+    # entire point is what a language costs. This is the same argument the baked Opal runtime rests
+    # on, one level down.
+    SHAPES = {}
+
+    # The calling shape of one bound callable: `[keywords, arity]`.
+    #
+    # A hit is every SDK function. A miss is the per-object `list`, which is a `Proc` closing over
+    # its object's name rather than a method on a module — there is one per object and it takes no
+    # arguments, so computing it here costs nothing worth a table entry.
+    #
+    # @param callable [Method, Proc] the SDK function bound onto an object
+    # @return [Array(Array<String>, nil, Array(Integer, Integer, nil))] its keywords and its arity
+    def self.shape(callable)
+      key = shape_key(callable)
+      (key && SHAPES[key]) || [keywords(callable), arity(callable)]
+    end
+
+    # The table's key, or nil for a callable that has no module to be defined on.
+    #
+    # @param callable [Method, Proc] the callable to key
+    # @return [String, nil] `GG::Files.read_file`'s key, or nil for a `Proc`
+    def self.shape_key(callable)
+      return nil unless callable.respond_to?(:owner)
+
+      "#{callable.owner}##{callable.name}"
+    end
+
+    # Fill {SHAPES} for every function `modules` define. Called at load time; see {SHAPES}.
+    #
+    # @param modules [Array<Module>] the SDK modules whose singleton methods are bound onto objects
+    # @return [void]
+    def self.precompute(modules)
+      modules.each do |mod|
+        mod.methods(false).each do |name|
+          callable = mod.method(name)
+          SHAPES[shape_key(callable)] = [keywords(callable), arity(callable)].freeze
+        end
+      end
+      SHAPES.freeze
     end
 
     # The keyword arguments a bound callable declares.
@@ -351,4 +398,9 @@ module GG
       true
     end
   end
+
+  # Reflect every SDK function's calling shape ONCE, here, at load time — so it is baked into the
+  # component's pre-initialised snapshot rather than recomputed on every turn. See
+  # {GG::ApiObject::SHAPES} for what that is worth in milliseconds.
+  ApiObject.precompute(Scope::MODULES.values)
 end

@@ -43,3 +43,15 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-code-analysis) and test(=tests::a_truncated_analysis_is_deterministic_and_says_so)'
 slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The Ruby arm's per-turn measurement, for the same reason as the runaway-program test above and
+# with the same remedy: it asserts that Opal's runtime and gg's SDK come out of the component's
+# pre-initialised snapshot, and the only way to observe that is a wall-clock reading of an
+# instantiate-and-evaluate. That reading is of the *machine* as much as of the artifact — 9 ms on an
+# idle dev container, 91 ms beside the rest of this package, against a 25 ms bound chosen to sit far
+# below the 45-51 ms a per-turn rebuild costs. Under contention it failed while the property it
+# checks was perfectly intact. Giving it every slot is what makes the reading a reading of the
+# workload rather than of the load average.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::ruby::substrate::the_baked_runtime_and_sdk_are_what_make_a_turn_affordable)'
+threads-required = "num-test-threads"
