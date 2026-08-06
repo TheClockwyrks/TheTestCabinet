@@ -24,6 +24,7 @@
             "maybe",
             "newtype",
             "now",
+            "nullable",
             "numbers",
             "ordered-collections",
             "partial",
@@ -34,9 +35,11 @@
             "refs",
             "st",
             "strings",
+            "tailrec",
             "transformers",
             "tuples",
-            "unfoldable"
+            "unfoldable",
+            "unsafe-coerce"
           ]
         },
         "test": {
@@ -1080,6 +1083,16 @@
       "dependencies": [
         "datetime",
         "effect",
+        "prelude"
+      ]
+    },
+    "nullable": {
+      "type": "registry",
+      "version": "6.0.0",
+      "integrity": "sha256-CDAZk+L9Sc0GCFTkE8n+qdp4Ys8avvnkU+m2hVALt7M=",
+      "dependencies": [
+        "functions",
+        "maybe",
         "prelude"
       ]
     },

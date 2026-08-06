@@ -2,7 +2,8 @@
 	"purs": "0.15.16",
 	"esbuild": "0.28.1",
 	"registry": "80.3.0",
-	"modules": 309,
+	"sdk": "gg-sdk",
+	"modules": 329,
 	"packages": [
 		{
 			"name": "arrays",
@@ -118,6 +119,10 @@
 		},
 		{
 			"name": "now",
+			"version": "6.0.0"
+		},
+		{
+			"name": "nullable",
 			"version": "6.0.0"
 		},
 		{

@@ -7,18 +7,6 @@
 # tree `packages/gg-sandbox-purescript/build.sh` commits, every program is compiled against exactly
 # it, and nothing is installed at run time.
 #
-# What is here, and why:
-#
-#   the collections    arrays, lists, ordered-collections (`Map`/`Set`), foreign-object, unfoldable,
-#                      foldable-traversable — the data structures a program actually manipulates
-#   the effect types   effect, exceptions, refs, st, now, random, console — including the two the
-#                      sandbox's ambient WASI makes real (a clock and an entropy source)
-#   the monad stack    transformers (StateT, ReaderT, WriterT, ExceptT), free, identity, control
-#   the optics         profunctor-lenses — named by the owner specifically, and the reason
-#                      `profunctor`, `distributive` and friends arrive transitively
-#   the everyday       prelude, maybe, either, tuples, newtype, bifunctors, functions, partial,
-#                      strings, integers, numbers, enums, record, datetime
-#
 # What is NOT here is as deliberate. There is no JSON library, because neither an argument nor a
 # result the SDK takes is a JSON document a program assembles or parses — that is one of the seam's
 # rules, and shipping `argonaut` would invite a program to break it. There is no HTTP or Node
@@ -26,43 +14,60 @@
 # `aff`: every call in this sandbox is synchronous, so an asynchronous effect monad would be a
 # library whose whole point the sandbox refuses.
 #
+# # The headings are machine-readable
+#
+# Every dependency sits under a `# --- Heading ---` line, and `tools/signatures.mjs` reads them: the
+# catalogue's `libraries` section is the modules of the packages declared here, grouped by these
+# headings, so what a model is TOLD it may import is reflected out of the file that decides the set
+# rather than written into a prompt that would drift from it. Add a package under a heading, rebuild,
+# and the prompt says so.
+#
 # Versions are resolved against the pinned registry package set (see `purescript-version.sh`) and
 # recorded package by package in the committed `spago.lock`.
 package:
   name: gg-sandbox-purescript
   dependencies:
-    - arrays
-    - bifunctors
-    - console
-    - control
-    - datetime
-    - effect
-    - either
-    - enums
-    - exceptions
-    - foldable-traversable
-    - foreign-object
-    - free
-    - functions
-    - identity
-    - integers
-    - lists
-    - maybe
-    - newtype
-    - now
-    - numbers
-    - ordered-collections
-    - partial
+    # --- The everyday ---
     - prelude
-    - profunctor-lenses
-    - random
+    - maybe
+    - either
+    - tuples
+    - newtype
+    - bifunctors
+    - functions
+    - partial
+    - strings
+    - integers
+    - numbers
+    - enums
     - record
+    - datetime
+    # --- Collections ---
+    - arrays
+    - lists
+    - ordered-collections
+    - foreign-object
+    - foldable-traversable
+    - unfoldable
+    # --- Effects, including the two the sandbox's ambient WASI makes real ---
+    - effect
+    - exceptions
     - refs
     - st
-    - strings
+    - now
+    - random
+    - console
+    # --- Monad transformers and control ---
     - transformers
-    - tuples
-    - unfoldable
+    - free
+    - identity
+    - control
+    - tailrec
+    # --- Optics ---
+    - profunctor-lenses
+    # --- JavaScript interop, which is what this arm's own SDK is built on ---
+    - nullable
+    - unsafe-coerce
 workspace:
   packageSet:
     registry: 80.3.0

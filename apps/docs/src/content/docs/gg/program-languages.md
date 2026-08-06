@@ -447,12 +447,13 @@ lexical scope — the top level — rather than to the module it is evaluated ag
 ## PureScript: a compiler in the image, a library set in the binary
 
 The fifth arm, and the first that is **not yet registered**: what exists is its execution
-substrate — the compile, the guest, and the proof that a real PureScript program runs through
-gg's real linker, membrane and store — with the SDK and the registration to follow. There is no
-`language: "purescript"` an operator can configure yet, deliberately: a `ProgramLanguage` cannot
-be half-registered, because the registry's match is exhaustive and every gate that iterates the
-registered set would demand a catalogue, two prompt templates and a healing dialect the moment
-the enum carried a variant for it.
+substrate and its **surface** — the compile, the guest, the hand-written SDK a program is
+written against, the catalogue reflected out of it, and the proof that a real PureScript program
+runs through gg's real linker, membrane and store and reaches every one of gg's tools. What is
+left is the registration. There is no `language: "purescript"` an operator can configure yet,
+deliberately: a `ProgramLanguage` cannot be half-registered, because the registry's match is
+exhaustive and every gate that iterates the registered set would demand two prompt templates and
+a healing dialect the moment the enum carried a variant for it.
 
 **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one
 script by `esbuild`, and evaluated by the same ECMAScript guest the TypeScript and JavaScript
@@ -494,7 +495,7 @@ without. Both halves go the only way they can:
 | | Where it lives | Why |
 | --- | --- | --- |
 | `purs` (~100 MB) and `esbuild` (~10 MB) | `containers/gg-toolchains`, at `/opt/gg/toolchains/bin` | statically linked, one build per platform. gg is copied into a run container as a single file; a binary copies fine, a per-platform Haskell executable does not. |
-| The **library set, compiled** (1.2 MB gzipped) | inside gg's binary, unpacked once per machine | `purs` cannot type-check a program without both the sources *and* the compiled externs of everything it imports — with externs alone every import is `ModuleNotFound` — and compiling the set from scratch costs ~16 s, which no turn can pay. |
+| The **library set, compiled** (1.3 MB gzipped), with this arm's SDK compiled into it | inside gg's binary, unpacked once per machine | `purs` cannot type-check a program without both the sources *and* the compiled externs of everything it imports — with externs alone every import is `ModuleNotFound` — and compiling the set from scratch costs ~16 s, which no turn can pay. |
 
 The library set could have gone in the image beside `purs`, and deliberately does not. The image
 is built separately from the binary that runs in it, so a tree living there could be a different
@@ -507,9 +508,10 @@ a tree built by one `purs` and read by another does not compile at all.
 ### What the libraries are, and why they are generous
 
 The set is declared in `packages/gg-sandbox-purescript/spago.yaml`, resolved against a pinned
-registry package set, compiled by `build.sh`, and recorded package by package in
-`crates/gg/src/sandbox/checkers/purescript.compiler.json` — 49 packages and 309 modules as it
-stands. It carries the collections (`Data.Map`, `Data.Set`, arrays, lists, `Foreign.Object`), the
+registry package set, compiled by `build.sh` — **together with this arm's own SDK**, which is
+staged into the same tree and compiled into the same tarball — and recorded package by package in
+`crates/gg/src/sandbox/checkers/purescript.compiler.json`: 50 packages and 329 modules as it
+stands, the SDK's nineteen among them. It carries the collections (`Data.Map`, `Data.Set`, arrays, lists, `Foreign.Object`), the
 monad transformers, `profunctor-lenses`, the `Effect` types including the two the sandbox's
 [ambient WASI](#wasi) makes real (`Effect.Now`, `Effect.Random`), and the everyday prelude,
 strings, records and dates.
@@ -528,6 +530,13 @@ against the manifest, so a tree rebuilt with a different set and committed witho
 fails. `spago.yaml` and `spago.lock` are committed beside it, so what went in is reviewable even
 though what came out is a binary.
 
+`spago.yaml`'s dependency list is also **machine-readable prose**: each package sits under a
+`# --- heading ---`, and the catalogue's [`libraries`](#the-catalogue) section is the modules of
+those packages, grouped by those headings and read out of the tree that actually shipped. So what
+a model is told it may import is reflected out of the file that decides the set — the failure the
+[Python arm shipped once](#the-model-is-told-the-set-and-is-told-it-from-the-artifact), in the one
+place it could recur.
+
 ### What compiling costs
 
 Measured on this repository's dev container, aarch64, against the committed tree, median of
@@ -535,7 +544,7 @@ nine:
 
 | | |
 | --- | --- |
-| Hard-linking the tree into the preparation's own workspace (1,051 files) | ~19 ms |
+| Hard-linking the tree into the preparation's own workspace (1,119 files) | ~19 ms |
 | `purs compile` — dominated by loading 9 MB of externs, not by the program | ~200 ms |
 | `esbuild` — bundling and tree-shaking the module graph | ~65 ms |
 | **End to end** | **~290 ms** |
@@ -599,6 +608,82 @@ compiler's own stable error code and its exact span rather than as prose to be s
 An error `purs` reports in a file that is not the model's is a fault in gg's own shipped library
 tree, so it is a toolchain failure too: blaming a model for it would send it rewriting something
 that was never wrong.
+
+### What "native" means in PureScript
+
+An idiomatic PureScript SDK is not the TypeScript one with `::` in it. Every difference below is
+a spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
+them:
+
+- **An API object is a record of functions.** `fs.readFile "main.purs" {}` is a field access and
+  an application. That is not decoration: it is the only way this language can carry the
+  `fs.read_file` **identity** every other arm has, because a module alias must be capitalised and
+  `Fs.readFile` is therefore a different name from the one the seam says every arm must offer.
+- **Optional arguments are a record whose row is checked.**
+  `Union given rest ReadOptions => String -> Record given -> Effect FileRead` is PureScript's own
+  idiom for "any subset of these fields": `fs.readFile "a" {}` and `fs.readFile "a" { limit: 20 }`
+  both type-check, and `{ limitt: 20 }` is a type error that prints every field that would have
+  worked. A call with a bag of required fields takes one **open** record instead —
+  `project.createIssue { title, inScope, outOfScope, completionCriteria, agent, blockedBy }` —
+  where the required labels are in the type and the rest is that same constrained row.
+- **A three-way patch field needs no sentinel.** Leave `description` out to keep it, pass
+  `Nothing` to clear it, pass `Just` to replace it — where [Python](#what-native-bought-in-the-catalogue)
+  needs an `UNCHANGED` because `None` is already taken and TypeScript needs `undefined` beside
+  `null`.
+- **A fixed choice is a `data` type**, and its arms are prefixed by what they belong to
+  (`TaskDone`, `IssueDone`, `AgentTimedOut`, `FileEntry`) because a program imports the whole
+  surface from one module and two types cannot both call an arm `Done` there.
+- **A read is a real sum type.** `case read of TextFile file -> … ; ImageFile picture -> …`,
+  narrowed by the compiler rather than by comparing a `kind` field against a string.
+- **A failure is thrown and caught with `attempt`**, which hands back
+  `Either ToolError a` and re-throws anything that is not a gg failure. That is how effectful
+  PureScript expresses a failure that is usually fatal to what you were doing; a surface where
+  every call returned `Effect (Either ToolError a)` would force a branch after every line and make
+  a composed program unwritable.
+- **The brief a child agent is spawned with is a constructor** — `Prompt "…"` or `Issue "AUTH-1"`
+  — so "both" and "neither" are programs that do not compile, where every other arm can only
+  refuse them at run time.
+- **`lib.<key>` is the one place the program says what type it expects.** A code
+  [skill](/gg/skills/)'s module is compiled separately from the program that uses it, so there is
+  no `import` for `purs` to check the two against: `lib "helpers" "greet"` hands back
+  `Maybe a` and the program annotates it. What comes back really is ordinary PureScript — a
+  curried function, because that is what a PureScript function is.
+
+Underneath all of it is **one foreign module**, `Gg.Internal.Wire`, naming the API objects the
+guest binds. They are free identifiers in the bundle, resolved at call time against the scope the
+guest built — which is what makes a capability this run withheld a `ToolError` carrying
+`unavailable` rather than a `ReferenceError`, and what makes every call land in the *same*
+lowering a TypeScript program's does. That last part is worth stating plainly, because it is what
+a cross-language study rests on: the two arms produce **byte-identical** arguments for the same
+capability by construction, and a test drives all thirty-five tools through the real membrane to
+say so.
+
+### The catalogue, and the two things PureScript does not have
+
+`purs compile --codegen docs` emits a `docs.json` per module carrying every exported declaration's
+doc comment and its full type, so a signature in the committed catalogue is the compiler's own
+reading of the SDK. Two things it cannot carry, and one convention that replaces both:
+
+| What is missing | What is done instead |
+| --- | --- |
+| A per-parameter doc slot — an ML type says `String -> Int -> Effect Unit` and names nothing | a `# Arguments` list in the declaration's own doc comment, exactly as Rust's convention does it, from which the reflector takes each argument's **name** and description |
+| A record-field doc slot — `purs` discards a comment written on a field in all three placements | a `# Fields` list on the type |
+
+Neither is decoration, because the reflector refuses to emit a catalogue that does not satisfy
+them: a signature that takes *N* arguments must document *N* in order, every field of a record
+argument must be documented and every documented field must exist, a `# Fields` list must name
+every field of its type and only those, and nothing may be blank. The failure lands on the author
+rather than on a model.
+
+One thing this arm made the [agreement gate](#the-agreement-gate) learn. Its signatures are
+written in **ML notation**, which puts its argument list in a chain of top-level arrows rather
+than between brackets — and the gate's shallow bracket rule was wrong about that in both
+directions, reading `list :: Effect (Array FunctionSummary)` as taking an argument and
+`readFile :: String -> Effect FileRead` as taking none. It now reads an ML signature by its
+arrows, which is strictly *more* than it could see before; and the one check such a signature
+cannot satisfy — that a documented argument's name appears in it — is skipped for the arguments a
+type cannot name and kept for the **fields** of a structured one, which are named by the type in
+every notation. That is the half that can mislead a call site, so it is the half that is held.
 
 ### What a PureScript program is
 
@@ -1221,19 +1306,22 @@ What the gate asserts about spelling is that it is **there**. Every argument, ev
 a structured argument, every type, every one of a type's members and every API object must
 carry documentation; a signature must begin with the name a program calls; an argument must
 be named by the signature that takes it — a renamed parameter left behind under its old name
-in the docs reads perfectly and tells a model to write something the call will not accept;
-and no two functions on one object may share a name. Those checks run over the **emitted
+in the docs reads perfectly and tells a model to write something the call will not accept —
+except where the notation has nowhere to put a name, which is [ML
+notation](#the-catalogue-and-the-two-things-purescript-does-not-have), where the same check is
+kept for the **fields** of a structured argument and dropped for the arguments a type cannot
+name; and no two functions on one object may share a name. Those checks run over the **emitted
 catalogue**, so they are one gate for every language: a language whose compiler enforced its
-doc comments (Swift's `docc`, Java's `-Xdoclint`) and one whose convention did (Rust's
-`# Arguments`, PureScript's `@param`) land in the same shape here.
+doc comments (Swift's `docc`, Java's `-Xdoclint`) and one whose convention did (Rust's and
+PureScript's `# Arguments`) land in the same shape here.
 
 An **omission** is caught as well as a blank, which matters because the languages with no
 per-argument doc slot of their own are exactly the ones whose reflector is most likely to
 emit an empty argument list and call it done. Two checks catch it, and between them they
-cover every notation: a signature that writes a non-empty argument list between brackets and
+cover every notation: a signature that writes a non-empty argument list — between brackets, or as
+a chain of top-level arrows where the notation is `readFile :: String -> Effect FileRead` — and
 documents nothing fails on its own, and an entry documenting no argument where another arm
-documents one fails comparatively — which is what covers a signature written without
-brackets to look inside, as an ML-style `readFile :: String -> Effect FileRead` is.
+documents one fails comparatively.
 
 Each language is additionally anchored to **gg's own vocabularies**: its tools in exact
 bijection with the tool registry's, its component binding exactly those tools, its ending

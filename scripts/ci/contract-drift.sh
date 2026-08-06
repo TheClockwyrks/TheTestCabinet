@@ -40,10 +40,11 @@
 #     is driven by that package's own build.sh) — whereas emitting a catalogue reads
 #     the sources and needs only that language's documentation tool: the `typescript`
 #     the `npm ci` below already installs, a pinned `griffe` that
-#     packages/gg-sandbox-python/signatures.sh fetches through uv, and a pinned `yard`
+#     packages/gg-sandbox-python/signatures.sh fetches through uv, a pinned `yard`
 #     that packages/gg-sandbox-ruby/signatures.sh installs into the Ruby all three of
-#     these machines already ship. The committed .wasm files therefore sit in the
-#     diffed directory untouched: nothing here regenerates one, so one cannot cause a
+#     these machines already ship, and — for PureScript, whose documentation tool IS
+#     its compiler — the pinned `purs` scripts/ci/install-purescript.sh fetches. The
+#     committed .wasm files therefore sit in the diffed directory untouched: nothing here regenerates one, so one cannot cause a
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
 #
@@ -106,7 +107,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby"
+regenerated="typescript javascript python ruby purescript"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -136,6 +137,13 @@ log "regenerate the Python guest's signature catalogue (griffe + tools/signature
 
 log "regenerate the Ruby guest's signature catalogue (YARD + tools/signatures.rb)"
 ./packages/gg-sandbox-ruby/signatures.sh
+
+log "install the pinned purs (the PureScript arm's catalogue is reflected with the compiler itself)"
+./scripts/ci/install-purescript.sh
+export PATH="$HOME/.local/bin:$PATH"
+
+log "regenerate the PureScript arm's signature catalogue (purs --codegen docs + tools/signatures.mjs)"
+./packages/gg-sandbox-purescript/signatures.sh
 
 # The same completeness rule the catalogues get, over the other committed directory: a
 # checker or compiler this script never re-cuts would sit in the diff below and be green
@@ -188,13 +196,17 @@ models a surface the sandbox does not export.
 Run the regeneration for the language that drifted and commit the result — for
 TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
 `packages/gg-sandbox-python/signatures.sh`; for Ruby,
-`packages/gg-sandbox-ruby/signatures.sh`.
+`packages/gg-sandbox-ruby/signatures.sh`; for PureScript,
+`packages/gg-sandbox-purescript/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script
 — packages/gg-sandbox/build.sh for TypeScript, packages/gg-sandbox-python/build.sh
 for Python, packages/gg-sandbox-ruby/build.sh for Ruby — and commit
-crates/gg/src/sandbox/guests/<language>.component.wasm alongside.
+crates/gg/src/sandbox/guests/<language>.component.wasm alongside. PureScript has no
+component of its own, and its SDK lives instead inside the committed LIBRARY TREE:
+run packages/gg-sandbox-purescript/build.sh and commit
+crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz with its manifest.
 
 If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's
 program is compiled or type-checked with no longer matches the one installed here —

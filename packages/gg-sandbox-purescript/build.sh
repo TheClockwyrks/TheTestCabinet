@@ -34,8 +34,8 @@
 #
 #   * spago.yaml                  (the library set a program may import)
 #   * purescript-version.sh       (the compiler, the bundler, or the registry package set)
-#   * src/**                      (this arm's PureScript SDK, once it exists — its modules are
-#                                  compiled into the same tree, so a change there is a change here)
+#   * src/**                      (this arm's PureScript SDK — its modules are compiled into the
+#                                  same tree, so a change there is a change here)
 #
 # Requires Node and network access: the pinned `purescript`, `spago` and `esbuild` come from npm,
 # and Spago fetches the package set's sources from the registry. It takes about a minute and emits
@@ -50,6 +50,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 PACKAGE="packages/gg-sandbox-purescript"
+# Where this package's own SDK is staged inside the tree. Not a registry package and not named like
+# one, so the manifest records it separately and the drift gate can tell the two apart.
+SDK_DIR="gg-sdk"
 DEST_DIR="crates/gg/src/sandbox/checkers"
 TARBALL="$DEST_DIR/purescript.libraries.tar.gz"
 MANIFEST="$DEST_DIR/purescript.compiler.json"
@@ -95,6 +98,15 @@ for package in "$PACKAGE"/.spago/p/*/; do
 	cp -aL "$package/src" "$TREE_DIR/libs/$name/src"
 done
 
+# 3b. Stage THIS package's own PureScript — the hand-written SDK — into the same tree, under a
+#     directory of its own. It is compiled into the tarball exactly as a library is, which is the
+#     whole reason the tree rides inside gg's binary rather than in the run image: the surface a
+#     model is shown in its prompt and the surface its program is compiled against are then one
+#     artifact, and cannot be two vintages.
+echo "Staging the SDK ..."
+mkdir -p "$TREE_DIR/libs/$SDK_DIR"
+cp -aL "$PACKAGE/src" "$TREE_DIR/libs/$SDK_DIR/src"
+
 # 4. Compile it, with exactly the arguments a turn's compile uses. `purs` writes `externs.cbor` and
 #    `index.js` per module and copies each module's FFI in as `foreign.js`; nothing else is emitted
 #    at the default codegen, so there is nothing to prune.
@@ -116,14 +128,16 @@ gzip -9 -n -c "$BUILD_DIR/libraries.tar" > "$TARBALL"
 #    the transitive packages nobody wrote down — and `purescript.compile.rs`'s own gate holds the
 #    two to each other.
 echo "Writing the manifest ..."
-export PURS_VERSION ESBUILD_VERSION REGISTRY_VERSION
+export PURS_VERSION ESBUILD_VERSION REGISTRY_VERSION SDK_DIR
 node - "$TREE_DIR" "$MANIFEST" <<'NODE'
 const fs = require("node:fs");
 const [treeDir, manifestPath] = process.argv.slice(2);
+const sdk = process.env.SDK_DIR;
 const packages = fs
 	.readdirSync(`${treeDir}/libs`, { withFileTypes: true })
 	.filter((entry) => entry.isDirectory())
 	.map((entry) => entry.name)
+	.filter((name) => name !== sdk)
 	.sort()
 	.map((name) => {
 		const cut = name.lastIndexOf("-");
@@ -136,6 +150,7 @@ const manifest = {
 	purs: process.env.PURS_VERSION,
 	esbuild: process.env.ESBUILD_VERSION,
 	registry: process.env.REGISTRY_VERSION,
+	sdk,
 	modules,
 	packages,
 };

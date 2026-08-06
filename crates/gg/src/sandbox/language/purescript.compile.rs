@@ -25,8 +25,9 @@
 //! The **library set** goes the other way. `purs` cannot type-check a program without both the
 //! sources and the compiled externs of everything it imports (measured: with externs alone every
 //! import is `ModuleNotFound`), and compiling the set from scratch costs ~16 s — so it is compiled
-//! once by `packages/gg-sandbox-purescript/build.sh` and committed as a 1.2 MB tarball that gg
-//! embeds. It could have gone in the image beside `purs` and it deliberately does not: gg is copied
+//! once by `packages/gg-sandbox-purescript/build.sh` and committed as a 1.3 MB tarball that gg
+//! embeds. This arm's **SDK** is compiled into that same tree, which is what makes the surface a
+//! model is shown in its prompt and the surface its program is compiled against one artifact. It could have gone in the image beside `purs` and it deliberately does not: gg is copied
 //! as a single file into an ephemeral run container whose image was built separately, so a tree that
 //! lived in the image could be a different vintage from the binary reading it. Once this arm's SDK
 //! is compiled into that tree, that would mean a model being shown one surface in its prompt and
@@ -34,12 +35,12 @@
 //!
 //! # What a PureScript program costs to compile
 //!
-//! Measured in this repository's dev container, aarch64, against the committed tree (309 modules,
-//! 49 packages), median of nine:
+//! Measured in this repository's dev container, aarch64, against the committed tree (329 modules,
+//! 50 packages plus this arm's own SDK), median of nine:
 //!
 //! | | |
 //! | --- | --- |
-//! | Hard-linking the tree into this preparation's workspace (1,051 files) | ~19 ms |
+//! | Hard-linking the tree into this preparation's workspace (1,119 files) | ~19 ms |
 //! | `purs compile` — dominated by loading 9 MB of externs, not by the program | ~200 ms |
 //! | `esbuild` — bundling and tree-shaking the module graph | ~65 ms |
 //! | End to end | **~290 ms** |
@@ -109,7 +110,8 @@ use crate::sandbox::language::compile::{CompilerReport, place_tree, shared_toolc
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
 
 /// The library set, compiled: every package's PureScript sources beside the externs and JavaScript
-/// `purs` emitted for them, as one gzipped tar built by `packages/gg-sandbox-purescript/build.sh`.
+/// `purs` emitted for them — **and this arm's own SDK**, staged into the same tree and compiled with
+/// them — as one gzipped tar built by `packages/gg-sandbox-purescript/build.sh`.
 ///
 /// Embedded for the reason the guest components are: gg is copied as a single file into an ephemeral
 /// run container and must carry everything it needs with it.
@@ -199,6 +201,17 @@ struct Manifest {
         allow(dead_code, reason = "read by the library set's own drift gate")
     )]
     registry: String,
+    /// The directory under `libs/` holding **this arm's own SDK**, which is compiled into the tree
+    /// exactly as a library is and is deliberately not a registry package.
+    ///
+    /// Recorded rather than assumed so that [`packages`](Self::packages) stays a list of what the
+    /// registry resolved: the drift gate compares that list with the tree's directories, and an SDK
+    /// filed among them would be a package no package set has ever heard of.
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "read by the library set's own drift gate")
+    )]
+    sdk: String,
     /// How many modules the tree carries.
     #[cfg_attr(
         not(test),
@@ -242,7 +255,7 @@ pub(super) fn compiler_version() -> &'static str {
 
 /// Unpack the library tree now, so the first compile does not.
 ///
-/// The whole of this language's warm-up: ~1.2 MB decompressed into 1,051 files, once per machine.
+/// The whole of this language's warm-up: ~1.3 MB decompressed into 1,119 files, once per machine.
 /// The result is dropped, because a failure here is the failure the first compile will make, and
 /// there it is classified, counted and reported.
 pub(super) fn warm() {
@@ -696,7 +709,7 @@ struct Libraries {
 
 /// The unpacked library tree for this process, unpacking it on first use.
 ///
-/// Unpacking is ~1.2 MB decompressed into 1,051 files and happens once per machine, not once per
+/// Unpacking is ~1.3 MB decompressed into 1,119 files and happens once per machine, not once per
 /// process: a second gg process finds the tree already placed. A run normally pays it before its
 /// first turn, off the critical path, because [`warm`] is called from
 /// [`precompile`](crate::sandbox::precompile); a run whose warm-up lost the race pays it inside the
@@ -751,7 +764,7 @@ fn fingerprint() -> u64 {
 
 /// Give this preparation its own copy of the library tree, inside `work`.
 ///
-/// Hard links rather than copies: 1,051 files land in ~19 ms instead of ~150 ms, and — because a hard
+/// Hard links rather than copies: 1,119 files land in ~19 ms instead of ~150 ms, and — because a hard
 /// link shares the inode, and the shared tree's inodes are sealed read-only — a compiler that tried to
 /// rewrite a library's artifact would be refused rather than corrupting every other agent's tree. The
 /// directories are made fresh, so `purs` can create the one directory it needs (the program's own

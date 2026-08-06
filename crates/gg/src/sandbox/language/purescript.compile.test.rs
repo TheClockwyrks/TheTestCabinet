@@ -264,6 +264,16 @@ fn the_manifest_describes_the_tree_that_actually_shipped() {
         .collect();
     staged.sort();
 
+    // The SDK is in the tree and is not a package: it is this arm's own PureScript, compiled into the
+    // same tarball so that the surface a model is shown in its prompt and the surface its program is
+    // compiled against cannot be two vintages.
+    assert!(
+        staged.contains(&manifest().sdk),
+        "the tree carries this arm's SDK at libs/{}",
+        manifest().sdk
+    );
+    staged.retain(|directory| directory != &manifest().sdk);
+
     let mut declared: Vec<String> = manifest().packages.iter().map(Package::directory).collect();
     declared.sort();
     assert_eq!(staged, declared, "the manifest names what shipped");

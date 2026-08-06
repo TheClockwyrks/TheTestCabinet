@@ -614,6 +614,87 @@ fn a_language_that_offers_the_same_capability_in_another_shape_agrees() {
     assert_eq!(read_file.signatures[1].parameters.len(), 2);
 }
 
+/// **A language that writes its signatures in ML notation is read correctly, in both directions.**
+///
+/// The notation an arm writes its signatures in is spelling, and an ML type — `readFile :: String ->
+/// Effect FileRead` — carries its argument list as a chain of top-level arrows rather than between
+/// brackets. Two things follow, and the gate has to get both right or a Haskell-family arm is
+/// unregisterable: an argument the type cannot name must not be demanded of it, and a signature that
+/// *does* take arguments and documents none must still be caught. The second is the half that would
+/// otherwise go silent, because the bracket rule reads `Effect (Array FunctionSummary)` as an
+/// argument list and `String -> Effect Unit` as none — wrong in both directions.
+#[test]
+fn a_language_that_writes_ml_signatures_is_read_by_its_own_notation() {
+    let ml = a_language_whose_catalogue(|document| {
+        for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
+            for entry in document[section].as_array_mut().expect("an array") {
+                let called = entry["name"].as_str().expect("a name").to_string();
+                for shape in entry["signatures"].as_array_mut().expect("an array") {
+                    // A type with no argument names in it at all: one arrow per parameter, and the
+                    // parameter names left only in the documentation, which is where a language with
+                    // this notation has to keep them.
+                    let arrows: Vec<String> = shape["parameters"]
+                        .as_array()
+                        .expect("an array")
+                        .iter()
+                        .map(|parameter| {
+                            format!("{} -> ", parameter["type"].as_str().unwrap_or("Unknown"))
+                        })
+                        .collect();
+                    shape["signature"] =
+                        json!(format!("{called} :: {}Effect Answer", arrows.concat()));
+                }
+            }
+        }
+    });
+    let found = disagreements(&[typescript(), ml]);
+    assert!(
+        found.is_empty(),
+        "a language whose signatures name no arguments was rejected:{}",
+        report(&found)
+    );
+
+    // And the check it is exempt from is exempt for a reason rather than by accident: an ML
+    // signature that takes an argument and documents none is still caught, and so is a field of a
+    // structured argument the type does not name.
+    let silent = a_language_whose_catalogue(|document| {
+        for entry in document["tools"].as_array_mut().expect("an array") {
+            if entry["tool"] != json!("read_file") {
+                continue;
+            }
+            entry["signatures"] = json!([{
+                "signature": "read_file :: String -> Effect FileRead",
+                "parameters": [],
+            }]);
+        }
+    });
+    let found = disagreements(&[typescript(), silent]);
+    assert!(
+        found.iter().any(|disagreement| disagreement
+            .detail
+            .contains("takes arguments and documents none")),
+        "an ML signature that takes an argument and documents none must be caught:{}",
+        report(&found)
+    );
+
+    // The other direction: a nullary ML signature whose type merely *mentions* brackets is not read
+    // as taking anything, which is what made `list :: Effect (Array FunctionSummary)` fail.
+    let nullary = a_language_whose_catalogue(|document| {
+        for entry in document["meta"].as_array_mut().expect("an array") {
+            entry["signatures"] = json!([{
+                "signature": "list :: Effect (Array FunctionSummary)",
+                "parameters": [],
+            }]);
+        }
+    });
+    let found = disagreements(&[typescript(), nullary]);
+    assert!(
+        found.is_empty(),
+        "a nullary ML signature was read as taking an argument:{}",
+        report(&found)
+    );
+}
+
 /// **A surface that agrees with the reference arm agrees with it whichever arm is first.**
 ///
 /// The relation the gate reports is symmetric even though its phrasing is not, and a study may

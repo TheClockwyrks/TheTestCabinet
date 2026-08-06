@@ -573,7 +573,13 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
                 ));
             }
             for parameter in parameters {
-                check_parameter(parameter, &where_, signature, &mut complain);
+                check_parameter(
+                    parameter,
+                    &where_,
+                    signature,
+                    names_arguments(signature),
+                    &mut complain,
+                );
             }
         }
     }
@@ -673,6 +679,7 @@ fn check_parameter(
     parameter: &'static Parameter,
     where_: &str,
     signature: &'static str,
+    named: bool,
     complain: &mut impl FnMut(String),
 ) {
     let name = parameter.name.trim();
@@ -683,14 +690,66 @@ fn check_parameter(
     if parameter.doc.trim().is_empty() {
         complain(format!("`{where_}`'s `{name}` has no documentation"));
     }
-    if !signature.contains(name) {
+    if named && !signature.contains(name) {
         complain(format!(
             "`{where_}` documents an argument `{name}` its signature does not name: {signature}"
         ));
     }
+    // A **field** is named by the signature whichever notation the language writes, because it is
+    // part of a structured value's own type and a language that renders that type renders its
+    // labels. So the half of this check that actually protects a call site — a renamed field left
+    // behind in the documentation, which tells a model to write a key the call will refuse — holds
+    // for every arm, ML notation included.
     for field in &parameter.fields {
-        check_parameter(field, where_, signature, complain);
+        check_parameter(field, where_, signature, true, complain);
     }
+}
+
+/// Whether a signature **names** its arguments, which decides whether a documented argument's name
+/// can be looked for in it.
+///
+/// Every language with a call syntax writes its parameter names into its signature, and one written
+/// in ML notation writes none — there is nowhere in `String -> { limit :: Int } -> Effect FileRead`
+/// for a name to go, because that notation names types and not parameters. Requiring such a
+/// signature to contain `path` would make an ML-notation language impossible to register, which is a
+/// worse failure than the renamed-parameter defect the check prevents — and the half of that defect
+/// which can mislead a call site is caught anyway, since a *field* of a structured argument is named
+/// by the type either way.
+fn names_arguments(signature: &str) -> bool {
+    !is_ml_notation(signature)
+}
+
+/// Whether a signature is written in **ML notation** — a name, `::` and a type — rather than as a
+/// call with a bracketed argument list.
+///
+/// The one notation-level distinction this gate makes, and it makes it because the two notations put
+/// their argument list in different places: a call writes one between brackets, an ML type writes one
+/// as a chain of top-level arrows.
+fn is_ml_notation(signature: &str) -> bool {
+    signature.contains(" :: ")
+}
+
+/// Whether an ML-notation signature's type takes an argument: a `->` at the top level of it, outside
+/// every bracket.
+///
+/// `list :: Effect (Array FunctionSummary)` takes nothing and `readFile :: String -> Effect FileRead`
+/// takes one, which the bracket rule cannot tell apart — it sees the parentheses around
+/// `Array FunctionSummary` and reads them as an argument list.
+fn ml_declares_arguments(signature: &str) -> bool {
+    let Some((_, kind)) = signature.split_once(" :: ") else {
+        return false;
+    };
+    let mut depth = 0usize;
+    let bytes = kind.as_bytes();
+    for (offset, byte) in bytes.iter().enumerate() {
+        match byte {
+            b'(' | b'{' | b'[' => depth += 1,
+            b')' | b'}' | b']' => depth = depth.saturating_sub(1),
+            b'-' if depth == 0 && bytes.get(offset + 1) == Some(&b'>') => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 /// Whether a signature writes an argument list at all: its first parenthesised group, matched to its
@@ -700,10 +759,16 @@ fn check_parameter(
 /// language that writes its arguments between brackets is covered by this one rule, which is every
 /// language that has a call syntax at all: `shell(command: string)`, `fn read_file(path: &str)`,
 /// `func readFile(path: String) throws`. A signature written in ML notation
-/// (`readFile :: String -> Effect FileRead`) has no bracket to look inside and reads as taking
-/// nothing; that blind spot is covered instead by the comparative check in [`agrees_with`], which
-/// asks whether the *other* arms document arguments for the same identity.
+/// (`readFile :: String -> Effect FileRead`) has no bracket to look inside, and is read by
+/// [`ml_declares_arguments`] instead: its arguments are the chain of top-level arrows, which is where
+/// that notation puts them. The bracket rule was wrong about such a signature in both directions —
+/// `list :: Effect (Array FunctionSummary)` looked like it took an argument, and
+/// `readFile :: String -> Effect FileRead` looked like it took none — and the comparative check in
+/// [`agrees_with`] is now the second line of defence rather than the only one.
 fn declares_arguments(signature: &str) -> bool {
+    if is_ml_notation(signature) {
+        return ml_declares_arguments(signature);
+    }
     let Some(open) = signature.find('(') else {
         return false;
     };

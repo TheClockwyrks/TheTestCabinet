@@ -1,0 +1,2990 @@
+{
+	"language": "purescript",
+	"generatedFrom": "packages/gg-sandbox-purescript/src/Gg/ + spago.yaml (purs --codegen docs)",
+	"libraries": [
+		{
+			"group": "The everyday",
+			"modules": [
+				"Control.Applicative",
+				"Control.Apply",
+				"Control.Biapplicative",
+				"Control.Biapply",
+				"Control.Bind",
+				"Control.Category",
+				"Control.Monad",
+				"Control.Semigroupoid",
+				"Data.Bifunctor",
+				"Data.Bifunctor.Join",
+				"Data.Boolean",
+				"Data.BooleanAlgebra",
+				"Data.Bounded",
+				"Data.Bounded.Generic",
+				"Data.Char",
+				"Data.Char.Gen",
+				"Data.CommutativeRing",
+				"Data.Date",
+				"Data.Date.Component",
+				"Data.Date.Component.Gen",
+				"Data.Date.Gen",
+				"Data.DateTime",
+				"Data.DateTime.Gen",
+				"Data.DateTime.Instant",
+				"Data.DivisionRing",
+				"Data.Either",
+				"Data.Either.Inject",
+				"Data.Either.Nested",
+				"Data.Enum",
+				"Data.Enum.Gen",
+				"Data.Enum.Generic",
+				"Data.Eq",
+				"Data.Eq.Generic",
+				"Data.EuclideanRing",
+				"Data.Field",
+				"Data.Function",
+				"Data.Function.Uncurried",
+				"Data.Functor",
+				"Data.Generic.Rep",
+				"Data.HeytingAlgebra",
+				"Data.HeytingAlgebra.Generic",
+				"Data.Int",
+				"Data.Int.Bits",
+				"Data.Interval",
+				"Data.Interval.Duration",
+				"Data.Interval.Duration.Iso",
+				"Data.Maybe",
+				"Data.Maybe.First",
+				"Data.Maybe.Last",
+				"Data.Monoid",
+				"Data.Monoid.Additive",
+				"Data.Monoid.Conj",
+				"Data.Monoid.Disj",
+				"Data.Monoid.Dual",
+				"Data.Monoid.Endo",
+				"Data.Monoid.Generic",
+				"Data.Monoid.Multiplicative",
+				"Data.NaturalTransformation",
+				"Data.Newtype",
+				"Data.Number",
+				"Data.Number.Approximate",
+				"Data.Number.Format",
+				"Data.Ord",
+				"Data.Ord.Generic",
+				"Data.Ordering",
+				"Data.Reflectable",
+				"Data.Ring",
+				"Data.Ring.Generic",
+				"Data.Semigroup",
+				"Data.Semigroup.First",
+				"Data.Semigroup.Generic",
+				"Data.Semigroup.Last",
+				"Data.Semiring",
+				"Data.Semiring.Generic",
+				"Data.Show",
+				"Data.Show.Generic",
+				"Data.String",
+				"Data.String.CaseInsensitive",
+				"Data.String.CodePoints",
+				"Data.String.CodeUnits",
+				"Data.String.Common",
+				"Data.String.Gen",
+				"Data.String.NonEmpty",
+				"Data.String.NonEmpty.CaseInsensitive",
+				"Data.String.NonEmpty.CodePoints",
+				"Data.String.NonEmpty.CodeUnits",
+				"Data.String.Pattern",
+				"Data.String.Regex",
+				"Data.String.Regex.Flags",
+				"Data.String.Regex.Unsafe",
+				"Data.String.Unsafe",
+				"Data.Symbol",
+				"Data.Time",
+				"Data.Time.Component",
+				"Data.Time.Component.Gen",
+				"Data.Time.Duration",
+				"Data.Time.Duration.Gen",
+				"Data.Time.Gen",
+				"Data.Tuple",
+				"Data.Tuple.Nested",
+				"Data.Unit",
+				"Data.Void",
+				"Partial",
+				"Partial.Unsafe",
+				"Prelude",
+				"Record",
+				"Record.Builder",
+				"Record.Unsafe",
+				"Record.Unsafe.Union",
+				"Type.Proxy"
+			]
+		},
+		{
+			"group": "Collections",
+			"modules": [
+				"Data.Array",
+				"Data.Array.NonEmpty",
+				"Data.Array.Partial",
+				"Data.Array.ST",
+				"Data.Array.ST.Iterator",
+				"Data.Array.ST.Partial",
+				"Data.Bifoldable",
+				"Data.Bitraversable",
+				"Data.Foldable",
+				"Data.FoldableWithIndex",
+				"Data.FunctorWithIndex",
+				"Data.List",
+				"Data.List.Lazy",
+				"Data.List.Lazy.NonEmpty",
+				"Data.List.Lazy.Types",
+				"Data.List.NonEmpty",
+				"Data.List.Partial",
+				"Data.List.Types",
+				"Data.List.ZipList",
+				"Data.Map",
+				"Data.Map.Gen",
+				"Data.Semigroup.Foldable",
+				"Data.Semigroup.Traversable",
+				"Data.Set",
+				"Data.Set.NonEmpty",
+				"Data.Traversable",
+				"Data.Traversable.Accum",
+				"Data.TraversableWithIndex",
+				"Data.Unfoldable",
+				"Data.Unfoldable1",
+				"Foreign.Object",
+				"Foreign.Object.Gen",
+				"Foreign.Object.ST",
+				"Foreign.Object.ST.Unsafe",
+				"Foreign.Object.Unsafe"
+			]
+		},
+		{
+			"group": "Effects, including the two the sandbox's ambient WASI makes real",
+			"modules": [
+				"Control.Monad.ST",
+				"Control.Monad.ST.Class",
+				"Control.Monad.ST.Global",
+				"Control.Monad.ST.Ref",
+				"Control.Monad.ST.Uncurried",
+				"Effect",
+				"Effect.Class",
+				"Effect.Class.Console",
+				"Effect.Console",
+				"Effect.Exception",
+				"Effect.Exception.Unsafe",
+				"Effect.Now",
+				"Effect.Random",
+				"Effect.Ref",
+				"Effect.Uncurried",
+				"Effect.Unsafe"
+			]
+		},
+		{
+			"group": "Monad transformers and control",
+			"modules": [
+				"Control.Alt",
+				"Control.Alternative",
+				"Control.Comonad",
+				"Control.Comonad.Cofree",
+				"Control.Comonad.Cofree.Class",
+				"Control.Comonad.Env",
+				"Control.Comonad.Env.Class",
+				"Control.Comonad.Env.Trans",
+				"Control.Comonad.Store",
+				"Control.Comonad.Store.Class",
+				"Control.Comonad.Store.Trans",
+				"Control.Comonad.Traced",
+				"Control.Comonad.Traced.Class",
+				"Control.Comonad.Traced.Trans",
+				"Control.Comonad.Trans.Class",
+				"Control.Extend",
+				"Control.Lazy",
+				"Control.Monad.Cont",
+				"Control.Monad.Cont.Class",
+				"Control.Monad.Cont.Trans",
+				"Control.Monad.Error.Class",
+				"Control.Monad.Except",
+				"Control.Monad.Except.Trans",
+				"Control.Monad.Free",
+				"Control.Monad.Free.Class",
+				"Control.Monad.Identity.Trans",
+				"Control.Monad.List.Trans",
+				"Control.Monad.Maybe.Trans",
+				"Control.Monad.RWS",
+				"Control.Monad.RWS.Trans",
+				"Control.Monad.Reader",
+				"Control.Monad.Reader.Class",
+				"Control.Monad.Reader.Trans",
+				"Control.Monad.Rec.Class",
+				"Control.Monad.State",
+				"Control.Monad.State.Class",
+				"Control.Monad.State.Trans",
+				"Control.Monad.Trampoline",
+				"Control.Monad.Trans.Class",
+				"Control.Monad.Writer",
+				"Control.Monad.Writer.Class",
+				"Control.Monad.Writer.Trans",
+				"Control.MonadPlus",
+				"Control.Plus",
+				"Data.Coyoneda",
+				"Data.Identity",
+				"Data.Monoid.Alternate",
+				"Data.Yoneda"
+			]
+		},
+		{
+			"group": "Optics",
+			"modules": [
+				"Data.Lens",
+				"Data.Lens.AffineTraversal",
+				"Data.Lens.At",
+				"Data.Lens.Common",
+				"Data.Lens.Fold",
+				"Data.Lens.Fold.Partial",
+				"Data.Lens.Getter",
+				"Data.Lens.Grate",
+				"Data.Lens.Index",
+				"Data.Lens.Indexed",
+				"Data.Lens.Iso",
+				"Data.Lens.Iso.Newtype",
+				"Data.Lens.Lens",
+				"Data.Lens.Lens.Product",
+				"Data.Lens.Lens.Tuple",
+				"Data.Lens.Lens.Unit",
+				"Data.Lens.Lens.Void",
+				"Data.Lens.Prism",
+				"Data.Lens.Prism.Coproduct",
+				"Data.Lens.Prism.Either",
+				"Data.Lens.Prism.Maybe",
+				"Data.Lens.Record",
+				"Data.Lens.Setter",
+				"Data.Lens.Traversal",
+				"Data.Lens.Types",
+				"Data.Lens.Zoom"
+			]
+		},
+		{
+			"group": "JavaScript interop, which is what this arm's own SDK is built on",
+			"modules": [
+				"Data.Nullable",
+				"Unsafe.Coerce"
+			]
+		}
+	],
+	"objects": [
+		{
+			"object": "fs",
+			"doc": "read, write, and edit workspace files"
+		},
+		{
+			"object": "system",
+			"doc": "run shell commands in the workspace"
+		},
+		{
+			"object": "project",
+			"doc": "the epic/issue board — decompose work into dispatchable issues"
+		},
+		{
+			"object": "tasks",
+			"doc": "your task list"
+		},
+		{
+			"object": "memory",
+			"doc": "durable memories that survive context compaction"
+		},
+		{
+			"object": "view",
+			"doc": "show yourself a file, a value, or a function's documentation — the only way material enters your context"
+		},
+		{
+			"object": "context",
+			"doc": "manage your own context window"
+		},
+		{
+			"object": "agents",
+			"doc": "delegate work to child agents"
+		},
+		{
+			"object": "skills",
+			"doc": "read authored skills"
+		},
+		{
+			"object": "programs",
+			"doc": "fetch a program you already ran, and hand a patched copy back to be run"
+		},
+		{
+			"object": "harness",
+			"doc": "end your session"
+		},
+		{
+			"object": "review",
+			"doc": "return your verdict on the work you are reviewing"
+		}
+	],
+	"meta": [
+		{
+			"key": "list",
+			"name": "list",
+			"signatures": [
+				{
+					"signature": "list :: Effect (Array FunctionSummary)",
+					"parameters": []
+				}
+			],
+			"doc": "List the functions available on this API object, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+			"types": [
+				"FunctionSummary"
+			]
+		}
+	],
+	"session": [
+		{
+			"key": "finish",
+			"ending": "standard",
+			"object": "harness",
+			"name": "finish",
+			"signatures": [
+				{
+					"signature": "finish :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "summary",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What you did, in a sentence or two.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
+			"types": []
+		},
+		{
+			"key": "approve",
+			"ending": "review",
+			"object": "review",
+			"name": "approve",
+			"signatures": [
+				{
+					"signature": "approve :: Effect Unit",
+					"parameters": []
+				}
+			],
+			"doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change.",
+			"types": []
+		},
+		{
+			"key": "request_changes",
+			"ending": "review",
+			"object": "review",
+			"name": "requestChanges",
+			"signatures": [
+				{
+					"signature": "requestChanges :: Array String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "items",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Every change that must be made before the work can be accepted, one per entry: what is wrong, and what to change. It may not be empty.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. This ends your session, and does not stop your program.\n\nEach item says what is wrong and what to change; the list may not be empty.\n\nRaises `ToolError`: `InvalidArgument` when the list is empty.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		}
+	],
+	"views": [
+		{
+			"key": "open_file",
+			"requires": "read_file",
+			"object": "view",
+			"name": "openFile",
+			"signatures": [
+				{
+					"signature": "openFile :: String -> { offset :: Int, limit :: Int } -> Effect FileRead",
+					"parameters": [
+						{
+							"name": "path",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The file to open. Relative to your workspace, or absolute.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ offset :: Int, limit :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The window of lines to show; pass `{}` to show the whole file.",
+							"fields": [
+								{
+									"name": "offset",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The 1-based line to start at.",
+									"fields": []
+								},
+								{
+									"name": "limit",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How many lines to show from `offset`.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.\n\nThe split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it.\n\nPictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); nothing is opened and nothing is shown when you pass that cap, so close one with `view.close` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.\n\nRaises `ToolError`: `LimitExceeded`, naming the cap, when opening a picture would pass your agent's image-view cap.",
+			"types": [
+				"FileRead",
+				"TextFile",
+				"ImageFile",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"key": "open_text",
+			"requires": null,
+			"object": "view",
+			"name": "openText",
+			"signatures": [
+				{
+					"signature": "openText :: String -> String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "label",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to file the view under. It is what `view.close` takes, and opening the same label again replaces what it showed. It may not be empty.",
+							"fields": []
+						},
+						{
+							"name": "body",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to show yourself. An empty body is allowed: it is how you say that something you were showing is now empty.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.\n\nThis is the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty BODY is allowed, since it is how you say that something you were showing is now empty.\n\nRaises `ToolError`: `InvalidArgument` for an empty label — a view with no selector could never be closed or attributed — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"key": "open_docs_view",
+			"requires": null,
+			"object": "view",
+			"name": "openDocsView",
+			"signatures": [
+				{
+					"signature": "openDocsView :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "name",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The function to document, by the name it is called on its object — `\"readFile\"` for `fs.readFile`. Every object's `list` is how you find out which names exist.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.\n\nThis is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close` closes it when you are done with it.\n\nRaises `ToolError`: `NotFound` for an unknown or unbound name.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"key": "close",
+			"requires": null,
+			"object": "view",
+			"name": "close",
+			"signatures": [
+				{
+					"signature": "close :: String -> Effect Int",
+					"parameters": [
+						{
+							"name": "selector",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Close every view carrying `selector` and hand back how many were closed, freeing the tokens they occupied.\n\nFor a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
+			"types": []
+		},
+		{
+			"key": "current",
+			"requires": null,
+			"object": "view",
+			"name": "current",
+			"signatures": [
+				{
+					"signature": "current :: Effect (Array OpenView)",
+					"parameters": []
+				}
+			],
+			"doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.\n\nIt is called `current` rather than `list` because every API object already carries a `list` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
+			"types": [
+				"OpenView",
+				"ViewKind",
+				"ViewRegion"
+			]
+		}
+	],
+	"programs": [
+		{
+			"key": "history",
+			"object": "programs",
+			"name": "history",
+			"signatures": [
+				{
+					"signature": "history :: Effect (Array ProgramSummary)",
+					"parameters": []
+				}
+			],
+			"doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.\n\nIt lists shapes, not sources: fetch the one you want with `programs.get`. The list survives a compaction, so it is also how you find a program whose text has left your context window. It is empty — never an error — for a session that has run nothing yet.",
+			"types": [
+				"ProgramSummary"
+			]
+		},
+		{
+			"key": "get",
+			"object": "programs",
+			"name": "get",
+			"signatures": [
+				{
+					"signature": "get :: { turn :: Int } -> Effect String",
+					"parameters": [
+						{
+							"name": "options",
+							"type": "{ turn :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Which program to fetch; pass `{}` for your most recent one.",
+							"fields": [
+								{
+									"name": "turn",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The turn whose program to fetch, as `programs.history` reports it.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "The exact source of one program you ran, as a string. With `{}`, your most recent one.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\nRaises `ToolError`: `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"key": "rerun",
+			"object": "programs",
+			"name": "rerun",
+			"signatures": [
+				{
+					"signature": "rerun :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "source",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The program to run in place of this one, as PureScript. It may not be blank.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program.\n\nUse it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice.\n\nThe first call stands, because a silently replaced program is a change you cannot see. If your program then fails, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.\n\nRaises `ToolError`: `Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		}
+	],
+	"tools": [
+		{
+			"tool": "shell",
+			"object": "system",
+			"name": "shell",
+			"signatures": [
+				{
+					"signature": "shell :: String -> { timeoutSecs :: Int } -> Effect ShellOutput",
+					"parameters": [
+						{
+							"name": "command",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The command line, run by `sh -c` with your workspace as its working directory.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ timeoutSecs :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "How to run it; pass `{}` for gg's own defaults.",
+							"fields": [
+								{
+									"name": "timeoutSecs",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How long to let it run, in seconds, before killing it. Leave it out for gg's default of 120, which is clamped to whatever is left of the run's wall-clock budget.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Run a command with `sh -c` in the workspace directory and hand back its merged stdout and stderr.\n\nA non-zero exit is NOT a failure — read `exitCode` on the result; only a process that could not be launched, or one the timeout killed, raises.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.\n\nRaises `ToolError`: `LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.",
+			"types": [
+				"ShellOutput",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "read_file",
+			"object": "fs",
+			"name": "readFile",
+			"signatures": [
+				{
+					"signature": "readFile :: String -> { offset :: Int, limit :: Int } -> Effect FileRead",
+					"parameters": [
+						{
+							"name": "path",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The file to read. Relative to your workspace, or absolute for anything else in this container.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ offset :: Int, limit :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The window of lines to read; pass `{}` to read the whole file.",
+							"fields": [
+								{
+									"name": "offset",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+									"fields": []
+								},
+								{
+									"name": "limit",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Read a file, handing back a `TextFile` or an `ImageFile` — the format is detected from the file's bytes, never its extension.\n\nThis gets bytes for your PROGRAM and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.\n\nReading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `fs.readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.\n\nNarrow the two arms with an ordinary `case`:\n\n```\nread <- fs.readFile \"logo.png\" {}\ncase read of\n  TextFile text -> view.openText \"logo\" text.contents\n  ImageFile picture -> view.openText \"logo\" picture.label\n```\n\nRaises `ToolError`: `NotFound` for a missing path.",
+			"types": [
+				"FileRead",
+				"TextFile",
+				"ImageFile",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "write_file",
+			"object": "fs",
+			"name": "writeFile",
+			"signatures": [
+				{
+					"signature": "writeFile :: String -> String -> Effect Int",
+					"parameters": [
+						{
+							"name": "path",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+							"fields": []
+						},
+						{
+							"name": "contents",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The UTF-8 text to write. It replaces the file entirely.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and hand back the number of bytes written.\n\nWriting is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
+			"types": []
+		},
+		{
+			"tool": "edit_file",
+			"object": "fs",
+			"name": "editFile",
+			"signatures": [
+				{
+					"signature": "editFile :: String -> String -> String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "path",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The file to edit.",
+							"fields": []
+						},
+						{
+							"name": "oldString",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The exact text to find, including its whitespace. It must appear exactly once.",
+							"fields": []
+						},
+						{
+							"name": "newString",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The text to put in its place. An empty string deletes the match.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Replace the one exact occurrence of `oldString` in a file with `newString`.\n\nWiden the surrounding context until the match is unique rather than counting occurrences.\n\nRaises `ToolError`: `NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it appears more than once.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "list_dir",
+			"object": "fs",
+			"name": "listDir",
+			"signatures": [
+				{
+					"signature": "listDir :: { path :: String } -> Effect (Array DirEntry)",
+					"parameters": [
+						{
+							"name": "options",
+							"type": "{ path :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Which directory to list; pass `{}` for your workspace root.",
+							"fields": [
+								{
+									"name": "path",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The directory to list, relative to your workspace or absolute.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "List a directory, sorted by name; `{}` lists your workspace.\n\nEach entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
+			"types": [
+				"DirEntry",
+				"EntryKind"
+			]
+		},
+		{
+			"tool": "read_skill",
+			"object": "skills",
+			"name": "readSkill",
+			"signatures": [
+				{
+					"signature": "readSkill :: String -> Effect String",
+					"parameters": [
+						{
+							"name": "name",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The skill's name, as the system prompt lists it.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Read a skill by name and hand back its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.\n\nA skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it exports — reach it with `Gg.Lib.lib`. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn.\n\nRaises `ToolError`: `NotFound` — listing the skills that do exist — when the name is unknown.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "write_memory",
+			"object": "memory",
+			"name": "writeMemory",
+			"signatures": [
+				{
+					"signature": "writeMemory :: { name :: String, description :: String, body :: String, code :: String, onUse :: String } -> Effect MemoryUsage",
+					"parameters": [
+						{
+							"name": "memory",
+							"type": "{ name :: String, description :: String, body :: String, code :: String, onUse :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The memory to record. Its name must not already be taken.",
+							"fields": [
+								{
+									"name": "name",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it.",
+									"fields": []
+								},
+								{
+									"name": "body",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The memory's contents.",
+									"fields": []
+								},
+								{
+									"name": "code",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "A PureScript module whose exports are bound at `lib.<name>` for the rest of your session. Leave it out for a memory that is only prose.",
+									"fields": []
+								},
+								{
+									"name": "onUse",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "A script gg runs the first time the memory comes into use; whatever it shows you arrives on your next turn. Leave it out for a memory that runs nothing.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Record a durable memory that survives context compaction, and hand back how much of the memory budget is now used.\n\nA memory may also carry **code**. `code` is a PureScript module whose exports are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.\n\nRaises `ToolError`: `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more.",
+			"types": [
+				"MemoryUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "update_memory",
+			"object": "memory",
+			"name": "updateMemory",
+			"signatures": [
+				{
+					"signature": "updateMemory :: { name :: String, description :: String, body :: String, code :: String, onUse :: String } -> Effect MemoryUsage",
+					"parameters": [
+						{
+							"name": "memory",
+							"type": "{ name :: String, description :: String, body :: String, code :: String, onUse :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The replacement, keyed on its `name`. Every other field replaces what the existing memory held, and one left out clears it.",
+							"fields": [
+								{
+									"name": "name",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The slug of the memory to replace.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The one-line description to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "body",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The contents to replace the old ones with.",
+									"fields": []
+								},
+								{
+									"name": "code",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "A PureScript module whose exports are bound at `lib.<name>`. Leaving it out clears the code the memory had.",
+									"fields": []
+								},
+								{
+									"name": "onUse",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "A script gg runs the first time the memory comes into use. Leaving it out clears the one the memory had.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Replace an existing memory's description and body, keyed on its `name`, and hand back the memory budget.\n\nIts `code` and `onUse` are replaced too — leaving them out clears them.\n\nRaises `ToolError`: `NotFound` when no memory has that name.",
+			"types": [
+				"MemoryUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "create_memory",
+			"object": "memory",
+			"name": "createMemory",
+			"signatures": [
+				{
+					"signature": "createMemory :: { name :: String, description :: String, body :: String, code :: String, onUse :: String } -> Effect MemoryUsage",
+					"parameters": [
+						{
+							"name": "memory",
+							"type": "{ name :: String, description :: String, body :: String, code :: String, onUse :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The memory to record. Its `body` stays out of your context window until you read it, and its name must not already be taken.",
+							"fields": [
+								{
+									"name": "name",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The memory's slug: letters, digits, `-`, `_` and `.`.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A one-line description of what the memory holds, which is its line in the index.",
+									"fields": []
+								},
+								{
+									"name": "body",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The memory's initial contents.",
+									"fields": []
+								},
+								{
+									"name": "code",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "A PureScript module whose exports are bound at `lib.<name>` once you read the memory. Leave it out for a memory that is only prose.",
+									"fields": []
+								},
+								{
+									"name": "onUse",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "A script gg runs on that first read. Leave it out for a memory that runs nothing.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and hand back the memory budget.\n\nGive it a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and `onUse` (a script run on that first read).\n\nRaises `ToolError`: `Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would breach a limit.",
+			"types": [
+				"MemoryUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "read_memory",
+			"object": "memory",
+			"name": "readMemory",
+			"signatures": [
+				{
+					"signature": "readMemory :: String -> Effect String",
+					"parameters": [
+						{
+							"name": "name",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The memory's slug.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Read one memory's full contents, by slug — the only thing that brings them into your context.\n\nIf the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session.\n\nRaises `ToolError`: `NotFound` when no memory has that slug.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "edit_memory",
+			"object": "memory",
+			"name": "editMemory",
+			"signatures": [
+				{
+					"signature": "editMemory :: { name :: String, search :: String, replace :: String } -> Effect MemoryUsage",
+					"parameters": [
+						{
+							"name": "edit",
+							"type": "{ name :: String, search :: String, replace :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The revision to make.",
+							"fields": [
+								{
+									"name": "name",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The slug of the memory to revise.",
+									"fields": []
+								},
+								{
+									"name": "search",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The exact text to find in its contents. It must appear exactly once.",
+									"fields": []
+								},
+								{
+									"name": "replace",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The text to put in its place.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and hand back the memory budget.\n\nAppend by quoting the last line and replacing it with itself plus what you are adding.\n\nRaises `ToolError`: `NotFound` when the text does not appear, `Conflict` when it appears more than once, `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave the memory empty — delete it instead.",
+			"types": [
+				"MemoryUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "search_memories",
+			"object": "memory",
+			"name": "searchMemories",
+			"signatures": [
+				{
+					"signature": "searchMemories :: Array String -> Effect (Array MemoryHit)",
+					"parameters": [
+						{
+							"name": "keywords",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The words to look for. Several specific words rank better than one sentence, because a memory is ranked by how many of them it mentions.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Find the memories mentioning any of `keywords`, best first.\n\nPlain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `memory.readMemory` the hits worth having in full. A search that matches nothing is an empty array.\n\nRaises `ToolError`: `InvalidArgument` when every keyword is empty.",
+			"types": [
+				"MemoryHit",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "delete_memory",
+			"object": "memory",
+			"name": "deleteMemory",
+			"signatures": [
+				{
+					"signature": "deleteMemory :: String -> Effect MemoryUsage",
+					"parameters": [
+						{
+							"name": "name",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The memory's slug.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.\n\nRaises `ToolError`: `NotFound` when no memory has that name.",
+			"types": [
+				"MemoryUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "add_task",
+			"object": "tasks",
+			"name": "addTask",
+			"signatures": [
+				{
+					"signature": "addTask :: { id :: String, title :: String, description :: String, blockedBy :: Array String } -> Effect TaskUsage",
+					"parameters": [
+						{
+							"name": "task",
+							"type": "{ id :: String, title :: String, description :: String, blockedBy :: Array String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to add.",
+							"fields": [
+								{
+									"name": "id",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The id you choose for it. It is what every other task call takes, and no two tasks may share one.",
+									"fields": []
+								},
+								{
+									"name": "title",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A short line naming the work.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the work is, at whatever length is useful.",
+									"fields": []
+								},
+								{
+									"name": "blockedBy",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The ids of the tasks that must be done before this one. Defaults to none.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Add a task to the task DAG and hand back the task budget.\n\n`blockedBy` names the tasks that must finish before this one and defaults to none.\n\nRaises `ToolError`: `Conflict` on a duplicate id or on an edge that would close a cycle.",
+			"types": [
+				"TaskUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "update_task",
+			"object": "tasks",
+			"name": "updateTask",
+			"signatures": [
+				{
+					"signature": "updateTask :: String -> { title :: String, description :: Maybe String, status :: TaskStatus } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to revise.",
+							"fields": []
+						},
+						{
+							"name": "patch",
+							"type": "{ title :: String, description :: Maybe String, status :: TaskStatus }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The fields to change. Supply at least one; an omitted field is left alone.",
+							"fields": [
+								{
+									"name": "title",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The title to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "Maybe String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "`Just` the description to replace the old one with, or `Nothing` to clear it.",
+									"fields": []
+								},
+								{
+									"name": "status",
+									"type": "TaskStatus",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "Where the task now stands.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Revise a task's title, description and/or status; supply at least one.\n\nAn omitted `description` leaves it alone, `Nothing` clears it, and `Just` replaces it.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"TaskStatus",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "set_blocked_by",
+			"object": "tasks",
+			"name": "setBlockedBy",
+			"signatures": [
+				{
+					"signature": "setBlockedBy :: String -> Array String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task whose blockers to replace.",
+							"fields": []
+						},
+						{
+							"name": "blockedBy",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The ids of every task that must now be done before it. An empty array clears them all.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Replace a task's whole blocker set; an empty array clears every blocker.\n\nRaises `ToolError`: `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "complete_task",
+			"object": "tasks",
+			"name": "completeTask",
+			"signatures": [
+				{
+					"signature": "completeTask :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to mark done.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "remove_task",
+			"object": "tasks",
+			"name": "removeTask",
+			"signatures": [
+				{
+					"signature": "removeTask :: String -> Effect TaskUsage",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to remove.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Remove a task and every blocker edge pointing at it, and hand back the task budget.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"TaskUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "create_epic",
+			"object": "project",
+			"name": "createEpic",
+			"signatures": [
+				{
+					"signature": "createEpic :: { prefix :: String, title :: String, description :: String } -> Effect EpicCreated",
+					"parameters": [
+						{
+							"name": "epic",
+							"type": "{ prefix :: String, title :: String, description :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The epic to create.",
+							"fields": [
+								{
+									"name": "prefix",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
+									"fields": []
+								},
+								{
+									"name": "title",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A short line naming the body of work.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the epic covers, for a reader who has not seen its issues.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Create an epic to group related issues, and hand back the id its prefix resolved to together with the board budget.\n\n`prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\nRaises `ToolError`: `InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already holds it.",
+			"types": [
+				"EpicCreated",
+				"BoardUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "create_issue",
+			"object": "project",
+			"name": "createIssue",
+			"signatures": [
+				{
+					"signature": "createIssue :: { title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description :: String, blockedBy :: Array String, epicId :: String, reviewers :: Array String } -> Effect IssueCreated",
+					"parameters": [
+						{
+							"name": "issue",
+							"type": "{ title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description :: String, blockedBy :: Array String, epicId :: String, reviewers :: Array String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to create.",
+							"fields": [
+								{
+									"name": "title",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A short line naming the work.",
+									"fields": []
+								},
+								{
+									"name": "inScope",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
+									"fields": []
+								},
+								{
+									"name": "outOfScope",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the issue deliberately does not cover, so the work stops where you meant it to.",
+									"fields": []
+								},
+								{
+									"name": "completionCriteria",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
+									"fields": []
+								},
+								{
+									"name": "agent",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The agent the issue is dispatched to. It must be one you may spawn.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the work is. Written for a child agent with no other context.",
+									"fields": []
+								},
+								{
+									"name": "blockedBy",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The ids of every issue that must be done before this one. Defaults to none.",
+									"fields": []
+								},
+								{
+									"name": "epicId",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The id of an existing epic to group it under. Leave it out to leave the issue ungrouped and numbered under `ISSUE`.",
+									"fields": []
+								},
+								{
+									"name": "reviewers",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The agents that must approve the work, from that same set. Required when this run's reviewers feature is on.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Create a self-contained, dispatchable issue, and hand back the id the board **assigned** it together with the board budget.\n\nThe id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; you do not choose it, so keep the returned one to block a later issue on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required when this run's reviewers feature is on.\n\nRaises `ToolError`: `InvalidArgument` when `agent` or a reviewer is not yours to assign, and `Conflict` on a blocker edge that would close a cycle.",
+			"types": [
+				"IssueCreated",
+				"BoardUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "update_issue",
+			"object": "project",
+			"name": "updateIssue",
+			"signatures": [
+				{
+					"signature": "updateIssue :: String -> { title :: String, description :: Maybe String, inScope :: String, outOfScope :: String, completionCriteria :: String, status :: IssueStatus, epicId :: Maybe String } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to revise.",
+							"fields": []
+						},
+						{
+							"name": "patch",
+							"type": "{ title :: String, description :: Maybe String, inScope :: String, outOfScope :: String, completionCriteria :: String, status :: IssueStatus, epicId :: Maybe String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The fields to change. Supply at least one; an omitted field is left alone.",
+							"fields": [
+								{
+									"name": "title",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The title to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "Maybe String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "`Just` the description to replace the old one with, or `Nothing` to clear it.",
+									"fields": []
+								},
+								{
+									"name": "inScope",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The scope statement to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "outOfScope",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The non-scope statement to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "completionCriteria",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The completion criteria to replace the old ones with.",
+									"fields": []
+								},
+								{
+									"name": "status",
+									"type": "IssueStatus",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "Where the issue now stands.",
+									"fields": []
+								},
+								{
+									"name": "epicId",
+									"type": "Maybe String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "`Just` the epic to regroup it under, or `Nothing` to detach it from the one it has.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Revise an issue; supply at least one field.\n\nAn omitted field is left alone, `description: Nothing` clears the description, and `epicId: Nothing` detaches the issue from its epic.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"IssueStatus",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "set_issue_blocked_by",
+			"object": "project",
+			"name": "setIssueBlockedBy",
+			"signatures": [
+				{
+					"signature": "setIssueBlockedBy :: String -> Array String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue whose blockers to replace.",
+							"fields": []
+						},
+						{
+							"name": "blockedBy",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The ids of every issue that must now be done before it. An empty array clears them all.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Replace an issue's whole blocker set; an empty array clears every blocker.\n\nRaises `ToolError`: `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "remove_epic",
+			"object": "project",
+			"name": "removeEpic",
+			"signatures": [
+				{
+					"signature": "removeEpic :: String -> Effect BoardUsage",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The epic to remove.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"BoardUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "remove_issue",
+			"object": "project",
+			"name": "removeIssue",
+			"signatures": [
+				{
+					"signature": "removeIssue :: String -> Effect BoardUsage",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to remove.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"BoardUsage",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "wait_for_issue",
+			"object": "project",
+			"name": "waitForIssue",
+			"signatures": [
+				{
+					"signature": "waitForIssue :: String -> Effect String",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to wait on. It may not be the issue you were assigned.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Register a wait on an issue and hand back an acknowledgement.\n\nIt does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "evict_file_view",
+			"object": "context",
+			"name": "evictFileView",
+			"signatures": [
+				{
+					"signature": "evictFileView :: { path :: String } -> Effect ReclaimReport",
+					"parameters": [
+						{
+							"name": "options",
+							"type": "{ path :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Which file's views to drop; pass `{}` to drop every file view you hold.",
+							"fields": [
+								{
+									"name": "path",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The file whose views to drop.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed.\n\nThe files on disk are untouched — this forgets what you read, not what exists.",
+			"types": [
+				"ReclaimReport"
+			]
+		},
+		{
+			"tool": "archive_thread",
+			"object": "context",
+			"name": "archiveThread",
+			"signatures": [
+				{
+					"signature": "archiveThread :: Array TurnRange -> Effect ReclaimReport",
+					"parameters": [
+						{
+							"name": "ranges",
+							"type": "Array TurnRange",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The inclusive spans of turn numbers to move out of your window.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Move whole turns out of your context window and report what that reclaimed.\n\nEvery result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: a span is inclusive at both ends, and `context.archiveThread [ { from: 4, to: 19 } ]` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `context.searchArchive`.\n\nRaises `ToolError`: `InvalidArgument` for a span whose ends are not turn numbers.",
+			"types": [
+				"TurnRange",
+				"ReclaimReport",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "search_archive",
+			"object": "context",
+			"name": "searchArchive",
+			"signatures": [
+				{
+					"signature": "searchArchive :: String -> Effect ArchiveSearch",
+					"parameters": [
+						{
+							"name": "query",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The substring to look for. Matching is case-insensitive.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.\n\nCheck `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
+			"types": [
+				"ArchiveSearch",
+				"ArchiveHit",
+				"MessageRole"
+			]
+		},
+		{
+			"tool": "compact",
+			"object": "context",
+			"name": "compact",
+			"signatures": [
+				{
+					"signature": "compact :: String -> { files :: Array String } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "summary",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What your restarted window opens with. Write it for your future self: everything not in it and not re-read from `files` is gone.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ files :: Array String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to read back into the restarted window; pass `{}` to read nothing back.",
+							"fields": [
+								{
+									"name": "files",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The paths to read afresh into the restarted window. Defaults to none.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.\n\nYour skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do.\n\nIt does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.\n\nRaises `ToolError`: `Refused` when a compaction is already in flight and this call is not the one it asked for.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "spawn_subagent",
+			"object": "agents",
+			"name": "spawnSubagent",
+			"signatures": [
+				{
+					"signature": "spawnSubagent :: String -> Brief -> Effect SubagentHandle",
+					"parameters": [
+						{
+							"name": "agent",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The agent profile to run the child as, from the ones you may spawn. It selects the child's model, tools and instructions.",
+							"fields": []
+						},
+						{
+							"name": "brief",
+							"type": "Brief",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What the child is to do: `Prompt` with self-contained instructions, or `Issue` with the id of a board issue to brief it from.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Delegate scoped work to a child agent and hand back its handle immediately — the child runs in parallel while your program continues.\n\nName the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with either `Prompt \"self-contained instructions\"` or `Issue \"AUTH-1\"`. The child shares your workspace.\n\nRaises `ToolError`: `LimitExceeded` at the delegation depth cap, and `InvalidArgument` if `agent` is not one you may spawn.",
+			"types": [
+				"Brief",
+				"SubagentHandle",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "wait_for_subagents",
+			"object": "agents",
+			"name": "waitForSubagents",
+			"signatures": [
+				{
+					"signature": "waitForSubagents :: { ids :: Array String } -> Effect (Array SubagentResult)",
+					"parameters": [
+						{
+							"name": "options",
+							"type": "{ ids :: Array String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Which children to wait for; pass `{}` to wait for every one still outstanding.",
+							"fields": [
+								{
+									"name": "ids",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The children to wait for, as `agents.spawnSubagent` returned them.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Block until the named children have finished — or, with `{}`, until every outstanding child has — and collect their results in dispatch order.\n\nThe run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
+			"types": [
+				"SubagentResult",
+				"AgentEnding",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "send_message",
+			"object": "agents",
+			"name": "sendMessage",
+			"signatures": [
+				{
+					"signature": "sendMessage :: String -> String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "agentId",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The child to deliver to, as `agents.spawnSubagent` returned it.",
+							"fields": []
+						},
+						{
+							"name": "message",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to put in its inbox. It reads it at its next turn.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.\n\nRaises `ToolError`: `NotFound` for an unknown agent id, and `Conflict` when that child has already returned.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "transition_state",
+			"object": "agents",
+			"name": "transitionState",
+			"signatures": [
+				{
+					"signature": "transitionState :: String -> { note :: String } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "state",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The state to move on to, named the way you name an agent to spawn.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ note :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to tell the next state's agent; pass `{}` to tell it nothing.",
+							"fields": [
+								{
+									"name": "note",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The opening message the next state's agent sees.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn.\n\nBound only when a state machine is driving you and the state you are in has somewhere to go. Like `context.compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands.\n\nRaises `ToolError`: `InvalidArgument` for a state you may not move to, and `Refused` for a second declaration in one turn.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "exec",
+			"object": "agents",
+			"name": "exec",
+			"signatures": [
+				{
+					"signature": "exec :: String -> { prompt :: String } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "agent",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The agent to become, from the ones you may become.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ prompt :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to tell it; pass `{}` to tell it nothing.",
+							"fields": [
+								{
+									"name": "prompt",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "Its opening message. It already has your whole conversation, so this is the instruction rather than a briefing.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.\n\nRegistered rather than performed, exactly as `agents.transitionState` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you.\n\nRaises `ToolError`: `InvalidArgument` for an agent you may not become, and `Refused` for a second succession in one turn.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		},
+		{
+			"tool": "fork",
+			"object": "agents",
+			"name": "fork",
+			"signatures": [
+				{
+					"signature": "fork :: String -> Effect SubagentHandle",
+					"parameters": [
+						{
+							"name": "prompt",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What the copy is to do instead of what you are doing. It has your whole conversation already, so write the difference rather than a briefing.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"doc": "Run a copy of yourself, in parallel, on something you will not do yourself.\n\nThe copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `agents.waitForSubagents` can only collect it on a later turn — do not wait on it in the program that made it.\n\nRaises `ToolError`: `LimitExceeded` at the delegation depth cap.",
+			"types": [
+				"SubagentHandle",
+				"ToolError",
+				"ToolErrorCode"
+			]
+		}
+	],
+	"helpers": [
+		{
+			"key": "read_text_file",
+			"requires": "read_file",
+			"object": "fs",
+			"name": "readTextFile",
+			"signatures": [
+				{
+					"signature": "readTextFile :: String -> { offset :: Int, limit :: Int } -> Effect String",
+					"parameters": [
+						{
+							"name": "path",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The file to read. Relative to your workspace, or absolute.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ offset :: Int, limit :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The window of lines to read; pass `{}` to read the whole file.",
+							"fields": [
+								{
+									"name": "offset",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+									"fields": []
+								},
+								{
+									"name": "limit",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"doc": "Read a text file and hand back its contents directly — `fs.readFile` without the narrowing, for the common case.\n\nIt takes the same window options. Reading is the cheap direction of this sandbox, so a program that reads a dozen files to decide what to change is doing the right thing.\n\nRaises `ToolError`: `InvalidArgument` when the path names a picture; use `fs.readFile` to inspect those, and `view.openFile` to look at one.",
+			"types": [
+				"ToolError",
+				"ToolErrorCode"
+			]
+		}
+	],
+	"types": [
+		{
+			"name": "ToolError",
+			"declaration": "type ToolError = { tool :: String, code :: ToolErrorCode, message :: String }",
+			"doc": "A gg call that failed.\n\nThrown by every function in this SDK. Catch it with `attempt` when a failure is expected and branch on its `code`; let it escape when it is not, and gg reports which call failed and where your program was.\n\n```\noutcome <- attempt (fs.readTextFile \"notes.md\" {})\ncase outcome of\n  Left failure | failure.code == NotFound -> fs.writeFile \"notes.md\" \"\"\n  Left failure -> throwException (error failure.message)\n  Right notes -> view.openText \"notes\" notes\n```\n\n`attempt` is what turns a throwing call into an `Either`; anything that is not a gg failure — a `Partial` crash in your own code, a division you guarded wrongly — is re-thrown by it rather than caught, because it is not something a `code` can be branched on. `toolError` is the same narrowing applied to an `Error` you already caught with `Effect.Exception.try`.",
+			"members": [
+				{
+					"name": "tool",
+					"type": "String",
+					"doc": "The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`)."
+				},
+				{
+					"name": "code",
+					"type": "ToolErrorCode",
+					"doc": "The failure class, so a catch site branches on a value rather than on prose."
+				},
+				{
+					"name": "message",
+					"type": "String",
+					"doc": "What went wrong, in gg's words. Worth showing yourself; not worth matching on."
+				}
+			]
+		},
+		{
+			"name": "ToolErrorCode",
+			"declaration": "data ToolErrorCode = InvalidArgument | NotFound | Conflict | Refused | Unavailable | LimitExceeded | IoError | OtherFailure",
+			"doc": "Why a gg call failed — the `code` on a `ToolError`, and the value a catch site branches on instead of matching on prose.",
+			"members": [
+				{
+					"name": "InvalidArgument",
+					"type": null,
+					"doc": "The arguments were malformed, ill-typed, or out of range — including a path that is absolute or climbs out of the workspace, and an agent name this run does not declare."
+				},
+				{
+					"name": "NotFound",
+					"type": null,
+					"doc": "The named file, skill, memory, task, epic, issue, subagent, stored program, or documentation entry does not exist."
+				},
+				{
+					"name": "Conflict",
+					"type": null,
+					"doc": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle, a duplicate id, a subagent that already returned."
+				},
+				{
+					"name": "Refused",
+					"type": null,
+					"doc": "gg refused the call on a rule about your state: a compaction in flight that this call is not the one it asked for, a memory call while your memories are read-only, a second ending or hand-over in a turn that already declared one, or a hook that blocked it. A ceiling you ran into is `LimitExceeded`, not this."
+				},
+				{
+					"name": "Unavailable",
+					"type": null,
+					"doc": "The call exists but this run's capability set does not offer it."
+				},
+				{
+					"name": "LimitExceeded",
+					"type": null,
+					"doc": "A gg-side ceiling was hit: a shell timeout, a store cap, the delegation depth cap, one of the view caps this program spends, or the run's wall-clock budget."
+				},
+				{
+					"name": "IoError",
+					"type": null,
+					"doc": "The underlying I/O or process failed."
+				},
+				{
+					"name": "OtherFailure",
+					"type": null,
+					"doc": "The failure was not classified. Reserved for outcomes raised outside a tool implementation; nothing you call produces it."
+				}
+			]
+		},
+		{
+			"name": "ShellOutput",
+			"declaration": "type ShellOutput = { exitCode :: Maybe Int, output :: String, truncated :: Boolean }",
+			"doc": "What a command `system.shell` ran reported when it finished.",
+			"members": [
+				{
+					"name": "exitCode",
+					"type": "Maybe Int",
+					"doc": "The process's exit status; `Nothing` when a signal killed it. Zero means success."
+				},
+				{
+					"name": "output",
+					"type": "String",
+					"doc": "Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output, at the configured line/character ceiling, with a note naming the files holding the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
+				},
+				{
+					"name": "truncated",
+					"type": "Boolean",
+					"doc": "Whether the cap cut `output`, dropping the head and keeping the tail."
+				}
+			]
+		},
+		{
+			"name": "FileRead",
+			"declaration": "data FileRead = TextFile TextFile | ImageFile ImageFile",
+			"doc": "What `fs.readFile` returned: a text file's window, or a picture's description.\n\nA picture is a different kind of thing from text, so it is a different arm rather than a string that happens to be binary — a program that treats an image as text is caught by the `case` instead of silently writing an empty string somewhere. Image *bytes* never enter the program: gg attaches the picture to the turn so you can look at it directly, which is worth far more than base64 in a variable.",
+			"members": [
+				{
+					"name": "TextFile",
+					"type": "TextFile",
+					"doc": "This file is text."
+				},
+				{
+					"name": "ImageFile",
+					"type": "ImageFile",
+					"doc": "This file is a picture; gg shows it to you rather than handing you its bytes."
+				}
+			]
+		},
+		{
+			"name": "TextFile",
+			"declaration": "type TextFile = { contents :: String, firstLine :: Int, lastLine :: Int, totalLines :: Int, byteTruncated :: Boolean }",
+			"doc": "A text file's window, as the `TextFile` arm of a read carries it.",
+			"members": [
+				{
+					"name": "contents",
+					"type": "String",
+					"doc": "The file's text, or just the requested window under a capped read policy."
+				},
+				{
+					"name": "firstLine",
+					"type": "Int",
+					"doc": "The 1-based first line returned."
+				},
+				{
+					"name": "lastLine",
+					"type": "Int",
+					"doc": "The 1-based last line returned."
+				},
+				{
+					"name": "totalLines",
+					"type": "Int",
+					"doc": "The file's total line count, so you know whether to page again."
+				},
+				{
+					"name": "byteTruncated",
+					"type": "Boolean",
+					"doc": "Whether a 256 KiB byte ceiling cut the returned text."
+				}
+			]
+		},
+		{
+			"name": "ImageFile",
+			"declaration": "type ImageFile = { mediaType :: String, label :: String, bytes :: Int, shown :: Boolean, notShownReason :: Maybe String }",
+			"doc": "A picture's description, as the `ImageFile` arm of a read carries it.",
+			"members": [
+				{
+					"name": "mediaType",
+					"type": "String",
+					"doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+				},
+				{
+					"name": "label",
+					"type": "String",
+					"doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+				},
+				{
+					"name": "bytes",
+					"type": "Int",
+					"doc": "The file's size in bytes."
+				},
+				{
+					"name": "shown",
+					"type": "Boolean",
+					"doc": "Whether the picture is being attached to this turn for you to look at."
+				},
+				{
+					"name": "notShownReason",
+					"type": "Maybe String",
+					"doc": "Why it is not being shown; `Nothing` when `shown` is true."
+				}
+			]
+		},
+		{
+			"name": "DirEntry",
+			"declaration": "type DirEntry = { name :: String, kind :: EntryKind }",
+			"doc": "One entry `fs.listDir` found.",
+			"members": [
+				{
+					"name": "name",
+					"type": "String",
+					"doc": "The entry's bare name, with no directory part. Join it with the directory you listed."
+				},
+				{
+					"name": "kind",
+					"type": "EntryKind",
+					"doc": "What the entry is."
+				}
+			]
+		},
+		{
+			"name": "EntryKind",
+			"declaration": "data EntryKind = FileEntry | DirectoryEntry | OtherEntry",
+			"doc": "What a directory entry is.",
+			"members": [
+				{
+					"name": "FileEntry",
+					"type": null,
+					"doc": "An ordinary file."
+				},
+				{
+					"name": "DirectoryEntry",
+					"type": null,
+					"doc": "A directory, which you can list in turn."
+				},
+				{
+					"name": "OtherEntry",
+					"type": null,
+					"doc": "Everything that is neither, a symlink among them."
+				}
+			]
+		},
+		{
+			"name": "MemoryUsage",
+			"declaration": "type MemoryUsage = { count :: Int, maxCount :: Maybe Int, totalChars :: Int, maxTotalChars :: Maybe Int, indexChars :: Maybe Int, maxIndexChars :: Maybe Int }",
+			"doc": "How much of the run's durable-memory budget is used, after the call that returned it.\n\nEvery maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `Nothing` means nothing bounds that axis — check before subtracting.",
+			"members": [
+				{
+					"name": "count",
+					"type": "Int",
+					"doc": "Memories currently held."
+				},
+				{
+					"name": "maxCount",
+					"type": "Maybe Int",
+					"doc": "The most memories this run allows, if it limits the count."
+				},
+				{
+					"name": "totalChars",
+					"type": "Int",
+					"doc": "Characters of body currently held, across all memories."
+				},
+				{
+					"name": "maxTotalChars",
+					"type": "Maybe Int",
+					"doc": "The most characters of body this run allows in total, if it limits the aggregate."
+				},
+				{
+					"name": "indexChars",
+					"type": "Maybe Int",
+					"doc": "Characters the memory index occupies, under a run that keeps one."
+				},
+				{
+					"name": "maxIndexChars",
+					"type": "Maybe Int",
+					"doc": "The most characters the index may occupy, if it is limited."
+				}
+			]
+		},
+		{
+			"name": "MemoryHit",
+			"declaration": "type MemoryHit = { name :: String, description :: String, matched :: Int, occurrences :: Int, excerpt :: String }",
+			"doc": "One memory `memory.searchMemories` matched, and the numbers it was ranked by.",
+			"members": [
+				{
+					"name": "name",
+					"type": "String",
+					"doc": "The memory's slug — what `memory.readMemory` takes."
+				},
+				{
+					"name": "description",
+					"type": "String",
+					"doc": "Its description, or `\"\"` when it was created without one."
+				},
+				{
+					"name": "matched",
+					"type": "Int",
+					"doc": "How many of your distinct keywords it matched — the primary ranking."
+				},
+				{
+					"name": "occurrences",
+					"type": "Int",
+					"doc": "How many times those keywords occur in it — the tiebreak."
+				},
+				{
+					"name": "excerpt",
+					"type": "String",
+					"doc": "A short window of the memory around its first match."
+				}
+			]
+		},
+		{
+			"name": "TaskStatus",
+			"declaration": "data TaskStatus = TaskPending | TaskInProgress | TaskDone",
+			"doc": "Where a task stands.",
+			"members": [
+				{
+					"name": "TaskPending",
+					"type": null,
+					"doc": "Not started. Every task begins here."
+				},
+				{
+					"name": "TaskInProgress",
+					"type": null,
+					"doc": "Being worked on now."
+				},
+				{
+					"name": "TaskDone",
+					"type": null,
+					"doc": "Finished. Tasks blocked on it become actionable once all their blockers are done."
+				}
+			]
+		},
+		{
+			"name": "TaskUsage",
+			"declaration": "type TaskUsage = { count :: Int, maxTasks :: Int }",
+			"doc": "How much of the run's task budget is used, after the call that returned it.",
+			"members": [
+				{
+					"name": "count",
+					"type": "Int",
+					"doc": "Tasks currently on the list."
+				},
+				{
+					"name": "maxTasks",
+					"type": "Int",
+					"doc": "The most tasks this run allows."
+				}
+			]
+		},
+		{
+			"name": "IssueStatus",
+			"declaration": "data IssueStatus = IssueOpen | IssueInProgress | IssueDone",
+			"doc": "Where an issue stands.",
+			"members": [
+				{
+					"name": "IssueOpen",
+					"type": null,
+					"doc": "Not started, and dispatchable once its blockers are done."
+				},
+				{
+					"name": "IssueInProgress",
+					"type": null,
+					"doc": "Dispatched, with its assigned agent working on it."
+				},
+				{
+					"name": "IssueDone",
+					"type": null,
+					"doc": "Finished and, where this run requires reviewers, approved."
+				}
+			]
+		},
+		{
+			"name": "BoardUsage",
+			"declaration": "type BoardUsage = { epics :: Int, maxEpics :: Int, issues :: Int, maxIssues :: Int }",
+			"doc": "How much of the run's board budget is used, after the call that returned it.",
+			"members": [
+				{
+					"name": "epics",
+					"type": "Int",
+					"doc": "Epics currently on the board."
+				},
+				{
+					"name": "maxEpics",
+					"type": "Int",
+					"doc": "The most epics this run allows."
+				},
+				{
+					"name": "issues",
+					"type": "Int",
+					"doc": "Issues currently on the board."
+				},
+				{
+					"name": "maxIssues",
+					"type": "Int",
+					"doc": "The most issues this run allows."
+				}
+			]
+		},
+		{
+			"name": "EpicCreated",
+			"declaration": "type EpicCreated = { id :: String, board :: BoardUsage }",
+			"doc": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+			"members": [
+				{
+					"name": "id",
+					"type": "String",
+					"doc": "The epic's id — the prefix you gave, upper-cased (`auth` → `AUTH`). Group issues under it with this, and its issues are numbered from it (`AUTH-1`)."
+				},
+				{
+					"name": "board",
+					"type": "BoardUsage",
+					"doc": "How much of the board budget is used."
+				}
+			]
+		},
+		{
+			"name": "IssueCreated",
+			"declaration": "type IssueCreated = { id :: String, board :: BoardUsage }",
+			"doc": "An issue that was just created: the id the board assigned it, and the board budget.",
+			"members": [
+				{
+					"name": "id",
+					"type": "String",
+					"doc": "The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on this one, or to wait for it."
+				},
+				{
+					"name": "board",
+					"type": "BoardUsage",
+					"doc": "How much of the board budget is used."
+				}
+			]
+		},
+		{
+			"name": "ReclaimReport",
+			"declaration": "type ReclaimReport = { items :: Int, reclaimedTokens :: Int, paths :: Array String, detail :: String }",
+			"doc": "What a context reclaim actually freed from the live context window.",
+			"members": [
+				{
+					"name": "items",
+					"type": "Int",
+					"doc": "Context items dropped from the live window."
+				},
+				{
+					"name": "reclaimedTokens",
+					"type": "Int",
+					"doc": "Approximately how many tokens that freed."
+				},
+				{
+					"name": "paths",
+					"type": "Array String",
+					"doc": "The workspace paths whose views were evicted. Empty for an archive."
+				},
+				{
+					"name": "detail",
+					"type": "String",
+					"doc": "The prose summary of what was reclaimed."
+				}
+			]
+		},
+		{
+			"name": "TurnRange",
+			"declaration": "type TurnRange = { from :: Int, to :: Int }",
+			"doc": "An inclusive span of turn numbers, the unit `context.archiveThread` moves out of the window.\n\nThe numbers are the ones on the header of every result you are given, so `{ from: 4, to: 19 }` means exactly the turns you can see numbered 4 through 19 — both ends included.",
+			"members": [
+				{
+					"name": "from",
+					"type": "Int",
+					"doc": "The first turn in the span."
+				},
+				{
+					"name": "to",
+					"type": "Int",
+					"doc": "The last turn in the span, inclusive."
+				}
+			]
+		},
+		{
+			"name": "ArchiveHit",
+			"declaration": "type ArchiveHit = { seq :: Int, role :: MessageRole, text :: String }",
+			"doc": "One archived message that matched a search.",
+			"members": [
+				{
+					"name": "seq",
+					"type": "Int",
+					"doc": "The archived message's sequence number."
+				},
+				{
+					"name": "role",
+					"type": "MessageRole",
+					"doc": "Who said it."
+				},
+				{
+					"name": "text",
+					"type": "String",
+					"doc": "The message text."
+				}
+			]
+		},
+		{
+			"name": "MessageRole",
+			"declaration": "data MessageRole = SystemMessage | UserMessage | AssistantMessage | ToolMessage",
+			"doc": "Who said an archived message.",
+			"members": [
+				{
+					"name": "SystemMessage",
+					"type": null,
+					"doc": "The system prompt."
+				},
+				{
+					"name": "UserMessage",
+					"type": null,
+					"doc": "A turn's input to you — a result, a view, or an operator's instruction."
+				},
+				{
+					"name": "AssistantMessage",
+					"type": null,
+					"doc": "Something you said."
+				},
+				{
+					"name": "ToolMessage",
+					"type": null,
+					"doc": "A tool result, on a session that made tool calls rather than writing programs."
+				}
+			]
+		},
+		{
+			"name": "ArchiveSearch",
+			"declaration": "type ArchiveSearch = { archiveEmpty :: Boolean, hits :: Array ArchiveHit }",
+			"doc": "What `context.searchArchive` found.",
+			"members": [
+				{
+					"name": "archiveEmpty",
+					"type": "Boolean",
+					"doc": "Nothing has been archived yet, so there was nothing to search. Deliberately distinct from a search that ran and matched nothing, so you do not archive again believing the first archive failed."
+				},
+				{
+					"name": "hits",
+					"type": "Array ArchiveHit",
+					"doc": "The matches, most recent first, at most 8."
+				}
+			]
+		},
+		{
+			"name": "ViewKind",
+			"declaration": "data ViewKind = FileView | TextView | DocsView",
+			"doc": "Which of the three kinds a view is.\n\nThe taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
+			"members": [
+				{
+					"name": "FileView",
+					"type": null,
+					"doc": "A file you opened; its selector is the path."
+				},
+				{
+					"name": "TextView",
+					"type": null,
+					"doc": "A value you showed yourself; its selector is the label you gave it. A directory listing, a command's output, a child agent's answer and a table you assembled are all this."
+				},
+				{
+					"name": "DocsView",
+					"type": null,
+					"doc": "A function's documentation; its selector is the function's name."
+				}
+			]
+		},
+		{
+			"name": "ViewRegion",
+			"declaration": "type ViewRegion = { offset :: Int, limit :: Int }",
+			"doc": "The window of lines a **paged** file view covers.",
+			"members": [
+				{
+					"name": "offset",
+					"type": "Int",
+					"doc": "The 1-based first line the view shows."
+				},
+				{
+					"name": "limit",
+					"type": "Int",
+					"doc": "How many lines it shows."
+				}
+			]
+		},
+		{
+			"name": "OpenView",
+			"declaration": "type OpenView = { kind :: ViewKind, selector :: String, tokens :: Int, region :: Maybe ViewRegion }",
+			"doc": "One view open in your context window, as `view.current` reports it.",
+			"members": [
+				{
+					"name": "kind",
+					"type": "ViewKind",
+					"doc": "Whether it is a file, text, or documentation view."
+				},
+				{
+					"name": "selector",
+					"type": "String",
+					"doc": "What `view.close` takes: a file's path, a text view's label, or a docs view's function name."
+				},
+				{
+					"name": "tokens",
+					"type": "Int",
+					"doc": "Roughly what holding it costs you, in tokens."
+				},
+				{
+					"name": "region",
+					"type": "Maybe ViewRegion",
+					"doc": "The line window a paged file view covers; `Nothing` for a whole-file view and for text views."
+				}
+			]
+		},
+		{
+			"name": "Brief",
+			"declaration": "data Brief = Prompt String | Issue String",
+			"doc": "What a child agent is briefed with.\n\nThe choice is the type rather than a pair of optional fields, so \"both\" and \"neither\" are programs that do not compile instead of calls that fail at run time.",
+			"members": [
+				{
+					"name": "Prompt",
+					"type": "String",
+					"doc": "Self-contained instructions for the child, which needs no other context."
+				},
+				{
+					"name": "Issue",
+					"type": "String",
+					"doc": "The id of a board issue to brief the child from, as `project.createIssue` returned it."
+				}
+			]
+		},
+		{
+			"name": "SubagentHandle",
+			"declaration": "type SubagentHandle = { id :: String, slot :: String, modelId :: String }",
+			"doc": "A child agent that was spawned and is now running in parallel.",
+			"members": [
+				{
+					"name": "id",
+					"type": "String",
+					"doc": "The child's id — pass it to `agents.waitForSubagents` or `agents.sendMessage`."
+				},
+				{
+					"name": "slot",
+					"type": "String",
+					"doc": "The agent profile it runs as."
+				},
+				{
+					"name": "modelId",
+					"type": "String",
+					"doc": "The model actually bound to that agent."
+				}
+			]
+		},
+		{
+			"name": "AgentEnding",
+			"declaration": "data AgentEnding = AgentCompleted | AgentExhausted | AgentTimedOut | AgentModelError | AgentAuthError | AgentLimitExceeded",
+			"doc": "How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.",
+			"members": [
+				{
+					"name": "AgentCompleted",
+					"type": null,
+					"doc": "It finished normally: it called `harness.finish`, and its summary is what it returned."
+				},
+				{
+					"name": "AgentExhausted",
+					"type": null,
+					"doc": "It hit the per-run turn ceiling."
+				},
+				{
+					"name": "AgentTimedOut",
+					"type": null,
+					"doc": "It passed its wall-clock deadline."
+				},
+				{
+					"name": "AgentModelError",
+					"type": null,
+					"doc": "A model turn failed."
+				},
+				{
+					"name": "AgentAuthError",
+					"type": null,
+					"doc": "The run's credential was refused."
+				},
+				{
+					"name": "AgentLimitExceeded",
+					"type": null,
+					"doc": "An execution ceiling stopped it — consecutive errors, error rate, or cost."
+				}
+			]
+		},
+		{
+			"name": "SubagentResult",
+			"declaration": "type SubagentResult = { id :: String, status :: Maybe AgentEnding, summary :: String }",
+			"doc": "One child agent's collected result.",
+			"members": [
+				{
+					"name": "id",
+					"type": "String",
+					"doc": "The child's id."
+				},
+				{
+					"name": "status",
+					"type": "Maybe AgentEnding",
+					"doc": "How it finished; `Nothing` when it produced no return value at all."
+				},
+				{
+					"name": "summary",
+					"type": "String",
+					"doc": "Its final message."
+				}
+			]
+		},
+		{
+			"name": "ProgramSummary",
+			"declaration": "type ProgramSummary = { turn :: Int, lines :: Int, chars :: Int, ok :: Boolean, error :: Maybe String }",
+			"doc": "One program you have already run, as `programs.history` lists it.\n\nIt describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in front of you, which is the one thing the library exists to avoid. Fetch the source you actually want with `programs.get`.",
+			"members": [
+				{
+					"name": "turn",
+					"type": "Int",
+					"doc": "The turn it ran on — what `programs.get` takes."
+				},
+				{
+					"name": "lines",
+					"type": "Int",
+					"doc": "How many lines of source it was."
+				},
+				{
+					"name": "chars",
+					"type": "Int",
+					"doc": "How many characters of source it was."
+				},
+				{
+					"name": "ok",
+					"type": "Boolean",
+					"doc": "Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it."
+				},
+				{
+					"name": "error",
+					"type": "Maybe String",
+					"doc": "The error it ended with, when it did not run to its end."
+				}
+			]
+		},
+		{
+			"name": "FunctionSummary",
+			"declaration": "type FunctionSummary = { name :: String, summary :: String }",
+			"doc": "One function in an API object's directory, as `list` returns it.\n\nThe summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `view.openDocsView`.",
+			"members": [
+				{
+					"name": "name",
+					"type": "String",
+					"doc": "The function name on its object — `readFile` in `fs.readFile`."
+				},
+				{
+					"name": "summary",
+					"type": "String",
+					"doc": "One line saying what it does: the first sentence of its documentation."
+				}
+			]
+		}
+	]
+}
