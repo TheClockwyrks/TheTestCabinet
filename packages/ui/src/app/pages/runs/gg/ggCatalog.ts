@@ -1436,7 +1436,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Skills directory",
         kind: "text",
         defaultValue: DEFAULT_SKILLS_DIR,
-        hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.ts` (a module the agent's programs can call) and `on-use.ts` (a script that runs once, when the skill is first read).",
+        hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.<ext>` (a module the agent's programs can call) and `on-use.<ext>` (a script that runs once, when the skill is first read). The extension is the program language of the agent reading it — `skill.ts` for a TypeScript agent — so a directory may carry one per language.",
       },
       {
         key: "builtIns",
