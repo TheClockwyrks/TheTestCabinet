@@ -1438,3 +1438,147 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     );
     assert_eq!(logs(&outcome), [vec!["ok"; types.len()].join(",")]);
 }
+
+#[test]
+fn the_view_object_and_the_program_library_are_reached_in_python_too() {
+    // Neither family is a gg tool, so neither appears in the crossing table above — and both are
+    // where a program puts something in front of the model, which makes them the two families a
+    // silent bridging mistake would cost the most.
+    let (outcome, _log) = run_as(
+        r#"
+view.open_text("summary", "eight files, two failing")
+view.open_text("scratch", "throwaway")
+open = view.current()
+print(len(open), [v.selector for v in open], open[0].kind is ViewKind.TEXT, open[0].tokens)
+print(view.close("scratch"), view.close("never opened"), len(view.current()))
+
+# The documentation of a function, named by the FUNCTION rather than by a string — which works
+# because an SDK function's `__name__` is the name gg catalogues it under, and the one closure this
+# SDK builds is wrapped so that it keeps its own.
+view.open_docs_view(fs.read_file)
+view.open_docs_view("write_file")
+view.open_docs_view(fs.list)
+
+whole = view.open_file("notes.md")
+print(type(whole).__name__, [v.region for v in view.current() if v.kind is ViewKind.FILE])
+"#,
+        &all_tools(),
+        &[],
+        RunEnding::Role(crate::ending::EndingRole::Standard),
+        true,
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "2 ['summary', 'scratch'] True 6",
+            "1 0 1",
+            // A view covering the whole file carries no region, and this arm spells that `None`.
+            "TextFile [None]",
+        ]
+    );
+
+    // The three documentation lookups asked for the three names the SDK catalogues those functions
+    // under — including `list`, the one closure this SDK builds, which keeps its own `__name__`
+    // because `functools.wraps` copies it. A guest whose bound functions were anonymous wrappers
+    // needs a tag for this; Python needs nothing, and that is worth pinning rather than assuming.
+    let mut documented: Vec<&str> = outcome
+        .views_opened
+        .iter()
+        .filter(|view| view.kind == crate::context::ViewKind::Docs)
+        .map(|view| view.selector.as_str())
+        .collect();
+    documented.sort_unstable();
+    assert_eq!(documented, ["list", "read_file", "write_file"]);
+
+    // A view covering only part of a file carries one, and it lowers to the dataclass rather than to
+    // whatever the membrane's `option<view-region>` looks like.
+    let (outcome, _log) = run_with(
+        r#"
+view.open_file("notes.md", offset=2, limit=1)
+region = [v.region for v in view.current() if v.kind is ViewKind.FILE][0]
+print(type(region).__name__, region.offset, region.limit)
+"#,
+        &all_tools(),
+        &[],
+        SandboxLimits::default(),
+        |name, _args| {
+            if name == "read_file" {
+                ToolOutcome::ok("line two\n", "read 1 line").with_data(
+                    crate::tools::ToolData::FileText(crate::tools::FileTextData {
+                        contents: "line two\n".to_string(),
+                        first_line: 2,
+                        last_line: 2,
+                        total_lines: 9,
+                        byte_truncated: false,
+                    }),
+                )
+            } else {
+                canned_outcome(name, _args)
+            }
+        },
+    );
+    assert_eq!(logs(&outcome), ["ViewRegion 2 1"]);
+
+    // A value that is neither a function nor a name is refused before the lookup, so a model is
+    // never told that a function called "None" does not exist.
+    let (outcome, _log) = run_with(
+        "view.open_docs_view(None)",
+        &all_tools(),
+        &[],
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert!(
+        program_error(&outcome)
+            .message
+            .contains("expected a function or a function name"),
+        "{:?}",
+        program_error(&outcome).message
+    );
+
+    // The program library: bound from the capability rather than from a tool, so the whole object is
+    // there or it is not a name at all.
+    let log = CallLog::default();
+    let api = FakeToolApi::new(&log).with_program(3, "print('the program that ran')");
+    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let limits = SandboxLimits::default();
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: true,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(api, typescript(), scope, limits, None),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
+    bound
+        .call_run(
+            &mut store,
+            r#"
+ran = programs.history()
+print(len(ran), ran[0].turn, ran[0].ok, ran[0].error)
+source = programs.get(3)
+print(repr(source))
+programs.rerun(source.replace("ran", "walked"))
+"#,
+            &[],
+            &[],
+            RunEnding::None.into(),
+            true,
+        )
+        .expect("the program runs");
+    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    assert_eq!(
+        logs(&outcome),
+        ["1 3 True None", "\"print('the program that ran')\""]
+    );
+    assert_eq!(
+        outcome.rerun.as_deref(),
+        Some("print('the program that walked')"),
+        "the patched program is what gg was handed"
+    );
+}
