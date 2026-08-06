@@ -22,6 +22,12 @@
 //! * `checkers/typescript.*` — the committed `tsc` the check runs, its standard library, and the
 //!   two globals no SDK declaration covers.
 //!
+//! Most of that is **not TypeScript's alone**. gg's [JavaScript](super::javascript) arm is this
+//! language with [`check`](self::check) removed and nothing else changed, so it serves this module's
+//! component, its type-strip and its healing dialect, and its catalogue is these same declarations
+//! reflected under a second id. The check is the only thing between them, which is the whole point
+//! of the pair: an A/B across them measures what checking a program before it runs is worth.
+//!
 //! # Why the guest is a componentized JavaScript engine
 //!
 //! A model cannot emit wasm, so something must interpret its program. Writing that interpreter — a
@@ -68,14 +74,21 @@ use super::{
     VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
+/// The type-strip, shared with [`JavaScript`](super::javascript): visible to the whole language
+/// module rather than to this one, because that arm is this step with the [check](self::check)
+/// removed.
 #[path = "typescript.prepare.rs"]
-mod prepare;
+pub(super) mod prepare;
 
+/// The `tsc` pass. **Not** shared: it is the one thing the JavaScript arm does without, and the
+/// whole of what the two arms differ in.
 #[path = "typescript.check.rs"]
 mod check;
 
+/// The lexical reading of a reply, shared with [`JavaScript`](super::javascript) for the reason its
+/// own module documentation gives: the two arms are one syntax.
 #[path = "typescript.healing.rs"]
-mod healing;
+pub(super) mod healing;
 
 /// The committed interpreter component: the TypeScript guest in `packages/gg-sandbox`, built by its
 /// `build.sh` with `componentize-js` and committed here, exactly as gg's other wasm guests are
@@ -87,7 +100,11 @@ mod healing;
 /// rejected: it would drag a C toolchain onto a binary that is release-built for Linux, Windows and
 /// macOS and statically linked against musl, in order to shrink a developer/CI artifact nobody
 /// downloads on a budget.
-const COMPONENT: &[u8] = include_bytes!("../guests/typescript.component.wasm");
+///
+/// [`JavaScript`](super::javascript) serves these same bytes, reached through this constant rather
+/// than through a second `include_bytes!` of the same file: two embeddings would be two copies of
+/// 13.4 MB in every released binary, for an artifact that is the same artifact.
+pub(super) const COMPONENT: &[u8] = include_bytes!("../guests/typescript.component.wasm");
 
 /// The committed catalogue, emitted by the guest package's `signatures` script alongside the
 /// component itself.
@@ -171,36 +188,9 @@ impl ProgramLanguage for TypeScript {
         Ok(prepared)
     }
 
-    /// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
-    ///
-    /// camelCase because that is what this SDK spells every other bound function in, so a program
-    /// reaching `lib.csvTools.parse` reads like the rest of its own scope. Any separator — `-`, `_`,
-    /// `.`, or anything a name should not have had — joins the next word rather than surviving into
-    /// an identifier that would not parse; a name that is nothing but separators becomes `module`,
-    /// and a leading digit is prefixed, because the result has to be a valid identifier whatever the
-    /// author wrote.
+    /// [camelCase](self::binding_name), the convention this SDK spells every bound function in.
     fn binding_name(&self, name: &str) -> String {
-        let mut out = String::new();
-        let mut capitalize = false;
-        for ch in name.chars() {
-            if ch.is_ascii_alphanumeric() {
-                if capitalize {
-                    out.extend(ch.to_uppercase());
-                    capitalize = false;
-                } else {
-                    out.push(ch);
-                }
-            } else {
-                capitalize = !out.is_empty();
-            }
-        }
-        if out.is_empty() {
-            return "module".to_string();
-        }
-        if out.starts_with(|ch: char| ch.is_ascii_digit()) {
-            out.insert(0, '_');
-        }
-        out
+        binding_name(name)
     }
 
     fn guest_component(&self) -> &'static [u8] {
@@ -236,44 +226,98 @@ impl ProgramLanguage for TypeScript {
         &PROMPT
     }
 
-    /// `view.openFile("src/main.ts");`, or
-    /// `view.openFile("src/main.ts", { offset: 400, limit: 200 });` for a window — with the call's
-    /// name resolved from this language's own catalogue rather than written out here.
-    ///
-    /// Deliberately the plainest statement that does the job: no `const`, no loop, no logging. It is
-    /// synthesized into the agent's own transcript and read by the model as an example of its own
-    /// output, so anything clever in it is a style the run did not intend to teach. The window is a
-    /// **trailing options object**, which is this language's idiom for optional arguments and the
-    /// same shape the system prompt teaches; the path is rendered through [`serde_json`] so a quote
-    /// or a backslash in one cannot produce a program that would not parse.
+    /// [`view.openFile("src/main.ts");`](self::open_file_statement), with the call's name resolved
+    /// from this language's own catalogue rather than written out here.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
-        let open_file = spell(self, VIEW_OPEN_FILE);
-        let path = serde_json::Value::String(path.to_string());
-        match window {
-            Some(window) => format!(
-                "{open_file}({path}, {{ offset: {}, limit: {} }});",
-                window.offset, window.limit
-            ),
-            None => format!("{open_file}({path});"),
-        }
+        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
     }
 
-    /// A `const` array of names and a `for…of` over it, each iteration opening one documentation
-    /// view.
-    ///
-    /// A loop rather than one statement per name because the list is as long as the family — eleven
-    /// calls written out would be a program a model reads as a style to copy. The names are rendered
-    /// through [`serde_json`] for the reason a path is: a name carrying a quote would otherwise
-    /// produce a program that does not parse.
+    /// [A `const` array of names and a `for…of` over
+    /// it](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
-        let open_docs_view = spell(self, VIEW_OPEN_DOCS_VIEW);
-        let entries: String = names
-            .iter()
-            .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
-            .collect();
-        format!(
-            "const functions = [\n{entries}];\nfor (const name of functions) {{\n  \
-             {open_docs_view}(name);\n}}\n"
-        )
+        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The syntax both ECMAScript arms write
+// ---------------------------------------------------------------------------------------------
+//
+// Free functions rather than methods, because each is shared with [`JavaScript`](super::javascript)
+// and each takes the **already-resolved** name as an argument. That split is the seam's own division
+// in miniature: the syntax around the call is these two languages' shared business, and the name
+// inside it is each language's own, resolved from its own catalogue by the caller. A `JavaScript`
+// that delegated to `TypeScript`'s *method* would be quoting TypeScript's catalogue at its model.
+
+/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
+///
+/// camelCase because that is what these SDKs spell every other bound function in, so a program
+/// reaching `lib.csvTools.parse` reads like the rest of its own scope. Any separator — `-`, `_`,
+/// `.`, or anything a name should not have had — joins the next word rather than surviving into
+/// an identifier that would not parse; a name that is nothing but separators becomes `module`,
+/// and a leading digit is prefixed, because the result has to be a valid identifier whatever the
+/// author wrote.
+pub(super) fn binding_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut capitalize = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if capitalize {
+                out.extend(ch.to_uppercase());
+                capitalize = false;
+            } else {
+                out.push(ch);
+            }
+        } else {
+            capitalize = !out.is_empty();
+        }
+    }
+    if out.is_empty() {
+        return "module".to_string();
+    }
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// `open_file("src/main.ts");`, or `open_file("src/main.ts", { offset: 400, limit: 200 });` for a
+/// window — with `open_file` already spelled by the language that asked.
+///
+/// Deliberately the plainest statement that does the job: no `const`, no loop, no logging. It is
+/// synthesized into the agent's own transcript and read by the model as an example of its own
+/// output, so anything clever in it is a style the run did not intend to teach. The window is a
+/// **trailing options object**, which is this syntax's idiom for optional arguments and the same
+/// shape the system prompt teaches; the path is rendered through [`serde_json`] so a quote or a
+/// backslash in one cannot produce a program that would not parse.
+pub(super) fn open_file_statement(
+    open_file: &str,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let path = serde_json::Value::String(path.to_string());
+    match window {
+        Some(window) => format!(
+            "{open_file}({path}, {{ offset: {}, limit: {} }});",
+            window.offset, window.limit
+        ),
+        None => format!("{open_file}({path});"),
+    }
+}
+
+/// A `const` array of names and a `for…of` over it, each iteration opening one documentation view.
+///
+/// A loop rather than one statement per name because the list is as long as the family — eleven
+/// calls written out would be a program a model reads as a style to copy. The names are rendered
+/// through [`serde_json`] for the reason a path is: a name carrying a quote would otherwise produce
+/// a program that does not parse.
+pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    let entries: String = names
+        .iter()
+        .map(|name| format!("  {},\n", serde_json::Value::String((*name).to_string())))
+        .collect();
+    format!(
+        "const functions = [\n{entries}];\nfor (const name of functions) {{\n  \
+         {open_docs_view}(name);\n}}\n"
+    )
 }

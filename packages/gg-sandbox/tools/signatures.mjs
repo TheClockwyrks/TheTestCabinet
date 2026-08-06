@@ -10,19 +10,23 @@
 // The pipeline, all of which `packages/gg-sandbox/build.sh` runs in order:
 //
 //   src/**.ts  --tsc-->  dist/headers/**.d.ts
-//              --this script-->  crates/gg/src/sandbox/guests/typescript.signatures.json
+//              --this script-->  crates/gg/src/sandbox/guests/<language-id>.signatures.json
 //
-// and `crates/gg/src/sandbox/language/typescript.rs` embeds that JSON with `include_str!`. Because
-// the same `build.sh` invocation also rebuilds the component, the prompt can never be more current
-// than the component that implements it — the correct failure direction.
+// and `crates/gg/src/sandbox/language/{typescript,javascript}.rs` embed that JSON with
+// `include_str!`. Because the same `build.sh` invocation also rebuilds the component, the prompt can
+// never be more current than the component that implements it — the correct failure direction.
 //
-// The catalogue is ONE LANGUAGE'S. gg's responses-as-code capability registers program languages,
-// each with its own guest, its own hand-written idiomatic SDK, and its own committed
+// A catalogue is ONE LANGUAGE'S. gg's responses-as-code capability registers program languages, each
+// with its own hand-written idiomatic SDK and its own committed
 // `crates/gg/src/sandbox/guests/<language-id>.signatures.json` in this same shape. That is what the
 // `language` field records, and what every non-tool entry's `key` is for: two languages offer the
 // same surface and differ only in how a program spells it, so `key` is what their catalogues are
 // compared on. A guest built by another toolchain need not run this script at all — only the
 // emitted JSON is contractual.
+//
+// This script emits TWO of them from one set of declarations, because gg's TypeScript and JavaScript
+// arms ARE one set of declarations: the same guest, the same SDK, the same signatures, and one
+// difference — whether gg type-checks the program before evaluating it. See `LANGUAGES` below.
 //
 // Six properties are enforced here rather than left to review. Every one of them is the same rule
 // under a different subject: NOTHING a model reads about this SDK may be written anywhere but on the
@@ -70,8 +74,8 @@
 // module become one entry with two signatures.
 //
 // Usage:
-//   node tools/signatures.mjs --out <path>            # write the catalogue
-//   node tools/signatures.mjs --out <path> --check    # verify the committed catalogue is current
+//   node tools/signatures.mjs --out-dir <dir>          # write one catalogue per language
+//   node tools/signatures.mjs --out-dir <dir> --check  # verify the committed catalogues are current
 //
 // `--check` is the local rehearsal of the CI drift gate, which regenerates the file and fails on any
 // `git diff`.
@@ -93,14 +97,22 @@ const SRC_DIR = path.join(PACKAGE_DIR, "src");
 const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers");
 
 /**
- * The gg program language this guest implements: the `GgProgramLanguage` id it is registered under,
- * and the stem its committed artifacts are filed at.
+ * The gg program languages this guest implements: each one's `GgProgramLanguage` id, which is also
+ * the stem its committed artifacts are filed at.
  *
- * Written into the catalogue so a committed artifact says whose spellings it carries, and asserted
- * by the host against the language that embedded it — a catalogue filed under the wrong stem is then
- * a load-time failure rather than a system prompt describing a sandbox nobody has.
+ * The id is written into the catalogue so a committed artifact says whose spellings it carries, and
+ * is asserted by the host against the language that embedded it — a catalogue filed under the wrong
+ * stem is then a load-time failure rather than a system prompt describing a sandbox nobody has.
+ *
+ * There are TWO of them for one set of declarations, and that is the whole shape of gg's JavaScript
+ * arm. `javascript` is `typescript` with the type check removed: the same component, the same SDK,
+ * the same signatures — type annotations included, so a model on either arm reads exactly the same
+ * surface — and the only difference is that gg does not run `tsc` over the program before evaluating
+ * it. Emitting the catalogue twice under two ids is what lets the host embed one per language and
+ * assert each is its own, without a hand-copied second file that could drift from the declarations
+ * it was reflected out of.
  */
-const LANGUAGE = "typescript";
+const LANGUAGES = ["typescript", "javascript"];
 
 /**
  * The provenance string written into the catalogue, so a reader of the JSON knows it is generated
@@ -515,8 +527,8 @@ function inlineFields(node, sourceFile) {
   return [];
 }
 
-/** Build the whole catalogue. */
-async function build() {
+/** Build the whole catalogue, for the language whose id is `language`. */
+async function build(language) {
   const {
     TOOL_CATALOGUE,
     HELPER_CATALOGUE,
@@ -724,7 +736,7 @@ async function build() {
 
   return `${JSON.stringify(
     {
-      language: LANGUAGE,
+      language,
       generatedFrom: GENERATED_FROM,
       objects,
       meta,
@@ -742,45 +754,48 @@ async function build() {
 
 /** Parse the command line, rejecting anything it does not understand rather than guessing. */
 function parseArguments(argv) {
-  let out;
+  let outDir;
   let check = false;
   for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === "--out") {
-      out = argv[i + 1];
+    if (argv[i] === "--out-dir") {
+      outDir = argv[i + 1];
       i += 1;
     } else if (argv[i] === "--check") {
       check = true;
     } else {
-      throw new Error(`unknown argument \`${argv[i]}\`; usage: --out <path> [--check]`);
+      throw new Error(`unknown argument \`${argv[i]}\`; usage: --out-dir <dir> [--check]`);
     }
   }
-  if (!out) throw new Error("--out <path> is required; usage: --out <path> [--check]");
-  return { out: path.resolve(out), check };
+  if (!outDir) throw new Error("--out-dir <dir> is required; usage: --out-dir <dir> [--check]");
+  return { outDir: path.resolve(outDir), check };
 }
 
 async function main() {
-  const { out, check } = parseArguments(process.argv.slice(2));
-  const catalogue = await build();
-  if (check) {
-    const committed = await readFile(out, "utf8").catch(() => "");
-    if (committed !== catalogue) {
-      throw new Error(
-        `${path.relative(process.cwd(), out)} is stale. Regenerate it with ` +
-          "`npm run -w @test-cabinet/gg-sandbox signatures` and commit the result.",
-      );
+  const { outDir, check } = parseArguments(process.argv.slice(2));
+  for (const language of LANGUAGES) {
+    const out = path.join(outDir, `${language}.signatures.json`);
+    const catalogue = await build(language);
+    if (check) {
+      const committed = await readFile(out, "utf8").catch(() => "");
+      if (committed !== catalogue) {
+        throw new Error(
+          `${path.relative(process.cwd(), out)} is stale. Regenerate it with ` +
+            "`npm run -w @test-cabinet/gg-sandbox signatures` and commit the result.",
+        );
+      }
+      process.stdout.write(`${path.relative(process.cwd(), out)} is up to date.\n`);
+      continue;
     }
-    process.stdout.write(`${path.relative(process.cwd(), out)} is up to date.\n`);
-    return;
+    await mkdir(outDir, { recursive: true });
+    await writeFile(out, catalogue, "utf8");
+    const { objects, meta, views, programs, tools, helpers, types } = JSON.parse(catalogue);
+    process.stdout.write(
+      `Wrote ${path.relative(process.cwd(), out)} (${objects.length} objects, ` +
+        `${tools.length} tools, ${helpers.length} helpers, ${views.length} view functions, ` +
+        `${programs.length} program-library functions, ${meta.length} meta functions, ` +
+        `${types.length} types).\n`,
+    );
   }
-  await mkdir(path.dirname(out), { recursive: true });
-  await writeFile(out, catalogue, "utf8");
-  const { objects, meta, views, programs, tools, helpers, types } = JSON.parse(catalogue);
-  process.stdout.write(
-    `Wrote ${path.relative(process.cwd(), out)} (${objects.length} objects, ${tools.length} tools, ` +
-      `${helpers.length} helpers, ${views.length} view functions, ` +
-      `${programs.length} program-library functions, ${meta.length} meta functions, ` +
-      `${types.length} types).\n`,
-  );
 }
 
 await main().catch((error) => {

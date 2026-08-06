@@ -7,7 +7,7 @@
   "description": "The TypeScript guest for gg's responses-as-code sandbox — one of gg's registered program languages: the typed tool surface, the interpreter shim, and the build that emits the committed component and signature catalogue.",
   "scripts": {
     "typecheck": "tsc -b",
-    "signatures": "tsc -p tsconfig.headers.json && node tools/signatures.mjs --out ../../crates/gg/src/sandbox/guests/typescript.signatures.json",
+    "signatures": "tsc -p tsconfig.headers.json && node tools/signatures.mjs --out-dir ../../crates/gg/src/sandbox/guests",
     "checker": "node tools/checker.mjs"
   },
   "devDependencies": {

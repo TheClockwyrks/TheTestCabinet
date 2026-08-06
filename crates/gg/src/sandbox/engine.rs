@@ -29,6 +29,13 @@ static ENGINE: OnceLock<Engine> = OnceLock::new();
 /// A run compiles exactly one of these, because an agent writes in one language all session. The
 /// array exists so that a run whose *subagents* are configured differently pays one compile per
 /// language it actually drives, rather than recompiling on every alternation.
+///
+/// One slot per language rather than one per distinct set of component bytes, which costs a run
+/// driving **both** ECMAScript arms at once a second compile of an identical artifact. That is the
+/// price of keeping this an index into a fixed array — which is what makes it impossible to get out
+/// of step with the enum — and it is paid once, overlapped with a model request by
+/// [`precompile`](super::precompile), by a configuration nobody has a reason to write: the pair
+/// exists to be run as two arms of a study, not as two agents of one run.
 static COMPONENTS: [OnceLock<Component>; GgProgramLanguage::COUNT] =
     [const { OnceLock::new() }; GgProgramLanguage::COUNT];
 

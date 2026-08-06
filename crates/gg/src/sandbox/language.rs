@@ -62,6 +62,9 @@ use super::signatures::SignatureCatalogue;
 #[path = "language/typescript.rs"]
 mod typescript;
 
+#[path = "language/javascript.rs"]
+mod javascript;
+
 /// The **cross-language agreement gate**: the assertion that every registered language describes the
 /// same capabilities, and that only their spellings differ.
 ///
@@ -181,7 +184,14 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// lets it be minted once per agent and quoted back in the reply that names it.
     fn binding_name(&self, name: &str) -> String;
 
-    /// This language's committed guest component, embedded in the binary.
+    /// The committed guest component that evaluates this language's prepared source, embedded in
+    /// the binary.
+    ///
+    /// Usually a language's own. It need not be: two languages that differ in what gg does to a
+    /// program *before* handing it over, and not in what evaluates it, are entitled to one component
+    /// — [`JavaScript`](javascript) serves [`TypeScript`](typescript)'s, and the seam's
+    /// "no language serves another's artifacts" gate names that pair so the sharing is declared
+    /// rather than inferred from a passing test.
     fn guest_component(&self) -> &'static [u8];
 
     /// The committed signature catalogue for this language's SDK, parsed once per process.
@@ -561,6 +571,7 @@ pub struct FileWindow {
 pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
     match id {
         GgProgramLanguage::TypeScript => &typescript::TYPESCRIPT,
+        GgProgramLanguage::JavaScript => &javascript::JAVASCRIPT,
     }
 }
 
@@ -774,6 +785,7 @@ pub struct ResolvedProgramLanguage {
 /// | `params.language` | Language |
 /// | --- | --- |
 /// | absent / `null` / `"typescript"` | [`TypeScript`](GgProgramLanguage::TypeScript) — the default |
+/// | `"javascript"` | [`JavaScript`](GgProgramLanguage::JavaScript) — the same surface, unchecked |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason

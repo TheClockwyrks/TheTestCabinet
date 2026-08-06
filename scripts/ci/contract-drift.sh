@@ -79,12 +79,16 @@ fi
 # One regeneration per registered program language. Each guest owns its own script,
 # because a guest need not even be an npm package — only the JSON it emits is
 # contractual — so a second language adds a line here rather than changing this one.
+# The gg-sandbox script below is the one that emits two: `typescript` and `javascript`
+# are one guest and one set of declarations, differing only in whether gg type-checks the
+# program, so their catalogues are two reflections of the same source rather than two
+# sources.
 #
 # The stems this script knows how to regenerate. The drift check below diffs *every*
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript"
+regenerated="typescript javascript"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in

@@ -647,19 +647,39 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
 // study varies — and gg records it on the run and on each agent's surface so the arms can
 // be told apart afterwards. Empty is gg's default.
 //
-// One entry per registered `GgProgramLanguage`; the type is a union, so a language gg
-// added without a row here is a TypeScript error in this file rather than an option an
-// operator silently cannot pick.
+// How each registered language is labelled in the picker.
+//
+// A `Record` over the union rather than a hand-written array of options, and that is the
+// whole reason it exists: an array can be short a row and still type-check, so the comment
+// this replaces claimed a protection the code did not have — gg could register a language
+// and the picker would simply not offer it, silently, which is exactly the failure the
+// note promised was impossible. A `Record` is exhaustive: a language added to
+// `GgProgramLanguage` and not named here is a TypeScript error in this file. The Reference
+// page's `PROGRAM_LANGUAGE_NAMES` is the same shape for the same reason.
+const PROGRAM_LANGUAGE_LABELS: Record<GgProgramLanguage, string> = {
+  typescript: "TypeScript",
+  javascript: "JavaScript (no type check)",
+};
+
+// gg's own default, which is what the empty value resolves to (`GgProgramLanguage::default`).
+const DEFAULT_PROGRAM_LANGUAGE: GgProgramLanguage = "typescript";
+
 export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
   value: "" | GgProgramLanguage;
   label: string;
 }> = [
-  { value: "", label: "TypeScript (default)" },
-  { value: "typescript", label: "TypeScript" },
+  {
+    value: "",
+    label: `${PROGRAM_LANGUAGE_LABELS[DEFAULT_PROGRAM_LANGUAGE]} (default)`,
+  },
+  ...Object.entries(PROGRAM_LANGUAGE_LABELS).map(([value, label]) => ({
+    value: value as GgProgramLanguage,
+    label,
+  })),
 ];
 
 export const PROGRAM_LANGUAGE_HINT =
-  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. Empty is gg's default, TypeScript.";
+  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Empty is gg's default, TypeScript.";
 
 export const ASSISTANT_MESSAGE_OPTIONS = [
   { value: "", label: "No post-processing (default)" },

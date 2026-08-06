@@ -1,5 +1,13 @@
 //! **TypeScript's [healing dialect](crate::healing::Dialect)** — the lexical half of
-//! [response healing](crate::healing), for the one language gg registers today.
+//! [response healing](crate::healing).
+//!
+//! It serves gg's [JavaScript](super::javascript) arm too, and that is not a shortcut: the two arms
+//! are one syntax, differing only in whether the program is type-checked before it runs. Every
+//! question below — which fence tags a model uses, which lines are code and which are prose, which
+//! bytes are string or comment text, what an import looks like, what ECMAScript refuses to declare
+//! twice, how an `async` wrapper comes off — has the same answer on both, and a second copy giving a
+//! *different* one would be a difference in surface in the middle of the one study this pair exists
+//! to run.
 //!
 //! Everything here answers a question the healing skeleton asks and cannot answer itself: which
 //! Markdown info-strings mean "this block is the program", what a line of TypeScript looks like
@@ -28,11 +36,12 @@
 use crate::healing::{AsyncWrapper, CodeMask, Dialect, Unwrapped, lines_with_offsets};
 
 /// TypeScript's dialect. A unit struct: everything it "holds" is the `const` data below.
-pub(super) struct TypeScriptDialect;
+pub(in crate::sandbox::language) struct TypeScriptDialect;
 
-/// The one instance, held by [`TypeScript`](super::TypeScript) and handed out as
-/// `&'static dyn Dialect`.
-pub(super) static TYPESCRIPT_DIALECT: TypeScriptDialect = TypeScriptDialect;
+/// The one instance, held by [`TypeScript`](super::TypeScript) — and by
+/// [`JavaScript`](super::super::javascript::JavaScript), which reads its replies with the same
+/// dialect because it is written in the same syntax — and handed out as `&'static dyn Dialect`.
+pub(in crate::sandbox::language) static TYPESCRIPT_DIALECT: TypeScriptDialect = TypeScriptDialect;
 
 impl Dialect for TypeScriptDialect {
     fn program_fence_tags(&self) -> &'static [&'static str] {

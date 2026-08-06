@@ -193,7 +193,13 @@ fn parser_stack_bytes(src_len: usize) -> usize {
 /// is given, not whether it is accepted (see the [module docs](self)). The one guard that runs first
 /// costs a single pass over the text and refuses only degenerate bracket nesting, because the parser
 /// below it recurses without a depth guard.
-pub(super) fn prepare_program(src: &str) -> Result<PreparedProgram, PrepareError> {
+///
+/// Visible to the whole [language module](super::super) rather than to TypeScript's alone, because
+/// this *is* gg's [JavaScript](super::super::javascript) arm: that language is this step and nothing
+/// after it, which is what makes the two arms differ in one variable.
+pub(in crate::sandbox::language) fn prepare_program(
+    src: &str,
+) -> Result<PreparedProgram, PrepareError> {
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
         return Err(PrepareError::Unsupported(over_nested_message(deepest)));
@@ -597,7 +603,7 @@ fn excerpt(line: &str) -> String {
 #[path = "typescript.modules.rs"]
 mod modules;
 
-pub(super) use modules::prepare_module;
+pub(in crate::sandbox::language) use modules::prepare_module;
 
 #[cfg(test)]
 #[path = "typescript.prepare.test.rs"]

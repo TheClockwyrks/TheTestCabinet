@@ -4317,10 +4317,15 @@ pub enum GgHealingStrategy {
 /// The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
 /// axis a cross-language study compares its arms on.
 ///
-/// gg's sandbox is a **wasm component per language**: each language ships a hand-written, idiomatic
-/// SDK that binds the same typed WIT surface, so what differs between two arms of a study is the
-/// *spelling* of a call, never which calls exist. Which language an agent writes in is therefore a
-/// configuration knob like every other lever the harness measures, rather than a property of gg.
+/// Each language ships a hand-written, idiomatic SDK that binds the same typed WIT surface, so what
+/// differs between two arms of a study is the *spelling* of a call, never which calls exist. Which
+/// language an agent writes in is therefore a configuration knob like every other lever the harness
+/// measures, rather than a property of gg.
+///
+/// A language usually brings its own guest component, and one that does not says so in its own
+/// documentation: [`JavaScript`](Self::JavaScript) is evaluated by
+/// [`TypeScript`](Self::TypeScript)'s, because the two arms are one syntax and differ only in
+/// whether the program is checked before it runs.
 ///
 /// The wire values are the language ids, spelled exactly as the
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written
@@ -4335,10 +4340,20 @@ pub enum GgHealingStrategy {
 #[serde(rename_all = "lowercase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgProgramLanguage {
-    /// TypeScript, type-stripped to JavaScript and evaluated in the committed `componentize-js`
-    /// guest. The default, and today the only registered language.
+    /// TypeScript: **type-checked** with the committed `tsc`, then type-stripped to JavaScript and
+    /// evaluated in the committed `componentize-js` guest. The default.
     #[default]
     TypeScript,
+    /// JavaScript: the same guest, the same SDK and the same signatures — with **no type check**.
+    ///
+    /// It is [`TypeScript`](Self::TypeScript)'s arm with one thing removed, and the removal is the
+    /// whole point of it: a program is stripped and evaluated exactly as it was before gg carried a
+    /// compiler, so an A/B across the two measures *what checking a program before it runs is
+    /// worth* and nothing else. Its catalogue keeps its type annotations for that reason — a model
+    /// on this arm reads the same typed signatures and may annotate its own program, which is
+    /// erased along with the rest of the types — so the arms do not also differ in how much the
+    /// model was told about the surface.
+    JavaScript,
 }
 
 impl GgProgramLanguage {
@@ -4351,7 +4366,7 @@ impl GgProgramLanguage {
     /// to the enum and forgotten here is therefore a build failure rather than a language that
     /// silently vanishes from [`from_id`](Self::from_id), from gg's registry, and from every gate
     /// that iterates them.
-    pub const ALL: &'static [GgProgramLanguage] = &[Self::TypeScript];
+    pub const ALL: &'static [GgProgramLanguage] = &[Self::TypeScript, Self::JavaScript];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
     /// per-language table gg indexes by [`ordinal`](Self::ordinal).
@@ -4367,6 +4382,7 @@ impl GgProgramLanguage {
     pub const fn ordinal(self) -> usize {
         match self {
             Self::TypeScript => const { Self::listed_at(0, Self::TypeScript) },
+            Self::JavaScript => const { Self::listed_at(1, Self::JavaScript) },
         }
     }
 
@@ -4393,6 +4409,7 @@ impl GgProgramLanguage {
     pub const fn id(self) -> &'static str {
         match self {
             Self::TypeScript => "typescript",
+            Self::JavaScript => "javascript",
         }
     }
 
@@ -4412,6 +4429,7 @@ impl GgProgramLanguage {
     pub const fn display_name(self) -> &'static str {
         match self {
             Self::TypeScript => "TypeScript",
+            Self::JavaScript => "JavaScript",
         }
     }
 }

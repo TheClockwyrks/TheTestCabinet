@@ -1921,10 +1921,15 @@ export type GgHealingStrategy =
  * The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
  * axis a cross-language study compares its arms on.
  *
- * gg's sandbox is a **wasm component per language**: each language ships a hand-written, idiomatic
- * SDK that binds the same typed WIT surface, so what differs between two arms of a study is the
- * *spelling* of a call, never which calls exist. Which language an agent writes in is therefore a
- * configuration knob like every other lever the harness measures, rather than a property of gg.
+ * Each language ships a hand-written, idiomatic SDK that binds the same typed WIT surface, so what
+ * differs between two arms of a study is the *spelling* of a call, never which calls exist. Which
+ * language an agent writes in is therefore a configuration knob like every other lever the harness
+ * measures, rather than a property of gg.
+ *
+ * A language usually brings its own guest component, and one that does not says so in its own
+ * documentation: [`JavaScript`](Self::JavaScript) is evaluated by
+ * [`TypeScript`](Self::TypeScript)'s, because the two arms are one syntax and differ only in
+ * whether the program is checked before it runs.
  *
  * The wire values are the language ids, spelled exactly as the
  * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written
@@ -1934,7 +1939,7 @@ export type GgHealingStrategy =
  * not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
  * module default on the same grounds.
  */
-export type GgProgramLanguage = "typescript";
+export type GgProgramLanguage = "typescript" | "javascript";
 
 /**
  * What gg had to do to a model's response before it could run it — the healing record of one
