@@ -11,12 +11,13 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Two are registered. TypeScript is the default; **JavaScript** is the same arm with the
-[type check removed](#javascript-the-same-arm-unchecked) and nothing else changed. This
-page is the design of the seam: why the language is an axis, what an agent-facing surface
-has to look like in *any* language, what a language must supply to be registered, what
-stops two languages from quietly describing different capabilities, and what adding
-another actually costs.
+Three are registered. TypeScript is the default; **JavaScript** is the same arm with the
+[type check removed](#javascript-the-same-arm-unchecked) and nothing else changed; and
+**[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
+different language rather than a variation on one. This page is the design of the seam: why the
+language is an axis, what an agent-facing surface has to look like in *any* language, what a
+language must supply to be registered, what stops two languages from quietly describing different
+capabilities, and what adding another actually costs.
 
 ## Why the language is an axis at all
 
@@ -95,6 +96,75 @@ One consequence worth naming, because it is the first time gg has had it: JavaSc
 registered language whose programs report **no compile time at all**. `compileMs` is absent
 rather than `0`, on exactly the terms the next section describes.
 
+## Python: a guest that carries its own interpreter
+
+The third registered language is the first that is a **different language** rather than a variation
+on one, and it is the arm that makes the seam's claims falsifiable in production rather than only
+under `#[cfg(test)]`: a different SDK, a different guest, a different healing dialect, a different
+prompt, and — for the first time — a call whose arguments are passed **by name**.
+
+Everything it owns is in `crates/gg/src/sandbox/language/python.rs` and
+`packages/gg-sandbox-python/`, and the one structural thing to know about it is where the language
+lives:
+
+**There is no compiler on the turn path, because CPython is inside the artifact.**
+`componentize-py` links a real CPython 3.14 against `crates/gg/wit/gg-sandbox.wit`, so a program
+crosses the membrane as *source* and the first thing to read it is the interpreter that runs it.
+Nothing is installed in the run container and nothing is added to the
+[gg toolchain layer](#where-a-compiler-lives-and-what-it-must-never-share) — this arm is the
+demonstration that a language can be added without one.
+
+Three consequences follow from that, and each is a fact about the arm rather than a preference:
+
+| | What it means here |
+| --- | --- |
+| **Preparing a program does nothing** | The bytes the model wrote are the bytes the guest evaluates. Not a placeholder: there is no host-side Python for a prepare step to run. |
+| **`checker()` is `None`** | Nothing judges a program before it runs, so `compileMs` is absent rather than `0` — the same branch [JavaScript](#javascript-the-same-arm-unchecked) takes, reached for a completely different reason. |
+| **A syntax error is a run-time error** | It arrives as a located `ProgramError` carrying CPython's own message and the program's own line and column, not as a `transpile_syntax` turn. The model reads the same thing; the band it is recorded under is the honest one for an arm where nothing read the program first. |
+
+A Python parser on the host was considered and rejected. It would buy the `transpile` band and a
+marginally earlier diagnostic, and it would cost a **second implementation of Python's grammar**,
+lagging the interpreter that actually runs the program and refusing valid programs written in syntax
+the guest accepts — CPython 3.14 takes template strings and no third-party parser does yet. A false
+rejection is a turn spent rewriting a correct program, which is the misattribution this codebase
+spends the most effort not making.
+
+### Its dialect says "no" three times, and each "no" is a decision
+
+[Healing](/gg/response-healing/) asks every language the same lexical questions. This arm answers
+three of them differently from the ECMAScript pair, and the differences are worth reading as a group
+because they are what a second real language looks like: not a translation, but a different set of
+things that are true.
+
+| Question | This arm's answer | Why |
+| --- | --- | --- |
+| Is this line an import? | **Never** | The ECMAScript guest is baked with no module system, so every `import` there is dead text. This guest is a whole CPython: `import json` runs, `from gg import ToolError` runs. There is no lexical shape that is *certainly* dead, and deleting a working line is the failure the subsystem exists not to commit. `drop-imports` therefore never fires here. |
+| Does this text redeclare something the language refuses twice? | **Never** | Python has no such rule. `def main():` twice is legal and a program pasted twice *runs twice*, so `drop-duplicate-program` has no proof that the deletion changes nothing and gives itself up. The coarser `drop-doubled-response` — a transport artefact, and the one strategy that asks a dialect nothing — still fires. |
+| What is the whole-program concurrency wrapper? | `import asyncio`, an `async def`, and `asyncio.run(main())` — **three parts** | Python's runner is a *module* rather than a keyword. Unwrapping the middle and leaving the first would produce a program whose first line raises `ModuleNotFoundError`, since this guest is deliberately baked without `asyncio`. So the import comes off with the wrapper, which is how the arm can answer "no import is ever deleted" and still deliver the repair the pipeline's imports-before-async ordering was built to enable. |
+
+One smaller difference is worth naming because it looks like a bug and is not. `#` opens a Python
+comment **and** a Markdown heading, and nothing lexical tells them apart — so a `#` line is never
+deleted as prose. A model that headed its explanation `## Plan` keeps that heading in its program,
+where the interpreter reads it as a comment and it costs nothing. The alternative is deleting the
+model's own comments, which is a deletion of code.
+
+The `await` deletion differs too, in one byte: this arm takes the whitespace after the token with
+it. `    await work()` dedents to `await work()`, and deleting the token alone would leave ` work()`
+— a line opening with a space, which is an `IndentationError` rather than a program.
+
+### What "native" bought, in the catalogue
+
+The SDK is [hand-written](#the-sdk-is-hand-written-and-native) and reads as Python reads, and the
+[agreement gate](#the-agreement-gate) accepts every one of those choices as spelling: `snake_case`
+throughout, keyword arguments with real defaults rather than a trailing options object, frozen
+dataclasses for results, enums for fixed choices, `isinstance` narrowing rather than a discriminant
+field, a raised `ToolError` for the wire's error arm, an `UNCHANGED` sentinel where `None` already
+means "clear it", and a record's fields spelled as the function's own arguments.
+
+The measurable consequence is that this is the **first registered arm to emit `kind: "keyword"`** —
+69 positional parameters and 31 keyword ones — which turns that half of the catalogue schema from a
+shape nothing produced into a shape a gate reads.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -142,10 +212,12 @@ nothing reports **nothing at all** rather than a zero: `null` says "there is no 
 this path", which a zero would not, and a column of zeroes on every turn of such a run
 would be noise in front of the one study the field exists for. Per run, the same arm
 reports **`0`** rather than omitting the field, because a query averages a measurement and
-silently drops a run that has none. [JavaScript](#javascript-the-same-arm-unchecked) is the
-registered language that takes that branch, and it is the arm a checked one is compared
-against — so the difference between "compiled, in under a millisecond" and "there is no
-compiler here" is exactly the difference being measured.
+silently drops a run that has none. Two registered languages take that branch, for opposite
+reasons — [JavaScript](#javascript-the-same-arm-unchecked) because gg deliberately took its
+check away, [Python](#python-a-guest-that-carries-its-own-interpreter) because there is no
+host-side compiler to take away — and JavaScript is the arm a checked one is compared against,
+so the difference between "compiled, in under a millisecond" and "there is no compiler here"
+is exactly the difference being measured.
 
 And the figure is reported for the turn whose program the compiler **rejected**, which is
 the turn it most exists for: a compile that spent four seconds refusing the program spent
@@ -285,7 +357,10 @@ Three gates, none of which a language opts into:
    succeeded, it carries its own marker, it carries no other preparation's marker, it
    matches what the same input produced alone, and no two of the sixteen were handed the
    same workspace. The list of languages is derived from the registry, so a new arm is
-   inside the gate the moment it compiles.
+   inside the gate the moment it compiles — including one that compiles nothing:
+   [Python](#python-a-guest-that-carries-its-own-interpreter) is driven sixteen ways like
+   every other arm, opens no workspace and spawns no process, and passes because a
+   preparation that touches nothing shared trivially satisfies a rule about shared state.
 2. **The gate's own teeth.** It is generic over a *preparation*, not over a language, and
    its tests point it at four deliberately broken ones — the two measured bugs written in
    the smallest code that has their shape, plus a memoised compile and a cache keyed on
@@ -341,9 +416,8 @@ can be read, and a parse is a place to be wrong about a shape the SDK already kn
 **5. Required arguments are positional; optional ones use the language's own idiom.**
 Required-positional is what makes the common call short enough to write from memory, and
 what makes a missing one impossible to write by accident. Optional arguments are the half
-that is *not* fixed across languages: TypeScript takes a trailing options object, and
-Python would take keyword arguments, because those are what each language's readers and
-writers expect. The SDK bridges its idiom to the wire; the model never sees the bridge.
+that is *not* fixed across languages: TypeScript takes a trailing options object and Python
+takes keyword arguments, because those are what each language's readers and writers expect. The SDK bridges its idiom to the wire; the model never sees the bridge.
 
 Two things fall out of this list. First, every rule is about **what the model can see the
 exact type of** — a capability whose exact type is not visible is one the model calls
@@ -720,10 +794,12 @@ stated defaults, and splits an optional argument into an overload pair** must be
 without complaint, because a gate that rejected that would make an overloading language
 impossible to register — which is a worse failure than any it prevents.
 
-The comparative half runs over the registry for real, now that
-[JavaScript](#javascript-the-same-arm-unchecked) is in it — though that pair is the easiest
-possible comparison, since the two catalogues are one set of declarations reflected twice.
-So it is also exercised, on every run, against a **fixture language** that exists only
+The comparative half runs over the registry for real, and with
+[Python](#python-a-guest-that-carries-its-own-interpreter) in it that is now a comparison
+worth making: two SDKs written by hand, in two languages, sharing no declaration — where the
+TypeScript/JavaScript pair is the easiest possible comparison, its two catalogues being one
+set of declarations reflected twice. It is also exercised, on every run, against a
+**fixture language** that exists only
 under `#[cfg(test)]`: a second implementation of the whole seam whose catalogue is
 TypeScript's own, re-spelled to `snake_case` at test time — same keys, same objects, same
 gates — with its own line-oriented preparation step, its own healing dialect and its own
@@ -742,23 +818,27 @@ registered language that *did* touch that package is
 [JavaScript](#javascript-the-same-arm-unchecked), because it is not a new guest at all —
 it is this one's catalogue emitted a second time under a second id.)
 
-Python is no longer hypothetical here: its **guest and its whole model-facing surface
-exist**, in `packages/gg-sandbox-python/` — the shim, the curated library set, the
-hand-written idiomatic SDK, the reflector, and both committed artifacts. What does *not*
-exist yet is its **registration**, which is why `python` is not a value an operator can
-configure. The split is deliberate: a `ProgramLanguage` arm cannot be half-registered — the
-registry's `match` is exhaustive and every gate that iterates the registered set would
-immediately demand two templates and a healing dialect — so the artifact and the surface are
-proven first, on their own, and the registration lands in one piece.
+Python is **registered**, and this section is the walkthrough rather than a plan: what the arm
+*is* is [above](#python-a-guest-that-carries-its-own-interpreter), and what follows is the
+order it was built in and what each step cost, because that is what the next language needs.
 
-The surface is not taken on trust in the meantime. The
-[agreement gate](#the-agreement-gate) runs against the committed Python catalogue **now**,
-wearing the [fixture language](#the-agreement-gate) so it can be handed a catalogue whose id
-the wire enum does not carry yet; and every one of the thirty-five tools is driven through the
-real membrane from its Python spelling, against the same expected JSON the TypeScript arm's
-crossing table asserts. That the two arms produce byte-identical arguments for the same
-capability is the property a cross-language study rests on, and it is checked a step before
-the commit least able to absorb a surprise.
+It landed in three pieces, and the split is worth keeping. First the **substrate** — the
+guest CPython lives inside, its build, and the proof that a program crosses into it, runs,
+reaches back through the membrane and comes back out. Then the **surface** — the hand-written
+idiomatic SDK and the catalogue reflected out of it. Only then the **registration**, because a
+`ProgramLanguage` arm cannot be half-registered: the registry's `match` is exhaustive, and
+every gate that iterates the registered set demands two templates and a healing dialect the
+moment the enum has a variant.
+
+The surface was not taken on trust in the meantime, which is the part worth copying. The
+[agreement gate](#the-agreement-gate) was run against the committed Python catalogue a step
+*before* it was registered, wearing the [fixture language](#the-agreement-gate) so it could be
+handed a catalogue whose id the wire enum did not carry yet; and every one of the thirty-five
+tools was driven through the real membrane from its Python spelling, against the same expected
+JSON the TypeScript arm's crossing table asserts. That the two arms produce byte-identical
+arguments for the same capability is the property a cross-language study rests on, and it was
+checked a step before the commit least able to absorb a surprise. Both halves are ordinary
+registered-language gates now.
 
 ### What was measured
 
@@ -820,29 +900,47 @@ guest instantiates with nothing added to the host and nothing stubbed out of the
 [what the host links](#what-the-host-links-and-why-it-is-the-same-for-every-language) for the
 reasoning and for the one thing that is still withheld.
 
-:::caution[A prerequisite for the first guest that can block]
+:::caution[A registered guest can block, and the deadline does not reach it]
 The [execution timeout](/gg/execution-limits/) is delivered by epoch interruption, which can
 only fire where the guest is running wasm. A guest parked inside a **synchronous WASI call** —
 `wasi:io/poll` on a clock pollable, which is what `time.sleep` and `Thread.sleep` compile to,
 or a blocking socket read — is running none, so the timeout cannot trap it, and the membrane's
-deadline guard does not help because it only refuses at the next bridged call. The turn hangs
-until the run-level idle watchdog (30 minutes) declares the run hung. Nothing stalls: the
-program runs on a blocking thread, so sibling agents are unaffected.
+deadline guard does not help because it only refuses at the next bridged call. Nothing stalls:
+the program runs on a blocking thread, so sibling agents are unaffected.
 
-No **registered** guest can reach this — TypeScript's shadows the timers and exposes no
-filesystem or socket API — but the [Python guest](#adding-a-language-worked-python) already
-can, and it has now been measured rather than reasoned about. `time.sleep(8)` against a
-**2 s** budget was stopped at 2.5 s, 2.7 s, 4.3 s, 7.0 s and 9.4 s across five runs of the
-same program: it *is* stopped, the trap lands, and the elapsed figure is honest — but where
-it lands is wherever CPython's sleep next re-enters wasm, and in the worst observed case that
-was only after the whole sleep had run. So the deadline is an upper bound on nothing, and a
-`time.sleep(3600)` would sit until the run-level idle watchdog declares the run hung.
+The ECMAScript guest cannot reach this — it shadows the timers and exposes no filesystem or
+socket API. **Python can**, and it has been measured rather than reasoned about.
+`time.sleep(8)` against a **2 s** budget was stopped at 2.5 s, 2.7 s, 4.3 s, 7.0 s and 9.4 s
+across five runs of the same program: it *is* stopped, the trap lands, and the elapsed figure
+is honest — but where it lands is wherever CPython's sleep next re-enters wasm, and in the
+worst observed case that was only after the whole sleep had run. So the deadline is an upper
+bound on the guest's *execution* and on nothing else, and a `time.sleep(3600)` sits until the
+run-level idle watchdog (30 minutes) declares the run hung.
 
-A runaway that *computes* is stopped exactly as intended: a Python `while True:` traps on the
-deadline every time, and that case has a test. Closing the sleeping case is a design decision,
-not a comment: async WASI with `call_async` so a park becomes a cancellable yield, or a
-wall-clock watchdog that can cancel a store from outside. **Settle it with the registration of
-the first such language, which is the first turn a model can reach it from.**
+**The decision, settled with the arm that made it reachable: gg does not extend the timeout to
+a parked WASI call.** It is an acceptance rather than a gap, and the reason is that the
+behaviour underneath it is neither new nor unusual — `system.shell("sleep 3600")` parks for an
+hour on every arm gg has ever had, and the epoch callback deliberately excludes that time so a
+real build is never mistaken for a runaway. A sleeping guest is a *second door* to the same
+behaviour; what genuinely differs is that gg does not record it, because a `shell` wait is a
+bridged call in the run's telemetry and a `time.sleep` is nothing at all.
+
+What is not at risk is what the ceiling exists for. A runaway that *computes* is stopped
+exactly as intended — a Python `while True:` traps on the deadline every time, and that case
+has a test — and a parked program can do no further gg work either, because the membrane
+refuses every bridged call once the budget is spent.
+
+Both closures were weighed and neither is worth its cost yet. **Async WASI with `call_async`**,
+so a park becomes a cancellable yield, is the right answer eventually and is a change to how
+*every* guest is driven — the sandbox becomes async end to end and every existing arm is
+re-validated against it, which is not a change to make on the way past while registering a
+language. **Abandoning the thread from a wall-clock watchdog** is cheaper and wrong: the store
+would outlive the turn gg reported and, while the membrane would refuse it every gg tool, it
+would still hold the ambient filesystem — a leaked program writing files after gg has moved on
+is a worse failure than a turn that waits.
+
+Reopen it when a parked turn is observed in a real run, or when an arm can block in a way a
+model reaches by accident rather than by writing a sleep.
 :::
 
 ### The steps

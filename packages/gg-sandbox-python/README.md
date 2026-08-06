@@ -60,14 +60,15 @@ every one of the 35 tools through the real membrane and requires the JSON that
 reaches gg's dispatch to be **byte identical** to what the TypeScript arm produces
 for the same capability.
 
-## State: the guest and its surface, not yet the registration
+## State: registered
 
-**Built and proven:** the component, its build, the interpreter shim, the SDK, the
-signature catalogue and its drift gate, the error reporting, the library set, and
-end-to-end execution through gg's own linker, membrane and store. **Not built:** the
-registration of `python` as a program language — the enum variant, the
-`ProgramLanguage` implementation, the two prompt templates and the healing dialect.
-Until those land, `python` is not a value an operator can configure.
+`python` is a value an operator configures, and the whole arm is in the tree: the
+component and its build, the interpreter shim, the SDK, the signature catalogue and its
+drift gate, the error reporting, the library set, end-to-end execution through gg's own
+linker, membrane and store, and — in `crates/gg/src/sandbox/language/python.rs` and its
+siblings — the `ProgramLanguage` implementation, the healing dialect and the two prompt
+templates. Its host half is small on purpose: preparing a Python program does **nothing**
+to it, because CPython is inside the component and is the first thing to read it.
 
 ## Layout
 
@@ -120,7 +121,7 @@ Until those land, `python` is not a value an operator can configure.
   unwinds its traceback, so `except BaseException` gives no protection at all. The shim
   clamps the limit; both facts have tests.
 
-## The one thing this arm can do that no registered guest can
+## The one thing this arm can do that the ECMAScript guest cannot
 
 **Block where the execution timeout cannot reach it.** gg stops a program with epoch
 interruption, which fires only where the guest is running wasm — and a program parked in a
@@ -132,9 +133,12 @@ eventually and the elapsed figure is honest, but the deadline bounds nothing —
 sleep would sit until the run-level idle watchdog fires. A runaway that *computes* traps on
 the deadline every time, and that case has a test.
 
-This is a design decision for the step that registers `python`, not a defect in the guest;
-[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md) states the two
-ways of closing it.
+**Settled with the registration, as an acceptance:** gg does not extend the timeout to a
+parked WASI call, and the bound on a parked turn stays the run-level idle watchdog. The
+behaviour underneath is not new — `system.shell("sleep 3600")` parks for an hour on every arm
+gg has — and both closures cost more than they buy today. The full argument, and the condition
+under which it is reopened, is in
+[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
 
 ## Rebuilding
 

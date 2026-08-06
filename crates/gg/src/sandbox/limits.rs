@@ -43,20 +43,48 @@
 //!
 //! This was unreachable before the linker went ambient, because the only way for a program to block
 //! at all was a bridged tool call, which the epoch callback accounts for explicitly. It is
-//! unreachable from **today's** TypeScript guest too: the timers are shadowed and the JS engine
-//! exposes no filesystem or socket API. It is squarely reachable from any of the compiled languages
-//! being added, where `time.sleep(60)` is an ordinary thing for a model to write.
+//! unreachable from the ECMAScript guest too: the timers are shadowed and the JS engine exposes no
+//! filesystem or socket API. It is **reachable today** from the [Python](super::language) arm, where
+//! `time.sleep(60)` is an ordinary thing for a model to write — `time.sleep(8)` against a 2 s budget
+//! was measured stopping at 2.5 s, 2.7 s, 4.3 s, 7.0 s and 9.4 s across five runs of one program. It
+//! is always stopped and the elapsed figure is honest, but *where* it stops is wherever CPython's
+//! sleep next re-enters wasm.
 //!
-//! The consequence is bounded but real. [`run_program`](super::run_program) is driven on a blocking
-//! thread, so a parked guest does not stall the shared runtime or any sibling agent — but the turn
-//! itself hangs with no ceiling of its own until the run-level idle watchdog
-//! (`test_cabinet_core::exec_stream::HARNESS_IDLE_TIMEOUT`, 30 minutes) declares the run hung.
+//! # The decision, settled with the first arm that can reach it
 //!
-//! Closing it is a design decision rather than a comment: it needs either async WASI with
-//! `call_async`, so a park becomes a yield the host can cancel, or a wall-clock watchdog able to
-//! cancel a store from outside the guest. **It is a named prerequisite for the first language whose
-//! guest can block in WASI**, and is recorded as one in
-//! `apps/docs/src/content/docs/gg/program-languages.md`.
+//! **gg does not extend the timeout to a parked WASI call. The bound on a parked turn is the
+//! run-level idle watchdog**, `test_cabinet_core::exec_stream::HARNESS_IDLE_TIMEOUT` (30 minutes),
+//! and this ceiling stays what it says it is: a bound on the guest's own *execution*.
+//!
+//! The reason that is an acceptance rather than a gap is that the underlying behaviour — a program
+//! may wait a long time — is neither new nor unusual. `system.shell("sleep 3600")` parks for an hour
+//! on every arm gg has ever had, and the epoch callback deliberately excludes that time so a real
+//! build is never mistaken for a runaway. What a sleeping guest adds is a *second door* to the same
+//! behaviour, and what genuinely differs is that gg does not record it: a `shell` wait is a bridged
+//! call in the run's telemetry, and a `time.sleep` is nothing at all.
+//!
+//! What is not at risk is the thing this ceiling exists for. A runaway that **computes** is stopped
+//! exactly as intended — a Python `while True:` traps on the deadline every time, and that case has
+//! a test — and a parked program can do no further gg work either, because
+//! [`MembraneState`](super::membrane)'s deadline guard refuses every bridged call once the budget is
+//! spent. Nothing stalls: [`run_program`](super::run_program) runs on a blocking thread, so sibling
+//! agents are unaffected.
+//!
+//! Both candidate closures were weighed and neither is worth its cost yet:
+//!
+//! * **Async WASI with `call_async`**, so a park becomes a yield the host can cancel. It is the
+//!   right answer eventually and it is a change to how *every* guest is driven — the sandbox becomes
+//!   async end to end, the blocking-thread property above changes shape, and every existing arm has
+//!   to be re-validated against it. That is not a change to make on the way past while registering a
+//!   language.
+//! * **Abandoning the thread from a wall-clock watchdog.** Cheaper, and wrong: the store would
+//!   outlive the turn gg reported, and while the membrane would refuse it every gg tool, it would
+//!   still hold the ambient filesystem. A leaked program writing files after gg has moved on is a
+//!   worse failure than a turn that waits.
+//!
+//! **Reopen it** when a parked turn is observed in a real run, or when an arm can block in a way a
+//! model reaches by accident rather than by writing a sleep. The full statement, with the
+//! measurements, is in `apps/docs/src/content/docs/gg/program-languages.md`.
 
 use std::time::Duration;
 

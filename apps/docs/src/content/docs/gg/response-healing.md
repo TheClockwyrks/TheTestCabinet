@@ -83,6 +83,17 @@ TypeScript with the type check removed, so every question above has the same ans
 both. A second copy giving a *different* answer would be a difference in surface in the
 middle of the one study that pair exists to run.
 
+[Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter) is the arm
+where the answers really diverge, and it is worth reading as the shape a dialect takes when
+the language underneath is genuinely different. It answers **"never"** to *is this an
+import?* — its guest carries a real standard library, so `import json` is a working line and
+`drop-imports` would delete one — and **"never"** to *does this redeclare something?*, because
+Python refuses no declaration twice and a program pasted twice runs twice, which gives up
+`drop-duplicate-program` rather than delete work the model asked for. Its concurrency wrapper
+has **three** parts (`import asyncio`, an `async def`, and `asyncio.run(main())`) because
+Python's runner is a module rather than a keyword, and all three come off together — which is
+how the arm can refuse to delete any import and still deliver the repair.
+
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
 no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply
@@ -181,7 +192,7 @@ Two relaxations come from measured real replies, and neither touches the length 
 
 *Candidacy* is a three-tier ladder, first non-empty tier wins: blocks tagged with one of
 this [language](/gg/program-languages/)'s program tags — for
-the two ECMAScript arms, which share one dialect, `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list);
+the two ECMAScript arms, which share one dialect, `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list); for Python, `python`, `py`, `python3`, `py3` — and deliberately not `pycon` or `doctest`, which name an interactive *transcript* rather than a program;
 otherwise blocks with **no** tag; otherwise blocks whose unrecognised tag is anything
 else **and** whose body looks like code. A closed list rather than a deny list, because a
 block tagged `json`, `text`, `bash` or `md` is context the model showed rather than the

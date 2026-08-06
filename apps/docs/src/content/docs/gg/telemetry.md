@@ -739,8 +739,10 @@ directly:
   half of every skill or memory it brought into use, and each on-use script such a read
   queued. It is absent for a language whose prepare step is in-process and free, where the
   figure would be a zero on every turn of every run —
-  [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is exactly that
-  arm, and is the one a checked arm is compared against — and present on every turn of a
+  [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked), which is the one a
+  checked arm is compared against, and
+  [Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter), which has
+  no host-side compiler at all, are both that arm — and present on every turn of a
   language that compiles, **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it
   is the only reading of that turn which is not zero. The sandbox's own clock starts once
