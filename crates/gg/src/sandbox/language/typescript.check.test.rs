@@ -10,7 +10,7 @@ use super::*;
 /// Check a program and hand back the compiler's diagnostics, failing the test on a toolchain
 /// failure — a missing `node` is a broken machine, not a result.
 fn diagnostics(source: &str) -> Option<String> {
-    match check_program(source) {
+    match check_program(source, &PrepareContext::new()) {
         Ok(()) => None,
         Err(PrepareFailure::Program(PrepareError::Compile(text))) => Some(text),
         Err(other) => panic!("expected a compile verdict, got {other}"),
@@ -114,12 +114,14 @@ fn a_module_is_checked_in_its_own_coordinates() {
     let clean = "export function rows(path: string): string[] {\n  const r = fs.readFile(path);\n  \
                  return r.kind === \"text\" ? r.contents.split(\"\\n\") : [];\n}\n";
     assert!(
-        matches!(check_module(clean), Ok(())),
+        matches!(check_module(clean, &PrepareContext::new()), Ok(())),
         "the module type-checks"
     );
 
     let broken = "export const total: number = fs.listDir(\"src\");\n";
-    let Err(PrepareFailure::Program(PrepareError::Compile(text))) = check_module(broken) else {
+    let Err(PrepareFailure::Program(PrepareError::Compile(text))) =
+        check_module(broken, &PrepareContext::new())
+    else {
         panic!("a DirEntry[] is not a number");
     };
     assert!(
@@ -163,7 +165,7 @@ fn a_checker_that_cannot_run_is_not_the_models_failure() {
     let restore = std::env::var(NODE_ENV).ok();
     // SAFETY: single-threaded test, and the variable is restored before it returns.
     unsafe { std::env::set_var(NODE_ENV, "gg-no-such-interpreter") };
-    let failure = check_program("harness.finish(\"x\");");
+    let failure = check_program("harness.finish(\"x\");", &PrepareContext::new());
     match restore {
         // SAFETY: as above.
         Some(value) => unsafe { std::env::set_var(NODE_ENV, value) },

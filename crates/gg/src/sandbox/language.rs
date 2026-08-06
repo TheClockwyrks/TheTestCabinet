@@ -59,6 +59,21 @@ use crate::limits::TurnErrorType;
 
 use super::signatures::SignatureCatalogue;
 
+/// The **ground a prepare step compiles on** — the private per-preparation workspace, the isolated
+/// compiler invocation, the exclusive-checkout pool for a warm compiler, and the one sanctioned
+/// shared directory.
+///
+/// Not a language's own module because the isolation it provides is not any one language's business:
+/// two silent-corruption bugs of exactly this shape were measured on real toolchains before a single
+/// compiler was wired up here, so the seam owns the answer and every language is handed it.
+#[path = "language/compile.rs"]
+pub mod compile;
+
+pub use compile::{
+    CompilerCommand, CompilerPool, CompilerReport, PrepareContext, Workspace, place,
+    shared_toolchain_dir,
+};
+
 #[path = "language/typescript.rs"]
 mod typescript;
 
@@ -74,6 +89,16 @@ mod javascript;
 #[cfg(test)]
 #[path = "language/agreement.rs"]
 mod agreement;
+
+/// The **per-agent compiler isolation gate**: the assertion that preparing a program is a function of
+/// that program alone, held under the concurrency a run really produces.
+///
+/// `#[cfg(test)]` for the same reason [`agreement`] is — it spawns compilers sixteen at a time, which
+/// is a test's budget and not a turn's. Its module documentation carries the two measured
+/// silent-corruption bugs it reproduces.
+#[cfg(test)]
+#[path = "language/isolation.rs"]
+mod isolation;
 
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
@@ -131,11 +156,10 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// chain up to four programs — so several compilations of several agents' programs are in
     /// flight at once, in one process, routinely.
     ///
-    /// An implementation that shells out to a compiler must therefore give **every invocation its
-    /// own working tree, its own output directory and its own process**, keyed by something unique
-    /// per call. It must not share a build cache, a compiler daemon, an output path or any other
-    /// mutable build state across concurrent calls — not as an optimisation to add later, but as the
-    /// shape it is written in from the start.
+    /// The rule that follows is one sentence: **what this returns is a function of `source` alone**.
+    /// Nothing an implementation compiles with may be reachable from another preparation running at
+    /// the same time — not a working directory, not an output path, not a build cache, not a
+    /// compiler daemon.
     ///
     /// The requirement is not theoretical: two silent-corruption bugs were measured while this
     /// capability was being designed. A shared build strategy handed four concurrent compilations to
@@ -145,10 +169,24 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// [toolchain band](PrepareFailure::Toolchain) already reports, but a run in which one agent
     /// silently evaluates another agent's program and every number the study collects is wrong.
     ///
+    /// `context` is how the rule is kept without remembering it. It is minted per preparation by the
+    /// sandbox and by nothing else, and it hands out the only ground the seam offers:
+    /// [`workspace`](PrepareContext::workspace) is this preparation's own tree, and
+    /// [`compiler`](PrepareContext::compiler) spawns a process whose working directory, `HOME`,
+    /// `TMPDIR` and `XDG_*` roots are all inside it — so a toolchain that writes beside its input or
+    /// into the user's cache is isolated without its language having thought about it. A warm
+    /// compiler that must outlive one preparation belongs in a [`CompilerPool`], which lends an
+    /// instance exclusively rather than sharing it. See [`compile`] for the whole contract, and the
+    /// [isolation gate](isolation) for what enforces it.
+    ///
     /// One thing this is *not*: a stall risk. This runs on a blocking task, so a compiler that takes
     /// seconds does not hold up the loop or any sibling agent. The hazard is contention and shared
     /// state, and designing against the wrong one costs isolation that is actually needed.
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure>;
+    fn prepare_program(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure>;
 
     /// What a program of this language is judged by, named the way this language's own users name
     /// it — `tsc`, `rustc`, `mypy` — or `None` for a language whose [prepare
@@ -196,7 +234,17 @@ pub trait ProgramLanguage: Send + Sync + 'static {
 
     /// Turn a code skill's or code memory's source into the source the guest evaluates to produce
     /// that module's namespace, bound at `lib.<key>`.
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure>;
+    ///
+    /// A module compiles exactly as a program does, so `context` means what it means there and the
+    /// [isolation rule](Self::prepare_program#concurrency-a-compiler-here-must-be-isolated-per-invocation-by-construction)
+    /// is the same rule. It is not a lesser path: a turn that reads three code skills compiles three
+    /// modules beside its own program, and every one of those compilations is concurrent with every
+    /// other agent's.
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure>;
 
     /// The file extensions a code [skill](crate::skills) directory spells this language's module and
     /// on-use script with — `skill.<ext>`, `on-use.<ext>` — **most preferred first**, and never

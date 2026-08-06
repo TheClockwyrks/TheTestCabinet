@@ -611,10 +611,14 @@ programs are judged by.
 Two constraints bind every toolchain added to it, and both are written down in the
 Dockerfile's header. It must be **relocatable and distribution-portable** — the same
 tree is copied to the same absolute path onto the Debian-based images and onto
-`blender-gg`, whose parent is Ubuntu. And it must be usable **isolated per invocation**:
+`blender-gg`, whose parent is Ubuntu. And it must be drivable **isolated per invocation**:
 several compilers run concurrently inside one run, and a shared build strategy and
 a shared output tree have each been measured interleaving two agents' programs
-while every process exited zero.
+while every process exited zero. The calling side supplies most of that — gg runs every
+compiler with its working directory, `HOME`, `TMPDIR` and `XDG_*` roots inside that
+preparation's own tree — so what this constrains is the toolchain that can *only* be
+driven through a process shared between compilations. See
+[per-agent compiler isolation](../apps/docs/src/content/docs/gg/program-languages.md#per-agent-compiler-isolation).
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner

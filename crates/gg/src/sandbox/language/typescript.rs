@@ -70,8 +70,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, PromptDialect,
-    VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
+    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// The type-strip, shared with [`JavaScript`](super::javascript): visible to the whole language
@@ -150,9 +150,13 @@ impl ProgramLanguage for TypeScript {
     ///
     /// The checked text is the model's own **unstripped** source, so what `tsc` reads is what the
     /// model wrote, at the coordinates it wrote it at.
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure> {
+    fn prepare_program(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
         let prepared = prepare::prepare_program(source)?;
-        check::check_program(source)?;
+        check::check_program(source, context)?;
         Ok(prepared)
     }
 
@@ -182,9 +186,13 @@ impl ProgramLanguage for TypeScript {
     /// [skill](crate::skills) or [memory](crate::memories) is source a model wrote too, and a module
     /// that does not type-check would otherwise bind a `lib.<key>` whose every call fails later, in
     /// a turn that has nothing to do with the one that wrote it.
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure> {
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
         let prepared = prepare::prepare_module(source)?;
-        check::check_module(source)?;
+        check::check_module(source, context)?;
         Ok(prepared)
     }
 

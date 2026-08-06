@@ -52,9 +52,15 @@
 #    every process exited zero. A toolchain installed here must be usable with a
 #    per-invocation working tree, output directory and process; anything that only works
 #    through a shared daemon, a shared build cache or a fixed output path does not belong
-#    in this image until it can. The obligation on the calling side is written down on
-#    `ProgramLanguage::prepare_program`, which is the contract each language implements
-#    against.
+#    in this image until it can. It need not be *told* to be isolated: the calling side
+#    (`crates/gg/src/sandbox/language/compile.rs`) runs every compiler with its working
+#    directory, `HOME`, `TMPDIR` and `XDG_*` roots inside that preparation's own tree, so a
+#    toolchain that writes beside its input or into the user's cache is isolated without
+#    being configured for it. What must NOT be installed here is a toolchain that can only
+#    be driven through a process shared between compilations — and a toolchain worth
+#    keeping warm is driven from a `CompilerPool`, which lends an instance exclusively.
+#    `crates/gg/src/sandbox/language/isolation.rs` is the gate that holds every language to
+#    this at 16-way concurrency, and it reproduces both measured bugs to prove it can.
 #
 # The layer is empty today, on purpose: this workflow builds the mechanism, and each
 # toolchain arrives with the language that needs it. An empty `/opt/gg` costs a gg run

@@ -118,7 +118,10 @@ pub use language::{
 // consumers wrapped in a `PrepareFailure`, and is named here because a language implementer picking
 // which of its five shapes a diagnostic is has to be able to see them.
 #[allow(unused_imports)]
-pub use language::{PrepareError, PromptDialect, ResolvedProgramLanguage};
+pub use language::{
+    CompilerCommand, CompilerPool, CompilerReport, PrepareContext, PrepareError, PromptDialect,
+    ResolvedProgramLanguage, Workspace, place, shared_toolchain_dir,
+};
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
 // outside `sandbox` that has to know about it: the prompt engine cannot render a template it never
@@ -247,7 +250,7 @@ pub fn run_program<A: ToolApi>(
     // reading is taken around both outcomes because a rejected program is the one whose cost would
     // otherwise be reported as nothing.
     let started = Instant::now();
-    let prepared = language.prepare_program(program);
+    let prepared = prepare_program(language, program);
     let compile = language.prepare_compiles().then(|| started.elapsed());
     let prepared = match prepared {
         Ok(prepared) => prepared,
@@ -440,21 +443,31 @@ pub fn precompile(
 /// A free function dispatching through the trait, rather than a method callers reach for directly,
 /// so that "prepare a program" reads the same at every call site whatever the run is configured
 /// with.
+///
+/// It is also where a preparation's [context](PrepareContext) is minted — one per call, here and
+/// nowhere else, because the context *is* the private ground a compiler runs on and one shared
+/// between two preparations would be the corruption it exists to prevent. The context is dropped
+/// when this returns, which is what removes the workspace; a language that wants an artifact must
+/// read it before it hands one back.
 pub fn prepare_program(
     language: &'static dyn ProgramLanguage,
     source: &str,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    language.prepare_program(source)
+    language.prepare_program(source, &PrepareContext::new())
 }
 
 /// Prepare a code [skill](crate::skills)'s or [memory](crate::memories)'s source for `language`'s
 /// guest — the source whose evaluation produces the namespace bound at `lib.<key>`, and the names
 /// that namespace offers.
+///
+/// Its own [context](PrepareContext), for the reason a program's is its own: a turn that loads three
+/// code skills compiles three modules, and two of them sharing a working directory is the same bug
+/// as two agents sharing one.
 pub fn prepare_module(
     language: &'static dyn ProgramLanguage,
     source: &str,
 ) -> Result<PreparedModule, PrepareFailure> {
-    language.prepare_module(source)
+    language.prepare_module(source, &PrepareContext::new())
 }
 
 /// The gg tool names to bind into a program's scope for `registry`: **every** tool the run offers.

@@ -217,25 +217,89 @@ resolves and the names `containers/image-names.sh` publishes ever disagree. The 
 doubled image set and CI matrix; the thing it buys is that "does this image have the
 toolchains?" has one answer.
 
-:::caution[A compiler here must be isolated per invocation, by construction]
-Several compilations are in flight at once, routinely: agents run in parallel up to
-`limits.maxParallel`, each turn may chain up to four programs, and every one of them
-prepares in the same process. A language's prepare step must therefore give **every
-invocation its own working tree, its own output directory and its own process**, and must
-not share a build cache, a compiler daemon or an output path across concurrent calls.
+### Per-agent compiler isolation
 
-This is not a hypothetical. Two silent-corruption bugs were measured while the capability
-was being designed: a shared build strategy handed four concurrent compilations to one
-builder and three produced no output while nothing threw, and a shared compiler output tree
-interleaved two agents' programs into each other's artifacts. **Every process exited zero
-in both.** That is the shape to design against — not a crash, which the toolchain band
-already reports, but a run in which one agent evaluates another agent's program and every
-number the study collects is wrong.
+This is the rule **every** language integration satisfies, and the one whose violation gg
+cannot detect after the fact. It is stated here in full because a language that gets it
+wrong does not fail — it produces wrong answers that look right.
 
-It is *not* a stall risk: the prepare step runs on a blocking task, so a slow compiler holds
-up neither the loop nor any sibling agent. The hazard is contention and shared state, and
-guarding the wrong one costs the isolation that is actually needed.
-:::
+**The rule.** *What a preparation returns is a function of that preparation's input alone.*
+Nothing a language compiles with may be reachable from another preparation running at the
+same time.
+
+**Why it bites here.** Several compilations are in flight at once, routinely: language is
+resolved [per agent](#what-a-language-supplies), agents run in parallel up to
+`limits.maxParallel` (16), each turn may chain up to four programs, and every one of them
+prepares in the same process.
+
+**Why it is not hypothetical.** Two silent-corruption bugs were measured on real toolchains
+while the capability was being designed:
+
+- eight concurrent `purs` compiles into one shared output tree produced a single
+  `output/Main/index.js` containing **two different agents' programs interleaved** —
+  reproduced 3 times out of 3;
+- a shared TeaVM `InProcessBuildStrategy` driven from four threads produced **no output at
+  all for three of the four**, and `build()` threw nothing.
+
+**Every process exited zero in both.** Nothing crashed, nothing raised a diagnostic, and
+nothing would have been recorded as a [toolchain failure](#a-compiler-has-two-ways-to-fail).
+One agent silently evaluates another agent's program, the turn reports success, and every
+number downstream is wrong while looking healthy. That is the shape to design against — not
+a crash, which the toolchain band already reports.
+
+#### What a language uses instead, and where it comes from
+
+A language does not arrange its own isolation. `prepare_program` and `prepare_module` are
+each handed a **`PrepareContext`**, minted per preparation by the sandbox and by nothing
+else, and it hands out the only ground the seam offers
+(`crates/gg/src/sandbox/language/compile.rs`):
+
+| Need | The one sanctioned answer |
+| --- | --- |
+| Somewhere to put files while compiling | `context.workspace()` — created fresh per preparation, removed when it ends. A language uses fixed file names inside it; the directory is what differs. |
+| Somewhere for a compiler's artifacts | `workspace.output()`, inside that same private tree |
+| Running a compiler | `context.compiler(program)` — working directory, `HOME`, `TMPDIR` and the `XDG_*` roots all inside that tree, plus the timeout, the kill and the reap |
+| A long-lived compiler instance (a daemon, a warm builder) | `CompilerPool::checkout` — lends an instance **exclusively**, so no two preparations can hold one |
+| Toolchain inputs too big to unpack per preparation | `shared_toolchain_dir(key)` + `place(path, bytes)` — content-keyed, written by rename, **read-only afterwards** |
+
+The environment redirection is what earns the most. A toolchain that writes to `output/`
+relative to its working directory, or to `~/.cache/<toolchain>`, or to `$TMPDIR` — which is
+most of them, and is exactly how the `purs` corruption happened — lands inside the private
+tree without its language having thought about it. A language cannot opt out by forgetting;
+it can only opt out by naming an absolute path somewhere else on purpose.
+
+The pool is the answer to the *other* bug. Keeping a compiler warm is often the difference
+between an affordable arm and an unaffordable one — a `purs ide server` turns 1.1–3.6 s into
+151–713 ms, an embedded `kotlinc` turns 9.7 s into 140 ms — and the obvious way to keep one
+warm is a `static` instance every preparation reaches, which is precisely the TeaVM bug. A
+checkout **owns** its instance for the length of one compilation, so exclusivity is a
+property of the borrow checker rather than of a discipline.
+
+#### What holds a language to it
+
+Three gates, none of which a language opts into:
+
+1. **The isolation gate** (`crates/gg/src/sandbox/language/isolation.rs`) drives every
+   registered language's program step *and* module step **sixteen at a time**, each with a
+   distinguishable input, and requires every result to belong to its own input: it
+   succeeded, it carries its own marker, it carries no other preparation's marker, it
+   matches what the same input produced alone, and no two of the sixteen were handed the
+   same workspace. The list of languages is derived from the registry, so a new arm is
+   inside the gate the moment it compiles.
+2. **The gate's own teeth.** It is generic over a *preparation*, not over a language, and
+   its tests point it at four deliberately broken ones — the two measured bugs written in
+   the smallest code that has their shape, plus a memoised compile and a cache keyed on
+   something that is not the program — and require it to catch each. Beside them sit the two
+   correct implementations, a private workspace and a pooled daemon, which must pass. A
+   language author is meant to recognise their own design in one of the six.
+3. **A source-level gate.** No file under `crates/gg/src/sandbox/language/` may name
+   `Command::new`, `process::Command`, `env::temp_dir` or `TempDir` — only the seam's own
+   `compile.rs` may. A compiler started outside the seam is a compiler with none of the
+   above, so it is a failing test rather than something discovered in a study's numbers.
+
+**It is *not* a stall risk.** The prepare step runs on a blocking task, so a slow compiler
+holds up neither the loop nor any sibling agent. The hazard is contention and shared state,
+and guarding the wrong one costs the isolation that is actually needed.
 
 ## The rules an agent-facing surface obeys in every language
 
@@ -740,7 +804,9 @@ one.**
    own position against `ALL` in a `const` block, so an arm for a language missing from the list
    is a build failure. gg then does not compile until the registry has an arm for it either.
 7. **Implement the trait** in `crates/gg/src/sandbox/language/python.rs`: the preparation
-   step, [whether it compiles](#what-compiling-costs-and-where-it-is-recorded) and what
+   step — compiling through the `PrepareContext` it is handed and nothing else, per
+   [per-agent compiler isolation](#per-agent-compiler-isolation) —
+   [whether it compiles](#what-compiling-costs-and-where-it-is-recorded) and what
    preparing it needs warmed before the first turn, the
    binding-name convention, the synthesized file-view statement, the **program that opens a
    documentation view per name** (the on-use script of every built-in family skill, and the one
@@ -753,10 +819,11 @@ one.**
    must survive.
 8. **Install its toolchain**, if it needs one at run time, in
    `containers/gg-toolchains/Dockerfile` — under `/opt/gg/toolchains` and nowhere else,
-   relocatable across the Debian- and Ubuntu-based run images, and usable with a
-   per-invocation working tree and output directory. The Dockerfile's header states both
-   constraints; [the caution above](#where-a-compiler-lives-and-what-it-must-never-share)
-   states why the second one is not optional.
+   relocatable across the Debian- and Ubuntu-based run images, and drivable with a
+   per-invocation working tree and output directory rather than only through a shared
+   process. The Dockerfile's header states both constraints;
+   [per-agent compiler isolation](#per-agent-compiler-isolation) states what the calling side
+   already does for it and what still has to be true of the toolchain itself.
 9. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
    and re-cutting its checker, if it has one — so the drift gate covers them rather than only
    diffing them.
@@ -768,7 +835,9 @@ one.**
    where an array missing a row type-checks perfectly and silently offers an operator one
    language fewer than gg has. The prompt editor needs nothing: `npm run gen:contract`
    discovers `system-code.*.hbs` from the directory and mirrors every one.
-11. **Run the gates.** The agreement gate compares the new catalogue against TypeScript's
+11. **Run the gates.** The [isolation gate](#per-agent-compiler-isolation) drives the new
+    language's program and module steps sixteen ways and requires every artifact to belong to
+    its own program; the agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
     capability's call and every rule a program runs under; the

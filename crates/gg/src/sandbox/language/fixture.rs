@@ -62,8 +62,8 @@ use crate::healing::{CodeMask, Dialect, Unwrapped};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, PrepareError, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    FileWindow, PrepareContext, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// TypeScript's committed catalogue, read a second time rather than reached for through
@@ -148,7 +148,19 @@ impl ProgramLanguage for FixtureLanguage {
     /// [`PrepareFailure::Toolchain`], which the model is *not* blamed for. No registered language
     /// produces either yet, so without a fixture that does, the split between them would be a
     /// taxonomy nothing had ever exercised.
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure> {
+    ///
+    /// The checked instance also does what a compiled language really does with its
+    /// [context](PrepareContext): it writes the source into its own private
+    /// [workspace](super::Workspace) and reads the artifact back out of it, so the seam's
+    /// per-preparation ground has a user under test that is not TypeScript's `tsc`, and so the
+    /// [isolation gate](super::isolation) is driving a preparation that really touches a filesystem.
+    /// The unchecked instance touches nothing, because a language that compiles nothing should pay
+    /// nothing.
+    fn prepare_program(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
         if source.contains("??") {
             return Err(
                 PrepareError::Syntax("`??` is not a token in this language".to_string()).into(),
@@ -173,7 +185,7 @@ impl ProgramLanguage for FixtureLanguage {
             .into());
         }
         Ok(PreparedProgram {
-            source: strip_comments(source),
+            source: self.build(&strip_comments(source), context)?,
             unreachable: None,
         })
     }
@@ -192,8 +204,12 @@ impl ProgramLanguage for FixtureLanguage {
 
     /// A module's namespace is whatever it `def`s, and its prepared source says so in a trailing
     /// comment — the fixture's analogue of the `return { … }` epilogue TypeScript generates.
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure> {
-        let prepared = self.prepare_program(source)?;
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
+        let prepared = self.prepare_program(source, context)?;
         let exports: Vec<String> = prepared
             .source
             .lines()
@@ -284,6 +300,35 @@ impl ProgramLanguage for FixtureLanguage {
             .iter()
             .map(|name| format!("{open_docs_view}({})\n", Value::String((*name).to_string())))
             .collect()
+    }
+}
+
+impl FixtureLanguage {
+    /// "Compile" `lowered` — which for this fixture means write it into this preparation's own
+    /// workspace under a fixed name and read the artifact back out.
+    ///
+    /// A round trip through a file is a strange thing for a comment-stripper to do, and it is here
+    /// on purpose: the [isolation gate](super::isolation) can only prove the seam's private ground
+    /// works if something under test actually stands on it, and TypeScript's `tsc` is a subprocess
+    /// whose isolation predates this module. The fixed file name is the *point* — a language is
+    /// meant to name its files whatever it likes and rely on the directory being its own, and a
+    /// fixture that invented a unique name per preparation would be proving nothing.
+    ///
+    /// Only the checked instance does it. A language that names no compiler opens no workspace.
+    fn build(&self, lowered: &str, context: &PrepareContext) -> Result<String, PrepareFailure> {
+        if self.checker.is_none() {
+            return Ok(lowered.to_string());
+        }
+        let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+        let path = workspace
+            .write("program.fx", lowered)
+            .map_err(PrepareFailure::Toolchain)?;
+        std::fs::read_to_string(&path).map_err(|error| {
+            PrepareFailure::Toolchain(format!(
+                "`{FIXTURE_CHECKER}` could not read back {}: {error}",
+                path.display()
+            ))
+        })
     }
 }
 

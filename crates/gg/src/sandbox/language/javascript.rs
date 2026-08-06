@@ -45,8 +45,8 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::typescript;
 use super::{
-    FileWindow, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, PromptDialect,
-    VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
+    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// The committed catalogue for this language: the same SDK declarations TypeScript's is reflected
@@ -97,7 +97,15 @@ impl ProgramLanguage for JavaScript {
     /// The one line of difference between this arm and TypeScript's, and the whole of what an A/B
     /// across the two measures. A type error therefore reaches this model the way it reached every
     /// gg model before gg carried a compiler: as whatever the program does at run time.
-    fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure> {
+    ///
+    /// It takes no [context](PrepareContext) because it opens nothing: a strip is a parse, so this
+    /// arm creates no workspace and spawns no process, and the isolation the seam offers costs it
+    /// not one syscall.
+    fn prepare_program(
+        &self,
+        source: &str,
+        _context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
         Ok(typescript::prepare::prepare_program(source)?)
     }
 
@@ -114,7 +122,11 @@ impl ProgramLanguage for JavaScript {
 
     /// The same strip a program gets, with the module's own coordinates — and, as with a program,
     /// nothing checks it.
-    fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure> {
+    fn prepare_module(
+        &self,
+        source: &str,
+        _context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
         Ok(typescript::prepare::prepare_module(source)?)
     }
 

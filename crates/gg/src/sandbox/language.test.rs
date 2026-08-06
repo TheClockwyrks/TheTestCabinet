@@ -152,7 +152,7 @@ fn every_language_writes_the_program_that_opens_a_documentation_view() {
             );
         }
         language
-            .prepare_program(&program)
+            .prepare_program(&program, &PrepareContext::new())
             .unwrap_or_else(|failure| {
                 panic!(
                     "{}: cannot prepare the program it generated ({failure}):\n{program}",
@@ -394,7 +394,7 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     // checked rather than a narrower grammar.
     for language in [ts, js] {
         let prepared = language
-            .prepare_program("const total: number = 1;")
+            .prepare_program("const total: number = 1;", &PrepareContext::new())
             .unwrap_or_else(|err| panic!("{}: {err}", language.id()));
         assert!(!prepared.source.contains(": number"), "{}", language.id());
     }
@@ -403,13 +403,13 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
     let mistyped = "view.openText(1, 2);";
     assert!(
         matches!(
-            ts.prepare_program(mistyped),
+            ts.prepare_program(mistyped, &PrepareContext::new()),
             Err(PrepareFailure::Program(PrepareError::Compile(_)))
         ),
         "TypeScript's checker reads the program"
     );
     assert!(
-        js.prepare_program(mistyped).is_ok(),
+        js.prepare_program(mistyped, &PrepareContext::new()).is_ok(),
         "nothing on the JavaScript arm reads the program before it runs"
     );
 }
@@ -709,7 +709,7 @@ fn the_module_binding_name_is_the_languages_own() {
 fn preparing_a_program_is_the_languages_own() {
     let annotated = "const total: number = 1;";
     let stripped = typescript()
-        .prepare_program(annotated)
+        .prepare_program(annotated, &PrepareContext::new())
         .expect("TypeScript prepares its own source");
     assert!(
         !stripped.source.contains(": number"),
@@ -717,7 +717,7 @@ fn preparing_a_program_is_the_languages_own() {
         stripped.source
     );
     let fixture = fixture_language()
-        .prepare_program(annotated)
+        .prepare_program(annotated, &PrepareContext::new())
         .expect("the fixture has no types to erase");
     assert!(
         fixture.source.contains(": number"),
@@ -728,14 +728,14 @@ fn preparing_a_program_is_the_languages_own() {
     let commented = "total = 1 # the answer\n";
     assert!(
         matches!(
-            typescript().prepare_program(commented),
+            typescript().prepare_program(commented, &PrepareContext::new()),
             Err(PrepareFailure::Program(PrepareError::Syntax(_)))
         ),
         "`#` is not TypeScript"
     );
     assert_eq!(
         fixture_language()
-            .prepare_program(commented)
+            .prepare_program(commented, &PrepareContext::new())
             .expect("`#` is the fixture's comment")
             .source,
         "total = 1\n"
@@ -743,11 +743,11 @@ fn preparing_a_program_is_the_languages_own() {
 
     // And each refuses what its own guest cannot resolve, in its own syntax.
     assert!(matches!(
-        typescript().prepare_program("import fs from \"fs\";\n"),
+        typescript().prepare_program("import fs from \"fs\";\n", &PrepareContext::new()),
         Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
     assert!(matches!(
-        fixture_language().prepare_program("use tools\n"),
+        fixture_language().prepare_program("use tools\n", &PrepareContext::new()),
         Err(PrepareFailure::Program(PrepareError::Unsupported(_)))
     ));
 }
@@ -758,19 +758,19 @@ fn preparing_a_program_is_the_languages_own() {
 #[test]
 fn preparing_a_module_is_the_languages_own() {
     let module = typescript()
-        .prepare_module("export const total = 1;\n")
+        .prepare_module("export const total = 1;\n", &PrepareContext::new())
         .expect("TypeScript reads its own exports");
     assert_eq!(module.exports, vec!["total".to_string()]);
 
     let fixture = fixture_language()
-        .prepare_module("def total\n  x = 1\n")
+        .prepare_module("def total\n  x = 1\n", &PrepareContext::new())
         .expect("the fixture reads its own exports");
     assert_eq!(fixture.exports, vec!["total".to_string()]);
 
     // Neither language finds the other's exports, because neither is looking for them.
     assert!(
         fixture_language()
-            .prepare_module("export const total = 1;\n")
+            .prepare_module("export const total = 1;\n", &PrepareContext::new())
             .expect("the fixture prepares it as ordinary source")
             .exports
             .is_empty()

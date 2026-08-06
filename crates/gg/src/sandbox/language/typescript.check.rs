@@ -91,11 +91,14 @@
 //!
 //! Several agents run programs at once — up to `limits.maxParallel` of them, each able to chain
 //! programs within a turn — and every one of them may be in this module simultaneously. So each
-//! check gets **its own directory**, holding its own `tsconfig.json` and its own `program.ts`, and
-//! is removed afterwards. No check can see, or be seen by, another one's input or output.
+//! check runs in **this preparation's own [workspace](crate::sandbox::Workspace)**, holding its own
+//! `tsconfig.json` and its own `program.ts`, removed when the preparation ends. No check can see, or
+//! be seen by, another one's input or output — and it is the seam that guarantees that rather than
+//! this module, which is why this module no longer has a directory of its own to get wrong.
 //!
-//! Two things are shared, and both are shared deliberately. The **checker inputs** — the compiler,
-//! the standard library, the globals and the surface — are written once per version into a
+//! Two things are shared, and both are shared under the
+//! [one sanctioned discipline](crate::sandbox::shared_toolchain_dir). The **checker inputs** — the
+//! compiler, the standard library, the globals and the surface — are written once per version into a
 //! content-keyed directory by a rename, so two processes racing to materialise them either both
 //! win or one overwrites the other with identical bytes, and are read-only from then on. Node's
 //! **compile cache** is one writable directory every concurrent check points `NODE_COMPILE_CACHE`
@@ -106,14 +109,13 @@
 
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::{PrepareError, PrepareFailure, ProgramLanguage};
+use crate::sandbox::language::compile::{CompilerReport, place, shared_toolchain_dir};
+use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, ProgramLanguage};
 use crate::sandbox::signatures::{SignatureCatalogue, SignatureEntry};
 
 /// The compiler behind the `tsc` CLI, at the release
@@ -143,10 +145,6 @@ const NODE_ENV: &str = "TCAB_GG_NODE";
 /// blocking thread for the rest of the run — and a minute is far past any program a model has
 /// produced while being unmistakably a hang rather than a slow check.
 const CHECK_TIMEOUT: Duration = Duration::from_secs(60);
-
-/// How often the wait loop looks at a running check. Small enough that a sub-hundred-millisecond
-/// check is not rounded up noticeably, large enough that waiting costs nothing.
-const POLL_INTERVAL: Duration = Duration::from_millis(2);
 
 /// The file name a program is checked under, and the one its diagnostics are located in.
 const PROGRAM_FILE: &str = "program.ts";
@@ -204,9 +202,9 @@ pub(super) fn warm() {
 /// [`PrepareError::Compile`] carrying the compiler's own diagnostics; a compiler that could not run
 /// at all is [`PrepareFailure::Toolchain`], which is not the model's failure and is never shown to
 /// it as one.
-pub(super) fn check_program(source: &str) -> Result<(), PrepareFailure> {
+pub(super) fn check_program(source: &str, context: &PrepareContext) -> Result<(), PrepareFailure> {
     let wrapped = format!("{PROGRAM_PROLOGUE}{source}{PROGRAM_EPILOGUE}");
-    check(PROGRAM_FILE, &wrapped, 1)
+    check(PROGRAM_FILE, &wrapped, 1, context)
 }
 
 /// Type-check a **code module** — the source of a code [skill](crate::skills) or
@@ -215,37 +213,32 @@ pub(super) fn check_program(source: &str) -> Result<(), PrepareFailure> {
 ///
 /// Checked as a module rather than as a function body, because that is what it is: it declares
 /// `export`s, and its coordinates are its own with nothing added, so no shift is applied.
-pub(super) fn check_module(source: &str) -> Result<(), PrepareFailure> {
-    check(MODULE_FILE, source, 0)
+pub(super) fn check_module(source: &str, context: &PrepareContext) -> Result<(), PrepareFailure> {
+    check(MODULE_FILE, source, 0, context)
 }
 
 /// Run one check of `source`, filed as `file`, and translate what `tsc` said.
 ///
 /// `shift` is how many lines the checked text has that the model's text does not; every diagnostic
 /// located in `file` is moved back by it.
-fn check(file: &str, source: &str, shift: usize) -> Result<(), PrepareFailure> {
+fn check(
+    file: &str,
+    source: &str,
+    shift: usize,
+    context: &PrepareContext,
+) -> Result<(), PrepareFailure> {
     let checker = checker().map_err(PrepareFailure::Toolchain)?;
-    let work = WorkDir::new(checker).map_err(PrepareFailure::Toolchain)?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    write(&work.path.join(file), source).map_err(PrepareFailure::Toolchain)?;
-    write(&work.path.join("tsconfig.json"), &tsconfig(checker, file))
+    workspace
+        .write(file, source)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write("tsconfig.json", &tsconfig(checker, file))
         .map_err(PrepareFailure::Toolchain)?;
 
-    let report = invoke(checker, &work.path).map_err(PrepareFailure::Toolchain)?;
+    let report = invoke(checker, context).map_err(PrepareFailure::Toolchain)?;
     classify(file, shift, report)
-}
-
-/// What one `tsc` invocation left behind.
-struct Report {
-    /// Whether the process exited zero. A `tsc` that found something exits non-zero, so this alone
-    /// does not say whose failure it was.
-    ok: bool,
-    /// How it ended, for an operator: `exit status: 2`, `signal: 6`, `timed out after 60s`.
-    status: String,
-    /// Its diagnostics, which `tsc` writes to stdout.
-    stdout: String,
-    /// Anything it wrote to stderr, which a healthy `tsc` leaves empty.
-    stderr: String,
 }
 
 /// Turn a finished invocation into a verdict.
@@ -261,13 +254,13 @@ struct Report {
 ///   number.
 /// * no diagnostics at all and a non-zero exit — the compiler did not get far enough to have an
 ///   opinion: [`PrepareFailure::Toolchain`].
-fn classify(file: &str, shift: usize, report: Report) -> Result<(), PrepareFailure> {
+fn classify(file: &str, shift: usize, report: CompilerReport) -> Result<(), PrepareFailure> {
     let diagnostics = report.stdout.trim();
     if report.ok && diagnostics.is_empty() {
         return Ok(());
     }
     if diagnostics.is_empty() {
-        let stderr = tail(&report.stderr);
+        let stderr = report.stderr_tail();
         return Err(PrepareFailure::Toolchain(format!(
             "tsc {} without reporting a diagnostic ({}){stderr}",
             report.status,
@@ -320,19 +313,6 @@ fn shift_line(line: &str, prefix: &str, shift: usize) -> Option<String> {
     ))
 }
 
-/// The last few lines of a compiler's stderr, prefixed for an operator's log, or nothing when it
-/// said nothing. Bounded because a crashing toolchain can print a great deal and none of it belongs
-/// in a run's error record.
-fn tail(stderr: &str) -> String {
-    let stderr = stderr.trim();
-    if stderr.is_empty() {
-        return String::new();
-    }
-    let lines: Vec<&str> = stderr.lines().rev().take(10).collect();
-    let text: Vec<&str> = lines.into_iter().rev().collect();
-    format!(": {}", text.join(" | "))
-}
-
 /// The project file one check runs under.
 ///
 /// `noLib` with the concatenated library named explicitly, `skipLibCheck` because gg's declarations
@@ -370,23 +350,19 @@ fn escape(path: &Path) -> String {
     quoted[1..quoted.len() - 1].to_string()
 }
 
-/// Spawn `tsc` over the project in `dir` and wait for it, killing it at [`CHECK_TIMEOUT`].
+/// Spawn `tsc` over the project in this preparation's own workspace and wait for it, killing it at
+/// [`CHECK_TIMEOUT`].
 ///
-/// Both streams are redirected to files rather than pipes. A pipe would have to be drained while the
-/// process runs, and this loop is watching the clock instead — a check whose diagnostics filled the
-/// pipe buffer would deadlock against its own timeout.
-fn invoke(checker: &Checker, dir: &Path) -> Result<Report, String> {
+/// The spawn goes through [`PrepareContext::compiler`], which is the only way a language in this
+/// repository is allowed to start a compiler: it is what puts the working directory, `HOME`,
+/// `TMPDIR` and the `XDG_*` roots inside this preparation's own tree, so nothing `tsc` or `node`
+/// decides to write "somewhere global" can reach another preparation. The timeout, the kill and the
+/// reap live there too, so this function is now the arguments and nothing else.
+fn invoke(checker: &Checker, context: &PrepareContext) -> Result<CompilerReport, String> {
     let node = std::env::var(NODE_ENV).unwrap_or_else(|_| "node".to_string());
-    let out_path = dir.join("tsc.out");
-    let err_path = dir.join("tsc.err");
-    let capture = |path: &Path| {
-        std::fs::File::create(path)
-            .map_err(|error| format!("could not open {} for the checker: {error}", path.display()))
-    };
-    let stdout = capture(&out_path)?;
-    let stderr = capture(&err_path)?;
-
-    let mut child = Command::new(&node)
+    context
+        .compiler(&node)
+        .map_err(|error| format!("{}{}", spawn_prefix(&node), error))?
         .arg(&checker.tsc_js)
         .arg("--project")
         .arg("tsconfig.json")
@@ -395,84 +371,26 @@ fn invoke(checker: &Checker, dir: &Path) -> Result<Report, String> {
         // The compiler is 6.2 MB of JavaScript and every check parses it again. Node's on-disk
         // compile cache keeps the compiled bytecode beside the checker, which it re-uses from the
         // second check onward — measured at roughly a quarter of the time of parsing it cold. It is
-        // a cache and nothing depends on it: a Node too old to know the variable ignores it, and a
+        // the one thing here pointed deliberately *outside* the private tree, and it is safe for the
+        // reason the seam requires such a thing to be safe: it is content-addressed and validated on
+        // read, so a torn or stale entry is discarded and re-earned rather than believed, and
+        // nothing in it can change a verdict. A Node too old to know the variable ignores it, and a
         // directory it cannot write to turns it off rather than failing a check.
         .env("NODE_COMPILE_CACHE", &checker.node_cache)
-        .current_dir(dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(stdout))
-        .stderr(Stdio::from(stderr))
-        .spawn()
-        .map_err(|error| spawn_failure(&node, &error))?;
-
-    let started = Instant::now();
-    let status = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Ok(status),
-            Ok(None) => {}
-            Err(error) => break Err(format!("waiting for tsc failed: {error}")),
-        }
-        if started.elapsed() >= CHECK_TIMEOUT {
-            // The process is killed and reaped before the failure is reported, so a timed-out check
-            // leaves nothing behind for the rest of the run to trip over.
-            let _ = child.kill();
-            let _ = child.wait();
-            break Err(format!(
-                "timed out after {}s",
-                CHECK_TIMEOUT.as_secs_f64().round()
-            ));
-        }
-        std::thread::sleep(POLL_INTERVAL);
-    };
-
-    let stdout = std::fs::read_to_string(&out_path).unwrap_or_default();
-    let stderr = std::fs::read_to_string(&err_path).unwrap_or_default();
-    match status {
-        Ok(status) => Ok(Report {
-            ok: status.success(),
-            status: describe(&status),
-            stdout,
-            stderr,
-        }),
-        Err(status) => Ok(Report {
-            ok: false,
-            status,
-            stdout: String::new(),
-            stderr,
-        }),
-    }
+        .run(CHECK_TIMEOUT)
+        .map_err(|error| match error.starts_with("could not run") {
+            true => format!("{}{error}", spawn_prefix(&node)),
+            false => error,
+        })
 }
 
-/// How a finished process ended, in the words an operator needs: the code, or the signal that killed
-/// it, which is the difference between a compiler that disagreed and one that crashed.
-fn describe(status: &std::process::ExitStatus) -> String {
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::ExitStatusExt;
-        if let Some(signal) = status.signal() {
-            return format!("was killed by signal {signal}");
-        }
-    }
-    match status.code() {
-        Some(code) => format!("exited with status {code}"),
-        None => "ended without a status".to_string(),
-    }
-}
-
-/// The one failure worth naming precisely, because it is the one an operator can fix: `node` is not
-/// where gg looked for it.
-fn spawn_failure(node: &str, error: &std::io::Error) -> String {
+/// What a failure to start the checker is prefixed with, because it is the one failure here an
+/// operator can actually fix: `node` is not where gg looked for it.
+fn spawn_prefix(node: &str) -> String {
     format!(
-        "could not run the TypeScript checker with `{node}`: {error}. gg type-checks every \
-         TypeScript program, and needs Node on PATH or {NODE_ENV} pointing at it"
+        "gg type-checks every TypeScript program and needs Node on PATH or {NODE_ENV} pointing at \
+         it (`{node}`): "
     )
-}
-
-/// Write `contents` to `path`, naming the path in any failure so an operator is not left guessing
-/// which of the checker's files could not be written.
-fn write(path: &Path, contents: &str) -> Result<(), String> {
-    std::fs::write(path, contents)
-        .map_err(|error| format!("could not write {}: {error}", path.display()))
 }
 
 /// The materialised checker: where its four read-only inputs ended up on this machine.
@@ -487,8 +405,6 @@ struct Checker {
     surface_dts: PathBuf,
     /// Where Node keeps the compiler's compiled bytecode between checks.
     node_cache: PathBuf,
-    /// The directory the four sit in, and the parent of every check's own directory.
-    root: PathBuf,
 }
 
 /// The materialised checker for this process, materialising it on first use.
@@ -510,22 +426,22 @@ fn checker() -> Result<&'static Checker, String> {
         .map_err(Clone::clone)
 }
 
-/// Write the checker's read-only inputs into a content-keyed directory under the system temporary
-/// directory.
+/// Write the checker's read-only inputs into a [shared toolchain
+/// directory](crate::sandbox::shared_toolchain_dir).
 ///
-/// Each file is written to a process-unique name and then **renamed** into place. Rename is atomic
-/// within a directory, so a second gg process materialising the same version concurrently can only
-/// ever replace a complete file with an identical complete file — a reader never sees a half-written
-/// compiler.
+/// This is the seam's one sanctioned share and it is taken under the seam's discipline: the key
+/// folds in the pinned compiler version *and* a digest of the declarations gg generates, and every
+/// file goes in through [`place`], which stages under a process-unique name and **renames**. Rename
+/// is atomic within a directory, so a second gg process materialising the same version concurrently
+/// can only ever replace a complete file with an identical complete file — a reader never sees a
+/// half-written compiler. Nothing here is written again afterwards.
 fn materialise() -> Result<Checker, String> {
     let surface = surface(super::TYPESCRIPT.catalogue());
-    let root = std::env::temp_dir().join(format!(
-        "gg-typescript-checker-{}-{:016x}",
+    let root = shared_toolchain_dir(&format!(
+        "typescript-checker-{}-{:016x}",
         manifest().typescript,
         fingerprint(&surface)
-    ));
-    std::fs::create_dir_all(&root)
-        .map_err(|error| format!("could not create {}: {error}", root.display()))?;
+    ))?;
 
     let checker = Checker {
         tsc_js: root.join("tsc.js"),
@@ -533,23 +449,12 @@ fn materialise() -> Result<Checker, String> {
         globals_dts: root.join("globals.d.ts"),
         surface_dts: root.join("gg.d.ts"),
         node_cache: root.join("node-cache"),
-        root,
     };
     place(&checker.tsc_js, TSC_JS)?;
     place(&checker.lib_dts, LIB_DTS)?;
     place(&checker.globals_dts, GLOBALS_DTS)?;
     place(&checker.surface_dts, &surface)?;
     Ok(checker)
-}
-
-/// Write one of the checker's read-only inputs, atomically.
-fn place(path: &Path, contents: &str) -> Result<(), String> {
-    let staged = path.with_extension(format!("{}.staged", std::process::id()));
-    write(&staged, contents)?;
-    std::fs::rename(&staged, path).map_err(|error| {
-        let _ = std::fs::remove_file(&staged);
-        format!("could not place {}: {error}", path.display())
-    })
 }
 
 /// A stable digest of the generated surface, so a change to it changes the directory it is written
@@ -561,34 +466,6 @@ fn fingerprint(surface: &str) -> u64 {
     LIB_DTS.len().hash(&mut hasher);
     GLOBALS_DTS.hash(&mut hasher);
     hasher.finish()
-}
-
-/// One check's own directory, removed when the check is over.
-struct WorkDir {
-    path: PathBuf,
-}
-
-impl WorkDir {
-    /// A directory nothing else will write to: this process, and a counter no two checks share.
-    fn new(checker: &Checker) -> Result<Self, String> {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let path = checker.root.join(format!(
-            "check-{}-{}",
-            std::process::id(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        ));
-        std::fs::create_dir_all(&path)
-            .map_err(|error| format!("could not create {}: {error}", path.display()))?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for WorkDir {
-    fn drop(&mut self) {
-        // Best effort: a run container is thrown away, and a directory left behind by a machine that
-        // could not remove one is not worth failing a turn over.
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
 }
 
 /// The whole SDK surface as a declaration file: every catalogued type, then every API object as an
