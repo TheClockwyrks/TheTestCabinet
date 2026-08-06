@@ -51,13 +51,15 @@
 #     and a CI agent's system Python refuses one (PEP 668), so uv is how every machine
 #     that runs this reaches the same pinned `griffe`.
 #
-#  4. gg's program CHECKERS, under crates/gg/src/sandbox/checkers/. A language that
-#     type-checks a model's program carries its compiler and that compiler's standard
-#     library, because gg is copied as a single file into a run container. TypeScript's
-#     is cut straight out of the pinned `typescript` — the same one the catalogue is
-#     reflected with — so bumping the pin without re-cutting the checker would leave a
-#     model's program judged by one release and its prompt written from another. It is
-#     the same regenerate-and-diff rule, and it needs only `typescript` too.
+#  4. gg's program CHECKERS and COMPILERS, under crates/gg/src/sandbox/checkers/. A
+#     language whose prepare step runs a compiler carries that compiler, because gg is
+#     copied as a single file into a run container. TypeScript's is cut straight out of
+#     the pinned `typescript` — the same one the catalogue is reflected with — so bumping
+#     the pin without re-cutting the checker would leave a model's program judged by one
+#     release and its prompt written from another; Ruby's is Opal, cut out of the pinned
+#     `opal-compiler`, and the same argument holds twice over there because the SAME pin
+#     also decides the runtime baked into that language's guest. It is the same
+#     regenerate-and-diff rule, and each needs only Node.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -124,8 +126,34 @@ export PATH="$HOME/.local/bin:$PATH"
 log "regenerate the Python guest's signature catalogue (griffe + tools/signatures.py)"
 ./packages/gg-sandbox-python/signatures.sh
 
+# The same completeness rule the catalogues get, over the other committed directory: a
+# checker or compiler this script never re-cuts would sit in the diff below and be green
+# whatever its pin said. Stems are the first dot-separated component of each file name,
+# which is the language id each artifact is named for.
+recut="typescript ruby"
+for artifact in crates/gg/src/sandbox/checkers/*; do
+	stem="$(basename "$artifact")"
+	stem="${stem%%.*}"
+	case " $recut " in
+	*" $stem "*) ;;
+	*)
+		cat >&2 <<EOF
+
+error: $artifact has no re-cut step in this script.
+The compiler a $stem program is judged by could drift from its pin without the drift
+check noticing, because the check below only diffs what has already been written. Add
+the re-cut command for $stem here, and add "$stem" to \$recut.
+EOF
+		exit 1
+		;;
+	esac
+done
+
 log "re-cut gg's program checkers (tools/checker.mjs)"
 npm run --workspace @test-cabinet/gg-sandbox checker
+
+log "re-cut the Ruby compiler (Opal, tools/compiler.mjs)"
+./packages/gg-sandbox-ruby/compiler.sh
 
 log "check for signature and checker drift"
 if ! git diff --exit-code -- crates/gg/src/sandbox/guests crates/gg/src/sandbox/checkers; then
@@ -146,9 +174,12 @@ for Python — and commit
 crates/gg/src/sandbox/guests/<language>.component.wasm alongside.
 
 If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's
-program is type-checked with no longer matches the one installed here — usually a
-`typescript` version bump. Run `npm run -w @test-cabinet/gg-sandbox checker` and
-commit the result.
+program is compiled or type-checked with no longer matches the one installed here —
+usually a version bump. Run `npm run -w @test-cabinet/gg-sandbox checker` for
+TypeScript's, or `packages/gg-sandbox-ruby/compiler.sh` for Ruby's, and commit the
+result. A Ruby bump is two artifacts, not one: the same pin decides the Opal baked
+into that language's guest, so rebuild it with
+packages/gg-sandbox-ruby/build.sh and commit the component alongside.
 EOF
 	exit 1
 fi

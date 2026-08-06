@@ -71,6 +71,14 @@ use std::time::{Duration, Instant};
 /// nothing.
 const POLL_INTERVAL: Duration = Duration::from_millis(2);
 
+/// The environment variable an operator points at `node` when it is not on `PATH`.
+///
+/// A seam-level constant rather than one language's, because more than one language's compiler is a
+/// JavaScript bundle run with Node — TypeScript's `tsc` and the Opal that compiles Ruby are both —
+/// and an operator fixing a container whose interpreter is somewhere unusual must not have to
+/// discover one variable per arm. Every registered language that spawns Node reads this one.
+pub const NODE_ENV: &str = "TCAB_GG_NODE";
+
 /// The counter that makes every [`Workspace`] path in this process unique.
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -387,12 +395,14 @@ impl<'a> CompilerCommand<'a> {
         Ok(match status {
             Ok(status) => CompilerReport {
                 ok: status.success(),
+                code: status.code(),
                 status: describe(&status),
                 stdout,
                 stderr,
             },
             Err(status) => CompilerReport {
                 ok: false,
+                code: None,
                 status,
                 stdout: String::new(),
                 stderr,
@@ -407,6 +417,16 @@ pub struct CompilerReport {
     /// Whether it exited zero. Not on its own a verdict: a compiler that found an error in the
     /// model's program exits non-zero too, which is why classifying the two is the language's job.
     pub ok: bool,
+    /// The **exit code**, when there was one — `None` for a process a signal killed, one the
+    /// timeout killed, or one that could not be waited for.
+    ///
+    /// Separate from [`status`](Self::status) because the two are for different readers. `status` is
+    /// prose for an operator's log and must stay free to be reworded; this is a value a language may
+    /// **route on**, and one does: a compiler driven through a driver gg wrote can be made to say in
+    /// its exit code which of the [two failures](super::PrepareFailure) it hit, which is the one
+    /// thing gg cannot infer from a non-zero status — a compiler that rejected a program and a
+    /// compiler that could not start both exit non-zero.
+    pub code: Option<i32>,
     /// How it ended, in the words an operator needs: `exited with status 2`, `was killed by signal
     /// 11`, `timed out after 60s`. The difference between a compiler that disagreed and one that
     /// crashed.

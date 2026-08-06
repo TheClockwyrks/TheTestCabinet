@@ -14,7 +14,10 @@ that language rather than baked in.
 Three are registered. TypeScript is the default; **JavaScript** is the same arm with the
 [type check removed](#javascript-the-same-arm-unchecked) and nothing else changed; and
 **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
-different language rather than a variation on one. This page is the design of the seam: why the
+different language rather than a variation on one. A fourth,
+**[Ruby](#ruby-compiled-to-javascript-before-it-crosses)**, has its execution substrate committed
+and proven but is **not yet registered** — its SDK and its registration are later commits, on the
+landing order Python established. This page is the design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
 capabilities, and what adding another actually costs.
@@ -165,6 +168,119 @@ The measurable consequence is that this is the **first registered arm to emit `k
 69 positional parameters and 31 keyword ones — which turns that half of the catalogue schema from a
 shape nothing produced into a shape a gate reads.
 
+## Ruby: compiled to JavaScript before it crosses
+
+The fourth arm is the first whose **execution substrate landed before it was registered**, and
+this section describes what exists today rather than an arm a run can configure: the guest, the
+compiler and the proof that a real Ruby program crosses gg's real membrane. Its hand-written SDK
+and its registration are separate, later commits, on the landing order
+[Python established](#adding-a-language-worked-python) and for the same reason — a
+`ProgramLanguage` arm cannot be half-registered. Nothing below is reachable from a run yet:
+there is no `language` value that resolves to it.
+
+**A Ruby program is compiled to JavaScript on the host by Opal, and evaluated by the ECMAScript
+guest with Opal's runtime pre-initialised into it.** Nothing crosses the membrane as Ruby.
+
+That single sentence is what makes this the cheapest arm gg has added, and it is cheap in both
+of the places a language arm is usually expensive:
+
+| | |
+| --- | --- |
+| **Nothing is installed in the run container** | Opal's compiler is *itself* Ruby compiled to JavaScript — a self-hosted build — so it is 2.9 MB gg carries inside its own binary (`crates/gg/src/sandbox/checkers/ruby.opal.cjs`) and runs with the `node` every run image already ships. This is the first arm to take the "[a compiler small enough to *be* an artifact](#the-steps)" route for a language that is not TypeScript, and [the toolchain image](#where-a-compiler-lives-and-what-it-must-never-share) gains a paragraph rather than a toolchain. |
+| **No second engine** | The compiled program is JavaScript, so the guest is `componentize-js`'s, not a second runtime linked against the WIT. |
+
+### Where Opal's runtime lives is the whole design
+
+The one open question was where Opal's 743 KB runtime goes, and it was settled by measurement
+before anything was built. Through gg's own store and linker, on this repository's dev
+container:
+
+| Where the runtime lives | Per program |
+| --- | --- |
+| Prepended to the program, evaluated in the committed ECMAScript component | 45.6–51.0 ms |
+| Imported by the guest's entry module, so `componentize-js` pre-initialises it | **2.1–2.6 ms** |
+| (a plain JavaScript program on the same component, for scale) | 1.2–1.4 ms |
+
+`componentize-js` executes the entry module's top level at build time under `wizer` and
+snapshots the resulting heap, so the corelib is built **once, into the artifact** instead of once
+per turn. That is a twentyfold difference, paid out of the guest's own
+[execution budget](/gg/execution-limits/) on every program — and two further findings would each
+have settled it on their own:
+
+- **A code module could not have seen a prepended runtime.** A [skill](/gg/skills/)'s or
+  [memory](/gg/memories/)'s module is evaluated *before* the program and against the same scope,
+  so a runtime living inside the program's own source would not exist yet when the module ran.
+  `lib.<key>` in Ruby would have been unimplementable.
+- **Baking it into the *shared* component was worse.** It would put `globalThis.Opal` in front of
+  the TypeScript and JavaScript arms as well, and those two must differ in
+  [the type check and in nothing else](#javascript-the-same-arm-unchecked) — a checked program
+  cannot name `Opal`, because no declaration covers it, and an unchecked one can.
+
+So this arm has a component of its own (`ruby.component.wasm`, ~18.6 MiB), and the seam's
+"[no language is served another's artifacts](#what-a-language-supplies)" rule is satisfied
+outright rather than by an exemption. What that component adds to the ECMAScript one is Opal and
+**one** behaviour: Ruby's `$stdout` and `$stderr` are pointed at `console` on every run. That is
+not optional plumbing — Opal picks its write procedure once, at load, and captures the `console`
+that existed while `wizer` was pre-initialising the component, so without it `puts "hello"` logs
+nothing at all, which is what it did before it was fixed. Everything else is the shared guest's,
+and a test asserts that this component's imported interfaces are **exactly** the ECMAScript
+guest's, so a capability on one side only is a failing test rather than a confound.
+
+### What compiling costs, and what it buys
+
+Measured on the same machine, one process per compile: loading Opal takes ~100–110 ms, compiling
+a representative program ~50 ms, and the whole invocation including `node`'s own start
+**~176–190 ms**. Against TypeScript's ~91 ms this is the more expensive checked arm, and the
+figure is [recorded](#what-compiling-costs-and-where-it-is-recorded) rather than argued about.
+
+Two ways to roughly halve it were measured and neither is taken yet: a **Node startup snapshot**
+(`node --build-snapshot` over the bundle produces a 16 MB blob that starts with Opal loaded; a
+compile through it measures 90–95 ms and the output is byte-identical), and a **pooled warm
+process** ([`CompilerPool`](#what-a-language-uses-instead-and-where-it-comes-from) driving a
+resident `node`, which would pay only the ~50 ms compile). Both are additive and neither is a
+correctness question, so they wait for a measurement that says the arm's compile time is
+distorting a study rather than merely being one of its findings.
+
+What the compile *buys* is the reason it is on the host at all. Opal is JavaScript, so the
+component could have carried it and a program could have crossed the membrane as Ruby — and then
+a Ruby syntax error would be a run-time error like Python's, `compileMs` would be absent, and the
+`transpile` band would not exist for this arm. Compiling on the host restores both, and the
+driver gg wrote into the bundle is what makes the
+[two failures](#a-compiler-has-two-ways-to-fail) distinguishable: it says in its **exit code**
+which of them happened, because a compiler that rejected a program and a compiler that could not
+start both exit non-zero and gg must never report the second as the first.
+
+Ruby's rejections are all one band. There is no compile-time type system, so what Opal refuses
+it refuses as a syntax error — and that covers two shapes: Ruby the parser could not read, and
+valid Ruby this compiler has no lowering for (`BEGIN { … }`). Both arrive as
+`transpile_syntax`, because the model's answer to each is the same, carrying Opal's own message
+and — where the parser located it — the model's own line with the offending text quoted back:
+
+```
+program.rb:2: unexpected token tSTAR
+  y = 2 +* 3
+```
+
+### What is still missing, and why it stops the arm being registered
+
+Two things, and both are honest gaps rather than deferred polish:
+
+- **A guest backtrace is in the compiled JavaScript's coordinates**, not in the model's Ruby's.
+  Opal emits a v3 source map on request — measured at 0.4 ms — so the mapping exists and is
+  cheap; consuming it needs the Ruby guest to own its own `run`, which is what the SDK commit
+  gives it. Until then a located run-time error points at a line of a file the model did not
+  write, which is worse than no location at all.
+- **The library set is Opal's corelib and nothing else.** No Opal stdlib module is baked, so
+  `require` of anything reaches a module that is not there. As with
+  [Python](#what-a-python-program-is-offered-and-why-that-is-a-bake-time-fact) this is a
+  bake-time fact about the guest package rather than a run-time policy, and declaring it in the
+  catalogue's [`libraries`](#the-catalogue) section is part of registering the arm.
+
+One further fact a study will have to record: **Opal is not CRuby.** Integer division is
+JavaScript's, so `1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`, and there is no
+bignum — `2 ** 64` loses precision. Both are asserted against the committed artifact rather than
+described in prose, so the claim is checkable.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -261,7 +377,11 @@ reader it has at all.
 
 ### Where a compiler lives, and what it must never share
 
-A compiler is on the **turn path**, so it has to be in the run container. gg itself is
+A compiler is on the **turn path**, so it has to be in the run container. Some compilers
+travel *inside* gg and need no image at all — TypeScript's `tsc` and the Opal that compiles
+[Ruby](#ruby-compiled-to-javascript-before-it-crosses) are both JavaScript bundles gg carries
+and runs with the `node` every run image already ships, which is why neither language has a
+block in the toolchain image. This section is about the ones that cannot: gg itself is
 copied in as a single static binary, which works because a binary copies fine — a JDK does
 not. So a gg run resolves a `<name>-gg` **variant** of the image it would otherwise get:
 that image plus a toolchain tree (`containers/gg-toolchains/`, laid onto a parent by

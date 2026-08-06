@@ -114,7 +114,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{CompilerReport, place, shared_toolchain_dir};
+use crate::sandbox::language::compile::{CompilerReport, NODE_ENV, place, shared_toolchain_dir};
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, ProgramLanguage};
 use crate::sandbox::signatures::{SignatureCatalogue, SignatureEntry};
 
@@ -132,9 +132,6 @@ const GLOBALS_DTS: &str = include_str!("../checkers/typescript.globals.d.ts");
 
 /// What the committed checker is, so gg can say which compiler judged a program.
 const MANIFEST_JSON: &str = include_str!("../checkers/typescript.checker.json");
-
-/// The interpreter the checker is run with, overridable for a host whose `node` is not on `PATH`.
-const NODE_ENV: &str = "TCAB_GG_NODE";
 
 /// How long a single check may take before it is killed and reported as a
 /// [toolchain failure](PrepareFailure::Toolchain).

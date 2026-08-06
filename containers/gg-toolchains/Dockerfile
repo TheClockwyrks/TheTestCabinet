@@ -87,6 +87,16 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # nothing to install — see `packages/gg-sandbox-python/README.md`. A *typed* Python arm,
 # should one be added, would be the thing that needs a block here: it type-checks the
 # model's program with a real host-side binary before the guest ever sees it.
+#
+# Ruby: nothing either, and for a DIFFERENT reason worth writing down, because it is the
+# cheaper of the two shapes. This arm does have a compiler on the turn path — Opal, which
+# compiles the model's Ruby to JavaScript before the guest sees it — but Opal has a
+# self-hosted JavaScript build, so the compiler is 2.9 MB of JavaScript gg carries inside
+# its own binary (`crates/gg/src/sandbox/checkers/ruby.opal.cjs`) and runs with the `node`
+# every run image already ships. A compiler small enough to BE an artifact does not need an
+# image at all; see `crates/gg/src/sandbox/language/ruby.compile.rs`. What needs a block
+# here is a toolchain that cannot be copied — a JDK, a Swift toolchain, a `purs` — which is
+# what this image exists for.
 
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a

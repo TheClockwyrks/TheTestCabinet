@@ -1,0 +1,4 @@
+# Everything `build.sh` and `compiler.sh` generate: the vendored Opal packages and the entry
+# module they are baked with. Both are derived from the pins in those scripts; only the component
+# and the compiler bundle are committed, and both live in the Rust crate that embeds them.
+.build/
