@@ -577,6 +577,19 @@ favour of "the program faulted". Twenty-one types, one per distinction gg alread
 | `toolchain` | `toolchain_failed` (the language's compiler crashed, was killed by its timeout, or is not installed — nothing was decided about the program, so this is the one base kind that is **not** the model's; see [execution limits](/gg/execution-limits/#a-broken-compiler-counts-but-is-not-the-models-error)) |
 | `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending — a different failure, answered differently) |
 
+:::caution[`transpile` is empty by construction for an eval-in-guest arm]
+A [program language](/gg/program-languages/) whose guest carries its own interpreter — Python
+today — hands the model's source straight to that interpreter, so nothing on gg's side ever
+reads the program and there is no preparation step to fail. A Python `SyntaxError` is raised by
+CPython *while the program runs*, and lands in `program_fault` with every other uncaught
+exception. Python therefore records **zero** `transpile` failures however badly its programs are
+written, and its syntax errors are not separable in TCQ from a genuine runtime bug.
+
+So a slice on this base kind is not a valid cross-arm comparison: read `transpile` as *"programs
+this arm refused before running"*, which is a thing only an arm with a host-side preparation step
+does. The same caveat applies to any future arm that evaluates the model's source in the guest.
+:::
+
 Every type's id names its base, because a *"top error types"* ranking shows one row per type
 with no heading over it. Each also carries a human-readable **label**, and the labels live in
 Rust beside the variants and are generated into the TypeScript contract — so a type gg gains
