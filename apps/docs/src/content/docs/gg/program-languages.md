@@ -686,8 +686,19 @@ reading of the SDK. Two things it cannot carry, and one convention that replaces
 | A per-parameter doc slot — an ML type says `String -> Int -> Effect Unit` and names nothing | a `# Arguments` list in the declaration's own doc comment, exactly as Rust's convention does it, from which the reflector takes each argument's **name** and description |
 | A record-field doc slot — `purs` discards a comment written on a field in all three placements | a `# Fields` list on the type |
 
-Neither is decoration, because the reflector refuses to emit a catalogue that does not satisfy
-them: a signature that takes *N* arguments must document *N* in order, every field of a record
+A third thing the notation has to say is not missing so much as invisible. A row-typed optional
+argument is declared `Union given rest ReadOptions => String -> Record given -> Effect FileRead`,
+and `Record given` on its own says nothing at all — so the reflector prints the row flat and marks
+the fields it stands for: `readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect FileRead`.
+Unmarked, that record reads as a **closed** one — every field required — which would be the single
+point where a model is told something stricter than what it is compiled against, and it matters most
+where a record mixes the two (`project.createIssue`'s six required labels beside its four optional
+ones). The `?` is gg's notation rather than PureScript's, it is the marker
+[TypeScript's](#stripped-and-checked) catalogue already carries for the same fact, and the prompt
+says so where it explains the idiom.
+
+Neither of the two absences is decoration, because the reflector refuses to emit a catalogue that
+does not satisfy them: a signature that takes *N* arguments must document *N* in order, every field of a record
 argument must be documented and every documented field must exist, a `# Fields` list must name
 every field of its type and only those, and nothing may be blank. The failure lands on the author
 rather than on a model.

@@ -59,13 +59,22 @@ refused before it runs.
 
 The signatures below are written the way PureScript writes them: functions are
 curried, required arguments are positional, and optional ones are the fields of a
-**record** argument. Pass `{}` when you want none of them — the record is part of
-the signature, not something you leave off.
+**record** argument. A field written `limit?` may be left out; one written without
+the `?` must be there. Pass `{}` when you want none of them — the record is part
+of the signature, not something you leave off.
+
+The `?` is gg's notation, not PureScript's. What the SDK declares is
+`Union given rest ReadOptions => String -> Record given -> Effect FileRead`, which
+accepts any subset of that row; the signature is printed flat, with the fields the
+row stands for marked, because `Record given` on its own would tell you nothing.
 
 A failed call is **thrown**, not returned, so the happy path is already
 unwrapped. Catch a failure you expect with `attempt`, which hands back
 `Either ToolError a` and re-throws anything that is not a gg failure; let the
-rest escape, and gg tells you which call failed.
+rest escape, and gg tells you which call failed. Handling one takes two imports
+beyond the module above — `Data.Either (Either(..))` for the arms, and
+`Effect.Exception (error, throwException)` to re-raise what you decide not to
+handle:
 
 ```
 outcome <- attempt ({{api.fs.read_text_file.call}} "notes.md" {})

@@ -214,11 +214,25 @@ function renderApplied(node, optional) {
   return simple ? rendered : `(${rendered})`;
 }
 
-/** A record type, with a row variable resolved to the optional fields it stands for. */
+/**
+ * A record type, with a row variable resolved to the optional fields it stands for.
+ *
+ * An optional field is written `offset? :: Int`. That is notation rather than PureScript — the real
+ * declaration is `Union given rest ReadOptions => String -> Record given -> Effect FileRead`, and
+ * `Record given` on its own says nothing at all, so the choice is between rendering the whole
+ * constrained head and marking the fields the row stands for. Rendered flat and unmarked, the
+ * signature reads as a CLOSED record — "every field is required" — which is the one place a model
+ * would be told something stricter than what it is compiled against. `?` is the marker
+ * [TypeScript's](../../../crates/gg/src/sandbox/guests/typescript.signatures.json) own catalogue
+ * carries for the same fact (`{ offset?: number }`), so the two arms read alike here — while Python
+ * and Ruby say it with a default, which is what those languages write.
+ */
 function renderRecord(row, optional) {
   const fields = recordFields(row, optional);
   if (fields.length === 0) return "{}";
-  const rendered = fields.map((field) => `${field.name} :: ${field.type}`);
+  const rendered = fields.map(
+    (field) => `${field.name}${field.optional ? "?" : ""} :: ${field.type}`,
+  );
   return `{ ${rendered.join(", ")} }`;
 }
 

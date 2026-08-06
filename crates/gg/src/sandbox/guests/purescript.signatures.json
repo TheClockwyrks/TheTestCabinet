@@ -411,7 +411,7 @@
 			"name": "openFile",
 			"signatures": [
 				{
-					"signature": "openFile :: String -> { offset :: Int, limit :: Int } -> Effect FileRead",
+					"signature": "openFile :: String -> { offset? :: Int, limit? :: Int } -> Effect FileRead",
 					"parameters": [
 						{
 							"name": "path",
@@ -424,7 +424,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ offset :: Int, limit :: Int }",
+							"type": "{ offset? :: Int, limit? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -590,11 +590,11 @@
 			"name": "get",
 			"signatures": [
 				{
-					"signature": "get :: { turn :: Int } -> Effect String",
+					"signature": "get :: { turn? :: Int } -> Effect String",
 					"parameters": [
 						{
 							"name": "options",
-							"type": "{ turn :: Int }",
+							"type": "{ turn? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -654,7 +654,7 @@
 			"name": "shell",
 			"signatures": [
 				{
-					"signature": "shell :: String -> { timeoutSecs :: Int } -> Effect ShellOutput",
+					"signature": "shell :: String -> { timeoutSecs? :: Int } -> Effect ShellOutput",
 					"parameters": [
 						{
 							"name": "command",
@@ -667,7 +667,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ timeoutSecs :: Int }",
+							"type": "{ timeoutSecs? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -700,7 +700,7 @@
 			"name": "readFile",
 			"signatures": [
 				{
-					"signature": "readFile :: String -> { offset :: Int, limit :: Int } -> Effect FileRead",
+					"signature": "readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect FileRead",
 					"parameters": [
 						{
 							"name": "path",
@@ -713,7 +713,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ offset :: Int, limit :: Int }",
+							"type": "{ offset? :: Int, limit? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -833,11 +833,11 @@
 			"name": "listDir",
 			"signatures": [
 				{
-					"signature": "listDir :: { path :: String } -> Effect (Array DirEntry)",
+					"signature": "listDir :: { path? :: String } -> Effect (Array DirEntry)",
 					"parameters": [
 						{
 							"name": "options",
-							"type": "{ path :: String }",
+							"type": "{ path? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -895,11 +895,11 @@
 			"name": "writeMemory",
 			"signatures": [
 				{
-					"signature": "writeMemory :: { name :: String, description :: String, body :: String, code :: String, onUse :: String } -> Effect MemoryUsage",
+					"signature": "writeMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect MemoryUsage",
 					"parameters": [
 						{
 							"name": "memory",
-							"type": "{ name :: String, description :: String, body :: String, code :: String, onUse :: String }",
+							"type": "{ name :: String, description :: String, body :: String, code? :: String, onUse? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -968,11 +968,11 @@
 			"name": "updateMemory",
 			"signatures": [
 				{
-					"signature": "updateMemory :: { name :: String, description :: String, body :: String, code :: String, onUse :: String } -> Effect MemoryUsage",
+					"signature": "updateMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect MemoryUsage",
 					"parameters": [
 						{
 							"name": "memory",
-							"type": "{ name :: String, description :: String, body :: String, code :: String, onUse :: String }",
+							"type": "{ name :: String, description :: String, body :: String, code? :: String, onUse? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1041,11 +1041,11 @@
 			"name": "createMemory",
 			"signatures": [
 				{
-					"signature": "createMemory :: { name :: String, description :: String, body :: String, code :: String, onUse :: String } -> Effect MemoryUsage",
+					"signature": "createMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect MemoryUsage",
 					"parameters": [
 						{
 							"name": "memory",
-							"type": "{ name :: String, description :: String, body :: String, code :: String, onUse :: String }",
+							"type": "{ name :: String, description :: String, body :: String, code? :: String, onUse? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1249,11 +1249,11 @@
 			"name": "addTask",
 			"signatures": [
 				{
-					"signature": "addTask :: { id :: String, title :: String, description :: String, blockedBy :: Array String } -> Effect TaskUsage",
+					"signature": "addTask :: { id :: String, title :: String, description? :: String, blockedBy? :: Array String } -> Effect TaskUsage",
 					"parameters": [
 						{
 							"name": "task",
-							"type": "{ id :: String, title :: String, description :: String, blockedBy :: Array String }",
+							"type": "{ id :: String, title :: String, description? :: String, blockedBy? :: Array String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1313,7 +1313,7 @@
 			"name": "updateTask",
 			"signatures": [
 				{
-					"signature": "updateTask :: String -> { title :: String, description :: Maybe String, status :: TaskStatus } -> Effect Unit",
+					"signature": "updateTask :: String -> { title? :: String, description? :: Maybe String, status? :: TaskStatus } -> Effect Unit",
 					"parameters": [
 						{
 							"name": "id",
@@ -1326,7 +1326,7 @@
 						},
 						{
 							"name": "patch",
-							"type": "{ title :: String, description :: Maybe String, status :: TaskStatus }",
+							"type": "{ title? :: String, description? :: Maybe String, status? :: TaskStatus }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1521,11 +1521,11 @@
 			"name": "createIssue",
 			"signatures": [
 				{
-					"signature": "createIssue :: { title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description :: String, blockedBy :: Array String, epicId :: String, reviewers :: Array String } -> Effect IssueCreated",
+					"signature": "createIssue :: { title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String } -> Effect IssueCreated",
 					"parameters": [
 						{
 							"name": "issue",
-							"type": "{ title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description :: String, blockedBy :: Array String, epicId :: String, reviewers :: Array String }",
+							"type": "{ title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1631,7 +1631,7 @@
 			"name": "updateIssue",
 			"signatures": [
 				{
-					"signature": "updateIssue :: String -> { title :: String, description :: Maybe String, inScope :: String, outOfScope :: String, completionCriteria :: String, status :: IssueStatus, epicId :: Maybe String } -> Effect Unit",
+					"signature": "updateIssue :: String -> { title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: IssueStatus, epicId? :: Maybe String } -> Effect Unit",
 					"parameters": [
 						{
 							"name": "id",
@@ -1644,7 +1644,7 @@
 						},
 						{
 							"name": "patch",
-							"type": "{ title :: String, description :: Maybe String, inScope :: String, outOfScope :: String, completionCriteria :: String, status :: IssueStatus, epicId :: Maybe String }",
+							"type": "{ title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: IssueStatus, epicId? :: Maybe String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1846,11 +1846,11 @@
 			"name": "evictFileView",
 			"signatures": [
 				{
-					"signature": "evictFileView :: { path :: String } -> Effect ReclaimReport",
+					"signature": "evictFileView :: { path? :: String } -> Effect ReclaimReport",
 					"parameters": [
 						{
 							"name": "options",
-							"type": "{ path :: String }",
+							"type": "{ path? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -1936,7 +1936,7 @@
 			"name": "compact",
 			"signatures": [
 				{
-					"signature": "compact :: String -> { files :: Array String } -> Effect Unit",
+					"signature": "compact :: String -> { files? :: Array String } -> Effect Unit",
 					"parameters": [
 						{
 							"name": "summary",
@@ -1949,7 +1949,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ files :: Array String }",
+							"type": "{ files? :: Array String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -2018,11 +2018,11 @@
 			"name": "waitForSubagents",
 			"signatures": [
 				{
-					"signature": "waitForSubagents :: { ids :: Array String } -> Effect (Array SubagentResult)",
+					"signature": "waitForSubagents :: { ids? :: Array String } -> Effect (Array SubagentResult)",
 					"parameters": [
 						{
 							"name": "options",
-							"type": "{ ids :: Array String }",
+							"type": "{ ids? :: Array String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -2091,7 +2091,7 @@
 			"name": "transitionState",
 			"signatures": [
 				{
-					"signature": "transitionState :: String -> { note :: String } -> Effect Unit",
+					"signature": "transitionState :: String -> { note? :: String } -> Effect Unit",
 					"parameters": [
 						{
 							"name": "state",
@@ -2104,7 +2104,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ note :: String }",
+							"type": "{ note? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -2136,7 +2136,7 @@
 			"name": "exec",
 			"signatures": [
 				{
-					"signature": "exec :: String -> { prompt :: String } -> Effect Unit",
+					"signature": "exec :: String -> { prompt? :: String } -> Effect Unit",
 					"parameters": [
 						{
 							"name": "agent",
@@ -2149,7 +2149,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ prompt :: String }",
+							"type": "{ prompt? :: String }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
@@ -2211,7 +2211,7 @@
 			"name": "readTextFile",
 			"signatures": [
 				{
-					"signature": "readTextFile :: String -> { offset :: Int, limit :: Int } -> Effect String",
+					"signature": "readTextFile :: String -> { offset? :: Int, limit? :: Int } -> Effect String",
 					"parameters": [
 						{
 							"name": "path",
@@ -2224,7 +2224,7 @@
 						},
 						{
 							"name": "options",
-							"type": "{ offset :: Int, limit :: Int }",
+							"type": "{ offset? :: Int, limit? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
