@@ -610,6 +610,7 @@ fn argument(parameter: &'static Parameter) -> GgApiParameter {
         passing: match parameter.kind {
             ParameterKind::Positional => GgApiParameterPassing::Positional,
             ParameterKind::Keyword => GgApiParameterPassing::Keyword,
+            ParameterKind::Block => GgApiParameterPassing::Block,
         },
         default: parameter.default.clone(),
         doc: parameter.doc.clone(),

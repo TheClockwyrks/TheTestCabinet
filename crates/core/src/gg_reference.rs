@@ -281,6 +281,11 @@ pub enum GgApiParameterPassing {
     /// By name — Python's keyword arguments, Kotlin's named ones — so the call site writes the
     /// argument's name as well as its value.
     Keyword,
+    /// As a **block** — Ruby's `fs.write_file(path) { … }` — which is not an argument position at
+    /// all but a second channel into the call, written at the call site as a body rather than as a
+    /// value. Its type is the block's *return*, because what a block is for is the value it hands
+    /// back.
+    Block,
 }
 
 /// One type declaration an [API function](GgApiFunction)'s signature refers to.

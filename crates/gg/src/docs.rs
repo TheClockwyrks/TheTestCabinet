@@ -277,6 +277,7 @@ fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
     let passing = match parameter.kind {
         ParameterKind::Positional => "",
         ParameterKind::Keyword => " (passed by name)",
+        ParameterKind::Block => " (given as a block)",
     };
     text.push_str(&format!(
         "{indent}{}{optional}: {}{default}{passing} — {}\n",

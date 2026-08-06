@@ -162,9 +162,13 @@ export function ApiParameterList({
                 types. Positional is every argument in every language that passes by
                 position, so labelling those would say nothing; `by name` is Python's
                 keyword arguments and Kotlin's named ones, where the call site writes the
-                name too. */}
+                name too, and `as a block` is Ruby's `fs.write_file(path) { … }`, where
+                the argument is not written in the parentheses at all. */}
             {parameter.passing === "keyword" && (
               <span className={styles.paramType}>by name</span>
+            )}
+            {parameter.passing === "block" && (
+              <span className={styles.paramType}>as a block</span>
             )}
           </span>
           <p className={styles.paramDesc}>{parameter.doc}</p>

@@ -174,7 +174,7 @@ export type GgApiType = {
  * argument has to be sure it is reading `keyword` and not `named`, and the schema is what makes a
  * future language's projection say so or fail to deserialize.
  */
-export type GgApiParameterPassing = "positional" | "keyword";
+export type GgApiParameterPassing = "positional" | "keyword" | "block";
 
 /**
  * One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.

@@ -153,11 +153,20 @@ def parameter(raw_name, default, holder, where)
   tag = param_tag(holder, name)
   raise "#{where} takes `#{name}` and documents no `@param` for it" if tag.nil?
 
+  # A splat is still `positional` — it IS passed by position, and the `*` in the rendered signature
+  # plus `optional` say the rest. A block is not: it is a second channel into the call, written as a
+  # body rather than as a value, so a reader of the structured parameters that saw `positional` here
+  # would describe `fs.write_file(path) { … }` as an ordinary argument and be wrong about how the
+  # call is written. Its type is the block's RETURN, because the `@param` on a `&name` documents
+  # what the block hands back.
   {
     name: name,
-    type: type_of(tag.types),
+    type: block ? "-> #{type_of(tag.types)}" : type_of(tag.types),
     optional: keyword ? !default.nil? : (splat || !default.nil?),
-    kind: keyword ? "keyword" : "positional",
+    kind: if block then "block"
+          elsif keyword then "keyword"
+          else "positional"
+          end,
     default: default,
     doc: demand(markdown(tag.text.to_s), "`#{where}`'s `#{name}`"),
     fields: []

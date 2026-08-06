@@ -8,7 +8,7 @@
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use crate::sandbox::FileWindow;
+use crate::sandbox::{FileWindow, ParameterKind};
 
 use super::*;
 
@@ -161,6 +161,55 @@ fn a_block_is_a_second_signature_rather_than_a_second_function() {
         open_text.signatures[1].signature.contains("&body"),
         "the second shape is the block form: {:?}",
         open_text.signatures[1]
+    );
+
+    // And the STRUCTURED half says so too. The rendered signature carried the `&` from the first
+    // day; the parameter behind it was emitted as an ordinary positional `String`, so anything
+    // reading the parameters rather than the string — the reference page's argument rows, a future
+    // gate comparing calling conventions across arms — would have described a block as a value
+    // written in the parentheses. Its type is the block's RETURN, because what a block is for is
+    // the value it hands back.
+    let body = &open_text.signatures[1].parameters[1];
+    assert_eq!(body.name, "body");
+    assert_eq!(
+        body.kind,
+        ParameterKind::Block,
+        "a block is passed as a block, not by position: {body:?}"
+    );
+    assert_eq!(
+        body.r#type, "-> String",
+        "and it is typed by what it returns"
+    );
+    assert!(
+        !body.optional,
+        "the block form's block is the whole point of it"
+    );
+
+    // The other overload group on this arm agrees, so this is a property of the reflector rather
+    // than of one hand-written entry.
+    let write_file = ruby()
+        .catalogue()
+        .tools
+        .iter()
+        .find(|entry| entry.name == "write_file")
+        .expect("`write_file` is catalogued");
+    let contents = &write_file.signatures[1].parameters[1];
+    assert_eq!(contents.kind, ParameterKind::Block, "{contents:?}");
+
+    // A splat stays positional, which is the distinction this variant is drawing: `*ranges` IS
+    // passed by position and the `*` in the rendered signature says the rest. Only a block is a
+    // second channel into the call.
+    let archive = ruby()
+        .catalogue()
+        .tools
+        .iter()
+        .find(|entry| entry.name == "archive_thread")
+        .expect("`archive_thread` is catalogued");
+    assert_eq!(
+        archive.signatures[0].parameters[0].kind,
+        ParameterKind::Positional,
+        "a splat is positional: {:?}",
+        archive.signatures[0].parameters[0]
     );
 }
 

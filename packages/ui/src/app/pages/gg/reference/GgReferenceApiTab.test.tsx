@@ -127,9 +127,18 @@ const REFERENCE: GgReference = {
               fields: [],
             },
             {
+              // Passed as a block, the way Ruby spells a long body:
+              // `fs.writeFile(path) { ... }`. Its type is the block's RETURN, because
+              // what a block is for is the value it hands back.
+              name: "body",
+              type: "-> string",
+              optional: false,
+              passing: "block",
+              doc: "A block returning the text to write.",
+              fields: [],
+            },
+            {
               // Passed by name, the way Python and Kotlin spell an optional argument.
-              // No registered language does yet, so the fixture is the only place the
-              // marker's rendering can be exercised at all.
               name: "options",
               type: "{ offset: number }",
               optional: true,
@@ -269,6 +278,18 @@ describe("GgReferenceApiTab", () => {
     // Exactly one row is keyword-passed in the fixture: `options` on the second shape.
     // Positional is every other argument, and a marker on all of them would say nothing.
     expect(screen.getAllByText("by name")).toHaveLength(1);
+  });
+
+  it("marks an argument a language passes as a block, and only that one", async () => {
+    renderAt("/gg/reference/api?fn=fs.readFile");
+    await screen.findByRole("heading", { name: "fs.readFile" });
+    // The marker Ruby's overload groups produce. Without it the row would read as an
+    // ordinary positional argument written in the parentheses, which is the one thing a
+    // block is not.
+    expect(screen.getAllByText("as a block")).toHaveLength(1);
+    expect(
+      screen.getByText("A block returning the text to write."),
+    ).toBeInTheDocument();
   });
 
   it("names the ending role for a call a role binds rather than a tool", async () => {

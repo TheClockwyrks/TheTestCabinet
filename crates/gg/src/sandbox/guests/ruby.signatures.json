@@ -296,9 +296,9 @@
             },
             {
               "name": "body",
-              "type": "String",
+              "type": "-> String",
               "optional": false,
-              "kind": "positional",
+              "kind": "block",
               "default": null,
               "doc": "A block returning what to show yourself.",
               "fields": [
@@ -600,9 +600,9 @@
             },
             {
               "name": "contents",
-              "type": "String",
+              "type": "-> String",
               "optional": false,
-              "kind": "positional",
+              "kind": "block",
               "default": null,
               "doc": "A block returning the UTF-8 text to write. It replaces the file entirely.",
               "fields": [

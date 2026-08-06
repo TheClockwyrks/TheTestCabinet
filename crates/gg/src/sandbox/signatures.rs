@@ -415,6 +415,21 @@ pub enum ParameterKind {
     /// readers and writers expect and is exactly the half of a call the seam leaves each language
     /// free to spell for itself.
     Keyword,
+    /// Passed as a **block** — Ruby's `fs.write_file(path) { … }` — which is not an argument
+    /// position at all but a second channel into the call, and is written at the call site as a
+    /// body rather than as a value.
+    ///
+    /// [Ruby](super::language) is the registered language that emits it, as the second signature of
+    /// an overload group: `write_file(path, contents)` and `write_file(path, &contents)` are one
+    /// capability written two ways. Its [type](Parameter::r#type) is the block's *return* (`->
+    /// String`), because what a block is for is the value it hands back.
+    ///
+    /// It has its own variant rather than being folded into [`Positional`](Self::Positional)
+    /// because anything reading the structured parameters — the reference page's argument rows, a
+    /// future gate comparing calling conventions across arms — would otherwise describe a block as
+    /// an ordinary positional `String` and be wrong about how a model must write the call. The
+    /// rendered signature carried the `&` all along; only the structured half did not.
+    Block,
 }
 
 impl SignatureCatalogue {
