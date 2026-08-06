@@ -505,6 +505,14 @@ from one file (`packages/gg-sandbox-purescript/purescript-version.sh`), which th
 the developer/CI install script both read, because externs are a compiler-version-private format:
 a tree built by one `purs` and read by another does not compile at all.
 
+"One artifact" is a gate rather than a slogan. The catalogue is reflected from the working tree's
+`packages/gg-sandbox-purescript/src`, and a compile resolves `Gg` against the **tarball's**
+`libs/gg-sdk` — so an SDK edit committed with a regenerated catalogue and a stale tarball would
+tell a model about a surface it is not compiled against, and the manifest gate would not notice,
+because it compares directory names and counts modules. `the_shipped_sdk_is_the_sdk_in_the_working_tree`
+unpacks the tarball and compares the two SDK trees file for file — the `.js` foreign modules
+included, since that is where a call's lowering lives — and names the file that drifted.
+
 ### What the libraries are, and why they are generous
 
 The set is declared in `packages/gg-sandbox-purescript/spago.yaml`, resolved against a pinned

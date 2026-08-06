@@ -317,6 +317,91 @@ fn the_manifest_describes_the_tree_that_actually_shipped() {
     }
 }
 
+/// The SDK inside the shipped tarball is the SDK in the working tree, file for file.
+///
+/// This is the gate under the arm's central claim — *the surface a model is shown and the surface it
+/// is compiled against are one artifact* — and without it that claim was a comment in `build.sh`.
+/// The catalogue is reflected from `packages/gg-sandbox-purescript/src` by `signatures.sh`, which
+/// stages the **working tree** over a scratch copy of the tarball; a real compile resolves `Gg`
+/// against the **tarball's** `libs/gg-sdk` sources and externs. Nothing held the two together. An SDK
+/// edit committed with a regenerated catalogue and a stale tarball would have told a model about a
+/// surface it was not compiled against, and every other gate would have stayed green: the manifest
+/// gate above compares directory *names* and counts module directories, neither of which moves when
+/// a function's body, its lowering, or an added export inside an existing module changes.
+///
+/// A digest recorded at build time would have been the other answer. This one is stronger for the
+/// same work: it names the file that drifted, and it cannot itself go stale, because there is no
+/// second recording to keep in step.
+#[test]
+fn the_shipped_sdk_is_the_sdk_in_the_working_tree() {
+    /// Where this arm's hand-written PureScript lives, from this crate's own directory.
+    const SDK_SOURCE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packages/gg-sandbox-purescript/src"
+    );
+
+    let libraries = libraries().expect("the committed library set unpacks");
+    let shipped = sdk_sources(
+        &libraries
+            .tree
+            .join("libs")
+            .join(&manifest().sdk)
+            .join("src"),
+    );
+    let authored = sdk_sources(std::path::Path::new(SDK_SOURCE));
+
+    let shipped_names: Vec<&String> = shipped.iter().map(|(name, _)| name).collect();
+    let authored_names: Vec<&String> = authored.iter().map(|(name, _)| name).collect();
+    assert_eq!(
+        shipped_names, authored_names,
+        "the tarball's SDK modules are not the working tree's — rebuild with \
+         packages/gg-sandbox-purescript/build.sh"
+    );
+    assert!(!shipped.is_empty(), "the tarball carries an SDK at all");
+
+    // Asserted rather than `assert_eq!`ed, because the difference that matters is *which file*: the
+    // two sides are whole SDK modules and printing both would bury the answer in a thousand lines.
+    for ((name, was), (_, now)) in shipped.iter().zip(&authored) {
+        assert!(
+            was == now,
+            "src/{name} differs between the committed tarball and the working tree — rebuild with \
+             packages/gg-sandbox-purescript/build.sh"
+        );
+    }
+}
+
+/// Every file under `root`, as (path relative to `root`, contents), sorted by path.
+///
+/// The `.js` foreign modules are compared alongside the `.purs`, because `Gg/Internal/Wire.js` is
+/// where a call's **lowering** lives: an SDK whose types never moved but whose wire shape did is
+/// exactly the drift this is here to catch.
+fn sdk_sources(root: &std::path::Path) -> Vec<(String, String)> {
+    fn walk(root: &std::path::Path, at: &std::path::Path, into: &mut Vec<(String, String)>) {
+        let entries = std::fs::read_dir(at)
+            .unwrap_or_else(|error| panic!("could not read {}: {error}", at.display()));
+        for entry in entries {
+            let entry = entry.expect("readable");
+            let path = entry.path();
+            if entry.file_type().expect("a type").is_dir() {
+                walk(root, &path, into);
+                continue;
+            }
+            let name = path
+                .strip_prefix(root)
+                .expect("under the root")
+                .to_string_lossy()
+                .into_owned();
+            let contents = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("could not read {}: {error}", path.display()));
+            into.push((name, contents));
+        }
+    }
+    let mut sources = Vec::new();
+    walk(root, root, &mut sources);
+    sources.sort();
+    sources
+}
+
 #[test]
 fn the_shared_tree_is_sealed_and_each_preparation_gets_its_own() {
     let libraries = libraries().expect("the committed library set unpacks");
