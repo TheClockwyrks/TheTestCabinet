@@ -173,6 +173,40 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// that module's namespace, bound at `lib.<key>`.
     fn prepare_module(&self, source: &str) -> Result<PreparedModule, PrepareFailure>;
 
+    /// The file extensions a code [skill](crate::skills) directory spells this language's module and
+    /// on-use script with — `skill.<ext>`, `on-use.<ext>` — **most preferred first**, and never
+    /// empty.
+    ///
+    /// A skills directory is authored once and read by every agent in the run, and language is
+    /// resolved *per agent*: one run may drive a Python agent and a C# agent over the same
+    /// directory. A skill's code therefore cannot have one file name. It has one per language, the
+    /// directory carries whichever of them its author wrote, and each agent reads its own — which
+    /// is the only arrangement under which a skill's prose can be shared while its code is
+    /// necessarily not.
+    ///
+    /// A list rather than a single extension because two languages may share a module runtime, and
+    /// where they do, withholding a skill from one of them would be a difference between the arms
+    /// far larger than the one a study of those two arms is measuring. [`TypeScript`](typescript)
+    /// and [`JavaScript`](javascript) are that pair: one strip serves both, so each accepts the
+    /// other's spelling and merely prefers its own. A language whose modules nothing else can
+    /// evaluate names one extension and no more.
+    ///
+    /// The first entry is the spelling this language *writes* — what gg keys a generated on-use
+    /// script under. The rest are spellings it will *read*.
+    fn module_file_extensions(&self) -> &'static [&'static str];
+
+    /// The extension this language writes: the first of its
+    /// [module file extensions](Self::module_file_extensions).
+    ///
+    /// Derived rather than declared so the two can never name different spellings, and so that
+    /// "which of these does gg write?" has exactly one answer.
+    fn module_file_extension(&self) -> &'static str {
+        self.module_file_extensions()
+            .first()
+            .copied()
+            .expect("a language names at least one module file extension")
+    }
+
     /// The identifier a code [skill](crate::skills) or [memory](crate::memories) called `name` is
     /// bound at — the `<key>` of `lib.<key>`.
     ///

@@ -43,6 +43,7 @@ use crate::modules::{
     detached_ids,
 };
 use crate::prompts::SkillView;
+use crate::sandbox::ProgramLanguage;
 
 /// The default directory skills are loaded from, relative to the run workspace, when the
 /// capability does not configure one via its `dir` param. `core`'s workspace seeding may
@@ -66,6 +67,15 @@ const MISSING_DESCRIPTION: &str = "(no description provided)";
 /// prose (what every skill was), pure code, an on-use script and nothing else, or any combination.
 /// The one thing it must have is a name and a description, because those are what the
 /// [index](SkillsRuntime::context_block) is made of.
+///
+/// # Why the code halves are keyed
+///
+/// A skill's prose is one text every agent reads. Its **code** cannot be: a program's language is
+/// resolved per agent, so one run may drive two agents that could not evaluate each other's modules.
+/// So a skill directory carries a module per language it was authored for —
+/// `skill.ts`, `skill.py` — and this holds all of them, keyed by the extension each was spelled
+/// with. Which one an agent gets is the agent's language's answer, asked at the moment it reads the
+/// skill.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skill {
     /// The skill's stable name — the handle `read_skill` takes and the catalog lists.
@@ -75,13 +85,23 @@ pub struct Skill {
     /// The skill's body (front matter removed), loaded into context when the skill is read. Empty
     /// for a skill that is only code, or only an on-use script.
     body: String,
-    /// The importable module (`skill.ts`), bound at `lib.<key>` once the skill is read. Ignored
-    /// under native tool calling, which has no programs to bind it into.
-    code: Option<String>,
-    /// The on-use script (`on-use.ts`), run once when the skill is first read. Its source is never
-    /// shown to the model. Ignored under native tool calling for the same reason.
-    on_use: Option<String>,
+    /// The importable modules (`skill.<ext>`), by the extension each was spelled with, bound at
+    /// `lib.<key>` once the skill is read. Ignored under native tool calling, which has no programs
+    /// to bind them into.
+    code: CodeFiles,
+    /// The on-use scripts (`on-use.<ext>`), by extension, run once when the skill is first read.
+    /// Their source is never shown to the model. Ignored under native tool calling for the same
+    /// reason.
+    on_use: CodeFiles,
 }
+
+/// The source files a skill carries for one of its two code halves, keyed by the **lower-cased file
+/// extension** they were spelled with — `"ts"`, `"py"`.
+///
+/// A map rather than one string because a skills directory is authored once and read by every agent
+/// in a run, and [language is resolved per agent](crate::sandbox::ProgramLanguage). Ordered so a
+/// directory carrying several spellings loads identically every time.
+pub type CodeFiles = std::collections::BTreeMap<String, String>;
 
 impl Skill {
     /// The skill's name.
@@ -100,21 +120,56 @@ impl Skill {
         &self.body
     }
 
-    /// The skill's importable module, if it has one.
-    pub fn code(&self) -> Option<&str> {
-        self.code.as_deref()
+    /// The skill's importable module **as `language` spells one**, if it carries one.
+    ///
+    /// The language is asked rather than assumed because a skill directory may carry several
+    /// modules and only one of them is a module *this* agent could evaluate. A language that accepts
+    /// more than one spelling gets the first it names that the directory actually has.
+    pub fn code(&self, language: &dyn ProgramLanguage) -> Option<&str> {
+        pick(&self.code, language)
     }
 
-    /// The skill's on-use script, if it has one.
-    pub fn on_use(&self) -> Option<&str> {
-        self.on_use.as_deref()
+    /// The skill's on-use script as `language` spells one, if it carries one. Resolved exactly as
+    /// [`code`](Self::code) is.
+    pub fn on_use(&self, language: &dyn ProgramLanguage) -> Option<&str> {
+        pick(&self.on_use, language)
+    }
+
+    /// Whether this skill carries either code half **in any language at all**.
+    ///
+    /// Not the same question as "does this agent get code from it": a skill authored only in Python
+    /// carries code and offers a TypeScript agent none. Telling those two apart is what lets a run
+    /// say so rather than silently reading the skill as prose.
+    pub fn has_code(&self) -> bool {
+        !self.code.is_empty() || !self.on_use.is_empty()
+    }
+
+    /// Every extension this skill spells either of its code halves with, in order — what an operator
+    /// is shown when the agent that read it could use none of them.
+    pub fn code_spellings(&self) -> Vec<&str> {
+        self.code
+            .keys()
+            .chain(self.on_use.keys())
+            .map(String::as_str)
+            .collect::<BTreeSet<&str>>()
+            .into_iter()
+            .collect()
     }
 
     /// This skill with `code` and `on_use` attached — the builder the
     /// [directory loader](SkillLibrary::load) and the [built-ins](builtin) both go through.
-    fn with_code(mut self, code: Option<String>, on_use: Option<String>) -> Self {
-        self.code = code.filter(|source| !source.trim().is_empty());
-        self.on_use = on_use.filter(|source| !source.trim().is_empty());
+    ///
+    /// A blank file is not a file: an empty or whitespace-only source is dropped rather than bound,
+    /// so an agent is never handed a module that exports nothing.
+    fn with_code(mut self, code: CodeFiles, on_use: CodeFiles) -> Self {
+        let kept = |files: CodeFiles| -> CodeFiles {
+            files
+                .into_iter()
+                .filter(|(_, source)| !source.trim().is_empty())
+                .collect()
+        };
+        self.code = kept(code);
+        self.on_use = kept(on_use);
         self
     }
 }
@@ -143,9 +198,11 @@ impl SkillLibrary {
     ///   always been.
     /// * `<name>/` — a **skill directory**, which is how a skill carries code:
     ///   * `skill.md` — required. The front matter (and, optionally, a body).
-    ///   * `skill.ts` — optional. The importable module, bound at `lib.<key>` once the skill is
-    ///     read.
-    ///   * `on-use.ts` — optional. The script gg runs once, when the skill is first read.
+    ///   * `skill.<ext>` — optional. The importable module, bound at `lib.<key>` once the skill is
+    ///     read. One per program language the skill was authored for (`skill.ts`, `skill.py`); an
+    ///     agent reads the one [its own language names](ProgramLanguage::module_file_extensions).
+    ///   * `on-use.<ext>` — optional. The script gg runs once, when the skill is first read.
+    ///     Resolved per language exactly as the module is.
     ///
     /// A directory without a `skill.md` is not a skill and is ignored: the name and the description
     /// are what the index is made of, and inventing them from a file name would put a line in front
@@ -529,11 +586,57 @@ impl Module for SkillsRuntime {
 /// The file a skill directory's front matter and body live in.
 const SKILL_MANIFEST: &str = "skill.md";
 
-/// The file a skill directory's importable module lives in.
-const SKILL_MODULE: &str = "skill.ts";
+/// The stem of the file a skill directory's importable module lives in — `skill.<ext>`, where the
+/// extension is [the reading agent's language's](ProgramLanguage::module_file_extensions).
+const SKILL_MODULE_STEM: &str = "skill";
 
-/// The file a skill directory's on-use script lives in.
-const SKILL_ON_USE: &str = "on-use.ts";
+/// The stem of the file a skill directory's on-use script lives in — `on-use.<ext>`.
+const SKILL_ON_USE_STEM: &str = "on-use";
+
+/// The source `files` holds for `language`: the first of the extensions that language names that the
+/// map actually has.
+///
+/// Preference order is the language's, so a language that reads a second spelling still gets its own
+/// when both are present — which is what stops a directory carrying both from silently handing two
+/// arms of a study the same file.
+fn pick<'a>(files: &'a CodeFiles, language: &dyn ProgramLanguage) -> Option<&'a str> {
+    language
+        .module_file_extensions()
+        .iter()
+        .find_map(|extension| files.get(*extension))
+        .map(String::as_str)
+}
+
+/// Every extension a skill's code may be spelled with: the union of what the registered languages
+/// name.
+///
+/// Derived from the registry rather than listed, so a language added to the seam is read out of a
+/// skills directory without anything here being edited. The [fixture](crate::sandbox::fixture)
+/// languages join it under test for the same reason they join every other iteration of the seam: a
+/// mechanism exercised against one spelling is a mechanism nobody has watched choose.
+fn code_extensions() -> BTreeSet<&'static str> {
+    #[cfg_attr(not(test), allow(unused_mut))]
+    let mut extensions: BTreeSet<&'static str> = crate::sandbox::all_languages()
+        .flat_map(|language| language.module_file_extensions().iter().copied())
+        .collect();
+    #[cfg(test)]
+    extensions.extend(
+        crate::sandbox::fixture_languages()
+            .flat_map(|language| language.module_file_extensions().iter().copied()),
+    );
+    extensions
+}
+
+/// The `<stem>.<ext>` files present under `dir`, one entry per extension that has one.
+fn read_code_files(dir: &Path, stem: &str) -> CodeFiles {
+    code_extensions()
+        .into_iter()
+        .filter_map(|extension| {
+            let source = std::fs::read_to_string(dir.join(format!("{stem}.{extension}"))).ok()?;
+            Some((extension.to_string(), source))
+        })
+        .collect()
+}
 
 /// One entry of a skills directory, as a [`Skill`] — or `None` for an entry that is not one.
 fn load_one(path: &Path) -> Option<Skill> {
@@ -544,8 +647,8 @@ fn load_one(path: &Path) -> Option<Skill> {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
         return Some(parse_skill(&raw, &fallback).with_code(
-            std::fs::read_to_string(path.join(SKILL_MODULE)).ok(),
-            std::fs::read_to_string(path.join(SKILL_ON_USE)).ok(),
+            read_code_files(path, SKILL_MODULE_STEM),
+            read_code_files(path, SKILL_ON_USE_STEM),
         ));
     }
     if !path.is_file()
@@ -592,8 +695,8 @@ pub(crate) fn parse_skill(raw: &str, fallback_name: &str) -> Skill {
         name,
         description,
         body: body.trim().to_string(),
-        code: None,
-        on_use: None,
+        code: CodeFiles::new(),
+        on_use: CodeFiles::new(),
     }
 }
 

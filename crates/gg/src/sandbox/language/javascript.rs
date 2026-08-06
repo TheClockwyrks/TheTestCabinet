@@ -118,6 +118,12 @@ impl ProgramLanguage for JavaScript {
         Ok(typescript::prepare::prepare_module(source)?)
     }
 
+    /// `.js` first, `.ts` accepted — [TypeScript's list](super::typescript), with the preference
+    /// the other way round. The strip is the same one, so a module spelled either way runs here.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["js", "ts"]
+    }
+
     /// [camelCase](super::typescript::binding_name) — this SDK's convention, and it is this SDK.
     fn binding_name(&self, name: &str) -> String {
         typescript::binding_name(name)

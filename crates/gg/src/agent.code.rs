@@ -2467,14 +2467,37 @@ impl ToolApi for LoopToolApi {
             // model, so a skill whose code does not compile still reads: the body is what the model
             // asked for, and the failure is appended as a sentence rather than turned into a refusal
             // of a skill that may be mostly prose.
+            // Resolved against **this agent's** language: a skill directory may carry a module per
+            // language, and only one of them is a module this program could evaluate.
             let skill = library.get(&name);
-            api.bring_into_use(
-                KnowledgeOrigin::Skill,
-                &name,
-                skill.and_then(crate::skills::Skill::code),
-                skill.and_then(crate::skills::Skill::on_use),
-                outcome,
-            )
+            let code = skill.and_then(|skill| skill.code(api.language));
+            let on_use = skill.and_then(|skill| skill.on_use(api.language));
+            // A skill that carries code in no language this agent writes reads as pure prose, which
+            // is the right outcome and a silent one. The operator is told, because a directory
+            // holding a module nothing in the run can evaluate is an authoring mistake rather than
+            // a configuration; the model is not, because what other languages exist is not its
+            // business and naming them would vary a prompt between arms.
+            if let Some(skill) = skill
+                && skill.has_code()
+                && code.is_none()
+                && on_use.is_none()
+            {
+                api.emitter.emit(log(
+                    "warn",
+                    format!(
+                        "the skill `{name}` carries code spelled {} — none of which {} reads, so \
+                         it was read as prose",
+                        skill
+                            .code_spellings()
+                            .iter()
+                            .map(|extension| format!("`.{extension}`"))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        api.language.display_name(),
+                    ),
+                ));
+            }
+            api.bring_into_use(KnowledgeOrigin::Skill, &name, code, on_use, outcome)
         })
     }
     fn write_memory(

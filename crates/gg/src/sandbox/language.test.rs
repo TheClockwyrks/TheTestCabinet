@@ -80,6 +80,43 @@ fn every_registered_language_carries_its_committed_artifacts() {
     }
 }
 
+/// **Every language names a spelling for a code skill's files, and writes exactly one of them.**
+///
+/// A skills directory is authored once and read by every agent in the run, so a skill's module has
+/// one file name per language and each agent reads its own. A language that named none would be one
+/// whose agents can never be handed a code skill at all — a capability silently absent on that arm
+/// alone, which is the shape of gap a cross-language study cannot survive.
+///
+/// The [fixture](super::fixture) languages are held to it too, because the mechanism is only
+/// exercised where two languages disagree about the spelling.
+#[test]
+fn every_language_names_the_files_a_code_skill_is_spelled_with() {
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let extensions = language.module_file_extensions();
+        assert!(
+            !extensions.is_empty(),
+            "{} names no module file extension",
+            language.display_name()
+        );
+        assert_eq!(
+            language.module_file_extension(),
+            extensions[0],
+            "{}: the spelling it writes is not the first one it names",
+            language.display_name()
+        );
+        for extension in extensions {
+            assert!(
+                !extension.is_empty()
+                    && extension
+                        .chars()
+                        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+                "{}: `{extension}` is not a bare lower-case file extension",
+                language.display_name()
+            );
+        }
+    }
+}
+
 /// **A run that names no language gets the default**, whether the capability is off, on with no
 /// params, or on with a null one — and none of those is reported as an unreadable setting.
 #[test]

@@ -50,7 +50,8 @@ use crate::sandbox::{
 /// that loaded it calls the thing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum KnowledgeOrigin {
-    /// An authored [skill](crate::skills)'s `skill.ts` / `on-use.ts`.
+    /// An authored [skill](crate::skills)'s module / on-use script, in whichever spelling this
+    /// agent's language reads (`skill.ts`, `skill.py`).
     Skill,
     /// A [memory](crate::memories) the model wrote, with `code` / `onUse`.
     Memory,

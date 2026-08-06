@@ -39,6 +39,23 @@ one of two shapes:
     on-use.ts               optional — the script gg runs when the skill is first read
 ```
 
+The two code files are named for the **program language** they are written in — `skill.ts`
+and `on-use.ts` for a TypeScript agent, `skill.py` and `on-use.py` for a Python one. A
+directory may carry several, and it needs to: a [program's language](/gg/program-languages/)
+is resolved **per agent**, so one run can drive two agents that could not evaluate each
+other's modules. Each agent reads the spelling its own language names, and the prose half —
+`skill.md` — is the same text for all of them.
+
+Where two languages share one module runtime, each accepts the other's spelling and merely
+prefers its own: a `skill.ts` reaches a JavaScript agent too, because those two arms differ
+in whether a program is type-checked and a skill present on one and absent on the other
+would be a much larger difference than the one they exist to measure.
+
+A skill whose code is spelled in no language the reading agent writes is read as **prose**:
+the body arrives as it always does, nothing is bound, and the *operator* is told (the model
+is not — which languages a directory was authored for is not the agent's business, and
+naming them would vary a prompt between arms).
+
 - **`<name>.md`** — a prose skill. A small YAML front-matter block naming it
   (`name`, `description`), then the body. Exactly what a skill has always been, and still
   the right shape for a skill that is only guidance.
@@ -55,7 +72,7 @@ same skill twice does not pin a second copy.
 
 ## Code skills
 
-A skill's `skill.ts` and `on-use.ts` are **[responses-as-code](/gg/responses-as-code/)
+A skill's `skill.<ext>` and `on-use.<ext>` are **[responses-as-code](/gg/responses-as-code/)
 only**. A run under native tool calling sees the prose half of a skill and nothing else:
 there are no programs for a module to be bound into, so gg does not pretend otherwise by
 showing the model source it cannot call.
@@ -113,7 +130,7 @@ sentence naming the skill and what went wrong — an accusation about code it ca
 be worse than useless — and the turn's own outcome is untouched: the model's program
 succeeded or failed on its own merits, whatever a skill's script then did.
 
-Neither half can break a read. A skill whose `skill.ts` or `on-use.ts` does not compile is
+Neither half can break a read. A skill whose module or on-use script does not compile is
 still **read**: the body is what the model asked for, and the diagnostic is appended to it
 rather than replacing it. And a skill whose *compiler could not finish* — a crash, a
 timeout, a toolchain missing from the image — is not reported as a skill that failed to

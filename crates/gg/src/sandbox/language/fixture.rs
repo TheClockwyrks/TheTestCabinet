@@ -213,6 +213,13 @@ impl ProgramLanguage for FixtureLanguage {
         })
     }
 
+    /// One extension, and one nothing else claims: a language whose modules only its own runtime
+    /// could evaluate is the ordinary case, and the seam is exercised against it precisely because
+    /// the two registered languages happen to be the exception.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["fixture"]
+    }
+
     fn guest_component(&self) -> &'static [u8] {
         COMPONENT
     }

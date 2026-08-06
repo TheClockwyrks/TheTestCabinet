@@ -188,6 +188,16 @@ impl ProgramLanguage for TypeScript {
         Ok(prepared)
     }
 
+    /// `.ts` first, `.js` accepted.
+    ///
+    /// The second entry is not a courtesy: the [JavaScript](super::javascript) arm shares this
+    /// language's strip, so both arms can evaluate either spelling, and an arm that could not read a
+    /// skill the other could would differ from it in what its agents *have* rather than in the one
+    /// thing the pair exists to vary.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["ts", "js"]
+    }
+
     /// [camelCase](self::binding_name), the convention this SDK spells every bound function in.
     fn binding_name(&self, name: &str) -> String {
         binding_name(name)

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use tempfile::TempDir;
-use test_cabinet_core::gg::GgTelemetryKind;
+use test_cabinet_core::gg::{GgProgramLanguage, GgTelemetryKind};
 
 use super::*;
 
@@ -202,4 +202,131 @@ fn state_event_reflects_which_skills_are_read() {
     assert!(a.read);
     assert_eq!(a.description, "does a.");
     assert!(!skills.iter().find(|s| s.name == "b").unwrap().read);
+}
+
+// ---------------------------------------------------------------------------
+// A skill's code, per language
+// ---------------------------------------------------------------------------
+
+/// A skill directory with `files` written into it, under a library loaded from its parent.
+fn library_with(files: &[(&str, &str)]) -> (TempDir, SkillLibrary) {
+    let root = TempDir::new().unwrap();
+    let dir = root.path().join("helpers");
+    std::fs::create_dir(&dir).unwrap();
+    write(
+        &dir,
+        "skill.md",
+        "---\nname: helpers\ndescription: helps.\n---\nProse.",
+    );
+    for (name, contents) in files {
+        write(&dir, name, contents);
+    }
+    let library = SkillLibrary::load(root.path());
+    (root, library)
+}
+
+/// The registered language with the given id.
+fn lang(id: GgProgramLanguage) -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(id)
+}
+
+/// **Each language reads the module spelled the way it spells one.**
+///
+/// One directory, two modules, two agents: the whole point of keying a skill's code rather than
+/// holding one string. The fixture language stands in for the ordinary case — a language whose
+/// modules nothing else could evaluate — so the two answers here are genuinely different files.
+#[test]
+fn each_language_reads_the_module_spelled_for_it() {
+    let (_root, library) = library_with(&[
+        ("skill.ts", "export const which = \"typescript\";"),
+        ("skill.fixture", "def which(): return \"fixture\""),
+    ]);
+    let skill = library.get("helpers").expect("the skill loaded");
+
+    assert_eq!(
+        skill.code(lang(GgProgramLanguage::TypeScript)),
+        Some("export const which = \"typescript\";")
+    );
+    let fixture = crate::sandbox::fixture_languages().next().unwrap();
+    assert_eq!(skill.code(fixture), Some("def which(): return \"fixture\""));
+}
+
+/// **A skill authored in a language this agent does not write offers it no code at all** — and its
+/// prose still reads.
+///
+/// The alternative — refusing the read, or handing the agent a module it cannot evaluate — would
+/// make a skill's shared half unusable because its unshared half was authored elsewhere.
+#[test]
+fn a_module_in_another_language_is_not_offered() {
+    let (_root, library) = library_with(&[("skill.fixture", "def helper(): return 1")]);
+    let skill = library.get("helpers").expect("the skill loaded");
+
+    assert_eq!(skill.code(lang(GgProgramLanguage::TypeScript)), None);
+    assert!(skill.has_code(), "the skill does carry code, just not ours");
+    assert_eq!(skill.code_spellings(), vec!["fixture"]);
+    assert_eq!(skill.body(), "Prose.");
+}
+
+/// **The two arms that share a runtime share a skill's code**, and each prefers its own spelling.
+///
+/// TypeScript and JavaScript differ in whether a program is type-checked and in nothing else. A
+/// directory carrying only `skill.ts` must therefore reach the JavaScript agent too: a skill present
+/// on one arm and absent on the other would be a far larger difference than the one the pair exists
+/// to measure. Where both spellings are present, each arm still takes its own.
+#[test]
+fn the_two_ecmascript_arms_read_each_others_spellings_but_prefer_their_own() {
+    let (_root, only_ts) = library_with(&[("skill.ts", "export const a = 1;")]);
+    let skill = only_ts.get("helpers").unwrap();
+    assert_eq!(
+        skill.code(lang(GgProgramLanguage::JavaScript)),
+        Some("export const a = 1;"),
+        "a `.ts` module must reach the unchecked arm"
+    );
+
+    let (_root, both) = library_with(&[
+        ("skill.ts", "export const a = 1;"),
+        ("skill.js", "export const a = 2;"),
+    ]);
+    let skill = both.get("helpers").unwrap();
+    assert_eq!(
+        skill.code(lang(GgProgramLanguage::TypeScript)),
+        Some("export const a = 1;")
+    );
+    assert_eq!(
+        skill.code(lang(GgProgramLanguage::JavaScript)),
+        Some("export const a = 2;")
+    );
+}
+
+/// An on-use script is resolved exactly as a module is, and the two halves are independent: a
+/// directory may spell one of them for a language and not the other.
+#[test]
+fn an_on_use_script_is_resolved_per_language_too() {
+    let (_root, library) = library_with(&[
+        ("on-use.ts", "view.openText(\"hi\", \"there\");"),
+        ("skill.fixture", "def helper(): return 1"),
+    ]);
+    let skill = library.get("helpers").unwrap();
+
+    let typescript = lang(GgProgramLanguage::TypeScript);
+    assert_eq!(
+        skill.on_use(typescript),
+        Some("view.openText(\"hi\", \"there\");")
+    );
+    assert_eq!(skill.code(typescript), None);
+
+    let fixture = crate::sandbox::fixture_languages().next().unwrap();
+    assert_eq!(skill.on_use(fixture), None);
+    assert_eq!(skill.code(fixture), Some("def helper(): return 1"));
+}
+
+/// A blank module file is not a module: it is dropped rather than bound, so an agent is never handed
+/// a `lib.<key>` that exports nothing.
+#[test]
+fn a_blank_module_file_is_not_loaded() {
+    let (_root, library) = library_with(&[("skill.ts", "   \n\n"), ("on-use.ts", "")]);
+    let skill = library.get("helpers").unwrap();
+    assert!(!skill.has_code());
+    assert_eq!(skill.code(lang(GgProgramLanguage::TypeScript)), None);
+    assert_eq!(skill.on_use(lang(GgProgramLanguage::TypeScript)), None);
 }

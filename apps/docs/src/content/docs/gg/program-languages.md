@@ -692,8 +692,11 @@ one.**
    preparing it needs warmed before the first turn, the
    binding-name convention, the synthesized file-view statement, the **program that opens a
    documentation view per name** (the on-use script of every built-in family skill, and the one
-   thing gg generates rather than quotes), the healing dialect, the prompt dialect, the two
-   templates (`system-code.python.hbs`, `code-nothing-shown.python.hbs`) — whose every quoted
+   thing gg generates rather than quotes), the **file extensions a code skill's module and
+   on-use script are spelled with** in this language (`skill.py`, `on-use.py` — a skills
+   directory is authored once and read by every agent, and language is resolved per agent, so a
+   skill's code has one file name per language and each agent reads its own), the healing
+   dialect, the prompt dialect, the two templates (`system-code.python.hbs`, `code-nothing-shown.python.hbs`) — whose every quoted
    call is an `{{api.…}}` reference and never a literal — and the healing fixtures its dialect
    must survive.
 8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —

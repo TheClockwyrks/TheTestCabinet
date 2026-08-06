@@ -38,7 +38,7 @@ use std::collections::BTreeSet;
 use serde_json::Value;
 use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::{Skill, parse_skill};
+use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
 use crate::model::ToolDefinition;
 
@@ -367,8 +367,15 @@ fn built_in_code(family: &Family, docs: &crate::docs::DocsRuntime) -> Option<Ski
     // The program itself is the language's to write — its list syntax, its loop, its statement
     // terminator, and the spelling of the call. gg supplies the names and nothing else.
     let names: Vec<&str> = functions.iter().map(String::as_str).collect();
-    let script = docs.language().open_docs_views_statement(&names);
-    Some(skill(family, String::new(), Some(script)))
+    // Generated for **this** agent's language, so it is keyed under the extension that language
+    // writes — the same key a skill directory would have spelled it with.
+    let language = docs.language();
+    let script = language.open_docs_views_statement(&names);
+    Some(skill(
+        family,
+        String::new(),
+        Some((language.module_file_extension(), script)),
+    ))
 }
 
 /// A [`Skill`] for `family` with the given body and on-use script, marked
@@ -377,12 +384,17 @@ fn built_in_code(family: &Family, docs: &crate::docs::DocsRuntime) -> Option<Ski
 /// It goes through [`parse_skill`] rather than constructing a `Skill` directly so a built-in is
 /// assembled by exactly the code an authored skill is, front matter included — there is one parser,
 /// and no second way for a skill to come into being.
-fn skill(family: &Family, body: String, on_use: Option<String>) -> Skill {
+fn skill(family: &Family, body: String, on_use: Option<(&'static str, String)>) -> Skill {
     let raw = format!(
         "---\nname: {}\ndescription: {}\n---\n{body}",
         family.id, family.description
     );
-    parse_skill(&raw, family.id).with_code(None, on_use)
+    parse_skill(&raw, family.id).with_code(
+        CodeFiles::new(),
+        on_use
+            .map(|(extension, source)| CodeFiles::from([(extension.to_string(), source)]))
+            .unwrap_or_default(),
+    )
 }
 
 #[cfg(test)]

@@ -561,8 +561,9 @@ Beside the tool objects there is one more thing a program can find in its scope:
 the code the agent has loaded. Its contents come from exactly two places, and both are
 things the agent read:
 
-- a [**code skill**](/gg/skills/#code-skills) — a skill directory's `skill.ts`, authored
-  ahead of the run; and
+- a [**code skill**](/gg/skills/#code-skills) — a skill directory's module, authored ahead
+  of the run in this language's own file (`skill.ts` here, `skill.py` on a Python agent);
+  and
 - a [**code memory**](/gg/memories/#code-memories) — the `code` a program handed
   `memory.writeMemory` (or `createMemory` / `updateMemory`), which the model wrote itself.
 

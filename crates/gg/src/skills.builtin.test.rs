@@ -60,9 +60,9 @@ fn the_native_body_is_built_from_the_live_tool_definitions() {
         "{body}"
     );
     assert!(body.contains("`limit` (integer, optional)"), "{body}");
-    // Native mode has no programs to bind code into, so a built-in carries none.
-    assert_eq!(skills[0].code(), None);
-    assert_eq!(skills[0].on_use(), None);
+    // Native mode has no programs to bind code into, so a built-in carries none — in any
+    // language, which is what `has_code` asks.
+    assert!(!skills[0].has_code());
 }
 
 #[test]
@@ -87,8 +87,13 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
         .find(|skill| skill.name() == "gg-filesystem")
         .expect("the filesystem family is offered");
     assert_eq!(fs.body(), "");
-    assert_eq!(fs.code(), None, "a built-in exposes no importable code");
-    let script = fs.on_use().expect("the code arm carries a script");
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    assert_eq!(
+        fs.code(language),
+        None,
+        "a built-in exposes no importable code"
+    );
+    let script = fs.on_use(language).expect("the code arm carries a script");
     assert!(script.contains("view.openDocsView(name)"), "{script}");
     assert!(script.contains("\"readFile\""), "{script}");
     // `list` documents itself and is on every object; eleven identical blocks would be eleven too
@@ -141,7 +146,9 @@ fn a_reviewers_session_skill_documents_the_reviewers_ending() {
         .iter()
         .find(|skill| skill.name() == "gg-session")
         .expect("every role has an ending");
-    let script = session.on_use().expect("a script");
+    let script = session
+        .on_use(crate::sandbox::language(GgProgramLanguage::TypeScript))
+        .expect("a script");
     // A reviewer has no `finish`, so its skill must not open a view of one.
     assert!(script.contains("\"approve\""), "{script}");
     assert!(!script.contains("\"finish\""), "{script}");
