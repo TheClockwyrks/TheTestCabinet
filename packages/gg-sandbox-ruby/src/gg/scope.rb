@@ -21,11 +21,117 @@ module GG
       # Forwarded explicitly rather than bound with `define_singleton_method(name, &callable)`,
       # which reads better and silently drops the caller's block — so `fs.write_file(path) { … }`
       # would arrive with no body and fail on an argument the program did supply.
+      #
+      # The keyword check is the second thing this forwarder exists for, and it is the same class
+      # of hazard as the dropped block: an argument the program DID supply going nowhere. Opal
+      # lowers keyword arguments to a trailing hash and never reads the extra keys, so
+      # `project.create_issue(…, reviewer: ["r1"])` — the singular/plural typo — is otherwise
+      # accepted, and the issue is created with `reviewers: []` while the program believes it named
+      # one. `arity_check` does not cover this half: it counts positionals and catches a MISSING
+      # required keyword, and an unknown one is invisible to it. This forwarder is the only place
+      # that knows both what was passed and what the target declares, so it is where CRuby's
+      # `ArgumentError: unknown keyword:` is put back.
       members.each do |name, callable|
+        accepted = ApiObject.keywords(callable)
+        arity = ApiObject.arity(callable)
         define_singleton_method(name) do |*args, **kwargs, &block|
-          kwargs.empty? ? callable.call(*args, &block) : callable.call(*args, **kwargs, &block)
+          fn = "#{object}.#{name}"
+          ApiObject.check_arity(fn, arity, args.length)
+          next callable.call(*args, &block) if kwargs.empty?
+
+          ApiObject.check_keywords(fn, accepted, kwargs)
+          callable.call(*args, **kwargs, &block)
         end
       end
+    end
+
+    # The keyword arguments a bound callable declares.
+    #
+    # @param callable [Method, Proc] the SDK function bound onto an object
+    # @return [Array<String>, nil] the declared keyword names, or nil when it takes `**` and there
+    #   is therefore no set to be outside of
+    def self.keywords(callable)
+      declared = callable.parameters
+      return nil if declared.any? { |(kind, _name)| kind == :keyrest }
+
+      declared.select { |(kind, _name)| kind == :key || kind == :keyreq }
+              .map { |(_kind, name)| name.to_s }
+    end
+
+    # How many positional arguments a bound callable takes, as `[minimum, maximum]`.
+    #
+    # A `nil` maximum is a splat: `context.archive_thread(*ranges)` takes any number.
+    #
+    # @param callable [Method, Proc] the SDK function bound onto an object
+    # @return [Array(Integer, Integer, nil)] the fewest and the most it accepts
+    def self.arity(callable)
+      minimum = 0
+      maximum = 0
+      callable.parameters.each do |(kind, _name)|
+        case kind
+        when :req
+          minimum += 1
+          maximum += 1 unless maximum.nil?
+        when :opt
+          maximum += 1 unless maximum.nil?
+        when :rest
+          maximum = nil
+        end
+      end
+      [minimum, maximum]
+    end
+
+    # Refuse a positional count the target cannot take, naming the call the way the program wrote it.
+    #
+    # Opal's own `arity_check` — which gg compiles this SDK with, and which stays on as the backstop
+    # for a program that reaches past the objects into `GG::Files` directly — raises here too, but
+    # it says two things this cannot: it names `GG::Files.read_file` rather than the `fs.read_file`
+    # the model actually wrote, and for anything with an optional argument it renders Ruby's
+    # *negative arity encoding* (`expected -3`), which is a number no CRuby message ever prints.
+    # This runs first and says `expected 1..2`.
+    #
+    # @param fn [String] the call as the program wrote it (`fs.read_file`)
+    # @param arity [Array(Integer, Integer, nil)] what {arity} reported for the target
+    # @param given [Integer] how many positional arguments arrived
+    # @return [void]
+    # @raise [ArgumentError] in CRuby's own words, naming the call
+    def self.check_arity(fn, arity, given)
+      minimum, maximum = arity
+      return if given >= minimum && (maximum.nil? || given <= maximum)
+
+      expected = if maximum.nil? then "#{minimum}+"
+                 elsif minimum == maximum then minimum.to_s
+                 else "#{minimum}..#{maximum}"
+                 end
+      raise ArgumentError,
+            "wrong number of arguments (given #{given}, expected #{expected}) — `#{fn}`"
+    end
+
+    # Refuse a keyword the target does not declare, the way CRuby would.
+    #
+    # @param fn [String] the call as the program wrote it (`project.create_issue`)
+    # @param accepted [Array<String>, nil] what the target declares; nil accepts anything
+    # @param kwargs [Hash] the keywords the program passed
+    # @return [void]
+    # @raise [ArgumentError] naming the unknown keywords and the accepted set
+    def self.check_keywords(fn, accepted, kwargs)
+      return if accepted.nil?
+
+      unknown = kwargs.keys.map(&:to_s) - accepted
+      return if unknown.empty?
+
+      # Leading colons written by hand for the reason `GG::Check.choice` writes them by hand: Opal's
+      # Symbol IS a String, so `:reviewers.inspect` is `"reviewers"` here, and a message that
+      # quoted the accepted set that way would be telling a model to write the one thing this
+      # argument does not take.
+      takes = if accepted.empty?
+                "takes no keyword arguments"
+              else
+                "takes #{accepted.map { |key| ":#{key}" }.join(", ")}"
+              end
+      raise ArgumentError,
+            "unknown keyword#{unknown.size == 1 ? "" : "s"}: " \
+            "#{unknown.map { |key| ":#{key}" }.join(", ")} — `#{fn}` #{takes}"
     end
 
     # What a program gets for a function this run did not bind.

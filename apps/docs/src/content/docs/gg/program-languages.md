@@ -354,6 +354,37 @@ One further fact a study has to record: **Opal is not CRuby.** Integer division 
 loses precision; and `:done.class` is `String`. All three are asserted against the committed
 artifact rather than described in prose, so the claim is checkable.
 
+**Arity is checked, and Opal defaults it off.** This is the fourth divergence, and the only one gg
+pays to remove rather than record. Opal compiles a `def` to a JavaScript function that binds a
+missing parameter to `undefined` and carries on, so `def two(a, b)` called with one argument does
+not raise — it dies further down with `can't access property "$inspect", b is undefined`, a message
+naming a variable of the *compiled JavaScript*, which is the single leak the source map gg appends
+to every compile exists to prevent. gg therefore compiles with
+`arity_check` on: the model's program, this SDK, and the curated libraries. Measured on a
+method-dense 30-line program, the compiled output grows about a third and the compile itself is not
+measurably slower.
+
+Two edges of that promise are worth stating precisely, because both are asserted against the
+artifact:
+
+- **Opal's corelib is outside it.** `Array`, `Hash`, `String` and `Integer` arrive *already
+  compiled* inside `opal-runtime`'s `opal.js`, built by Opal with the flag off, and gg does not
+  recompile them. `[1, 2].fetch` with no argument is not an `ArgumentError` — the method reads past
+  its arguments and the JavaScript engine raises, so a bare `rescue` (which is `rescue
+  StandardError`) does not see it at all and `rescue Exception` catches a bare `Exception` carrying
+  no clue what was wrong. The system prompt's promise is scoped to the model's own methods and the
+  SDK's functions for exactly this reason.
+- **`arity_check` does not see an *unknown* keyword.** It counts positionals and catches a missing
+  *required* keyword; Opal lowers keyword arguments to a trailing hash and never reads the extra
+  keys. So `project.create_issue(…, reviewer: ["r1"])` — the singular/plural typo — was accepted,
+  and the issue was created with `reviewers: []` while the program believed it had named one.
+  `GG::ApiObject`, the forwarder that binds each function onto its API object, is the one place that
+  knows both what was passed and what the target declares, and it raises CRuby's own
+  `unknown keyword: :reviewer` naming the accepted set. It checks the positional count there too,
+  so the refusal names `fs.read_file` — the call the model wrote — rather than the internal
+  `GG::Files.read_file`, and renders `expected 1..2` rather than Ruby's negative arity encoding
+  (`expected -3`), which is a number no CRuby message ever prints.
+
 One difference runs the *other* way from Python's, and is worth naming beside that arm's
 [caution about a parked guest](#wasi): Ruby's `sleep` is a **busy wait** in Opal rather than a park
 in a host call, so the execution deadline reaches it exactly as it reaches any other runaway. A

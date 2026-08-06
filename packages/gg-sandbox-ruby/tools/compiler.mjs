@@ -91,6 +91,24 @@ const REQUIRES = ["corelib/string/unpack", "opal/compiler", "opal/source_map"];
  * thing that puts the Ruby file and line into the artifact at all — `Method#source_location` inside
  * a program answers truthfully with it and lies without it.
  *
+ * **`arity_check` is on, and it is not optional here.** Opal defaults it OFF, and off means a `def`
+ * compiles to a JavaScript function that binds a missing parameter to `undefined` and carries on:
+ * `def two(a, b)` called with one argument does not raise, it dies further down with
+ * `can't access property "$inspect", b is undefined` — a message naming a variable of the COMPILED
+ * JavaScript, which is the single leak the source map exists to prevent, and a sentence no Ruby
+ * author can act on. With it on, Opal emits `$ac(...)` and the program gets Ruby's own
+ * `ArgumentError: [Object#two] wrong number of arguments (given 1, expected 2)`. That is the whole
+ * of what the system prompt promises a Ruby program, so it is paid for unconditionally.
+ *
+ * Measured on a method-dense ~30-line program, this repository's dev container: compiled output
+ * 2795 -> 3705 bytes (+33%), compile time unchanged within noise (48.2 ms against 48.1 ms over 20
+ * runs each, interleaved). Size is the cost; the compile is not slower.
+ *
+ * It checks POSITIONAL count and MISSING REQUIRED keywords. An *unknown* keyword it does not see —
+ * Opal lowers keyword arguments to a trailing hash and never looks at the extra keys. That half is
+ * caught in the guest by `GG::ApiObject`, which knows what each SDK function declares; see
+ * `src/gg/scope.rb`.
+ *
  * **A source map is appended to every compile**, and it is what makes a run-time error point at the
  * line the model wrote. The guest evaluates JavaScript, so a raise carries a position in the
  * *compiled* file; the Ruby guest reads this map back — lazily, only when something raised — and
@@ -157,7 +175,11 @@ const DRIVER = `
 
   var compiled;
   try {
-    var compiler = Compiler.$new(source, Opal.hash({ file: file, enable_source_location: true }));
+    var compiler = Compiler.$new(source, Opal.hash({
+      file: file,
+      enable_source_location: true,
+      arity_check: true,
+    }));
     compiled = String(compiler.$compile()) + sourceMappingURL(compiler);
   } catch (thrown) {
     // A throw with no Ruby class is the compiler itself breaking, not the program being rejected.

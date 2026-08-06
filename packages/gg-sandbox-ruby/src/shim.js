@@ -389,9 +389,15 @@ function locate(thrown, program) {
  *
  * The class and the message are Ruby's own — `ArgumentError: wrong number of arguments` — because
  * that is the sentence the model can act on, and it is a *different* sentence from the compiled
- * JavaScript's `TypeError`. A `GG::ToolError` is reported as the tool failure it is, carrying the
- * membrane's own code, so gg classifies the turn from the code rather than from what this guest
- * made of the raise.
+ * JavaScript's `TypeError`. That is only true because gg compiles both the model's program and the
+ * SDK with `arity_check`; with Opal's default the same mistake arrives here as a raw JavaScript
+ * `TypeError` naming a compiled variable, and `describe` below is what renders it. A `GG::ToolError`
+ * is reported as the tool failure it is, carrying the membrane's own code, so gg classifies the turn
+ * from the code rather than from what this guest made of the raise.
+ *
+ * A throw with no `$$class` is not a Ruby exception at all and is reported as what it is. Opal's
+ * precompiled corelib is the one place that still produces one — it is outside gg's compile, so
+ * `[1, 2].fetch` with no argument is a JavaScript `TypeError` rather than an `ArgumentError`.
  */
 function report(thrown, program, objects, lib) {
   const location = locate(thrown, program);

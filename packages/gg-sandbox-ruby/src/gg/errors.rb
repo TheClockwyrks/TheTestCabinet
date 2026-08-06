@@ -38,9 +38,14 @@ module GG
   # The argument checks every wrapper runs before it lowers anything onto the wire.
   #
   # Nothing type-checks a model's program: Opal compiles it and the guest runs it, and Ruby binds
-  # arguments by name and arity alone. Ruby's own `ArgumentError` already covers the mistakes that
-  # matter most — a missing required argument, an unknown keyword — and names the method while
-  # doing it. What it cannot see is a value of the right *class* and the wrong *range*:
+  # arguments by name and arity alone. An `ArgumentError` already covers the mistakes that matter
+  # most, and names the call while doing it — a wrong positional count from the `arity_check` gg
+  # compiles both this SDK and the model's program with, and an unknown keyword from
+  # `GG::ApiObject`, which is the one place that knows both what was passed and what the target
+  # declares. Neither of those is free on this substrate and neither belongs here; see
+  # `tools/compiler.mjs` and `scope.rb` for what each costs.
+  #
+  # What an `ArgumentError` cannot see is a value of the right *class* and the wrong *range*:
   # `fs.read_file("a.rb", offset: -1)` lowers to a `u32` by two's-complement wrap and fails for a
   # reason that has nothing to do with what was written. These cover exactly that gap.
   #

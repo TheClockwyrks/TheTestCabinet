@@ -106,9 +106,27 @@ function opalCompiler() {
 
 const Compiler = opalCompiler();
 
-/** Compile one Ruby source. `requirable` wraps it as an `Opal.modules[name]` a `require` can find. */
+/**
+ * Compile one Ruby source. `requirable` wraps it as an `Opal.modules[name]` a `require` can find.
+ *
+ * The options match the ones the HOST compiles a model's program with, in
+ * `tools/compiler.mjs`'s driver, and they have to: a program and the SDK it calls are lowered by
+ * one compiler against one runtime, so a promise that holds on one side and not the other is worse
+ * than no promise. `arity_check` in particular is what makes `fs.read_file()` with no argument
+ * `ArgumentError: [GG::Files.read_file] wrong number of arguments (given 0, expected 1)` instead of
+ * a `nil` path that crosses the membrane and comes back as
+ * `TypeError: expected a string, received [undefined]` — a sentence about the wire, for a mistake
+ * in the program.
+ *
+ * It is on for the libraries too, not only for gg's SDK, so the rule has no exception a model has
+ * to learn: **everything gg compiles is arity-checked**. What gg does not compile is Opal's own
+ * corelib — `Array`, `Hash`, `String`, `Integer` arrive precompiled inside `opal-runtime`'s
+ * `opal.js` and are checked by whatever Opal built them with, which is nothing. That boundary is
+ * recorded for the model in `apps/docs/src/content/docs/gg/program-languages.md` beside the other
+ * Opal divergences rather than papered over here.
+ */
 function compile(source, file, requirable) {
-  const options = { file, enable_source_location: true };
+  const options = { file, enable_source_location: true, arity_check: true };
   if (requirable) options.requirable = true;
   return String(Compiler.$new(source, globalThis.Opal.hash(options)).$compile());
 }

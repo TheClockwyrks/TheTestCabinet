@@ -64033,7 +64033,11 @@ Opal.require("opal/source_map");
 
   var compiled;
   try {
-    var compiler = Compiler.$new(source, Opal.hash({ file: file, enable_source_location: true }));
+    var compiler = Compiler.$new(source, Opal.hash({
+      file: file,
+      enable_source_location: true,
+      arity_check: true,
+    }));
     compiled = String(compiler.$compile()) + sourceMappingURL(compiler);
   } catch (thrown) {
     // A throw with no Ruby class is the compiler itself breaking, not the program being rejected.

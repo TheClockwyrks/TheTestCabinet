@@ -35,12 +35,18 @@ Before it runs, your program is compiled to JavaScript with `opal`, which
 implements Ruby 3.2. A program the compiler refuses is **not executed**: you get
 its own message, at the line of the code you wrote, and write another program.
 
-There is no type check — this is Ruby — so a misspelled method or a wrong
-argument count reaches you as an exception while your program is running rather
-than before it starts. Two consequences worth knowing:
+There is no type check — this is Ruby — so a misspelled method, a wrong argument
+count or a misspelled keyword reaches you as an exception while your program is
+running rather than before it starts. Four consequences worth knowing:
 
 - an uncaught exception ends your program and is reported back to you with its
   class, its message and the line of *your* Ruby it was raised on;
+- calling anything — your own methods or the functions below — with the wrong
+  number of positional arguments raises `ArgumentError` naming the count, so a
+  missing argument stops the program instead of arriving as `nil`;
+- passing a keyword a function does not declare raises `ArgumentError` naming it
+  and listing the ones it does take, so `reviewer:` for `reviewers:` is refused
+  rather than quietly dropped;
 - valid Ruby the compiler has no lowering for is refused the same way a typo is.
   `BEGIN { … }` is the one you are most likely to reach for; write ordinary
   top-level code instead.

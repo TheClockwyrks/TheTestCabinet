@@ -25,6 +25,14 @@
 # policies: there is no `bigdecimal` (Opal's needs a JavaScript big-number library gg does not
 # carry), and there is no `fileutils`, `socket` or `net/http` (Opal ships those only for its Node
 # and browser platforms, and this guest is neither).
+#
+# And one presence that is weaker than its name: `SecureRandom` here is **not** cryptographically
+# secure. Baking this component prints, once per entry point, "Can't get a Crypto.getRandomValues
+# interface or Crypto.randomBytes" — the engine `componentize-js` bakes exposes neither, so Opal
+# falls back to the ordinary PRNG behind `Kernel#rand`. It is fine for an id and wrong for a secret,
+# and a program that needs the second does not have it. (This is a quality caveat and not a
+# determinism one: `SecureRandom.hex`, `rand` and `Time.now` all differ between two instantiations
+# of the committed artifact, so `wizer` has not frozen a seed into the snapshot.)
 
 # --- Data, text and encoding ---
 require "json"
