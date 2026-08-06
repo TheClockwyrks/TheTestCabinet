@@ -48,10 +48,11 @@ const ALL_VARS: &[&str] = &[
 ];
 
 fn clear_all() {
-    for var in ALL_VARS
-        .iter()
-        .chain(test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS.iter())
-    {
+    for var in ALL_VARS.iter().copied().chain(
+        test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS
+            .iter()
+            .map(String::as_str),
+    ) {
         unsafe { std::env::remove_var(var) };
     }
 }

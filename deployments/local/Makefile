@@ -155,10 +155,13 @@ RUN_IMAGE_TAG    := local
 #   - adversarial and performance runs each execute in their own image;
 #   - a `gg` run executes in the `-gg` VARIANT of the image its test type resolves —
 #     that image plus the language toolchains its responses-as-code programs are
-#     compiled with. Each is `FROM` its parent, so build.sh builds the parent first
-#     when it is missing, and only the variant ref is imported (the parent's layers
-#     are baked into it). A local gg run needs these imported or it schedules against
-#     an image the cluster does not have.
+#     compiled with. There is one per run image (a program's language is resolved per
+#     agent, so a gg run of ANY kind may drive a compiled-language agent), and each is
+#     `FROM` its parent, so build.sh builds the parent first when it is missing and only
+#     the variant ref is imported (the parent's layers are baked into it). A local gg run
+#     needs these imported or it schedules against an image the cluster does not have —
+#     which is what doubles the full `run-images` set; `run-images-gg` rebuilds just
+#     them, and `run-image-<name>-gg` just one.
 #
 # `blender` (the `blender-character` asset kind) is a full member of the asset group:
 # core's resolve_run_image maps that kind to `test-cabinet-blender`, the local overlay
@@ -173,7 +176,9 @@ GAME_JAM_IMAGE_NAMES    := game-jam
 ASSET_IMAGE_NAMES       := sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music
 ADVERSARIAL_IMAGE_NAMES := adversarial
 PERFORMANCE_IMAGE_NAMES := performance
-GG_IMAGE_NAMES          := base-wasm-gg full-stack-2d-gg game-jam-gg
+# One per run image above, derived rather than listed for the same reason core derives
+# the name: there is exactly one variant per image and no list that could be missing one.
+GG_IMAGE_NAMES          := $(addsuffix -gg,$(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES))
 
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
@@ -437,12 +442,13 @@ run-images-performance: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-performance:
 	$(call build_import_run_images,$(PERFORMANCE_IMAGE_NAMES),$(call run_image_refs,$(PERFORMANCE_IMAGE_NAMES)))
 
-# `-gg` rebuilds the gg variants: each run image gg is pointed at, plus the language
-# toolchains a responses-as-code program is compiled with. build.sh builds the shared
-# toolchain builder first (always — it carries the compilers, so a stale one would bake
-# yesterday's toolchain in) and each variant's parent when that is missing, which for
-# the full-stack-2d and game-jam variants means the R2 PRESIGN credentials in .env the
-# first time. Only the variant refs are imported; their parents' layers are in them.
+# `-gg` rebuilds the gg variants: every run image, plus the language toolchains a
+# responses-as-code program is compiled with. build.sh builds the shared toolchain
+# builder first (always — it carries the compilers, so a stale one would bake yesterday's
+# toolchain in) and each variant's parent when that is missing, which for the
+# full-stack-2d, game-jam, sfx-sample and music variants means the R2 PRESIGN credentials
+# in .env the first time. Only the variant refs are imported; their parents' layers are
+# in them. This is the whole set — `make run-image-sprite-gg` rebuilds one.
 run-images-gg: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-gg:
 	$(call build_import_run_images,$(GG_IMAGE_NAMES),$(call run_image_refs,$(GG_IMAGE_NAMES)))

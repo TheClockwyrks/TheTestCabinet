@@ -18,15 +18,21 @@
 # A `<name>-gg` entry is the GG VARIANT of `<name>`: that image plus the language
 # toolchains a `gg` run's responses-as-code programs are compiled with. It is a
 # separate published image because those toolchains exist for one harness, and a run
-# driven by any other must not carry them (see containers/gg/Dockerfile). Each is
-# listed immediately after its parent, because build.sh builds in listed order and a
-# variant is `FROM` the image above it.
+# driven by any other must not carry them (see containers/gg/Dockerfile).
 #
-# The variants are deliberately a SUBSET: publishing one per run image would double
-# the set and the CI matrix for toolchains most of them would never invoke. A gg run
-# whose image has no variant falls back to the shared image with a warning
-# (`harness::gg_variant` in crates/core), so growing this list is adding the name here
-# and the match arm there — and nothing 404s in the meantime.
+# EVERY run image has one. A program's language is resolved per agent, so a gg run on
+# any case at all may drive a compiled-language agent, and there is no combination of
+# test type and asset kind for which gg may be handed an image with no compilers in it.
+# `ImageSpec::gg_variant` in crates/core derives the name the same way rather than
+# consulting a list, and `every_resolvable_image_is_one_the_build_publishes` fails the
+# build if what it resolves and what this publishes ever disagree — so a new run image
+# is TWO lines here, its own and its variant's.
+#
+# `base` is the exception, and the only one: it is the build-time parent of the images
+# below it, never a run image, so nothing resolves it and it needs no variant.
+#
+# Each variant is listed immediately after its parent, because build.sh builds in listed
+# order and a variant is `FROM` the image above it.
 set -euo pipefail
 
 cat <<'EOF'
@@ -38,26 +44,49 @@ full-stack-2d-gg
 game-jam
 game-jam-gg
 sprite
+sprite-gg
 sprite-sheet
+sprite-sheet-gg
 voxel
+voxel-gg
 voxel-animation
+voxel-animation-gg
 mc
+mc-gg
 mc-animation
+mc-animation-gg
 sn
+sn-gg
 sn-animation
+sn-animation-gg
 dc
+dc-gg
 dc-animation
+dc-animation-gg
 ui
+ui-gg
 material
+material-gg
 mc-skinned
+mc-skinned-gg
 sn-skinned
+sn-skinned-gg
 dc-skinned
+dc-skinned-gg
 blender
+blender-gg
 particle-2d
+particle-2d-gg
 particle-3d
+particle-3d-gg
 sfx-synth
+sfx-synth-gg
 sfx-sample
+sfx-sample-gg
 music
+music-gg
 adversarial
+adversarial-gg
 performance
+performance-gg
 EOF

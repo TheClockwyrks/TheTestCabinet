@@ -118,8 +118,8 @@ variable, and a compiled language needs its **compiler on the turn path** — in
 the run container, on every turn. gg itself is a single static binary copied in at
 run time, which works because a binary copies fine; a JDK does not.
 
-So each run image gg is pointed at has a `<name>-gg` variant: the same image plus
-the toolchain tree, one `COPY` on top of its parent
+So each run image has a `<name>-gg` variant: the same image plus the toolchain tree,
+one `COPY` on top of its parent
 ([`gg/Dockerfile`](gg/Dockerfile), copying out of the builder in
 [`gg-toolchains/Dockerfile`](gg-toolchains/Dockerfile)). Three facts shape it:
 
@@ -130,12 +130,15 @@ the toolchain tree, one `COPY` on top of its parent
   harness. A run driven by Claude Code or Codex must not pull gigabytes it cannot
   use — and a model that found a Swift compiler on `PATH` in an end-to-end run
   would have been handed a capability no other arm of that comparison has.
-- **Not every image has one.** The variants are a subset, listed in
-  [`image-names.sh`](image-names.sh); publishing one per run image would double the
-  set and the CI matrix for toolchains most of them would never invoke. A gg run
-  whose image has no variant falls back to the shared image with a warning
-  (`harness::gg_variant`), so growing the list is one name here and one match arm
-  there, and nothing 404s in the meantime.
+- **Every image has one, and the name is derived.** A program's language is resolved
+  per agent, so a gg run of *any* kind — an asset-generation case, an adversarial
+  case — may drive a compiled-language agent, and an image with no toolchains would
+  fail every one of that agent's programs. `ImageSpec::gg_variant` in `crates/core`
+  appends the suffix rather than consulting a list, [`image-names.sh`](image-names.sh)
+  publishes one per name, and `every_resolvable_image_is_one_the_build_publishes`
+  fails the build if what Rust resolves and what the build publishes disagree. It
+  costs a doubled image set and CI matrix; what it buys is that there is no such
+  thing as a gg run that resolves an image it cannot compile in.
 
 ## Layout
 
@@ -606,9 +609,9 @@ rebuilt when any variant is selected, because it carries the compilers a run's
 programs are judged by.
 
 Two constraints bind every toolchain added to it, and both are written down in the
-Dockerfile's header. It must be **relocatable and distribution-portable** — the
-same tree is copied to the same absolute path onto Debian-based images and onto the
-Ubuntu-based blender one. And it must be usable **isolated per invocation**:
+Dockerfile's header. It must be **relocatable and distribution-portable** — the same
+tree is copied to the same absolute path onto the Debian-based images and onto
+`blender-gg`, whose parent is Ubuntu. And it must be usable **isolated per invocation**:
 several compilers run concurrently inside one run, and a shared build strategy and
 a shared output tree have each been measured interleaving two agents' programs
 while every process exited zero.

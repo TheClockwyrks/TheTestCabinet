@@ -591,12 +591,11 @@ build_one() {
 		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
 		blender)      build_blender ;;
 		# The gg variants: the image named by the prefix, plus the gg language
-		# toolchains. Each is `FROM` its parent's local tag, so image-names.sh lists
-		# every variant immediately after the image it derives from and the layered
-		# rules below build a missing parent first.
-		base-wasm-gg)     build_gg_variant base-wasm-gg "${BASE_WASM_IMAGE}" ;;
-		full-stack-2d-gg) build_gg_variant full-stack-2d-gg "${FULL_STACK_2D_IMAGE}" ;;
-		game-jam-gg)      build_gg_variant game-jam-gg "${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}" ;;
+		# toolchains. Every run image has one and each is `FROM` the image whose name it
+		# suffixes, so one rule serves them all — image-names.sh lists every variant
+		# immediately after the image it derives from, and the layered rules below build
+		# a missing parent first.
+		*-gg)         build_gg_variant "$1" "${IMAGE_NAME_PREFIX}${1%-gg}:${IMAGE_TAG}" ;;
 		# Every other name is a plain asset-generation image `FROM` the base.
 		*)            build_asset_image "$1" ;;
 	esac
@@ -615,12 +614,12 @@ mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 # game-jam (which inherits everything from full-stack-2d). Everything else in
 # ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
 # rather than the members so a newly-added asset kind is covered by default.
-readonly NON_TOOLS_IMAGES=(
-	base base-wasm blender adversarial performance game-jam
-	# The gg variants add one COPY of the toolchain tree onto an already-built parent
-	# and bake no asset binary of their own.
-	base-wasm-gg full-stack-2d-gg game-jam-gg
-)
+#
+# The `-gg` variants are exceptions too, by pattern rather than by name: each adds one
+# COPY of the toolchain tree onto an already-built parent and bakes no asset binary of
+# its own. `select_needs_tools` applies that pattern, so a new run image's variant is
+# covered without being named here.
+readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam)
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).
@@ -650,6 +649,22 @@ for name in "${selected[@]}"; do
 	fi
 done
 
+# Put the selection into canonical (image-names.sh) order and drop duplicates. That order
+# is dependency order, so this is what makes a parent build before the image that is
+# `FROM` it whichever way the names were typed: `./build.sh sprite-gg sprite` must not
+# bake the variant on top of yesterday's sprite. `tools` sorts first — it is the builder
+# everything else copies out of.
+ordered=()
+for known in tools "${ALL_NAMES[@]}"; do
+	for name in "${selected[@]}"; do
+		if [[ "$name" == "$known" ]]; then
+			ordered+=("$known")
+			break
+		fi
+	done
+done
+selected=("${ordered[@]}")
+
 # Uphold the FROM-base and FROM-base-wasm invariants. Rebuild base (then base-wasm)
 # first if selected; otherwise, if any dependent image was selected but its parent
 # image does not exist yet, build the parent so the `FROM ${BASE_IMAGE}` in those
@@ -657,29 +672,48 @@ done
 # `base-wasm` explicitly to rebuild it after a change at that layer.
 select_has() { local x; for x in "${selected[@]}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
 
-# Whether the selection includes any image built `FROM` the base (directly, or via
-# base-wasm). Every image is, EXCEPT `blender`, which is a self-contained
-# `ubuntu:26.04` image (see build_blender) — so a selection of only `blender` must NOT
-# drag in a base build.
+# What the layered rules below actually have to reason about, which is not quite the
+# selection. A `-gg` variant is one COPY of the toolchain tree onto its parent, so it
+# brings no base-layer needs of its own — but when its parent is neither selected nor
+# already built, that parent has to be built first and ITS needs are real. `gg_parents`
+# collects exactly those parents (layer 4 builds them); `targets` is what every
+# `select_needs_*` predicate walks, so each one keeps naming plain images only and a new
+# run image's variant needs no rule of its own.
+gg_parents=()
+targets=()
+for name in "${selected[@]}"; do
+	if [[ "$name" == *-gg ]]; then
+		parent="${name%-gg}"
+		if ! select_has "${parent}" && ! image_present "${IMAGE_NAME_PREFIX}${parent}:${IMAGE_TAG}"; then
+			gg_parents+=("${parent}")
+			targets+=("${parent}")
+		fi
+	else
+		targets+=("$name")
+	fi
+done
+
+# Whether anything to be built is built `FROM` the base (directly, or via base-wasm).
+# Everything is, EXCEPT `blender`, which is a self-contained `ubuntu:26.04` image (see
+# build_blender) — so a selection of only `blender` (or only `blender-gg`) must NOT drag
+# in a base build.
 select_needs_base() {
 	local x
-	for x in "${selected[@]}"; do
+	for x in "${targets[@]}"; do
 		[[ "$x" != base && "$x" != blender ]] && return 0
 	done
 	return 1
 }
 
-# Whether the selection includes any image built `FROM` base-wasm (the Rust/wasm
-# middle layer): the full-stack-2d, adversarial, and performance images. `game-jam`
-# is `FROM` full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present
-# too, and each `-gg` variant needs whatever its parent needs. Such a selection needs
-# base-wasm present, which in turn needs base — all handled below.
+# Whether anything to be built is built `FROM` base-wasm (the Rust/wasm middle layer):
+# the full-stack-2d, adversarial, and performance images. `game-jam` is `FROM`
+# full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present too. Such a
+# selection needs base-wasm present, which in turn needs base — all handled below.
 select_needs_base_wasm() {
 	local x
-	for x in "${selected[@]}"; do
+	for x in "${targets[@]}"; do
 		case "$x" in
 			full-stack-2d | game-jam | adversarial | performance) return 0 ;;
-			base-wasm-gg | full-stack-2d-gg | game-jam-gg) return 0 ;;
 		esac
 	done
 	return 1
@@ -698,38 +732,25 @@ select_needs_gg_toolchains() {
 	return 1
 }
 
-# Whether the selection includes the game-jam-gg variant, which is `FROM` the game-jam
-# image — so that image must be present first (it in turn needs full-stack-2d,
-# base-wasm and base, all covered above).
-select_needs_game_jam() {
-	local x
-	for x in "${selected[@]}"; do
-		[[ "$x" == game-jam-gg ]] && return 0
-	done
-	return 1
-}
-
-# Whether the selection includes the game-jam image, which is built `FROM` the
+# Whether anything to be built is the game-jam image, which is built `FROM` the
 # full-stack-2d image — so full-stack-2d must be present first (it in turn needs
 # base-wasm and base, covered above).
 select_needs_full_stack_2d() {
 	local x
-	for x in "${selected[@]}"; do
-		case "$x" in
-			game-jam | game-jam-gg | full-stack-2d-gg) return 0 ;;
-		esac
+	for x in "${targets[@]}"; do
+		[[ "$x" == game-jam ]] && return 0
 	done
 	return 1
 }
 
-# Whether the selection includes any image that bakes a binary out of the shared
-# tooling builder — i.e. anything but the exceptions in NON_TOOLS_IMAGES. `game-jam`
-# is an exception only because it inherits its binaries from full-stack-2d; when a
-# game-jam selection has to build that parent, the layer-3 rule below asks for the
-# tooling itself.
+# Whether anything to be built bakes a binary out of the shared tooling builder — i.e.
+# anything but the exceptions in NON_TOOLS_IMAGES. `game-jam` is an exception only
+# because it inherits its binaries from full-stack-2d; when a game-jam selection has to
+# build that parent, the layer-3 rule below asks for the tooling itself. A `-gg` variant
+# never reaches here at all: `targets` holds its parent, not the variant.
 select_needs_tools() {
 	local x y is_exception
-	for x in "${selected[@]}"; do
+	for x in "${targets[@]}"; do
 		is_exception=""
 		for y in "${NON_TOOLS_IMAGES[@]}"; do
 			[[ "$x" == "$y" ]] && { is_exception=1; break; }
@@ -791,15 +812,15 @@ if ! select_has full-stack-2d \
 	build_full_stack_2d
 fi
 
-# Layer 4 — game-jam (the parent of game-jam-gg). Selecting only the variant must not
-# silently build it `FROM` an image that is not there; an existing game-jam is reused
-# untouched, exactly as full-stack-2d is above.
-if ! select_has game-jam \
-	&& select_needs_game_jam \
-	&& ! image_present "${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}"; then
-	echo "==> game-jam image not present; building it first (game-jam-gg is FROM it)"
-	build_game_jam
-fi
+# Layer 4 — the parent of every selected `-gg` variant that is still missing. Selecting
+# only a variant must not silently build it `FROM` an image that is not there; an
+# existing parent is reused untouched, exactly as full-stack-2d is above. The
+# `image_present` re-check is because the layers above may have just built it.
+for name in "${gg_parents[@]}"; do
+	image_present "${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}" && continue
+	echo "==> ${name} image not present; building it first (${name}-gg is FROM it)"
+	build_one "${name}"
+done
 
 # Build each selected image. The base layers and the tooling builder are already
 # handled above. The canonical order in image-names.sh places full-stack-2d before

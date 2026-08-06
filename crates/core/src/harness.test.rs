@@ -204,39 +204,33 @@ fn explicit_image_override_wins_verbatim() {
 }
 
 /// **A gg run resolves the gg variant of its image; every other harness resolves the
-/// shared one.**
+/// shared one** — for every image a run can resolve, not for a favoured few.
 ///
 /// The variant carries the language toolchains a responses-as-code program is compiled
 /// with. They are gigabytes, they exist for one harness, and a model that found a Swift
 /// compiler on `PATH` in a Claude Code run would have been handed a capability no other
 /// arm of that comparison has — so the split is the whole point, and it is asserted per
 /// harness rather than assumed.
+///
+/// The sweep is exhaustive because the failure it guards against is a run type nobody
+/// thought of gg being pointed at: a program's language is resolved per agent, so a gg run
+/// on any case at all may drive a compiled-language agent, and an image with no toolchains
+/// would fail every one of that agent's programs.
 #[test]
 fn a_gg_run_resolves_the_gg_variant_of_its_image() {
-    for (test_type, plain, gg) in [
-        (
-            TestType::EndToEnd,
-            BASE_WASM_IMAGE_NAME,
-            BASE_WASM_GG_IMAGE_NAME,
-        ),
-        (
-            TestType::FullStack,
-            FULL_STACK_2D_IMAGE_NAME,
-            FULL_STACK_2D_GG_IMAGE_NAME,
-        ),
-        (
-            TestType::GameJam,
-            GAME_JAM_IMAGE_NAME,
-            GAME_JAM_GG_IMAGE_NAME,
-        ),
-    ] {
+    for (test_type, asset_kind) in every_resolvable_run() {
+        let plain = image_spec_for(test_type, asset_kind).name.into_owned();
         assert_eq!(
-            image_spec_for_run(test_type, AssetKind::Sprite, HarnessSlug::Gg).name,
-            gg
+            image_spec_for_run(test_type, asset_kind, HarnessSlug::Gg).name,
+            format!("{plain}-gg"),
+            "a gg {test_type:?}/{asset_kind:?} run must resolve the toolchain-carrying variant"
         );
         for slug in HarnessSlug::ALL {
+            if slug == HarnessSlug::Gg {
+                continue;
+            }
             assert_eq!(
-                image_spec_for_run(test_type, AssetKind::Sprite, slug).name,
+                image_spec_for_run(test_type, asset_kind, slug).name,
                 plain,
                 "{slug:?} must not resolve an image carrying gg's toolchains"
             );
@@ -244,58 +238,40 @@ fn a_gg_run_resolves_the_gg_variant_of_its_image() {
     }
 }
 
-/// **A gg run whose image has no published variant falls back to the shared image**,
-/// rather than resolving a name nothing ever pushed.
-///
-/// The variant list is deliberately short — publishing one per run image would double the
-/// image set and the CI matrix for toolchains most of them would never invoke — and this
-/// fallback is what makes a short list safe. The run executes, TypeScript and JavaScript
-/// work (their toolchain is inside the gg binary), and a compiled language fails on its
-/// first program with the toolchain-missing diagnostic gg already has, which is a named
-/// answer rather than an image pull that 404s.
-#[test]
-fn a_gg_run_without_a_variant_falls_back_to_the_shared_image() {
-    let plain = image_spec_for(TestType::AssetGeneration, AssetKind::Sprite);
-    assert!(
-        gg_variant(&plain).is_none(),
-        "this test is about an image with no variant; give it one that has none"
-    );
-    assert_eq!(
-        image_spec_for_run(
-            TestType::AssetGeneration,
-            AssetKind::Sprite,
-            HarnessSlug::Gg
-        )
-        .name,
-        plain.name
-    );
-    assert_eq!(
-        image_spec_for_run(
-            TestType::AssetGeneration,
-            AssetKind::Sprite,
-            HarnessSlug::Gg
-        )
-        .override_env,
-        plain.override_env,
-        "the fallback pins on the shared image's override, not on a variant's"
-    );
-}
-
 /// A gg variant is a **distinct** image with a **distinct** override: sharing either with
 /// the image it derives from would mean pinning one pins the other, which is exactly what
 /// the per-image override exists to avoid.
 #[test]
 fn a_gg_variant_shares_neither_its_name_nor_its_override_with_the_image_it_derives_from() {
-    for plain in [
-        image_spec_for(TestType::EndToEnd, AssetKind::Sprite),
-        image_spec_for(TestType::FullStack, AssetKind::Sprite),
-        image_spec_for(TestType::GameJam, AssetKind::Sprite),
-    ] {
-        let variant = gg_variant(&plain).expect("these three publish a gg variant");
+    for (test_type, asset_kind) in every_resolvable_run() {
+        let plain = image_spec_for(test_type, asset_kind);
+        let variant = plain.gg_variant();
         assert_ne!(variant.name, plain.name);
         assert_ne!(variant.override_env, plain.override_env);
         assert_eq!(variant.name, format!("{}-gg", plain.name));
+        assert_eq!(variant.override_env, format!("{}_GG", plain.override_env));
     }
+}
+
+/// Every run a case can be, as the (test type, asset kind) pairs the image tests walk:
+/// each test-type-only image once, and every asset kind.
+///
+/// `asset_kind` is ignored outside an asset-generation run, so the non-asset rows pass an
+/// arbitrary one.
+fn every_resolvable_run() -> Vec<(TestType, AssetKind)> {
+    let mut runs = vec![
+        (TestType::EndToEnd, AssetKind::Sprite),
+        (TestType::FullStack, AssetKind::Sprite),
+        (TestType::GameJam, AssetKind::Sprite),
+        (TestType::Adversarial, AssetKind::Sprite),
+        (TestType::Performance, AssetKind::Sprite),
+    ];
+    runs.extend(
+        every_asset_kind()
+            .into_iter()
+            .map(|kind| (TestType::AssetGeneration, kind)),
+    );
+    runs
 }
 
 /// Every [`AssetKind`], as a list two image tests walk.
@@ -366,32 +342,22 @@ fn every_resolvable_image_is_one_the_build_publishes() {
         .map(|line| format!("test-cabinet-{line}"))
         .collect();
 
-    let mut resolvable: Vec<&str> = vec![
-        image_spec_for(TestType::EndToEnd, AssetKind::Sprite).name,
-        image_spec_for(TestType::FullStack, AssetKind::Sprite).name,
-        image_spec_for(TestType::GameJam, AssetKind::Sprite).name,
-        image_spec_for(TestType::Adversarial, AssetKind::Sprite).name,
-        image_spec_for(TestType::Performance, AssetKind::Sprite).name,
-    ];
-    resolvable.extend(
-        every_asset_kind()
-            .iter()
-            .map(|&kind| image_spec_for(TestType::AssetGeneration, kind).name),
-    );
-    // Each image's gg variant is resolved by a gg run and has to be published too — the
-    // newest place the two lists can drift, and the one where the fallback hides nothing:
-    // a name here that nothing pushed is a pull that 404s.
-    let plain: Vec<ImageSpec> = resolvable
-        .iter()
-        .map(|&name| ImageSpec {
-            name,
-            override_env: "",
-        })
+    let resolvable: Vec<String> = every_resolvable_run()
+        .into_iter()
+        .map(|(test_type, asset_kind)| image_spec_for(test_type, asset_kind).name.into_owned())
         .collect();
-    let variants: Vec<&str> = plain
-        .iter()
-        .filter_map(gg_variant)
-        .map(|spec| spec.name)
+    // Every image's gg variant is resolved by a gg run and has to be published too. This is
+    // where the derivation and the build meet: `ImageSpec::gg_variant` names one for every
+    // image, so image-names.sh has to publish one for every image, and a name resolved here
+    // that nothing pushed is a pull that 404s.
+    let variants: Vec<String> = every_resolvable_run()
+        .into_iter()
+        .map(|(test_type, asset_kind)| {
+            image_spec_for(test_type, asset_kind)
+                .gg_variant()
+                .name
+                .into_owned()
+        })
         .collect();
 
     for name in resolvable.iter().chain(variants.iter()) {
@@ -403,8 +369,8 @@ fn every_resolvable_image_is_one_the_build_publishes() {
     }
     for name in &published {
         assert!(
-            resolvable.contains(&name.as_str())
-                || variants.contains(&name.as_str())
+            resolvable.contains(name)
+                || variants.contains(name)
                 || NOT_A_RUN_IMAGE
                     .iter()
                     .any(|exception| *name == format!("test-cabinet-{exception}")),
@@ -452,32 +418,21 @@ fn run_image_override_envs_is_exhaustive() {
         }
     }
 
-    let all_kinds = every_asset_kind();
-
     // Every image a run can resolve: the five test-type-only ones (base-wasm for
     // end-to-end, full-stack-2d for full-stack, game-jam, adversarial, performance)
-    // plus one per asset kind.
-    let mut images: Vec<ImageSpec> = vec![
-        image_spec_for(TestType::EndToEnd, AssetKind::Sprite),
-        image_spec_for(TestType::FullStack, AssetKind::Sprite),
-        image_spec_for(TestType::GameJam, AssetKind::Sprite),
-        image_spec_for(TestType::Adversarial, AssetKind::Sprite),
-        image_spec_for(TestType::Performance, AssetKind::Sprite),
-    ];
-    images.extend(
-        all_kinds
-            .iter()
-            .map(|&kind| image_spec_for(TestType::AssetGeneration, kind)),
-    );
-    // …and the gg variant of each image that has one. A gg run resolves a different
-    // image with a different build, so it pins on its own override — which has to be
-    // forwarded for exactly the reason every other one is.
-    let variants: Vec<ImageSpec> = images.iter().filter_map(gg_variant).collect();
-
-    let expected: Vec<&str> = images
-        .iter()
-        .chain(variants.iter())
-        .map(|spec| spec.override_env)
+    // plus one per asset kind — and the gg variant of each. A gg run resolves a
+    // different image with a different build, so it pins on its own override, which has
+    // to be forwarded for exactly the reason every other one is.
+    let expected: Vec<String> = every_resolvable_run()
+        .into_iter()
+        .flat_map(|(test_type, asset_kind)| {
+            let plain = image_spec_for(test_type, asset_kind);
+            let variant = plain.gg_variant();
+            [
+                plain.override_env.into_owned(),
+                variant.override_env.into_owned(),
+            ]
+        })
         .collect();
 
     // Nothing an image needs is missing from the forwarded set …
@@ -490,7 +445,7 @@ fn run_image_override_envs_is_exhaustive() {
         );
     }
     // … and nothing stale/typo'd is forwarded that no run resolves to.
-    for env in RUN_IMAGE_OVERRIDE_ENVS {
+    for env in RUN_IMAGE_OVERRIDE_ENVS.iter() {
         assert!(
             expected.contains(env),
             "{env} is in RUN_IMAGE_OVERRIDE_ENVS but no run resolves to it — stale entry?"
@@ -498,7 +453,7 @@ fn run_image_override_envs_is_exhaustive() {
     }
 
     // Each image contributes exactly one env (no duplicates hiding a mismatch).
-    let mut sorted = RUN_IMAGE_OVERRIDE_ENVS.to_vec();
+    let mut sorted = RUN_IMAGE_OVERRIDE_ENVS.clone();
     sorted.sort_unstable();
     let with_dups = sorted.len();
     sorted.dedup();

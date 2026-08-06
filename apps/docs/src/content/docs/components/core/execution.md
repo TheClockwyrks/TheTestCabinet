@@ -37,7 +37,7 @@ example by deleting files.
   [voxel](/testing/asset-generation/voxel-binaries/#live-preview) binary can stream
   its [live preview](/testing/asset-generation/sprite-binaries/#live-preview) back to a
   listener on the run host. No host mapping is added for an unwatched run.
-- A run executes in one of **five run-container images**, selected by the test
+- A run executes in **one run-container image**, selected by the test
   case's [test type](/testing/overview/) and — for asset-generation — its
   [`asset_kind`](/testing/asset-generation/manifests/): an
   [end-to-end](/testing/end-to-end/overview/) run uses the **base-wasm image** (the
@@ -59,11 +59,12 @@ example by deleting files.
   to be baked in because a compiler is on the turn path and a program's language is
   resolved per agent, so every toolchain has to be present together; and they are a
   variant rather than a layer on the shared image because they exist for that one
-  harness. Not every image publishes a variant — a gg run whose image has none
-  falls back to the shared image, and a compiled language then reports its
-  toolchain as missing on the first program rather than the run failing to pull.
-  Each variant pins on its own `TCAB_CONTAINER_IMAGE_*_GG` override. All five
-  are registry images, and a runner resolves the one for the run from its **own
+  harness. **Every** run image publishes a variant, and the name is derived rather
+  than looked up: a program's language is resolved per agent, so a gg run of any
+  kind may drive a compiled-language agent, and there is no test type or
+  `asset_kind` for which gg resolves an image with no compilers in it. Each variant
+  pins on its own `TCAB_CONTAINER_IMAGE_*_GG` override. They are all registry
+  images, and a runner resolves the one for the run from its **own
   registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
   `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the
   image named for the run (`test-cabinet-base-wasm`, `test-cabinet-sprite`,

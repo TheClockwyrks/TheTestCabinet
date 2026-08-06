@@ -5,6 +5,8 @@
 //! harness is invoked non-interactively, and how each reports its usage. A run
 //! corresponds to a single harness session driven to completion.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
 use crate::auth::SubscriptionSpec;
@@ -28,7 +30,7 @@ const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// so an end-to-end (or full-stack) build may author its simulation core in Rust and
 /// ship it as a committed wasm build input. A harness installs its CLI into this image
 /// at run time (see [`AgentHarness::install_command`]); there is no per-harness image,
-/// except the [gg variant](gg_variant) of this one.
+/// except the [gg variant](ImageSpec::gg_variant) of this one.
 /// The pure-Node base (`test-cabinet-base`) is the build-time parent of this image and
 /// the asset-generation images, and is not itself resolved as a run image.
 const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
@@ -126,36 +128,32 @@ const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
 /// training scenarios (see `containers/performance/Dockerfile`).
 const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 
-/// The **gg** variant of the base-wasm image: the same image plus the language
-/// toolchains a [`gg`](HarnessSlug::Gg) run's
+/// The suffix that names the **gg variant** of a run image: the same image plus the
+/// language toolchains a [`gg`](HarnessSlug::Gg) run's
 /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) programs are
 /// compiled with (`containers/gg/Dockerfile`).
 ///
-/// It is a separate published image rather than a layer on the shared one because those
-/// toolchains exist for one harness. A run driven by any other harness must not carry
-/// them: they are gigabytes a run that cannot use them would pull, and a model that found
-/// a Swift compiler on `PATH` in an end-to-end run would have been handed a capability no
-/// other arm of that comparison has.
-const BASE_WASM_GG_IMAGE_NAME: &str = "test-cabinet-base-wasm-gg";
-/// The gg variant of the full-stack (2D) image. See [`BASE_WASM_GG_IMAGE_NAME`].
-const FULL_STACK_2D_GG_IMAGE_NAME: &str = "test-cabinet-full-stack-2d-gg";
-/// The gg variant of the game-jam image. See [`BASE_WASM_GG_IMAGE_NAME`].
-const GAME_JAM_GG_IMAGE_NAME: &str = "test-cabinet-game-jam-gg";
+/// Every run image has one, and it is *derived* rather than listed: the variant of
+/// `test-cabinet-sprite` is `test-cabinet-sprite-gg` and there is no image for which the
+/// question "does it have a variant?" has a second answer. That is the whole of
+/// [`ImageSpec::gg_variant`], and it is why a gg run can never resolve an image with no
+/// toolchains in it.
+///
+/// They are separate published images rather than a layer on the shared ones because
+/// those toolchains exist for one harness. A run driven by any other harness must not
+/// carry them: they are gigabytes a run that cannot use them would pull, and a model that
+/// found a Swift compiler on `PATH` in an end-to-end run would have been handed a
+/// capability no other arm of that comparison has.
+const GG_IMAGE_NAME_SUFFIX: &str = "-gg";
+/// The suffix that names a gg variant's override environment variable, the counterpart of
+/// [`GG_IMAGE_NAME_SUFFIX`]. A gg variant is pinned on its own, exactly as every other
+/// image is: it is a different image with a different build, and an override that covered
+/// both it and its parent could only ever be right for one.
+const GG_IMAGE_OVERRIDE_ENV_SUFFIX: &str = "_GG";
 
 /// The environment variable that pins a verbatim override for the base-wasm
 /// (end-to-end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
 const BASE_WASM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM";
-/// The environment variable that pins a verbatim override for the gg variant of the
-/// base-wasm image. A gg variant is pinned on its own, exactly as every other image is:
-/// it is a different image with a different build, and an override that covered both
-/// could only ever be right for one.
-const BASE_WASM_GG_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM_GG";
-/// The environment variable that pins a verbatim override for the gg variant of the
-/// full-stack (2D) image.
-const FULL_STACK_2D_GG_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D_GG";
-/// The environment variable that pins a verbatim override for the gg variant of the
-/// game-jam image.
-const GAME_JAM_GG_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_GAME_JAM_GG";
 /// The environment variable that pins a verbatim override for the full-stack (2D)
 /// image.
 const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
@@ -216,25 +214,19 @@ const ADVERSARIAL_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_ADVERSARIAL";
 /// image.
 const PERFORMANCE_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_PERFORMANCE";
 
-/// Every per-image override environment variable [`resolve_run_image`] consults,
-/// one per run image, in image build order. This is the **canonical set** a
-/// deployment must forward from the dispatcher into each driver `Job` so a full-ref
-/// `TCAB_CONTAINER_IMAGE_*` override actually reaches the run-image resolution that
-/// runs in the driver (see the dispatcher's `PASSTHROUGH_K8S_VARS`) — the
-/// `TCAB_CONTAINER_REGISTRY`/`_TAG` composition is forwarded separately.
+/// Every per-image override environment variable a run's own image can be pinned
+/// with, one per run image, in image build order — **without** the gg variants, which
+/// [`RUN_IMAGE_OVERRIDE_ENVS`] derives from these.
 ///
 /// It lives here, beside the override constants and `image_spec_for`, so a new
 /// asset kind is wired in ONE place; the `run_image_override_envs_is_exhaustive`
 /// test fails the build if any kind's `override_env` is missing from this list (or
 /// vice versa), so the dispatcher's forwarded set can never again silently drift
 /// behind the images that exist.
-pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
+const RUN_IMAGE_OVERRIDE_ENVS_PLAIN: &[&str] = &[
     BASE_WASM_IMAGE_OVERRIDE_ENV,
     FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
     GAME_JAM_IMAGE_OVERRIDE_ENV,
-    BASE_WASM_GG_IMAGE_OVERRIDE_ENV,
-    FULL_STACK_2D_GG_IMAGE_OVERRIDE_ENV,
-    GAME_JAM_GG_IMAGE_OVERRIDE_ENV,
     SPRITE_IMAGE_OVERRIDE_ENV,
     SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
     VOXEL_IMAGE_OVERRIDE_ENV,
@@ -260,6 +252,30 @@ pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
     PERFORMANCE_IMAGE_OVERRIDE_ENV,
 ];
 
+/// Every per-image override environment variable [`resolve_run_image`] consults: each
+/// run image's own, and each one's `_GG` counterpart pinning that image's **gg variant**
+/// (the same image plus the language toolchains a `gg` run's programs are compiled with).
+/// This is the **canonical set** a deployment must
+/// forward from the dispatcher into each driver `Job` so a full-ref
+/// `TCAB_CONTAINER_IMAGE_*` override actually reaches the run-image resolution that
+/// runs in the driver (see the dispatcher's `PASSTHROUGH_K8S_VARS`) — the
+/// `TCAB_CONTAINER_REGISTRY`/`_TAG` composition is forwarded separately.
+///
+/// The variants are derived rather than listed, for the same reason their image names
+/// are: there is exactly one per run image and no set of images to keep in step.
+pub static RUN_IMAGE_OVERRIDE_ENVS: std::sync::LazyLock<Vec<String>> =
+    std::sync::LazyLock::new(|| {
+        RUN_IMAGE_OVERRIDE_ENVS_PLAIN
+            .iter()
+            .flat_map(|env| {
+                [
+                    (*env).to_string(),
+                    format!("{env}{GG_IMAGE_OVERRIDE_ENV_SUFFIX}"),
+                ]
+            })
+            .collect()
+    });
+
 /// How to resolve the run-container image for one kind of run: the composed
 /// image name, and the environment variable that pins a verbatim override for
 /// *that image* specifically. There is deliberately no override that spans every
@@ -267,9 +283,57 @@ pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
 /// different image, so a single override could only ever be right for one.
 struct ImageSpec {
     /// The image name composed with the registry/tag, e.g. `test-cabinet-base`.
-    name: &'static str,
+    ///
+    /// Owned for the [gg variant](Self::gg_variant) alone, which derives its name from
+    /// its parent's rather than being one of the constants above.
+    name: Cow<'static, str>,
     /// The env var pinning a verbatim reference for this image.
-    override_env: &'static str,
+    override_env: Cow<'static, str>,
+}
+
+impl ImageSpec {
+    /// One of the run images named by the constants above.
+    const fn of(name: &'static str, override_env: &'static str) -> Self {
+        Self {
+            name: Cow::Borrowed(name),
+            override_env: Cow::Borrowed(override_env),
+        }
+    }
+
+    /// The **gg variant** of this image: the same image plus the language toolchains a
+    /// [`gg`](HarnessSlug::Gg) run's
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) programs
+    /// are compiled with, named by appending [`GG_IMAGE_NAME_SUFFIX`] (and its override
+    /// by appending [`GG_IMAGE_OVERRIDE_ENV_SUFFIX`]).
+    ///
+    /// gg is the one harness whose runs need something baked into the image rather than
+    /// installed at run time. Every other harness is a CLI a run downloads
+    /// ([`AgentHarness::install_command`]) and gg itself is a single static binary copied
+    /// in, but a gg run driving responses-as-code in a compiled language needs that
+    /// language's *compiler* on the turn path — and a program's language is resolved
+    /// **per agent**, so one run may drive a C# agent and a Python agent at once and
+    /// every toolchain has to be present together.
+    ///
+    /// # Every image has one
+    ///
+    /// This is a derivation, not a lookup, and that is the point: whichever image a run
+    /// would otherwise get — an asset-generation kind, blender, adversarial — the gg
+    /// variant of it is published and carries the same toolchain tree. There is no
+    /// combination of test type and asset kind for which a gg run resolves an image with
+    /// no compilers in it, because there is no list that could be missing one.
+    /// `containers/build.sh` builds a variant of every name in
+    /// `containers/image-names.sh` for the same reason, and
+    /// `every_resolvable_image_is_one_the_build_publishes` fails the build if the two
+    /// ever disagree.
+    fn gg_variant(&self) -> Self {
+        Self {
+            name: Cow::Owned(format!("{}{GG_IMAGE_NAME_SUFFIX}", self.name)),
+            override_env: Cow::Owned(format!(
+                "{}{GG_IMAGE_OVERRIDE_ENV_SUFFIX}",
+                self.override_env
+            )),
+        }
+    }
 }
 
 /// The [`ImageSpec`] for a run, selected by its [`TestType`] and (for
@@ -287,170 +351,81 @@ struct ImageSpec {
 /// asset-generation run (it is always [`AssetKind::Sprite`] there).
 fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
     match test_type {
-        TestType::EndToEnd => ImageSpec {
-            name: BASE_WASM_IMAGE_NAME,
-            override_env: BASE_WASM_IMAGE_OVERRIDE_ENV,
-        },
-        TestType::FullStack => ImageSpec {
-            name: FULL_STACK_2D_IMAGE_NAME,
-            override_env: FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
-        },
+        TestType::EndToEnd => ImageSpec::of(BASE_WASM_IMAGE_NAME, BASE_WASM_IMAGE_OVERRIDE_ENV),
+        TestType::FullStack => {
+            ImageSpec::of(FULL_STACK_2D_IMAGE_NAME, FULL_STACK_2D_IMAGE_OVERRIDE_ENV)
+        }
         // A game jam produces its own 2D assets and builds a browser game like a
         // full-stack run, but it is not a full-stack case: it resolves its own
         // (full-stack-2d-derived) image so a deployment can pin the jam image on its
         // own.
-        TestType::GameJam => ImageSpec {
-            name: GAME_JAM_IMAGE_NAME,
-            override_env: GAME_JAM_IMAGE_OVERRIDE_ENV,
-        },
+        TestType::GameJam => ImageSpec::of(GAME_JAM_IMAGE_NAME, GAME_JAM_IMAGE_OVERRIDE_ENV),
         TestType::AssetGeneration => match asset_kind {
-            AssetKind::Sprite => ImageSpec {
-                name: SPRITE_IMAGE_NAME,
-                override_env: SPRITE_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SpriteSheet => ImageSpec {
-                name: SPRITE_SHEET_IMAGE_NAME,
-                override_env: SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::VoxelModel => ImageSpec {
-                name: VOXEL_IMAGE_NAME,
-                override_env: VOXEL_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::VoxelAnimation => ImageSpec {
-                name: VOXEL_ANIMATION_IMAGE_NAME,
-                override_env: VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::McModel => ImageSpec {
-                name: MC_IMAGE_NAME,
-                override_env: MC_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::McAnimation => ImageSpec {
-                name: MC_ANIMATION_IMAGE_NAME,
-                override_env: MC_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SnModel => ImageSpec {
-                name: SN_IMAGE_NAME,
-                override_env: SN_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SnAnimation => ImageSpec {
-                name: SN_ANIMATION_IMAGE_NAME,
-                override_env: SN_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::DcModel => ImageSpec {
-                name: DC_IMAGE_NAME,
-                override_env: DC_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::DcAnimation => ImageSpec {
-                name: DC_ANIMATION_IMAGE_NAME,
-                override_env: DC_ANIMATION_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Ui => ImageSpec {
-                name: UI_IMAGE_NAME,
-                override_env: UI_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Material => ImageSpec {
-                name: MATERIAL_IMAGE_NAME,
-                override_env: MATERIAL_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::McSkinned => ImageSpec {
-                name: MC_SKINNED_IMAGE_NAME,
-                override_env: MC_SKINNED_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SnSkinned => ImageSpec {
-                name: SN_SKINNED_IMAGE_NAME,
-                override_env: SN_SKINNED_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::DcSkinned => ImageSpec {
-                name: DC_SKINNED_IMAGE_NAME,
-                override_env: DC_SKINNED_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Particle2d => ImageSpec {
-                name: PARTICLE_2D_IMAGE_NAME,
-                override_env: PARTICLE_2D_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Particle3d => ImageSpec {
-                name: PARTICLE_3D_IMAGE_NAME,
-                override_env: PARTICLE_3D_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SfxSynth => ImageSpec {
-                name: SFX_SYNTH_IMAGE_NAME,
-                override_env: SFX_SYNTH_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::SfxSample => ImageSpec {
-                name: SFX_SAMPLE_IMAGE_NAME,
-                override_env: SFX_SAMPLE_IMAGE_OVERRIDE_ENV,
-            },
-            AssetKind::Music => ImageSpec {
-                name: MUSIC_IMAGE_NAME,
-                override_env: MUSIC_IMAGE_OVERRIDE_ENV,
-            },
+            AssetKind::Sprite => ImageSpec::of(SPRITE_IMAGE_NAME, SPRITE_IMAGE_OVERRIDE_ENV),
+            AssetKind::SpriteSheet => {
+                ImageSpec::of(SPRITE_SHEET_IMAGE_NAME, SPRITE_SHEET_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::VoxelModel => ImageSpec::of(VOXEL_IMAGE_NAME, VOXEL_IMAGE_OVERRIDE_ENV),
+            AssetKind::VoxelAnimation => ImageSpec::of(
+                VOXEL_ANIMATION_IMAGE_NAME,
+                VOXEL_ANIMATION_IMAGE_OVERRIDE_ENV,
+            ),
+            AssetKind::McModel => ImageSpec::of(MC_IMAGE_NAME, MC_IMAGE_OVERRIDE_ENV),
+            AssetKind::McAnimation => {
+                ImageSpec::of(MC_ANIMATION_IMAGE_NAME, MC_ANIMATION_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SnModel => ImageSpec::of(SN_IMAGE_NAME, SN_IMAGE_OVERRIDE_ENV),
+            AssetKind::SnAnimation => {
+                ImageSpec::of(SN_ANIMATION_IMAGE_NAME, SN_ANIMATION_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::DcModel => ImageSpec::of(DC_IMAGE_NAME, DC_IMAGE_OVERRIDE_ENV),
+            AssetKind::DcAnimation => {
+                ImageSpec::of(DC_ANIMATION_IMAGE_NAME, DC_ANIMATION_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Ui => ImageSpec::of(UI_IMAGE_NAME, UI_IMAGE_OVERRIDE_ENV),
+            AssetKind::Material => ImageSpec::of(MATERIAL_IMAGE_NAME, MATERIAL_IMAGE_OVERRIDE_ENV),
+            AssetKind::McSkinned => {
+                ImageSpec::of(MC_SKINNED_IMAGE_NAME, MC_SKINNED_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SnSkinned => {
+                ImageSpec::of(SN_SKINNED_IMAGE_NAME, SN_SKINNED_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::DcSkinned => {
+                ImageSpec::of(DC_SKINNED_IMAGE_NAME, DC_SKINNED_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Particle2d => {
+                ImageSpec::of(PARTICLE_2D_IMAGE_NAME, PARTICLE_2D_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Particle3d => {
+                ImageSpec::of(PARTICLE_3D_IMAGE_NAME, PARTICLE_3D_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SfxSynth => {
+                ImageSpec::of(SFX_SYNTH_IMAGE_NAME, SFX_SYNTH_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::SfxSample => {
+                ImageSpec::of(SFX_SAMPLE_IMAGE_NAME, SFX_SAMPLE_IMAGE_OVERRIDE_ENV)
+            }
+            AssetKind::Music => ImageSpec::of(MUSIC_IMAGE_NAME, MUSIC_IMAGE_OVERRIDE_ENV),
             // The whole Blender family shares one image (headless Blender + `tcab-blend`).
             AssetKind::BlenderCharacter | AssetKind::BlenderProp | AssetKind::BlenderMechanism => {
-                ImageSpec {
-                    name: BLENDER_IMAGE_NAME,
-                    override_env: BLENDER_IMAGE_OVERRIDE_ENV,
-                }
+                ImageSpec::of(BLENDER_IMAGE_NAME, BLENDER_IMAGE_OVERRIDE_ENV)
             }
         },
-        TestType::Adversarial => ImageSpec {
-            name: ADVERSARIAL_IMAGE_NAME,
-            override_env: ADVERSARIAL_IMAGE_OVERRIDE_ENV,
-        },
-        TestType::Performance => ImageSpec {
-            name: PERFORMANCE_IMAGE_NAME,
-            override_env: PERFORMANCE_IMAGE_OVERRIDE_ENV,
-        },
-    }
-}
-
-/// The **gg variant** of `spec`, when one is published.
-///
-/// gg is the one harness whose runs need something baked into the image rather than
-/// installed at run time. Every other harness is a CLI a run downloads
-/// ([`AgentHarness::install_command`]) and gg itself is a single static binary copied in,
-/// but a gg run driving [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
-/// in a compiled language needs that language's *compiler* on the turn path — and a
-/// program's language is resolved **per agent**, so one run may drive a C# agent and a
-/// Python agent at once and every toolchain has to be present together.
-///
-/// They are in a variant image rather than in the shared one because they exist for one
-/// harness. See [`BASE_WASM_GG_IMAGE_NAME`] for why a run driven by any other harness must
-/// not carry them.
-///
-/// # Not every image has one, on purpose
-///
-/// This is a **list**, and it starts at the images gg is actually pointed at. Publishing a
-/// variant of all twenty-six would double the image set and the CI matrix for toolchains
-/// most of them would never invoke. Adding one is this `match` arm, its two constants,
-/// their entry in [`RUN_IMAGE_OVERRIDE_ENVS`], and the name in
-/// `containers/image-names.sh` — which is why the list is safe to keep short.
-///
-/// A gg run whose image has no variant falls back to the shared image with a warning
-/// rather than resolving a name nothing published. That is the piece that makes the short
-/// list safe: the run still executes, TypeScript and JavaScript still work (their
-/// toolchain is inside the gg binary), and a compiled language fails on its first program
-/// with the toolchain-missing diagnostic gg already has — which is a named, model-visible
-/// answer rather than an image pull that 404s.
-fn gg_variant(spec: &ImageSpec) -> Option<ImageSpec> {
-    match spec.name {
-        BASE_WASM_IMAGE_NAME => Some(ImageSpec {
-            name: BASE_WASM_GG_IMAGE_NAME,
-            override_env: BASE_WASM_GG_IMAGE_OVERRIDE_ENV,
-        }),
-        FULL_STACK_2D_IMAGE_NAME => Some(ImageSpec {
-            name: FULL_STACK_2D_GG_IMAGE_NAME,
-            override_env: FULL_STACK_2D_GG_IMAGE_OVERRIDE_ENV,
-        }),
-        GAME_JAM_IMAGE_NAME => Some(ImageSpec {
-            name: GAME_JAM_GG_IMAGE_NAME,
-            override_env: GAME_JAM_GG_IMAGE_OVERRIDE_ENV,
-        }),
-        _ => None,
+        TestType::Adversarial => {
+            ImageSpec::of(ADVERSARIAL_IMAGE_NAME, ADVERSARIAL_IMAGE_OVERRIDE_ENV)
+        }
+        TestType::Performance => {
+            ImageSpec::of(PERFORMANCE_IMAGE_NAME, PERFORMANCE_IMAGE_OVERRIDE_ENV)
+        }
     }
 }
 
 /// The [`ImageSpec`] a run resolves once its harness is known: [`image_spec_for`], swapped
-/// for its [gg variant](gg_variant) when the subject is [`gg`](HarnessSlug::Gg).
+/// for its [gg variant](ImageSpec::gg_variant) when the subject is [`gg`](HarnessSlug::Gg).
+///
+/// Total in both directions: every harness resolves an image, and for gg that image always
+/// carries the toolchains, because the variant is derived from the parent rather than
+/// looked up in a list that could be missing an entry.
 ///
 /// Separate from [`resolve_run_image`] so the selection can be asserted without touching
 /// process-global environment, exactly as [`compose_run_image`] is.
@@ -463,15 +438,7 @@ fn image_spec_for_run(
     if harness != HarnessSlug::Gg {
         return spec;
     }
-    gg_variant(&spec).unwrap_or_else(|| {
-        tracing::warn!(
-            image = spec.name,
-            "no gg variant of this run image is published, so this run gets the shared image: \
-             responses-as-code in a compiled language will report its toolchain as missing. Add \
-             the variant to `gg_variant` and to containers/image-names.sh to change that."
-        );
-        spec
-    })
+    spec.gg_variant()
 }
 
 /// Resolve the run-container image reference for a run, from the environment. The
@@ -494,7 +461,7 @@ fn image_spec_for_run(
 /// 1. The image's **own** override — `TCAB_CONTAINER_IMAGE_BASE_WASM` for an end-to-end
 ///    run, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
 ///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run, and the `_GG` suffixed
-///    counterpart for a gg run that resolved a variant — a full, verbatim
+///    counterpart for a gg run, which resolves the variant — a full, verbatim
 ///    reference. Set it to a `@sha256:…` digest to pin an exact image, or to point
 ///    at a private build. There is no override that applies to every image: they
 ///    differ, so each is pinned on its own.
@@ -516,8 +483,8 @@ pub fn resolve_run_image(
 ) -> String {
     let spec = image_spec_for_run(test_type, asset_kind, harness);
     compose_run_image(
-        spec.name,
-        std::env::var(spec.override_env).ok(),
+        &spec.name,
+        std::env::var(spec.override_env.as_ref()).ok(),
         std::env::var("TCAB_CONTAINER_REGISTRY").ok(),
         std::env::var("TCAB_CONTAINER_TAG").ok(),
     )

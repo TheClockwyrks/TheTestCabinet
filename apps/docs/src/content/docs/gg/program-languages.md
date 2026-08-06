@@ -208,11 +208,14 @@ end-to-end run would have been handed a capability no other arm of that comparis
 which is the same reason the toolchains are a variant image rather than a layer on the
 shared one.
 
-**Not every image publishes a variant.** The list is a subset, and a gg run whose image has
-none falls back to the shared image with a warning: TypeScript and JavaScript still work
-(their compiler is inside the gg binary) and a compiled language reports its
-[toolchain as missing](#a-compiler-has-two-ways-to-fail) on its first program — a named,
-model-visible answer rather than an image pull that 404s.
+**Every image publishes one, and the name is derived rather than listed.** Because language
+is per agent, a gg run on *any* case — an asset-generation kind, an adversarial case — may
+drive a compiled-language agent, so there is no combination of test type and `asset_kind`
+for which gg may resolve an image with no compilers in it. `ImageSpec::gg_variant` appends
+the suffix instead of consulting a table, and a test fails the build if the names Rust
+resolves and the names `containers/image-names.sh` publishes ever disagree. The cost is a
+doubled image set and CI matrix; the thing it buys is that "does this image have the
+toolchains?" has one answer.
 
 :::caution[A compiler here must be isolated per invocation, by construction]
 Several compilations are in flight at once, routinely: agents run in parallel up to

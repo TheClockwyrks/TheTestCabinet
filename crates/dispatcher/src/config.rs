@@ -281,13 +281,19 @@ impl Config {
         let driver_auth_mode = non_empty("TCAB_DISPATCHER_DRIVER_AUTH_MODE");
 
         // Forward the fixed sandbox/observability vars plus EVERY per-image run-image
-        // override — the canonical `RUN_IMAGE_OVERRIDE_ENVS` from core, so the set the
-        // driver can resolve and the set the dispatcher forwards stay identical as
-        // asset kinds are added. Each is forwarded only when set.
+        // override — the canonical `RUN_IMAGE_OVERRIDE_ENVS` from core (each run image's
+        // own and its gg variant's `_GG` counterpart), so the set the driver can resolve
+        // and the set the dispatcher forwards stay identical as asset kinds are added.
+        // Each is forwarded only when set.
         let passthrough_k8s_env = PASSTHROUGH_K8S_VARS
             .iter()
-            .chain(test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS.iter())
-            .filter_map(|&key| non_empty(key).map(|value| (key.to_string(), value)))
+            .copied()
+            .chain(
+                test_cabinet_core::harness::RUN_IMAGE_OVERRIDE_ENVS
+                    .iter()
+                    .map(String::as_str),
+            )
+            .filter_map(|key| non_empty(key).map(|value| (key.to_string(), value)))
             .collect();
 
         let publisher_image = non_empty("TCAB_PUBLISHER_IMAGE");

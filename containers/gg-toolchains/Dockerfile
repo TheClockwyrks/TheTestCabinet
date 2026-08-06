@@ -37,8 +37,9 @@
 #
 # Two constraints every toolchain added here must meet
 # ----------------------------------------------------
-# 1. **Relocatable and distribution-portable.** The tree is copied onto run images built
-#    from Debian bookworm *and* onto the Blender image, which is Ubuntu — and it is copied
+# 1. **Relocatable and distribution-portable.** Every run image publishes a `-gg` variant,
+#    so this tree is copied onto the Debian-bookworm-derived images *and* onto
+#    `blender-gg`, whose parent is Ubuntu — and it is copied
 #    to the same absolute path in both, so a toolchain that hard-codes a build-time prefix
 #    or links a library only one of them ships is a toolchain that works on some gg runs
 #    and not others. Prefer a statically linked or self-contained distribution; where that
