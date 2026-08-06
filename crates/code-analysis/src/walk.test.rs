@@ -132,14 +132,14 @@ fn each_file_is_given_the_role_its_extension_implies() {
     );
 }
 
-/// gg's replay journal lives in a dotdir, and the walk never sees it. The seed-time
+/// gg's session-capture journal lives in a dotdir, and the walk never sees it. The seed-time
 /// `.git/info/exclude` entry is the mechanism the design leans on; skipping hidden entries
 /// is the belt to its braces, and either alone is sufficient.
 #[test]
-fn the_replay_journal_can_never_pollute_an_analysis() {
+fn the_session_journal_can_never_pollute_an_analysis() {
     let root = tree(&[
         ("src/a.ts", "export const a = 1;\n"),
-        (".gg/replay.journal", "{\"kind\":\"model_io\"}\n"),
+        (".gg/replay.ndjson", "{\"kind\":\"model_io\"}\n"),
     ]);
     assert_eq!(paths(&walk(root.path())), vec!["src/a.ts"]);
 }

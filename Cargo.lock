@@ -7237,7 +7237,6 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "clap",
- "flate2",
  "futures-util",
  "handlebars",
  "oxc",

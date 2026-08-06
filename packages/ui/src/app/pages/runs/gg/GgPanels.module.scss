@@ -2793,8 +2793,8 @@ details[open] > summary .reqCaret {
     background: color-mix(in srgb, t.$color-text 6%, transparent);
   }
 
-  // The Replay view's fifth column: where the message sat in the window. Only that
-  // view passes it, so the ordinary four-column row is untouched.
+  // The Requests view's fifth column: where the message sat in the window. Only a row
+  // that has that fact passes it, so the ordinary four-column row is untouched.
   &[data-context] {
     grid-template-columns: 0.9rem 6.5rem 1fr 3.5rem 14rem;
 

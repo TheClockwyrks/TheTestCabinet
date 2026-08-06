@@ -1270,7 +1270,7 @@ impl DefinitionStore {
     /// Where one of a run's **run-tree artifacts** is stored: `runs/<run_id>/<name>.json`.
     ///
     /// A run-tree artifact is a whole-run analysis document produced *about* a run rather
-    /// than *by* it — today the gg [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record
+    /// than *by* it — today the gg [session record](test_cabinet_core::gg_session_record)
     /// ([`REPLAY_ARTIFACT`]), with code analysis to follow. Each is written to the produced
     /// run tree's root as `<name>.json.gz` and mirrored here by the driver, keyed by run id,
     /// so it survives the collected tree and can be served per run.
@@ -1302,7 +1302,7 @@ impl DefinitionStore {
 
     /// Read one of a run's stored [run-tree artifacts](Self::run_artifact_path). A run that
     /// never produced one reads as not-found: every artifact is optional by construction (a
-    /// non-gg run has no replay, a run collected before the analyzer shipped has no code
+    /// non-gg run has no session record, a run collected before the analyzer shipped has no code
     /// analysis), so absence is an ordinary 404, never an error.
     pub fn read_run_artifact(&self, run_id: &str, name: &str) -> Result<Vec<u8>> {
         if !is_safe_segment(run_id) || !is_safe_segment(name) {
@@ -1315,10 +1315,10 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("{name} for run `{run_id}` not stored")))
     }
 
-    /// Where a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record is stored:
-    /// `runs/<run_id>/replay.json`. A capture of the run's non-deterministic inputs (each
-    /// agent's model I/O and every tool result), mirrored here by the driver from the run
-    /// tree so a replay driver can fetch it per run.
+    /// Where a gg run's [session record](test_cabinet_core::gg_session_record) is stored:
+    /// `runs/<run_id>/replay.json` — an address the record keeps, not a name. A capture of
+    /// each agent's model I/O and every tool result, mirrored here by the driver from the run
+    /// tree so a reader can fetch a run's session without its tree.
     pub fn run_replay_path(&self, run_id: &str) -> PathBuf {
         self.run_artifact_path(run_id, REPLAY_ARTIFACT)
     }

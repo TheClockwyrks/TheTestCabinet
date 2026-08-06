@@ -892,10 +892,10 @@ async fn non_asset_run_uploads_no_asset_media() {
 }
 
 // ---------------------------------------------------------------------------
-// The gg replay mirror
+// The gg session-record mirror
 // ---------------------------------------------------------------------------
 //
-// This mirror is the whole reason a backend-driven gg run's replay is reachable at all:
+// This mirror is the whole reason a backend-driven gg run's record is reachable at all:
 // `GET /runs/{id}/replay` serves what this POSTs, and the read it does is deliberately
 // silent about a missing file (a run that captured nothing is the common case). That
 // silence is what makes a wrong path an *unconditional* no-op with no signal anywhere, so

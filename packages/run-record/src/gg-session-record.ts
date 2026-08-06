@@ -270,9 +270,10 @@ export type GgSessionAgentOrigin =
     };
 
 /**
- * One agent the record captured, and how it came to exist — the table a driving replay
- * binds live agents through. **One row per agent, not per turn**: repeating a
- * provenance tuple on every entry would defeat the pooling thesis outright.
+ * One agent the record captured, and how it came to exist — the table that tells a reader
+ * which agent every [entry](GgSessionEntry) belongs to, and where that agent came from.
+ * **One row per agent, not per turn**: repeating a provenance tuple on every entry would
+ * defeat the pooling thesis outright.
  */
 export type GgSessionAgent = {
   /**
@@ -320,9 +321,9 @@ export type GgClientRole = "agent" | "compaction";
  * Which model-client call shape a [request](GgSessionRequest) was issued under.
  *
  * Recorded because the two shapes are not interchangeable: `complete_requiring` forces
- * the model to call the one offered tool. Without this field a driver replaying a
- * required tool call silently downgrades it to an ordinary offered one, and the
- * recorded run is not the run that happened.
+ * the model to call the one offered tool, and a reader that cannot tell the two apart
+ * reads a forced call as a choice the model made freely — which is the opposite of what
+ * happened, and exactly the thing a stalled run is diagnosed on.
  */
 export type GgSessionRequestShape = "complete" | "complete_requiring";
 
@@ -919,13 +920,13 @@ export type GgSessionRecord = {
    */
   recorder: GgSessionRecorder;
   /**
-   * The gg session id this record replays — the run id, matching the
+   * The gg session this record is of — the run id, matching the
    * [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
    */
   sessionId: string;
   /**
    * The [capability set](GgCapabilitySet) the run was configured with, so a
-   * a reader has the configuration the run was launched with rather than one assembled to
+   * reader has the configuration the run was launched with rather than one assembled to
    * suit the record.
    */
   capabilitySet: GgCapabilitySet;

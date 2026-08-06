@@ -82,7 +82,7 @@
       "type": "object"
     },
     "GgSessionAgent": {
-      "description": "One agent the record captured, and how it came to exist — the table a driving replay\nbinds live agents through. **One row per agent, not per turn**: repeating a\nprovenance tuple on every entry would defeat the pooling thesis outright.",
+      "description": "One agent the record captured, and how it came to exist — the table that tells a reader\nwhich agent every [entry](GgSessionEntry) belongs to, and where that agent came from.\n**One row per agent, not per turn**: repeating a provenance tuple on every entry would\ndefeat the pooling thesis outright.",
       "properties": {
         "agentId": {
           "description": "The id the recorded run minted for this agent (`\"root\"` for the root agent).\nEvery [entry](GgSessionEntry::agent_id) is stamped with it.",
@@ -583,7 +583,7 @@
         },
         {
           "const": "response_loop",
-          "description": "Every attempt at the request was abandoned mid-stream by\n[loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,\non all of them. Retryable at the turn level and counted against the run's error ceiling,\nexactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the\ntwo are diagnosed completely differently: one is the provider failing, the other is the\nmodel failing.\n\nThe record carries only the attempts that were *returned*, never the discarded ones: the\nrecorder journals the response a turn actually got, so a reply the guard abandoned never\nentered the context and correctly never enters the replay either. The\n[`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop\ngave up.",
+          "description": "Every attempt at the request was abandoned mid-stream by\n[loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,\non all of them. Retryable at the turn level and counted against the run's error ceiling,\nexactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the\ntwo are diagnosed completely differently: one is the provider failing, the other is the\nmodel failing.\n\nThe record carries only the attempts that were *returned*, never the discarded ones: the\nrecorder journals the response a turn actually got, so a reply the guard abandoned never\nentered the context and correctly never enters the record either. The\n[`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop\ngave up.",
           "type": "string"
         }
       ]
@@ -701,7 +701,7 @@
       "type": "object"
     },
     "GgSessionRequestShape": {
-      "description": "Which model-client call shape a [request](GgSessionRequest) was issued under.\n\nRecorded because the two shapes are not interchangeable: `complete_requiring` forces\nthe model to call the one offered tool. Without this field a driver replaying a\nrequired tool call silently downgrades it to an ordinary offered one, and the\nrecorded run is not the run that happened.",
+      "description": "Which model-client call shape a [request](GgSessionRequest) was issued under.\n\nRecorded because the two shapes are not interchangeable: `complete_requiring` forces\nthe model to call the one offered tool, and a reader that cannot tell the two apart\nreads a forced call as a choice the model made freely — which is the opposite of what\nhappened, and exactly the thing a stalled run is diagnosed on.",
       "oneOf": [
         {
           "const": "complete",
@@ -1003,7 +1003,7 @@
     },
     "capabilitySet": {
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
-      "description": "The [capability set](GgCapabilitySet) the run was configured with, so a\na reader has the configuration the run was launched with rather than one assembled to\nsuit the record."
+      "description": "The [capability set](GgCapabilitySet) the run was configured with, so a\nreader has the configuration the run was launched with rather than one assembled to\nsuit the record."
     },
     "clips": {
       "default": [],
@@ -1049,7 +1049,7 @@
       "description": "The fixed identity the session started from."
     },
     "sessionId": {
-      "description": "The gg session id this record replays — the run id, matching the\n[telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.",
+      "description": "The gg session this record is of — the run id, matching the\n[telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.",
       "type": "string"
     },
     "texts": {

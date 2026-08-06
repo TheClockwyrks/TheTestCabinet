@@ -31,3 +31,15 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(agent::tests::sandbox_tests::)'
 slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The truncation test writes `MAX_FILES + 50` — 20,050 — files and walks the tree twice,
+# because the only honest way to assert what a cap drops is to exceed the real cap. That
+# cost is inherent and it is filesystem-bound, so it scales with what else the run is
+# doing rather than with this test: 18.6 s alone on an idle 18-core dev container, 50.9 s
+# beside the gg sandbox tests above, and past the 60 s default under those same tests once
+# each of them started spawning a type checker. It was killed mid-assertion, which reads as
+# a broken analysis rather than as a slow one. Bounded, but from the work rather than from
+# the default.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-code-analysis) and test(=tests::a_truncated_analysis_is_deterministic_and_says_so)'
+slow-timeout = { period = "120s", terminate-after = 3 }

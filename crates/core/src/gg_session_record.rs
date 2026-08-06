@@ -55,12 +55,15 @@
 //! (`apps/docs/public/schema/gg/session-record.schema.json`) are generated from them by
 //! `crates/contract-codegen` and are never edited by hand. JSON is camelCase.
 //!
-//! Three names keep the word this record used to be called by: the run tree's
+//! Four names keep the word this record used to be called by: the in-container journal's
+//! [`.gg/replay.ndjson`](crate::gg_session_journal::GG_SESSION_JOURNAL_PATH), the run tree's
 //! `replay.json.gz`, the backend's `replay` artifact slot and the `GET /runs/{id}/replay`
 //! route. They are **addresses**, not names: every record already in object storage is filed
-//! under them, and the driver in a released image posts to that route. Renaming an address 404s
-//! the runs stored at it. The generated bindings and schema above are not addresses — they are
-//! rewritten from these types on every build, and they say what the record is.
+//! under them, the driver in a released image posts to that route, and a released `gg` binary
+//! writes its journal at that path for a host of this version to salvage. Renaming an address
+//! 404s the runs stored at it, or leaves a hung run's journal unfound. The generated bindings and
+//! schema above are not addresses — they are rewritten from these types on every build, and they
+//! say what the record is.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -131,7 +134,7 @@ pub const GG_SESSION_TOOL_MAX_BYTES: usize = 256 * 1024;
 /// The two ceilings are separate numbers with separate reasons, and the tool one is deliberately
 /// the larger; collapsing them back to a single value is the regression this fails the build on.
 /// The tie that matters most — tool ceiling ≥ `read_file`'s own cap — is asserted the same way in
-/// `gg`'s `replay` module, which is the one place both of *those* numbers are in scope.
+/// `gg`'s `capture` module, which is the one place both of *those* numbers are in scope.
 const _: () = assert!(GG_SESSION_TOOL_MAX_BYTES > GG_SESSION_STREAM_MAX_BYTES);
 
 /// The [content address](fingerprint_exact) of a JSON value, over its compact
@@ -333,9 +336,10 @@ pub fn clip_text(text: &str, max_bytes: usize) -> Option<(&str, u64)> {
 // Agent provenance
 // ---------------------------------------------------------------------------
 
-/// One agent the record captured, and how it came to exist — the table a driving replay
-/// binds live agents through. **One row per agent, not per turn**: repeating a
-/// provenance tuple on every entry would defeat the pooling thesis outright.
+/// One agent the record captured, and how it came to exist — the table that tells a reader
+/// which agent every [entry](GgSessionEntry) belongs to, and where that agent came from.
+/// **One row per agent, not per turn**: repeating a provenance tuple on every entry would
+/// defeat the pooling thesis outright.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -468,9 +472,9 @@ pub enum GgClientRole {
 /// Which model-client call shape a [request](GgSessionRequest) was issued under.
 ///
 /// Recorded because the two shapes are not interchangeable: `complete_requiring` forces
-/// the model to call the one offered tool. Without this field a driver replaying a
-/// required tool call silently downgrades it to an ordinary offered one, and the
-/// recorded run is not the run that happened.
+/// the model to call the one offered tool, and a reader that cannot tell the two apart
+/// reads a forced call as a choice the model made freely — which is the opposite of what
+/// happened, and exactly the thing a stalled run is diagnosed on.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -573,7 +577,7 @@ pub enum GgSessionModelErrorKind {
     ///
     /// The record carries only the attempts that were *returned*, never the discarded ones: the
     /// recorder journals the response a turn actually got, so a reply the guard abandoned never
-    /// entered the context and correctly never enters the replay either. The
+    /// entered the context and correctly never enters the record either. The
     /// [`attempts`](GgSessionModelError::attempts) count is how many were discarded before the loop
     /// gave up.
     ResponseLoop,
@@ -1039,11 +1043,11 @@ pub struct GgSessionRecord {
     /// Which build captured it. Explanatory; never a gate.
     #[serde(default)]
     pub recorder: GgSessionRecorder,
-    /// The gg session id this record replays — the run id, matching the
+    /// The gg session this record is of — the run id, matching the
     /// [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
     pub session_id: String,
     /// The [capability set](GgCapabilitySet) the run was configured with, so a
-    /// a reader has the configuration the run was launched with rather than one assembled to
+    /// reader has the configuration the run was launched with rather than one assembled to
     /// suit the record.
     pub capability_set: GgCapabilitySet,
     /// The fixed identity the session started from.

@@ -14,7 +14,7 @@
 //! `core.excludesFile` and any `.gitignore` in a *parent* of the tree are machine state,
 //! and honouring either would make the same tree measure differently on two hosts.
 //!
-//! A free consequence: gg's replay journal is excluded at seed time through
+//! A free consequence: gg's session-capture journal is excluded at seed time through
 //! `.git/info/exclude`, so it can never pollute a code analysis. No coordination between
 //! the two features was needed.
 //!
@@ -100,7 +100,7 @@ pub struct Walk {
 /// list, so a fourth output directory added there is removed here without a second edit.
 ///
 /// `.gg` is belt to the braces of gg's seed-time `.git/info/exclude` entry, which is the
-/// mechanism the replay design leans on. Either alone excludes the journal; both together
+/// mechanism session capture leans on. Either alone excludes the journal; both together
 /// mean it is excluded from a tree whose `.git` did not survive collection as well.
 const VENDOR_DIRS: [&str; 15] = [
     "node_modules",

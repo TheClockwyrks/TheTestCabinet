@@ -313,12 +313,15 @@ pub async fn upload_validation_to_backend(
 /// Mirror a gg run's session record into the **backend store**, keyed by run id — the debug-only
 /// counterpart to [`upload_validation_to_backend`], for the same reason.
 ///
-/// A gg run streams its non-deterministic inputs into a journal that the host folds into
+/// A gg run streams every model call it makes into a journal that the host folds into
 /// [`{out_dir}/{id}/replay.json.gz`](test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT)
 /// at the [post-run seam](test_cabinet_core::post_run) — at the **run tree's root**, not inside
-/// `implementation/`, which is a verbatim copy of what the model produced. Nothing else writes the
-/// backend store's `runs/{id}/replay.json` for a backend-driven run, so without this mirror the
-/// record never reaches `GET /runs/{id}/replay` and a replay driver has nothing to re-run from.
+/// `implementation/`, which is a verbatim copy of what the model produced. (The `replay` in those
+/// paths is an
+/// [address](test_cabinet_core::gg_session_record), not a name.) Nothing else writes the backend
+/// store's `runs/{id}/replay.json` for a backend-driven run, so without this mirror the record
+/// never reaches `GET /runs/{id}/replay` and a run's session is readable only from whatever host
+/// still has its tree.
 ///
 /// The gzipped bytes are uploaded **as they are**: the store keeps run-tree artifacts opaque and the
 /// serving route content-negotiates on the request's `Accept-Encoding`, so decompressing here would

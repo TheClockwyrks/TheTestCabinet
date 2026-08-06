@@ -22,7 +22,7 @@
 //!
 //! # It applies to every harness
 //!
-//! Unlike the replay assembly, this stage does not check the harness. Analysing a
+//! Unlike the session-record assembly, this stage does not check the harness. Analysing a
 //! directory involves zero harness-specific work, and restricting it to gg would cost
 //! coverage for nothing. The gg-only constraint binds where it matters — the aggregate
 //! query surface — not here.
@@ -126,7 +126,7 @@ impl PostRunStage for StaticCodeAnalyzer {
 /// run to tens of megabytes.
 ///
 /// Gzip because a run tree's artifacts are gzipped by
-/// [convention](test_cabinet_core::post_run) — the same convention the replay record set —
+/// [convention](test_cabinet_core::post_run) — the same convention the session record set —
 /// and because this document compresses roughly tenfold: it is mostly repeated path and
 /// symbol strings.
 fn write_document_gz(output: &Path, document: &CodeAnalysisDocument) -> Result<u64> {

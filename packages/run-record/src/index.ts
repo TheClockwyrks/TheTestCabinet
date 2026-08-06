@@ -2039,7 +2039,7 @@ export type RunRecord = {
    * [code analysis](https://docs.testcabinet.ai/gg/analysis/code-analysis/) for the
    * basis ladder that falls back when this field is absent.
    *
-   * Distinct from, and authoritative over, a gg replay's `baselineCommit`: that is
+   * Distinct from, and authoritative over, a gg session record's `baselineCommit`: that is
    * gg's own in-container observation of the same commit, and a mismatch between
    * them is diagnostic rather than redundant.
    *
