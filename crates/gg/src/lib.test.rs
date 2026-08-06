@@ -145,13 +145,27 @@ const SPELLING_EXEMPT: &[(&str, &str)] = &[
 /// function — or the moment a second language is registered, for which it was never true at all.
 ///
 /// The rule is therefore the blunt one, and it is the only mechanism there is: outside the
-/// [exemptions](SPELLING_EXEMPT), no line of gg's non-test source may contain
-/// `<catalogued object>.<lowerCamelName>`. It is a **textual** check rather than a semantic one, so
+/// [exemptions](SPELLING_EXEMPT), **no string literal in gg's non-test source contains
+/// `<catalogued object>.<function name>`**. It is a **textual** check rather than a semantic one, so
 /// it cannot see a spelling assembled from two constants and joined with a `format!` — that shape is
 /// what [`no_object_name_is_a_constant_waiting_to_be_joined`] covers.
 ///
 /// Both halves come from the registered catalogues rather than from a list here, so a call renamed
 /// in the SDK renames what this looks for.
+///
+/// # Why it reads string literals rather than whole lines
+///
+/// Because a spelling only reaches a model through one, and because a rule that judged whole lines
+/// judged something else as well. The registered languages used to spell every function in
+/// `lowerCamelCase`, which no Rust identifier is, so "somewhere on this line" and "inside a string"
+/// were the same set by accident. [Python](crate::sandbox::language) spells them the way Rust spells
+/// its own methods, and the accident ended: `context.archive_thread(&ranges)` — gg calling its own
+/// `ContextModel` through a binding named for the window it manages — reads as an SDK spelling to a
+/// substring search and is not one.
+///
+/// Renaming gg's own code to dodge a textual test would be the tail wagging the dog, and the
+/// collision recurs for every `snake_case` arm the seam registers. So the rule is stated as what it
+/// has always meant: what a model reads is a string, and a string is what this reads.
 #[test]
 fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
     // Every `object.name` pair any registered language's SDK binds — the exact strings a hand-typed
@@ -200,15 +214,15 @@ fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
 
     let mut offenders = Vec::new();
     for (where_, line) in lines {
-        // A doc comment is a developer's; only a string literal or a `format!` reaches a model, and
-        // a `///` naming `view.openFile` in an explanation is exactly the kind of prose that should
-        // be able to name it.
+        // A doc comment is a developer's, and a `///` naming `view.openFile` in an explanation is
+        // exactly the kind of prose that should be able to name it.
         let code = line.trim_start();
         if code.starts_with("//") {
             continue;
         }
+        let quoted = string_literals(code);
         for spelling in &spellings {
-            if code.contains(spelling.as_str()) {
+            if quoted.iter().any(|text| text.contains(spelling.as_str())) {
                 offenders.push(format!("{where_}: {}", line.trim()));
                 break;
             }
@@ -222,6 +236,48 @@ fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
          renames it everywhere and a second language spells it its own way:\n{}",
         offenders.join("\n"),
     );
+}
+
+/// The text inside each double-quoted string `line` opens, in order — what a model could actually be
+/// shown.
+///
+/// A line scan rather than a lexer, and deliberately over-approximating on the input it cannot read:
+/// a line that opens a multi-line or raw string is handed back **whole**, so a spelling hiding in
+/// one is still caught. Under-reading would make the gate silently miss; over-reading only costs a
+/// false positive that an author can see and fix.
+fn string_literals(line: &str) -> Vec<&str> {
+    // A raw string's escapes are not escapes, and a string opened here may close many lines below.
+    // Either way the honest answer is "the whole line might be string", which is what a caller
+    // searching for a substring wants.
+    if line.contains("r\"") || line.contains("r#\"") {
+        return vec![line];
+    }
+    let bytes = line.as_bytes();
+    let mut out = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'"' {
+            index += 1;
+            continue;
+        }
+        let start = index + 1;
+        let mut end = start;
+        while end < bytes.len() {
+            match bytes[end] {
+                b'\\' => end += 2,
+                b'"' => break,
+                _ => end += 1,
+            }
+        }
+        if end >= bytes.len() {
+            // Unterminated on this line: it continues below, so the rest of the line is string.
+            out.push(&line[start..]);
+            break;
+        }
+        out.push(&line[start..end]);
+        index = end + 1;
+    }
+    out
 }
 
 /// **No API object's name is a `const` in gg's own code.**
