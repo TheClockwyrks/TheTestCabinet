@@ -1345,6 +1345,85 @@ async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
     );
 }
 
+/// **A skill whose code is spelled in no language the reading agent writes is read as prose, and
+/// the operator is told.**
+///
+/// Two halves, and both matter. The model's read still succeeds and still pins the body — refusing
+/// it, or binding a module the agent could not evaluate, would make a skill's shared half unusable
+/// because its unshared half was authored elsewhere. And the *operator* gets a `warn` naming the
+/// spellings the directory does carry, because a module nothing in the run can evaluate is an
+/// authoring mistake rather than a configuration.
+///
+/// The model is deliberately told nothing: which other languages a directory was authored for is
+/// not the agent's business, and naming them would vary a prompt between arms. So this asserts both
+/// directions — the message reached the sink, and it did not reach the conversation.
+///
+/// The fixture language stands in for a real second arm, which is exactly what it is for: with only
+/// the two ECMAScript arms registered, each reads the other's spelling and this path has no way to
+/// be reached at all.
+#[tokio::test]
+async fn a_skill_spelled_in_no_language_this_agent_writes_is_read_as_prose_and_reported() {
+    let dir = TempDir::new().unwrap();
+    let skill = dir.path().join(".gg").join("skills").join("csv-tools");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(
+        skill.join("skill.md"),
+        "---\nname: csv-tools\ndescription: Parsing comma-separated text.\n---\n\nSplit on commas.\n",
+    )
+    .unwrap();
+    // Authored for a language this agent does not write, and only for that one.
+    std::fs::write(skill.join("skill.fixture"), "def parse(text): pass\n").unwrap();
+
+    let (outcome, events, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        program_script(&["skills.readSkill(\"csv-tools\");"]),
+    )
+    .await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    let warnings: Vec<&String> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Log { level, message } if level == "warn" => Some(message),
+            _ => None,
+        })
+        .collect();
+    let reported = warnings
+        .iter()
+        .find(|message| message.contains("csv-tools"))
+        .unwrap_or_else(|| panic!("the operator is told the skill read as prose: {warnings:?}"));
+    assert!(
+        reported.contains("`.fixture`"),
+        "the message names the spelling the directory carries: {reported}"
+    );
+    assert!(
+        reported.contains("TypeScript"),
+        "…and the language that could not read it: {reported}"
+    );
+
+    // The prose still arrived, and nothing was bound.
+    let conversation = requests
+        .last()
+        .expect("a recorded request")
+        .iter()
+        .filter_map(|message| message.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        conversation.contains("Split on commas."),
+        "the body still reaches the model: {conversation}"
+    );
+    assert!(
+        !conversation.contains("lib.csvTools"),
+        "nothing was bound, so the read must not name a binding key: {conversation}"
+    );
+    assert!(
+        !conversation.contains("fixture"),
+        "the model is not told which other languages the directory was authored for: {conversation}"
+    );
+}
+
 /// A program's `readSkill` pins the skill into the context and emits the updated skills state,
 /// exactly as a native read does — the behaviour that makes a skill stay available for the rest of
 /// the session instead of being read once into a variable and lost.
