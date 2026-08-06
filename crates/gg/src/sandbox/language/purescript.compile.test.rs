@@ -317,6 +317,40 @@ fn the_manifest_describes_the_tree_that_actually_shipped() {
     }
 }
 
+/// A `purs` that is not the release the tree was compiled by is refused by name.
+///
+/// Externs are a compiler-version-private format, so a drifted toolchain does not degrade — it fails
+/// every compile, with diagnostics in gg's own library files. That was already routed to
+/// `Toolchain` rather than blamed on the model, which is the right band; what an operator would have
+/// read is *purs reported no diagnostic in the program*, which names neither the cause nor the fix.
+///
+/// Both directions are asserted, and the third is the interesting one: a `--version` this parse did
+/// not understand is **not** a mismatch, because `--version` failing while `compile` would have
+/// worked is a strange machine rather than a wrong one, and refusing there would ground the arm over
+/// a reading rather than over a compiler.
+#[test]
+fn a_purs_that_did_not_compile_the_tree_is_refused_by_name() {
+    let failure = version_verdict("0.15.15", "purs").expect_err("a different release is refused");
+    assert!(
+        failure.contains("0.15.15") && failure.contains(manifest().purs.as_str()),
+        "the message names both releases: {failure}"
+    );
+    assert!(
+        failure.contains(PURS_ENV),
+        "and how to point gg at the right one: {failure}"
+    );
+
+    assert!(version_verdict(&manifest().purs, "purs").is_ok());
+    assert!(
+        version_verdict("", "purs").is_ok(),
+        "an unread version is not a mismatch"
+    );
+
+    // And the compiler this suite is actually running against is the pinned one — which is the same
+    // check the first compile of a run makes, made here against the developer's or CI's toolchain.
+    check_purs_version(&PrepareContext::new()).expect("the `purs` on PATH is the pinned release");
+}
+
 /// The SDK inside the shipped tarball is the SDK in the working tree, file for file.
 ///
 /// This is the gate under the arm's central claim — *the surface a model is shown and the surface it

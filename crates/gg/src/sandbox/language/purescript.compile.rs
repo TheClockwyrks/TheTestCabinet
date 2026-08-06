@@ -94,6 +94,7 @@
 //! | any other `purs` error code (`TypesDoNotUnify`, `UnknownName`, `NoInstanceFound`, …) | [`PrepareError::Compile`] — read whole and rejected, which is the band a typed arm exists to produce |
 //! | `esbuild` reporting no matching export for `main` | [`PrepareError::Compile`] — the program compiled but declares no entry point |
 //! | `purs` or `esbuild` could not run, was killed, or reported nothing | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
+//! | the `purs` on `PATH` is not the release the shipped tree was compiled by | [`PrepareFailure::Toolchain`], refused by [`agree_on_the_compiler`] at the first compile of the process, naming both releases — because externs are a compiler-version-private format and the alternative is every program failing over gg's own library files |
 //!
 //! Diagnostics are located in the model's **own** coordinates. A program is compiled as module
 //! `Main` whatever the model called it, so that the entry point can be imported by a fixed path; the
@@ -143,6 +144,9 @@ const COMPILE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// How long one `esbuild` invocation may take. Bundling is tens of milliseconds; a minute is a hang.
 const BUNDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How long `purs --version` may take. It reads no files and prints one line.
+const VERSION_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The file a program is compiled under, and the one its diagnostics are located in.
 pub(super) const PROGRAM_FILE: &str = "program.purs";
@@ -350,6 +354,7 @@ fn compile(
 ) -> Result<String, PrepareFailure> {
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    agree_on_the_compiler(context)?;
 
     let (retargeted, shift) = retarget(source);
     workspace
@@ -480,6 +485,72 @@ fn skip_trivia(source: &str, from: usize) -> usize {
 // ---------------------------------------------------------------------------------------------
 // The two invocations
 // ---------------------------------------------------------------------------------------------
+
+/// Refuse, once per process, a `purs` that is not the release the committed tree was compiled by.
+///
+/// Externs are a **compiler-version-private format**, so this is not a nicety: a `purs` that drifted
+/// from the manifest's pin cannot read the tree gg ships, and every compile fails with diagnostics
+/// in gg's own library files. [`classify`] already routes that to
+/// [`Toolchain`](PrepareFailure::Toolchain) rather than blaming the model — the band is right — but
+/// what an operator would read is *purs reported no diagnostic in the program*, which names neither
+/// the cause nor the fix. This makes the first compile of the process say both instead.
+///
+/// The check is here rather than in [`warm`] because a compiler runs on
+/// [a preparation's own ground](crate::sandbox::language::compile) and a preparation is the only
+/// thing that owns one — the seam mints a [`PrepareContext`] per preparation and a language may only
+/// receive one. So the cost lands where every other compile cost on this arm lands: inside the turn's
+/// [compile measurement](crate::sandbox::SandboxOutcome::compile), once, at about ten milliseconds,
+/// and never again for the life of the process.
+fn agree_on_the_compiler(context: &PrepareContext) -> Result<(), PrepareFailure> {
+    static AGREED: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+    AGREED
+        .get_or_init(|| check_purs_version(context))
+        .clone()
+        .map_err(PrepareFailure::Toolchain)
+}
+
+/// Ask `purs` what it is, and compare it with the manifest's pin.
+///
+/// A version that cannot be *read* is not a mismatch and is not refused here: `--version` failing
+/// while `compile` would have worked is a strange machine rather than a wrong one, and the compile
+/// that follows reports whatever is really wrong with far more to go on. Only a version that reads
+/// cleanly and disagrees is fatal.
+fn check_purs_version(context: &PrepareContext) -> Result<(), String> {
+    let purs = tool(PURS_ENV, "purs");
+    let Ok(mut command) = context.compiler(&purs) else {
+        return Ok(());
+    };
+    let Ok(report) = command.arg("--version").run(VERSION_TIMEOUT) else {
+        return Ok(());
+    };
+    if !report.ok {
+        return Ok(());
+    }
+    // `purs --version` prints the release and nothing else; a build that decorated it would still
+    // carry it as the first token.
+    version_verdict(
+        report.stdout.split_whitespace().next().unwrap_or_default(),
+        &purs,
+    )
+}
+
+/// What an observed `purs` release means, given the one the tree was compiled by.
+///
+/// Split out from the invocation so both answers are testable without a second compiler on the
+/// machine: an empty reading is a `--version` this parse did not understand and is not a mismatch.
+fn version_verdict(observed: &str, purs: &str) -> Result<(), String> {
+    if observed.is_empty() || observed == compiler_version() {
+        return Ok(());
+    }
+    Err(format!(
+        "gg's PureScript library tree was compiled by purs {} and `{purs}` reports {observed}. \
+         Externs are a compiler-version-private format, so this compiler cannot read that tree and \
+         every program would be refused over gg's own library files. Install the pinned release \
+         (containers/gg-toolchains, from packages/gg-sandbox-purescript/purescript-version.sh) or \
+         point {PURS_ENV} at it.",
+        compiler_version(),
+    ))
+}
 
 /// Spawn `purs` over the source in this preparation's own workspace and wait for it, killing it at
 /// [`COMPILE_TIMEOUT`].

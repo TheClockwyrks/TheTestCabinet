@@ -513,6 +513,15 @@ because it compares directory names and counts modules. `the_shipped_sdk_is_the_
 unpacks the tarball and compares the two SDK trees file for file — the `.js` foreign modules
 included, since that is where a call's lowering lives — and names the file that drifted.
 
+The compiler that reads a tree must also be the one that wrote it, and that is checked rather than
+assumed: the first compile of a process asks `purs --version` once and refuses a release that is
+not the manifest's pin, naming both and saying where the pinned one comes from. Without it a
+drifted image fails *every* program with diagnostics inside gg's own library modules, which lands
+in the right band — a toolchain failure, never blamed on the model — under the message *purs
+reported no diagnostic in the program*, which names neither the cause nor the fix. A `--version`
+that cannot be read is deliberately not a mismatch: that is a strange machine rather than a wrong
+one, and the compile that follows has far more to say about it.
+
 ### What the libraries are, and why they are generous
 
 The set is declared in `packages/gg-sandbox-purescript/spago.yaml`, resolved against a pinned
