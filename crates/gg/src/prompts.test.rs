@@ -1909,6 +1909,33 @@ fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
     }
 }
 
+/// **TypeScript's prompt says its programs are TYPE-checked, and not merely compiled.**
+///
+/// The coverage this restores. [`a_prompt_for_a_checked_language_says_its_programs_are_checked`]
+/// once demanded the token `type-check` of every checked language, and had to stop when Ruby
+/// registered — Opal refuses a program on grammar alone, so that word would be false there. But the
+/// shared term it moved to (`compile`) is true of both, which leaves the single most load-bearing
+/// sentence in the TypeScript arm unasserted: that a model's *types* are judged before its program
+/// runs is the entire content of the TypeScript/JavaScript A/B, and a prompt that quietly lost it
+/// would leave the two arms differing only in a `.ts` extension.
+///
+/// Scoped to this language rather than added back to the table for the reason
+/// [`typescripts_checked_prompt_says_a_caught_error_arrives_unnarrowed`] is scoped: what a checker
+/// checks is the language's own claim, and each arm gets to make its own.
+#[test]
+fn typescripts_prompt_says_its_programs_are_type_checked() {
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    let rendered = plain(&render_system_for(
+        language,
+        &every_code_section_on(language.id()),
+    ));
+    assert!(
+        rendered.contains("type-check"),
+        "the prompt no longer states that the program's TYPES are checked (`type-check`), which is \
+         the whole difference between this arm and the JavaScript one:\n{rendered}"
+    );
+}
+
 /// **TypeScript's checked prompt tells a model how to read the error a caught failure gives it.**
 ///
 /// Split out of [`a_prompt_for_a_checked_language_says_its_programs_are_checked`] rather than folded
