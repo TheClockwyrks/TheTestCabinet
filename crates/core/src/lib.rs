@@ -588,11 +588,15 @@ where
         // sprite image (the base plus the baked-in `draw` binary), sprite-sheet
         // runs use the sprite-sheet image (the base plus the baked-in `draw-sheet`
         // binary). The selected harness's CLI is installed into the container below
-        // either way; there is no per-harness image.
+        // either way — there is no per-harness image — with one exception, and it
+        // is why the slug is passed: a `gg` run resolves the gg VARIANT of that
+        // image, the same image plus the language toolchains its
+        // responses-as-code programs are compiled with. Those exist for one
+        // harness, so every other run gets an image without them.
         let image = request
             .container_image
             .clone()
-            .unwrap_or_else(|| resolve_run_image(test_case.test_type, test_case.asset_kind));
+            .unwrap_or_else(|| resolve_run_image(test_case.test_type, test_case.asset_kind, slug));
         tracing::Span::current().record("container.image", image.as_str());
 
         // Pull the base image up front so the run fails fast with a clear error

@@ -39,12 +39,20 @@
 #     (which supplies the Rust + `wasm32-unknown-unknown` toolchain a model's engine
 #     builds to wasm with) plus the Lattice tooling compiled from `crates/`: the
 #     baked-in `lattice` CLI, the engine buildkit, the reference engines, and the
-#     committed training scenarios (`performance/Dockerfile` is `FROM` base-wasm here).
-# None is a per-harness image: a run installs the selected harness's CLI into the
-# image at run time (see `harnesses/README.md`).
+#     committed training scenarios (`performance/Dockerfile` is `FROM` base-wasm here);
+#     and
+#   - one `<name>-gg` VARIANT per run image `gg` is pointed at — that image plus the
+#     language toolchains a gg run's responses-as-code programs are compiled with
+#     (`gg/Dockerfile`, `FROM` its parent, copying out of the `gg-toolchains` builder).
+# With that one exception, none is a per-harness image: a run installs the selected
+# harness's CLI into the image at run time (see `harnesses/README.md`). The exception is
+# gg, whose programs need a COMPILER on the turn path and whose language is resolved per
+# agent, so every toolchain has to be baked in together — and must not be present for any
+# other harness, which is why it is a variant rather than a layer on the shared image.
 #
 # Usage:
-#   ./build.sh                # build all images (the base, every asset-generation kind, adversarial, and performance)
+#   ./build.sh                # build all images (the base, every asset-generation kind, adversarial,
+#                             #   performance, and the `-gg` variants)
 #   ./build.sh <name>...      # build ONLY the named images (e.g. `./build.sh voxel-animation`,
 #                             #   `./build.sh adversarial performance`). Names are the short
 #                             #   image names (the IMAGE_NAME_PREFIX suffix / the containers/<name>
@@ -132,6 +140,11 @@ readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 # same compile. It is deliberately absent from image-names.sh, which is the list of
 # PUBLISHED run images.
 readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
+# The gg LANGUAGE-TOOLCHAIN builder image. Like TOOLS_IMAGE it is not a run image and
+# is never pushed: it exists only as a `COPY --from` source, holding the toolchains
+# every `-gg` variant bakes in (see containers/gg-toolchains/Dockerfile). Also
+# deliberately absent from image-names.sh, which lists PUBLISHED run images.
+readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -186,6 +199,48 @@ build_tools() {
 	"$DOCKER" build \
 		-t "${TOOLS_IMAGE}" \
 		-f "${SCRIPT_DIR}/tools/Dockerfile" "${SCRIPT_DIR}/.."
+}
+
+# Build the gg language-toolchain builder: every compiler a `gg` run's
+# responses-as-code programs may be compiled with, assembled under one prefix and
+# exported as a `scratch` image the `-gg` variants `COPY --from`.
+#
+# This is NOT a run image. It is never pushed and never appears in image-names.sh —
+# a run never executes in it; it is only ever a source for `COPY --from`.
+#
+# Built once and copied into every variant, for the same reason the asset tooling is:
+# the tree is identical on each of them, so assembling it per variant would be the same
+# work repeated. Its content being identical is also why the registry stores the copied
+# layer once however many variants are published.
+build_gg_toolchains() {
+	echo "==> building ${GG_TOOLCHAINS_IMAGE} (gg language toolchains; not pushed)"
+	"$DOCKER" build \
+		-t "${GG_TOOLCHAINS_IMAGE}" \
+		-f "${SCRIPT_DIR}/gg-toolchains/Dockerfile" "${SCRIPT_DIR}/.."
+}
+
+# Build one `<parent>-gg` variant: the parent run image plus the gg toolchain tree
+# (see containers/gg/Dockerfile). One parameterized Dockerfile serves them all — the
+# variants differ only in what they are `FROM` — so this takes the variant's name and
+# the parent tag to layer onto.
+#
+# Arguments: the variant's short name (e.g. `base-wasm-gg`) and its parent's local tag.
+build_gg_variant() {
+	local name="$1"
+	local parent="$2"
+	local image="${IMAGE_NAME_PREFIX}${name}:${IMAGE_TAG}"
+	echo "==> building ${image} (FROM ${parent})"
+	"$DOCKER" build \
+		--build-arg "BASE_IMAGE=${parent}" \
+		--build-arg "GG_TOOLCHAINS_IMAGE=${GG_TOOLCHAINS_IMAGE}" \
+		-t "${image}" \
+		-f "${SCRIPT_DIR}/gg/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${image}" "${name}")"
+		echo "==> ${name} reference: ${reference}"
+	fi
 }
 
 build_base() {
@@ -535,6 +590,13 @@ build_one() {
 		# The Blender character image is self-contained (FROM ubuntu:26.04, NOT the base),
 		# so it has its own builder and takes no BASE_IMAGE arg — see build_blender.
 		blender)      build_blender ;;
+		# The gg variants: the image named by the prefix, plus the gg language
+		# toolchains. Each is `FROM` its parent's local tag, so image-names.sh lists
+		# every variant immediately after the image it derives from and the layered
+		# rules below build a missing parent first.
+		base-wasm-gg)     build_gg_variant base-wasm-gg "${BASE_WASM_IMAGE}" ;;
+		full-stack-2d-gg) build_gg_variant full-stack-2d-gg "${FULL_STACK_2D_IMAGE}" ;;
+		game-jam-gg)      build_gg_variant game-jam-gg "${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}" ;;
 		# Every other name is a plain asset-generation image `FROM` the base.
 		*)            build_asset_image "$1" ;;
 	esac
@@ -553,7 +615,12 @@ mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 # game-jam (which inherits everything from full-stack-2d). Everything else in
 # ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
 # rather than the members so a newly-added asset kind is covered by default.
-readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam)
+readonly NON_TOOLS_IMAGES=(
+	base base-wasm blender adversarial performance game-jam
+	# The gg variants add one COPY of the toolchain tree onto an already-built parent
+	# and bake no asset binary of their own.
+	base-wasm-gg full-stack-2d-gg game-jam-gg
+)
 
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).
@@ -605,14 +672,39 @@ select_needs_base() {
 # Whether the selection includes any image built `FROM` base-wasm (the Rust/wasm
 # middle layer): the full-stack-2d, adversarial, and performance images. `game-jam`
 # is `FROM` full-stack-2d (which is `FROM` base-wasm), so it needs base-wasm present
-# too. Such a selection needs base-wasm present, which in turn needs base — all
-# handled below.
+# too, and each `-gg` variant needs whatever its parent needs. Such a selection needs
+# base-wasm present, which in turn needs base — all handled below.
 select_needs_base_wasm() {
 	local x
 	for x in "${selected[@]}"; do
 		case "$x" in
 			full-stack-2d | game-jam | adversarial | performance) return 0 ;;
+			base-wasm-gg | full-stack-2d-gg | game-jam-gg) return 0 ;;
 		esac
+	done
+	return 1
+}
+
+# Whether the selection includes any gg variant. Each is one `COPY` of the gg
+# language-toolchain tree onto an already-built run image, so the toolchain builder has
+# to exist first.
+select_needs_gg_toolchains() {
+	local x
+	for x in "${selected[@]}"; do
+		case "$x" in
+			*-gg) return 0 ;;
+		esac
+	done
+	return 1
+}
+
+# Whether the selection includes the game-jam-gg variant, which is `FROM` the game-jam
+# image — so that image must be present first (it in turn needs full-stack-2d,
+# base-wasm and base, all covered above).
+select_needs_game_jam() {
+	local x
+	for x in "${selected[@]}"; do
+		[[ "$x" == game-jam-gg ]] && return 0
 	done
 	return 1
 }
@@ -623,7 +715,9 @@ select_needs_base_wasm() {
 select_needs_full_stack_2d() {
 	local x
 	for x in "${selected[@]}"; do
-		[[ "$x" == game-jam ]] && return 0
+		case "$x" in
+			game-jam | game-jam-gg | full-stack-2d-gg) return 0 ;;
+		esac
 	done
 	return 1
 }
@@ -652,6 +746,14 @@ select_needs_tools() {
 # so it is built first.
 if select_needs_tools; then
 	build_tools
+fi
+
+# Layer 0b — the gg language toolchains, built before any `-gg` variant copies them out.
+# ALWAYS rebuilt, for the same reason the asset tooling is: it carries the compilers a gg
+# run's programs are judged by, so a stale one would bake yesterday's toolchain into an
+# otherwise-fresh variant. It is independent of the base, so it is built here.
+if select_needs_gg_toolchains; then
+	build_gg_toolchains
 fi
 
 # Layer 1 — the base. `select_needs_base` is true whenever base-wasm or any of its
@@ -687,6 +789,16 @@ if ! select_has full-stack-2d \
 	# needs no tooling of its own), so build the tooling here before its parent.
 	build_tools
 	build_full_stack_2d
+fi
+
+# Layer 4 — game-jam (the parent of game-jam-gg). Selecting only the variant must not
+# silently build it `FROM` an image that is not there; an existing game-jam is reused
+# untouched, exactly as full-stack-2d is above.
+if ! select_has game-jam \
+	&& select_needs_game_jam \
+	&& ! image_present "${IMAGE_NAME_PREFIX}game-jam:${IMAGE_TAG}"; then
+	echo "==> game-jam image not present; building it first (game-jam-gg is FROM it)"
+	build_game_jam
 fi
 
 # Build each selected image. The base layers and the tooling builder are already

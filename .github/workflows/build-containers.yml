@@ -136,7 +136,8 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # build.sh (no args) builds EVERY run image — base, every asset-generation kind
-      # including blender, adversarial, and performance — natively for this runner's
+      # including blender, adversarial, performance, and the `-gg` variants that carry
+      # gg's language toolchains — natively for this runner's
       # architecture, pushes them to IMAGE_REGISTRY under the arch-suffixed tag, and
       # prints their pinned digests. Both build.sh and the `manifest` job below take
       # their image set from containers/image-names.sh, so each built image is

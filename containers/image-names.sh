@@ -14,13 +14,29 @@
 # Keeping both consumers driven by this one list prevents the drift where an image
 # is built + pushed per-arch but never fused, so its `:<sha>` tag 404s at pull time.
 # When you add or remove a run image, edit ONLY this list.
+#
+# A `<name>-gg` entry is the GG VARIANT of `<name>`: that image plus the language
+# toolchains a `gg` run's responses-as-code programs are compiled with. It is a
+# separate published image because those toolchains exist for one harness, and a run
+# driven by any other must not carry them (see containers/gg/Dockerfile). Each is
+# listed immediately after its parent, because build.sh builds in listed order and a
+# variant is `FROM` the image above it.
+#
+# The variants are deliberately a SUBSET: publishing one per run image would double
+# the set and the CI matrix for toolchains most of them would never invoke. A gg run
+# whose image has no variant falls back to the shared image with a warning
+# (`harness::gg_variant` in crates/core), so growing this list is adding the name here
+# and the match arm there — and nothing 404s in the meantime.
 set -euo pipefail
 
 cat <<'EOF'
 base
 base-wasm
+base-wasm-gg
 full-stack-2d
+full-stack-2d-gg
 game-jam
+game-jam-gg
 sprite
 sprite-sheet
 voxel

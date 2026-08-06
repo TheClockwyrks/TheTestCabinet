@@ -187,6 +187,53 @@ the module was not compiled and that nothing about it was rejected, and puts the
 on the operator's stream — where it has a reader who can fix the image, which is the only
 reader it has at all.
 
+### Where a compiler lives, and what it must never share
+
+A compiler is on the **turn path**, so it has to be in the run container. gg itself is
+copied in as a single static binary, which works because a binary copies fine — a JDK does
+not. So a gg run resolves a `<name>-gg` **variant** of the image it would otherwise get:
+that image plus a toolchain tree (`containers/gg-toolchains/`, laid onto a parent by
+`containers/gg/Dockerfile`, resolved by `harness::gg_variant`).
+
+Three things about that image follow from how gg works, and each of them is a constraint
+rather than a preference.
+
+**Every toolchain is present together.** A program's language is
+[configured per agent](#what-a-language-supplies), so one run can drive a C# agent and a
+Python agent at the same time. There is no such thing as "the run's toolchain".
+
+**No other harness's image carries them.** They are for one harness. A Claude Code run must
+not pull gigabytes it cannot use, and a model that found a Swift compiler on `PATH` in an
+end-to-end run would have been handed a capability no other arm of that comparison has —
+which is the same reason the toolchains are a variant image rather than a layer on the
+shared one.
+
+**Not every image publishes a variant.** The list is a subset, and a gg run whose image has
+none falls back to the shared image with a warning: TypeScript and JavaScript still work
+(their compiler is inside the gg binary) and a compiled language reports its
+[toolchain as missing](#a-compiler-has-two-ways-to-fail) on its first program — a named,
+model-visible answer rather than an image pull that 404s.
+
+:::caution[A compiler here must be isolated per invocation, by construction]
+Several compilations are in flight at once, routinely: agents run in parallel up to
+`limits.maxParallel`, each turn may chain up to four programs, and every one of them
+prepares in the same process. A language's prepare step must therefore give **every
+invocation its own working tree, its own output directory and its own process**, and must
+not share a build cache, a compiler daemon or an output path across concurrent calls.
+
+This is not a hypothetical. Two silent-corruption bugs were measured while the capability
+was being designed: a shared build strategy handed four concurrent compilations to one
+builder and three produced no output while nothing threw, and a shared compiler output tree
+interleaved two agents' programs into each other's artifacts. **Every process exited zero
+in both.** That is the shape to design against — not a crash, which the toolchain band
+already reports, but a run in which one agent evaluates another agent's program and every
+number the study collects is wrong.
+
+It is *not* a stall risk: the prepare step runs on a blocking task, so a slow compiler holds
+up neither the loop nor any sibling agent. The hazard is contention and shared state, and
+guarding the wrong one costs the isolation that is actually needed.
+:::
+
 ## The rules an agent-facing surface obeys in every language
 
 A language is free to spell things its own way. It is not free to change **what the model
@@ -676,12 +723,14 @@ one.**
    where one should be: a signature that takes arguments and documents none fails, as does an
    entry documenting no argument where another arm documents one.
 5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`. If the language
-   type-checks the model's program, commit the compiler that does it under
-   `crates/gg/src/sandbox/checkers/` as well, pinned at one release — gg is copied as a single
-   file into a run container, so a compiler it needs on the turn path is a compiler it carries.
-   TypeScript's is a `tsc` cut out of the same pinned `typescript` its catalogue is reflected
-   with, which is what stops a program from being judged by one release and described by
-   another.
+   type-checks the model's program, its compiler has to reach the run container, and there
+   are two places for it. A compiler small enough to *be* an artifact goes under
+   `crates/gg/src/sandbox/checkers/`, pinned at one release, and rides inside gg's own
+   binary — TypeScript's is a `tsc` cut out of the same pinned `typescript` its catalogue is
+   reflected with, which is what stops a program from being judged by one release and
+   described by another. A real toolchain goes in the
+   [gg image layer](#where-a-compiler-lives-and-what-it-must-never-share) instead (step 8),
+   because gg is copied into a container as a single file and a JDK is not one.
 6. **Add the enum variant** in `crates/core/src/gg.rs`, and list it in `GgProgramLanguage::ALL`
    with an `ordinal()` arm. Neither is optional and neither can be forgotten: `ordinal()` is an
    exhaustive `match`, so the variant does not compile without an arm, and each arm checks its
@@ -699,10 +748,16 @@ one.**
    dialect, the prompt dialect, the two templates (`system-code.python.hbs`, `code-nothing-shown.python.hbs`) — whose every quoted
    call is an `{{api.…}}` reference and never a literal — and the healing fixtures its dialect
    must survive.
-8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
+8. **Install its toolchain**, if it needs one at run time, in
+   `containers/gg-toolchains/Dockerfile` — under `/opt/gg/toolchains` and nowhere else,
+   relocatable across the Debian- and Ubuntu-based run images, and usable with a
+   per-invocation working tree and output directory. The Dockerfile's header states both
+   constraints; [the caution above](#where-a-compiler-lives-and-what-it-must-never-share)
+   states why the second one is not optional.
+9. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
    and re-cutting its checker, if it has one — so the drift gate covers them rather than only
    diffing them.
-9. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
+10. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
    (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
    picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are
    `Record`s over the `GgProgramLanguage` union — **not** arrays of options, which is the
@@ -710,7 +765,7 @@ one.**
    where an array missing a row type-checks perfectly and silently offers an operator one
    language fewer than gg has. The prompt editor needs nothing: `npm run gen:contract`
    discovers `system-code.*.hbs` from the directory and mirrors every one.
-10. **Run the gates.** The agreement gate compares the new catalogue against TypeScript's
+11. **Run the gates.** The agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
     capability's call and every rule a program runs under; the

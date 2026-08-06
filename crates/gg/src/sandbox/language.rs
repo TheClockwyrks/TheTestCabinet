@@ -123,6 +123,31 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// compiler that could not finish at all is a [`PrepareFailure::Toolchain`] the model is not
     /// blamed for. Reporting the second as the first is how a model ends up rewriting a correct
     /// program to appease a broken image.
+    ///
+    /// # Concurrency: a compiler here must be isolated per invocation, by construction
+    ///
+    /// **This is called concurrently, and the concurrency is real.** A program's language is
+    /// resolved per agent, agents run in parallel up to `limits.maxParallel`, and each turn may
+    /// chain up to four programs — so several compilations of several agents' programs are in
+    /// flight at once, in one process, routinely.
+    ///
+    /// An implementation that shells out to a compiler must therefore give **every invocation its
+    /// own working tree, its own output directory and its own process**, keyed by something unique
+    /// per call. It must not share a build cache, a compiler daemon, an output path or any other
+    /// mutable build state across concurrent calls — not as an optimisation to add later, but as the
+    /// shape it is written in from the start.
+    ///
+    /// The requirement is not theoretical: two silent-corruption bugs were measured while this
+    /// capability was being designed. A shared build strategy handed four concurrent compilations to
+    /// one builder and three of them produced no output while nothing threw; a shared compiler
+    /// output tree interleaved two agents' programs into each other's artifacts. In both, every
+    /// process exited zero. That is the failure mode to design against — not a crash, which the
+    /// [toolchain band](PrepareFailure::Toolchain) already reports, but a run in which one agent
+    /// silently evaluates another agent's program and every number the study collects is wrong.
+    ///
+    /// One thing this is *not*: a stall risk. This runs on a blocking task, so a compiler that takes
+    /// seconds does not hold up the loop or any sibling agent. The hazard is contention and shared
+    /// state, and designing against the wrong one costs isolation that is actually needed.
     fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure>;
 
     /// What a program of this language is judged by, named the way this language's own users name

@@ -101,13 +101,41 @@ The full set is whatever [`build.sh`](#building) builds; the notable ones:
   the Lattice tooling compiled from `crates/`: the baked-in `lattice` CLI, the
   engine buildkit, the reference engines, and the committed training scenarios.
 
-None is a per-harness image — a run installs the selected harness's CLI into
-the image at run time, by running the harness's `install` command (see
-[`../harnesses/README.md`](../harnesses/README.md)). Installing at run time is
-what lets a run always pick up the harness's most recently published version,
-rather than whatever was current when an image was last built. The runner picks
-the image by test type and asset kind via
+With one exception, none is a per-harness image — a run installs the selected
+harness's CLI into the image at run time, by running the harness's `install`
+command (see [`../harnesses/README.md`](../harnesses/README.md)). Installing at
+run time is what lets a run always pick up the harness's most recently published
+version, rather than whatever was current when an image was last built. The
+runner picks the image by test type and asset kind via
 [`harness::resolve_run_image`](../crates/core/src/harness.rs).
+
+### The exception: the `-gg` variants
+
+`gg` is The Test Cabinet's own in-container harness, and under
+[responses-as-code](../apps/docs/src/content/docs/gg/responses-as-code.md) a model
+answers with a **program**. The language that program is written in is a run
+variable, and a compiled language needs its **compiler on the turn path** — inside
+the run container, on every turn. gg itself is a single static binary copied in at
+run time, which works because a binary copies fine; a JDK does not.
+
+So each run image gg is pointed at has a `<name>-gg` variant: the same image plus
+the toolchain tree, one `COPY` on top of its parent
+([`gg/Dockerfile`](gg/Dockerfile), copying out of the builder in
+[`gg-toolchains/Dockerfile`](gg-toolchains/Dockerfile)). Three facts shape it:
+
+- **Every toolchain is present together.** A program's language is resolved *per
+  agent*, so one run may drive a C# agent and a Python agent at the same time. An
+  image carrying one language's compiler could not run that configuration at all.
+- **It is a variant, not a layer on the shared image.** The toolchains are for one
+  harness. A run driven by Claude Code or Codex must not pull gigabytes it cannot
+  use — and a model that found a Swift compiler on `PATH` in an end-to-end run
+  would have been handed a capability no other arm of that comparison has.
+- **Not every image has one.** The variants are a subset, listed in
+  [`image-names.sh`](image-names.sh); publishing one per run image would double the
+  set and the CI matrix for toolchains most of them would never invoke. A gg run
+  whose image has no variant falls back to the shared image with a warning
+  (`harness::gg_variant`), so growing the list is one name here and one match arm
+  there, and nothing 404s in the meantime.
 
 ## Layout
 
@@ -120,6 +148,10 @@ containers/
 │                               #   published — the asset images below `COPY --from` it (see Building)
 ├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
+├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
+│                               #   responses-as-code programs may need, under /opt/gg. Not a run image
+│                               #   and never published — the `-gg` variants `COPY --from` it
+├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
 ├── ui/Dockerfile               # the base image plus the baked-in `paint` + `ui` binaries
@@ -524,7 +556,7 @@ drifted from the repository's workspace dependencies fails the image build.
 Run on a machine with Docker (or Podman) available:
 
 ```sh
-./build.sh                     # build all images (the base, every asset-generation kind, adversarial, and performance)
+./build.sh                     # build all images (the base, every asset-generation kind, adversarial, performance, and the `-gg` variants)
 ./build.sh voxel-animation     # build ONLY the named image(s) — base is (re)built as needed for the FROM
 ./build.sh adversarial performance
 DOCKER=podman ./build.sh       # build with Podman instead
@@ -561,6 +593,25 @@ It is deliberately **not** a run image: nothing executes in it, it never appears
 also not built from it — they compile to `wasm32-unknown-unknown` as well as the host
 target and assemble their own standalone buildkits, so they keep their own build
 stages (with the same cache mounts applied directly).
+
+### The gg toolchain builder
+
+`gg-toolchains/Dockerfile` is a second builder of exactly the same shape and for
+exactly the same reason: it assembles every language toolchain a gg run's programs
+may be compiled with under one prefix (`/opt/gg/toolchains`), exports it as a
+`scratch` image, and each `-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE`
+build arg and copies the tree out. It is not a run image, never appears in
+`image-names.sh`, and is never pushed; like the asset tooling it is **always**
+rebuilt when any variant is selected, because it carries the compilers a run's
+programs are judged by.
+
+Two constraints bind every toolchain added to it, and both are written down in the
+Dockerfile's header. It must be **relocatable and distribution-portable** — the
+same tree is copied to the same absolute path onto Debian-based images and onto the
+Ubuntu-based blender one. And it must be usable **isolated per invocation**:
+several compilers run concurrently inside one run, and a shared build strategy and
+a shared output tree have each been measured interleaving two agents' programs
+while every process exited zero.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner

@@ -49,9 +49,20 @@ example by deleting files.
   a static-voxel run (`asset_kind = "voxel-model"`) uses the **voxel image** (the
   base image plus the baked-in `voxel` tool); and an animated-voxel run
   (`asset_kind = "voxel-animation"`) uses the **voxel-animation image** (the base
-  image plus the baked-in `voxel-anim` tool). None is a per-harness image: the
-  selected harness's CLI is installed into the container at run time (see
-  [Harness install](#harness-install) below), not baked into the image. All five
+  image plus the baked-in `voxel-anim` tool). With one exception, none is a
+  per-harness image: the selected harness's CLI is installed into the container at
+  run time (see [Harness install](#harness-install) below), not baked into the
+  image. The exception is [`gg`](/gg/overview/), whose runs resolve a `<name>-gg`
+  **variant** of the image they would otherwise get — the same image plus the
+  language toolchains a
+  [responses-as-code](/gg/responses-as-code/) program is compiled with. Those need
+  to be baked in because a compiler is on the turn path and a program's language is
+  resolved per agent, so every toolchain has to be present together; and they are a
+  variant rather than a layer on the shared image because they exist for that one
+  harness. Not every image publishes a variant — a gg run whose image has none
+  falls back to the shared image, and a compiled language then reports its
+  toolchain as missing on the first program rather than the run failing to pull.
+  Each variant pins on its own `TCAB_CONTAINER_IMAGE_*_GG` override. All five
   are registry images, and a runner resolves the one for the run from its **own
   registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
   `ghcr.io/theclockwyrks`) and `TCAB_CONTAINER_TAG` (default `latest`) select the

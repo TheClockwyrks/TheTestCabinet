@@ -85,7 +85,10 @@ Every run executes inside a run-container image selected by the test case's
 image** (the base plus the baked-in `draw` tool), and a sprite-sheet run uses the
 **sprite-sheet image** (the base plus the baked-in `draw-sheet` tool). The
 [agent harness](/components/core/harnesses/) you drive is installed into the
-container at run time, so none is a per-harness image to build or pull. The
+container at run time, so none is a per-harness image to build or pull — except
+under [`gg`](/gg/overview/), which resolves a `-gg` variant of the same image
+carrying the language toolchains its programs are compiled with, and which the
+driver pulls in exactly the same way. The
 **driver** (not `tcab`) pulls the image it needs from a container registry (GHCR)
 and pins the resolved digest in the run record; you do not have to build anything
 on the host to make a first run. The cluster resolves the image from its own

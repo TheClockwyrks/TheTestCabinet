@@ -46,7 +46,7 @@
 #   local-down      delete the cluster (and everything in it)
 #   local-rebuild   rebuild+import the SERVICE images, re-apply the overlay, restart the services (after a service code OR manifest change)
 #   run-images      rebuild+import ALL the RUN-CONTAINER images (after changing baked-in tooling: voxel-anim/draw/core modeling) — the heavy path
-#   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance
+#   run-images-e2e / -full-stack / -game-jam / -asset / -adversarial / -performance / -gg
 #                   rebuild+import ONLY one test type's run image(s) — the fast path when you touched just that type's tooling
 #   run-image-<name>  rebuild+import a SINGLE run image by short name (e.g. run-image-voxel-animation) — the finest grain, for one asset kind
 #   local-reapply   re-apply the overlay ONLY (after a manifest-only change — RBAC, env, volumes; no image rebuild)
@@ -152,7 +152,13 @@ RUN_IMAGE_TAG    := local
 #     toolchain and adds nothing but its own identity, so it needs no R2 credentials
 #     of its own — but its full-stack-2d parent must already be built, which does);
 #   - asset-generation runs each execute in their own per-kind image;
-#   - adversarial and performance runs each execute in their own image.
+#   - adversarial and performance runs each execute in their own image;
+#   - a `gg` run executes in the `-gg` VARIANT of the image its test type resolves —
+#     that image plus the language toolchains its responses-as-code programs are
+#     compiled with. Each is `FROM` its parent, so build.sh builds the parent first
+#     when it is missing, and only the variant ref is imported (the parent's layers
+#     are baked into it). A local gg run needs these imported or it schedules against
+#     an image the cluster does not have.
 #
 # `blender` (the `blender-character` asset kind) is a full member of the asset group:
 # core's resolve_run_image maps that kind to `test-cabinet-blender`, the local overlay
@@ -167,13 +173,14 @@ GAME_JAM_IMAGE_NAMES    := game-jam
 ASSET_IMAGE_NAMES       := sprite sprite-sheet voxel voxel-animation mc mc-animation sn sn-animation dc dc-animation ui material mc-skinned sn-skinned dc-skinned blender particle-2d particle-3d sfx-synth sfx-sample music
 ADVERSARIAL_IMAGE_NAMES := adversarial
 PERFORMANCE_IMAGE_NAMES := performance
+GG_IMAGE_NAMES          := base-wasm-gg full-stack-2d-gg game-jam-gg
 
 # Every run image this Makefile builds + imports locally: the union of the per-type
 # groups above (so it stays in lockstep with them). Order matches build.sh's
 # dependency order (base, then base-wasm which is FROM it, then full-stack-2d /
 # adversarial / performance which are FROM base-wasm — and game-jam, which is FROM
 # full-stack-2d, so it must follow it here).
-RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES)
+RUN_IMAGE_NAMES  := $(E2E_IMAGE_NAMES) $(FULL_STACK_IMAGE_NAMES) $(GAME_JAM_IMAGE_NAMES) $(ASSET_IMAGE_NAMES) $(ADVERSARIAL_IMAGE_NAMES) $(PERFORMANCE_IMAGE_NAMES) $(GG_IMAGE_NAMES)
 
 # Map a space-separated list of image NAMES to their fully-qualified `:local` refs
 # (what `$(CONTAINER_TOOL) save` / `k3d image import` and the manifests resolve).
@@ -212,7 +219,7 @@ LOAD_ENV  := if [ -f '$(ENV_FILE)' ]; then set -a; . '$(ENV_FILE)'; set +a; fi
 # DOCKER_CONFIG overridden. Harmless for podman (it uses its own auth store).
 BUILD_DOCKER_CONFIG := $(HOME)/.cache/tcab/build-docker-config
 
-.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance apply sts-reconcile
+.PHONY: local-up local-down local-rebuild local-reapply local-forward local-grafana local-ingest local-status secrets cluster kubeconfig images run-images run-images-e2e run-images-full-stack run-images-game-jam run-images-asset run-images-adversarial run-images-performance run-images-gg apply sts-reconcile
 
 local-up: cluster images run-images apply local-ingest
 	@echo ""
@@ -351,6 +358,7 @@ images:
 #                                (you changed only `voxel-anim` → rebuild only that image)
 #   - `run-images-adversarial`   the adversarial image (a Foray change)
 #   - `run-images-performance`   the performance image (a Lattice change)
+#   - `run-images-gg`            the `-gg` variants (a gg language-toolchain change)
 # Every variant builds the FROM base first when it is missing (build.sh handles this),
 # so a narrow target works even on a cluster that has never built base — though normal
 # use is after `local-up` has already imported the full set once.
@@ -428,6 +436,16 @@ run-images-adversarial:
 run-images-performance: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 run-images-performance:
 	$(call build_import_run_images,$(PERFORMANCE_IMAGE_NAMES),$(call run_image_refs,$(PERFORMANCE_IMAGE_NAMES)))
+
+# `-gg` rebuilds the gg variants: each run image gg is pointed at, plus the language
+# toolchains a responses-as-code program is compiled with. build.sh builds the shared
+# toolchain builder first (always — it carries the compilers, so a stale one would bake
+# yesterday's toolchain in) and each variant's parent when that is missing, which for
+# the full-stack-2d and game-jam variants means the R2 PRESIGN credentials in .env the
+# first time. Only the variant refs are imported; their parents' layers are in them.
+run-images-gg: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
+run-images-gg:
+	$(call build_import_run_images,$(GG_IMAGE_NAMES),$(call run_image_refs,$(GG_IMAGE_NAMES)))
 
 # Rebuild + import a SINGLE run image by its short name — the finest grain, for
 # iterating on one asset-generation kind (`make run-image-voxel-animation`,

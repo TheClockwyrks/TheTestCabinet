@@ -27,7 +27,8 @@ const DEFAULT_CONTAINER_TAG: &str = "latest";
 /// toolchain (Rust + `wasm32-unknown-unknown` + wasm-bindgen + wasm-pack + binaryen),
 /// so an end-to-end (or full-stack) build may author its simulation core in Rust and
 /// ship it as a committed wasm build input. A harness installs its CLI into this image
-/// at run time (see [`AgentHarness::install_command`]); there is no per-harness image.
+/// at run time (see [`AgentHarness::install_command`]); there is no per-harness image,
+/// except the [gg variant](gg_variant) of this one.
 /// The pure-Node base (`test-cabinet-base`) is the build-time parent of this image and
 /// the asset-generation images, and is not itself resolved as a run image.
 const BASE_WASM_IMAGE_NAME: &str = "test-cabinet-base-wasm";
@@ -125,9 +126,36 @@ const ADVERSARIAL_IMAGE_NAME: &str = "test-cabinet-adversarial";
 /// training scenarios (see `containers/performance/Dockerfile`).
 const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 
+/// The **gg** variant of the base-wasm image: the same image plus the language
+/// toolchains a [`gg`](HarnessSlug::Gg) run's
+/// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) programs are
+/// compiled with (`containers/gg/Dockerfile`).
+///
+/// It is a separate published image rather than a layer on the shared one because those
+/// toolchains exist for one harness. A run driven by any other harness must not carry
+/// them: they are gigabytes a run that cannot use them would pull, and a model that found
+/// a Swift compiler on `PATH` in an end-to-end run would have been handed a capability no
+/// other arm of that comparison has.
+const BASE_WASM_GG_IMAGE_NAME: &str = "test-cabinet-base-wasm-gg";
+/// The gg variant of the full-stack (2D) image. See [`BASE_WASM_GG_IMAGE_NAME`].
+const FULL_STACK_2D_GG_IMAGE_NAME: &str = "test-cabinet-full-stack-2d-gg";
+/// The gg variant of the game-jam image. See [`BASE_WASM_GG_IMAGE_NAME`].
+const GAME_JAM_GG_IMAGE_NAME: &str = "test-cabinet-game-jam-gg";
+
 /// The environment variable that pins a verbatim override for the base-wasm
 /// (end-to-end) image, the per-image counterpart of `TCAB_CONTAINER_REGISTRY`/`_TAG`.
 const BASE_WASM_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM";
+/// The environment variable that pins a verbatim override for the gg variant of the
+/// base-wasm image. A gg variant is pinned on its own, exactly as every other image is:
+/// it is a different image with a different build, and an override that covered both
+/// could only ever be right for one.
+const BASE_WASM_GG_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_BASE_WASM_GG";
+/// The environment variable that pins a verbatim override for the gg variant of the
+/// full-stack (2D) image.
+const FULL_STACK_2D_GG_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D_GG";
+/// The environment variable that pins a verbatim override for the gg variant of the
+/// game-jam image.
+const GAME_JAM_GG_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_GAME_JAM_GG";
 /// The environment variable that pins a verbatim override for the full-stack (2D)
 /// image.
 const FULL_STACK_2D_IMAGE_OVERRIDE_ENV: &str = "TCAB_CONTAINER_IMAGE_FULL_STACK_2D";
@@ -204,6 +232,9 @@ pub const RUN_IMAGE_OVERRIDE_ENVS: &[&str] = &[
     BASE_WASM_IMAGE_OVERRIDE_ENV,
     FULL_STACK_2D_IMAGE_OVERRIDE_ENV,
     GAME_JAM_IMAGE_OVERRIDE_ENV,
+    BASE_WASM_GG_IMAGE_OVERRIDE_ENV,
+    FULL_STACK_2D_GG_IMAGE_OVERRIDE_ENV,
+    GAME_JAM_GG_IMAGE_OVERRIDE_ENV,
     SPRITE_IMAGE_OVERRIDE_ENV,
     SPRITE_SHEET_IMAGE_OVERRIDE_ENV,
     VOXEL_IMAGE_OVERRIDE_ENV,
@@ -372,6 +403,77 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
     }
 }
 
+/// The **gg variant** of `spec`, when one is published.
+///
+/// gg is the one harness whose runs need something baked into the image rather than
+/// installed at run time. Every other harness is a CLI a run downloads
+/// ([`AgentHarness::install_command`]) and gg itself is a single static binary copied in,
+/// but a gg run driving [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
+/// in a compiled language needs that language's *compiler* on the turn path — and a
+/// program's language is resolved **per agent**, so one run may drive a C# agent and a
+/// Python agent at once and every toolchain has to be present together.
+///
+/// They are in a variant image rather than in the shared one because they exist for one
+/// harness. See [`BASE_WASM_GG_IMAGE_NAME`] for why a run driven by any other harness must
+/// not carry them.
+///
+/// # Not every image has one, on purpose
+///
+/// This is a **list**, and it starts at the images gg is actually pointed at. Publishing a
+/// variant of all twenty-six would double the image set and the CI matrix for toolchains
+/// most of them would never invoke. Adding one is this `match` arm, its two constants,
+/// their entry in [`RUN_IMAGE_OVERRIDE_ENVS`], and the name in
+/// `containers/image-names.sh` — which is why the list is safe to keep short.
+///
+/// A gg run whose image has no variant falls back to the shared image with a warning
+/// rather than resolving a name nothing published. That is the piece that makes the short
+/// list safe: the run still executes, TypeScript and JavaScript still work (their
+/// toolchain is inside the gg binary), and a compiled language fails on its first program
+/// with the toolchain-missing diagnostic gg already has — which is a named, model-visible
+/// answer rather than an image pull that 404s.
+fn gg_variant(spec: &ImageSpec) -> Option<ImageSpec> {
+    match spec.name {
+        BASE_WASM_IMAGE_NAME => Some(ImageSpec {
+            name: BASE_WASM_GG_IMAGE_NAME,
+            override_env: BASE_WASM_GG_IMAGE_OVERRIDE_ENV,
+        }),
+        FULL_STACK_2D_IMAGE_NAME => Some(ImageSpec {
+            name: FULL_STACK_2D_GG_IMAGE_NAME,
+            override_env: FULL_STACK_2D_GG_IMAGE_OVERRIDE_ENV,
+        }),
+        GAME_JAM_IMAGE_NAME => Some(ImageSpec {
+            name: GAME_JAM_GG_IMAGE_NAME,
+            override_env: GAME_JAM_GG_IMAGE_OVERRIDE_ENV,
+        }),
+        _ => None,
+    }
+}
+
+/// The [`ImageSpec`] a run resolves once its harness is known: [`image_spec_for`], swapped
+/// for its [gg variant](gg_variant) when the subject is [`gg`](HarnessSlug::Gg).
+///
+/// Separate from [`resolve_run_image`] so the selection can be asserted without touching
+/// process-global environment, exactly as [`compose_run_image`] is.
+fn image_spec_for_run(
+    test_type: TestType,
+    asset_kind: AssetKind,
+    harness: HarnessSlug,
+) -> ImageSpec {
+    let spec = image_spec_for(test_type, asset_kind);
+    if harness != HarnessSlug::Gg {
+        return spec;
+    }
+    gg_variant(&spec).unwrap_or_else(|| {
+        tracing::warn!(
+            image = spec.name,
+            "no gg variant of this run image is published, so this run gets the shared image: \
+             responses-as-code in a compiled language will report its toolchain as missing. Add \
+             the variant to `gg_variant` and to containers/image-names.sh to change that."
+        );
+        spec
+    })
+}
+
 /// Resolve the run-container image reference for a run, from the environment. The
 /// image is selected by the run's [`TestType`] and (for asset-generation) its
 /// [`AssetKind`] — end-to-end runs use the base-wasm image, single-sprite runs use the
@@ -382,10 +484,17 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
 /// a runner pointed at any backend (or none) resolves it the same way (see
 /// `docs/components/core/execution.md`).
 ///
+/// `harness` is taken for the one thing that is not installed at run time: a
+/// [`gg`](HarnessSlug::Gg) run resolves the **gg variant** of the image it
+/// would otherwise get, carrying the language toolchains its programs are compiled with.
+/// Every other slug resolves the shared image, which is what keeps those toolchains off
+/// the runs that must not have them.
+///
 /// Precedence:
 /// 1. The image's **own** override — `TCAB_CONTAINER_IMAGE_BASE_WASM` for an end-to-end
 ///    run, `TCAB_CONTAINER_IMAGE_SPRITE` for a single-sprite run,
-///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run — a full, verbatim
+///    `TCAB_CONTAINER_IMAGE_SPRITE_SHEET` for a sprite-sheet run, and the `_GG` suffixed
+///    counterpart for a gg run that resolved a variant — a full, verbatim
 ///    reference. Set it to a `@sha256:…` digest to pin an exact image, or to point
 ///    at a private build. There is no override that applies to every image: they
 ///    differ, so each is pinned on its own.
@@ -400,8 +509,12 @@ fn image_spec_for(test_type: TestType, asset_kind: AssetKind) -> ImageSpec {
 ///
 /// The default with nothing set is the published image on the latest tag, e.g.
 /// `ghcr.io/theclockwyrks/test-cabinet-base-wasm:latest` for an end-to-end run.
-pub fn resolve_run_image(test_type: TestType, asset_kind: AssetKind) -> String {
-    let spec = image_spec_for(test_type, asset_kind);
+pub fn resolve_run_image(
+    test_type: TestType,
+    asset_kind: AssetKind,
+    harness: HarnessSlug,
+) -> String {
+    let spec = image_spec_for_run(test_type, asset_kind, harness);
     compose_run_image(
         spec.name,
         std::env::var(spec.override_env).ok(),
