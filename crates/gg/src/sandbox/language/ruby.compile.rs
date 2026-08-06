@@ -148,6 +148,12 @@ struct CompilerManifest {
     opal: String,
     /// The `RUBY_VERSION` that Opal reports (`3.2.0`) — the language level a program is written in,
     /// which is not the same fact as which compiler read it and is the one a model needs.
+    ///
+    /// Read only by [`ruby_version`], which is a gate rather than a runtime need and says why.
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "read by the prompt's own drift gate")
+    )]
     ruby_version: String,
 }
 
@@ -167,6 +173,14 @@ pub(super) fn compiler_version() -> &'static str {
 }
 
 /// The Ruby version this arm's programs are written in, as Opal reports it.
+///
+/// `#[cfg(test)]` because it is a **gate** rather than a runtime need, in the same sense
+/// [`MODEL_FACING_CALLS`](super::super::MODEL_FACING_CALLS) is: the language level a program is
+/// written in is a sentence in [this arm's system prompt](super::PROMPT), which is prose and cannot
+/// be generated from a manifest — so what this exists for is the test that holds that sentence to
+/// what the committed compiler actually reports. Nothing at run time asks; a compile reports which
+/// *compiler* read the program, which is [`compiler_version`] and a different fact.
+#[cfg(test)]
 pub(super) fn ruby_version() -> &'static str {
     &manifest().ruby_version
 }
@@ -183,10 +197,12 @@ pub(super) fn warm() {
 /// Compile a **program** — a model's reply — into the JavaScript the guest evaluates.
 ///
 /// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
-/// zero: the measurement counts top-level statements written after one that ends the program, which
-/// in Ruby means after a top-level `return`. Opal builds the tree that would say so and does not
-/// hand it back, so answering would mean asking the compiler for its AST as well as its output —
-/// a question this arm's registration decides, not one the compile step can answer on its own.
+/// zero. The measurement counts top-level statements written after one that **ends the program**,
+/// which in the ECMAScript arms is a top-level `return` — the program is evaluated as a function
+/// body there. A Ruby program's top level has no statement that ends it early: a bare `return` at
+/// the top level is a `LocalJumpError` rather than an exit, and every other way out is an exception.
+/// So the shape this field records does not exist on this arm rather than going unmeasured, exactly
+/// as it does not exist on [Python](super::super::python)'s.
 pub(super) fn compile_program(
     source: &str,
     context: &PrepareContext,

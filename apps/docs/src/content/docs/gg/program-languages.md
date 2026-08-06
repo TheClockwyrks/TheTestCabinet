@@ -11,13 +11,14 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Three are registered. TypeScript is the default; **JavaScript** is the same arm with the
-[type check removed](#javascript-the-same-arm-unchecked) and nothing else changed; and
-**[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
-different language rather than a variation on one. A fourth,
-**[Ruby](#ruby-compiled-to-javascript-before-it-crosses)**, has its execution substrate, its
-hand-written SDK and its signature catalogue committed and proven but is **not yet registered** —
-its registration is a later commit, on the landing order Python established. This page is the design of the seam: why the
+Four are registered, and between them they separate three things that used to be one. TypeScript
+is the default, and its programs are **type-checked** before they run; **JavaScript** is that
+same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
+changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
+different language rather than a variation on one, and nothing reads its programs before the
+interpreter does; and **[Ruby](#ruby-compiled-to-javascript-before-it-crosses)** is
+**compiled without being typed** — a real compiler reads the whole program and may refuse it,
+with no type system anywhere. This page is the design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
 capabilities, and what adding another actually costs.
@@ -170,13 +171,9 @@ shape nothing produced into a shape a gate reads.
 
 ## Ruby: compiled to JavaScript before it crosses
 
-The fourth arm is the first whose **execution substrate landed before it was registered**, and
-this section describes what exists today rather than an arm a run can configure: the guest, the
-compiler and the proof that a real Ruby program crosses gg's real membrane. Its hand-written SDK
-and its registration are separate, later commits, on the landing order
-[Python established](#adding-a-language-worked-python) and for the same reason — a
-`ProgramLanguage` arm cannot be half-registered. Nothing below is reachable from a run yet:
-there is no `language` value that resolves to it.
+The fourth registered arm, and the first that is **checked without being typed**: `language:
+"ruby"` is a value an operator configures, and a Ruby program is read whole by a real compiler
+in a real process before it runs, with no type system anywhere in sight.
 
 **A Ruby program is compiled to JavaScript on the host by Opal, and evaluated by a guest with
 Opal's runtime, gg's Ruby SDK and the libraries a program may require all pre-initialised into
@@ -362,16 +359,52 @@ One difference runs the *other* way from Python's, and is worth naming beside th
 in a host call, so the execution deadline reaches it exactly as it reaches any other runaway. A
 `sleep 30` under a 400 ms budget is stopped at the budget, and that has a test.
 
-### What is still missing, and why it stops the arm being registered
+### What its dialect says, and the two answers nobody else gives
 
-Nothing about the surface. What is left is the registration itself: the
-[`GgProgramLanguage`](#the-steps) variant, the `ProgramLanguage` implementation over the compile
-step that already exists, the healing dialect, the two prompt templates, and the console's rows.
-The catalogue does not wait for any of that — the [agreement gate](#the-agreement-gate) runs
-against it now, wearing the [fixture language](#the-agreement-gate) so it can be handed one whose
-id the wire enum does not carry yet, and every one of the thirty-five tools is driven through the
-real membrane from its Ruby spelling against the same expected JSON the TypeScript and Python arms
-assert.
+[Response healing](/gg/response-healing/) asks each language the same seven questions, and this
+arm is the only one that answers two of them the way it does.
+
+**The concurrency wrapper is a `Thread`.** Ruby has no `async` keyword and no suspension token —
+every method call in the language already blocks — so the shape a model wraps a whole program in,
+when it wraps one at all, is `Thread.new do … end.join`, or the two-statement `worker =
+Thread.new do … end` … `worker.join`. That wrapper is not merely redundant here: this guest is
+Opal, which has no `Thread` at all, so a program wearing one raises `NameError: uninitialized
+constant Thread` before a single line of the model's own work runs. Both shapes are unwrapped,
+the `require "thread"` above either comes off with it, and the count of suspension tokens removed
+is **zero** — honestly, because there is no such token in this language and a number there would
+report a repair that never happened.
+
+**The lexer reads six string shapes and a heredoc.** `'…'`, `"…"` with `#{…}` interpolation
+delimited by *brace counting* (so `"total: #{rows["n"]}"` — which Ruby allows — stays one string),
+`` `…` ``, the `%w[…]` family with nesting, `<<~EOS` heredocs, and `=begin`/`=end` block
+comments. One shape is deliberately **not** read: a regular-expression literal, because `/…/`
+cannot be told from division without knowing whether the previous token was a value, which is a
+parse. A regex carrying an apostrophe therefore opens a string that never closes and the scan
+declines — which is the right failure, because declining costs a repair and the alternative
+reading costs a deletion.
+
+Three further answers agree with [Python's](#python-a-guest-that-carries-its-own-interpreter),
+and each is a decision rather than a gap. A `require` is **never** deleted, because this guest
+bakes a declared library set and `require "json"` is a working line — and a `require` of
+something it did not bake is no better a candidate, since a program may rescue the `LoadError`.
+Nothing is **refused twice**, because Ruby redeclares freely and a program pasted twice runs
+twice, so `drop-duplicate-program` gives itself up rather than delete work the model asked for
+(the coarser `drop-doubled-response`, which asks a dialect nothing, still fires). And a `#` line
+is never prose, because a Ruby comment and a Markdown heading are the same byte.
+
+### What a Ruby code module offers
+
+A Ruby file has no exports, so what `lib.<key>` binds is the anonymous `Module` the compile step
+wraps the author's source in. The names gg *reports* for it are the module's own **methods** —
+`def name` and `def self.name`, both reached as `lib.<key>.name` because the wrapper extends
+itself — with Ruby's own privacy honoured in both spellings: a bare `private` makes everything
+below it private, and `private def name` makes that one method private.
+
+A **constant is not reported**, and that is a fact about evaluation rather than a choice: the
+author's source is a *block*, and a constant assigned inside a block belongs to the block's
+lexical scope — the top level — rather than to the module it is evaluated against. So
+`lib.helpers.LIMIT` does not exist however the file is written, and a `class` or a nested
+`module` is a constant by the same rule.
 
 ## What compiling costs, and where it is recorded
 
@@ -712,7 +745,12 @@ the console's prompt-override editor is seeded from it, and an operator overridi
 prompt is overriding it for the language they are running. What a copied template can lose
 is a whole section, so that is [asserted](#the-agreement-gate) rather than trusted: every
 registered language's prompt must render, under every context fixture, carrying every
-required section.
+required section. A checked language's prompt is additionally held to *saying* it is checked,
+by the name of its own compiler — [`checker`](#what-a-language-supplies) is where that name
+comes from — and to the term gg's own vocabulary uses, which is that a program is **compiled**
+rather than that its *types* are checked. That distinction is not pedantry: TypeScript's `tsc`
+checks types and Ruby's `opal` checks grammar, and a gate demanding "type-check" of every
+checked arm would have forced a Ruby prompt to say something false about itself.
 
 A section can also survive as a heading and lose what was under it, so the same gate reads
 three things off a maximal context rather than one, and a fourth off a minimal one. Every
@@ -770,6 +808,12 @@ and a TypeScript `?`. Those are four spellings of one capability. Java's arrives
 entry with two signatures**, each with its own argument list; the other three arrive as one
 entry with one. Nothing downstream compares the count, because the count is spelling — see
 [the agreement gate](#the-agreement-gate).
+
+[Ruby](#what-native-means-in-ruby) is the arm that first produced that shape, and not over an
+optional argument: `view.open_text(label, body)` and `view.open_text(label, &body)` are one
+function a Ruby author may hand a long body to as an argument or as a **block**, which is two
+signatures and one capability. Until it landed, this half of the schema was a shape nothing
+emitted.
 
 An overload group is **one entry with many signatures, never two entries sharing a name**,
 and a reflector that emits the second shape is rejected at load: two entries on one object

@@ -756,7 +756,10 @@ directly:
   checked arm is compared against, and
   [Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter), which has
   no host-side compiler at all, are both that arm — and present on every turn of a
-  language that compiles, **including the turn whose
+  language that compiles, whether that compiler checks types
+  ([TypeScript](/gg/program-languages/#stripped-and-checked)) or only grammar
+  ([Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses)),
+  **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it
   is the only reading of that turn which is not zero. The sandbox's own clock starts once
   a program is prepared, so without this field a compiled arm's per-turn compile cost

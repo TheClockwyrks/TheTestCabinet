@@ -333,12 +333,13 @@ fn excerpt(prepared: &str) -> String {
 /// nobody would think to look.
 pub(super) fn preparations() -> Vec<Box<dyn Preparation>> {
     let mut preparations: Vec<Box<dyn Preparation>> = Vec::new();
-    // The [fixture](super::fixture) is driven beside the registered set, and it is the arm that
-    // makes this gate's *artifact* checks bite today. TypeScript's artifact is produced in memory by
-    // the strip and only validated by `tsc`, so corrupting its check directory moves no bytes; the
-    // fixture's artifact is read back off its own workspace, which is the shape every compiled
-    // language will have. Until one is registered, it is the only subject here whose prepared bytes
-    // come off a filesystem at all.
+    // The [fixture](super::fixture) is driven beside the registered set, and it stays here even now
+    // that a real compiled arm has landed. TypeScript's artifact is produced in memory by the strip
+    // and only validated by `tsc`, so corrupting its check directory moves no bytes; the fixture's —
+    // and [Ruby](super::ruby)'s, whose prepared bytes are the JavaScript Opal wrote into the
+    // workspace — are read back off a filesystem, which is the shape every compiled language has.
+    // The fixture is the cheap subject of that shape (no process, no 2.9 MB compiler), so it is what
+    // keeps these checks biting when the expensive one is skipped or slow.
     let languages = all_languages().chain(std::iter::once(
         super::fixture::fixture_language() as &'static dyn ProgramLanguage
     ));

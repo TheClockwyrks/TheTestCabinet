@@ -24,10 +24,10 @@
 //! behaviour per function, exactly as `sandbox.test.rs` does. Add a program to an existing function
 //! rather than adding a function.
 
-use std::sync::OnceLock;
 use std::time::Instant;
 
 use serde_json::{Value, json};
+use test_cabinet_core::gg::GgProgramLanguage;
 use wasmtime::component::Component;
 
 use super::COMPONENT;
@@ -41,18 +41,22 @@ use crate::sandbox::{
 };
 use crate::tools::ToolOutcome;
 
-/// The committed guest, compiled once per test process.
+/// This arm's [registered language](crate::sandbox::ProgramLanguage), reached through the registry
+/// rather than by naming its module — so every case below exercises the same lookup a run does.
+fn ruby() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::Ruby)
+}
+
+/// The committed guest, compiled once per test process — through the **production** per-language
+/// cache, now that this arm has a wire id to be cached under.
 ///
-/// The same bargain [`engine::component`](super::super::super::engine::component) strikes for a run,
-/// and for the same reason: compiling 20 MB costs a second and instantiating the result costs half
-/// a millisecond, so a function that drives ten programs must not pay ten compiles. A plain
-/// `OnceLock` rather than the production cache because that cache is indexed by the wire id this
-/// language does not have yet.
+/// The same bargain a run strikes, and for the same reason: compiling 20 MB costs a second and
+/// instantiating the result costs half a millisecond, so a function that drives ten programs must
+/// not pay ten compiles.
 fn component() -> &'static Component {
-    static COMPILED: OnceLock<Component> = OnceLock::new();
-    COMPILED.get_or_init(|| {
-        engine::compile_bytes(COMPONENT).expect("the committed Ruby guest compiles")
-    })
+    engine::component(ruby())
+        .expect("the committed Ruby guest compiles")
+        .0
 }
 
 /// Compile `ruby` with the production prepare step, or panic with what the compiler said.
@@ -78,11 +82,9 @@ fn prepare_module(ruby: &str) -> String {
 /// which is indexed by the wire id this language does not have yet. [`component`] stands in for it,
 /// so the compile is still paid once.
 ///
-/// The [membrane state](MembraneState) is built with **TypeScript** as its language, and that is
-/// sound rather than sloppy: a language is held there to spell a call's name back at the model
-/// inside a refusal, and gg cannot spell one in Ruby until the arm is registered. No assertion below
-/// reads a spelling; the one that reads a refusal reads its
-/// [code](crate::tools::ToolFailure).
+/// The [membrane state](MembraneState) is built with **Ruby** as its language, which is what a run
+/// of this arm does: a language is held there to spell a call's name back at the model inside a
+/// refusal, and gg spells one in Ruby now that the arm is registered.
 fn run_as(
     ruby: &str,
     enabled: &[String],
@@ -114,10 +116,7 @@ fn evaluate(
         ending,
         library,
     };
-    let mut store = bounded_store(
-        MembraneState::new(api, typescript(), scope, limits, None),
-        limits,
-    );
+    let mut store = bounded_store(MembraneState::new(api, ruby(), scope, limits, None), limits);
     let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
@@ -945,6 +944,26 @@ review.request_changes("widen the test", "name the file")
     );
     assert!(outcome.rerun.is_some(), "the hand-over is recorded");
 
+    // The one program gg **generates** rather than quotes: the on-use script of every built-in
+    // family skill, written by this arm's own
+    // [`open_docs_views_statement`](crate::sandbox::ProgramLanguage::open_docs_views_statement).
+    // Driven end to end rather than merely compiled, because a generated program that names the
+    // right call and does not parse — or parses and opens nothing — would fail on the first read of
+    // a built-in skill, in a turn that has nothing to do with what the model wrote.
+    let generated = ruby().open_docs_views_statement(&["read_file", "write_file", "list_dir"]);
+    let (outcome, _log) = run_with(&generated, &all_tools(), &[], canned_outcome);
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "gg's own generated documentation program did not run: {:?}",
+        outcome.result
+    );
+    assert_eq!(
+        outcome.views_opened.len(),
+        3,
+        "one view per name: {:?}",
+        outcome.views_opened
+    );
+
     let outcome = run("harness.finish(\"done\")\n");
     assert_eq!(
         program_error(&outcome).kind,
@@ -1053,7 +1072,7 @@ puts RUBY_ENGINE
     let mut store = bounded_store(
         MembraneState::new(
             FakeToolApi::with(&log, canned_outcome),
-            typescript(),
+            ruby(),
             scope,
             limits,
             None,
@@ -1138,7 +1157,7 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
         library: false,
     };
     let mut store = bounded_store(
-        MembraneState::new(FakeToolApi::new(&log), typescript(), scope, limits, None),
+        MembraneState::new(FakeToolApi::new(&log), ruby(), scope, limits, None),
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
@@ -1159,23 +1178,18 @@ fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
     // The **real** agreement gate, over the real Ruby catalogue. It is what stands between a
     // configured `language` param and an invalidated study: two internally-consistent surfaces that
     // disagree with each other are two green test suites, and this is the only thing that compares
-    // them. Running it here rather than waiting for registration is deliberate — the commit that
-    // registers a language is the one least able to absorb a surface that turns out to disagree.
-    let mut document: Value =
+    // them. It ran here before this arm was registered, wearing the seam's fixture so it could be
+    // handed a catalogue whose id the wire enum did not carry yet; now that `ruby` is a language an
+    // operator configures, it runs against the registry itself, which is what the whole gate is for.
+    let document: Value =
         serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
     assert_eq!(
         document["language"],
         json!("ruby"),
         "the catalogue says whose spellings it carries"
     );
-    // `language` is the wire enum, which has no `ruby` variant until the registration step adds one.
-    // The gate never reads it — provenance is asserted per *registered* language, against the
-    // language that embedded the file — so it is stood in for here rather than being the reason this
-    // check has to wait.
-    document["language"] = json!("typescript");
-    let candidate = super::super::fixture::a_language_whose_catalogue_is(&document.to_string());
 
-    let found = super::super::agreement::disagreements(&[typescript(), candidate]);
+    let found = super::super::agreement::disagreements(&[typescript(), ruby()]);
     assert!(
         found.is_empty(),
         "the Ruby catalogue does not describe the same capability surface TypeScript does:\n{}",

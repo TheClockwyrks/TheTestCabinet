@@ -1873,6 +1873,15 @@ fn a_language_that_declares_libraries_names_every_one_in_its_prompt() {
 /// word for its own checker and a Rust or a Kotlin arm naming `rustc` or `kotlinc` is making the
 /// same statement, correctly. A gate that demanded the token `tsc` of every checked language would
 /// fail the next arm registered, and for exactly the wrong reason.
+///
+/// **What the check *is* is not asserted either**, and that took a second checked arm to notice.
+/// This table once demanded the word `type-check`, which is TypeScript's answer to a question the
+/// seam never asked: [`checker`](ProgramLanguage::checker) says a program is read and judged before
+/// it runs, not that its *types* are. [Ruby](crate::sandbox::language)'s Opal has no type system at
+/// all and refuses a program on grammar alone, so a Ruby prompt saying `type-check` would be a
+/// sentence that is false about the arm it is rendered for. The term both can be stated without
+/// lying is gg's own — a program is **compiled**, which is exactly what naming a checker means here
+/// and what [`PrepareError::Compile`](crate::sandbox::PrepareError::Compile) is the band for.
 #[test]
 fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
     for language in all_languages() {
@@ -1885,7 +1894,7 @@ fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
             &every_code_section_on(language.id()),
         ));
         for (what, phrase) in [
-            ("that the program is checked before it runs", "type-check"),
+            ("that the program is checked before it runs", "compile"),
             (
                 "that a program which fails the check does not run",
                 "not executed",

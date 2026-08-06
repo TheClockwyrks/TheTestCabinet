@@ -94,6 +94,18 @@ has **three** parts (`import asyncio`, an `async def`, and `asyncio.run(main())`
 Python's runner is a module rather than a keyword, and all three come off together — which is
 how the arm can refuse to delete any import and still deliver the repair.
 
+[Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses) gives the same two
+"never"s, for the same two reasons restated in its own language — its guest bakes a declared
+library set so `require "json"` is a working line, and Ruby refuses no declaration twice — and
+then diverges where nothing else does. Its concurrency wrapper is a **`Thread`**, because Ruby
+has no `async` keyword and no suspension token at all: `Thread.new do … end.join` and the
+two-statement `worker = Thread.new do … end` … `worker.join` both come off, the
+`require "thread"` above either comes with them, and the count of tokens removed is **zero** —
+which is the honest number for a language that has none. Its lexer is the largest of the four,
+because Ruby has six string shapes and a heredoc; the one it deliberately does not read is the
+regular-expression literal, since `/…/` cannot be told from division without a parse, so a regex
+carrying an apostrophe makes the scan **decline** rather than guess.
+
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
 no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply
@@ -192,7 +204,7 @@ Two relaxations come from measured real replies, and neither touches the length 
 
 *Candidacy* is a three-tier ladder, first non-empty tier wins: blocks tagged with one of
 this [language](/gg/program-languages/)'s program tags — for
-the two ECMAScript arms, which share one dialect, `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list); for Python, `python`, `py`, `python3`, `py3` — and deliberately not `pycon` or `doctest`, which name an interactive *transcript* rather than a program;
+the two ECMAScript arms, which share one dialect, `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list); for Python, `python`, `py`, `python3`, `py3`; for Ruby, `ruby` and `rb` — and deliberately not `pycon`, `doctest`, `irb` or `pry`, every one of which names an interactive *transcript* rather than a program;
 otherwise blocks with **no** tag; otherwise blocks whose unrecognised tag is anything
 else **and** whose body looks like code. A closed list rather than a deny list, because a
 block tagged `json`, `text`, `bash` or `md` is context the model showed rather than the

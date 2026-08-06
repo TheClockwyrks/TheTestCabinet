@@ -74,12 +74,18 @@
 //! runtime filters by, and every gate against the tool vocabulary. Every one of those holds, and
 //! fails, per language and without a second one to compare against.
 //!
-//! The comparative half runs over the registry for real — but the registered pair is the *easiest*
-//! comparison there is, since [JavaScript](super::javascript)'s catalogue and
-//! [TypeScript](super::typescript)'s are one set of declarations reflected twice and could hardly
-//! disagree. So it is also exercised against the [fixture language](super::fixture), a second
-//! surface built by re-spelling the first, which is what makes the comparison an observation about
-//! two *different* spellings rather than about one file emitted with two names.
+//! The comparative half runs over the registry for real, and what it compares there has grown
+//! teeth: [JavaScript](super::javascript)'s catalogue and [TypeScript](super::typescript)'s are one
+//! set of declarations reflected twice and could hardly disagree, but [Python](super::python)'s and
+//! [Ruby](super::ruby)'s are hand-written SDKs in different languages, reflected by different tools
+//! (`griffe` and YARD), and they really can. Ruby is the first to bring a shape the others do not
+//! have at all — an entry with **two signatures**, because a long body may be an argument or a
+//! block — which is exactly the kind of legitimate divergence this gate has to accept while
+//! rejecting a missing capability.
+//!
+//! It is also exercised against the [fixture language](super::fixture), a second surface built by
+//! re-spelling the first, which is what keeps the comparison meaningful independently of whichever
+//! real arms happen to be registered.
 //!
 //! # Why it returns disagreements rather than asserting them
 //!

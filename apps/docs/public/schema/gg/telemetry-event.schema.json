@@ -907,6 +907,11 @@
           "const": "python",
           "description": "Python: evaluated by a **committed CPython**, with no compiler anywhere on the turn path.\n\nThe first arm whose guest carries its own interpreter rather than an engine gg lowers to.\n`componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the\nmembrane as *source*, the standard library it is baked with is what a program may `import`,\nand nothing is installed in the run container. Its SDK is hand-written and reads as Python\nreads — `snake_case`, keyword arguments with real defaults, dataclasses for results, enums\nfor fixed choices, and a raised `ToolError` for the wire's error arm.",
           "type": "string"
+        },
+        {
+          "const": "ruby",
+          "description": "Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries\nOpal's runtime, gg's Ruby SDK and the libraries a program may `require`, all pre-initialised\ninto it.\n\nThe first arm whose program is neither evaluated as written nor lowered by a parse gg carries\nin-process: a real compiler runs in a real process on the turn path, so this arm reports a\ncompile time and can tell a model *the compiler read your program and refused it* — which is\nthe band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to\nJavaScript, so it rides inside gg's binary and the run image gains nothing. Its SDK is\nhand-written and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long\nbody, `Range` for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice,\nand a raised `ToolError` that is a `StandardError`.",
+          "type": "string"
         }
       ]
     },

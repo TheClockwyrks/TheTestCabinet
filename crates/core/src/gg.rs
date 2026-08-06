@@ -4363,6 +4363,19 @@ pub enum GgProgramLanguage {
     /// reads — `snake_case`, keyword arguments with real defaults, dataclasses for results, enums
     /// for fixed choices, and a raised `ToolError` for the wire's error arm.
     Python,
+    /// Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries
+    /// Opal's runtime, gg's Ruby SDK and the libraries a program may `require`, all pre-initialised
+    /// into it.
+    ///
+    /// The first arm whose program is neither evaluated as written nor lowered by a parse gg carries
+    /// in-process: a real compiler runs in a real process on the turn path, so this arm reports a
+    /// compile time and can tell a model *the compiler read your program and refused it* — which is
+    /// the band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to
+    /// JavaScript, so it rides inside gg's binary and the run image gains nothing. Its SDK is
+    /// hand-written and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long
+    /// body, `Range` for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice,
+    /// and a raised `ToolError` that is a `StandardError`.
+    Ruby,
 }
 
 impl GgProgramLanguage {
@@ -4376,7 +4389,7 @@ impl GgProgramLanguage {
     /// silently vanishes from [`from_id`](Self::from_id), from gg's registry, and from every gate
     /// that iterates them.
     pub const ALL: &'static [GgProgramLanguage] =
-        &[Self::TypeScript, Self::JavaScript, Self::Python];
+        &[Self::TypeScript, Self::JavaScript, Self::Python, Self::Ruby];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
     /// per-language table gg indexes by [`ordinal`](Self::ordinal).
@@ -4394,6 +4407,7 @@ impl GgProgramLanguage {
             Self::TypeScript => const { Self::listed_at(0, Self::TypeScript) },
             Self::JavaScript => const { Self::listed_at(1, Self::JavaScript) },
             Self::Python => const { Self::listed_at(2, Self::Python) },
+            Self::Ruby => const { Self::listed_at(3, Self::Ruby) },
         }
     }
 
@@ -4422,6 +4436,7 @@ impl GgProgramLanguage {
             Self::TypeScript => "typescript",
             Self::JavaScript => "javascript",
             Self::Python => "python",
+            Self::Ruby => "ruby",
         }
     }
 
@@ -4443,6 +4458,7 @@ impl GgProgramLanguage {
             Self::TypeScript => "TypeScript",
             Self::JavaScript => "JavaScript",
             Self::Python => "Python",
+            Self::Ruby => "Ruby",
         }
     }
 }
