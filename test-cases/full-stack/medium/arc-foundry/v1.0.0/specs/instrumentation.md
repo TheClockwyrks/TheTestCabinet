@@ -218,6 +218,19 @@ Waves and the Load:
   The build phase's own harvest is not consumed and no wave number is spent. This
   is the one control op that starts the floor running, and it is what makes a
   chosen unit runnable forward on its own.
+- `setUnitHp(id, hp)` sets a live unit's current HP, so a scenario can pose a unit
+  that has already taken damage without having to arrange for something to damage it
+  first. `id` is a unit's id as `snapshot()` reports it; an id naming no live unit
+  does nothing.
+
+  It changes the unit's current HP only, never its `maxHp` — the unit stays the same
+  type at the same wave scaling, and its health bar reads the fraction it is actually
+  on, so two units released alike can be posed to differ visibly. `hp` is clamped into
+  the unit's live range: at most its `maxHp`, and at least `1`. This poses a WOUNDED
+  unit; it is not a way to kill one. A death has to come through the real damage path
+  so the kill, its bounty, and the wave's own bookkeeping resolve normally
+  (`specs/gameplay.md`). The invincible Overload Dynamo takes no HP change at all
+  (`specs/enemies.md`), so this does nothing to it.
 
 A wave otherwise begins the way normal play begins one: by committing the level's
 harvest (`keep`, `downgrade`, or a fresh-consuming `combine`).

@@ -5,10 +5,18 @@
 // is the behavior under test, and placements are control ops, so the whole sequence is the act
 // — the clip shows five rocks landing and the sixth and seventh going nowhere.
 
-import { startBuild, SPOTS, snap } from "../_helpers.mjs";
+// WHY THIS IS A CLIP RATHER THAN A STILL. The item's claim is that the allowance RUNS OUT: five
+// rocks land and the sixth does not. A frame taken at the end shows five candidates and an empty
+// tile, which is equally a picture of a player who stopped at five — the refusal, and the
+// allowance counting down to it, are events and cannot be in a single frame. The clip counts the
+// allowance down a beat at a time and then shows two more drops going nowhere.
 
-// A frame for the still after the last refused placement. 100 ms x 60 Hz = 6 ticks.
-const SETTLE_TICKS = 6;
+import { startBuild, SPOTS, snap, SECOND } from "../_helpers.mjs";
+
+// A beat between drops, so the allowance is seen counting down rather than emptying at once.
+const BEAT_TICKS = 0.8 * SECOND;
+// A beat on each refused drop, so a reviewer sees the attempt land on nothing.
+const REFUSED_TICKS = 1.2 * SECOND;
 
 export default function item() {
   // The opening allowance and the board after each stage, read by `assert`.
@@ -29,6 +37,7 @@ export default function item() {
       for (const spot of SPOTS) {
         await api.call("setNextRoll", "capacitor", 1);
         await api.call("placeRock", spot.col, spot.row);
+        await api.advance(BEAT_TICKS);
       }
       s1 = await snap(api);
       placed = s1.towers.length;
@@ -37,6 +46,7 @@ export default function item() {
       await api.call("setNextRoll", "capacitor", 1);
       await api.call("placeRock", 14, 7);
       afterSixth = await snap(api);
+      await api.advance(REFUSED_TICKS);
 
       // The cap is independent of Charge.
       await api.call("setCharge", 9999);
@@ -44,8 +54,7 @@ export default function item() {
       await api.call("placeRock", 14, 7);
       afterRich = await snap(api);
 
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("cap");
+      await api.advance(REFUSED_TICKS);
     },
 
     async assert(api, check) {

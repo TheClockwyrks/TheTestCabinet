@@ -12,6 +12,11 @@
 
 import { startBuild, placeCandidate, towerAt, snap, SECOND } from "../_helpers.mjs";
 
+// A beat on the PAIR before the fold. The claim is that the maze is unchanged ACROSS the combine,
+// which a reviewer can only judge by seeing the wall as it was and then as it is; the act used to
+// open on the fold itself, so the two rocks were already one piece and a blocker before anyone
+// was watching.
+const LEAD_TICKS = 1 * SECOND;
 const CLIP_TICKS = 2 * SECOND;
 
 export default function item() {
@@ -34,6 +39,8 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the pair standing as two walls, before the fold
+
       await api.call("setCombineSet", [aId, bId]);
       await api.call("combine", aId);
       s1 = await snap(api);
