@@ -24,6 +24,7 @@ for this package:
 | --- | --- |
 | [`crates/gg/src/sandbox/guests/typescript.component.wasm`](../../crates/gg/src/sandbox/guests/) | The baked component, `include_bytes!`d by the host. **14,004,036 bytes** (13.4 MiB) as committed. |
 | [`crates/gg/src/sandbox/guests/typescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
+| [`crates/gg/src/sandbox/guests/javascript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The same catalogue under a second language id. gg registers `javascript` as `typescript` with the type check removed — same component, same SDK, same signatures, annotations included — so the two arms differ only in whether a program is checked before it runs. There is deliberately no second `.wasm`. |
 | [`crates/gg/src/sandbox/checkers/typescript.tsc.js`](../../crates/gg/src/sandbox/checkers/) | The compiler gg type-checks a model's program with, cut from the pinned `typescript`. **6.2 MB**, `include_str!`d and written out once per process. |
 | [`crates/gg/src/sandbox/checkers/typescript.lib.d.ts`](../../crates/gg/src/sandbox/checkers/) | The ES2022 standard library, 57 files concatenated so a check opens one. |
 | [`crates/gg/src/sandbox/checkers/typescript.globals.d.ts`](../../crates/gg/src/sandbox/checkers/) | `tools/program-globals.d.ts`, verbatim: the names a program reaches that no SDK declaration covers. |
@@ -129,7 +130,7 @@ gate for the catalogue.
 | `componentize-js` fails to link | `src/membrane.d.ts` disagreeing with the WIT, at refresh time |
 | gg's instantiation test | a WIT change with no artifact refresh — the committed component's imports no longer match the host's linker |
 | gg's `bound-tools` test | a tool added, renamed or removed in gg with a **stale committed `.wasm`** |
-| `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating `typescript.signatures.json` |
+| `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating the committed catalogues |
 | `tools/signatures.mjs` exiting non-zero | a catalogued export that does not exist, lives in the wrong module, or has no doc comment |
 | `tools/signatures.mjs` exiting non-zero | an **argument**, an inline argument **field**, a **type**, a type **member** or an **API object** with no doc comment — or an `@param` naming something the signature does not declare |
 | gg's agreement gate | the same completeness rules, read off the emitted catalogue rather than off TypeScript's AST, so every language is held to them |
@@ -199,6 +200,9 @@ measuring the surfaces rather than the languages.
 **3. The artifact convention.**
 `crates/gg/src/sandbox/guests/<language-id>.{component.wasm,signatures.json}`, both
 committed, both embedded by that language's module in `crates/gg/src/sandbox/language/`.
+A catalogue is always the language's own — it carries the id it was generated for and the
+host asserts it — while a *component* may be shared by two languages whose programs it
+evaluates identically, as `javascript` shares this guest's.
 A language that type-checks the model's program commits its checker beside them, under
 `crates/gg/src/sandbox/checkers/<language-id>.*` — gg is copied as a single file into a run
 container, so a compiler it needs is a compiler it carries.

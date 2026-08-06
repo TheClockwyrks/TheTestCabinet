@@ -27,8 +27,10 @@ the capability exists to measure.
 
 Which **language** that program is written in is a second axis of the same kind, and it is
 [first-class](#the-program-language): gg registers a *set* of program languages and a run
-picks one per agent. TypeScript is the default and, today, the only registered one, so
-every example on this page is TypeScript — and where a passage below quotes a spelling, a
+picks one per agent. Two are registered: TypeScript, which is the default, and
+[JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked), which is the same
+arm with the [type check](#stripped-and-checked) removed and nothing else changed. Every
+example on this page is TypeScript — and where a passage below quotes a spelling, a
 type-strip or a fence tag, it is TypeScript's answer to a question **every** language
 answers. [Program languages](/gg/program-languages/) is the design of that seam.
 
@@ -448,6 +450,12 @@ way through a piece of work.
 
 The cheap pass runs first, so a program with a typo costs a parse rather than a compiler,
 and each failure lands in the [kind that names its cause](#what-can-go-wrong).
+
+The **JavaScript** arm is the first pass and not the second — the same strip, the same
+guest, the same catalogue with its annotations intact, and no `tsc`. It exists so that
+whether the check is worth what it costs is a question a run can answer rather than a claim
+this section makes; see
+[JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked).
 
 #### What the check is, exactly
 
@@ -1542,7 +1550,10 @@ axis**: gg holds a set of program languages, each of which answers the same ques
 how to prepare a model's reply into something its guest evaluates, which committed guest
 and signature catalogue are its own, what its guest needs from the host linker, which
 [healing](/gg/response-healing/) questions have language-shaped answers, and which system
-prompt teaches it. TypeScript is the default and today the only registered one. This
+prompt teaches it. Two are registered: TypeScript, the default, and
+[JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) — the same surface,
+the same guest and the same signatures, with the `tsc` pass taken out, so an A/B across the
+pair measures what checking a program before it runs is worth. This
 section is the capability's view of that seam; the design of it — the rules every
 language's surface obeys, why each SDK is hand-written, and what adding one costs — is
 [its own page](/gg/program-languages/).
@@ -1597,9 +1608,10 @@ it to gg's tool vocabulary and to its own committed component — never to anoth
 suites, and an A/B across them measures the difference in the surface rather than the
 difference in the language, with nothing anywhere to say so.
 
-With one registered language the comparative half is dormant and the anchored half is not,
-which is why the gate earns its place today. The comparative half is nonetheless exercised
-on every test run, against a **fixture language** that exists only under `#[cfg(test)]`: a
+The comparative half runs over the registry for real, and is also exercised
+on every test run against a **fixture language** that exists only under `#[cfg(test)]` —
+because the registered pair is the easiest comparison there is, its two catalogues being
+one set of declarations reflected twice. The fixture is a
 second implementation of the seam whose catalogue is TypeScript's re-spelled in
 snake_case, with its own healing dialect, its own prompt and its own preparation step. It
 has no wire id, so it can never be configured, recorded or run. It is what turns the
@@ -1626,7 +1638,7 @@ The capability is `responses-as-code`, under **Models & tools** in the
 
 | Param | Default | Notes |
 | --- | --- | --- |
-| `language` | `typescript` | The [program language](#the-program-language) this agent writes in. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
+| `language` | `typescript` | The [program language](#the-program-language) this agent writes in — `typescript` or `javascript`. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `imageViewCap` | unset — no ceiling | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |

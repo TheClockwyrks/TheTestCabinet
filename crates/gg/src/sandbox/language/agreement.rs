@@ -65,18 +65,21 @@
 //! no argument where another arm documents one fails comparatively — so a language whose signatures
 //! carry no brackets to look inside is covered too.
 //!
-//! # With exactly one registered language
+//! # What holds each language up on its own
 //!
-//! The cross-language half degenerates to "equals itself" — and the gate still asserts a great deal,
-//! because most of what it checks anchors a language's catalogue to **gg's own vocabularies** rather
+//! Most of what this gate checks anchors a language's catalogue to **gg's own vocabularies** rather
 //! than to another language: the tool bijection against [`ALL_TOOL_NAMES`], the session keys against
 //! the four [ending tools](crate::completion), the meta keys against the one the
 //! [docs runtime](crate::docs) binds on every object, the ending roles against the three that
-//! runtime filters by, and every gate against the tool vocabulary. Those hold,
-//! and fail, with one language registered. The comparative half is dormant until a second language
-//! lands, which is the correct state for an assertion whose subject does not yet exist — and it is
-//! exercised today against the [fixture language](super::fixture), which is a second surface built
-//! by re-spelling the first.
+//! runtime filters by, and every gate against the tool vocabulary. Every one of those holds, and
+//! fails, per language and without a second one to compare against.
+//!
+//! The comparative half runs over the registry for real — but the registered pair is the *easiest*
+//! comparison there is, since [JavaScript](super::javascript)'s catalogue and
+//! [TypeScript](super::typescript)'s are one set of declarations reflected twice and could hardly
+//! disagree. So it is also exercised against the [fixture language](super::fixture), a second
+//! surface built by re-spelling the first, which is what makes the comparison an observation about
+//! two *different* spellings rather than about one file emitted with two names.
 //!
 //! # Why it returns disagreements rather than asserting them
 //!

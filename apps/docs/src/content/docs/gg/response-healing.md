@@ -77,6 +77,12 @@ its own replies rather than inherit it: a registered language contributes fixtur
 dialect has to survive, and gg asserts the healed program is a subsequence of the reply
 for each one.
 
+Two languages may share one dialect where they share one syntax, and the two ECMAScript
+arms do: [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is
+TypeScript with the type check removed, so every question above has the same answer on
+both. A second copy giving a *different* answer would be a difference in surface in the
+middle of the one study that pair exists to run.
+
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
 no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply
@@ -161,7 +167,7 @@ Two relaxations come from measured real replies, and neither touches the length 
 
 *Candidacy* is a three-tier ladder, first non-empty tier wins: blocks tagged with one of
 this [language](/gg/program-languages/)'s program tags — for
-TypeScript `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list);
+the two ECMAScript arms, which share one dialect, `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list);
 otherwise blocks with **no** tag; otherwise blocks whose unrecognised tag is anything
 else **and** whose body looks like code. A closed list rather than a deny list, because a
 block tagged `json`, `text`, `bash` or `md` is context the model showed rather than the

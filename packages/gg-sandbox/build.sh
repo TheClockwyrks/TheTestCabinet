@@ -4,15 +4,22 @@
 #
 #   crates/gg/src/sandbox/guests/typescript.component.wasm    the baked interpreter component
 #   crates/gg/src/sandbox/guests/typescript.signatures.json   the catalogue the prompt is built from
+#   crates/gg/src/sandbox/guests/javascript.signatures.json   the same catalogue, for the arm that
+#                                                             runs the program without checking it
 #   crates/gg/src/sandbox/checkers/typescript.tsc.js          the compiler that type-checks a program
 #   crates/gg/src/sandbox/checkers/typescript.lib.d.ts        the standard library it checks against
 #   crates/gg/src/sandbox/checkers/typescript.globals.d.ts    the globals no SDK declaration covers
 #   crates/gg/src/sandbox/checkers/typescript.checker.json    which compiler, at which level
 #
-# They are named for the PROGRAM LANGUAGE this guest implements, not for this package. gg's
-# responses-as-code capability registers a language per guest, and each one commits its pair under
+# They are named for the PROGRAM LANGUAGE they serve, not for this package. gg's responses-as-code
+# capability registers a language per guest, and each one commits its pair under
 # `crates/gg/src/sandbox/guests/<language-id>.*` — so a second guest, for a second language, is a
 # sibling directory with its own build script writing its own pair, and touches nothing here.
+#
+# This guest serves TWO registered languages, which is why there are two catalogues and one
+# component: `javascript` is `typescript` with gg's type check removed, so the two arms differ in
+# what gg does to a program before handing it over and in nothing else. Committing a second,
+# byte-identical component would be a second copy of one artifact.
 #
 # Both are checked in, exactly as the `foray-ref-*` guests are, so no build or CI step ever needs
 # `componentize-js`: the Rust host `include_bytes!`s the component and `include_str!`s the catalogue.
@@ -85,9 +92,9 @@ npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 	-o "$ROOT/$COMPONENT"
 
 # 3. Reflect the signature catalogue out of the SDK's own emitted declarations, so the system prompt
-#    quotes the signatures the component actually exports. It writes
-#    `$DEST_DIR/typescript.signatures.json`; the path lives in this package's `signatures` npm
-#    script, because CI runs that script on its own as the catalogue's drift gate.
+#    quotes the signatures the component actually exports. It writes one per language this guest
+#    serves, into `$DEST_DIR`; the directory lives in this package's `signatures` npm script, because
+#    CI runs that script on its own as the catalogues' drift gate.
 echo "Reflecting the signature catalogue ..."
 npm run --workspace @test-cabinet/gg-sandbox signatures
 

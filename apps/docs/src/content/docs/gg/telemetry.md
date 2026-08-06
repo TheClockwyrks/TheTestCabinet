@@ -738,9 +738,10 @@ directly:
   step shells out to — the program itself, each replacement it handed over to, the code
   half of every skill or memory it brought into use, and each on-use script such a read
   queued. It is absent for a language whose prepare step is in-process and free, where the
-  figure would be a zero on every turn of every run — no registered language is one, since
-  TypeScript type-checks with `tsc` — and present on every turn of a language that
-  compiles, **including the turn whose
+  figure would be a zero on every turn of every run —
+  [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is exactly that
+  arm, and is the one a checked arm is compared against — and present on every turn of a
+  language that compiles, **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it
   is the only reading of that turn which is not zero. The sandbox's own clock starts once
   a program is prepared, so without this field a compiled arm's per-turn compile cost

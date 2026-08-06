@@ -11,11 +11,12 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-TypeScript is the default and, today, the only registered one. This page is the design
-of the seam: why the language is an axis, what an agent-facing surface has to look like
-in *any* language, what a language must supply to be registered, what stops two
-languages from quietly describing different capabilities, and what adding a second one
-actually costs.
+Two are registered. TypeScript is the default; **JavaScript** is the same arm with the
+[type check removed](#javascript-the-same-arm-unchecked) and nothing else changed. This
+page is the design of the seam: why the language is an axis, what an agent-facing surface
+has to look like in *any* language, what a language must supply to be registered, what
+stops two languages from quietly describing different capabilities, and what adding
+another actually costs.
 
 ## Why the language is an axis at all
 
@@ -52,6 +53,47 @@ rather than a variable. So the language is one:
   [query](/gg/analysis/query-language/) slices arms on it with no new vocabulary. Both are
   absent for a tool-calling agent, which has no program language at all, as against an
   unknown one.
+
+## JavaScript: the same arm, unchecked
+
+The second registered language is the narrowest one gg could have, and that is the point of
+it. **JavaScript is TypeScript with the `tsc` pass taken out.** Same committed component,
+same hand-written SDK, same signature catalogue, same type-strip, same healing dialect. One
+difference: gg does not check the program before evaluating it.
+
+It exists because the check is a **bet**. Type-checking a program costs ~90 ms and some
+tokens of annotation every turn, and buys a class of mistake caught before any work happens
+rather than a turn later, in a `TypeError` half way through a piece of work. Whether that
+trade is worth taking is not a thing to argue about — it is an A/B, and an A/B measures the
+check only while the check is the *only* thing that differs.
+
+So every other variable is held at zero by construction:
+
+| Held constant | How |
+| --- | --- |
+| The evaluator | JavaScript serves TypeScript's committed component, reached through the constant rather than embedded a second time. Two byte-identical 13.4 MB `.wasm` files would be a second copy of one artifact and a standing chance for the one thing the arms must share to diverge. |
+| The surface a model reads | Its catalogue is the same declarations reflected under a second id — **including the type annotations**. A model on this arm reads `readFile(path: string): FileRead` exactly as a model on the other does. Stripping the types out of what the *prompt* shows would have made the arms differ in how much the model was told about the surface, which is a second variable and a bigger one than the check. |
+| What a program may contain | The same strip. A program that annotates its own bindings runs here too — the annotations are erased rather than rejected. "JavaScript" on this arm means *a program nothing checked*, not a narrower grammar. |
+| How a reply is read | The same [healing dialect](/gg/response-healing/): healing is a lexical reading of a reply, and the two arms are one syntax. |
+
+What is its own: the id, the display name, and the two prompt templates. The prompt names
+the language the model is writing, and it carries no section claiming the program is
+checked, because it is not. It does not announce the *absence* of a check either — that is
+the arm's variable, not a rule the model is being taught, and a prompt that dwelt on it
+would be measuring a sentence. What it does add is one paragraph the checked arm does not
+need: that the signatures below are written with annotations, which a program may use or
+leave off. Without it, a model told it is writing JavaScript and shown a typed signature
+has been handed a contradiction to resolve on its own.
+
+The sharing is **declared**, not merely unnoticed. The seam's rule is that no language is
+served another's artifacts, and the gate that asserts it now walks every pair of registered
+languages; this pair is named in its exemption table with the reason above, and is held to
+something stronger than the rule — the bytes must actually be identical, or the exemption
+is covering for something else.
+
+One consequence worth naming, because it is the first time gg has had it: JavaScript is a
+registered language whose programs report **no compile time at all**. `compileMs` is absent
+rather than `0`, on exactly the terms the next section describes.
 
 ## What compiling costs, and where it is recorded
 
@@ -100,8 +142,10 @@ nothing reports **nothing at all** rather than a zero: `null` says "there is no 
 this path", which a zero would not, and a column of zeroes on every turn of such a run
 would be noise in front of the one study the field exists for. Per run, the same arm
 reports **`0`** rather than omitting the field, because a query averages a measurement and
-silently drops a run that has none. No registered language takes that branch today — every
-one of them compiles — which is exactly why the branch is declared rather than inferred.
+silently drops a run that has none. [JavaScript](#javascript-the-same-arm-unchecked) is the
+registered language that takes that branch, and it is the arm a checked one is compared
+against — so the difference between "compiled, in under a millisecond" and "there is no
+compiler here" is exactly the difference being measured.
 
 And the figure is reported for the turn whose program the compiler **rejected**, which is
 the turn it most exists for: a compile that spent four seconds refusing the program spent
@@ -251,7 +295,12 @@ instantly in every gate that iterates languages.
 Its two committed artifacts follow one convention:
 `crates/gg/src/sandbox/guests/<language-id>.component.wasm` and
 `<language-id>.signatures.json`. Both are checked in and embedded, which is what means no
-build or CI step ever needs a componentizing toolchain.
+build or CI step ever needs a componentizing toolchain. A catalogue is always the
+language's own — it carries the id it was generated for and the host asserts it — while a
+**component** may be shared with another language whose programs it evaluates identically:
+[JavaScript](#javascript-the-same-arm-unchecked) has no `.wasm` of its own and serves
+TypeScript's, which is why the pair is named in the seam's exemption table rather than left
+to be inferred from a test that happens to pass.
 
 The prompt is **per language and not one template with branches**, which looks like
 duplication and is not. Its example programs are written in one language's syntax — a list
@@ -545,9 +594,10 @@ stated defaults, and splits an optional argument into an overload pair** must be
 without complaint, because a gate that rejected that would make an overloading language
 impossible to register — which is a worse failure than any it prevents.
 
-With one registered language the comparative half degenerates to "equals itself" and the
-anchored half does not, which is why the gate earns its place today. The comparative half
-is nonetheless exercised on every run, against a **fixture language** that exists only
+The comparative half runs over the registry for real, now that
+[JavaScript](#javascript-the-same-arm-unchecked) is in it — though that pair is the easiest
+possible comparison, since the two catalogues are one set of declarations reflected twice.
+So it is also exercised, on every run, against a **fixture language** that exists only
 under `#[cfg(test)]`: a second implementation of the whole seam whose catalogue is
 TypeScript's own, re-spelled to `snake_case` at test time — same keys, same objects, same
 gates — with its own line-oriented preparation step, its own healing dialect and its own
@@ -560,8 +610,11 @@ rather than shared, that no language can be served another's artifacts.
 
 ## Adding a language, worked: Python
 
-A second language is **additive**. Nothing in `packages/gg-sandbox/` changes when it lands,
-and neither does the WIT, the host's `ToolApi`, the membrane or the gate model.
+A further language is **additive**. Nothing in `packages/gg-sandbox/` changes when it lands,
+and neither does the WIT, the host's `ToolApi`, the membrane or the gate model. (The one
+registered language that *did* touch that package is
+[JavaScript](#javascript-the-same-arm-unchecked), because it is not a new guest at all —
+it is this one's catalogue emitted a second time under a second id.)
 
 ### What was measured
 
@@ -646,12 +699,14 @@ one.**
 8. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
    and re-cutting its checker, if it has one — so the drift gate covers them rather than only
    diffing them.
-9. **Add the console's row**: an option in `PROGRAM_LANGUAGE_OPTIONS`
-   (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`) so an operator can configure the arm, and a
-   name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are typed over the
-   `GgProgramLanguage` union, so a missing row is a TypeScript error rather than a language
-   nobody can pick. The prompt editor needs nothing: `npm run gen:contract` discovers
-   `system-code.*.hbs` from the directory and mirrors every one.
+9. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
+   (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
+   picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are
+   `Record`s over the `GgProgramLanguage` union — **not** arrays of options, which is the
+   distinction that makes the guarantee real: a `Record` missing a key is a TypeScript error,
+   where an array missing a row type-checks perfectly and silently offers an operator one
+   language fewer than gg has. The prompt editor needs nothing: `npm run gen:contract`
+   discovers `system-code.*.hbs` from the directory and mirrors every one.
 10. **Run the gates.** The agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
