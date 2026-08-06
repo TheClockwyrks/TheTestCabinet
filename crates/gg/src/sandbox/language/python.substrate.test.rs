@@ -463,6 +463,66 @@ print("still here")
         "a runaway Python program is stopped: {:?}",
         outcome.result
     );
+
+    // A program that PARKS is a different case, and the one the acceptance in
+    // [`limits`](crate::sandbox::limits) is about. Epoch interruption can only fire where the guest
+    // is executing wasm, and a guest inside `wasi:io/poll` on a clock pollable is executing none —
+    // so the deadline lands at the first re-entry after the budget is spent, and how far past the
+    // budget that is depends on how long the guest stays parked.
+    //
+    // Both halves are pinned here rather than quoted from a measurement nobody can re-run, because a
+    // measurement is exactly what the documented decision rests on.
+    //
+    // Half one: a program that parks in SHORT hops is bounded near its budget. Ten seconds of
+    // sleeping in 50 ms hops against a 1 s budget was measured stopping at 1.00–1.09 s.
+    let budget = SandboxLimits {
+        timeout: Duration::from_secs(1),
+        ..SandboxLimits::default()
+    };
+    let (outcome, _log) = run_with(
+        "import time\nfor _ in range(200):\n    time.sleep(0.05)",
+        &[],
+        &[],
+        budget,
+        canned_outcome,
+    );
+    assert!(
+        matches!(outcome.result, Err(SandboxError::Timeout { .. })),
+        "a program parked in short hops is stopped: {:?}",
+        outcome.result
+    );
+    assert!(
+        outcome.elapsed < Duration::from_secs(4),
+        "a program parked in short hops asked for 10 s of sleeping against a 1 s budget and should \
+         be stopped between two hops, not after all of them: {:?}",
+        outcome.elapsed
+    );
+
+    // Half two: a program that parks in ONE long hop overruns its budget by the whole hop. A
+    // `time.sleep(3)` against the same 1 s budget was measured running the full 3 s every time it
+    // was not the first program in the process — 8 runs of `sleep(4)` against 1 s and 5 of
+    // `sleep(8)` against 2 s all ran to completion. It is stopped, and `elapsed` reports the truth;
+    // the deadline simply did not bound it. That is the acceptance, stated as a test so a future
+    // reader does not have to take the prose's word for it.
+    let (outcome, _log) = run_with(
+        "import time\ntime.sleep(3)",
+        &[],
+        &[],
+        budget,
+        canned_outcome,
+    );
+    assert!(
+        matches!(outcome.result, Err(SandboxError::Timeout { .. })),
+        "a parked Python program is stopped: {:?}",
+        outcome.result
+    );
+    assert!(
+        outcome.elapsed >= Duration::from_secs(2),
+        "a single 3 s park against a 1 s budget is expected to run to completion — if the deadline \
+         now bounds it, the acceptance in `sandbox::limits` and the caution in the program-languages \
+         page are both out of date: {:?}",
+        outcome.elapsed
+    );
 }
 
 #[test]

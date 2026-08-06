@@ -913,13 +913,22 @@ deadline guard does not help because it only refuses at the next bridged call. N
 the program runs on a blocking thread, so sibling agents are unaffected.
 
 The ECMAScript guest cannot reach this — it shadows the timers and exposes no filesystem or
-socket API. **Python can**, and it has been measured rather than reasoned about.
-`time.sleep(8)` against a **2 s** budget was stopped at 2.5 s, 2.7 s, 4.3 s, 7.0 s and 9.4 s
-across five runs of the same program: it *is* stopped, the trap lands, and the elapsed figure
-is honest — but where it lands is wherever CPython's sleep next re-enters wasm, and in the
-worst observed case that was only after the whole sleep had run. So the deadline is an upper
-bound on the guest's *execution* and on nothing else, and a `time.sleep(3600)` sits until the
-run-level idle watchdog (30 minutes) declares the run hung.
+socket API. **Python can**, and it has been measured rather than reasoned about. The
+measurement says the overrun is bounded by the **longest single park**, not by the budget:
+
+| Program | Budget | Measured |
+| --- | --- | --- |
+| `time.sleep(8)` | 2 s | the whole 8 s, 5 runs of 5 (8.02 s elapsed) |
+| `time.sleep(4)` | 1 s | the whole 4 s, 8 runs of 8 |
+| 200 × `time.sleep(0.05)` — ten seconds of sleeping | 1 s | 1.00–1.09 s |
+
+So a parked program *is* stopped and the elapsed figure is honest, but the deadline can only
+fire **between** parks and never inside one: a program sleeping in short hops is bounded near
+its budget, and a program sleeping in one long hop runs the hop out. The common case for a
+model writing `time.sleep(60)` is therefore the second row, not the third — the deadline is an
+upper bound on the guest's *execution* and on nothing else, and a `time.sleep(3600)` sits until
+the run-level idle watchdog (30 minutes) declares the run hung. Both halves are pinned by
+`the_interpreters_own_landmines_are_defused` rather than left as a figure in prose.
 
 **The decision, settled with the arm that made it reachable: gg does not extend the timeout to
 a parked WASI call.** It is an acceptance rather than a gap, and the reason is that the

@@ -45,10 +45,21 @@
 //! at all was a bridged tool call, which the epoch callback accounts for explicitly. It is
 //! unreachable from the ECMAScript guest too: the timers are shadowed and the JS engine exposes no
 //! filesystem or socket API. It is **reachable today** from the [Python](super::language) arm, where
-//! `time.sleep(60)` is an ordinary thing for a model to write — `time.sleep(8)` against a 2 s budget
-//! was measured stopping at 2.5 s, 2.7 s, 4.3 s, 7.0 s and 9.4 s across five runs of one program. It
-//! is always stopped and the elapsed figure is honest, but *where* it stops is wherever CPython's
-//! sleep next re-enters wasm.
+//! `time.sleep(60)` is an ordinary thing for a model to write.
+//!
+//! What that costs was measured, and the measurement says the overrun is bounded by the longest
+//! single park rather than by the budget. `time.sleep(8)` against a 2 s budget ran the **whole 8 s**
+//! in five of five runs (8.02 s elapsed); `time.sleep(4)` against a 1 s budget ran the whole 4 s in
+//! eight of eight. A program parking in short hops is a different story and the same rule: 200
+//! `time.sleep(0.05)`s — ten seconds of sleeping — against a 1 s budget stopped at 1.00–1.09 s,
+//! because the deadline lands at the first hop that returns to wasm. So a program is always stopped
+//! and the elapsed figure is always honest, but the deadline bounds the guest's *execution* and not
+//! the wall clock: it can only fire between parks, never inside one. Both halves are pinned by
+//! `the_interpreters_own_landmines_are_defused`.
+//!
+//! (An earlier note here quoted a 2.5–9.4 s spread for that first case. Those figures were the first
+//! program run in a test process, whose budget the ~1 s component compile had already spent — they
+//! measured the compile, not the sleep.)
 //!
 //! # The decision, settled with the first arm that can reach it
 //!
