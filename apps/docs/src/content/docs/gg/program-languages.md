@@ -615,9 +615,13 @@ Five gates hold the line, and each of them can be shown to catch something:
   see, since the span begins with an `{{api.…}}` reference rather than with a spelling. Only a
   span whose arguments are all bare identifiers is judged: one carrying a literal, an object or
   a nested call is a worked *example*, whose names are the template's own.
-- **No literal in gg's own Rust names an SDK call.** The same rule on the host side, with a
-  short allow-list: a language's own module (where its syntax belongs, and which resolves the
-  call's name even so) and the mock model's canned fixtures.
+- **No literal in gg's own Rust names an SDK call.** The same rule on the host side, and the
+  allow-list is now one entry — the mock model's canned fixtures. `sandbox/language/` used to be
+  exempt wholesale on the reason that a language's own module is where its syntax belongs; what
+  those modules actually hold is `{{api.…}}` *references*, which resolve through the catalogue
+  and only look like spellings to a substring search. The gate strips Handlebars references
+  before searching instead, so the directory holding every language's implementation — the
+  likeliest home for a hand-written spelling — is covered like the rest of the crate.
 
 One thing a model reads is deliberately outside the rule, and it is worth naming so nobody
 audits it as a miss. A **built-in skill family's description** — the sentence under each of

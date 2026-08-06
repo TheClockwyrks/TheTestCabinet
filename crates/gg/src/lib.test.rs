@@ -119,20 +119,21 @@ fn no_unordered_map_or_set_survives_in_ggs_own_code() {
 
 /// The paths under `src/` a spelling is allowed to appear in, each with the reason it is allowed.
 ///
-/// Short on purpose. Every entry is a place where the string is *not* a description of the SDK being
-/// read by a model, and each one is a claim a reader can check.
-const SPELLING_EXEMPT: &[(&str, &str)] = &[
-    (
-        "sandbox/language/",
-        "a language's own module is where its syntax belongs: the statements gg generates are \
-         written here, and each resolves its call's name through `spell` even so",
-    ),
-    (
-        "client.rs",
-        "the mock model's canned programs, which are developer-facing fixtures rather than \
+/// Short on purpose — one entry. Every entry is a place where the string is *not* a description of
+/// the SDK being read by a model, and each one is a claim a reader can check.
+///
+/// `sandbox/language/` used to be here, on the reason that a language's own module is where its
+/// syntax belongs. It was the wrong exemption for the right observation: what those modules really
+/// hold is Handlebars *references* (`{{api.view.open_text.call}}`), which resolve through the
+/// catalogue and are the exact shape this gate wants — they only looked like spellings to a
+/// substring search. [`without_template_references`] answers that directly, so the directory that
+/// holds every language's implementation, and with it the likeliest home for a hand-written
+/// spelling, is now covered like the rest of the crate.
+const SPELLING_EXEMPT: &[(&str, &str)] = &[(
+    "client.rs",
+    "the mock model's canned programs, which are developer-facing fixtures rather than \
          anything gg says to a model",
-    ),
-];
+)];
 
 /// **No sentence gg puts in front of a model spells an SDK call by hand.**
 ///
@@ -220,7 +221,10 @@ fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
         if code.starts_with("//") {
             continue;
         }
-        let quoted = string_literals(code);
+        let quoted: Vec<String> = string_literals(code)
+            .into_iter()
+            .map(without_template_references)
+            .collect();
         for spelling in &spellings {
             if quoted.iter().any(|text| text.contains(spelling.as_str())) {
                 offenders.push(format!("{where_}: {}", line.trim()));
@@ -236,6 +240,34 @@ fn no_sdk_spelling_is_written_by_hand_in_ggs_own_code() {
          renames it everywhere and a second language spells it its own way:\n{}",
         offenders.join("\n"),
     );
+}
+
+/// `text` with every Handlebars reference (`{{api.view.open_text.call}}`) removed — what is left is
+/// what a model could actually be shown.
+///
+/// A mustache is the **correct** shape: it is a reference to the run language's catalogue that a
+/// render replaces with that language's own spelling, which is the mechanism this whole gate exists
+/// to enforce. It is only a substring search that cannot tell the two apart, because
+/// `api.view.open_text.call` contains `view.open_text`. Removing the references before the search is
+/// what lets the gate cover the one directory it used to exempt wholesale — the directory that now
+/// holds every language's implementation, and therefore the likeliest place for a hand-written
+/// spelling to be introduced.
+fn without_template_references(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find("{{") {
+        out.push_str(&rest[..open]);
+        // An unclosed `{{` is not a reference; keep the remainder so nothing hides behind one.
+        match rest[open..].find("}}") {
+            Some(close) => rest = &rest[open + close + 2..],
+            None => {
+                out.push_str(&rest[open..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The text inside each double-quoted string `line` opens, in order — what a model could actually be
