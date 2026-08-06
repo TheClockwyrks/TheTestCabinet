@@ -17,6 +17,21 @@
 //! never prose. That is the same rule as the other two arms — never delete a comment, never keep a
 //! heading — reaching the opposite conclusion because the language underneath is different.
 //!
+//! The same fact cuts the other way once, and [`continues_a_pipeline`] is the carve-out: `# map trim`
+//! is a **pipeline continuation**, which is what an operator that is not a comment is *for*. An
+//! indented single `#` applied to a lower-case name and an argument is code and is kept; everything
+//! else with a leading `#` is a heading and goes.
+//!
+//! # A call written without brackets is not two words of English
+//!
+//! PureScript applies a function by juxtaposition, so `log "done"` is a statement and
+//! `throwError message` is a statement, and neither carries a bracket, an operator, a keyword or a
+//! dot for a lexical test to find. Every other arm gets this for free from its own syntax — Python
+//! and TypeScript need the call parentheses, Ruby's own dialect has them in the overwhelming case.
+//! Here it takes two clauses of its own: `"` joins [`NON_PROSE_CHARS`], and
+//! [`applies_a_named_function`] reads the shape English is written in — a sentence opens with a
+//! capital or closes with terminal punctuation — rather than the tokens, which are identical.
+//!
 //! # An import is never deleted
 //!
 //! `purs` resolves every `import` a program writes, against a library set that is a committed
@@ -169,13 +184,21 @@ const CODE_OPERATORS: [&str; 9] = ["::", "->", "<-", "=>", "<>", ">>=", "<$>", "
 /// [Python's](super::python::healing) and [Ruby's](super::ruby::healing). Those two list it because a
 /// `#` line is a comment in their languages and deleting it would delete the model's own words.
 /// PureScript comments with `--`; `#` is an operator, and `## Plan` left in a program is a parse
-/// error. So a Markdown heading is prose here, and is deleted.
+/// error. So a Markdown heading is prose here, and is deleted — with the one exception
+/// [`continues_a_pipeline`] carves out, which is the *other* thing a leading `#` can be.
 ///
-/// `:` is absent too, for the reason it is absent from every arm's list: `Here is the plan:` is the
+/// `"` **is** present, and is this arm's own addition to the list every other dialect carries. A
+/// PureScript string literal is written with it and nothing else is, so a line carrying one carries
+/// code — while a quotation mark in a model's prose costs only a fence that could have been
+/// unwrapped. English does contain quotation marks, which is exactly why this entry is justified by
+/// the asymmetry rather than by the claim in this doc comment's first line: without it,
+/// `log "done"` is two words to a word counter and gets deleted.
+///
+/// `:` is absent, for the reason it is absent from every arm's list: `Here is the plan:` is the
 /// most ordinary sentence a model writes above its program. The `::` that matters is caught by
 /// [`CODE_OPERATORS`] instead, which is the shape rather than the byte.
-const NON_PROSE_CHARS: [char; 17] = [
-    '`', ';', '{', '}', '(', ')', '[', ']', '=', '<', '>', '|', '&', '$', '\\', '~', '^',
+const NON_PROSE_CHARS: [char; 18] = [
+    '`', ';', '{', '}', '(', ')', '[', ']', '=', '<', '>', '|', '&', '$', '\\', '~', '^', '"',
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -188,13 +211,17 @@ const NON_PROSE_CHARS: [char; 17] = [
 /// Its errors are asymmetric on purpose: a false positive costs a fence that could have been
 /// unwrapped (one turn, one located diagnostic), while a false negative deletes a line of the model's
 /// program. So every clause below is a shape that only code has.
-fn looks_like_code(line: &str) -> bool {
-    let line = line.trim();
+fn looks_like_code(raw: &str) -> bool {
+    let line = raw.trim();
     if line.is_empty() {
         return false;
     }
     // 1. A comment, a block comment, or a closer continuing the line above.
     if line.starts_with("--") || line.starts_with("{-") || line.starts_with([')', ']', '}', ',']) {
+        return true;
+    }
+    // 1b. A `#` continuing a pipeline on the line above — the other thing a leading `#` can be.
+    if continues_a_pipeline(raw) {
         return true;
     }
     // 2. A declaration, or an expression keyword.
@@ -231,8 +258,8 @@ fn looks_like_code(line: &str) -> bool {
 /// here deletes the model's code, so every clause is a shape only English has. The two are
 /// deliberately not complements and not disjoint, and the pipeline's fixpoint loop resolves the
 /// overlap.
-fn is_prose_line(line: &str) -> bool {
-    let line = line.trim();
+fn is_prose_line(raw: &str) -> bool {
+    let line = raw.trim();
     if line.is_empty() {
         return false;
     }
@@ -267,7 +294,20 @@ fn is_prose_line(line: &str) -> bool {
     if opens_with_qualified(line) {
         return false;
     }
-    // 5. A sentence, or a single terminated word.
+    // 5. Not a function applied to something, which is the *unqualified* half of the clause above
+    //    and the one this arm cannot do without. PureScript applies a function by juxtaposition, so
+    //    `log "done"`, `log summary` and `throwError message` carry no bracket, no operator, no
+    //    keyword and no dot — three of the commonest lines a `do` block contains, and three lines a
+    //    word counter reads as two words of English apiece.
+    if applies_a_named_function(line) {
+        return false;
+    }
+    // 6. Not a `#` continuing a pipeline. [`NON_PROSE_CHARS`] deliberately omits `#` so that a
+    //    Markdown heading is deleted, and this is the other thing a leading `#` can be.
+    if continues_a_pipeline(raw) {
+        return false;
+    }
+    // 7. A sentence, or a single terminated word.
     let mut tokens = line.split_whitespace();
     let (Some(first), second) = (tokens.next(), tokens.next()) else {
         return false;
@@ -337,6 +377,68 @@ fn opens_with_qualified(line: &str) -> bool {
     // Two names at least, and something applied to them: a lone `Data.Map` is as likely to be prose
     // about a module as it is to be a line of code.
     parts >= 2 && line[cursor..].starts_with(' ') && !line[cursor..].trim().is_empty()
+}
+
+/// Whether `line` applies a function to something, in the shape juxtaposition gives it: a lower-case
+/// name, at least one more token after it, and no sentence punctuation at the end.
+///
+/// The clause exists because PureScript writes a call with no brackets at all. `log "done"` and
+/// `throwError message` are ordinary lines of a `do` block and they are lexically indistinguishable
+/// from two words of English — so what separates them here is not the tokens but the *shape English
+/// is written in*: a sentence opens with a capital or closes with terminal punctuation, and an
+/// application does neither.
+///
+/// The residue is a lower-case, unpunctuated line of prose — `the remaining work` — which this
+/// reads as code and therefore keeps. That is the direction this predicate is allowed to be wrong
+/// in: a kept line of prose is a parse error the model is shown at its own coordinates, and a
+/// deleted line of code is a statement the model never learns went missing.
+fn applies_a_named_function(line: &str) -> bool {
+    let mut tokens = line.split_whitespace();
+    let (Some(head), Some(_)) = (tokens.next(), tokens.next()) else {
+        return false;
+    };
+    head.starts_with(char::is_lowercase)
+        && head.chars().all(|c| is_ident_char(c) || c == '\'')
+        && !line.ends_with(['.', '!', '?', ':', ',', ';'])
+}
+
+/// Whether `raw` — **untrimmed** — continues a pipeline with `#`, PureScript's
+/// `Data.Function.applyFlipped`, which `Prelude` exports and which idiomatic code uses to read an
+/// expression left to right.
+///
+/// The one shape that has to be told from a Markdown heading, because [`NON_PROSE_CHARS`]
+/// deliberately does not carry `#` and the sentence clause would otherwise delete it. Three facts
+/// separate the two, and all three are required:
+///
+/// * **One** `#`, followed by a space. `## Plan` is a heading and nothing else; `#>` is an operator
+///   a program defined, which the clauses above already keep.
+/// * The name after it is **lower-case**, or is qualified and ends in a lower-case name —
+///   `# map trim`, `# Array.filter isEmpty`. A function is what `#` applies, and PureScript
+///   functions are lower-case.
+/// * The line is **indented**. `#` continues an expression, and the declaration it continues began
+///   at column zero; Markdown puts a heading at the margin for its own reasons, since indenting one
+///   four spaces makes it a code block rather than a heading.
+///
+/// A heading whose title happens to begin with a lower-case word — `# the remaining work`, indented
+/// — is read as code by this, and is kept. Same asymmetry as everywhere else in this module.
+fn continues_a_pipeline(raw: &str) -> bool {
+    let line = raw.trim_start();
+    if line.len() == raw.len() {
+        return false;
+    }
+    let Some(rest) = line.strip_prefix("# ") else {
+        return false;
+    };
+    let mut tokens = rest.split_whitespace();
+    let (Some(head), Some(_)) = (tokens.next(), tokens.next()) else {
+        return false;
+    };
+    let Some(last) = head.split('.').next_back() else {
+        return false;
+    };
+    head.split('.').all(|segment| {
+        !segment.is_empty() && segment.chars().all(|c| is_ident_char(c) || c == '\'')
+    }) && last.starts_with(char::is_lowercase)
 }
 
 /// Whether `token` contains a run of three or more letters — what tells a word of English from a

@@ -727,6 +727,23 @@ rather than a comment. The rule is unchanged in all three — never delete a com
 heading — and it lands the opposite way here because the language does. `--` takes the other half
 of the same rule: a `--` line is never prose.
 
+The same fact cuts back the other way exactly once, and the carve-out is worth stating because it
+is the cost of the answer above. `#` is `Data.Function.applyFlipped`, so `# map trim` is a
+**pipeline continuation** — and with `#` off the never-delete list, that line shared a first byte
+with the one shape this dialect deletes on sight. An **indented** single `#` applied to a
+lower-case name and an argument is code and is kept; anything else with a leading `#` is a heading
+and goes. A heading whose title begins with a lower-case word, indented, is kept too, which is the
+direction the whole subsystem is allowed to be wrong in.
+
+**A call written without brackets is not two words of English**, and this is the arm where that had
+to be said out loud. PureScript applies a function by juxtaposition, so `log "done"` and
+`throwError message` are statements carrying no bracket, no operator, no keyword and no dot for a
+lexical test to find — where every other arm's syntax hands it the call parentheses. Two clauses
+answer it: `"` is on this dialect's non-prose character list, which no other arm needs, and the
+sentence test reads the *shape English is written in* — a sentence opens with a capital or closes
+with terminal punctuation, an application does neither — rather than the tokens, which are
+identical. The residue is a lower-case unpunctuated line of prose, which is kept.
+
 **The concurrency wrapper is a monad, not a block.** Every other arm's wrapper *encloses* the
 program: an `async function` with a body, an `async def` with an indented suite, a
 `Thread.new do … end`. PureScript's does not — the shape a model reaches for is

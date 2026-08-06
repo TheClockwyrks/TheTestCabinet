@@ -27,8 +27,9 @@ use super::*;
 /// than the skeleton's: a fenced program with prose around it, a program tagged `haskell`, both
 /// `Aff` wrappers, a program whose imports must survive, a triple-quoted string carrying text that
 /// reads exactly like a top level, an operator that begins with two dashes, an identifier carrying a
-/// prime beside a character literal, a doubled program, a comment-only reply, and a reply that is
-/// nothing but prose.
+/// prime beside a character literal, a doubled program, a comment-only reply, a reply that is
+/// nothing but prose, a program ending in a bracket-free call, and a program ending in a `#`
+/// pipeline continuation.
 pub(super) const FIXTURES: &[&str] = &[
     "Here is the program.\n\n```purescript\nmodule Main where\n\nimport Prelude\nimport Effect (Effect)\nimport Gg\n\nmain :: Effect Unit\nmain = do\n  entries <- fs.listDir { path: \"src\" }\n  view.openText \"rows\" (show entries)\n```\n\nThat should list the directory.",
     "```haskell\nmodule Main where\n\nimport Prelude\nimport Effect (Effect)\nimport Gg\n\nmain :: Effect Unit\nmain = view.openText \"note\" \"done\"\n```",
@@ -41,6 +42,8 @@ pub(super) const FIXTURES: &[&str] = &[
     "module Main where\n\nimport Prelude\nimport Effect (Effect)\nimport Gg\n\nmain :: Effect Unit\nmain = view.openText \"note\" \"done\"\nmodule Main where\n\nimport Prelude\nimport Effect (Effect)\nimport Gg\n\nmain :: Effect Unit\nmain = view.openText \"note\" \"done\"",
     "-- I have already written MANIFEST.md.\n-- Nothing left to do.",
     "I have finished the task. Everything works.",
+    "module Main where\n\nimport Prelude\nimport Effect (Effect)\nimport Effect.Console (log)\nimport Gg\n\nmain :: Effect Unit\nmain = do\n  void (fs.writeFile \"a.txt\" \"hi\")\n  log \"done\"",
+    "module Main where\n\nimport Prelude\nimport Data.Array (filter, mapMaybe)\nimport Effect (Effect)\nimport Gg\n\nmain :: Effect Unit\nmain = do\n  entries <- fs.listDir { path: \"src\" }\n  view.openText \"names\" (show (names entries))\n\nnames :: Array String -> Array String\nnames entries = entries\n  # filter isSource\n  # mapMaybe stem",
 ];
 
 /// Heal `reply` with **this** language's dialect and the default configuration.
@@ -99,6 +102,80 @@ fn a_markdown_heading_is_prose_and_a_comment_is_not() {
     let comments = "-- I have already written MANIFEST.md.\n-- Nothing left to do.";
     assert_eq!(healed(comments).program, comments);
     assert!(!purescript().is_prose_line("-- Nothing left to do."));
+}
+
+/// **A call written without brackets is not prose, and neither is a `#` continuing a pipeline** —
+/// the two shapes `strip-prose` deleted before this dialect was told about them.
+///
+/// Both were measured rather than imagined. `log "done"` as a program's last line was healed away
+/// with `strip-prose` reported and the program still compiled, so the model was never told a
+/// statement had gone missing — the exact false negative
+/// [`is_prose_line`](super::is_prose_line)'s own doc comment says must not happen. `# mapMaybe stem`
+/// went the same way, and it is this arm's own exposure: `#` is deliberately not among
+/// [`NON_PROSE_CHARS`](super::NON_PROSE_CHARS) so that a Markdown heading *is* deleted, which leaves
+/// the pipeline operator sharing a first byte with the one shape this dialect deletes on sight.
+///
+/// The heading direction is asserted alongside, because a fix that bought one of these by giving up
+/// the other would be no fix.
+#[test]
+fn a_bracketless_call_and_a_pipeline_continuation_are_not_prose() {
+    let call = "module Main where\n\
+         \n\
+         import Prelude\n\
+         import Effect (Effect)\n\
+         import Effect.Console (log)\n\
+         import Gg\n\
+         \n\
+         main :: Effect Unit\n\
+         main = do\n  \
+           void (fs.writeFile \"a.txt\" \"hi\")\n  \
+           log \"done\"";
+    assert_eq!(healed(call).program, call, "the last statement was deleted");
+
+    // The same line with no literal on it at all, which `"` alone would not have saved.
+    let unquoted = call.replace("log \"done\"", "log summary");
+    assert_eq!(healed(&unquoted).program, unquoted);
+
+    let pipeline = "module Main where\n\
+         \n\
+         import Prelude\n\
+         import Data.Array (filter, mapMaybe)\n\
+         import Effect (Effect)\n\
+         import Gg\n\
+         \n\
+         main :: Effect Unit\n\
+         main = do\n  \
+           entries <- fs.listDir { path: \"src\" }\n  \
+           view.openText \"names\" (show (names entries))\n\
+         \n\
+         names :: Array String -> Array String\n\
+         names entries = entries\n  \
+           # filter isSource\n  \
+           # mapMaybe stem";
+    assert_eq!(
+        healed(pipeline).program,
+        pipeline,
+        "the pipeline's last stage was deleted"
+    );
+
+    // And the predicates themselves, on the lines the two shapes are told apart by.
+    for code in ["log \"done\"", "log summary", "throwError message"] {
+        assert!(!purescript().is_prose_line(code), "{code}");
+    }
+    for indented in ["  # map trim", "  # Array.filter isSource"] {
+        assert!(!purescript().is_prose_line(indented), "{indented}");
+        assert!(purescript().looks_like_code(indented), "{indented}");
+    }
+    // A heading is still a heading: two hashes, or one at the margin, or one with no argument.
+    for heading in [
+        "## Plan",
+        "# Plan",
+        "  # Plan",
+        "  # Remaining work",
+        "  # next",
+    ] {
+        assert!(purescript().is_prose_line(heading), "{heading}");
+    }
 }
 
 /// **The `Aff` wrapper comes off `main`, and takes its import with it.**
