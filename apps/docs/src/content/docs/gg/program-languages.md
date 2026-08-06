@@ -15,9 +15,9 @@ Three are registered. TypeScript is the default; **JavaScript** is the same arm 
 [type check removed](#javascript-the-same-arm-unchecked) and nothing else changed; and
 **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
 different language rather than a variation on one. A fourth,
-**[Ruby](#ruby-compiled-to-javascript-before-it-crosses)**, has its execution substrate committed
-and proven but is **not yet registered** — its SDK and its registration are later commits, on the
-landing order Python established. This page is the design of the seam: why the
+**[Ruby](#ruby-compiled-to-javascript-before-it-crosses)**, has its execution substrate, its
+hand-written SDK and its signature catalogue committed and proven but is **not yet registered** —
+its registration is a later commit, on the landing order Python established. This page is the design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
 capabilities, and what adding another actually costs.
@@ -178,8 +178,10 @@ and its registration are separate, later commits, on the landing order
 `ProgramLanguage` arm cannot be half-registered. Nothing below is reachable from a run yet:
 there is no `language` value that resolves to it.
 
-**A Ruby program is compiled to JavaScript on the host by Opal, and evaluated by the ECMAScript
-guest with Opal's runtime pre-initialised into it.** Nothing crosses the membrane as Ruby.
+**A Ruby program is compiled to JavaScript on the host by Opal, and evaluated by a guest with
+Opal's runtime, gg's Ruby SDK and the libraries a program may require all pre-initialised into
+it.** Nothing crosses the membrane as Ruby, and everything the compiled program is evaluated
+*against* is Ruby.
 
 That single sentence is what makes this the cheapest arm gg has added, and it is cheap in both
 of the places a language arm is usually expensive:
@@ -216,15 +218,21 @@ have settled it on their own:
   [the type check and in nothing else](#javascript-the-same-arm-unchecked) — a checked program
   cannot name `Opal`, because no declaration covers it, and an unchecked one can.
 
-So this arm has a component of its own (`ruby.component.wasm`, ~18.6 MiB), and the seam's
+So this arm has a component of its own (`ruby.component.wasm`, ~20 MiB), and the seam's
 "[no language is served another's artifacts](#what-a-language-supplies)" rule is satisfied
-outright rather than by an exemption. What that component adds to the ECMAScript one is Opal and
-**one** behaviour: Ruby's `$stdout` and `$stderr` are pointed at `console` on every run. That is
-not optional plumbing — Opal picks its write procedure once, at load, and captures the `console`
-that existed while `wizer` was pre-initialising the component, so without it `puts "hello"` logs
-nothing at all, which is what it did before it was fixed. Everything else is the shared guest's,
-and a test asserts that this component's imported interfaces are **exactly** the ECMAScript
-guest's, so a capability on one side only is a failing test rather than a confound.
+outright rather than by an exemption. A test asserts that this component's imported interfaces are
+**exactly** the ECMAScript guest's, so a capability on one side only is a failing test rather than
+a confound.
+
+Two things it does that no SDK could do for itself are worth naming, because both were silent
+failures before they were fixed. Ruby's `$stdout` and `$stderr` are pointed at `console` on every
+run — Opal picks its write procedure once, at load, and captures the `console` that existed while
+`wizer` was pre-initialising the component, so without it `puts "hello"` logs nothing at all. And
+every array the membrane hands back is **re-made in this module's realm**: the generated bindings
+run against a different set of intrinsics (the same split that makes `instanceof Error` answer
+false for a binding-level fault), so an array they built carries *their* `Array.prototype`, which
+Opal never patched — and `entries.map { … }` on a value the program was *handed* would fail with
+`$map is not a function`, which is the worst shape of failure available: correct Ruby, refused.
 
 ### What compiling costs, and what it buys
 
@@ -261,25 +269,109 @@ program.rb:2: unexpected token tSTAR
   y = 2 +* 3
 ```
 
+### What the SDK bought, in the guest
+
+The [hand-written Ruby SDK](#what-native-means-in-ruby) is what turned this component from an
+engine that evaluates compiled Ruby into a guest that puts **Ruby** in front of a program, and it
+closed both of the gaps the substrate landed with:
+
+- **A guest owns its own `run`, so a raise is located in the model's Ruby.** The compile appends a
+  v3 source map — 0.4 ms to produce, and `sourcesContent` stripped before it is encoded — and the
+  guest decodes it **lazily, only when something raised**, so the happy path pays nothing. A
+  `raise ArgumentError` on line 3 of a model's program is reported at line 3 rather than at the
+  line of compiled JavaScript it became.
+- **The library set is declared, baked and checked.**
+  `packages/gg-sandbox-ruby/src/library.rb` is a manifest of `require` lines under headings; the
+  build compiles exactly that set — and, by *running* each require in a clean Opal and answering
+  each `LoadError` with another compile, everything those in turn require — out of the pinned
+  Opal release's own sources; and the catalogue's [`libraries`](#the-catalogue) section is
+  reflected from the same file. Twenty-two names, in five groups, and a test drives every one of
+  them into the committed component and requires it.
+
+What a Ruby program gets **without** requiring anything is Opal's corelib — `Set`, `Struct`,
+`Time`, `Math`, `Random`, `Enumerator` with `lazy`, `Comparable`, `Rational`, `Complex` — plus
+**pattern matching**, which is Ruby 3 syntax rather than a library and which Opal lowers to a call
+into a corelib module the npm runtime bundle does not carry. Without baking it, an ordinary
+`case … in` would be `uninitialized constant PatternMatching`: a sentence about gg's build rather
+than about the model's program.
+
+Two absences are facts about the artifact rather than policies, and are asserted as such:
+`bigdecimal` (Opal's needs a JavaScript big-number library gg does not carry) and
+`fileutils`/`net/http`/`socket` (Opal ships those only for its Node and browser platforms, and
+this guest is neither).
+
+What a turn costs went up and is worth stating: **4.8 ms with no tool bound and 7.7 ms with all
+thirty-five**, against 2.1–2.6 ms for the substrate that had no SDK and 1.2–1.4 ms for a plain
+JavaScript program. The difference is this SDK's surface, which is built *in Ruby, per run*, out
+of the run's own enabled set — twelve API objects and thirty-odd methods defined on `Object`.
+Still two hundredths of a second beside a model request measured in seconds, and still bounded by
+a test that only a runtime falling out of the snapshot could move.
+
+### What "native" means in Ruby
+
+An idiomatic Ruby SDK is not the Python one with different brackets. Every difference below is a
+spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
+them:
+
+- **A block where a Ruby author expects one.** `view.open_text("failing tests") { rows.join("\n") }`
+  and `fs.write_file("notes.md") { body }` — the two calls whose last argument is a long body.
+  That makes Ruby the **first arm to emit an entry with more than one signature**, which turns
+  that half of the catalogue schema from a shape nothing produced into a shape a gate reads —
+  exactly as Python was the first to emit `kind: "keyword"`.
+- **A `Range` is a span.** `context.archive_thread(4..19, 30...36)` rather than a record with a
+  `start` and an `end`, because a span of integers in this language *is* a `Range`. An exclusive
+  range means the same thing and is lowered the same way.
+- **Splats where the argument is a list.** `memory.search_memories("cargo", "nextest")`,
+  `review.request_changes("widen the test", "name the file")`,
+  `project.set_issue_blocked_by("i1", "i0")`. Passing an array instead works too, which is the
+  forgiveness a Ruby caller expects of a variadic method.
+- **Predicates.** `read.byte_truncated?`, `out.truncated?`, `found.archive_empty?`,
+  `summary.ok?` — a boolean reader ends in `?`, so the catalogue's member names do too.
+- **Value objects.** A result carries `==`, `hash`, `to_h`, `inspect` and `deconstruct_keys`, so
+  two reads of one file compare equal and `case read in TextFile[contents:]` destructures.
+- **`case`, not a discriminant.** A read is a `TextFile` or an `ImageFile`, narrowed with an
+  ordinary `case … when`. There is no union *type* at all, because Ruby has no annotations for one
+  to appear in — where Python needs `FileRead = TextFile | ImageFile` to write its signature.
+- **Symbols for a fixed choice**, with a real check behind them. `tasks.update_task(id,
+  status: :done)`, `failure.code == ToolErrorCode::NOT_FOUND`. Opal's `Symbol` **is** `String`, so
+  the language will not tell `:done` from `"done"` and cannot tell `:nearly` from a typo — which
+  is why the SDK validates every fixed choice against its accepted set by hand and refuses an
+  unknown one with `invalid-argument` naming every symbol that would have worked. That is what
+  [rule 3](#the-rules-an-agent-facing-surface-obeys-in-every-language) actually asks for, and it
+  is a place where the *guarantee* had to be re-earned rather than inherited from the language.
+- **A raised `ToolError`,** which is a `StandardError` — so a bare `rescue => failure` catches it,
+  as a Ruby programmer expects of anything a library raises.
+- **The surface is Ruby's own top level.** The API objects are methods on `Object`, which is what a
+  top-level `def` produces, so `fs.read_file("main.rb")` works with no receiver and no `require`
+  line; the types are top-level constants. A program that reaches past the surface into
+  `GG::Files.read_file` is refused **by the host**, exactly as a Python program that imports `gg`
+  is.
+- **`lib.<key>` is a `Module`.** A Ruby file has no exports, so the host wraps a code skill's or
+  memory's source in the call that evaluates it against a fresh anonymous module, which extends
+  itself. What the body defines is what the namespace offers, and there is no export protocol for
+  an author to remember. The wrapper costs one line, and the diagnostic for a syntax error is
+  moved back over it so an author reads their own line number.
+
+One further fact a study has to record: **Opal is not CRuby.** Integer division is JavaScript's, so
+`1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`; there is no bignum, so `2 ** 64`
+loses precision; and `:done.class` is `String`. All three are asserted against the committed
+artifact rather than described in prose, so the claim is checkable.
+
+One difference runs the *other* way from Python's, and is worth naming beside that arm's
+[caution about a parked guest](#wasi): Ruby's `sleep` is a **busy wait** in Opal rather than a park
+in a host call, so the execution deadline reaches it exactly as it reaches any other runaway. A
+`sleep 30` under a 400 ms budget is stopped at the budget, and that has a test.
+
 ### What is still missing, and why it stops the arm being registered
 
-Two things, and both are honest gaps rather than deferred polish:
-
-- **A guest backtrace is in the compiled JavaScript's coordinates**, not in the model's Ruby's.
-  Opal emits a v3 source map on request — measured at 0.4 ms — so the mapping exists and is
-  cheap; consuming it needs the Ruby guest to own its own `run`, which is what the SDK commit
-  gives it. Until then a located run-time error points at a line of a file the model did not
-  write, which is worse than no location at all.
-- **The library set is Opal's corelib and nothing else.** No Opal stdlib module is baked, so
-  `require` of anything reaches a module that is not there. As with
-  [Python](#what-a-python-program-is-offered-and-why-that-is-a-bake-time-fact) this is a
-  bake-time fact about the guest package rather than a run-time policy, and declaring it in the
-  catalogue's [`libraries`](#the-catalogue) section is part of registering the arm.
-
-One further fact a study will have to record: **Opal is not CRuby.** Integer division is
-JavaScript's, so `1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`, and there is no
-bignum — `2 ** 64` loses precision. Both are asserted against the committed artifact rather than
-described in prose, so the claim is checkable.
+Nothing about the surface. What is left is the registration itself: the
+[`GgProgramLanguage`](#the-steps) variant, the `ProgramLanguage` implementation over the compile
+step that already exists, the healing dialect, the two prompt templates, and the console's rows.
+The catalogue does not wait for any of that — the [agreement gate](#the-agreement-gate) runs
+against it now, wearing the [fixture language](#the-agreement-gate) so it can be handed one whose
+id the wire enum does not carry yet, and every one of the thirty-five tools is driven through the
+real membrane from its Ruby spelling against the same expected JSON the TypeScript and Python arms
+assert.
 
 ## What compiling costs, and where it is recorded
 
@@ -1190,7 +1282,9 @@ model reaches by accident rather than by writing a sleep.
    rebuild would fail the diff every time. Python's step also installs `uv`
    (`scripts/ci/install-uv.sh`), which is how all three machines that run this — a
    devcontainer with no usable `pip`, an Azure agent and a GitHub runner — reach the same
-   pinned `griffe`.
+   pinned `griffe`. [Ruby](#ruby-compiled-to-javascript-before-it-crosses)'s needs no installer
+   of its own: all three ship a Ruby, and its `signatures.sh` puts the pinned `yard` in that
+   one with a `gem install --user-install`.
 10. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
    (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
    picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are

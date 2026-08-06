@@ -1,0 +1,2777 @@
+{
+  "language": "ruby",
+  "generatedFrom": "packages/gg-sandbox-ruby/src/gg/ + src/library.rb (YARD)",
+  "libraries": [
+    {
+      "group": "Data, text and encoding",
+      "modules": [
+        "json",
+        "base64",
+        "securerandom",
+        "erb",
+        "shellwords",
+        "strscan",
+        "stringio",
+        "uri"
+      ]
+    },
+    {
+      "group": "Time",
+      "modules": [
+        "time",
+        "date"
+      ]
+    },
+    {
+      "group": "Structure",
+      "modules": [
+        "set",
+        "ostruct",
+        "delegate",
+        "forwardable",
+        "singleton",
+        "observer"
+      ]
+    },
+    {
+      "group": "Paths and command lines",
+      "modules": [
+        "pathname",
+        "optparse"
+      ]
+    },
+    {
+      "group": "Inspecting and measuring",
+      "modules": [
+        "pp",
+        "prettyprint",
+        "benchmark",
+        "logger"
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "object": "fs",
+      "doc": "read, write, and edit workspace files"
+    },
+    {
+      "object": "system",
+      "doc": "run shell commands in the workspace"
+    },
+    {
+      "object": "project",
+      "doc": "the epic/issue board — decompose work into dispatchable issues"
+    },
+    {
+      "object": "tasks",
+      "doc": "your task list"
+    },
+    {
+      "object": "memory",
+      "doc": "durable memories that survive context compaction"
+    },
+    {
+      "object": "view",
+      "doc": "show yourself a file, a value, or a function's documentation — the only way material enters your context"
+    },
+    {
+      "object": "context",
+      "doc": "manage your own context window"
+    },
+    {
+      "object": "agents",
+      "doc": "delegate work to child agents"
+    },
+    {
+      "object": "skills",
+      "doc": "read authored skills"
+    },
+    {
+      "object": "programs",
+      "doc": "fetch a program you already ran, and hand a patched copy back to be run"
+    },
+    {
+      "object": "harness",
+      "doc": "end your session"
+    },
+    {
+      "object": "review",
+      "doc": "return your verdict on the work you are reviewing"
+    }
+  ],
+  "meta": [
+    {
+      "key": "list",
+      "name": "list",
+      "signatures": [
+        {
+          "signature": "list() -> Array<FunctionSummary>",
+          "parameters": [
+
+          ]
+        }
+      ],
+      "doc": "List the functions available on this API object, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.open_docs_view`.",
+      "types": [
+        "FunctionSummary"
+      ]
+    }
+  ],
+  "session": [
+    {
+      "key": "finish",
+      "ending": "standard",
+      "name": "finish",
+      "object": "harness",
+      "signatures": [
+        {
+          "signature": "finish(summary) -> nil",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What you did, in a sentence or two.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
+      "types": [
+
+      ]
+    },
+    {
+      "key": "approve",
+      "ending": "review",
+      "name": "approve",
+      "object": "review",
+      "signatures": [
+        {
+          "signature": "approve() -> nil",
+          "parameters": [
+
+          ]
+        }
+      ],
+      "doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change.",
+      "types": [
+
+      ]
+    },
+    {
+      "key": "request_changes",
+      "ending": "review",
+      "name": "request_changes",
+      "object": "review",
+      "signatures": [
+        {
+          "signature": "request_changes(*items) -> nil",
+          "parameters": [
+            {
+              "name": "items",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "positional",
+              "default": null,
+              "doc": "Every change that must be made before the work can be accepted, splatted, one per entry: what is wrong, and what to change. It may not be empty.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted.\n\nEach item says what is wrong and what to change; the list may not be empty. This ends your session, and does not stop your program.",
+      "types": [
+
+      ]
+    }
+  ],
+  "views": [
+    {
+      "key": "open_file",
+      "requires": "read_file",
+      "name": "open_file",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_file(path, offset: nil, limit: nil) -> TextFile or ImageFile",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to open. Relative to your workspace, or absolute.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "offset",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The 1-based line to start at.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "limit",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "How many lines to show from `offset`.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Read a file AND show it to yourself: you get back exactly what `fs.read_file` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.\n\nThe split from `fs.read_file` is the point — `fs.read_file` gets bytes for your PROGRAM, `view.open_file` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.read_file` of an image describes it without showing it.\n\nPictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); nothing is opened and nothing is shown when you pass that cap, so close one with `view.close(path)` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.\n\nRaises `ToolError`: `:limit_exceeded`, naming the cap, when opening a picture would pass your agent's image-view cap.",
+      "types": [
+        "ToolError",
+        "TextFile",
+        "ImageFile"
+      ]
+    },
+    {
+      "key": "open_text",
+      "requires": null,
+      "name": "open_text",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_text(label, body) -> nil",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to file the view under. It is what `view.close` takes, and opening the same label again replaces what it showed. It may not be empty.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "body",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to show yourself. An empty body is allowed: it is how you say that something you were showing is now empty.",
+              "fields": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "signature": "open_text(label, &body) -> nil",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to file the view under. It is what `view.close` takes, and opening the same label again replaces what it showed. It may not be empty.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "body",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A block returning what to show yourself.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.\n\nThis is what replaced `puts` as the channel into your context: what you print goes to the run's operator, views come back to you on your next turn.\n\nThe body may be given as a block, which is what a Ruby program reaches for when the text is built rather than held:\n\n    view.open_text(\"failing tests\") do\n      failures.map { |name| \"- #{name}\" }.join(\"\\n\")\n    end\n\nOpening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty BODY is allowed, since it is how you say that something you were showing is now empty. Nothing is ever silently truncated.\n\nRaises `ToolError`: `:invalid_argument` for an empty label — a view with no selector could never be closed or attributed — for neither a `body` argument nor a block, and `:limit_exceeded`, naming the cap, for a body or label over gg's caps.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "key": "open_docs_view",
+      "requires": null,
+      "name": "open_docs_view",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_docs_view(target) -> nil",
+          "parameters": [
+            {
+              "name": "target",
+              "type": "Symbol or String or Method",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The function to document — its name, or the method itself.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.\n\nName it with a Symbol (`view.open_docs_view(:read_file)`), with a String, or with the method itself (`view.open_docs_view(fs.method(:read_file))`).\n\nThis is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are done with it. `<object>.list` is how you find out which names exist.\n\nRaises `ToolError`: `:not_found` for an unknown or unbound name.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "key": "close",
+      "requires": null,
+      "name": "close",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "close(selector) -> Integer",
+          "parameters": [
+            {
+              "name": "selector",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied.\n\nClosing a selector that is not open returns `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
+      "types": [
+
+      ]
+    },
+    {
+      "key": "current",
+      "requires": null,
+      "name": "current",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "current() -> Array<OpenView>",
+          "parameters": [
+
+          ]
+        }
+      ],
+      "doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.\n\nIt is called `current` rather than `list` because every API object already carries a `list` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
+      "types": [
+        "ViewRegion",
+        "OpenView"
+      ]
+    }
+  ],
+  "programs": [
+    {
+      "key": "history",
+      "name": "history",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "history() -> Array<ProgramSummary>",
+          "parameters": [
+
+          ]
+        }
+      ],
+      "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.\n\nIt lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window. It is empty — never an error — for a session that has run nothing yet.",
+      "types": [
+        "ProgramSummary"
+      ]
+    },
+    {
+      "key": "get",
+      "name": "get",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "get(turn = nil) -> String",
+          "parameters": [
+            {
+              "name": "turn",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "positional",
+              "default": "nil",
+              "doc": "The turn whose program to fetch, as `programs.history` reports it. Leave it out for your most recent one.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "The exact source of one program you ran, as a string. With no argument, your most recent one.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work (`sub`, an interpolation, a regexp), and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\nRaises `ToolError`: `:not_found`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "key": "rerun",
+      "name": "rerun",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "rerun(source) -> nil",
+          "parameters": [
+            {
+              "name": "source",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The program to run in place of this one. It may not be blank.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Hand gg a program to run in place of this one. Your program finishes, then gg runs `source` as this turn's program.\n\nUse it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice.\n\nThe first call stands. If your program then raises, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.\n\nRaises `ToolError`: `:refused` for a second hand-over in one turn — a silently replaced program is a change you cannot see — and `:invalid_argument` for a blank source.",
+      "types": [
+        "ToolError"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "tool": "shell",
+      "name": "shell",
+      "object": "system",
+      "signatures": [
+        {
+          "signature": "shell(command, timeout_secs: nil) -> ShellOutput",
+          "parameters": [
+            {
+              "name": "command",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The command line, run by `sh -c` with your workspace as its working directory.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "timeout_secs",
+              "type": "Numeric or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "How long to let it run before killing it. Leave it out for gg's own default of 120 seconds, which is clamped to whatever is left of the run's wall-clock budget.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr.\n\nA non-zero exit is NOT a failure — check `exit_code` on the result; only a process that could not be launched, or one the timeout killed, raises. `timeout_secs` defaults to 120 seconds and is clamped to whatever is left of the run's wall-clock budget.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.",
+      "types": [
+        "ShellOutput"
+      ]
+    },
+    {
+      "tool": "read_file",
+      "name": "read_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "read_file(path, offset: nil, limit: nil) -> TextFile or ImageFile",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to read. Relative to your workspace, or absolute for anything else in this container.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "offset",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "limit",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Read a file, returning a `TextFile` or an `ImageFile` — the format is detected from the file's bytes, never its extension.\n\nThis gets bytes for your PROGRAM and puts NOTHING in your context window; `view.open_file` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.\n\nReading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `read_file` is a file you have not looked at. `view.open_file` is the one way to actually see a picture.\n\nNarrow the two with an ordinary `case`:\n\n    case fs.read_file(\"logo.png\")\n    when TextFile then …\n    when ImageFile then …\n    end\n\nRaises `ToolError`: `:not_found` for a missing path.",
+      "types": [
+        "ToolError",
+        "TextFile",
+        "ImageFile"
+      ]
+    },
+    {
+      "tool": "write_file",
+      "name": "write_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "write_file(path, contents) -> Integer",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "contents",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The UTF-8 text to write. It replaces the file entirely.",
+              "fields": [
+
+              ]
+            }
+          ]
+        },
+        {
+          "signature": "write_file(path, &contents) -> Integer",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "contents",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A block returning the UTF-8 text to write. It replaces the file entirely.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written.\n\nWriting is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.\n\nThe contents may be given as a block, which is what a Ruby program reaches for when the text is assembled rather than held: `fs.write_file(\"notes.md\") { rows.join(\"\\n\") }`.\n\nRaises `ToolError`: `:invalid_argument` when neither a `contents` argument nor a block was given.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "edit_file",
+      "name": "edit_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "edit_file(path, old_string, new_string) -> nil",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to edit.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "old_string",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The exact text to find, including its whitespace. It must appear exactly once.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "new_string",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The text to put in its place. An empty string deletes the match.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Replace the one exact occurrence of `old_string` in a file with `new_string`.\n\nWiden the surrounding context until the match is unique rather than counting occurrences.\n\nRaises `ToolError`: `:not_found` when the text does not appear, and `:conflict` — with the number of matches — when it appears more than once.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "list_dir",
+      "name": "list_dir",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "list_dir(path = nil) -> Array<DirEntry>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "positional",
+              "default": "nil",
+              "doc": "The directory to list; leave it out for your workspace root.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "List a directory, sorted by name; defaults to your workspace.\n\nEach entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
+      "types": [
+        "DirEntry"
+      ]
+    },
+    {
+      "tool": "read_skill",
+      "name": "read_skill",
+      "object": "skills",
+      "signatures": [
+        {
+          "signature": "read_skill(name) -> String",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The skill's name, as the system prompt lists it.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.\n\nA skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it offers. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn.\n\nRaises `ToolError`: `:not_found`, listing the skills that do exist, when the name is unknown.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "write_memory",
+      "name": "write_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "write_memory(name, description, body, code: nil, on_use: nil) -> MemoryUsage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "body",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's contents.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "code",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "A Ruby module whose methods are bound at `lib.<name>` for the rest of your session. Leave it out for a memory that is only prose.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "on_use",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "A script gg runs the first time the memory comes into use; whatever it shows you arrives on your next turn. Leave it out for a memory that runs nothing.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used.\n\nA memory may also carry **code**. `code` is a Ruby module whose methods are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `on_use` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.\n\nRaises `ToolError`: `:conflict` on a duplicate name, and `:limit_exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more.",
+      "types": [
+        "ToolError",
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "update_memory",
+      "name": "update_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "update_memory(name, description, body, code: nil, on_use: nil) -> MemoryUsage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The slug of the memory to replace. Every other argument replaces what it held.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The one-line description to replace the old one with.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "body",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The contents to replace the old ones with.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "code",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The Ruby module to replace the old one with. Leave it out to clear it.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "on_use",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The script to replace the old one with. Leave it out to clear it.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget.\n\nIts `code` and `on_use` are replaced too — leaving them out clears them.\n\nRaises `ToolError`: `:not_found` when no memory has that name.",
+      "types": [
+        "ToolError",
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "create_memory",
+      "name": "create_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "create_memory(name, description, body, code: nil, on_use: nil) -> MemoryUsage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. No two memories may share one.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A one-line description of what the memory holds. Required where the run keeps an index, since that is the memory's line in it.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "body",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The initial contents. They stay out of your context window until you read them.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "code",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "A Ruby module bound at `lib.<name>` once you read the memory. Leave it out for a memory that is only prose.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "on_use",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "A script gg runs on that first read. Leave it out for a memory that runs nothing.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget.\n\nRaises `ToolError`: `:conflict` on a duplicate slug, and `:limit_exceeded` when the contents, or the index entry, would breach a limit.",
+      "types": [
+        "ToolError",
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "read_memory",
+      "name": "read_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "read_memory(name) -> String",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context.\n\nIf the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session.\n\nRaises `ToolError`: `:not_found` when no memory has that slug.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "edit_memory",
+      "name": "edit_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "edit_memory(name, search, replace) -> MemoryUsage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The slug of the memory to revise.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "search",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The exact text to find in its contents. It must appear exactly once.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "replace",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The text to put in its place.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget.\n\nAppend by quoting the last line and replacing it with itself plus what you are adding.\n\nRaises `ToolError`: `:not_found` when the text does not appear, `:conflict` when it appears more than once, `:limit_exceeded` when the result would be too long, and `:invalid_argument` when the edit would leave the memory empty — delete it instead.",
+      "types": [
+        "ToolError",
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "search_memories",
+      "name": "search_memories",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "search_memories(*keywords) -> Array<MemoryHit>",
+          "parameters": [
+            {
+              "name": "keywords",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "positional",
+              "default": null,
+              "doc": "The words to look for, splatted. Several specific words rank better than one sentence, because a memory is ranked by how many of them it mentions.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often.\n\nPass several specific words rather than one sentence, then `read_memory` the hits worth having in full. A search that matches nothing is an empty array.\n\nRaises `ToolError`: `:invalid_argument` when every keyword is empty.",
+      "types": [
+        "ToolError",
+        "MemoryHit"
+      ]
+    },
+    {
+      "tool": "delete_memory",
+      "name": "delete_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "delete_memory(name) -> MemoryUsage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Evict a memory by name, freeing room in the budget, and return what is left in use.\n\nRaises `ToolError`: `:not_found` when no memory has that name.",
+      "types": [
+        "ToolError",
+        "MemoryUsage"
+      ]
+    },
+    {
+      "tool": "add_task",
+      "name": "add_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "add_task(id, title, description: nil, blocked_by: []) -> TaskUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The id you choose for it. It is what every other task call takes, and no two tasks may share one.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "title",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the work.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "What the work is, at whatever length is useful.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "blocked_by",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "keyword",
+              "default": "[]",
+              "doc": "The ids of the tasks that must be done before this one. Defaults to none.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Add a task to the task DAG and return the task budget.\n\nRaises `ToolError`: `:conflict` on a duplicate id or on an edge that would close a cycle.",
+      "types": [
+        "ToolError",
+        "TaskUsage"
+      ]
+    },
+    {
+      "tool": "update_task",
+      "name": "update_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "update_task(id, title: nil, description: UNCHANGED, status: nil) -> nil",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to revise.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "title",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The title to replace the old one with. Leave it out to keep the one it has.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String or nil or Unchanged",
+              "optional": true,
+              "kind": "keyword",
+              "default": "UNCHANGED",
+              "doc": "The description to replace the old one with; `nil` clears it, and leaving it out (or passing `UNCHANGED`) keeps the one it has.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "status",
+              "type": "Symbol or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "Where the task now stands — one of `TaskStatus`'s symbols. Leave it out to keep the status it has.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Revise a task's title, description and/or status; supply at least one.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError",
+        "Unchanged"
+      ]
+    },
+    {
+      "tool": "set_blocked_by",
+      "name": "set_blocked_by",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "set_blocked_by(id, *blocked_by) -> nil",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task whose blockers to replace.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "blocked_by",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "positional",
+              "default": null,
+              "doc": "The ids of every task that must now be done before it, splatted. Passing none clears them all.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Replace a task's whole blocker set; no arguments clears every blocker.\n\nRaises `ToolError`: `:not_found` for an unknown id, and `:conflict` when an edge would close a cycle.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "complete_task",
+      "name": "complete_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "complete_task(id) -> nil",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to mark done.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Mark a task done.\n\nTasks it was blocking become actionable once every one of their blockers is done.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "remove_task",
+      "name": "remove_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "remove_task(id) -> TaskUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to remove.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Remove a task and every blocker edge pointing at it, and return the task budget.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError",
+        "TaskUsage"
+      ]
+    },
+    {
+      "tool": "create_epic",
+      "name": "create_epic",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "create_epic(prefix, title, description) -> EpicCreated",
+          "parameters": [
+            {
+              "name": "prefix",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "title",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the body of work.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the epic covers, for a reader who has not seen its issues.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Create an epic to group related issues, and return the id it took and the board budget.\n\n`prefix` is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\nRaises `ToolError`: `:invalid_argument` when the prefix is not 3-6 letters, and `:conflict` when another epic already holds it.",
+      "types": [
+        "ToolError",
+        "BoardUsage",
+        "EpicCreated"
+      ]
+    },
+    {
+      "tool": "create_issue",
+      "name": "create_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "create_issue(title, in_scope, out_of_scope, completion_criteria, agent, description: nil, blocked_by: [], epic_id: nil, reviewers: []) -> IssueCreated",
+          "parameters": [
+            {
+              "name": "title",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the work.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "in_scope",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "out_of_scope",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the issue deliberately does not cover, so the work stops where you meant it to.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "completion_criteria",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "agent",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent the issue is dispatched to. It must be one you may spawn.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "What the work is. Written for a child agent with no other context.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "blocked_by",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "keyword",
+              "default": "[]",
+              "doc": "The ids of every issue that must be done before this one. Defaults to none.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "epic_id",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The id of an existing epic to group it under. Leave it out to leave it ungrouped and numbered under `ISSUE`.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "reviewers",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "keyword",
+              "default": "[]",
+              "doc": "The agents that must approve the work, from the same set you may spawn. Required when this run's reviewers feature is on.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Create a self-contained, dispatchable issue, and return the id the board **assigned** it.\n\nThe id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; you do not choose it, so keep the returned one to block a later issue on this one or to wait for it. `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from, so write them for a reader with no other context.\n\nRaises `ToolError`: `:invalid_argument` when `agent` or a reviewer is not yours to assign, and `:conflict` on a blocker edge that would close a cycle.",
+      "types": [
+        "ToolError",
+        "BoardUsage",
+        "IssueCreated"
+      ]
+    },
+    {
+      "tool": "update_issue",
+      "name": "update_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "update_issue(id, title: nil, description: UNCHANGED, in_scope: nil, out_of_scope: nil, completion_criteria: nil, status: nil, epic_id: UNCHANGED) -> nil",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to revise.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "title",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The title to replace the old one with. Leave it out to keep the one it has.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "description",
+              "type": "String or nil or Unchanged",
+              "optional": true,
+              "kind": "keyword",
+              "default": "UNCHANGED",
+              "doc": "The description to replace the old one with; `nil` clears it, and leaving it out (or passing `UNCHANGED`) keeps the one it has.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "in_scope",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The scope statement to replace the old one with.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "out_of_scope",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The non-scope statement to replace the old one with.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "completion_criteria",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The completion criteria to replace the old ones with.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "status",
+              "type": "Symbol or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "Where the issue now stands — one of `IssueStatus`'s symbols. Leave it out to keep the status it has.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "epic_id",
+              "type": "String or nil or Unchanged",
+              "optional": true,
+              "kind": "keyword",
+              "default": "UNCHANGED",
+              "doc": "The epic to regroup it under; `nil` detaches it from the one it has, and leaving it out (or passing `UNCHANGED`) keeps the grouping.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Revise an issue; supply at least one field.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError",
+        "Unchanged"
+      ]
+    },
+    {
+      "tool": "set_issue_blocked_by",
+      "name": "set_issue_blocked_by",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "set_issue_blocked_by(id, *blocked_by) -> nil",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue whose blockers to replace.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "blocked_by",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "positional",
+              "default": null,
+              "doc": "The ids of every issue that must now be done before it, splatted. Passing none clears them all.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Replace an issue's whole blocker set; no arguments clears every blocker.\n\nRaises `ToolError`: `:not_found` for an unknown id, and `:conflict` when an edge would close a cycle.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "remove_epic",
+      "name": "remove_epic",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "remove_epic(id) -> BoardUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The epic to remove.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Remove an epic, keeping its issues and ungrouping them, and return the board budget.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError",
+        "BoardUsage"
+      ]
+    },
+    {
+      "tool": "remove_issue",
+      "name": "remove_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "remove_issue(id) -> BoardUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to remove.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Remove an issue and every blocker edge pointing at it, and return the board budget.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError",
+        "BoardUsage"
+      ]
+    },
+    {
+      "tool": "wait_for_issue",
+      "name": "wait_for_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "wait_for_issue(id) -> String",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to wait on. It may not be the issue you were assigned to implement.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Register a wait on an issue and return an acknowledgement.\n\nIt does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "evict_file_view",
+      "name": "evict_file_view",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "evict_file_view(path = nil) -> ReclaimReport",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "positional",
+              "default": "nil",
+              "doc": "The file whose views to drop. Leave it out to drop every file view you hold.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed.\n\nThe files on disk are untouched — this forgets what you read, not what exists.",
+      "types": [
+        "ReclaimReport"
+      ]
+    },
+    {
+      "tool": "archive_thread",
+      "name": "archive_thread",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "archive_thread(*ranges) -> ReclaimReport",
+          "parameters": [
+            {
+              "name": "ranges",
+              "type": "Array<TurnRange>",
+              "optional": true,
+              "kind": "positional",
+              "default": null,
+              "doc": "The inclusive spans of turn numbers to move out of your window, splatted: `context.archive_thread(4..19, 30..35)`.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Move whole turns out of your context window and report what that reclaimed.\n\nEvery result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: `context.archive_thread(4..19)` archives turns 4 through 19, both ends included. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `context.search_archive`.\n\nRaises `ToolError`: `:invalid_argument` for anything that is not a range of turn numbers.",
+      "types": [
+        "ToolError",
+        "ReclaimReport",
+        "TurnRange"
+      ]
+    },
+    {
+      "tool": "search_archive",
+      "name": "search_archive",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "search_archive(query) -> ArchiveSearch",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The substring to look for. Matching is case-insensitive.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.\n\nCheck `archive_empty?` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
+      "types": [
+        "ArchiveHit",
+        "ArchiveSearch"
+      ]
+    },
+    {
+      "tool": "compact",
+      "name": "compact",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "compact(summary, files: []) -> nil",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What your restarted window opens with. Write it for your future self: everything not in it and not re-read from `files` is gone.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "files",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "keyword",
+              "default": "[]",
+              "doc": "The paths to read afresh into the restarted window. Defaults to none.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.\n\nYour skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do.\n\nIt does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.",
+      "types": [
+
+      ]
+    },
+    {
+      "tool": "spawn_subagent",
+      "name": "spawn_subagent",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "spawn_subagent(agent, prompt: nil, issue_id: nil) -> SubagentHandle",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent profile to run the child as, from the ones you may spawn — the system prompt lists them. It selects the child's model, tools and instructions.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "prompt",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "Self-contained instructions for the child. Give this or `issue_id`, never both and never neither.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "issue_id",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The board issue to brief the child from. Give this or `prompt`, never both and never neither.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues.\n\nBrief it with exactly one of `prompt` (self-contained instructions) or `issue_id` (a board issue). The child shares your workspace.\n\nRaises `ToolError`: `:limit_exceeded` at the delegation depth cap, and `:invalid_argument` if `agent` is not one you may spawn.",
+      "types": [
+        "ToolError",
+        "SubagentHandle"
+      ]
+    },
+    {
+      "tool": "wait_for_subagents",
+      "name": "wait_for_subagents",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "wait_for_subagents(*ids) -> Array<SubagentResult>",
+          "parameters": [
+            {
+              "name": "ids",
+              "type": "Array<String>",
+              "optional": true,
+              "kind": "positional",
+              "default": null,
+              "doc": "The children to wait for, splatted. Pass none to wait for every one still outstanding.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Block until the named children have finished — or, with no arguments, until every outstanding child has — and collect their results in dispatch order.\n\nThe run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child.\n\nRaises `ToolError`: `:not_found` for an unknown id.",
+      "types": [
+        "ToolError",
+        "SubagentResult"
+      ]
+    },
+    {
+      "tool": "send_message",
+      "name": "send_message",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "send_message(agent_id, message) -> nil",
+          "parameters": [
+            {
+              "name": "agent_id",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The child to deliver to, as `spawn_subagent` returned it.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "message",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to put in its inbox. It reads it at its next turn.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.\n\nRaises `ToolError`: `:not_found` for an unknown agent id, and `:conflict` when that child has already returned.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "transition_state",
+      "name": "transition_state",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "transition_state(state, note = nil) -> nil",
+          "parameters": [
+            {
+              "name": "state",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The state to move on to, named the way you name an agent to spawn.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "note",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "positional",
+              "default": "nil",
+              "doc": "The opening message the next state's agent sees.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn.\n\nBound only when a state machine is driving you and the state you are in has somewhere to go. Like `context.compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands.\n\nRaises `ToolError`: `:refused` for a second declaration in one turn, and `:invalid_argument` for a state you may not move to.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "exec",
+      "name": "exec",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "exec(agent, prompt = nil) -> nil",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent to become, from the ones you may become.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "prompt",
+              "type": "String or nil",
+              "optional": true,
+              "kind": "positional",
+              "default": "nil",
+              "doc": "Its opening message. It already has your whole conversation, so this is the instruction rather than a briefing.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.\n\nRegistered rather than performed, exactly as `transition_state` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you.\n\nRaises `ToolError`: `:refused` for an `exec` after a `transition_state` or a second `exec`, and `:invalid_argument` for an agent you may not become.",
+      "types": [
+        "ToolError"
+      ]
+    },
+    {
+      "tool": "fork",
+      "name": "fork",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "fork(prompt) -> SubagentHandle",
+          "parameters": [
+            {
+              "name": "prompt",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the copy is to do instead of what you are doing. It has your whole conversation already, so write the difference rather than a briefing.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Run a copy of yourself, in parallel, on something you will not do yourself.\n\nThe copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `wait_for_subagents` can only collect it on a later turn — do not wait on it in the program that made it.\n\nRaises `ToolError`: `:limit_exceeded` at the delegation depth cap.",
+      "types": [
+        "ToolError",
+        "SubagentHandle"
+      ]
+    }
+  ],
+  "helpers": [
+    {
+      "key": "read_text_file",
+      "requires": "read_file",
+      "name": "read_text_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "read_text_file(path, offset: nil, limit: nil) -> String",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "String",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to read. Relative to your workspace, or absolute.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "offset",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+              "fields": [
+
+              ]
+            },
+            {
+              "name": "limit",
+              "type": "Integer or nil",
+              "optional": true,
+              "kind": "keyword",
+              "default": "nil",
+              "doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+              "fields": [
+
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Read a text file and return its contents directly — `fs.read_file` without the narrowing, for the common case.\n\nTakes the same `offset`/`limit` window arguments.\n\nRaises `ToolError`: `:invalid_argument` when the path names a picture; use `fs.read_file` to inspect those.",
+      "types": [
+        "ToolError"
+      ]
+    }
+  ],
+  "types": [
+    {
+      "name": "ToolError",
+      "declaration": "class ToolError < StandardError\n  attr_reader tool: String\n  attr_reader code: Symbol\nend",
+      "doc": "A gg call that failed.\n\nRaised by every function on every API object. Rescue it where a failure is expected and branch on `code`; let it propagate where it is not, and gg reports which call failed and on which line of your program. A handler reads `rescue ToolError => failure` and then `if failure.code == ToolErrorCode::CONFLICT`.\n\nIt is a `StandardError`, so a bare `rescue => failure` catches it too — which is what a Ruby programmer expects of anything a library raises.",
+      "members": [
+        {
+          "name": "tool",
+          "type": "String",
+          "doc": "The gg call that failed (`read_file`, `spawn_subagent`, …). It is gg's own name for the capability, which is stable across every language a program may be written in."
+        },
+        {
+          "name": "code",
+          "type": "Symbol",
+          "doc": "The failure class, so a handler branches on a value rather than on prose."
+        }
+      ]
+    },
+    {
+      "name": "ToolErrorCode",
+      "declaration": "module ToolErrorCode\n  INVALID_ARGUMENT: :invalid_argument\n  NOT_FOUND: :not_found\n  CONFLICT: :conflict\n  REFUSED: :refused\n  UNAVAILABLE: :unavailable\n  LIMIT_EXCEEDED: :limit_exceeded\n  IO_ERROR: :io_error\n  OTHER: :other\nend",
+      "doc": "Why a call failed — the `code` on a raised `ToolError`, and the value a handler branches on instead of matching on prose. Every one of them is a Symbol, so the constants below and the symbol literals a program writes (`:not_found`) are the same value.",
+      "members": [
+        {
+          "name": "INVALID_ARGUMENT",
+          "type": ":invalid_argument",
+          "doc": "The arguments were malformed, ill-typed, or out of range — including a path that is absolute or climbs out of the workspace, and an agent name this run does not declare."
+        },
+        {
+          "name": "NOT_FOUND",
+          "type": ":not_found",
+          "doc": "The named file, skill, memory, task, epic, issue, subagent, stored program, or documentation entry does not exist."
+        },
+        {
+          "name": "CONFLICT",
+          "type": ":conflict",
+          "doc": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle, a duplicate id, a subagent that already returned."
+        },
+        {
+          "name": "REFUSED",
+          "type": ":refused",
+          "doc": "gg refused the call on a rule about your state: a compaction in flight that this call is not the one it asked for, a memory call while your memories are read-only, a second ending or hand-over in a turn that already declared one, or a hook that blocked it. A ceiling you ran into is `:limit_exceeded`, not this."
+        },
+        {
+          "name": "UNAVAILABLE",
+          "type": ":unavailable",
+          "doc": "The call exists but this run's capability set does not offer it. Your program can see every function this SDK has; the ones the run withheld are refused here, by gg, rather than hidden."
+        },
+        {
+          "name": "LIMIT_EXCEEDED",
+          "type": ":limit_exceeded",
+          "doc": "A gg-side ceiling was hit: a shell timeout, a store cap, the delegation depth cap, one of the view caps this program spends, or the run's wall-clock budget."
+        },
+        {
+          "name": "IO_ERROR",
+          "type": ":io_error",
+          "doc": "The underlying I/O or process failed."
+        },
+        {
+          "name": "OTHER",
+          "type": ":other",
+          "doc": "The failure was not classified. Reserved for outcomes raised outside a tool implementation (gg's own bridge and degradation paths); nothing you call produces it."
+        }
+      ]
+    },
+    {
+      "name": "ShellOutput",
+      "declaration": "class ShellOutput\n  attr_reader exit_code: Integer or nil\n  attr_reader output: String\n  def truncated?: () -> Boolean\nend",
+      "doc": "What a command `system.shell` ran reported when it finished.",
+      "members": [
+        {
+          "name": "exit_code",
+          "type": "Integer or nil",
+          "doc": "The process's exit status; `nil` when a signal killed it. Zero means success."
+        },
+        {
+          "name": "output",
+          "type": "String",
+          "doc": "Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output, at the configured line/character ceiling, with a note naming the files holding the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
+        },
+        {
+          "name": "truncated?",
+          "type": "Boolean",
+          "doc": "Whether the cap cut `output`, dropping the head and keeping the tail."
+        }
+      ]
+    },
+    {
+      "name": "TextFile",
+      "declaration": "class TextFile\n  attr_reader contents: String\n  attr_reader first_line: Integer\n  attr_reader last_line: Integer\n  attr_reader total_lines: Integer\n  def byte_truncated?: () -> Boolean\nend",
+      "doc": "A text file's contents, or the window of lines a capped read policy returned.",
+      "members": [
+        {
+          "name": "contents",
+          "type": "String",
+          "doc": "The file's text, or just the requested window under a capped read policy."
+        },
+        {
+          "name": "first_line",
+          "type": "Integer",
+          "doc": "The 1-based first line returned."
+        },
+        {
+          "name": "last_line",
+          "type": "Integer",
+          "doc": "The 1-based last line returned."
+        },
+        {
+          "name": "total_lines",
+          "type": "Integer",
+          "doc": "The file's total line count, so you know whether to page again."
+        },
+        {
+          "name": "byte_truncated?",
+          "type": "Boolean",
+          "doc": "A 256 KiB byte ceiling cut the returned text."
+        }
+      ]
+    },
+    {
+      "name": "ImageFile",
+      "declaration": "class ImageFile\n  attr_reader media_type: String\n  attr_reader label: String\n  attr_reader bytes: Integer\n  attr_reader not_shown_reason: String or nil\n  def shown?: () -> Boolean\nend",
+      "doc": "A picture gg found where you read a file: what it is, rather than its bytes.\n\nThe pixels never enter your program. `view.open_file` is what attaches the picture to your turn so you can look at it, which is worth far more than base64 in a variable.",
+      "members": [
+        {
+          "name": "media_type",
+          "type": "String",
+          "doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+        },
+        {
+          "name": "label",
+          "type": "String",
+          "doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+        },
+        {
+          "name": "bytes",
+          "type": "Integer",
+          "doc": "The file's size in bytes."
+        },
+        {
+          "name": "not_shown_reason",
+          "type": "String or nil",
+          "doc": "Why it is not being shown; `nil` when it is."
+        },
+        {
+          "name": "shown?",
+          "type": "Boolean",
+          "doc": "Whether the picture is being attached to this turn for you to look at."
+        }
+      ]
+    },
+    {
+      "name": "EntryKind",
+      "declaration": "module EntryKind\n  FILE: :file\n  DIRECTORY: :directory\n  OTHER: :other\nend",
+      "doc": "What a directory entry is.",
+      "members": [
+        {
+          "name": "FILE",
+          "type": ":file",
+          "doc": "An ordinary file."
+        },
+        {
+          "name": "DIRECTORY",
+          "type": ":directory",
+          "doc": "A directory, which you can list in its own right."
+        },
+        {
+          "name": "OTHER",
+          "type": ":other",
+          "doc": "Everything that is neither, a symlink among them."
+        }
+      ]
+    },
+    {
+      "name": "DirEntry",
+      "declaration": "class DirEntry\n  attr_reader name: String\n  attr_reader kind: Symbol\nend",
+      "doc": "One entry `fs.list_dir` found: a bare name, and its kind.",
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "doc": "The entry's bare name, with no directory part. Join it with the directory you listed."
+        },
+        {
+          "name": "kind",
+          "type": "Symbol",
+          "doc": "What the entry is: one of `EntryKind`'s symbols."
+        }
+      ]
+    },
+    {
+      "name": "MemoryUsage",
+      "declaration": "class MemoryUsage\n  attr_reader count: Integer\n  attr_reader max_count: Integer or nil\n  attr_reader total_chars: Integer\n  attr_reader max_total_chars: Integer or nil\n  attr_reader index_chars: Integer or nil\n  attr_reader max_index_chars: Integer or nil\nend",
+      "doc": "How much of the run's durable-memory budget is used, after the call that returned it.\n\nEvery maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `nil` means nothing bounds that axis — check before subtracting.",
+      "members": [
+        {
+          "name": "count",
+          "type": "Integer",
+          "doc": "Memories currently held."
+        },
+        {
+          "name": "max_count",
+          "type": "Integer or nil",
+          "doc": "The most memories this run allows, if it limits the count."
+        },
+        {
+          "name": "total_chars",
+          "type": "Integer",
+          "doc": "Characters of body currently held, across all memories."
+        },
+        {
+          "name": "max_total_chars",
+          "type": "Integer or nil",
+          "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+        },
+        {
+          "name": "index_chars",
+          "type": "Integer or nil",
+          "doc": "Characters the memory index occupies, under a run that keeps one."
+        },
+        {
+          "name": "max_index_chars",
+          "type": "Integer or nil",
+          "doc": "The most characters the index may occupy, if it is limited."
+        }
+      ]
+    },
+    {
+      "name": "MemoryHit",
+      "declaration": "class MemoryHit\n  attr_reader name: String\n  attr_reader description: String\n  attr_reader matched: Integer\n  attr_reader occurrences: Integer\n  attr_reader excerpt: String\nend",
+      "doc": "One memory `memory.search_memories` matched, and the numbers it was ranked by.",
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "doc": "The memory's slug — what `memory.read_memory` takes."
+        },
+        {
+          "name": "description",
+          "type": "String",
+          "doc": "Its description, or the empty string when it was created without one."
+        },
+        {
+          "name": "matched",
+          "type": "Integer",
+          "doc": "How many of your distinct keywords it matched — the primary ranking."
+        },
+        {
+          "name": "occurrences",
+          "type": "Integer",
+          "doc": "How many times those keywords occur in it — the tiebreak."
+        },
+        {
+          "name": "excerpt",
+          "type": "String",
+          "doc": "A short window of the memory around its first match."
+        }
+      ]
+    },
+    {
+      "name": "TaskStatus",
+      "declaration": "module TaskStatus\n  PENDING: :pending\n  IN_PROGRESS: :in_progress\n  DONE: :done\n  ALL: [PENDING, IN_PROGRESS, DONE].freeze\nend",
+      "doc": "Where a task stands.",
+      "members": [
+        {
+          "name": "PENDING",
+          "type": ":pending",
+          "doc": "Not started. Every task begins here."
+        },
+        {
+          "name": "IN_PROGRESS",
+          "type": ":in_progress",
+          "doc": "Being worked on now."
+        },
+        {
+          "name": "DONE",
+          "type": ":done",
+          "doc": "Finished. Tasks blocked on it become actionable once all their blockers are done."
+        },
+        {
+          "name": "ALL",
+          "type": "[PENDING, IN_PROGRESS, DONE].freeze",
+          "doc": "Every status a task may be moved to."
+        }
+      ]
+    },
+    {
+      "name": "TaskUsage",
+      "declaration": "class TaskUsage\n  attr_reader count: Integer\n  attr_reader max_tasks: Integer\nend",
+      "doc": "How much of the run's task budget is used, after the call that returned it.",
+      "members": [
+        {
+          "name": "count",
+          "type": "Integer",
+          "doc": "Tasks currently on the list."
+        },
+        {
+          "name": "max_tasks",
+          "type": "Integer",
+          "doc": "The most tasks this run allows."
+        }
+      ]
+    },
+    {
+      "name": "IssueStatus",
+      "declaration": "module IssueStatus\n  OPEN: :open\n  IN_PROGRESS: :in_progress\n  DONE: :done\n  ALL: [OPEN, IN_PROGRESS, DONE].freeze\nend",
+      "doc": "Where an issue stands.",
+      "members": [
+        {
+          "name": "OPEN",
+          "type": ":open",
+          "doc": "Not started, and dispatchable once its blockers are done."
+        },
+        {
+          "name": "IN_PROGRESS",
+          "type": ":in_progress",
+          "doc": "Dispatched, with its assigned agent working on it."
+        },
+        {
+          "name": "DONE",
+          "type": ":done",
+          "doc": "Finished and, where this run requires reviewers, approved."
+        },
+        {
+          "name": "ALL",
+          "type": "[OPEN, IN_PROGRESS, DONE].freeze",
+          "doc": "Every status an issue may be moved to."
+        }
+      ]
+    },
+    {
+      "name": "BoardUsage",
+      "declaration": "class BoardUsage\n  attr_reader epics: Integer\n  attr_reader max_epics: Integer\n  attr_reader issues: Integer\n  attr_reader max_issues: Integer\nend",
+      "doc": "How much of the run's board budget is used, after the call that returned it.",
+      "members": [
+        {
+          "name": "epics",
+          "type": "Integer",
+          "doc": "Epics currently on the board."
+        },
+        {
+          "name": "max_epics",
+          "type": "Integer",
+          "doc": "The most epics this run allows."
+        },
+        {
+          "name": "issues",
+          "type": "Integer",
+          "doc": "Issues currently on the board."
+        },
+        {
+          "name": "max_issues",
+          "type": "Integer",
+          "doc": "The most issues this run allows."
+        }
+      ]
+    },
+    {
+      "name": "EpicCreated",
+      "declaration": "class EpicCreated\n  attr_reader id: String\n  attr_reader board: BoardUsage\nend",
+      "doc": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The epic's id — the prefix you gave, upper-cased (`auth` becomes `AUTH`). Group issues under it with this, and its issues are numbered from it (`AUTH-1`)."
+        },
+        {
+          "name": "board",
+          "type": "BoardUsage",
+          "doc": "How much of the board budget is used."
+        }
+      ]
+    },
+    {
+      "name": "IssueCreated",
+      "declaration": "class IssueCreated\n  attr_reader id: String\n  attr_reader board: BoardUsage\nend",
+      "doc": "An issue that was just created: the id the board assigned it, and the board budget.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on this one, or to wait for it."
+        },
+        {
+          "name": "board",
+          "type": "BoardUsage",
+          "doc": "How much of the board budget is used."
+        }
+      ]
+    },
+    {
+      "name": "Unchanged",
+      "declaration": "module Unchanged\n  UNCHANGED: :unchanged\nend",
+      "doc": "The \"leave this field exactly as it is\" value, and the default of every patch argument that can also be *cleared*.\n\nA field a patch may clear has three states rather than two, and Ruby already spells \"absent\" as `nil` — which here is the request to clear it. So the third state gets a name of its own: leave the argument out (or pass `UNCHANGED`) to keep what is there, pass `nil` to empty it, pass a string to replace it. A field with no clear state is an ordinary `nil` default, where `nil` simply means you are not changing it.",
+      "members": [
+        {
+          "name": "UNCHANGED",
+          "type": ":unchanged",
+          "doc": "Leave the field exactly as it is. It is bound at the top level as well, so a program writes `UNCHANGED` rather than `Unchanged::UNCHANGED`."
+        }
+      ]
+    },
+    {
+      "name": "ReclaimReport",
+      "declaration": "class ReclaimReport\n  attr_reader items: Integer\n  attr_reader reclaimed_tokens: Integer\n  attr_reader paths: Array<String>\n  attr_reader detail: String\nend",
+      "doc": "What a context reclaim actually freed from the live context window.",
+      "members": [
+        {
+          "name": "items",
+          "type": "Integer",
+          "doc": "Context items dropped from the live window."
+        },
+        {
+          "name": "reclaimed_tokens",
+          "type": "Integer",
+          "doc": "Approximately how many tokens that freed."
+        },
+        {
+          "name": "paths",
+          "type": "Array<String>",
+          "doc": "The workspace paths whose views were evicted. Empty for an archive."
+        },
+        {
+          "name": "detail",
+          "type": "String",
+          "doc": "The prose summary of what was reclaimed."
+        }
+      ]
+    },
+    {
+      "name": "TurnRange",
+      "declaration": "type TurnRange = Range",
+      "doc": "An inclusive span of turn numbers, the unit `context.archive_thread` moves out of your window — and Ruby's own `Range`, because that is what a span of integers is in this language.\n\nThe numbers are the ones on the header of every result you are given, so `4..19` means exactly the turns you can see numbered 4 through 19, both ends included. An exclusive range (`4...20`) means the same thing and is read the same way.",
+      "members": [
+
+      ]
+    },
+    {
+      "name": "MessageRole",
+      "declaration": "module MessageRole\n  SYSTEM: :system\n  USER: :user\n  ASSISTANT: :assistant\n  TOOL: :tool\nend",
+      "doc": "Who said an archived message.",
+      "members": [
+        {
+          "name": "SYSTEM",
+          "type": ":system",
+          "doc": "Your system prompt."
+        },
+        {
+          "name": "USER",
+          "type": ":user",
+          "doc": "A message addressed to you — a turn's results, or an operator's instruction."
+        },
+        {
+          "name": "ASSISTANT",
+          "type": ":assistant",
+          "doc": "You."
+        },
+        {
+          "name": "TOOL",
+          "type": ":tool",
+          "doc": "A tool result, from a session that ran in tool-calling mode."
+        }
+      ]
+    },
+    {
+      "name": "ArchiveHit",
+      "declaration": "class ArchiveHit\n  attr_reader seq: Integer\n  attr_reader role: Symbol\n  attr_reader text: String\nend",
+      "doc": "One archived message that matched a search.",
+      "members": [
+        {
+          "name": "seq",
+          "type": "Integer",
+          "doc": "The archived message's sequence number."
+        },
+        {
+          "name": "role",
+          "type": "Symbol",
+          "doc": "Who said it: one of `MessageRole`'s symbols."
+        },
+        {
+          "name": "text",
+          "type": "String",
+          "doc": "The message text."
+        }
+      ]
+    },
+    {
+      "name": "ArchiveSearch",
+      "declaration": "class ArchiveSearch\n  attr_reader hits: Array<ArchiveHit>\n  def archive_empty?: () -> Boolean\nend",
+      "doc": "What `context.search_archive` found.",
+      "members": [
+        {
+          "name": "hits",
+          "type": "Array<ArchiveHit>",
+          "doc": "The matches, most recent first, at most 8."
+        },
+        {
+          "name": "archive_empty?",
+          "type": "Boolean",
+          "doc": "Nothing has been archived yet, so there was nothing to search. Deliberately distinct from a search that ran and matched nothing, so you do not archive again believing the first archive failed."
+        }
+      ]
+    },
+    {
+      "name": "ViewKind",
+      "declaration": "module ViewKind\n  FILE: :file\n  TEXT: :text\n  DOCS: :docs\nend",
+      "doc": "Which of the three kinds a view is.\n\nThe taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
+      "members": [
+        {
+          "name": "FILE",
+          "type": ":file",
+          "doc": "A file you opened; its selector is the path."
+        },
+        {
+          "name": "TEXT",
+          "type": ":text",
+          "doc": "A value you showed yourself; its selector is the label you gave it. A directory listing, a command's output, a child agent's answer and a table you assembled are all this kind."
+        },
+        {
+          "name": "DOCS",
+          "type": ":docs",
+          "doc": "A function's documentation; its selector is the function's name."
+        }
+      ]
+    },
+    {
+      "name": "ViewRegion",
+      "declaration": "class ViewRegion\n  attr_reader offset: Integer\n  attr_reader limit: Integer\nend",
+      "doc": "The window of lines a **paged** file view covers; absent for a whole-file view.",
+      "members": [
+        {
+          "name": "offset",
+          "type": "Integer",
+          "doc": "The 1-based first line the view shows."
+        },
+        {
+          "name": "limit",
+          "type": "Integer",
+          "doc": "How many lines it shows."
+        }
+      ]
+    },
+    {
+      "name": "OpenView",
+      "declaration": "class OpenView\n  attr_reader kind: Symbol\n  attr_reader selector: String\n  attr_reader tokens: Integer\n  attr_reader region: ViewRegion or nil\nend",
+      "doc": "One view open in your context window, as `view.current` reports it.",
+      "members": [
+        {
+          "name": "kind",
+          "type": "Symbol",
+          "doc": "Whether it is a file, text, or documentation view: one of `ViewKind`'s symbols."
+        },
+        {
+          "name": "selector",
+          "type": "String",
+          "doc": "What `view.close` takes: a file's path, a text view's label, or a docs view's function name."
+        },
+        {
+          "name": "tokens",
+          "type": "Integer",
+          "doc": "Roughly what holding it costs you, in tokens."
+        },
+        {
+          "name": "region",
+          "type": "ViewRegion or nil",
+          "doc": "The line window a paged file view covers; `nil` for a whole-file view and for text views."
+        }
+      ]
+    },
+    {
+      "name": "SubagentHandle",
+      "declaration": "class SubagentHandle\n  attr_reader id: String\n  attr_reader slot: String\n  attr_reader model_id: String\nend",
+      "doc": "A child agent that was spawned and is now running in parallel.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The child's id — pass it to `agents.wait_for_subagents` or `agents.send_message`."
+        },
+        {
+          "name": "slot",
+          "type": "String",
+          "doc": "The agent profile it runs as."
+        },
+        {
+          "name": "model_id",
+          "type": "String",
+          "doc": "The model actually bound to that agent."
+        }
+      ]
+    },
+    {
+      "name": "AgentEnding",
+      "declaration": "module AgentEnding\n  COMPLETED: :completed\n  EXHAUSTED: :exhausted\n  TIMED_OUT: :timed_out\n  MODEL_ERROR: :model_error\n  AUTH_ERROR: :auth_error\n  LIMIT_EXCEEDED: :limit_exceeded\nend",
+      "doc": "How a child agent's loop ended — gg's own six words, as the native path also reports them.",
+      "members": [
+        {
+          "name": "COMPLETED",
+          "type": ":completed",
+          "doc": "It finished normally: it called `harness.finish`, and its summary is what it returned."
+        },
+        {
+          "name": "EXHAUSTED",
+          "type": ":exhausted",
+          "doc": "It hit the per-run turn ceiling."
+        },
+        {
+          "name": "TIMED_OUT",
+          "type": ":timed_out",
+          "doc": "It passed its wall-clock deadline."
+        },
+        {
+          "name": "MODEL_ERROR",
+          "type": ":model_error",
+          "doc": "A model turn failed."
+        },
+        {
+          "name": "AUTH_ERROR",
+          "type": ":auth_error",
+          "doc": "The run's credential was refused."
+        },
+        {
+          "name": "LIMIT_EXCEEDED",
+          "type": ":limit_exceeded",
+          "doc": "An execution ceiling stopped it — consecutive errors, error rate, or cost."
+        }
+      ]
+    },
+    {
+      "name": "SubagentResult",
+      "declaration": "class SubagentResult\n  attr_reader id: String\n  attr_reader status: Symbol or nil\n  attr_reader summary: String\nend",
+      "doc": "One child agent's collected result.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The child's id."
+        },
+        {
+          "name": "status",
+          "type": "Symbol or nil",
+          "doc": "How it finished: one of `AgentEnding`'s symbols, or `nil` when it produced no return value at all."
+        },
+        {
+          "name": "summary",
+          "type": "String",
+          "doc": "Its final message."
+        }
+      ]
+    },
+    {
+      "name": "ProgramSummary",
+      "declaration": "class ProgramSummary\n  attr_reader turn: Integer\n  attr_reader lines: Integer\n  attr_reader chars: Integer\n  attr_reader error: String or nil\n  def ok?: () -> Boolean\nend",
+      "doc": "One program you have already run, as `programs.history` lists it.\n\nIt describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in front of you, which is the one thing the library exists to avoid. Fetch the source you actually want with `programs.get(turn)`.",
+      "members": [
+        {
+          "name": "turn",
+          "type": "Integer",
+          "doc": "The turn it ran on — what `programs.get` takes."
+        },
+        {
+          "name": "lines",
+          "type": "Integer",
+          "doc": "How many lines of source it was."
+        },
+        {
+          "name": "chars",
+          "type": "Integer",
+          "doc": "How many characters of source it was."
+        },
+        {
+          "name": "error",
+          "type": "String or nil",
+          "doc": "The error it ended with, when it did not run to its end; `nil` when it did."
+        },
+        {
+          "name": "ok?",
+          "type": "Boolean",
+          "doc": "Whether it ran to its end, with nothing raised and no sandbox ceiling stopping it."
+        }
+      ]
+    },
+    {
+      "name": "FunctionSummary",
+      "declaration": "class FunctionSummary\n  attr_reader name: String\n  attr_reader summary: String\nend",
+      "doc": "One function in an API object's directory, as `list` returns it.\n\nIt is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `view.open_docs_view`.",
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "doc": "The function name on its object — `read_file` in `fs.read_file(...)`."
+        },
+        {
+          "name": "summary",
+          "type": "String",
+          "doc": "One line saying what it does: the first sentence of its documentation."
+        }
+      ]
+    }
+  ]
+}

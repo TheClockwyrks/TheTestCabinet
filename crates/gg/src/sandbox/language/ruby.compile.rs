@@ -197,6 +197,73 @@ pub(super) fn compile_program(
     })
 }
 
+/// The call a code module's body is wrapped in, so that evaluating it produces a **namespace**.
+///
+/// A Ruby file has no exports: its top level defines methods on `Object`, which is exactly what
+/// `require` gives a Ruby program and exactly not what `lib.<key>` needs. So the author's source is
+/// evaluated as a block against a fresh anonymous `Module`, which extends itself — the guest's
+/// `GG::Lib` — and what the body defined is what the namespace offers. There is no export protocol
+/// for a skill's author to remember.
+///
+/// It takes no key because this step has not been told one: a module's binding key is assigned when
+/// the agent reads the skill or the memory, which is after its code was compiled. The guest names
+/// the namespace immediately after evaluating it.
+const MODULE_PROLOGUE: &str = "GG::Lib.define do\n";
+
+/// What closes [`MODULE_PROLOGUE`]. On its own line, so a module whose last line has no newline is
+/// still closed.
+const MODULE_EPILOGUE: &str = "\nend\n";
+
+/// How many lines [`MODULE_PROLOGUE`] puts in front of the author's own first line, and therefore
+/// what a diagnostic's line number has to be moved back by.
+const MODULE_LINE_OFFSET: usize = 1;
+
+/// Compile a **code module** — the code half of a [skill](crate::skills) or a
+/// [memory](crate::memories) — into JavaScript whose evaluation leaves a namespace behind.
+///
+/// The wrapping is what a diagnostic has to be corrected for: Opal reports the line it read the
+/// error on, which is one further down than the line the author wrote. A skill's author reading
+/// "line 4" over their line 3 would go looking in the wrong place, so the number is moved back
+/// here — the one thing about this compile that is not [`compile`]'s.
+pub(super) fn compile_module(
+    source: &str,
+    context: &PrepareContext,
+) -> Result<String, PrepareFailure> {
+    let wrapped = format!("{MODULE_PROLOGUE}{source}{MODULE_EPILOGUE}");
+    compile(MODULE_FILE, &wrapped, context).map_err(shift_module_diagnostic)
+}
+
+/// Move a module diagnostic's line number back over [`MODULE_PROLOGUE`].
+///
+/// Only the number is touched. The offending text the driver quotes under it is read out of the
+/// wrapped source at that line, which *is* the author's own line, so it is already right.
+fn shift_module_diagnostic(failure: PrepareFailure) -> PrepareFailure {
+    let shift = |text: String| {
+        let prefix = format!("{MODULE_FILE}:");
+        let Some(rest) = text.strip_prefix(&prefix) else {
+            return text;
+        };
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        match digits.parse::<usize>() {
+            Ok(line) if line > MODULE_LINE_OFFSET => format!(
+                "{prefix}{}{}",
+                line - MODULE_LINE_OFFSET,
+                &rest[digits.len()..]
+            ),
+            _ => text,
+        }
+    };
+    match failure {
+        PrepareFailure::Program(PrepareError::Syntax(text)) => {
+            PrepareFailure::Program(PrepareError::Syntax(shift(text)))
+        }
+        PrepareFailure::Program(PrepareError::Compile(text)) => {
+            PrepareFailure::Program(PrepareError::Compile(shift(text)))
+        }
+        other => other,
+    }
+}
+
 /// Compile one Ruby source, filed as `file`, and hand back the JavaScript.
 ///
 /// The one entry point: a program and a code module differ in the name their diagnostics are located

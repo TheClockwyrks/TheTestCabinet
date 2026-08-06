@@ -215,6 +215,9 @@ impl Preparation for RubyCompile {
     }
 
     fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
+        if self.file == MODULE_FILE {
+            return compile_module(source, context).map_err(|failure| failure.to_string());
+        }
         compile(self.file, source, context).map_err(|failure| failure.to_string())
     }
 }

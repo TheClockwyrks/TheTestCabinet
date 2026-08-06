@@ -1,6 +1,6 @@
-//! **The Ruby arm's execution substrate** — the committed Opal compiler and the committed guest,
-//! driven end to end: real Ruby, really compiled by a real `node`, really evaluated against gg's
-//! real membrane.
+//! **The Ruby arm's guest and its SDK**, driven end to end: real Ruby, really compiled by a real
+//! `node`, really evaluated against gg's real membrane, through the hand-written Ruby SDK a model
+//! is actually given.
 //!
 //! # What "real" means here
 //!
@@ -16,18 +16,10 @@
 //! side is [`FakeToolApi`](super::super::super::fake::FakeToolApi), which is what every other
 //! end-to-end sandbox test uses, and it records the exact JSON each call arrived as.
 //!
-//! # Why the crossing is spelled in inline JavaScript
-//!
-//! Because there is no Ruby SDK yet, and that is this arm's landing order rather than an oversight.
-//! What has to be provable *now* is that a Ruby program reaches the host at all — that a value a
-//! model wrote in Ruby arrives at gg's real `ToolApi` as the right JSON — and Opal's
-//! inline-JavaScript interop is how Ruby reaches a JavaScript binding. The next commit wraps exactly
-//! these bindings in a hand-written, idiomatic Ruby SDK; nothing below is what a model will be shown.
-//!
 //! # Why these tests are consolidated
 //!
 //! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile an 18.6 MB component — around 1.1 s in the dev test profile — and materialise a 2.9 MB
+//! compile a 20 MB component — around 1.2 s in the dev test profile — and materialise a 2.9 MB
 //! compiler. So each function drives *many* programs against many stores rather than being one
 //! behaviour per function, exactly as `sandbox.test.rs` does. Add a program to an existing function
 //! rather than adding a function.
@@ -39,10 +31,11 @@ use serde_json::{Value, json};
 use wasmtime::component::Component;
 
 use super::COMPONENT;
-use super::compile::compile_program;
-use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome, typescript};
+use super::compile::{compile_module, compile_program};
+use crate::ending::EndingRole;
+use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome, typescript};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
-use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
+use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
     CodeModule, PrepareContext, ProgramScope, SandboxLimits, bounded_store, engine, linker, reclaim,
 };
@@ -51,7 +44,7 @@ use crate::tools::ToolOutcome;
 /// The committed guest, compiled once per test process.
 ///
 /// The same bargain [`engine::component`](super::super::super::engine::component) strikes for a run,
-/// and for the same reason: compiling 18.6 MB costs a second and instantiating the result costs half
+/// and for the same reason: compiling 20 MB costs a second and instantiating the result costs half
 /// a millisecond, so a function that drives ten programs must not pay ten compiles. A plain
 /// `OnceLock` rather than the production cache because that cache is indexed by the wire id this
 /// language does not have yet.
@@ -70,7 +63,15 @@ fn prepare(ruby: &str) -> String {
     }
 }
 
-/// Compile and run one Ruby `program` through the real membrane, with `enabled`'s gg tools offered.
+/// Compile `ruby` as a code module, or panic with what the compiler said.
+fn prepare_module(ruby: &str) -> String {
+    match compile_module(ruby, &PrepareContext::new()) {
+        Ok(source) => source,
+        Err(failure) => panic!("the committed Opal did not compile this Ruby module: {failure}"),
+    }
+}
+
+/// Compile and run one Ruby `program` through the real membrane, as an agent of `ending`'s role.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
 /// belongs to a *registered* language rather than to an artifact: the per-language component cache,
@@ -79,13 +80,28 @@ fn prepare(ruby: &str) -> String {
 ///
 /// The [membrane state](MembraneState) is built with **TypeScript** as its language, and that is
 /// sound rather than sloppy: a language is held there to spell a call's name back at the model
-/// inside a refusal, and this arm's SDK — the thing that would give those names a Ruby spelling — is
-/// the next commit's. No assertion below reads a spelling; the one that reads a refusal reads its
-/// [code](test_cabinet_core::gg::GgToolFailure).
-fn run_with(
+/// inside a refusal, and gg cannot spell one in Ruby until the arm is registered. No assertion below
+/// reads a spelling; the one that reads a refusal reads its
+/// [code](crate::tools::ToolFailure).
+fn run_as(
+    ruby: &str,
+    enabled: &[String],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate(&prepare(ruby), enabled, modules, ending, library, responder)
+}
+
+/// Evaluate already-compiled JavaScript, so a measurement of what a *turn* costs is not a
+/// measurement of what the compiler costs.
+fn evaluate(
     program: &str,
     enabled: &[String],
     modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -95,8 +111,8 @@ fn run_with(
     let scope = ProgramScope {
         enabled,
         modules,
-        ending: RunEnding::None,
-        library: false,
+        ending,
+        library,
     };
     let mut store = bounded_store(
         MembraneState::new(api, typescript(), scope, limits, None),
@@ -115,17 +131,27 @@ fn run_with(
             program,
             modules,
             enabled,
-            RunEnding::None.into(),
-            false,
+            ending.into(),
+            library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     let (outcome, _api) = reclaim(store, returned, None, None, None);
     (outcome, log)
 }
 
+/// Compile and run one Ruby `program` with `enabled`'s gg tools offered and no ending.
+fn run_with(
+    ruby: &str,
+    enabled: &[String],
+    modules: &[CodeModule],
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    run_as(ruby, enabled, modules, RunEnding::None, false, responder)
+}
+
 /// Compile and run `ruby` with no gg tool offered — the shape most of these cases want.
 fn run(ruby: &str) -> SandboxOutcome {
-    run_with(&prepare(ruby), &[], &[], canned_outcome).0
+    run_with(ruby, &[], &[], canned_outcome).0
 }
 
 /// One component's imported interfaces, sorted, with the version suffix dropped.
@@ -139,13 +165,13 @@ fn interface_imports(component: &Component) -> Vec<String> {
     imports
 }
 
-/// What a program logged, insisting that the sandbox ran it and that it did not throw.
+/// What a program logged, insisting that the sandbox ran it and that it did not raise.
 fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
                 result.error.is_none(),
-                "the program threw: {:?}",
+                "the program raised: {:?}",
                 result.error
             );
             &outcome.logs
@@ -154,13 +180,13 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
     }
 }
 
-/// The throw a program did not catch, insisting that the sandbox itself did not fail.
+/// The raise a program did not rescue, insisting that the sandbox itself did not fail.
 fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
     match &outcome.result {
         Ok(result) => result
             .error
             .as_ref()
-            .unwrap_or_else(|| panic!("the program did not throw; it logged {:?}", outcome.logs)),
+            .unwrap_or_else(|| panic!("the program did not raise; it logged {:?}", outcome.logs)),
         Err(error) => panic!("expected a program fault, but the sandbox failed: {error}"),
     }
 }
@@ -212,81 +238,244 @@ puts({ a: 1, b: 2 }.map { |key, value| "#{key}=#{value}" }.join(","))
     let outcome = run("print 'half a'\nprint \" line\\n\"\nprint 'no newline'\n");
     assert_eq!(logs(&outcome), ["half a line", "no newline"]);
 
-    // Opal is not CRuby and this arm's study has to say so: integer division is JavaScript's, so
-    // `1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`, and there is no bignum. Asserted
-    // rather than described, so the claim is checkable against the artifact.
-    let outcome = run("puts (1 / 0).to_s\nputs (2 ** 64).to_s\n");
-    assert_eq!(logs(&outcome), ["Infinity", "18446744073709552000"]);
+    // Ruby 3 pattern matching is syntax rather than a library, and Opal lowers it to a call into a
+    // corelib module the npm runtime bundle does not carry — so it is baked and loaded by this
+    // guest's build. Without that, an ordinary `case … in` is `uninitialized constant
+    // PatternMatching`, which is a sentence about gg's build rather than about the program.
+    let outcome = run(r##"
+case { name: "gg", parts: [1, 2, 3] }
+in { name: String => name, parts: [_, *rest] }
+  puts "#{name} and #{rest.size} more"
+end
+"##);
+    assert_eq!(logs(&outcome), ["gg and 2 more"]);
 }
 
 #[test]
-fn a_ruby_program_crosses_the_membrane_and_is_gated_by_the_host() {
-    // The substrate's own proof, and the reason it is spelled in inline JavaScript: there is no Ruby
-    // SDK yet, so the program reaches the guest's bindings the way Ruby reaches any JavaScript
-    // object. What is being shown is that a value a program computed in Ruby arrives at gg's real
-    // `ToolApi` as the right JSON.
-    let read = r#"
-name = "notes" + ".md"
-text = `fs.readTextFile(name)`
-puts text.lines.first.strip
-"#;
-    let (outcome, log) = run_with(
-        &prepare(read),
-        &["read_file".to_string()],
-        &[],
-        canned_outcome,
-    );
-    assert_eq!(logs(&outcome), ["contents of notes.md"]);
-    let calls = log.calls();
-    assert_eq!(calls.len(), 1, "one call, from one Ruby statement");
-    assert_eq!(calls[0].name, "read_file");
-    assert_eq!(
-        calls[0].args,
-        json!({ "path": "notes.md", "offset": null, "limit": null }),
-        "the same JSON the ECMAScript arms produce for this call, because it is the same SDK"
-    );
-
-    // A Ruby value that is not a string crosses as itself: the numbers below are Ruby integers on
-    // one side of the membrane and JSON numbers on the other, with nothing in the program
-    // assembling a document.
-    let windowed = r#"
-`fs.readTextFile("notes.md", { offset: 10, limit: 5 })`
-"#;
-    let (_outcome, log) = run_with(
-        &prepare(windowed),
-        &["read_file".to_string()],
-        &[],
-        canned_outcome,
-    );
-    assert_eq!(
-        log.calls()[0].args,
-        json!({ "path": "notes.md", "offset": 10, "limit": 5 })
-    );
-
-    // A tool this run does not offer is not a name in the program's scope, so reaching for it is a
-    // `ReferenceError` — the same refusal a JavaScript program gets, because it is the same guest.
-    let outcome = run("`system.shell(\"ls\")`\n");
-    let error = program_error(&outcome);
+fn the_libraries_the_manifest_declares_are_really_in_the_committed_guest() {
+    // What a Ruby program may `require` is a **bake-time fact about this artifact**: it is what
+    // `src/library.rb` declared and `tools/guest.mjs` compiled into it, and nothing else. That set
+    // is what the catalogue's `libraries` section tells a model it has, so this drives every name
+    // the catalogue names into the committed component and requires it — a curated library dropped
+    // in a rebuild fails here rather than in a run.
+    let catalogue: Value =
+        serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
+    let declared: Vec<String> = catalogue["libraries"]
+        .as_array()
+        .expect("the catalogue declares its libraries")
+        .iter()
+        .flat_map(|group| group["modules"].as_array().expect("a group's modules"))
+        .map(|name| name.as_str().expect("a module name").to_string())
+        .collect();
     assert!(
-        error.message.contains("system"),
-        "the refusal names what was reached for: {}",
+        declared.len() >= 20,
+        "the manifest declares only {} libraries",
+        declared.len()
+    );
+
+    let program = declared
+        .iter()
+        .map(|name| format!("require {name:?}\nputs {name:?}\n"))
+        .collect::<String>();
+    let outcome = run(&program);
+    assert_eq!(
+        logs(&outcome),
+        declared.as_slice(),
+        "every library the catalogue declares loads inside the committed guest"
+    );
+
+    // And they are libraries rather than names: each of these is a call into the thing that was
+    // required, so a module that loaded but did not define what it is for still fails.
+    let outcome = run(r##"
+require "json"
+require "set"
+require "time"
+require "securerandom"
+require "ostruct"
+puts JSON.parse('{"a":[1,2]}')["a"].sum
+puts Set.new([1, 2, 2, 3]).size
+puts Time.at(0).utc.year
+puts SecureRandom.hex(8).size
+puts OpenStruct.new(name: "gg").name
+"##);
+    assert_eq!(logs(&outcome), ["3", "3", "1970", "16", "gg"]);
+
+    // The absences are facts too, and a study has to be able to state them. `fileutils` and
+    // `net/http` are Opal's Node- and browser-only stdlib, and this guest is neither.
+    let outcome = run(r##"
+["fileutils", "net/http", "socket"].each do |name|
+  begin
+    require name
+    puts "#{name}: present"
+  rescue LoadError
+    puts "#{name}: absent"
+  end
+end
+"##);
+    assert_eq!(
+        logs(&outcome),
+        ["fileutils: absent", "net/http: absent", "socket: absent"]
+    );
+}
+
+#[test]
+fn the_sdk_hands_a_program_values_ruby_can_read() {
+    // A result is a value object with readers, a boolean field is a predicate, a fixed choice is a
+    // Symbol, and a read is one of two classes narrowed with an ordinary `case`. None of that is
+    // available to a program that has to read a tagged wrapper, and all of it is what "idiomatic"
+    // means concretely on this arm.
+    let (outcome, _log) = run_with(
+        r##"
+read = fs.read_file("notes.md")
+case read
+when TextFile
+  puts "#{read.contents.lines.first.strip} #{read.first_line}..#{read.last_line} of #{read.total_lines}"
+  puts read.byte_truncated?
+when ImageFile
+  puts "unexpectedly an image"
+end
+
+# A value object is a value: equality is by contents, `to_h` names its fields, and a pattern
+# destructures it.
+puts(fs.read_file("notes.md") == read)
+puts read.to_h.keys.join(",")
+case read
+in TextFile[contents:, total_lines:]
+  puts "pattern #{contents.lines.first.strip} #{total_lines}"
+end
+
+entries = fs.list_dir(".")
+puts entries.map { |entry| "#{entry.name}:#{entry.kind}" }.join(" ")
+puts(entries.first.kind == EntryKind::FILE)
+puts entries.first.kind.inspect
+
+out = system.shell("true")
+puts "#{out.exit_code} #{out.truncated?}"
+"##,
+        &all_tools(),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "contents of notes.md 1..2 of 2",
+            "false",
+            "true",
+            "contents,first_line,last_line,total_lines,byte_truncated",
+            "pattern contents of notes.md 2",
+            "a.ts:file b.test.ts:file sub:directory",
+            "true",
+            // Opal's `Symbol` IS `String` — a recorded parameter of this arm rather than a defect,
+            // and the reason `Check.choice` writes an accepted set out by hand instead of with
+            // `inspect`. What a program WRITES is still `:file`, and a misspelt one is still an
+            // `invalid-argument` naming the set, which is the whole of what rule 3 asks for.
+            "\"file\"",
+            "0 false",
+        ]
+    );
+
+    // A failure is a raised `ToolError` carrying a Symbol code, rescued by a name the prompt teaches
+    // — and `rescue => failure` catches it too, because it is a `StandardError` like anything else a
+    // Ruby library raises.
+    let (outcome, _log) = run_with(
+        r##"
+begin
+  fs.read_file("missing.md")
+rescue ToolError => failure
+  puts "#{failure.tool} #{failure.code} #{failure.code == ToolErrorCode::NOT_FOUND}"
+  puts failure.message
+end
+
+begin
+  tasks.update_task("t1", status: :nearly)
+rescue => failure
+  puts failure.message
+end
+"##,
+        &all_tools(),
+        &[],
+        |name: &str, args: &Value| {
+            if name == "read_file" && args["path"] == json!("missing.md") {
+                return ToolOutcome::failed(
+                    crate::tools::ToolFailure::NotFound,
+                    "no such file: missing.md".to_string(),
+                );
+            }
+            canned_outcome(name, args)
+        },
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "read_file not_found true",
+            "no such file: missing.md",
+            "`status` must be one of :pending, :in_progress, :done, got :nearly",
+        ]
+    );
+}
+
+#[test]
+fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
+    // A tool this run does not offer is not a name in the program's surface, so reaching for it
+    // raises `NoMethodError` — Ruby's own answer — and the guest classifies that as the unknown name
+    // it is, listing the objects the run *did* give.
+    let outcome = run("system.shell(\"ls\")\n");
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error.message.contains("view"),
+        "the refusal names the objects this run does offer: {}",
         error.message
     );
-    assert!(
-        matches!(
-            error.kind,
-            crate::sandbox::outcome::ProgramErrorKind::UnknownName
-        ),
-        "a withheld capability is an unknown name, not a tool failure: {error:?}"
+
+    // An object that exists with the function withheld says something better than Ruby would, and
+    // points at the directory every object carries.
+    let (outcome, _log) = run_with(
+        "fs.write_file(\"a\", \"b\")\n",
+        &["read_file".into()],
+        &[],
+        canned_outcome,
     );
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error.message.contains("fs.write_file") && error.message.contains("fs.list"),
+        "the refusal names the call and the directory: {}",
+        error.message
+    );
+
+    // The surface is not the enforcement. A program that reaches past it — into the SDK's own
+    // module, which is an ordinary Ruby constant — is refused by the HOST, with the wire's own
+    // `unavailable`, and never reaches the tool. That is the property a language whose SDK is an
+    // ordinary library cannot provide for itself.
+    let (outcome, log) = run_with(
+        r##"
+begin
+  GG::Files.read_file("notes.md")
+rescue ToolError => failure
+  puts "#{failure.tool} #{failure.code == ToolErrorCode::UNAVAILABLE}"
+end
+"##,
+        &["write_file".to_string()],
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["read_file true"]);
+    assert!(
+        log.calls().is_empty(),
+        "a withheld tool never reaches the invoker"
+    );
+    assert_eq!(outcome.refusals.len(), 1, "the refusal is recorded");
 }
 
 #[test]
-fn an_uncaught_ruby_exception_is_reported_rather_than_taking_the_store_down() {
+fn an_uncaught_ruby_exception_is_reported_at_the_line_the_model_wrote() {
     // A raise has to come back as a `ProgramError` carrying Ruby's own class and message, not as an
-    // opaque wasm trap. This is the guest's single `catch`, reached through Opal's exception
-    // hierarchy — a Ruby `ArgumentError` is a JavaScript error object by the time the shim sees it,
-    // and it must not be described as `{}`.
+    // opaque wasm trap — and, now that this guest owns its own `run`, at the line of the **Ruby**
+    // rather than of the JavaScript Opal compiled it into. The map that makes that possible is
+    // appended to every compile by gg's own driver, and read here, lazily, only because something
+    // raised.
     let outcome = run(r##"
 def risky(value)
   raise ArgumentError, "bad #{value}"
@@ -303,12 +492,17 @@ puts "after"
         error.message
     );
     assert_eq!(
+        error.location.as_deref(),
+        Some("line 3"),
+        "the raise is located in the model's Ruby (line 3), not in the compiled JavaScript"
+    );
+    assert_eq!(
         outcome.logs,
         ["before"],
         "what ran before the raise is still reported"
     );
 
-    // A program that catches its own raise runs to completion, which is what says the exception is a
+    // A program that rescues its own raise runs to completion, which is what says the exception is a
     // real Ruby exception rather than something the guest turned into one on the way out.
     let outcome = run(r##"
 begin
@@ -320,83 +514,583 @@ ensure
 end
 "##);
     assert_eq!(logs(&outcome), ["caught expected", "ensured"]);
+
+    // A failed tool call is reported as the tool failure it is, carrying the membrane's own code, so
+    // gg classifies the turn from the code rather than from what this guest made of the raise.
+    let (outcome, _log) = run_with(
+        "fs.read_file(\"gone.md\")\n",
+        &all_tools(),
+        &[],
+        |name: &str, args: &Value| {
+            if name == "read_file" {
+                return ToolOutcome::failed(
+                    crate::tools::ToolFailure::NotFound,
+                    "no such file".to_string(),
+                );
+            }
+            canned_outcome(name, args)
+        },
+    );
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::ToolFailure);
+    assert!(
+        error.message.contains("read_file") && error.message.contains("not-found"),
+        "the failure names the call and the wire's own code: {}",
+        error.message
+    );
 }
 
 #[test]
-fn code_modules_become_a_namespace_the_program_reaches_at_lib() {
+fn code_modules_become_a_ruby_namespace_the_program_reaches_at_lib() {
     // A code skill's or code memory's module is evaluated BEFORE the program and against the same
-    // scope, which is the half of this arm that a runtime living inside the program's own source
+    // surface, which is the half of this arm that a runtime living inside the program's own source
     // could not have satisfied — and the reason this guest bakes Opal in rather than prepending it.
-    // The host's module *preparation* (which names a Ruby module's exports) is the registration
-    // commit's; what is proven here is that the guest binds what it is handed.
-    let module = format!(
-        "{}\nreturn {{ double: Opal.top.$double, greeting: Opal.top.$greeting }};",
-        prepare("def double(n) = n * 2\ndef greeting = 'from a skill'\n")
-    );
-    let (outcome, _log) = run_with(
-        &prepare("puts `lib.helpers.double(21)`\nputs `lib.helpers.greeting()`\n"),
-        &[],
+    // A Ruby file has no exports, so the host wraps the author's source in the call that makes its
+    // body an anonymous `Module`: what it defines is what the namespace offers.
+    let (outcome, log) = run_with(
+        r##"
+puts lib.helpers.double(21)
+puts lib.helpers.greeting
+puts lib.helpers.first_line("notes.md")
+"##,
+        &["read_file".to_string()],
         &[CodeModule {
             name: "helpers".to_string(),
-            source: module,
+            source: prepare_module(
+                r##"
+def double(n) = n * 2
+
+def greeting = "from a skill"
+
+def first_line(path)
+  fs.read_file(path).contents.lines.first.strip
+end
+"##,
+            ),
         }],
         canned_outcome,
     );
-    assert_eq!(logs(&outcome), ["42", "from a skill"]);
-
-    // A module that throws while loading does not take the turn down with it: its author is whoever
-    // wrote the skill, not the model whose program merely has it in scope.
-    let broken = format!(
-        "{}\nreturn {{}};",
-        prepare("raise 'this skill is broken'\n")
+    assert_eq!(
+        logs(&outcome),
+        ["42", "from a skill", "contents of notes.md"]
     );
+    assert_eq!(
+        log.names(),
+        ["read_file"],
+        "a module reaches the run's own tools, like anything else"
+    );
+
+    // A module that raises while loading does not take the turn down with it: its author is whoever
+    // wrote the skill, not the model whose program merely has it in scope — and what the program
+    // then gets is a `NoMethodError` naming the member it wanted rather than one naming `lib`.
     let (outcome, _log) = run_with(
-        &prepare("puts 'the program still ran'\n"),
+        r##"
+puts "the program still ran"
+begin
+  lib.broken.anything
+rescue NoMethodError => failure
+  puts failure.message
+end
+"##,
         &[],
         &[CodeModule {
             name: "broken".to_string(),
-            source: broken,
+            source: prepare_module("raise 'this skill is broken'\n"),
         }],
         canned_outcome,
     );
-    assert_eq!(logs(&outcome), ["the program still ran"]);
+    assert!(logs(&outcome)[0] == "the program still ran");
+    assert!(
+        logs(&outcome)[1].contains("anything"),
+        "the failure names the member: {:?}",
+        logs(&outcome)[1]
+    );
+
+    // No modules, no `lib` — the rule every family obeys: what a run does not offer is not a name.
+    let outcome = run("puts lib\n");
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+
+    // A syntax error in a module is reported at the AUTHOR's line, not one further down where the
+    // wrapper put it.
+    let failure = compile_module("ok = 1\ny = 2 +* 3\n", &PrepareContext::new())
+        .expect_err("the module does not compile");
+    assert!(
+        failure.to_string().contains("module.rb:2:"),
+        "the diagnostic is corrected back over the wrapper: {failure}"
+    );
+}
+
+/// One tool, called through the Ruby spelling of it, and the JSON gg's dispatch must have seen.
+struct Crossing {
+    /// The gg tool name the call must arrive under.
+    tool: &'static str,
+    /// The program, exactly as a model would write it.
+    program: &'static str,
+    /// The JSON the invoker must have seen.
+    expected: fn() -> Value,
+}
+
+/// Every bound tool, called through its idiomatic Ruby method.
+///
+/// Deliberately the same table `sandbox.membrane.test.rs` drives the TypeScript arm with and
+/// `python.substrate.test.rs` drives the Python arm with, down to the arguments and the expected
+/// JSON — because the expected JSON is the point. gg's dispatch is language-independent: three arms
+/// writing the same call in their own idioms must produce **byte identical** arguments, or they are
+/// not running the same experiment. A keyword argument that lowered onto the wrong wire field, a
+/// Symbol whose arm did not translate, a patch sentinel read the wrong way round — none of them is a
+/// compile error in any of the three, and all of them are visible here.
+fn crossings() -> Vec<Crossing> {
+    vec![
+        Crossing {
+            tool: "shell",
+            program: "system.shell(\"npm test\", timeout_secs: 30)",
+            expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
+        },
+        Crossing {
+            tool: "read_file",
+            program: "fs.read_file(\"src/a.rb\", offset: 2, limit: 5)",
+            expected: || json!({ "path": "src/a.rb", "offset": 2, "limit": 5 }),
+        },
+        Crossing {
+            tool: "write_file",
+            program: "fs.write_file(\"out.txt\") { \"hello\" }",
+            expected: || json!({ "path": "out.txt", "contents": "hello" }),
+        },
+        Crossing {
+            tool: "edit_file",
+            program: "fs.edit_file(\"src/a.rb\", \"alpha\", \"beta\")",
+            expected: || json!({ "path": "src/a.rb", "old_string": "alpha", "new_string": "beta" }),
+        },
+        Crossing {
+            tool: "list_dir",
+            program: "fs.list_dir(\"src\")",
+            expected: || json!({ "path": "src" }),
+        },
+        Crossing {
+            tool: "read_skill",
+            program: "skills.read_skill(\"testing\")",
+            expected: || json!({ "name": "testing" }),
+        },
+        Crossing {
+            tool: "write_memory",
+            program: "memory.write_memory(\"layout\", \"d\", \"b\")",
+            expected: || json!({ "name": "layout", "description": "d", "body": "b", "code": null, "onUse": null }),
+        },
+        Crossing {
+            tool: "update_memory",
+            program: "memory.update_memory(\"layout\", \"d2\", \"b2\")",
+            expected: || json!({ "name": "layout", "description": "d2", "body": "b2", "code": null, "onUse": null }),
+        },
+        Crossing {
+            tool: "create_memory",
+            program: "memory.create_memory(\"layout\", \"d\", \"b\")",
+            expected: || json!({ "name": "layout", "description": "d", "contents": "b", "code": null, "onUse": null }),
+        },
+        Crossing {
+            tool: "read_memory",
+            program: "memory.read_memory(\"layout\")",
+            expected: || json!({ "name": "layout" }),
+        },
+        Crossing {
+            tool: "edit_memory",
+            program: "memory.edit_memory(\"layout\", \"old\", \"new\")",
+            expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
+        },
+        Crossing {
+            tool: "search_memories",
+            program: "memory.search_memories(\"cargo\", \"nextest\")",
+            expected: || json!({ "keywords": ["cargo", "nextest"] }),
+        },
+        Crossing {
+            tool: "delete_memory",
+            program: "memory.delete_memory(\"layout\")",
+            expected: || json!({ "name": "layout" }),
+        },
+        Crossing {
+            tool: "add_task",
+            program: "tasks.add_task(\"t1\", \"T\", description: \"D\", blocked_by: [\"t0\"])",
+            expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
+        },
+        Crossing {
+            tool: "update_task",
+            program: "tasks.update_task(\"t1\", title: \"T2\", description: nil, status: :in_progress)",
+            expected: || {
+                // `description: nil` is the sentinel that CLEARS it — the argument left out is the
+                // one that keeps it — and `in_progress` is gg's own spelling, so the membrane's
+                // `in-progress` reaches neither a model nor a tool.
+                json!({ "id": "t1", "title": "T2", "status": "in_progress", "description": "" })
+            },
+        },
+        Crossing {
+            tool: "set_blocked_by",
+            program: "tasks.set_blocked_by(\"t1\")",
+            expected: || json!({ "id": "t1", "blockedBy": [] }),
+        },
+        Crossing {
+            tool: "complete_task",
+            program: "tasks.complete_task(\"t1\")",
+            expected: || json!({ "id": "t1" }),
+        },
+        Crossing {
+            tool: "remove_task",
+            program: "tasks.remove_task(\"t1\")",
+            expected: || json!({ "id": "t1" }),
+        },
+        Crossing {
+            tool: "create_epic",
+            program: "project.create_epic(\"epc\", \"E\", \"D\")",
+            expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
+        },
+        Crossing {
+            tool: "create_issue",
+            program: "project.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers: [\"critic\"])",
+            expected: || {
+                json!({
+                    "title": "I",
+                    "description": null,
+                    "inScope": "s",
+                    "outOfScope": "o",
+                    "completionCriteria": "c",
+                    "blockedBy": [],
+                    "epicId": null,
+                    "agent": "worker",
+                    "reviewers": ["critic"],
+                })
+            },
+        },
+        Crossing {
+            tool: "update_issue",
+            program: "project.update_issue(\"i1\", status: :done, epic_id: nil)",
+            expected: || {
+                // `epic_id: nil` ungroups the issue, which gg's schema spells as the empty string;
+                // a `description` left out keeps the one it has, so its key is absent entirely.
+                json!({
+                    "id": "i1",
+                    "title": null,
+                    "inScope": null,
+                    "outOfScope": null,
+                    "completionCriteria": null,
+                    "status": "done",
+                    "epicId": "",
+                })
+            },
+        },
+        Crossing {
+            tool: "set_issue_blocked_by",
+            program: "project.set_issue_blocked_by(\"i1\", \"i0\")",
+            expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
+        },
+        Crossing {
+            tool: "remove_epic",
+            program: "project.remove_epic(\"e1\")",
+            expected: || json!({ "id": "e1" }),
+        },
+        Crossing {
+            tool: "remove_issue",
+            program: "project.remove_issue(\"i1\")",
+            expected: || json!({ "id": "i1" }),
+        },
+        Crossing {
+            tool: "wait_for_issue",
+            program: "project.wait_for_issue(\"i1\")",
+            expected: || json!({ "issueId": "i1" }),
+        },
+        Crossing {
+            tool: "evict_file_view",
+            program: "context.evict_file_view(\"src/a.rb\")",
+            expected: || json!({ "path": "src/a.rb" }),
+        },
+        Crossing {
+            tool: "archive_thread",
+            // A span of turns is a Ruby `Range`, which is what a span of integers is in this
+            // language — and an exclusive one means the same thing, which is why both are here.
+            program: "context.archive_thread(4..19, 30...36)",
+            expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
+        },
+        Crossing {
+            tool: "search_archive",
+            program: "context.search_archive(\"the parser\")",
+            expected: || json!({ "query": "the parser" }),
+        },
+        Crossing {
+            tool: "compact",
+            program: "context.compact(\"scaffolded the page\", files: [\"src/main.rb\"])",
+            expected: || json!({ "summary": "scaffolded the page", "files": ["src/main.rb"] }),
+        },
+        Crossing {
+            tool: "spawn_subagent",
+            program: "agents.spawn_subagent(\"subagent\", prompt: \"write the lexer\")",
+            expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
+        },
+        Crossing {
+            tool: "wait_for_subagents",
+            program: "agents.wait_for_subagents(\"agent-1\")",
+            expected: || json!({ "ids": ["agent-1"] }),
+        },
+        Crossing {
+            tool: "send_message",
+            program: "agents.send_message(\"agent-1\", \"prefer the simpler parser\")",
+            expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
+        },
+        Crossing {
+            tool: "transition_state",
+            program: "agents.transition_state(\"verify\", \"the build is green\")",
+            expected: || json!({ "state": "verify", "note": "the build is green" }),
+        },
+        Crossing {
+            tool: "exec",
+            program: "agents.exec(\"Builder\", \"pick it up from here\")",
+            expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
+        },
+        Crossing {
+            tool: "fork",
+            program: "agents.fork(\"try the other fix\")",
+            expected: || json!({ "prompt": "try the other fix" }),
+        },
+    ]
 }
 
 #[test]
-fn the_baked_opal_runtime_is_what_makes_a_turn_affordable() {
+fn every_tool_crosses_the_membrane_from_its_ruby_spelling() {
+    let crossings = crossings();
+    let enabled = all_tools();
+
+    for crossing in &crossings {
+        let (outcome, log) = run_with(crossing.program, &enabled, &[], canned_outcome);
+        assert!(
+            matches!(&outcome.result, Ok(result) if result.error.is_none()),
+            "`{}` did not run cleanly: {:?}",
+            crossing.tool,
+            outcome.result
+        );
+        assert_eq!(
+            log.names(),
+            [crossing.tool],
+            "`{}` did not reach gg's dispatch under its own name",
+            crossing.program
+        );
+        assert_eq!(
+            log.args(crossing.tool),
+            Some((crossing.expected)()),
+            "`{}` carried the wrong arguments",
+            crossing.program
+        );
+    }
+
+    // Exhaustive by construction: a tool added to gg with no row here fails now, rather than
+    // shipping as a typed method nobody ever called.
+    let mut covered: Vec<&str> = crossings.iter().map(|crossing| crossing.tool).collect();
+    covered.sort_unstable();
+    let mut expected = crate::sandbox::signatures::sandbox_tool_names();
+    expected.sort_unstable();
+    assert_eq!(
+        covered, expected,
+        "every bound tool needs a crossing, and only bound tools may have one"
+    );
+}
+
+#[test]
+fn the_view_object_the_program_library_and_the_endings_are_reached_in_ruby_too() {
+    // None of the three families is a gg tool, so none appears in the crossing table above — and two
+    // of them are where a program puts something in front of the model, which makes them the ones a
+    // silent bridging mistake would cost the most.
+    let (outcome, _log) = run_as(
+        r##"
+view.open_text("summary", "eight files, two failing")
+view.open_text("scratch") { ["a", "b"].join("\n") }
+open = view.current
+puts "#{open.size} #{open.map(&:selector).join(",")} #{open.first.kind == ViewKind::TEXT} #{open.first.tokens}"
+puts "#{view.close("scratch")} #{view.close("never opened")} #{view.current.size}"
+
+# The documentation of a function, named with a Symbol, with a String, and with the method itself.
+view.open_docs_view(:read_file)
+view.open_docs_view("write_file")
+view.open_docs_view(fs.method(:read_file))
+
+whole = view.open_file("notes.md")
+puts "#{whole.class} #{view.current.select { |v| v.kind == ViewKind::FILE }.map(&:region).inspect}"
+puts fs.list.map { |entry| "#{entry.name}: #{entry.summary}" }.join(",")
+harness.finish("done")
+"##,
+        &all_tools(),
+        &[],
+        RunEnding::Role(EndingRole::Standard),
+        true,
+        canned_outcome,
+    );
+    let lines = logs(&outcome);
+    assert_eq!(lines[0], "2 summary,scratch true 6");
+    assert_eq!(lines[1], "1 0 1");
+    assert!(lines[2].starts_with("GG::TextFile"), "{:?}", lines[2]);
+    assert_eq!(lines[3], "fsFunction: a function on `fs`");
+
+    // The program library is bound from the capability rather than from a tool name, and a reviewer
+    // gets the other ending group and no `finish` at all.
+    let (outcome, _log) = run_as(
+        r##"
+puts programs.history.size
+programs.rerun("puts 'the replacement'\n")
+review.request_changes("widen the test", "name the file")
+"##,
+        &[],
+        &[],
+        RunEnding::Role(EndingRole::Review),
+        true,
+        canned_outcome,
+    );
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "{:?}",
+        outcome.result
+    );
+    assert!(outcome.rerun.is_some(), "the hand-over is recorded");
+
+    let outcome = run("harness.finish(\"done\")\n");
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::UnknownName,
+        "an agent with no ending role has no `harness` at all"
+    );
+}
+
+#[test]
+fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     // The measurement this artifact exists for, held as a bound rather than as a number: evaluating
     // a Ruby program on this component must cost what a JavaScript program costs plus a little, not
-    // the 45–51 ms that prepending Opal's 743 KB runtime to every program measured. The threshold is
-    // deliberately far above the measured 2.1–2.6 ms and far below the prepended figure, so only a
-    // real regression — the runtime falling out of the snapshot — can move it.
+    // the 45–51 ms that prepending Opal's 743 KB runtime to every program measured. Measured here:
+    // 4.8 ms with no tool bound and 7.7 ms with all thirty-five, against 1.2–1.4 ms for a plain
+    // JavaScript program on the ECMAScript component — the difference being this SDK's surface,
+    // which is built in Ruby, per run, out of the run's own enabled set. The threshold is
+    // deliberately far above that and far below the prepended figure, so only a real regression —
+    // the runtime or the SDK falling out of the snapshot — can move it.
+    // Compiled ONCE, outside the reading: what is being measured is a turn, and the compile is
+    // measured — and recorded per program — in its own right.
     let program = prepare("puts (1..20).reduce(:+)\n");
+    let enabled = all_tools();
     // One run first, so the component compile and the first instantiation are not in the reading.
     assert_eq!(
-        logs(&run_with(&program, &[], &[], canned_outcome).0),
+        logs(
+            &evaluate(
+                &program,
+                &enabled,
+                &[],
+                RunEnding::None,
+                false,
+                canned_outcome
+            )
+            .0
+        ),
         ["210"]
     );
 
     let mut best = std::time::Duration::MAX;
     for _ in 0..5 {
         let started = Instant::now();
-        let (outcome, _log) = run_with(&program, &[], &[], canned_outcome);
+        let outcome = evaluate(
+            &program,
+            &enabled,
+            &[],
+            RunEnding::None,
+            false,
+            canned_outcome,
+        )
+        .0;
         best = best.min(started.elapsed());
         assert_eq!(logs(&outcome), ["210"]);
     }
     assert!(
         best.as_millis() < 25,
-        "instantiating and evaluating a Ruby program took {best:?}; Opal's runtime is being built \
-         per turn rather than coming out of the component's pre-initialised snapshot",
+        "instantiating and evaluating a Ruby program took {best:?}; Opal's runtime or gg's SDK is \
+         being built per turn rather than coming out of the component's pre-initialised snapshot",
+    );
+}
+
+#[test]
+fn opal_is_not_cruby_and_the_study_records_which_ways() {
+    // Every one of these is a difference a model's program can observe, and a study that reported
+    // "Ruby" without recording them would be reporting something else. Asserted against the
+    // committed artifact rather than described in prose, so the claim is checkable.
+    let outcome = run(r##"
+puts (1 / 0).to_s
+puts (2 ** 64).to_s
+puts :done.class
+puts(:done == "done")
+puts RUBY_ENGINE
+"##);
+    assert_eq!(
+        logs(&outcome),
+        [
+            // Integer division is JavaScript's, so this is `Infinity` where CRuby raises.
+            "Infinity",
+            // No bignum.
+            "18446744073709552000",
+            // A Symbol IS a String here. What a program writes is unchanged (`:done`), and the SDK
+            // still refuses a value outside a fixed set by name, but `:done.class` is not `Symbol`
+            // and `:done == "done"` is true.
+            "String",
+            "true",
+            "opal",
+        ]
+    );
+
+    // `sleep` is a busy wait in Opal rather than a park in a host call, so the execution deadline
+    // reaches it exactly as it reaches any other runaway — which is the opposite of what the Python
+    // arm measured, and worth pinning for the same reason.
+    let limits = SandboxLimits {
+        timeout: std::time::Duration::from_millis(400),
+        ..SandboxLimits::default()
+    };
+    let started = Instant::now();
+    let program = prepare("sleep 30\nputs 'never'\n");
+    let log = CallLog::default();
+    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: false,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(
+            FakeToolApi::with(&log, canned_outcome),
+            typescript(),
+            scope,
+            limits,
+            None,
+        ),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
+    let returned = bound
+        .call_run(
+            &mut store,
+            &program,
+            &[],
+            &[],
+            RunEnding::None.into(),
+            false,
+        )
+        .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
+    let (outcome, _api) = reclaim(store, returned, None, None, None);
+    assert!(
+        outcome.result.is_err(),
+        "a sleeping Ruby program is stopped by the deadline: {:?}",
+        outcome.result
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "the deadline reached the sleep after {:?} rather than letting the 30 s run out",
+        started.elapsed()
     );
 }
 
 #[test]
 fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
-    // This guest is the ECMAScript guest plus a runtime, so its imports must be that guest's
-    // exactly: a capability enabled here and not there would be a difference between two arms of a
-    // study that nobody chose. `wasi:filesystem` and `wasi:sockets` are absent because the component
-    // is baked without them, not because the host withholds them — gg's linker defines the whole
-    // surface for every guest.
+    // This guest is the ECMAScript guest's engine plus a Ruby runtime, so its imports must be that
+    // guest's exactly: a capability enabled here and not there would be a difference between two
+    // arms of a study that nobody chose. `wasi:filesystem` and `wasi:sockets` are absent because the
+    // component is baked without them, not because the host withholds them — gg's linker defines the
+    // whole surface for every guest.
     let mut imports = interface_imports(component());
     let (ecmascript, _) = engine::component(typescript()).expect("the ECMAScript guest compiles");
     let expected = interface_imports(ecmascript);
@@ -404,13 +1098,13 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     assert_eq!(
         imports, expected,
         "the committed Ruby guest reaches something the ECMAScript guest does not, or the other \
-         way round; the two are one guest plus a runtime, and a capability on one side only is a \
-         difference between arms of a study that nobody chose"
+         way round; a capability on one side only is a difference between arms of a study that \
+         nobody chose"
     );
 
-    // Every gg interface the world declares is present, because the shared SDK imports every one of
-    // them — which is what puts them in the artifact. A binding that was not baked in is a
-    // capability a program could not reach however well the host implements it.
+    // Every gg interface the world declares is present, because this guest's entry module imports
+    // every one of them — which is what puts them in the artifact. A binding that was not baked in
+    // is a capability a program could not reach however well the host implements it.
     assert_eq!(
         imports
             .iter()
@@ -420,20 +1114,20 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
         "the whole gg half of the membrane, the shim's own feedback channel included"
     );
 
-    // ~18.6 MiB: a whole JavaScript engine, plus Opal's corelib as it stands after the runtime's
-    // top level has run. A band rather than a number because the build snapshots a running engine's
-    // heap. Far smaller would mean the runtime never got baked — the failure this artifact exists to
-    // prevent — and far larger, that the build picked up something it should not have.
+    // ~20 MiB: a whole JavaScript engine, plus Opal's corelib, the curated libraries and gg's Ruby
+    // SDK as they stand after their top level has run. A band rather than a number because the build
+    // snapshots a running engine's heap. Far smaller would mean something never got baked — the
+    // failure this artifact exists to prevent — and far larger, that the build picked up something
+    // it should not have.
     assert!(
-        (16 * 1024 * 1024..=22 * 1024 * 1024).contains(&COMPONENT.len()),
-        "the committed Ruby guest is {} bytes, outside the documented 16–22 MiB band",
+        (18 * 1024 * 1024..=24 * 1024 * 1024).contains(&COMPONENT.len()),
+        "the committed Ruby guest is {} bytes, outside the documented 18–24 MiB band",
         COMPONENT.len()
     );
 
     // The bijection the committed artifact is held to: this guest binds gg's whole tool vocabulary
-    // and nothing else. It is the ECMAScript guest's SDK doing the binding, which is precisely why
-    // it has to be re-asserted here — a stale Ruby artifact built against an older gg would pass
-    // every check that reads the TypeScript one.
+    // and nothing else. It is the RUBY SDK's own catalogue doing the answering, so this is a check
+    // of that SDK rather than a second reading of the TypeScript one.
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     let log = CallLog::default();
@@ -455,4 +1149,179 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     let mut expected = crate::sandbox::signatures::sandbox_tool_names();
     expected.sort_unstable();
     assert_eq!(answered, expected);
+}
+
+/// The catalogue this arm commits, read a step before the language that owns it is registered.
+const SIGNATURES: &str = include_str!("../guests/ruby.signatures.json");
+
+#[test]
+fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
+    // The **real** agreement gate, over the real Ruby catalogue. It is what stands between a
+    // configured `language` param and an invalidated study: two internally-consistent surfaces that
+    // disagree with each other are two green test suites, and this is the only thing that compares
+    // them. Running it here rather than waiting for registration is deliberate — the commit that
+    // registers a language is the one least able to absorb a surface that turns out to disagree.
+    let mut document: Value =
+        serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
+    assert_eq!(
+        document["language"],
+        json!("ruby"),
+        "the catalogue says whose spellings it carries"
+    );
+    // `language` is the wire enum, which has no `ruby` variant until the registration step adds one.
+    // The gate never reads it — provenance is asserted per *registered* language, against the
+    // language that embedded the file — so it is stood in for here rather than being the reason this
+    // check has to wait.
+    document["language"] = json!("typescript");
+    let candidate = super::super::fixture::a_language_whose_catalogue_is(&document.to_string());
+
+    let found = super::super::agreement::disagreements(&[typescript(), candidate]);
+    assert!(
+        found.is_empty(),
+        "the Ruby catalogue does not describe the same capability surface TypeScript does:\n{}",
+        found
+            .iter()
+            .map(|disagreement| format!("  - {}\n", disagreement.detail))
+            .collect::<String>()
+    );
+
+    // The first arm to carry an entry with more than one signature, which is the half of the
+    // catalogue schema nothing had produced: a block is how a Ruby program passes a long body, and
+    // an overload group is how that is said without changing what the function is.
+    let overloaded: Vec<&str> = document["views"]
+        .as_array()
+        .into_iter()
+        .chain(document["tools"].as_array())
+        .flatten()
+        .filter(|entry| entry["signatures"].as_array().is_some_and(|s| s.len() > 1))
+        .map(|entry| entry["name"].as_str().expect("a name"))
+        .collect();
+    assert_eq!(overloaded, ["open_text", "write_file"]);
+}
+
+#[test]
+fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
+    // The other half of the catalogue's honesty, and the one no cross-language comparison can see:
+    // that the surface it *describes* is the surface the committed `.wasm` really binds. A signature
+    // reflected out of a source file that was never baked in would read perfectly and name a call
+    // that is not there.
+    let catalogue: Value =
+        serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
+    let named = |section: &str| -> Vec<(String, String)> {
+        catalogue[section]
+            .as_array()
+            .unwrap_or_else(|| panic!("the catalogue's `{section}` is an array"))
+            .iter()
+            .map(|entry| {
+                (
+                    entry["object"].as_str().expect("an object").to_string(),
+                    entry["name"].as_str().expect("a name").to_string(),
+                )
+            })
+            .collect()
+    };
+
+    // A standard agent that keeps a library: every tool, every helper, every view function, the
+    // whole program library, and the `harness` ending — plus the `list` every object carries, which
+    // is checked against each object the catalogue describes rather than against a section of its
+    // own, because that is how it is bound.
+    let mut expected: Vec<(String, String)> = named("tools");
+    expected.extend(named("helpers"));
+    expected.extend(named("views"));
+    expected.extend(named("programs"));
+    expected.extend(
+        catalogue["session"]
+            .as_array()
+            .expect("an array")
+            .iter()
+            .filter(|entry| entry["ending"] == json!("standard"))
+            .map(|entry| {
+                (
+                    entry["object"].as_str().expect("an object").to_string(),
+                    entry["name"].as_str().expect("a name").to_string(),
+                )
+            }),
+    );
+    let meta: Vec<String> = catalogue["meta"]
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|entry| entry["name"].as_str().expect("a name").to_string())
+        .collect();
+    for object in catalogue["objects"].as_array().expect("an array") {
+        let object = object["object"].as_str().expect("an object name");
+        // `review` is the other role's ending object, and this program is a standard agent's.
+        if object == "review" {
+            continue;
+        }
+        expected.extend(meta.iter().map(|name| (object.to_string(), name.clone())));
+    }
+
+    let calls: Vec<String> = expected
+        .iter()
+        .map(|(object, name)| format!("{object}.respond_to?(:{name})"))
+        .collect();
+    let program = format!(
+        "puts [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
+        calls.join(", ")
+    );
+    let (outcome, _log) = run_as(
+        &program,
+        &all_tools(),
+        &[],
+        RunEnding::Role(EndingRole::Standard),
+        true,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [vec!["ok"; calls.len()].join(",")],
+        "every call the catalogue describes is bound on the object it names"
+    );
+
+    // The reviewer's ending is the other group, and it is bound only for the role that produces it.
+    let review: Vec<String> = catalogue["session"]
+        .as_array()
+        .expect("an array")
+        .iter()
+        .filter(|entry| entry["ending"] == json!("review"))
+        .map(|entry| {
+            format!(
+                "{}.respond_to?(:{})",
+                entry["object"].as_str().expect("an object"),
+                entry["name"].as_str().expect("a name")
+            )
+        })
+        .collect();
+    let (outcome, _log) = run_as(
+        &format!(
+            "puts [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
+            review.join(", ")
+        ),
+        &[],
+        &[],
+        RunEnding::Role(EndingRole::Review),
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), [vec!["ok"; review.len()].join(",")]);
+
+    // And every TYPE it declares is a name a program can write, because a signature that mentions
+    // one a program cannot name is a signature a model cannot act on: `4..19` is an argument,
+    // `ToolError` is what a `rescue` clause catches, and `TaskStatus::DONE` is a status.
+    let types: Vec<String> = catalogue["types"]
+        .as_array()
+        .expect("an array")
+        .iter()
+        .map(|entry| entry["name"].as_str().expect("a name").to_string())
+        .collect();
+    let outcome = run(&format!(
+        "puts [{}].map {{ |name| Object.const_defined?(name) ? \"ok\" : \"missing\" }}.join(\",\")\n",
+        types
+            .iter()
+            .map(|name| format!("{name:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    assert_eq!(logs(&outcome), [vec!["ok"; types.len()].join(",")]);
 }

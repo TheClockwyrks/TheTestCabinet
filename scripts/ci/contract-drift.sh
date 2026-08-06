@@ -39,11 +39,13 @@
 #     `componentize-py` for Python, neither of which is an installed dependency (each
 #     is driven by that package's own build.sh) — whereas emitting a catalogue reads
 #     the sources and needs only that language's documentation tool: the `typescript`
-#     the `npm ci` below already installs, and a pinned `griffe` that
-#     packages/gg-sandbox-python/signatures.sh fetches through uv. The committed .wasm
-#     files therefore sit in the diffed directory untouched: nothing here regenerates
-#     one, so one cannot cause a false positive, and if one ever does diff then
-#     something rewrote a binary CI must not touch and failing is right.
+#     the `npm ci` below already installs, a pinned `griffe` that
+#     packages/gg-sandbox-python/signatures.sh fetches through uv, and a pinned `yard`
+#     that packages/gg-sandbox-ruby/signatures.sh installs into the Ruby all three of
+#     these machines already ship. The committed .wasm files therefore sit in the
+#     diffed directory untouched: nothing here regenerates one, so one cannot cause a
+#     false positive, and if one ever does diff then something rewrote a binary CI must
+#     not touch and failing is right.
 #
 #     A guest need not be an npm package, and Python's is not — only the emitted JSON
 #     is contractual. That is why each language owns its own regeneration command and
@@ -98,7 +100,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python"
+regenerated="typescript javascript python ruby"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -125,6 +127,9 @@ export PATH="$HOME/.local/bin:$PATH"
 
 log "regenerate the Python guest's signature catalogue (griffe + tools/signatures.py)"
 ./packages/gg-sandbox-python/signatures.sh
+
+log "regenerate the Ruby guest's signature catalogue (YARD + tools/signatures.rb)"
+./packages/gg-sandbox-ruby/signatures.sh
 
 # The same completeness rule the catalogues get, over the other committed directory: a
 # checker or compiler this script never re-cuts would sit in the diff below and be green
@@ -165,12 +170,13 @@ language's guest SDK declarations, so the responses-as-code prompt would show
 models a surface the sandbox does not export.
 Run the regeneration for the language that drifted and commit the result — for
 TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
-`packages/gg-sandbox-python/signatures.sh`.
+`packages/gg-sandbox-python/signatures.sh`; for Ruby,
+`packages/gg-sandbox-ruby/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script
 — packages/gg-sandbox/build.sh for TypeScript, packages/gg-sandbox-python/build.sh
-for Python — and commit
+for Python, packages/gg-sandbox-ruby/build.sh for Ruby — and commit
 crates/gg/src/sandbox/guests/<language>.component.wasm alongside.
 
 If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's

@@ -15,6 +15,16 @@
 # `opal-runtime`, which is the runtime. Both come out of the one install.
 OPAL_COMPILER_VERSION="3.0.0"
 
+# The Opal RELEASE that package bundles, and therefore the version of the `opal` RubyGem whose
+# `stdlib/` and `opal/` trees `build.sh` fetches for the Ruby sources of the libraries a program may
+# require. npm ships Opal's runtime and its self-hosted compiler; it does not ship the standard
+# library's sources, and those have to be the same release for the same reason the runtime and the
+# compiler do.
+#
+# `build.sh` checks this against the version the committed compiler reports rather than trusting the
+# comment above, so a bump to `OPAL_COMPILER_VERSION` that forgets this one fails the build.
+OPAL_VERSION="1.7.3"
+
 # `componentize-js`, which bakes the guest. Pinned for the reason the TypeScript guest pins it: the
 # component is a binary in the repository, so a silent toolchain bump would land as an unexplained
 # multi-megabyte diff. It is the SAME release the ECMAScript guest is baked with, deliberately —

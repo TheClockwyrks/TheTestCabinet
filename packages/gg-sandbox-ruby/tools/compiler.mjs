@@ -67,6 +67,7 @@ const VENDOR = process.env.GG_RUBY_VENDOR ?? path.join(PACKAGE_DIR, ".build", "n
 const SOURCES = [
   path.join(VENDOR, "opal-runtime", "src", "opal.js"),
   path.join(VENDOR, "opal-compiler", "src", "opal-builder.js"),
+  path.join(VENDOR, "opal-compiler", "src", "opal-source-maps.js"),
 ];
 
 /**
@@ -77,8 +78,10 @@ const SOURCES = [
  * parser calls `String#unpack` on its source buffer, and without this line the first compilation
  * fails with "To use String#unpack, you must first require 'corelib/string/unpack'", which is a
  * toolchain failure that looks exactly like a broken program.
+ *
+ * `opal/source_map` is what makes a run-time error point at the model's own line: see {@link DRIVER}.
  */
-const REQUIRES = ["corelib/string/unpack", "opal/compiler"];
+const REQUIRES = ["corelib/string/unpack", "opal/compiler", "opal/source_map"];
 
 /**
  * The command half of the bundle: read a Ruby file, write the JavaScript, and say which of the three
@@ -86,8 +89,14 @@ const REQUIRES = ["corelib/string/unpack", "opal/compiler"];
  *
  * `enable_source_location` is on. It costs about a tenth of the output's size and it is the only
  * thing that puts the Ruby file and line into the artifact at all — `Method#source_location` inside
- * a program answers truthfully with it and lies without it, and it is what a mapping from a guest
- * backtrace back to the model's own coordinates will be built on.
+ * a program answers truthfully with it and lies without it.
+ *
+ * **A source map is appended to every compile**, and it is what makes a run-time error point at the
+ * line the model wrote. The guest evaluates JavaScript, so a raise carries a position in the
+ * *compiled* file; the Ruby guest reads this map back — lazily, only when something raised — and
+ * reports the Ruby line instead. Measured at 0.4 ms to produce. `sourcesContent` is dropped before
+ * it is encoded: the guest never needs the Ruby back, gg already holds the program, and it is by
+ * far the largest thing in the map.
  *
  * The file a diagnostic is located in is the input's own base name, so the host decides what the
  * model sees (`program.rb`, `module.rb`) and this file decides nothing.
@@ -133,11 +142,23 @@ const DRIVER = `
     return rendered;
   }
 
+  // The map that turns a position in the compiled JavaScript back into the model's own line,
+  // appended as a data URL. A map that cannot be produced costs the location and nothing else.
+  function sourceMappingURL(compiler) {
+    try {
+      var map = JSON.parse(String(compiler.$source_map().$to_json()));
+      delete map.sourcesContent;
+      var encoded = Buffer.from(JSON.stringify(map), "utf8").toString("base64");
+      return "\\n//# sourceMappingURL=data:application/json;charset=utf-8;base64," + encoded + "\\n";
+    } catch (ignored) {
+      return "";
+    }
+  }
+
   var compiled;
   try {
-    compiled = String(
-      Compiler.$new(source, Opal.hash({ file: file, enable_source_location: true })).$compile()
-    );
+    var compiler = Compiler.$new(source, Opal.hash({ file: file, enable_source_location: true }));
+    compiled = String(compiler.$compile()) + sourceMappingURL(compiler);
   } catch (thrown) {
     // A throw with no Ruby class is the compiler itself breaking, not the program being rejected.
     // Rethrowing it makes node exit non-zero with the stack on stderr, which is exactly what gg

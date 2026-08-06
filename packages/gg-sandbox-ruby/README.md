@@ -1,33 +1,52 @@
 # `gg-sandbox-ruby`
 
 The **Ruby guest** for gg's [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
-sandbox, and the **Opal compiler** gg turns a model's Ruby into JavaScript with.
+sandbox: the hand-written Ruby SDK a model is given, the libraries a program may require,
+and the **Opal compiler** gg turns a model's Ruby into JavaScript with.
 
-It is not an npm workspace package and it exports nothing. It is two build scripts and one
-entry module, and everything it produces is committed in the Rust crate that embeds it:
+It is not an npm workspace package and it exports nothing. It is three build scripts, one
+entry module and a directory of Ruby, and everything it produces is committed in the Rust
+crate that embeds it:
 
 | Artifact | Written by | What it is |
 | --- | --- | --- |
-| `crates/gg/src/sandbox/guests/ruby.component.wasm` | `build.sh` | the ECMAScript guest with Opal's runtime pre-initialised into it |
+| `crates/gg/src/sandbox/guests/ruby.component.wasm` | `build.sh` | the JavaScript engine with Opal's runtime, this SDK and the curated libraries pre-initialised into it |
+| `crates/gg/src/sandbox/guests/ruby.signatures.json` | `signatures.sh` | the signature catalogue, reflected out of this SDK's own YARD documentation |
 | `crates/gg/src/sandbox/checkers/ruby.opal.cjs` | `compiler.sh` | Opal — runtime, self-hosted compiler and gg's driver — as one CommonJS bundle |
 | `crates/gg/src/sandbox/checkers/ruby.compiler.json` | `compiler.sh` | which Opal that is, and which Ruby it emulates |
 
-Both scripts read their pins from `opal-version.sh`, and there is exactly one Opal pin
-because the two artifacts have to be the same Opal: the compiler emits JavaScript against a
-runtime's private conventions, and a program compiled by one release and evaluated against
-another's runtime does not fail cleanly.
+`build.sh` and `compiler.sh` read their pins from `opal-version.sh`, and there is exactly
+one Opal pin because every artifact has to be the same Opal: the compiler emits JavaScript
+against a runtime's private conventions, and a program compiled by one release and
+evaluated against another's runtime does not fail cleanly.
 
 ## The strategy
 
-**A Ruby program is compiled to JavaScript on the host, and evaluated by the ECMAScript
-guest.** Nothing crosses the membrane as Ruby.
+**A Ruby program is compiled to JavaScript on the host, and evaluated by a guest whose
+whole surface is Ruby.** Nothing crosses the membrane as Ruby, and everything the compiled
+program is evaluated *against* is Ruby: the API objects are methods on `Object`, the types
+are top-level constants, a failure is a raised `GG::ToolError`, and a code module is an
+anonymous `Module` bound at `lib.<key>`.
 
 That is what makes this arm cheap in the two places a language arm is usually expensive.
-There is no second engine — the compiled program is JavaScript, so the same
-`componentize-js` guest evaluates it — and there is nothing to install in the run
-container, because Opal's compiler is itself Ruby compiled to JavaScript and runs with the
-`node` every run image already ships. `containers/gg-toolchains` therefore gains a paragraph
-rather than a toolchain.
+There is no second engine — the compiled program is JavaScript, so a `componentize-js`
+guest evaluates it — and there is nothing to install in the run container, because Opal's
+compiler is itself Ruby compiled to JavaScript and runs with the `node` every run image
+already ships. `containers/gg-toolchains` therefore gains a paragraph rather than a
+toolchain.
+
+## What is in `src/`
+
+| | |
+| --- | --- |
+| `src/gg/` | the SDK. `catalogue.rb` holds the identity data — which gg tool is which method, on which object, gated by what — and every other file holds the spellings. `wire.rb` is the one file that touches the membrane, and the only Ruby here written in JavaScript. |
+| `src/library.rb` | the manifest of what a program may `require`. `build.sh` compiles exactly this set out of the pinned Opal's own sources; `signatures.sh` reflects the same lines into the catalogue's `libraries` section. One file decides both. |
+| `src/shim.js` | the entry module: it imports the runtime, the libraries and the SDK at top level (so `wizer` snapshots them), publishes the membrane where `GG::Wire` can reach it, and owns `run`. |
+
+Its documentation is **the** documentation. Every YARD comment on a catalogued method,
+parameter, type and type member is what gg renders the system prompt and every
+documentation view from; there is nowhere else for a description of this surface to live,
+which is what stops one from drifting.
 
 ## Why there is a second component at all
 
@@ -41,59 +60,63 @@ costs. Measured through gg's own store and linker, on this repository's dev cont
 | (a plain JavaScript program on the same component, for scale) | 1.2–1.4 ms |
 
 `componentize-js` runs the entry module's top level at build time under `wizer` and
-snapshots the resulting heap, so the corelib is built once, into the artifact, instead of
-once per turn.
+snapshots the resulting heap, so the corelib, the libraries and this SDK's classes are
+built once, into the artifact, instead of once per turn. Building the run's *surface* is
+still per run and costs the rest of what a turn costs: **4.8 ms with no tool bound and
+7.7 ms with all thirty-five**.
 
 Two further things settled the question, and either would have on its own:
 
 - **A code module could not have seen a prepended runtime.** A skill's or memory's module
-  is evaluated *before* the program and against the same scope, so a runtime living inside
-  the program's own source would not exist yet. `lib.<key>` in Ruby would have been
+  is evaluated *before* the program and against the same surface, so a runtime living
+  inside the program's own source would not exist yet. `lib.<key>` in Ruby would have been
   unimplementable.
 - **Baking it into the *shared* component was worse.** It would put `globalThis.Opal` in
   front of the TypeScript and JavaScript arms too, and those two must differ in the type
   check and in nothing else — a checked program cannot name `Opal` (no declaration covers
   it) and an unchecked one can.
 
-## What this guest adds to the shared one, and what it does not
+## Two things `src/shim.js` does that no SDK could
 
-`src/shim.js` is deliberately small. It imports Opal's runtime, re-exports the ECMAScript
-guest's `run` and `boundTools` unchanged, and does exactly one thing of its own: it points
-Ruby's `$stdout` and `$stderr` at `console` on every run, buffering writes into lines.
+Both were silent failures before they were fixed, and both are about the seam between the
+engine's realms rather than about Ruby.
 
-That is not optional plumbing. Opal picks its write procedure **once, at load**, and
-captures the `console` it can see at that moment — which here is the one that existed while
-`wizer` was pre-initialising the component, not the one the shim rebinds to `feedback.log`
-at the start of every run. Without it, `puts "hello"` logs nothing at all, which is what it
-did before this was fixed.
+**Ruby's `$stdout` and `$stderr` are pointed at `console` on every run.** Opal picks its
+write procedure once, at load, and captures the `console` that existed while `wizer` was
+pre-initialising the component — not the one the shim rebinds to `feedback.log` at the
+start of every run. Without it, `puts "hello"` logs nothing at all.
 
-Everything else is the shared guest's, and identical on purpose: the scope built from the
-run's enabled tools, the denied globals, `lib.<name>`, the single `catch`, and the report
-over `feedback`. A test asserts that this component's imported interfaces are **exactly**
-the ECMAScript guest's, so a capability on one side only is a failing test rather than a
-confound in a study.
+**Every array the membrane returns is re-made in the shim's realm.** The generated
+bindings run against a different set of intrinsics (the same split that makes
+`instanceof Error` answer false for a binding-level fault), so an array they built carries
+*their* `Array.prototype`, which Opal never patched. `entries.map { … }` on a value the
+program was *handed* would fail with `$map is not a function`: correct Ruby, refused.
 
 ## What a Ruby program is offered
 
-Opal's **corelib**, and nothing else. No Opal stdlib module is baked, so `require` of
-anything reaches a module that is not there. What a program may import is a bake-time fact
-about this directory, exactly as it is for the Python guest, and declaring the set in the
-catalogue's `libraries` section is part of registering the arm rather than part of the
-substrate.
+Opal's corelib without requiring anything — `Set`, `Struct`, `Time`, `Math`, `Random`,
+`Enumerator` with `lazy`, `Comparable`, `Rational`, `Complex` — plus **pattern matching**,
+which is Ruby 3 syntax rather than a library and which the npm runtime bundle does not
+carry, so it is baked and loaded here. Beyond that, whatever `src/library.rb` declares.
 
 Opal is not CRuby, and a study has to record that. Integer division is JavaScript's, so
-`1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`, and there is no bignum. Both
-are asserted in `crates/gg/src/sandbox/language/ruby.substrate.test.rs` rather than
-described here, so the claim is checkable against the artifact.
+`1 / 0` is `Infinity` where CRuby raises `ZeroDivisionError`; there is no bignum; and
+`Symbol` **is** `String`, so `:done == "done"` is true. All three are asserted in
+`crates/gg/src/sandbox/language/ruby.substrate.test.rs` rather than described here, so the
+claims are checkable against the artifact. The last of them is why the SDK validates every
+fixed choice against its accepted set by hand rather than trusting the language to tell a
+symbol from a typo.
 
 ## Building
 
 ```sh
-packages/gg-sandbox-ruby/compiler.sh   # the host-side compiler (Node only; CI runs this)
-packages/gg-sandbox-ruby/build.sh      # the guest component (needs componentize-js)
+packages/gg-sandbox-ruby/compiler.sh     # the host-side compiler (Node only; CI runs this)
+packages/gg-sandbox-ruby/signatures.sh   # the signature catalogue (Ruby + YARD; CI runs this)
+packages/gg-sandbox-ruby/build.sh        # the guest component (needs componentize-js)
 ```
 
-Neither is wired into a build. They are run by hand, deliberately, and their outputs are
-committed alongside the source change that motivated them. Run `build.sh` after changing
-`crates/gg/wit/gg-sandbox.wit`, this package's `src/`, **`packages/gg-sandbox/src/`** — a
-change there is a change to both components — or the pins in `opal-version.sh`.
+`build.sh` is not wired into a build. It is run by hand, deliberately, and its output is
+committed alongside the source change that motivated it. Run it after changing
+`crates/gg/wit/gg-sandbox.wit`, anything under this package's `src/`, or the pins in
+`opal-version.sh` — and run `signatures.sh` alongside it whenever `src/gg/` or
+`src/library.rb` changed, because the catalogue is reflected out of exactly those.

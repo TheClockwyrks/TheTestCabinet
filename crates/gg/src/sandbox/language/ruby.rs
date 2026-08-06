@@ -44,26 +44,32 @@
 //! So the component is Ruby's own, and the seam's "no language is served another's artifacts" rule
 //! is satisfied outright rather than by an exemption.
 //!
-//! # What a Ruby program can reach today, and what is still the SDK's
+//! # What a Ruby program is given
 //!
-//! The guest is the ECMAScript guest, so a program is evaluated as the body of a function whose
-//! parameters are the run's API objects, and every gg tool the run enables is bound behind them. A
-//! Ruby program reaches them the way Ruby reaches JavaScript — through Opal's inline-JavaScript
-//! interop — which is what makes the crossing provable now, a step before there is a Ruby SDK to
-//! spell it idiomatically. The hand-written, `snake_case`, keyword-argument, raised-exception SDK a
-//! model will actually be given is the next commit's, and it wraps exactly these bindings.
+//! The guest owns its own `run`, and everything it puts in front of a program is **Ruby**: the API
+//! objects are methods on `Object` — which is what a top-level `def` in Ruby produces, so
+//! `fs.read_file("main.rb")` works with no receiver and no `require` line — the types are top-level
+//! constants, a failure is a raised `GG::ToolError` carrying a Symbol code, and a
+//! [code module](crate::skills) is an anonymous `Module` bound at `lib.<key>`. The SDK behind that
+//! is hand-written and idiomatic (`packages/gg-sandbox-ruby/src/gg/`), and its
+//! [catalogue](crate::sandbox::signatures) is reflected out of its own YARD documentation.
 //!
-//! Two further consequences of the strategy, stated here so they are not discovered later:
+//! Three further consequences of the strategy, stated here so they are not discovered later:
 //!
-//! * **The libraries are Opal's corelib and nothing else.** Nothing else is baked, so `require` of
-//!   anything reaches a module that is not there. What a Ruby program may import is a bake-time fact
-//!   about `packages/gg-sandbox-ruby`, exactly as it is for the Python guest, and declaring the set
-//!   in the catalogue's `libraries` section is part of registering the arm.
-//! * **A guest backtrace is in the compiled JavaScript's coordinates**, not the model's Ruby's.
-//!   Opal emits a v3 source map on request (measured at 0.4 ms), so the mapping exists and is cheap;
-//!   consuming it needs the Ruby guest to own its own `run`, which is what the SDK commit gives it.
-//!   Until then a located error points at a line of a file the model did not write, which is why the
-//!   arm cannot be registered on the substrate alone.
+//! * **The libraries are a bake-time fact about the artifact.** `packages/gg-sandbox-ruby/src/library.rb`
+//!   declares what a program may `require`, the guest build compiles exactly that set (and whatever
+//!   it in turn requires) out of the pinned Opal's own sources, and the catalogue's `libraries`
+//!   section is reflected from the same file — so the sentence a model reads and the modules the
+//!   component carries have one source.
+//! * **A guest backtrace is mapped back into the model's own Ruby.** The compile appends a v3 source
+//!   map (measured at 0.4 ms to produce), and the guest reads it — lazily, only when something
+//!   raised — so a located error names the line of Ruby the model wrote rather than a line of the
+//!   JavaScript Opal compiled it into.
+//! * **Opal is not CRuby**, and the differences are recorded rather than described: `1 / 0` is
+//!   `Infinity`, there is no bignum, and a `Symbol` *is* a `String`. The last is why this SDK
+//!   validates a fixed choice against its accepted set by hand — which is what rule 3 of the
+//!   agent-facing surface actually asks for — rather than trusting the language to distinguish
+//!   `:done` from `"done"`.
 
 /// The Opal compile: the host-side step that turns a model's Ruby into the guest's JavaScript.
 #[allow(dead_code)]
