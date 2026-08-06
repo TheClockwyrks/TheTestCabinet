@@ -1,0 +1,4 @@
+# Everything `build.sh` generates: the vendored wheels and the generated WIT bindings. Both are
+# derived from `requirements.txt` and `crates/gg/wit/gg-sandbox.wit`; only the component this
+# package bakes is committed, and it lives in the Rust crate that embeds it.
+.build/

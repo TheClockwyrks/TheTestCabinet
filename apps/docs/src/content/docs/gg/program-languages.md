@@ -616,6 +616,15 @@ writing the language it was told to write in — plausibly *better* than one ste
 its own standard library. And an agent has a `shell` tool in nearly every configuration, so
 denying the guest what the process already has would be theatre.
 
+It is also what makes a whole class of languages cheap instead of expensive, and that is now
+measured rather than argued. The [Python guest](#adding-a-language-worked-python) is the
+first that imports the whole surface, and building it *without* WASI is exactly what once
+priced the arm at six to ten weeks: with `--stub-wasi`, `datetime.now()`, `SystemRandom()`,
+`uuid4()`, `tempfile` and `threading` all **trap** — unshimmably, because they are
+C-implemented immutable types — and a trap takes the store down with nothing catchable and
+nothing to tell the model. Against the ambient surface all five are ordinary calls again and
+`threading` raises a catchable `RuntimeError`.
+
 The one thing the host withholds is **stdout**: gg's [telemetry](/gg/telemetry/) stream is
 the process's own stdout, so a guest write to it would corrupt the run's event stream. The
 TypeScript component is baked `--disable stdio` for that reason and rebinds `console.*` to
@@ -632,7 +641,10 @@ host defines them all the same, and a `componentize-py` guest importing them get
 
 That list is asserted against the committed artifact on every test run, because it is decided
 by the `--disable` flags in `packages/gg-sandbox/build.sh` and a flag changed there rewrites
-what a program can reach without touching a line of readable diff.
+what a program can reach without touching a line of readable diff. The Python guest's list is
+asserted the same way and for the same reason, and it is the other end of the range: fifteen
+membrane interfaces and **twenty** WASI ones, `wasi:filesystem` and all five `wasi:sockets`
+interfaces included.
 
 ## The agreement gate
 
@@ -730,20 +742,67 @@ registered language that *did* touch that package is
 [JavaScript](#javascript-the-same-arm-unchecked), because it is not a new guest at all —
 it is this one's catalogue emitted a second time under a second id.)
 
+Python is no longer hypothetical here: its **guest exists**, in
+`packages/gg-sandbox-python/` — the shim, the curated library set, the hand-run build, and
+the committed component. What does *not* exist yet is its SDK and its
+registration, which is why `python` is not a value an operator can configure. The split is
+deliberate: a `ProgramLanguage` arm cannot be half-registered — the registry's `match` is
+exhaustive and every gate that iterates the registered set would immediately demand a
+catalogue, two templates and a healing dialect — so the artifact is proven first, on its own,
+and the registration lands in one piece with the surface it registers.
+
 ### What was measured
 
-A spike answered the questions that could have made this a redesign rather than an
-addition, and the answers were good:
+A spike answered the questions that could have made this a redesign rather than an addition,
+and the guest that followed re-measured every one of them on the real artifact:
 
 | Question | Finding |
 | --- | --- |
 | Does another toolchain bind gg's existing WIT world? | **Yes.** `componentize-py` generates clean Python bindings for this exact world — 14 interfaces, ~55 typed functions with real records, enums and variants. WIT is a language-neutral IDL and behaves like one; no generic `call(name, json)` fallback was needed anywhere. |
-| What does baking one cost? | **~1.3 s**, which is a hand-run build step, not a problem. |
-| How big is the artifact? | **~17.5 MB**, against the JavaScript guest's ~13.4 MB. Larger, and the same *kind* of number: both embed a whole runtime. |
-| What does it import? | The **full WASI p2 surface** — `wasi:cli`, `wasi:filesystem`, `wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io`. |
+| What does baking one cost? | **~1.8 s**, which is a hand-run build step, not a problem. |
+| How big is the artifact? | **~23.5 MiB**, against the JavaScript guest's 13.4 MiB. Larger, and the same *kind* of number: both embed a whole runtime, and this one additionally carries a curated standard library. Not an exact number, because the build is not byte-reproducible — `componentize-py` snapshots a running interpreter's memory, so two builds of identical sources differ by tens of kilobytes. A test holds it to a 22–28 MiB band; **rebuilding to check whether the artifact is current does not work**, and its build script says so. |
+| What does it import? | The **full WASI p2 surface** — `wasi:cli`, `wasi:filesystem`, `wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io` — 20 interfaces beside the 15 membrane ones. |
+| What does a turn cost? | **~20 ms**, almost all of it the instantiate: ~17–22 ms to instantiate the component against the real linker and ~2.6 ms to evaluate a program. Against TypeScript's tens of microseconds and 0.7–3 ms that is a real difference and an irrelevant one — it is two hundredths of a second beside a model request measured in seconds. Baking the standard library in costs nothing here: a minimal component instantiates no faster. |
+| What does the one-per-process component compile cost? | **~3.5 s** in the dev test profile, paid by `precompile` and overlapped with the run's first model request. |
 
-All four are cheap facts. The fourth was once the open question; gg's linker now defines
-that whole surface for every guest.
+What it imports was once the open question, and the one that could have made this a redesign;
+gg's linker now defines that whole surface for every guest, so the answer is a fact about the
+artifact rather than a problem.
+
+### Two things the guest measured that nothing had
+
+**`--stub-wasi` was the whole of the old cost estimate.** An earlier study priced this arm at
+six to ten weeks on the strength of five standard-library families trapping unshimmably —
+`datetime.now()`, `random.SystemRandom()`, `uuid.uuid4()`, `tempfile`, `threading` — all of
+them C-implemented immutable types that no shim can monkey-patch. That was an artefact of the
+flag, whose own `--help` says it *"replace[s] all WASI imports with trapping stubs"*. Built
+against gg's ambient surface, every one of them works and `threading` raises a **catchable**
+`RuntimeError`. The difference between a trap and an exception is the difference between a
+turn that dies opaquely and a sentence a model can act on.
+
+**`sys.setrecursionlimit` is a store-killer, and `except` does not save you.** Raised past
+what the wasm stack holds, a `RecursionError` the program *already caught* takes the store
+down while CPython unwinds its traceback (`tb_dealloc` → `_Py_Dealloc` → `tb_dealloc`). The
+shim clamps the limit rather than trusting a handler. It is the kind of defect that only a
+real program run through a real store finds, which is why the arm was built substrate-first.
+
+### What a Python program is offered, and why that is a bake-time fact
+
+`componentize-py` bundles only the modules the entry module's import closure actually
+reached — measured by *executing* the import, so a function-local one does not count.
+Everything else is absent from the component's filesystem entirely, and a program that asks
+for it gets `ModuleNotFoundError`. So the library set is a property of the **artifact**, not
+a policy applied at run time: `src/library.py` imports what the arm offers, and a test asks
+the committed component which modules really landed.
+
+That is worth more than it costs. A study can state exactly what each arm was given, and the
+statement is checkable against the binary rather than against a promise. What is offered is
+most of the standard library plus two pinned pure-Python wheels (`PyYAML`, `tomli-w`);
+what is deliberately withheld is `asyncio` (nothing here is asynchronous), `subprocess` and
+`multiprocessing` (a component cannot spawn a process — `system.shell` is how an agent runs a
+command), and `unittest`/`doctest`. What is simply unavailable is `ssl`, `bz2`, `lzma`,
+`ctypes` and `curses`: `componentize-py`'s CPython is not built with them, and `ssl`'s absence
+is why `urllib.request` reaches `http://` and not `https://`.
 
 ### WASI
 
@@ -761,19 +820,30 @@ deadline guard does not help because it only refuses at the next bridged call. T
 until the run-level idle watchdog (30 minutes) declares the run hung. Nothing stalls: the
 program runs on a blocking thread, so sibling agents are unaffected.
 
-No guest gg ships today can reach this — TypeScript's shadows the timers and exposes no
-filesystem or socket API — but every compiled language being added can, and `time.sleep(60)`
-is an ordinary thing for a model to write. Closing it is a design decision, not a comment:
-async WASI with `call_async` so a park becomes a cancellable yield, or a wall-clock watchdog
-that can cancel a store from outside. **Settle it with the first such language, not after
-one.**
+No **registered** guest can reach this — TypeScript's shadows the timers and exposes no
+filesystem or socket API — but the [Python guest](#adding-a-language-worked-python) already
+can, and it has now been measured rather than reasoned about. `time.sleep(8)` against a
+**2 s** budget was stopped at 2.5 s, 2.7 s, 4.3 s, 7.0 s and 9.4 s across five runs of the
+same program: it *is* stopped, the trap lands, and the elapsed figure is honest — but where
+it lands is wherever CPython's sleep next re-enters wasm, and in the worst observed case that
+was only after the whole sleep had run. So the deadline is an upper bound on nothing, and a
+`time.sleep(3600)` would sit until the run-level idle watchdog declares the run hung.
+
+A runaway that *computes* is stopped exactly as intended: a Python `while True:` traps on the
+deadline every time, and that case has a test. Closing the sleeping case is a design decision,
+not a comment: async WASI with `call_async` so a park becomes a cancellable yield, or a
+wall-clock watchdog that can cancel a store from outside. **Settle it with the registration of
+the first such language, which is the first turn a model can reach it from.**
 :::
 
 ### The steps
 
-1. **A sibling guest directory** — say `packages/gg-sandbox-python/`, with a `pyproject.toml`
-   and its own build script driving `componentize-py`. It is not an npm workspace and shares
-   no code with the TypeScript package.
+1. **A sibling guest directory** — `packages/gg-sandbox-python/`, with its sources under
+   `src/`, its pinned third-party wheels in `requirements.txt`, and its own `build.sh`
+   driving `componentize-py`. It is not an npm workspace and shares no code with the
+   TypeScript package. **Decide the library set here**: `componentize-py` bakes only the
+   modules the entry module's import closure reached, so what a program can `import` is
+   settled by this directory and nowhere else.
 2. **Bind the one WIT.** `crates/gg/wit/gg-sandbox.wit` is the wire and there is exactly one
    copy of it. The guest binds it directly.
 3. **Hand-write the SDK**, idiomatic for the language, obeying the

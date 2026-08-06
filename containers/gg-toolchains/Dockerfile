@@ -79,6 +79,14 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # One block per program language, each installing under /opt/gg/toolchains and touching
 # nothing outside it. Added with the language that needs them; see the header for the two
 # constraints each must meet.
+#
+# Python: nothing, and that is a property of the strategy rather than an omission. Its
+# guest embeds a whole CPython (`componentize-py` links one against gg's WIT world), so a
+# program crosses the membrane as a string and is evaluated by an interpreter that is
+# already inside the committed component. There is no compiler on the turn path and
+# nothing to install — see `packages/gg-sandbox-python/README.md`. A *typed* Python arm,
+# should one be added, would be the thing that needs a block here: it type-checks the
+# model's program with a real host-side binary before the guest ever sees it.
 
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a

@@ -100,6 +100,17 @@ mod agreement;
 #[path = "language/isolation.rs"]
 mod isolation;
 
+/// The **Python guest's execution substrate**: the committed `componentize-py` component, proven to
+/// run real Python through gg's real linker, membrane and store.
+///
+/// A test module with no source module beside it, because the Python arm is landing in two pieces —
+/// the guest first, the idiomatic SDK and the registration together — and a [`ProgramLanguage`] arm
+/// cannot be half-registered. Its own documentation says why that split is the right one, and what
+/// turns this file into an ordinary `python.test.rs`.
+#[cfg(test)]
+#[path = "language/python.substrate.test.rs"]
+mod python_substrate;
+
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
 ///

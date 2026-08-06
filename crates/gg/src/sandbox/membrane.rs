@@ -364,10 +364,11 @@ fn wasi_context() -> WasiCtx {
 /// through its own language's file APIs rather than only through the [files](crate::tools) tools.
 ///
 /// Separate from [`wasi_context`] so that the one call in the sandbox whose failure is swallowed can
-/// still be *exercised*: nothing about a `WasiCtx` is inspectable once built, and no guest gg ships
-/// today imports `wasi:filesystem`, so without this a preopen that stopped succeeding — or a builder
+/// still be *exercised*: nothing about a `WasiCtx` is inspectable once built, and no **registered**
+/// guest imports `wasi:filesystem`, so without this a preopen that stopped succeeding — or a builder
 /// call dropped in a refactor — would go unnoticed until a language months later blamed its own
-/// toolchain.
+/// toolchain. It is no longer only a unit test that reaches it: the committed Python guest imports
+/// the whole filesystem surface, and its substrate test opens a real file from inside a program.
 fn preopen_root(builder: &mut WasiCtxBuilder) -> wasmtime::Result<()> {
     builder.preopened_dir("/", "/", DirPerms::all(), FilePerms::all())?;
     Ok(())

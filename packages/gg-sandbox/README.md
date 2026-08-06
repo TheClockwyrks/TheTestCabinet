@@ -171,11 +171,11 @@ obeys, and a worked walkthrough of adding Python — is
 [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md). What
 follows is this package's own side of it.
 
-A second program language is a **sibling directory** — say `packages/gg-sandbox-python/`,
-with a `pyproject.toml` and its own build script driving `componentize-py` — that
-is *not* an npm workspace and shares no code with this package. It is additive:
-nothing here changes when it lands. What it does share is three things, and only
-three.
+A second program language is a **sibling directory**, and there is now one to read:
+[`packages/gg-sandbox-python/`](../gg-sandbox-python/), whose `build.sh` drives
+`componentize-py` and which is *not* an npm workspace and shares no code with this
+package. It is additive: nothing here changed when it landed. What it does share is
+three things, and only three.
 
 **1. The WIT.** `crates/gg/wit/gg-sandbox.wit` is the wire, and there is exactly one
 copy of it: ~14 interfaces of typed functions with real records, enums and variants,

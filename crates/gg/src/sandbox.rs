@@ -342,8 +342,11 @@ pub fn run_program<A: ToolApi>(
 /// how a program's `Date.now()` and `crypto.randomUUID()` read the host's own clock and entropy —
 /// and imports neither `wasi:filesystem` nor `wasi:sockets`, because its component is baked without
 /// them. Those two are therefore *unused* by it rather than withheld from it, a distinction that
-/// matters the moment a second guest imports them. The exact list is asserted by
-/// `the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with`.
+/// stopped being hypothetical with the committed `componentize-py` guest, which imports the whole
+/// surface — twenty WASI interfaces to TypeScript's seven — and would not instantiate against a
+/// linker built to that guest's appetite. The exact lists are asserted by
+/// `the_committed_component_imports_the_membrane_and_the_wasi_it_was_baked_with` and by
+/// `the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface`.
 ///
 /// The one thing the host does not hand over is **stdout**: gg's telemetry stream *is* this
 /// process's stdout (`crate::telemetry`, newline-delimited JSON), so a guest write to fd 1 would
