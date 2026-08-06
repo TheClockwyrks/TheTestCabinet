@@ -68,3 +68,16 @@ threads-required = "num-test-threads"
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::purescript::substrate::sixteen_concurrent_preparations_each_get_their_own_program)'
 slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The seam's OWN isolation gate, for the same reason and by the same arithmetic. It drives every
+# registered language's program and module steps sixteen ways, so each compiled arm added to the
+# registry costs it another 32 real compiles — and PureScript's are the expensive ones, since `purs`
+# reads 9 MB of externs before it reads the program. Measured on this repository's dev container:
+# 19.5 s alone, and 116.8 s beside the whole workspace — against the default hard kill at 120 s,
+# which it reached on one run and then passed on the retry with 3.2 s to spare. A gate that is a coin
+# flip under CI load reads as a hang rather than as the thing it proves, and the property it proves
+# does not weaken when the machine is busy. Bounded from the work rather than from the default, with
+# room for the language arms still to register.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
+slow-timeout = { period = "120s", terminate-after = 3 }
