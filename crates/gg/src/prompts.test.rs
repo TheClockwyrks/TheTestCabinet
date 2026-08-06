@@ -2273,10 +2273,12 @@ fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
         // The documentation carve-out is not a `SurfaceCall` — it is seeded onto every object, so
         // it has no fixed pair — but it is the call an agent reads its own surface with, and the
         // prompt is where its name is established. It is asserted in its *generic* form: the bare
-        // call appears in the worked example too (`fs.list()`), so a prompt that dropped the rule
-        // and kept the example would satisfy `list()` while teaching the model nothing about the
-        // other eleven objects. The placeholder receiver is the rule.
-        let list = format!("<object>.{}()", crate::docs::LIST_FUNCTION);
+        // name appears in the worked example too (`fs.list`), so a prompt that dropped the rule and
+        // kept the example would satisfy `list` while teaching the model nothing about the other
+        // eleven objects. The **placeholder receiver** is the rule, and it is the whole of the rule:
+        // the parentheses this once demanded are spelling, and PureScript — where `list` takes no
+        // argument and `fs.list ()` would apply `Unit` to an `Effect` — is the arm that proved it.
+        let list = format!("<object>.{}", crate::docs::LIST_FUNCTION);
         assert!(
             rendered.contains(&list),
             "{name}: the prompt no longer tells the model how to list any object's functions \

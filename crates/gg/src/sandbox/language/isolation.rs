@@ -385,13 +385,21 @@ impl Preparation for LanguagePreparation {
     /// A source built out of the language's **own** SDK, so it is valid in that language's syntax
     /// and passes that language's own checker.
     ///
-    /// [`open_file_statement`](ProgramLanguage::open_file_statement) is the one call the seam
-    /// already requires every language to be able to write out, and it puts the marker inside a
-    /// call's argument — where a compiler that eliminates dead code cannot drop it, and where a
-    /// type checker will read it as the string the SDK declares.
+    /// [`open_docs_views_statement`](ProgramLanguage::open_docs_views_statement) is the one **whole
+    /// program** the seam requires every language to be able to write — it is the on-use script of
+    /// every built-in family skill, and a sibling gate already asserts that each language can prepare
+    /// what it generated. That is exactly what this needs, and it is why a *statement* is not: a
+    /// language whose programs are modules ([PureScript](super::purescript)) has no compiling
+    /// artifact for one loose line, so a subject built out of
+    /// [`open_file_statement`](ProgramLanguage::open_file_statement) would fail this gate's baseline
+    /// over its own syntax rather than over anything about isolation.
+    ///
+    /// The marker rides in as one of the names, which puts it inside a call's argument — where a
+    /// compiler that eliminates dead code cannot drop it, and where a type checker reads it as the
+    /// string the SDK declares.
     fn source(&self, marker: &str) -> String {
         self.language
-            .open_file_statement(&format!("/gg/isolation/{marker}.txt"), None)
+            .open_docs_views_statement(&[&format!("gg-isolation-{marker}")])
     }
 
     fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
