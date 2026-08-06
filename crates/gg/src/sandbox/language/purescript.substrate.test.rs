@@ -37,12 +37,12 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use wasmtime::component::Component;
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{
-    CallLog, FakeToolApi, all_tools, canned_outcome, typescript as typescript_language,
-};
+use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -57,13 +57,18 @@ use crate::tools::ToolOutcome;
 /// nothing for a component of its own to carry. See [the arm's own documentation](super) for the
 /// comparison with Ruby, which needed one.
 ///
-/// A plain `OnceLock` rather than the production per-language cache because that cache is indexed by
-/// the wire id this language does not have yet.
+/// A plain `OnceLock` rather than the production per-language cache, because that cache belongs to a
+/// running sandbox and these tests drive the pieces underneath one.
 fn component() -> &'static Component {
     static COMPILED: OnceLock<Component> = OnceLock::new();
     COMPILED.get_or_init(|| {
         engine::compile_bytes(typescript::COMPONENT).expect("the shared ECMAScript guest compiles")
     })
+}
+
+/// This arm, resolved through the registry it is now in.
+fn purescript() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::PureScript)
 }
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
@@ -80,12 +85,8 @@ fn prepare(source: &str) -> String {
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
 /// belongs to a *registered* language rather than to an artifact: the per-language component cache.
 ///
-/// The [membrane state](MembraneState) is built with **TypeScript** as its language, and that is
-/// sound rather than sloppy: a language is held there to spell a call's name back at the model
-/// inside a refusal, and this arm has no wire id to be looked up by until it is registered. It is
-/// also the closest possible stand-in, since this SDK's spellings *are* TypeScript's — the two
-/// languages name every function identically and differ in how a call is written, which is the one
-/// thing a refusal does not quote.
+/// The [membrane state](MembraneState) is built with **this** language, which is what a refusal
+/// naming a call resolves its spelling from.
 fn evaluate(
     program: &str,
     enabled: &[String],
@@ -105,7 +106,7 @@ fn evaluate(
         library,
     };
     let mut store = bounded_store(
-        MembraneState::new(api, typescript_language(), scope, limits, None),
+        MembraneState::new(api, purescript(), scope, limits, None),
         limits,
     );
     let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
@@ -592,87 +593,6 @@ fn the_arm_shares_the_ecmascript_guest_rather_than_carrying_its_own() {
     );
 }
 
-#[test]
-fn sixteen_concurrent_preparations_each_get_their_own_program() {
-    // The gate this arm exists to pass. `purs` is one of the two toolchains the feasibility study
-    // measured SILENT corruption on: eight concurrent compiles into one shared output tree produced
-    // a single `output/Main/index.js` holding two agents' programs interleaved, three times out of
-    // three, with every process exiting zero.
-    //
-    // This drives the seam's own isolation harness — the same one every registered language is held
-    // to, generic over a preparation precisely so an unregistered arm can be held to it too — at its
-    // full sixteen-way width, over both halves. It is not a copy of that gate; it is that gate,
-    // pointed here.
-    for preparation in [
-        &PureScriptPreparation::Program as &dyn super::super::isolation::Preparation,
-        &PureScriptPreparation::Module,
-    ] {
-        let breaches = super::super::isolation::breaches(preparation);
-        assert!(
-            breaches.is_empty(),
-            "{} is not isolated: {}",
-            preparation.describe(),
-            breaches
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("; "),
-        );
-    }
-}
-
-/// One half of this arm's preparation, as the [isolation harness](super::super::isolation) drives it.
-///
-/// A local implementation rather than an entry in that harness's own list because this language is
-/// not registered — `preparations()` is derived from the registry, so this arm joins it for free the
-/// day it has a trait implementation, and until then it is held to the same standard from here.
-enum PureScriptPreparation {
-    /// A model's reply.
-    Program,
-    /// A code skill's or memory's module.
-    Module,
-}
-
-impl super::super::isolation::Preparation for PureScriptPreparation {
-    fn describe(&self) -> String {
-        match self {
-            Self::Program => "PureScript program".to_string(),
-            Self::Module => "PureScript module".to_string(),
-        }
-    }
-
-    /// A source carrying `marker` inside a **string literal that a call consumes**, so that neither
-    /// `purs`'s own dead-code analysis nor `esbuild`'s tree shaking can drop it: it is an argument to
-    /// the one effect the program performs, or the value the module's one export returns.
-    fn source(&self, marker: &str) -> String {
-        match self {
-            Self::Program => format!(
-                "module Main where\n\
-                 import Prelude\n\
-                 import Effect (Effect)\n\
-                 import Effect.Class.Console as Console\n\
-                 \n\
-                 main :: Effect Unit\n\
-                 main = Console.log \"/gg/isolation/{marker}.txt\"\n"
-            ),
-            Self::Module => format!(
-                "module Helpers (marker) where\n\
-                 \n\
-                 marker :: String\n\
-                 marker = \"/gg/isolation/{marker}.txt\"\n"
-            ),
-        }
-    }
-
-    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        match self {
-            Self::Program => compile_program(source, context).map(|prepared| prepared.source),
-            Self::Module => compile_module(source, context),
-        }
-        .map_err(|failure| failure.to_string())
-    }
-}
-
 /// One tool, called through the PureScript spelling of it, and the JSON gg's dispatch must have seen.
 struct Crossing {
     /// The gg tool name the call must arrive under.
@@ -1153,43 +1073,41 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     assert_eq!(logs(&outcome), ["NotFound on read_file"]);
 }
 
-/// The catalogue this arm commits, read a step before the language that owns it is registered.
+/// The catalogue this arm commits, read as a document rather than through the language, because what
+/// is asserted below is a property of the emitted JSON's *shape*.
 const SIGNATURES: &str = include_str!("../guests/purescript.signatures.json");
 
+/// **Every optional argument this arm has is a record FIELD**, which is the shape it brought to the
+/// catalogue schema and which nothing had produced at this scale.
+///
+/// The cross-language half of this claim is now the [agreement gate](super::super::agreement)'s, run
+/// over the registry with this arm inside it — a stronger check than the one that stood here before
+/// registration, which had to lend the catalogue the fixture's wire id in order to be run at all.
+/// What is left here is the part no comparison can make: that PureScript's answer to "how does an
+/// optional argument arrive?" really is a row rather than an argument, in every one of its tools.
 #[test]
-fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
-    // The **real** agreement gate, over the real PureScript catalogue. It is what stands between a
-    // configured `language` param and an invalidated study: two internally-consistent surfaces that
-    // disagree with each other are two green test suites, and this is the only thing that compares
-    // them. Running it here rather than waiting for registration is deliberate — the commit that
-    // registers a language is the one least able to absorb a surface that turns out to disagree.
-    let mut document: Value =
+fn every_optional_argument_is_a_field_of_a_record() {
+    let document: Value =
         serde_json::from_str(SIGNATURES).expect("the committed PureScript catalogue is valid JSON");
     assert_eq!(
         document["language"],
         json!("purescript"),
         "the catalogue says whose spellings it carries"
     );
-    // `language` is the wire enum, which has no `purescript` variant until the registration step adds
-    // one. The gate never reads it — provenance is asserted per *registered* language, against the
-    // language that embedded the file — so it is stood in for here rather than being the reason this
-    // check has to wait.
-    document["language"] = json!("typescript");
-    let candidate = super::super::fixture::a_language_whose_catalogue_is(&document.to_string());
 
-    let found = super::super::agreement::disagreements(&[typescript_language(), candidate]);
-    assert!(
-        found.is_empty(),
-        "the PureScript catalogue does not describe the same capability surface TypeScript does:\n{}",
-        found
-            .iter()
-            .map(|disagreement| format!("  - {}\n", disagreement.detail))
-            .collect::<String>()
+    let optional_arguments: usize = document["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .flat_map(|entry| entry["signatures"].as_array().into_iter().flatten())
+        .flat_map(|signature| signature["parameters"].as_array().into_iter().flatten())
+        .filter(|parameter| parameter["optional"] == json!(true))
+        .count();
+    assert_eq!(
+        optional_arguments, 0,
+        "an optional argument here is a field of a record argument, never an argument"
     );
 
-    // The first arm whose optional arguments are a RECORD: every one of them is a field of an
-    // argument rather than an argument, which is a shape the schema always had and no registered
-    // language had yet produced at this scale.
     let optional: usize = document["tools"]
         .as_array()
         .into_iter()

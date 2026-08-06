@@ -4376,6 +4376,20 @@ pub enum GgProgramLanguage {
     /// body, `Range` for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice,
     /// and a raised `ToolError` that is a `StandardError`.
     Ruby,
+    /// PureScript: **compiled to JavaScript on the host by `purs`**, flattened into one script by
+    /// `esbuild`, and evaluated by the same ECMAScript guest
+    /// [`TypeScript`](Self::TypeScript) uses.
+    ///
+    /// The first arm whose compiler is a **binary in the run image** rather than something gg
+    /// carries — `purs` is a ~100 MB statically linked Haskell executable — and the first whose
+    /// committed artifact is not a compiler but the compiled library set that compiler cannot work
+    /// without, gg's own SDK compiled into it. It is checked in the strongest sense any arm is:
+    /// a real type system reads the whole program, so a call written with the wrong argument shape
+    /// costs a diagnostic rather than a turn. Its SDK is hand-written and reads as PureScript
+    /// reads — curried functions, an API object as a record of functions, optional arguments as a
+    /// row-checked record, `Maybe`/`Either` where a PureScript author expects them, `data` types
+    /// for fixed choices, and a thrown failure caught with `attempt`.
+    PureScript,
 }
 
 impl GgProgramLanguage {
@@ -4388,8 +4402,13 @@ impl GgProgramLanguage {
     /// to the enum and forgotten here is therefore a build failure rather than a language that
     /// silently vanishes from [`from_id`](Self::from_id), from gg's registry, and from every gate
     /// that iterates them.
-    pub const ALL: &'static [GgProgramLanguage] =
-        &[Self::TypeScript, Self::JavaScript, Self::Python, Self::Ruby];
+    pub const ALL: &'static [GgProgramLanguage] = &[
+        Self::TypeScript,
+        Self::JavaScript,
+        Self::Python,
+        Self::Ruby,
+        Self::PureScript,
+    ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
     /// per-language table gg indexes by [`ordinal`](Self::ordinal).
@@ -4408,6 +4427,7 @@ impl GgProgramLanguage {
             Self::JavaScript => const { Self::listed_at(1, Self::JavaScript) },
             Self::Python => const { Self::listed_at(2, Self::Python) },
             Self::Ruby => const { Self::listed_at(3, Self::Ruby) },
+            Self::PureScript => const { Self::listed_at(4, Self::PureScript) },
         }
     }
 
@@ -4437,6 +4457,7 @@ impl GgProgramLanguage {
             Self::JavaScript => "javascript",
             Self::Python => "python",
             Self::Ruby => "ruby",
+            Self::PureScript => "purescript",
         }
     }
 
@@ -4459,6 +4480,7 @@ impl GgProgramLanguage {
             Self::JavaScript => "JavaScript",
             Self::Python => "Python",
             Self::Ruby => "Ruby",
+            Self::PureScript => "PureScript",
         }
     }
 }

@@ -27,14 +27,16 @@ the capability exists to measure.
 
 Which **language** that program is written in is a second axis of the same kind, and it is
 [first-class](#the-program-language): gg registers a *set* of program languages and a run
-picks one per agent. Four are registered: TypeScript, which is the default;
+picks one per agent. Five are registered: TypeScript, which is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked), which is the same
 arm with the [type check](#stripped-and-checked) removed and nothing else changed;
 [Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter), whose
 guest carries its own CPython so a program reaches it as source with no compiler on the
-turn path; and
+turn path;
 [Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses), which a real
-compiler reads whole — and may refuse — before it runs, with no type system anywhere. Every example on this page is TypeScript — and where a passage below quotes a
+compiler reads whole — and may refuse — before it runs, with no type system anywhere; and
+[PureScript](/gg/program-languages/#purescript-a-compiler-in-the-image-a-library-set-in-the-binary),
+which a real compiler in the run image reads whole *and* type-checks. Every example on this page is TypeScript — and where a passage below quotes a
 spelling, a type-strip or a fence tag, it is TypeScript's answer to a question **every**
 language answers. [Program languages](/gg/program-languages/) is the design of that seam.
 
@@ -1561,17 +1563,21 @@ axis**: gg holds a set of program languages, each of which answers the same ques
 how to prepare a model's reply into something its guest evaluates, which committed guest
 and signature catalogue are its own, what its guest needs from the host linker, which
 [healing](/gg/response-healing/) questions have language-shaped answers, and which system
-prompt teaches it. Four are registered. TypeScript is the default;
+prompt teaches it. Five are registered. TypeScript is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is the same surface,
 the same guest and the same signatures with the `tsc` pass taken out, so an A/B across that
 pair measures what checking a program before it runs is worth;
 [Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter) is a
 different language rather than a variation on one — its own hand-written SDK, its own guest,
-its own healing dialect, and no compiler anywhere on the turn path; and
+its own healing dialect, and no compiler anywhere on the turn path;
 [Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses) is compiled to
 JavaScript by a committed Opal before it crosses, which makes it the arm that separates
 *compiled* from *typed*: its programs are read and may be refused before they run, and
-their types are never checked at all. This
+their types are never checked at all; and
+[PureScript](/gg/program-languages/#purescript-a-compiler-in-the-image-a-library-set-in-the-binary)
+is the far end of that same axis — a real `purs` in the run image reads the whole program
+and checks its types, so a wrong argument shape or a missing case costs a diagnostic rather
+than a turn. This
 section is the capability's view of that seam; the design of it — the rules every
 language's surface obeys, why each SDK is hand-written, and what adding one costs — is
 [its own page](/gg/program-languages/).
@@ -1656,7 +1662,7 @@ The capability is `responses-as-code`, under **Models & tools** in the
 
 | Param | Default | Notes |
 | --- | --- | --- |
-| `language` | `typescript` | The [program language](#the-program-language) this agent writes in — `typescript`, `javascript` or `python`. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
+| `language` | `typescript` | The [program language](#the-program-language) this agent writes in — `typescript`, `javascript`, `python`, `ruby` or `purescript`. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `imageViewCap` | unset — no ceiling | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |

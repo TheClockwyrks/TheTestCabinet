@@ -11,14 +11,17 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Four are registered, and between them they separate three things that used to be one. TypeScript
+Five are registered, and between them they separate three things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
 different language rather than a variation on one, and nothing reads its programs before the
-interpreter does; and **[Ruby](#ruby-compiled-to-javascript-before-it-crosses)** is
+interpreter does; **[Ruby](#ruby-compiled-to-javascript-before-it-crosses)** is
 **compiled without being typed** — a real compiler reads the whole program and may refuse it,
-with no type system anywhere. This page is the design of the seam: why the
+with no type system anywhere; and
+**[PureScript](#purescript-a-compiler-in-the-image-a-library-set-in-the-binary)** is the far end
+of that axis, **compiled and totally typed** by a real compiler that lives in the run image
+rather than inside gg. This page is the design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
 capabilities, and what adding another actually costs.
@@ -446,14 +449,11 @@ lexical scope — the top level — rather than to the module it is evaluated ag
 
 ## PureScript: a compiler in the image, a library set in the binary
 
-The fifth arm, and the first that is **not yet registered**: what exists is its execution
-substrate and its **surface** — the compile, the guest, the hand-written SDK a program is
-written against, the catalogue reflected out of it, and the proof that a real PureScript program
-runs through gg's real linker, membrane and store and reaches every one of gg's tools. What is
-left is the registration. There is no `language: "purescript"` an operator can configure yet,
-deliberately: a `ProgramLanguage` cannot be half-registered, because the registry's match is
-exhaustive and every gate that iterates the registered set would demand two prompt templates and
-a healing dialect the moment the enum carried a variant for it.
+The fifth registered arm, and the first whose compiler is a **binary in the run image** rather
+than something gg carries inside its own executable. It is also the only arm besides TypeScript
+whose programs are read by a **type system** — and, unlike TypeScript's, by a total one over a
+language designed for it, which is what makes the pair the two ends of the axis a study of
+*checked* against *typed* actually varies.
 
 **A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one
 script by `esbuild`, and evaluated by the same ECMAScript guest the TypeScript and JavaScript
@@ -698,6 +698,74 @@ A code [skill](/gg/skills/)'s or [memory](/gg/memories/)'s module is an ordinary
 module too, compiled the same way; its exports are what `lib.<key>` offers, and they are curried,
 because that is what a PureScript function is.
 
+Its exports are also the module's own answer rather than a convention gg imposed, which is more
+than either of the other compiled arms could manage: `module Helpers (greet, add) where` says
+exactly what it offers and a header with no list offers everything its top level declares, and
+`purs` honours both. What gg *reports* for `lib.<key>` is the **values** among them — the names a
+field access can reach — and deliberately not a data constructor, which `purs` really does export
+and which naming would take reading the `data` declaration the header refers to. Under-reporting
+is free there; a name gg failed to list is bound by the guest all the same.
+
+One thing about `lib.<key>` is forced rather than chosen, and it is the reason this arm's binding
+convention differs from [TypeScript's](#javascript-the-same-arm-unchecked) in one place: the key is a
+**record label**, and PureScript will not parse an upper-case one unquoted (`s.Foo` is
+`Unexpected token 'Foo'`). So a skill called `CSV-tools` binds at `lib.csvTools` — camelCase like
+TypeScript's, with the leading run brought down whole rather than one character at a time.
+
+### What its dialect says, and the answer that runs the other way
+
+[Response healing](/gg/response-healing/) asks each language the same seven questions. Three of
+this arm's answers are its own, and the first of them is the most interesting thing on this page
+about how a dialect is *derived* rather than copied.
+
+**A `#` line is prose here, and is deleted.** [Python](#python-a-guest-that-carries-its-own-interpreter)
+and [Ruby](#ruby-compiled-to-javascript-before-it-crosses) both refuse to delete one, because
+`# Plan` is a Markdown heading *and* a comment in those languages and nothing lexical tells them
+apart — so the heading survives into the program and costs nothing. PureScript comments with `--`
+and `{- … -}`, and `#` is an ordinary operator; a `## Plan` left in a program is a parse error
+rather than a comment. The rule is unchanged in all three — never delete a comment, never keep a
+heading — and it lands the opposite way here because the language does. `--` takes the other half
+of the same rule: a `--` line is never prose.
+
+**The concurrency wrapper is a monad, not a block.** Every other arm's wrapper *encloses* the
+program: an `async function` with a body, an `async def` with an indented suite, a
+`Thread.new do … end`. PureScript's does not — the shape a model reaches for is
+`main = launchAff_ do`, and what makes that block asynchronous is the monad it is in. So the
+deletion is distributed: the wrapper token on `main`'s right-hand side, and the `Effect.Aff`
+import that made it reachable, exactly as Python's `asyncio` import comes off with its wrapper.
+What is left is the same `do` block in `Effect`, which is the monad every call in this SDK is
+already in.
+
+Two things make that repair provable rather than hopeful. `aff` is deliberately **not** in the
+shipped library set, so a program wearing the wrapper cannot compile at all and there is no
+working behaviour to preserve. And the wrapper must be on **`main`**, which is the one
+declaration gg's own entry module calls — so "the program invokes the wrapper", which every other
+arm has to look for in the text, is a property of the compile here. A wrapper on any other
+declaration, or a program that does more with `Aff` than wrap itself in it, is declined. The
+count of suspension tokens removed is **zero**, honestly, because PureScript has no `await`;
+`liftEffect` is the nearest thing and is left alone, since an `Effect` is a `MonadEffect` and
+`liftEffect` there is the identity.
+
+**A doubled program is halved, and the proof is the compiler's.** This is the first arm since the
+ECMAScript pair to answer `declares_a_redeclarable_binding` with anything but `false`, and every
+clause of it was measured against the real `purs`: two module headers is `ErrorParsingModule`
+(*Unexpected token 'module'*), and `main :: Effect Unit` or `main = …` twice is `RedefinedIdent`
+(*The value main has been defined multiple times*) whether the two are adjacent or not. What is
+deliberately *not* proof is a definition **with arguments** — `f 0 = 1` and `f n = n` are two
+equations of one declaration, which is ordinary PureScript — and that exclusion is what keeps the
+strategy from deleting work a model asked to have done.
+
+Two smaller answers are worth naming because both are places a naive lexer loses the source.
+`--` is only a comment when the run of dashes is followed by something that is **not** a symbol
+character, because `-->` is an operator a program may define; and a `'` is a **prime** on an
+identifier unless it opens a character literal that closes within the handful of bytes one can
+be. Reading either wrongly masks the rest of a line — and the rest of a line is where a wrapper
+lives.
+
+An import is **never** deleted, for the reason [Python's](#python-a-guest-that-carries-its-own-interpreter)
+never is and then some: `purs` resolves every one of them against a library set gg ships, and
+`import Gg` is the line without which a program has no surface at all.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -895,8 +963,14 @@ Three gates, none of which a language opts into:
    distinguishable input, and requires every result to belong to its own input: it
    succeeded, it carries its own marker, it carries no other preparation's marker, it
    matches what the same input produced alone, and no two of the sixteen were handed the
-   same workspace. The list of languages is derived from the registry, so a new arm is
-   inside the gate the moment it compiles — including one that compiles nothing:
+   same workspace. The input it drives them with is each language's own
+   [generated documentation program](#the-steps) with the marker as one of its names — the one
+   *whole program* the seam requires every language to be able to write. It used to be a single
+   synthesized file-view statement, and PureScript is why it is not: a language whose programs are
+   **modules** has no compiling artifact for one loose line, so that subject would have failed this
+   gate's own baseline over syntax rather than over anything about isolation. The list of languages
+   is derived from the registry, so a new arm is inside the gate the moment it compiles —
+   including one that compiles nothing:
    [Python](#python-a-guest-that-carries-its-own-interpreter) is driven sixteen ways like
    every other arm, opens no workspace and spawns no process, and passes because a
    preparation that touches nothing shared trivially satisfies a rule about shared state.
@@ -1393,7 +1467,10 @@ The surface was not taken on trust in the meantime, which is the part worth copy
 *before* it was registered, wearing the [fixture language](#the-agreement-gate) so it could be
 handed a catalogue whose id the wire enum did not carry yet; and every one of the thirty-five
 tools was driven through the real membrane from its Python spelling, against the same expected
-JSON the TypeScript arm's crossing table asserts. That the two arms produce byte-identical
+JSON the TypeScript arm's crossing table asserts. Every arm since has done the same, and the
+fixture's borrowed-catalogue constructor lives exactly as long as it is needed: it is added by the
+step that has an unregistered catalogue to check and removed by the step that registers it, so
+there is never a facility in the tree that nothing uses. That the two arms produce byte-identical
 arguments for the same capability is the property a cross-language study rests on, and it was
 checked a step before the commit least able to absorb a surprise. Both halves are ordinary
 registered-language gates now.

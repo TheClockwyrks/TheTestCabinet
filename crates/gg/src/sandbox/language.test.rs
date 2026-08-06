@@ -486,15 +486,33 @@ fn the_fixture_language_has_no_wire_id() {
 /// A pair listed here is held to something *stronger* than the rule, not weaker: the sharing must be
 /// real (the same bytes, not two files that happen to agree today), and everything a language owns
 /// beyond the shared artifact must still be its own.
-const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[(
-    GgProgramLanguage::TypeScript,
-    GgProgramLanguage::JavaScript,
-    "the two arms differ in whether gg type-checks a program before handing it over, and in \
-     nothing else — the same SDK, the same signatures, the same strip, one evaluator. A second, \
-     byte-identical 13.4 MB component in the repository would be a second copy of one artifact, \
-     with nothing to observe between them and a standing chance for the one thing the arms must \
-     share to diverge",
-)];
+const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
+    (
+        GgProgramLanguage::TypeScript,
+        GgProgramLanguage::JavaScript,
+        "the two arms differ in whether gg type-checks a program before handing it over, and in \
+         nothing else — the same SDK, the same signatures, the same strip, one evaluator. A second, \
+         byte-identical 13.4 MB component in the repository would be a second copy of one artifact, \
+         with nothing to observe between them and a standing chance for the one thing the arms must \
+         share to diverge",
+    ),
+    (
+        GgProgramLanguage::TypeScript,
+        GgProgramLanguage::PureScript,
+        "a PureScript program is compiled to JavaScript by `purs` and flattened by `esbuild` before \
+         it crosses, and what arrives is a self-contained script with no runtime to boot — `purs` \
+         compiles the library code a program used into the program and the bundler tree-shakes the \
+         rest away. So a component of its own would differ from this one in nothing at all, where \
+         Ruby's differs in a 743 KB Opal runtime pre-initialised into it. Measured: 2.7 ms per turn \
+         against 2.1 ms for the equivalent plain JavaScript on the same artifact",
+    ),
+    (
+        GgProgramLanguage::JavaScript,
+        GgProgramLanguage::PureScript,
+        "the transitive half of the two entries above: JavaScript serves TypeScript's component and \
+         so does PureScript, so this pair shares one by consequence rather than by a third decision",
+    ),
+];
 
 /// Why `a` and `b` are allowed to share a component, or `None` if they are not.
 fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'static str> {

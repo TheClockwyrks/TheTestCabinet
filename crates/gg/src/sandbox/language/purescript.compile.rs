@@ -195,7 +195,8 @@ struct Manifest {
     /// The registry package set the versions below were resolved against.
     ///
     /// Read by this arm's own gate rather than at run time: what a program is compiled against is the
-    /// tree, and the set that produced it is provenance.
+    /// tree, and the set that produced it is provenance — held to the committed `spago.lock`, which
+    /// is what the build resolved through.
     #[cfg_attr(
         not(test),
         allow(dead_code, reason = "read by the library set's own drift gate")
@@ -219,10 +220,18 @@ struct Manifest {
     )]
     modules: usize,
     /// Every package in the tree, transitive ones included, as it is named on disk.
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "read by the library set's own drift gate")
+    )]
     packages: Vec<Package>,
 }
 
 /// One package in the shipped library set.
+#[cfg_attr(
+    not(test),
+    allow(dead_code, reason = "read by the library set's own drift gate")
+)]
 #[derive(Debug, Deserialize)]
 struct Package {
     /// Its registry name — `ordered-collections`.
@@ -233,6 +242,10 @@ struct Package {
 
 impl Package {
     /// The directory this package's sources are staged under: `ordered-collections-3.2.0`.
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "read by the library set's own drift gate")
+    )]
     fn directory(&self) -> String {
         format!("{}-{}", self.name, self.version)
     }

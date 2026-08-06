@@ -294,6 +294,17 @@ fn the_manifest_describes_the_tree_that_actually_shipped() {
         "the manifest counts the modules"
     );
 
+    // And the provenance: the registry package set these versions were resolved against, which is
+    // the one thing in the manifest that is not observable in the tree. It is held to the committed
+    // lockfile instead — `spago.lock` is what `build.sh` resolved through, so a manifest claiming
+    // one package set over a tree built from another fails here rather than being believed.
+    let lock = include_str!("../../../../../packages/gg-sandbox-purescript/spago.lock");
+    assert!(
+        lock.contains(&format!("\"registry\": \"{}\"", manifest().registry)),
+        "the manifest names package set {} and the committed lockfile does not",
+        manifest().registry
+    );
+
     // The set the owner named specifically, asserted rather than described.
     for package in ["ordered-collections", "transformers", "profunctor-lenses"] {
         assert!(

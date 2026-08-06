@@ -912,6 +912,11 @@
           "const": "ruby",
           "description": "Ruby: **compiled to JavaScript on the host by Opal**, and evaluated by a guest that carries\nOpal's runtime, gg's Ruby SDK and the libraries a program may `require`, all pre-initialised\ninto it.\n\nThe first arm whose program is neither evaluated as written nor lowered by a parse gg carries\nin-process: a real compiler runs in a real process on the turn path, so this arm reports a\ncompile time and can tell a model *the compiler read your program and refused it* — which is\nthe band [`Python`](Self::Python) has no producer for. The compiler is itself Ruby compiled to\nJavaScript, so it rides inside gg's binary and the run image gains nothing. Its SDK is\nhand-written and reads as Ruby reads — `snake_case`, keyword arguments, blocks for a long\nbody, `Range` for a span, splats for a list, `?` on a predicate, Symbols for a fixed choice,\nand a raised `ToolError` that is a `StandardError`.",
           "type": "string"
+        },
+        {
+          "const": "purescript",
+          "description": "PureScript: **compiled to JavaScript on the host by `purs`**, flattened into one script by\n`esbuild`, and evaluated by the same ECMAScript guest\n[`TypeScript`](Self::TypeScript) uses.\n\nThe first arm whose compiler is a **binary in the run image** rather than something gg\ncarries — `purs` is a ~100 MB statically linked Haskell executable — and the first whose\ncommitted artifact is not a compiler but the compiled library set that compiler cannot work\nwithout, gg's own SDK compiled into it. It is checked in the strongest sense any arm is:\na real type system reads the whole program, so a call written with the wrong argument shape\ncosts a diagnostic rather than a turn. Its SDK is hand-written and reads as PureScript\nreads — curried functions, an API object as a record of functions, optional arguments as a\nrow-checked record, `Maybe`/`Either` where a PureScript author expects them, `data` types\nfor fixed choices, and a thrown failure caught with `attempt`.",
+          "type": "string"
         }
       ]
     },

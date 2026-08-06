@@ -86,14 +86,6 @@ mod python;
 #[path = "language/ruby.rs"]
 mod ruby;
 
-/// The **PureScript arm's execution substrate** — its host-side `purs` compile and the ECMAScript
-/// guest it shares — ahead of the trait implementation that registers it.
-///
-/// A module with no [`ProgramLanguage`] arm beside it, for the reason [`ruby`] had none when its own
-/// substrate landed: a `ProgramLanguage` cannot be half-registered, because the registry's `match`
-/// below is exhaustive and every gate that iterates the registered set would demand a catalogue, two
-/// templates and a healing dialect the moment [`GgProgramLanguage`] carried a variant for it. Its own
-/// documentation says what the arm is and what registering it still needs.
 #[path = "language/purescript.rs"]
 mod purescript;
 
@@ -698,6 +690,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
         GgProgramLanguage::JavaScript => &javascript::JAVASCRIPT,
         GgProgramLanguage::Python => &python::PYTHON,
         GgProgramLanguage::Ruby => &ruby::RUBY,
+        GgProgramLanguage::PureScript => &purescript::PURESCRIPT,
     }
 }
 
@@ -914,6 +907,7 @@ pub struct ResolvedProgramLanguage {
 /// | `"javascript"` | [`JavaScript`](GgProgramLanguage::JavaScript) — the same surface, unchecked |
 /// | `"python"` | [`Python`](GgProgramLanguage::Python) — a committed CPython, evaluating the reply as written |
 /// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the committed Opal, then evaluated |
+/// | `"purescript"` | [`PureScript`](GgProgramLanguage::PureScript) — type-checked and compiled to JavaScript by the image's `purs`, bundled, then evaluated |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason
