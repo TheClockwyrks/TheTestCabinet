@@ -534,11 +534,12 @@ convention is the language's) written on that argument, and a type member's from
 above the member. A description kept anywhere else is a description that drifts, and nothing
 would catch it.
 
-It has eight sections:
+It has nine sections:
 
 | Section | What it carries |
 | --- | --- |
 | `objects` | Every API object a program's surface is divided into, **in the order the surface is presented in**, each with the sentence the system prompt introduces it by. The order is model-facing: it is what the prompt's API list and the run's [agent surface](/gg/agent-surface/) both render. |
+| `libraries` | The **libraries a program may import**, grouped as the artifact that decides the set groups them, each name spelled exactly as a program must write it. The one section that is not a signature, and it is here for the same reason the rest is: it is model-facing text about the arm's surface, so it is reflected out of the code that decides the set rather than described in a prompt. Absent for a language whose programs get their runtime's own standard library and nothing more. |
 | `meta` | The functions that hang off **no** object because they hang off all of them — today just `list`, the directory every object carries. Its entries have no `object` field, because any object one of them named would be a claim about the eleven it is also on. |
 | `session` | The [ending calls](/gg/ending-a-session/), one group per role. |
 | `views` | The `view` object — the calls that put material into the agent's own context window. |
@@ -890,12 +891,43 @@ the committed component which modules really landed.
 
 That is worth more than it costs. A study can state exactly what each arm was given, and the
 statement is checkable against the binary rather than against a promise. What is offered is
-most of the standard library plus two pinned pure-Python wheels (`PyYAML`, `tomli-w`);
-what is deliberately withheld is `asyncio` (nothing here is asynchronous), `subprocess` and
-`multiprocessing` (a component cannot spawn a process — `system.shell` is how an agent runs a
-command), and `unittest`/`doctest`. What is simply unavailable is `ssl`, `bz2`, `lzma`,
-`ctypes` and `curses`: `componentize-py`'s CPython is not built with them, and `ssl`'s absence
-is why `urllib.request` reaches `http://` and not `https://`.
+around ninety modules — a **curated subset** of the standard library, not all of it — plus two
+pinned pure-Python wheels (`PyYAML`, `tomli-w`). What is deliberately withheld is `asyncio`
+(nothing here is asynchronous), `subprocess` and `multiprocessing` (a component cannot spawn a
+process — `system.shell` is how an agent runs a command), and `unittest`/`doctest`. What is
+simply unavailable is `ssl`, `bz2`, `lzma`, `ctypes` and `curses`: `componentize-py`'s CPython
+is not built with them, and `ssl`'s absence is why `urllib.request` reaches `http://` and not
+`https://`.
+
+#### The model is told the set, and is told it from the artifact
+
+"Curated subset" is the kind of fact a prompt gets wrong. This one's prompt did: it claimed the
+whole standard library of CPython 3.14 was importable apart from three named modules, where
+`library.py`'s closure had baked around ninety — so a model that wrote `import unittest` or
+`import concurrent.futures` spent a turn discovering a sentence was out of date, and nothing
+gated the sentence.
+
+So the library set is reflected, exactly as a signature is. `signatures.py` reads the
+module-scope imports of `src/library.py` — the file that *decides* the set, because that closure
+is what gets baked — together with the `# --- … ---` headings they are filed under, and emits
+them as the catalogue's [`libraries`](#the-catalogue) section. The system prompt renders that
+section, so what a model is told it may import is what the component was built with, down to the
+dotted name (`urllib.parse`, not `urllib`, because its siblings are not there).
+
+Three gates hold it:
+
+- the reflector refuses an import it cannot group, a `from … import …`, a duplicate, or a
+  grouped scan that disagrees with what `ast` reports the module-scope imports to be;
+- `a_language_that_declares_libraries_names_every_one_in_its_prompt` renders the prompt of every
+  registered language and requires each declared group's heading and its exact comma-joined list
+  to appear in it — so a catalogue entry withheld from the model fails;
+- `the_committed_guest_carries_every_library_the_prompt_names` drives that same list into the
+  **committed component** and imports every name inside it, so a curated import dropped in a
+  rebuild fails here rather than in a run.
+
+The three named absences the prompt still states in prose — `asyncio`, `subprocess`/
+`multiprocessing`, `ssl` — are held by the second half of that substrate test, which imports each
+one and requires `ModuleNotFoundError`.
 
 ### WASI
 
@@ -963,7 +995,10 @@ model reaches by accident rather than by writing a sleep.
    driving `componentize-py`. It is not an npm workspace and shares no code with the
    TypeScript package. **Decide the library set here**: `componentize-py` bakes only the
    modules the entry module's import closure reached, so what a program can `import` is
-   settled by this directory and nowhere else.
+   settled by this directory and nowhere else. Declare it in the catalogue's
+   [`libraries`](#the-catalogue) section rather than describing it in a template: what the model
+   is told it may import has to be read off whatever decides the set, or it is one more sentence
+   that drifts.
 2. **Bind the one WIT.** `crates/gg/wit/gg-sandbox.wit` is the wire and there is exactly one
    copy of it. The guest binds it directly.
 3. **Hand-write the SDK**, idiomatic for the language, obeying the
@@ -977,8 +1012,9 @@ model reaches by accident rather than by writing a sleep.
 4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in
    [the same shape](#the-catalogue), with `language: "python"` and the same `key`s: the
    `objects` section in presentation order, one entry per function with its `signatures` and
-   each signature's arguments, every type with its own description and its members', and the
-   `meta` section carrying `list`. It
+   each signature's arguments, every type with its own description and its members', the
+   `meta` section carrying `list`, and — if the arm ships a curated library set — the
+   `libraries` section reflected out of whatever decides it. It
    need not use the TypeScript package's reflector — only the emitted JSON is contractual —
    and Python's does not: `packages/gg-sandbox-python/tools/signatures.py` reads the SDK with
    **`griffe`**, the language's own documentation tool, statically and without importing it

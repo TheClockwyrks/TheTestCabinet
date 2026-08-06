@@ -64,8 +64,14 @@
 //!
 //! What a program may `import` is settled by that build and by nothing at run time: the entry
 //! module's import closure is what gets baked, so `packages/gg-sandbox-python/src/library.py` *is*
-//! the library set. Most of the standard library plus two pinned pure-Python wheels are in;
-//! `asyncio`, `subprocess` and `multiprocessing` are deliberately out.
+//! the library set. Around ninety modules — a **curated subset** of the standard library, not all
+//! of it — plus two pinned pure-Python wheels are in; `asyncio`, `subprocess` and `multiprocessing`
+//! are deliberately out.
+//!
+//! That set is model-facing text about this arm, so it obeys the rule the catalogue exists for: the
+//! reflector reads those imports and emits them as the catalogue's `libraries` section, and
+//! [`PROMPT`] renders that section. Nothing here describes the set in prose — the sentence that once
+//! did claimed a whole standard library that was never baked.
 
 use std::sync::OnceLock;
 

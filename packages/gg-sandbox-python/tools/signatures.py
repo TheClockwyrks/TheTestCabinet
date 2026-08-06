@@ -36,6 +36,12 @@ And one more that is this language's own: every public declaration in `gg/types.
 must appear in `TYPE_ORDER`. A type nothing lists is a type no signature can safely mention, because
 the closure below would silently not find it.
 
+The catalogue carries one thing that is not a signature, on the same rule: the LIBRARY SET a program
+may import, read off the module-scope imports of `src/library.py` — the file that decides it, because
+`componentize-py` bakes that module's import closure and nothing else. The prompt renders that list,
+so what a model is told it may import is what the artifact was built with rather than a sentence
+somebody wrote once. See `libraries`.
+
 Usage:
     python tools/signatures.py --out-dir <dir>          # write the catalogue
     python tools/signatures.py --out-dir <dir> --check  # verify the committed copy is current
@@ -48,6 +54,7 @@ the `griffe` it runs against.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import json
 import re
@@ -67,9 +74,12 @@ LANGUAGE = "python"
 artifacts are filed at. Written into the catalogue so a committed artifact says whose spellings it
 carries, and asserted by the host against the language that embedded it."""
 
-GENERATED_FROM = "packages/gg-sandbox-python/src/gg"
+GENERATED_FROM = "packages/gg-sandbox-python/src"
 """The provenance string written into the catalogue, so a reader of the JSON knows it is generated
-and where from."""
+and where from.
+
+The whole of `src`, not just `src/gg`: the SDK's signatures are reflected out of the package, and the
+[library set](libraries) is read off `src/library.py` — the module whose imports decide it."""
 
 ALWAYS_INCLUDED_TYPE = "ToolError"
 """The one type declaration the catalogue always carries, whatever a run enables: every call can
@@ -401,6 +411,99 @@ def literal_strings(attribute: griffe.Attribute) -> list[str]:
     return re.findall(r"[\"']([^\"']+)[\"']", str(attribute.value))
 
 
+# --- The libraries -------------------------------------------------------------------------------
+
+LIBRARY_SOURCE = SRC_DIR / "library.py"
+"""The module whose module-scope imports *are* the library set.
+
+`componentize-py` bakes the entry module's executed import closure, so what this file imports is
+what a program can import — a bake-time fact about the artifact rather than a policy. See its own
+docstring for why, and `crates/gg/src/sandbox/language/python.substrate.test.rs` for the test that
+asks the committed component whether every name below really landed.
+"""
+
+GROUP_HEADER = re.compile(r"^#\s*-{3,}\s*(?P<title>.+?)\s*-{3,}\s*$")
+"""The comment a group of imports is filed under: `# --- Time ------`.
+
+Model-facing text that is written **on the code that decides the set**, which is the same rule every
+signature and every argument description in this file obeys. A prompt that grouped these libraries in
+a table of its own would be a second copy of `library.py` to keep in step.
+"""
+
+
+def libraries() -> list[dict[str, Any]]:
+    """The importable library set, grouped as `library.py` groups it.
+
+    Read off the source text rather than out of `griffe`, because what is wanted is the *statements*
+    — including the comment headers, which no API reflector reports — and because the answer must be
+    the dotted name a program writes: `urllib.parse` is importable and `urllib.robotparser` is not,
+    so a list flattened to top-level packages would overclaim exactly the way the prose it replaces
+    did.
+
+    Four properties are enforced, on the rule the rest of this reflector obeys — nothing a model
+    reads may be written anywhere but on the code it describes, and a gap is a build error rather
+    than a blank in a prompt:
+
+      * every module-scope import falls under a group header, so none is silently ungrouped;
+      * the statements this scan found are exactly the module-scope imports `ast` reports, so a
+        shape the scan does not understand is an error rather than a quiet omission;
+      * `library.py` uses `import x` only — a `from x import y` imports a *name*, which is not
+        something a program can be told it may import;
+      * no name is listed twice, in one group or across two.
+    """
+    source = LIBRARY_SOURCE.read_text(encoding="utf-8")
+    grouped: list[dict[str, Any]] = []
+    seen: dict[str, str] = {}
+    title: str | None = None
+    for number, line in enumerate(source.splitlines(), start=1):
+        header = GROUP_HEADER.match(line)
+        if header is not None:
+            title = header["title"]
+            grouped.append({"group": title, "modules": []})
+            continue
+        if not line.startswith("import "):
+            continue
+        name = line.removeprefix("import ").strip()
+        if title is None:
+            raise SystemExit(
+                f"{LIBRARY_SOURCE}:{number} imports `{name}` before any `# --- <group> ---` header, "
+                "so a model would be told about a library under no heading."
+            )
+        if name in seen:
+            raise SystemExit(
+                f"{LIBRARY_SOURCE}:{number} imports `{name}` a second time (already under "
+                f"`{seen[name]}`)."
+            )
+        seen[name] = title
+        grouped[-1]["modules"].append(name)
+
+    declared = set()
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.ImportFrom):
+            raise SystemExit(
+                f"{LIBRARY_SOURCE}:{node.lineno} uses `from … import …`. This file's imports are the "
+                "list of modules a program may import, and a name imported out of one is not a "
+                "module."
+            )
+        if isinstance(node, ast.Import):
+            declared.update(alias.name for alias in node.names)
+    if declared != set(seen):
+        missed = sorted(declared - set(seen)) or sorted(set(seen) - declared)
+        raise SystemExit(
+            f"{LIBRARY_SOURCE}'s module-scope imports and the grouped scan disagree about {missed}. "
+            "The scan reads `import x` at the start of a line; write the import that way, or teach "
+            "this function the shape."
+        )
+
+    for group in grouped:
+        if not group["modules"]:
+            raise SystemExit(
+                f"the `{group['group']}` group in {LIBRARY_SOURCE} has no imports under it."
+            )
+        group["modules"].sort()
+    return grouped
+
+
 # --- The catalogue -------------------------------------------------------------------------------
 
 
@@ -531,6 +634,7 @@ def build() -> str:
             {
                 "language": LANGUAGE,
                 "generatedFrom": GENERATED_FROM,
+                "libraries": libraries(),
                 "objects": objects,
                 "meta": meta,
                 "session": session,
@@ -615,7 +719,8 @@ def main() -> None:
         f"Wrote {out} ({len(parsed['objects'])} objects, {len(parsed['tools'])} tools, "
         f"{len(parsed['helpers'])} helpers, {len(parsed['views'])} view functions, "
         f"{len(parsed['programs'])} program-library functions, {len(parsed['meta'])} meta "
-        f"functions, {len(parsed['types'])} types)."
+        f"functions, {len(parsed['types'])} types, "
+        f"{sum(len(group['modules']) for group in parsed['libraries'])} libraries)."
     )
 
 

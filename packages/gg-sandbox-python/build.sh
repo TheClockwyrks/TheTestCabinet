@@ -26,7 +26,10 @@
 #   * crates/gg/wit/gg-sandbox.wit        (the membrane — a WIT change without a rebuild fails gg's
 #                                          instantiation test, which is the intended failure
 #                                          direction)
-#   * packages/gg-sandbox-python/src/**   (the shim, the SDK, or the curated library set)
+#   * packages/gg-sandbox-python/src/**   (the shim, the SDK, or the curated library set — and if
+#                                          what changed is `library.py`'s imports, run
+#                                          `signatures.sh` too: those imports are also what the
+#                                          system prompt tells a model it may import)
 #   * packages/gg-sandbox-python/requirements.txt  (the pinned third-party wheels)
 #   * the pinned COMPONENTIZE_VERSION below
 #

@@ -162,7 +162,7 @@ pub use {
 // off every `TypeDeclaration`. A type a reader has to reach into a private module to read is a type
 // nobody reads, and the crate denies warnings.
 #[allow(unused_imports)]
-pub use signatures::{MetaSignature, ObjectDoc, SignatureEntry, TypeMember};
+pub use signatures::{LibraryGroup, MetaSignature, ObjectDoc, SignatureEntry, TypeMember};
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source
 /// whose evaluation — in whatever that guest evaluates — produces its exports.

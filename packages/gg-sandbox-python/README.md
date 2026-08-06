@@ -92,12 +92,20 @@ to it, because CPython is inside the component and is the first thing to read it
   That is the *surface*, not the enforcement — the SDK is an ordinary package a
   program can `import gg` and reach past, and the **host** is what refuses a call
   outside the run's enabled set.
-* **Everything in `src/library.py`** — most of the standard library, plus `PyYAML`
-  and `tomli-w`. That list is a **bake-time fact about the artifact**, not a policy:
-  `componentize-py` bundles only the modules the entry module's import closure
-  reached, so a module nobody imported is not in the component at all and a program
-  that asks for it gets `ModuleNotFoundError`. That is why the file exists, and why
-  a cross-language study can state exactly what this arm was given.
+* **Everything in `src/library.py`** — around ninety modules, a *curated subset* of
+  the standard library rather than all of it, plus `PyYAML` and `tomli-w`. That list
+  is a **bake-time fact about the artifact**, not a policy: `componentize-py` bundles
+  only the modules the entry module's import closure reached, so a module nobody
+  imported is not in the component at all and a program that asks for it gets
+  `ModuleNotFoundError`. That is why the file exists, and why a cross-language study
+  can state exactly what this arm was given.
+
+  It is also what the **model** is told, without anyone writing the list twice:
+  `signatures.sh` reflects those module-scope imports (and the `# --- … ---` headings
+  they are grouped under) into the catalogue's `libraries` section, and the system
+  prompt renders it. Adding or removing an import here changes the prompt on the next
+  `signatures.sh`, and a name in the catalogue that the committed component cannot
+  import fails `the_committed_guest_carries_every_library_the_prompt_names`.
 * **The whole WASI p2 surface** gg's host links: the clock, the RNG, the container
   filesystem preopened at `/`, the network, and the process environment. The
   component imports all of it — filesystem and sockets included — which is exactly

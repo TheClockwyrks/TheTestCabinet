@@ -1,6 +1,139 @@
 {
   "language": "python",
-  "generatedFrom": "packages/gg-sandbox-python/src/gg",
+  "generatedFrom": "packages/gg-sandbox-python/src",
+  "libraries": [
+    {
+      "group": "Data, text and encoding",
+      "modules": [
+        "base64",
+        "binascii",
+        "codecs",
+        "configparser",
+        "copy",
+        "csv",
+        "difflib",
+        "hashlib",
+        "hmac",
+        "html",
+        "json",
+        "pickle",
+        "pprint",
+        "re",
+        "reprlib",
+        "secrets",
+        "shlex",
+        "string",
+        "struct",
+        "textwrap",
+        "tomllib",
+        "unicodedata",
+        "uuid"
+      ]
+    },
+    {
+      "group": "Numbers",
+      "modules": [
+        "cmath",
+        "decimal",
+        "fractions",
+        "math",
+        "numbers",
+        "random",
+        "statistics"
+      ]
+    },
+    {
+      "group": "Structures, functional programming and the type system",
+      "modules": [
+        "abc",
+        "array",
+        "bisect",
+        "collections",
+        "collections.abc",
+        "contextlib",
+        "dataclasses",
+        "enum",
+        "functools",
+        "graphlib",
+        "heapq",
+        "itertools",
+        "operator",
+        "queue",
+        "types",
+        "typing",
+        "weakref"
+      ]
+    },
+    {
+      "group": "Time",
+      "modules": [
+        "calendar",
+        "datetime",
+        "time",
+        "zoneinfo"
+      ]
+    },
+    {
+      "group": "Files, archives and the operating system",
+      "modules": [
+        "filecmp",
+        "fnmatch",
+        "glob",
+        "gzip",
+        "io",
+        "mimetypes",
+        "os",
+        "os.path",
+        "pathlib",
+        "shutil",
+        "sqlite3",
+        "stat",
+        "tarfile",
+        "tempfile",
+        "zipfile",
+        "zlib"
+      ]
+    },
+    {
+      "group": "The network",
+      "modules": [
+        "email",
+        "email.message",
+        "email.parser",
+        "http.client",
+        "ipaddress",
+        "socket",
+        "urllib.error",
+        "urllib.parse",
+        "urllib.request",
+        "xml.etree.ElementTree"
+      ]
+    },
+    {
+      "group": "Introspection, diagnostics and the interpreter",
+      "modules": [
+        "argparse",
+        "ast",
+        "dis",
+        "inspect",
+        "keyword",
+        "logging",
+        "platform",
+        "sys",
+        "threading",
+        "tokenize",
+        "traceback",
+        "warnings"
+      ]
+    },
+    {
+      "group": "Curated third-party libraries",
+      "modules": [
+        "tomli_w",
+        "yaml"
+      ]
+    }
+  ],
   "objects": [
     {
       "object": "fs",

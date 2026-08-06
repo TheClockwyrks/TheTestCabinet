@@ -71,6 +71,21 @@ pub(crate) struct SignatureCatalogue {
         reason = "provenance for a human reading the committed artifact, not something gg renders"
     )]
     pub generated_from: String,
+    /// The **libraries** a program of this language may reach for, grouped as the artifact that
+    /// decides the set groups them — the one entry here that is not a signature.
+    ///
+    /// It belongs in the catalogue for the reason every signature does: it is **model-facing text
+    /// about this arm's surface**, so the rule that nothing a model reads may be authored anywhere
+    /// but on the code that decides it applies word for word. A prompt that listed a language's
+    /// libraries in prose would drift from the artifact with nothing to catch it — and on the
+    /// [Python](super::language::python) arm it did, claiming a whole standard library where
+    /// `componentize-py` had baked a curated subset of it.
+    ///
+    /// Empty for a language whose programs get their runtime's own standard library and nothing
+    /// else: `#[serde(default)]`, so an arm with nothing to declare commits a catalogue without the
+    /// key and its templates simply render no such section.
+    #[serde(default)]
+    pub libraries: Vec<LibraryGroup>,
     /// The **API objects** a program's surface is divided into, in the order it is presented in,
     /// each with the one sentence a model is introduced to it by.
     ///
@@ -114,6 +129,22 @@ pub(crate) struct SignatureCatalogue {
     pub helpers: Vec<HelperSignature>,
     /// Every type declaration the signatures reference, in declaration order.
     pub types: Vec<TypeDeclaration>,
+}
+
+/// One group of [libraries](SignatureCatalogue::libraries), as the prompt lists them.
+///
+/// Grouped rather than flat because ninety names in one paragraph is a wall a model skims. The
+/// grouping is the *artifact's* — the headings the file that decides the set files them under — so
+/// it is one more thing gg quotes rather than authors.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryGroup {
+    /// What this group is for, in the words the source that groups them uses (`Time`,
+    /// `Curated third-party libraries`).
+    pub group: String,
+    /// The names a program imports, exactly as it must write them: `urllib.parse` rather than
+    /// `urllib`, because a dotted module is importable and its siblings may not be.
+    pub modules: Vec<String>,
 }
 
 /// One **meta** function: a call bound onto every API object rather than declared on one.

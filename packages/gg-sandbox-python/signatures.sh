@@ -5,12 +5,16 @@
 #   crates/gg/src/sandbox/guests/python.signatures.json
 #
 # It is the whole of what a model is *told* about the Python surface — every object, signature,
-# argument, type and type member the prompt renders and `view.open_docs_view` answers with — and
-# every word of it is reflected out of the docstring on the declaration it describes. Nothing about
-# this SDK is authored in a table, a template or a prompt.
+# argument, type and type member the prompt renders and `view.open_docs_view` answers with, plus the
+# set of libraries a program may import — and every word of it is reflected out of the code it
+# describes: a docstring for the SDK, and `src/library.py`'s own module-scope imports for the library
+# set. Nothing about this arm is authored in a table, a template or a prompt.
 #
 # Run it after changing anything under `src/gg/`: a signature, a docstring, an `Args:` entry, a type,
-# a member, an API object's description, or the catalogue's own tables. `scripts/ci/contract-drift.sh`
+# a member, an API object's description, or the catalogue's own tables — and after changing
+# `src/library.py`'s imports or the headings they are grouped under, which is what a model is shown
+# as the libraries it has. (That second one also needs `build.sh`, because the imports decide what is
+# baked; this decides what the prompt says about it.) `scripts/ci/contract-drift.sh`
 # runs it too and fails on any diff, so a catalogue left stale is a red build rather than a system
 # prompt describing a sandbox nobody has.
 #

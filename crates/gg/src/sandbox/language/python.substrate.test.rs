@@ -526,38 +526,52 @@ print("still here")
 }
 
 #[test]
-fn the_committed_guest_carries_the_libraries_it_says_it_does() {
+fn the_committed_guest_carries_every_library_the_prompt_names() {
     // `componentize-py` bakes only the modules the entry module's import closure reached, so the
     // library set is a property of the ARTIFACT rather than of a policy — and one nothing would
-    // notice losing. `library.py` names them; this asks the committed component which ones really
-    // landed, so a curated import quietly dropped in a rebuild fails here rather than months later
-    // inside a run.
-    let outcome = run(r#"
-import library
-
-expected = [
-    "argparse", "ast", "base64", "collections", "csv", "dataclasses", "datetime", "decimal",
-    "difflib", "email", "enum", "fractions", "functools", "glob", "gzip", "hashlib", "http",
-    "inspect", "ipaddress", "itertools", "json", "logging", "math", "os", "pathlib", "pickle",
-    "random", "re", "secrets", "shutil", "socket", "sqlite3", "statistics", "string", "struct",
-    "tarfile", "tempfile", "textwrap", "threading", "tomllib", "typing", "unicodedata", "urllib",
-    "uuid", "xml", "zipfile", "zoneinfo",
-    # The curated third-party half: `requirements.txt` pins them and `library.py` says why.
-    "tomli_w", "yaml",
-]
-missing = [name for name in expected if name not in library.MODULES]
+    // notice losing.
+    //
+    // What makes it checkable is that nothing hand-writes the set twice: `src/library.py` imports
+    // what the arm offers, the catalogue is reflected out of those imports, and the system prompt
+    // renders the catalogue. So the list driven in here is **the list a model is told about**, read
+    // out of the committed catalogue rather than typed out again — and a curated import quietly
+    // dropped in a rebuild fails here rather than months later inside a run, on the turn a model
+    // spends discovering that a module the prompt promised is not there.
+    let named: Vec<&str> = python()
+        .catalogue()
+        .libraries
+        .iter()
+        .flat_map(|group| group.modules.iter().map(String::as_str))
+        .collect();
+    assert!(
+        named.len() > 50,
+        "the committed catalogue names {} libraries, which is too few to be the curated set — the \
+         prompt is describing a sandbox nobody has",
+        named.len()
+    );
+    let outcome = run(&format!(
+        r#"
+missing = []
+for name in {named}:
+    try:
+        __import__(name)
+    except ImportError:
+        missing.append(name)
 print("missing", missing)
 
-# Deliberately absent: a WASI component cannot spawn a process, nothing here is asynchronous, and
-# these C extensions are not in this CPython. Their absence is a loud `ModuleNotFoundError` rather
-# than an import that succeeds and a call that fails.
+# Deliberately absent, and the prompt says so by name: a WASI component cannot spawn a process,
+# nothing here is asynchronous, and these C extensions are not in this CPython. Their absence is a
+# loud `ModuleNotFoundError` rather than an import that succeeds and a call that fails.
 for name in ["subprocess", "multiprocessing", "asyncio", "ssl", "ctypes"]:
     try:
         __import__(name)
         print("unexpectedly present", name)
     except ModuleNotFoundError:
         pass
-"#);
+"#,
+        // A JSON array of strings is a Python list of strings, and `serde_json` is what quotes them.
+        named = serde_json::to_string(&named).expect("the library names serialize"),
+    ));
     assert_eq!(logs(&outcome), ["missing []"]);
 
     // And they are not merely importable — they work. A pure-Python wheel that baked without its

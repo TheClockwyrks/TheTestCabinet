@@ -9,7 +9,7 @@
 //!
 //! **An import is never deleted.** The ECMAScript guest is baked with no module system at all, so
 //! every `import` a program writes there is dead text and dropping it can only help. This guest is a
-//! whole CPython with a whole standard library baked into it: `import json` works, `import re` works,
+//! whole CPython with a curated standard library baked into it: `import json` works, `import re` works,
 //! and `from gg import ToolError` works, because the SDK is an ordinary package rather than a set of
 //! names injected into a scope. There is no lexical shape gg can recognise here that is *certainly*
 //! dead, and deleting a working line is the one failure this subsystem is built not to commit. So

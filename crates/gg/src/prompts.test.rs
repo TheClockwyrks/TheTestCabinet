@@ -1813,6 +1813,49 @@ fn every_language_renders_a_complete_system_prompt() {
     }
 }
 
+/// **A language that declares a library set names every library in it, and names nothing else.**
+///
+/// Rule 8 of the seam — commonly used libraries are available by default — is the one part of an
+/// arm's model-facing surface that is not a signature, and it drifts exactly the way a hand-written
+/// signature does. The Python arm's prompt claimed "the whole standard library of CPython 3.14"
+/// where `componentize-py` had baked a curated subset of it, and a model that believed it lost a
+/// turn to `import unittest`. Nothing caught that, because the sentence was prose.
+///
+/// So the set is reflected into the language's [catalogue](crate::sandbox) from the code that
+/// decides it, and this is what holds the prompt to it: every group's heading and its exact,
+/// comma-joined list must appear in the rendered prompt. Joined rather than name-by-name because
+/// `rendered.contains("os")` is true of any English paragraph — the assertion has to be the line
+/// itself.
+///
+/// A language whose catalogue declares no libraries is skipped rather than failed: whether an arm
+/// ships a curated set or gives a program its runtime's own standard library and nothing else is a
+/// property of the arm, and TypeScript's answer (ES2022, enforced by the checker's `lib`) is as
+/// legitimate as Python's.
+#[test]
+fn a_language_that_declares_libraries_names_every_one_in_its_prompt() {
+    for &id in GgProgramLanguage::ALL {
+        let libraries = &crate::sandbox::language(id).catalogue().libraries;
+        if libraries.is_empty() {
+            continue;
+        }
+        let rendered = render_system(&every_code_section_on(id), None);
+        for group in libraries {
+            assert!(
+                rendered.contains(&group.group),
+                "{id}: the prompt does not carry the `{}` library group:\n{rendered}",
+                group.group
+            );
+            let listed = group.modules.join(", ");
+            assert!(
+                rendered.contains(&listed),
+                "{id}: the prompt does not list `{}`'s libraries as the catalogue has them \
+                 (`{listed}`):\n{rendered}",
+                group.group
+            );
+        }
+    }
+}
+
 /// **A checked language's prompt says its programs are checked, and what that means for a model.**
 ///
 /// Deliberately outside [`REQUIRED_SECTIONS`] and [`REQUIRED_RULES`], which are the *universal*

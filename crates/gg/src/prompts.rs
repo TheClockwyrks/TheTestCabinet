@@ -338,6 +338,28 @@ struct Spellings {
     api: BTreeMap<&'static str, BTreeMap<&'static str, CallSpelling>>,
     /// Every meta function, by key.
     meta: BTreeMap<&'static str, CallSpelling>,
+    /// The [libraries](crate::sandbox::LibraryGroup) this language's programs may import, in the
+    /// groups its own artifact files them under — `{{#each libraries}}- {{group}}: {{modules}}`.
+    ///
+    /// Here for the reason [`api`](Self::api) is: what a model may reach for is a fact about the
+    /// arm's artifact, and a template that listed it in prose would be a second copy of that fact
+    /// with nothing to keep it honest. Empty for a language whose catalogue declares none, in which
+    /// case its `{{#if libraries}}` section renders nothing at all.
+    libraries: Vec<LibraryGroupSpelling>,
+}
+
+/// One [library group](crate::sandbox::LibraryGroup) in the shape a template renders it: a heading
+/// and one line of comma-separated names.
+///
+/// Joined here rather than in Handlebars because a template has no join helper and
+/// `{{#unless @last}}, {{/unless}}` inside a nested `{{#each}}` is the kind of markup that stops
+/// being readable — and because the separator is prose, which belongs on this side.
+#[derive(Debug, Serialize)]
+struct LibraryGroupSpelling {
+    /// The group's heading, in the words its own source uses.
+    group: String,
+    /// The names in it, comma-separated, exactly as a program must write each one.
+    modules: String,
 }
 
 /// A context with its language's spellings folded in, which is what every language-specific template
@@ -393,7 +415,20 @@ fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
             )
         })
         .collect();
-    Spellings { api, meta }
+    let libraries = language
+        .catalogue()
+        .libraries
+        .iter()
+        .map(|group| LibraryGroupSpelling {
+            group: group.group.clone(),
+            modules: group.modules.join(", "),
+        })
+        .collect();
+    Spellings {
+        api,
+        meta,
+        libraries,
+    }
 }
 
 /// The plain sentence a code turn that showed itself nothing degrades to when its notice template
@@ -874,6 +909,7 @@ pub fn render_system(context: &SystemContext, template_override: Option<&str>) -
         None => Spellings {
             api: BTreeMap::new(),
             meta: BTreeMap::new(),
+            libraries: Vec::new(),
         },
     };
     let spelled = Spelled { context, spellings };

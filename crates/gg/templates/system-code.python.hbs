@@ -38,15 +38,28 @@ from and no `return` statement to write; the way out of your program is a view.
 The signatures below are written with type annotations. They say what each call
 takes and what it hands back; your own program may write them or leave them off.
 
-The whole standard library of CPython 3.14 is importable, apart from `asyncio`,
-`subprocess` and `multiprocessing` — this guest starts neither an event loop nor
-a process. `yaml` and `tomli_w` are available too. There is no `ssl`, so a URL
-your program opens itself has to be plain HTTP.
-
 A failed call raises `ToolError`, so `try`/`except ToolError` is how you handle
 one, and its `code` is an enum member rather than a string. An uncaught
 exception ends your program and is reported back to you with its traceback, at
 the line and column of the code you wrote.
+
+{{#if libraries}}
+### The libraries you may import
+
+This guest was baked with a **curated subset** of CPython 3.14, not the whole
+standard library. A module that was not baked in is not on the filesystem at all,
+so `import` raises `ModuleNotFoundError` — do not assume a module is here because
+CPython ships it. This is what is here, and every one of these is already loaded:
+
+{{#each libraries}}
+- {{group}}: {{modules}}
+{{/each}}
+
+Three absences are worth knowing before you spend a turn on them: there is no
+`asyncio`, because nothing here is asynchronous; no `subprocess` or
+`multiprocessing`, because this guest cannot spawn a process; and no `ssl`, so a
+URL your program opens itself has to be plain HTTP.
+{{/if}}
 
 ### Ending your session
 
