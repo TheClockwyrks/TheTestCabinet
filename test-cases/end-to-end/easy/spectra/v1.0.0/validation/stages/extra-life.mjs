@@ -6,9 +6,30 @@
 // already past the threshold, adds no life. A spare drone is kept alive so clearing
 // a target does not end the wave.
 
-import { startClean, spawnDrone, shootDrone, findDrone } from "../_helpers.mjs";
+// The item's output is a CLIP rather than a still. A single frame of a HUD reading
+// four lives says nothing on its own: the point is the crossing — three lives and a
+// score just short of 20000, a kill that takes it over, and a fourth life appearing.
+// So `act` opens on the pre-state, lets each kill fly up from the ship's lane, and
+// holds between them, and the reviewer watches the award happen and then watches
+// the second crossing NOT award anything.
 
-const KILL_MAX_TICKS = 60; // 60 ticks = the old 0.5 s cap on a kill resolving
+import {
+  startClean,
+  holdDrones,
+  spawnDrone,
+  spawnBystander,
+  shootFromLane,
+  findDrone,
+  LEAD_IN_TICKS,
+} from "../_helpers.mjs";
+
+// Room for a shot to fly up from the ship's lane to the drone.
+const KILL_MAX_TICKS = 180;
+
+// A beat on the pre-state (3 lives, 19950) before the crossing kill, and another on
+// the awarded fourth life before the second kill, so the clip reads as three
+// distinct moments rather than one flicker.
+const BEAT_TICKS = 96;
 
 export default function item() {
   // The first target, and the state after each of the two kills.
@@ -23,17 +44,16 @@ export default function item() {
     // through the real scoring path. A keepalive drone sits far from the target lane
     // and is never shot, so destroying a target never empties the field (which would
     // end the wave and cut the second half of the check short).
+    // The swarm is held (`holdDrones`), so both targets stand in the ship's column
+    // for the lane shots and the keepalive cannot peel into a dive and reach the
+    // ship — a life lost mid-scenario would read as the second crossing having
+    // awarded nothing when in fact it had.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       await api.call("setLives", 3);
       await api.call("setScore", 19950); // a formation Shard kill (+50) crosses 20000
-      await spawnDrone(api, {
-        kind: "shard",
-        band: "cyan",
-        x: 250,
-        y: 200,
-        phase: "formation",
-      });
+      await spawnBystander(api); // keepalive, far off the target lane
       firstId = await spawnDrone(api, {
         kind: "shard",
         band: "cyan",
@@ -44,10 +64,19 @@ export default function item() {
     },
 
     async act(api) {
-      await shootDrone(api, firstId, "cyan");
+      // The pre-state: three lives, the score just short of the threshold.
+      await api.advance(LEAD_IN_TICKS);
+
+      // The crossing kill, flown up from the lane so the reviewer watches the score
+      // tick over 20000 and the fourth life appear.
+      await shootFromLane(api, firstId, "cyan");
       a = await api.until((s) => findDrone(s, firstId) === null, {
         max: KILL_MAX_TICKS,
       });
+
+      // Hold on the awarded life, so the HUD's step from three to four is legible
+      // before anything else happens.
+      await api.advance(BEAT_TICKS);
 
       // A later crossing (already past 20000) awards no further life. The second
       // target is posed with `spawnDrone` — a control op, so no reset is needed and
@@ -59,16 +88,14 @@ export default function item() {
         y: 300,
         phase: "formation",
       });
-      await shootDrone(api, secondId, "cyan");
+      await shootFromLane(api, secondId, "cyan");
       b = await api.until((s) => findDrone(s, secondId) === null, {
         max: KILL_MAX_TICKS,
       });
 
-      // The capture shows the HUD holding four lives after two kills across the
-      // threshold. `settle` is a real pause in both passes and the only thing that
-      // paints a frame in the validate pass.
-      await api.settle(120);
-      await api.screenshot("extra-life");
+      // …and hold on the UNCHANGED life count, which is the whole of the second
+      // half of this item: the score climbs again and nothing is awarded.
+      await api.advance(BEAT_TICKS);
     },
 
     async assert(api, check) {

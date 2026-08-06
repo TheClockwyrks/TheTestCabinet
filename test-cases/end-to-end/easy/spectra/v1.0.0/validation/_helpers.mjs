@@ -47,7 +47,7 @@ export const FIELD_H = 720;
 // width, with the HUD strips above and below reserved (`specs/playfield.md`). A drone
 // may cross a strip only in transit — a dive exiting through the bottom and
 // re-appearing from the top — which is what makes these the boundaries a wrap is
-// recognised by.
+// recognized by.
 export const PLAY_TOP = 64;
 export const PLAY_BOTTOM = 656;
 
@@ -121,22 +121,103 @@ export const READY_HOLD_TICKS = 156; // 1.3 s
 export const LEAD_IN_TICKS = 72; // 0.6 s — enough to read the scene, short enough to act in
 
 /**
- * How long a posed formation drone can be relied on to hold its slot: the assault
- * sends its first dive about `2.0 s` after the formation assembles
- * (`specs/drones.md`), and posing a drone into formation is what starts that clock.
+ * How long a posed formation drone can be relied on to hold its slot WHEN THE
+ * SWARM IS LIVE: the assault sends its first dive about `2.0 s` after the formation
+ * assembles (`specs/drones.md`), and posing a drone into formation is what starts
+ * that clock.
  *
- * This bounds every scenario that shoots at a stationary drone. Past it the game is
- * entitled to peel the drone into a dive, where it crosses more ground during a
- * bullet's flight than a lane shot can lead — and a diving Prism that reaches the
- * bottom triggers a spectral inversion, which swaps the band every drone answers to.
- * A scenario that needs longer uses `shootUntil` (which re-aims, and poses its last
- * attempt on the drone) and aims by `readsAs` rather than a hardcoded band.
+ * Past it the game is entitled to peel the drone into a dive, where it crosses more
+ * ground during a bullet's flight than a lane shot can lead — and a diving Prism
+ * that reaches the bottom triggers a spectral inversion, which swaps the band every
+ * drone answers to.
+ *
+ * This bounds only the scenarios that deliberately leave the swarm running (the
+ * dive, entrance, and challenge items). Anything that just needs a target to stand
+ * still calls {@link holdDrones} instead and is not bounded by this at all.
  *
  * Note this is the ASSAULT's clock, not the field's: whether `clearField` re-arms it
  * is a build's own business, and one that does not is still conformant, so nothing
  * here may assume clearing the field buys a fresh window.
  */
 export const FORMATION_WINDOW_TICKS = 240; // 2 s
+
+/**
+ * Hold the swarm still for the rest of the scenario — `setDroneAI(false)`
+ * (`specs/instrumentation.md`).
+ *
+ * WHY ALMOST EVERY POSED-TARGET ITEM WANTS THIS. A drone posed into `formation`
+ * does not sit where it was put. It rides the formation sway, a `±20 px` sinusoid
+ * (`specs/playfield.md`), and about two seconds later the assault is entitled to
+ * peel it into a dive (`FORMATION_WINDOW_TICKS`). Both are correct behavior, and
+ * both wreck a scenario that is about something else: a lane shot misses a drone
+ * that swayed out from under it, a Prism left standing for three hits dives and
+ * fires — and its own bullets feed the resonance meter the check is reading. The
+ * old scripts fought this with re-aiming retries and posed-on-drone fallbacks,
+ * which made a MISS and a correctly-applied rule look identical.
+ *
+ * Holding the swarm removes the variable instead of compensating for it. What the
+ * item is actually about — the collision, the band rule, the meter, the burst —
+ * still runs, because the freeze stops the drones' own movement and decisions and
+ * nothing else (the ship, bullets in flight, every collision, the discharge,
+ * scoring, and a Flux's band clock all keep running).
+ *
+ * A build that does not implement the op fails here rather than silently reverting
+ * to the flaky path: it is a required control operation, and an item that quietly
+ * worked around its absence would report the wrong thing about the build.
+ *
+ * NOT for the items whose subject IS the motion — `swarm/sways`,
+ * `swarm/dive-*`, `swarm/fly-in`, `drones/prism-escort`, `stages/challenge-*`.
+ * Those need the swarm live and say so.
+ *
+ * It is a control op, so it consumes no time and is callable from either phase.
+ */
+export async function holdDrones(api) {
+  await api.call("setDroneAI", false);
+}
+
+/** Let the swarm move and decide again, after a {@link holdDrones}. */
+export async function releaseDrones(api) {
+  await api.call("setDroneAI", true);
+}
+
+/**
+ * Lives posed for a scenario that lets a drone ATTACK while it measures something
+ * else — see {@link protectShip}.
+ */
+export const SAFE_LIVES = 99;
+
+/**
+ * Make the ship un-killable for the rest of the scenario, so an item that has to let
+ * the swarm attack cannot fail on the attack succeeding.
+ *
+ * WHY THIS IS NEEDED. A few items must leave a drone live and hostile because the
+ * hostility IS the behavior — a dive's round trip, a Prism's plunge to the bottom.
+ * Those drones fire while they fly (`specs/drones.md`), and their bullets reach the
+ * ship, and the ship starts with three lives. Nothing about that is a fault in the
+ * build; it is the game working. But it ends the item: the third hit is a GAME OVER,
+ * which leaves `inWave` entirely, and from there the wave stops advancing — so the
+ * diver never completes its round trip and the Prism never reaches the bottom. The
+ * item then reports that a correct build cannot return from a dive, when what
+ * actually happened is that the build shot the driver's ship.
+ *
+ * The inversion drive makes this concrete: it retries up to twenty Prism dives, and
+ * measured against the reference a single successful dive costs a life. Three
+ * unlucky attempts and the run is over before the roll that would have inverted.
+ *
+ * WHY NOT JUST MOVE THE SHIP ASIDE. Because there is no aside. A dive "bends toward
+ * the player ship's `x`" by specification, and a diver biases its aim toward the
+ * player — so parking the ship elsewhere moves the attack rather than avoiding it.
+ * The only reliable lever is the one the debug API offers for exactly this:
+ * `setLives`, which `specs/instrumentation.md` documents as a precondition.
+ *
+ * A lost life is still perfectly legal mid-scenario and changes nothing an item
+ * reads: `specs/gameplay.md` requires the wave to continue where it was, with the
+ * drones, the formation, any active dive, and the resonance meter all kept. What is
+ * removed here is only the RUN ending underneath the measurement.
+ */
+export async function protectShip(api) {
+  await api.call("setLives", SAFE_LIVES);
+}
 
 // ---- Scenario setup (arrange only — these reset) ----------------------------
 //
@@ -376,6 +457,110 @@ export async function dropEnemyBullet(api, band, { fromY = 120 } = {}) {
  * shield never fired".
  */
 export const DROP_MAX_TICKS = 540; // 4.5 s
+
+/**
+ * The band a shot must carry to break whatever layer of `d` is currently exposed.
+ *
+ * Same idea as {@link readsAs}, but it works from a drone object already in hand
+ * and — crucially for the Prism — reads the EXPOSED LAYER rather than the drone's
+ * top-level band. `specs/instrumentation.md` reports a Prism's layers separately
+ * (`shellAlive`, `shellBand`, `coreBand`) precisely because whether the top-level
+ * `band` follows the exposed layer is a build's own choice, so a rake that aimed by
+ * `band` alone would fire a mismatch at half the Prisms it met — harmless in Sortie,
+ * but in Overload a mismatch CHARGES the drone toward an overload reaction, which
+ * would set the swarm off in the middle of a scenario about something else.
+ */
+export function exposedBand(snap, d) {
+  if (d.kind !== "prism") return d.effectiveBand ?? d.band;
+  const stored = d.shellAlive === false ? d.coreBand : d.shellBand;
+  // A build that omits the layer fields leaves nothing better to aim by.
+  if (stored === undefined) return d.effectiveBand ?? d.band;
+  return snap.inversionActive ? opposite(stored) : stored;
+}
+
+/**
+ * ARRANGE-side: let the stage's REAL wave fly in and assemble, then hold it there.
+ *
+ * The result is a full, correct formation standing still — the game's own wave, not
+ * a posed approximation of one — which is what an item wants when it needs a
+ * realistic field on screen but must not have that field moving underneath its
+ * measurement. The entrance runs live (a wave that never assembled is not a wave);
+ * only what happens after it is held.
+ *
+ * All of it is instant (`skipUntil`, exact in both passes), so none of the assembly
+ * reaches the clip: the recording opens on the assembled formation.
+ *
+ * Call it after `startStageClean(api, n, { clear: false })`, which is what leaves
+ * the real wave in place to assemble.
+ */
+export async function arrangeAssembledWave(api, { assembleMax = 1800 } = {}) {
+  await api.skipUntil(
+    (s) => s.drones.length > 0 && !s.drones.some((d) => d.phase === "entering"),
+    { max: assembleMax, poll: 12 },
+  );
+  await holdDrones(api);
+}
+
+/**
+ * ARRANGE-side drive for the three items about a wave ENDING: destroy the real
+ * stage's whole formation except one drone, instantly, and return that survivor's
+ * id so `act` can film the last kill and the clear it triggers.
+ *
+ * WHY THESE ITEMS CANNOT BE POSED. Each of them used to `startStageClean` (which
+ * calls `clearField`), pose a single drone, and shoot it — treating "the field is
+ * empty again" as equivalent to "the wave was destroyed". That rests on an unwritten
+ * side effect. `specs/instrumentation.md` says `clearField` removes the drones and
+ * bullets and leaves "the stage, score, lives, resonance, and ship untouched"; it
+ * says nothing about whether the wave stays live afterwards, and a build is entitled
+ * to read a debug clear as "the caller is posing a scenario", not as the player
+ * having shot the last drone — indeed the alternative fires STAGE 1 CLEARED the
+ * instant a script clears the field to pose anything at all, which is why
+ * {@link spawnBystander} exists. A build that disarms the stage-end check on
+ * `clearField` is conformant, and on it these three items reported that clearing the
+ * wave does not clear the wave, that the stage-cleared screen is unreachable, and
+ * that no stage-clear cue plays — none of which was true of the game.
+ *
+ * So the wave under test is the REAL one: let the stage's own formation fly in and
+ * assemble, then rake it with real matching shots through the real collisions. What
+ * remains is the game's own stage-end path, reached the way a player reaches it.
+ *
+ * The swarm is held once the formation has assembled, so the rake is not a moving
+ * target and no diver reaches the ship and costs a life part-way through. The
+ * entrance itself runs live, because a wave that never assembled is not a wave.
+ *
+ * All of it is instant (`skip`/`skipUntil`, exact in both passes), so none of it
+ * reaches the clip: the recording opens on the last drone still standing.
+ *
+ * Returns the surviving drone's id, or `null` if the wave could not be raked down
+ * to exactly one (which the caller should report rather than assert around).
+ */
+export async function arrangeWaveToLastDrone(
+  api,
+  { assembleMax = 1800, passes = 16, settleTicks = 12 } = {},
+) {
+  await arrangeAssembledWave(api, { assembleMax });
+
+  for (let i = 0; i < passes; i += 1) {
+    const snap = await api.snapshot();
+    if (snap.drones.length <= 1) break;
+    // Keep a Shard back as the survivor where there is one: it dies to a single
+    // matching shot, so the filmed last kill is one clean event rather than a
+    // Prism's two-layer sequence.
+    const keep = snap.drones.find((d) => d.kind === "shard") ?? snap.drones[0];
+    for (const d of snap.drones) {
+      if (d.id === keep.id) continue;
+      await api.call("spawnPlayerBullet", {
+        x: d.x,
+        y: d.y,
+        band: exposedBand(snap, d),
+      });
+    }
+    await api.skip(settleTicks);
+  }
+
+  const left = (await api.snapshot()).drones;
+  return left.length === 1 ? left[0].id : null;
+}
 
 // ---- Input-driven helpers --------------------------------------------------
 //
@@ -645,6 +830,12 @@ export async function actLiveWave(api, { ticks = 156 } = {}) {
  */
 export async function arrangeInversion(api, { seed = 1, stage = 1 } = {}) {
   await startStageClean(api, stage, { seed });
+  // The drive below flies up to twenty real Prism dives at the ship, and a diving
+  // Prism fires a two-band burst — one of whose bands is always the opposite of the
+  // ship's, so it always has a lethal shot. Three of those and the run is over,
+  // which takes the game out of `inWave` and stops the wave advancing, so no later
+  // attempt can ever reach the bottom. See `protectShip`.
+  await protectShip(api);
 }
 
 /**

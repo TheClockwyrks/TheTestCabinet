@@ -18,27 +18,72 @@
 // gain node to zero — an entirely ordinary implementation — still starts its
 // sources. Reading "no cue fired while muted" would fail those builds for muting
 // correctly, so the snapshot's own `muted` flag is the honest signal.
+//
+// WHAT IS ALSO ASSERTED IS THE ON-SCREEN TELL. `specs/ui.md` requires a persistent
+// mute indicator in the bottom HUD strip whenever sound is muted — appearing when
+// mute goes on, disappearing when it goes off, and the only thing about the screen
+// that muting changes. That is a rendered fact, so it is read the way this case
+// reads every rendered fact: by sampling the pixels the build actually paints
+// (`sampleBox` over the strip) and confirming the region CHANGES when mute goes on
+// and returns when it goes off.
+//
+// This is what makes the capture worth having. Without it the screenshot filed
+// under "mute toggled on" was indistinguishable from the unmuted game — nothing on
+// screen differed — so the still told the reviewer nothing at all.
 
-import { startClean, LEAD_IN_TICKS } from "../_helpers.mjs";
+import {
+  startStageClean,
+  arrangeAssembledWave,
+  sampleBox,
+  colorDistance,
+  LEAD_IN_TICKS,
+} from "../_helpers.mjs";
 
 const muted = async (api) => (await api.snapshot()).muted;
 
 // A beat between presses, so the clip is not two toggles in the same frame.
 const BEAT_TICKS = 90;
 
+// The bottom HUD strip (`specs/playfield.md`: y 656..720), sampled across its full
+// width so the tell is found wherever in the strip a build places it.
+const STRIP = { x0: 20, y0: 660, x1: 1260, y1: 716 };
+const GRID_X = 40;
+const GRID_Y = 6;
+
+// How much the strip's mean color must move for a tell to count as drawn.
+//
+// Deliberately small: the indicator is one small glyph or short label in a wide
+// strip, so its contribution to the region's mean is a couple of units even when it
+// is perfectly legible. What this separates is "something was added" from "nothing
+// changed at all", which is the difference between a build that draws the tell and
+// one that does not.
+const TELL_MIN = 0.6;
+
 export default function item() {
   // The muted flag before any press, after the first, and after the second.
   let before;
   let afterOn;
   let afterOff;
+  // …and the bottom strip as painted at each of those three points.
+  let stripBefore;
+  let stripOn;
+  let stripOff;
 
   return {
     id: "audio.mute-toggle",
 
-    // A live stage-1 wave with its swarm kept, so the capture shows the running game
+    // The real stage-1 wave, flown in and then HELD, so the capture shows the game
     // the mute applies to rather than a static title. Mute starts off.
+    //
+    // Held rather than left running because the strip is now SAMPLED, and the bottom
+    // strip is not guaranteed to be untouched by play: `specs/playfield.md` lets a
+    // diving drone cross it in transit as it wraps. A diver passing through the
+    // strip on the tick a sample is taken would move the reading as surely as the
+    // mute tell does. Held, the only thing that can change the strip between the
+    // three readings is the toggle under test.
     async arrange(api) {
-      await startClean(api, { clear: false });
+      await startStageClean(api, 1, { clear: false });
+      await arrangeAssembledWave(api);
       before = await muted(api);
     },
 
@@ -49,16 +94,50 @@ export default function item() {
     async act(api) {
       await api.advance(LEAD_IN_TICKS);
 
+      // The strip as it reads UNMUTED, which the two readings below are compared
+      // against. `settle` is a real pause in both passes and the only thing that
+      // guarantees a painted frame to sample.
+      await api.settle(120);
+      stripBefore = await sampleBox(
+        api,
+        STRIP.x0,
+        STRIP.y0,
+        STRIP.x1,
+        STRIP.y1,
+        GRID_X,
+        GRID_Y,
+      );
+
       await api.call("press", "KeyM");
       afterOn = await muted(api);
       await api.advance(BEAT_TICKS);
 
       await api.settle(120);
+      stripOn = await sampleBox(
+        api,
+        STRIP.x0,
+        STRIP.y0,
+        STRIP.x1,
+        STRIP.y1,
+        GRID_X,
+        GRID_Y,
+      );
       await api.screenshot("mute");
 
       await api.call("press", "KeyM");
       afterOff = await muted(api);
       await api.advance(BEAT_TICKS);
+
+      await api.settle(120);
+      stripOff = await sampleBox(
+        api,
+        STRIP.x0,
+        STRIP.y0,
+        STRIP.x1,
+        STRIP.y1,
+        GRID_X,
+        GRID_Y,
+      );
     },
 
     async assert(api, check) {
@@ -67,6 +146,21 @@ export default function item() {
       check.expectOk(
         "pressing M again toggles mute back off",
         afterOff === false,
+      );
+
+      // The on-screen tell (`specs/ui.md`). Both directions, because "appears when
+      // muted" and "disappears when unmuted" are separate claims — a build that
+      // draws the indicator and never clears it satisfies the first and fails the
+      // player.
+      check.expectGt(
+        "muting draws a tell in the bottom HUD strip (RGB distance from unmuted)",
+        colorDistance(stripOn, stripBefore),
+        TELL_MIN,
+      );
+      check.expectLt(
+        "un-muting clears it again (RGB distance back to unmuted)",
+        colorDistance(stripOff, stripBefore),
+        TELL_MIN,
       );
     },
   };

@@ -34,10 +34,17 @@ export default function item() {
     // neutral white hull (the brightest pixel, unchanging across bands), so its band
     // is told by the tinted accents/glyph, which is what a player reads too. Each
     // `settle` guarantees the ship has repainted on the new band before it is read.
+    //
+    // ONE CAPTURE PER BAND. The item's whole claim is that two renders differ, and a
+    // single still can only ever show one of them — the old capture was taken after
+    // both samples, so it showed the magenta ship and left the reviewer nothing to
+    // compare it against, unable to check the assertion by eye at all. Each band is
+    // captured while it is posed, so the pair is the evidence.
     async act(api) {
       await api.call("setShipBand", "cyan");
       await api.settle(100);
       cyanShip = await sampleSaturated(api, 616, SHIP_Y - 22, 664, SHIP_Y + 22);
+      await api.screenshot("ship-cyan");
 
       await api.call("setShipBand", "magenta");
       await api.settle(100);
@@ -48,9 +55,9 @@ export default function item() {
         664,
         SHIP_Y + 22,
       );
+      await api.screenshot("ship-magenta");
 
       bg = await sampleVivid(api, 600, 440, 680, 500);
-      await api.screenshot("ship");
     },
 
     async assert(api, check) {

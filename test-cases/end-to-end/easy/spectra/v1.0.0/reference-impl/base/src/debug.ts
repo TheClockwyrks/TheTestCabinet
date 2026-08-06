@@ -22,6 +22,7 @@ export interface SpectraDebugApi {
   step(ticks: number): void;
   snapshot(): SpectraSnapshot;
   setAutoStep(enabled: boolean): void;
+  setDroneAI(enabled: boolean): void;
   startGame(): void;
   startStage(stage: number): void;
   setShipX(x: number): void;
@@ -80,6 +81,14 @@ export function installDebugApi(game: Game): void {
 
     setAutoStep(enabled) {
       game.setAutoStep(Boolean(enabled));
+    },
+
+    // Hold the swarm still (or let it go again). While the AI is off the drones
+    // keep their phase and their place, nothing new is released, no dive is
+    // launched and nothing fires — but a Flux's band clock keeps running, and so
+    // does every other system. See specs/instrumentation.md.
+    setDroneAI(enabled) {
+      game.debugSetDroneAI(Boolean(enabled));
     },
 
     startGame() {
