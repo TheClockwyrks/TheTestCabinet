@@ -35,7 +35,7 @@ import Effect.Exception (Error, throwException, try)
 -- | ```
 -- | outcome <- attempt (fs.readTextFile "notes.md" {})
 -- | case outcome of
--- |   Left failure | failure.code == NotFound -> fs.writeFile "notes.md" ""
+-- |   Left failure | failure.code == NotFound -> void (fs.writeFile "notes.md" "")
 -- |   Left failure -> throwException (error failure.message)
 -- |   Right notes -> view.openText "notes" notes
 -- | ```

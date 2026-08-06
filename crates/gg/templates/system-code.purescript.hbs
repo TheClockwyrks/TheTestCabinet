@@ -70,7 +70,7 @@ rest escape, and gg tells you which call failed.
 ```
 outcome <- attempt ({{api.fs.read_text_file.call}} "notes.md" {})
 case outcome of
-  Left failure | failure.code == NotFound -> {{api.fs.write_file.call}} "notes.md" ""
+  Left failure | failure.code == NotFound -> void ({{api.fs.write_file.call}} "notes.md" "")
   Left failure -> throwException (error failure.message)
   Right notes -> {{api.view.open_text.call}} "notes" notes
 ```
