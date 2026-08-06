@@ -117,6 +117,58 @@ fn every_language_names_the_files_a_code_skill_is_spelled_with() {
     }
 }
 
+/// **Every language writes the one program gg generates rather than quotes, in its own syntax and
+/// with the call resolved from its own catalogue — and can read back what it wrote.**
+///
+/// It is the on-use script of every [built-in family skill](crate::skills::builtin), so a language
+/// whose answer here was empty, or was another language's syntax, would be a language whose agents
+/// read a skill and are shown nothing at all — a capability silently absent on one arm.
+///
+/// The last assertion is the load-bearing one: gg generates this source and hands it straight to the
+/// prepare step, so a language that could not prepare its own output would fail on the first read of
+/// a built-in skill, in a turn that has nothing to do with what the model wrote. Asserting the
+/// spelling appears is not enough — a program can name the right function and still not parse.
+///
+/// The [fixture](super::fixture) is included and answers deliberately unlike TypeScript, which is
+/// what makes "the program is written in the agent's own language" an assertion rather than a
+/// promise: two languages here really do generate different programs.
+#[test]
+fn every_language_writes_the_program_that_opens_a_documentation_view() {
+    const NAMES: [&str; 2] = ["readFile", "writeFile"];
+
+    for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let program = language.open_docs_views_statement(&NAMES);
+        let call = spell(language, VIEW_OPEN_DOCS_VIEW);
+        assert!(
+            program.contains(&call),
+            "{}: the generated program does not call `{call}`:\n{program}",
+            language.display_name()
+        );
+        for name in NAMES {
+            assert!(
+                program.contains(name),
+                "{}: the generated program never names `{name}`:\n{program}",
+                language.display_name()
+            );
+        }
+        language
+            .prepare_program(&program)
+            .unwrap_or_else(|failure| {
+                panic!(
+                    "{}: cannot prepare the program it generated ({failure}):\n{program}",
+                    language.display_name()
+                )
+            });
+    }
+
+    assert_ne!(
+        typescript().open_docs_views_statement(&NAMES),
+        fixture_language().open_docs_views_statement(&NAMES),
+        "two languages generating identical source would make this seam untested rather than \
+         satisfied"
+    );
+}
+
 /// **A run that names no language gets the default**, whether the capability is off, on with no
 /// params, or on with a null one — and none of those is reported as an unreadable setting.
 #[test]
