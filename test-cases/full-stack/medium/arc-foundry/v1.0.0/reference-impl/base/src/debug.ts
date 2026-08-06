@@ -67,6 +67,7 @@ export interface FoundryDebugApi {
   upgradeQuality(): void;
   upgradeCombo(id: number): void;
   spawnUnit(type: LoadType | "overload", options?: { count?: number; wave?: number }): void;
+  setUnitHp(id: number, hp: number): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
   press(code: string): void;
@@ -208,6 +209,9 @@ export function installDebugApi(ctx: DebugContext): void {
 
     spawnUnit(type, options) {
       game.debugSpawn(type, options?.count ?? 1, options?.wave);
+    },
+    setUnitHp(id, hp) {
+      game.debugSetUnitHp(id, hp);
     },
 
     // ---- Input operations (flow through the same handlers the real keyboard/mouse feed) ----

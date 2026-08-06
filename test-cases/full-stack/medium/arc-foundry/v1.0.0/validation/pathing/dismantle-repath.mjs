@@ -25,6 +25,11 @@ import {
   SECOND,
 } from "../_helpers.mjs";
 
+// A beat on the WALLED board before the dismantle. This item's claim is a change — the route
+// shortening back — and a change is only legible against the state it changed from. The act used
+// to open on the dismantle itself, so the wall was gone by the time anyone was watching and the
+// clip showed a board with a hole in it rather than a hole being made.
+const LEAD_TICKS = 1 * SECOND;
 const CLIP_TICKS = 2 * SECOND;
 
 export default function item() {
@@ -52,6 +57,8 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the wall standing, and the route it forced
+
       await api.call("dismantle", candId);
       len2 = (await snap(api)).mazeLength;
 

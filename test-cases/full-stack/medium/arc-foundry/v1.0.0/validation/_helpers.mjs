@@ -530,6 +530,50 @@ export async function actClearWave(
   return r.snap;
 }
 
+// ---- The held rock's ghost (for an item whose evidence is a REFUSAL) ------------
+//
+// A refused placement leaves the board exactly as it was, so a still taken after one is a
+// picture of nothing happening — indistinguishable from a build that was never asked. The
+// evidence a reviewer needs is the refusal being MADE: a rock held over the tile with its
+// footprint cue reading illegal (`#ff4d4d`, `specs/controls.md`). These two helpers pose that
+// and read it back.
+
+/**
+ * Whether the held ghost's 2x2 footprint covers tile `(col, row)`.
+ *
+ * The test is on the footprint rather than on the anchor because `specs/board.md` says only
+ * that "the placement preview snaps the 2x2 block to the grid under the cursor" — it does not
+ * pin whether the block's anchor is the tile under the pointer or the block is centred on it,
+ * and both readings are conformant. Every claim these items actually make is about which TILE
+ * the rock is over, which coverage answers under either reading.
+ */
+export function heldCovers(held, col, row) {
+  if (!held || !held.active) return false;
+  return (
+    col >= held.col && col <= held.col + 1 && row >= held.row && row <= held.row + 1
+  );
+}
+
+/**
+ * ACT. Pull the scrap-press the way a player does (`B`, `specs/controls.md`), park the pointer
+ * on `(col, row)`, and let the build paint the held ghost. Returns the ghost as the snapshot
+ * reports it, for a caller that wants to assert WHERE it is and how its cue reads before
+ * capturing the still.
+ *
+ * The settle is real time in both passes: the ghost is PAINTED from hover state and instant
+ * stepping paints nothing, the same reason `readPanel` waits rather than steps. It is generous
+ * because a headless browser may throttle its frame loop.
+ */
+export const GHOST_PAINT_MS = 300;
+
+export async function hoverHeldRock(api, col, row, { paintMs = GHOST_PAINT_MS } = {}) {
+  await api.call("press", "KeyB");
+  const c = tileCenter(col, row);
+  await api.call("pointerMove", c.x, c.y);
+  await api.settle(paintMs);
+  return (await api.snapshot()).held;
+}
+
 /**
  * Read the inspector's action buttons, waiting for the panel to have been DRAWN.
  *
@@ -683,9 +727,21 @@ export async function skipUntilNearCollector(
 export const PACK_COUNT = 4;
 // 0.4 s at a Mote's 60 px/s is ~24 px between neighbours.
 const PACK_GAP_TICKS = 0.4 * SECOND;
-// The pack is scaled well up the wave ramp: a Wave-1 Mote pops in a hit or two and takes the
-// evidence off screen with it, where these survive volley after volley and stay watchable.
-const PACK_WAVE = 14;
+// How far up the wave ramp the pack is scaled. This is a balance between two ways the clip can
+// fail to show the effect, and it used to sit hard against one of them.
+//
+// A Wave-1 Mote pops in a hit or two and takes the evidence off screen with it. But at Wave 14 a
+// Mote carries ~170 HP, and a Scrap Coil's bolt deals 5 — so one hit moves its bar by 3%, and
+// the leaps beyond the primary target deal LESS than that again (`specs/towers.md`). Measured
+// against all three run implementations the act was several seconds of units walking through a
+// tower that was plainly firing and visibly doing nothing at all: the snapshot could see the
+// chain in the HP numbers, and a reviewer watching the recording could not see it anywhere.
+//
+// Wave 6 (~69 HP) is the middle: a bolt takes a visible bite out of the bar and each leap is a
+// legible smaller one, while the pack still survives the whole act — the item's own budget is
+// six seconds of firing plus a three-second tail, which at a Coil's one shot a second is well
+// short of killing anything.
+const PACK_WAVE = 6;
 
 /**
  * ARRANGE. Arm a firing piece on the corridor and walk a SPREAD pack of Motes up to it, stopping
@@ -859,70 +915,206 @@ export async function actHeadTargets(api, { towerId, aId, bId }) {
   return posed;
 }
 
-// How far apart the HP pose separates its two units along the chain, in ticks of walking. Same
-// half-second the head pose uses: ~30 px between two Motes, which reads as two units on screen
-// and still sits well inside the ~145 px stretch of corridor an Emitter covers, so both are in
-// reach together.
-const HP_GAP_TICKS = 0.5 * SECOND;
+// ---- The `nearest` pose --------------------------------------------------------
+//
+// `nearest` is the one priority `arrangeHeadTargets` cannot grade, and it silently did not.
+// That pose releases its pair a beat apart on a corridor the tower sits BESIDE and stops them
+// as they walk in, so the leading unit is further along the chain AND closer to the tower for
+// the whole measurement: `first` and `nearest` name the same unit, and a build that implements
+// either one passes both. Measured against a run implementation that visibly shot the
+// furthest-along unit under `nearest`, this item passed it.
+//
+// Progress and distance only come apart once a unit has walked PAST the tower's column, because
+// from there every further step takes it away again. So this pose walks the pair on until the
+// leader is beyond the column and the TRAILING unit is the nearer of the two, and stops at the
+// first instant that holds with both still inside the tower's reach — the earliest such instant,
+// which leaves the most of that window for the act to spend.
+//
+// The pair is Slugs (38 px/s) rather than Motes, so the stretch of corridor the tower covers
+// takes three times as long to cross and the window in which the trailing unit is the nearer one
+// is wide enough to measure in. A Slug scaled to Wave 8 carries ~380 HP against a Scrap Emitter's
+// 2 a shot, so neither unit is going anywhere during the look.
+//
+// The tower stays the Emitter the other head-targeting items use, and its cadence is why. The act
+// reads the head half a second after the pose is handed over, and a build is only required to
+// point the head "at the target it is firing at" (`specs/towers.md`) — nothing says it tracks
+// between shots. So the wait has to contain a shot fired under the posed geometry, or the bearing
+// read is the one left over from before the trailing unit became the nearer of the two. An
+// Emitter fires every ~13 ticks and clears that easily; a Capacitor, at ~37 ticks, does not fit
+// inside the same half second at all.
+const NEAREST_GAP_TICKS = 1.2 * SECOND; // ~45 px between two Slugs: plainly two units
+// How much nearer, in px, the trailing unit must be before the pose counts as posed. Enough that
+// the choice cannot turn on a rounding difference, small enough that it arises early in the
+// window.
+const NEAREST_MARGIN = 12;
+
+/**
+ * ARRANGE half of the `nearest` pose: arm the Emitter, release two Slugs a beat apart, and
+ * walk them on until the trailing one is the NEARER of the two with both inside the tower's
+ * reach. Returns `{ towerId, aId, bId }` — `a` the leader (further along, further away), `b` the
+ * trailing unit `nearest` is required to pick.
+ *
+ * Throws an unmet precondition if that instant never arrives, because then the board never
+ * offered a choice in which `nearest` and `first` differ and a verdict either way would be
+ * meaningless.
+ *
+ * Pair with `actHeadTargets`.
+ */
+export async function arrangeNearestTargets(api) {
+  const towerId = await armTower(api, { type: "emitter", tier: 1 });
+  // Armed before anything is in reach, so no shot is ever loosed under the default priority —
+  // see APPROACH_LEAD for what went wrong when a priority was armed afterwards.
+  await api.call("setTargeting", towerId, "nearest");
+  const [lead] = await spawnControlled(api, "slug", { wave: 8 });
+  await api.skip(NEAREST_GAP_TICKS); // the leader walks ahead, and will pass the tower first
+  const [trail] = await spawnControlled(api, "slug", { wave: 8 });
+  if (!lead || !trail) {
+    throw unmetPrecondition("the nearest-targeting pair could not both be released");
+  }
+  const posed = await api.skipUntil(
+    (s) => {
+      const t = towerById(s, towerId);
+      const a = unitById(s, lead.id);
+      const b = unitById(s, trail.id);
+      if (!t || !a || !b) return false;
+      const dA = Math.hypot(a.x - t.cx, a.y - t.cy);
+      const dB = Math.hypot(b.x - t.cx, b.y - t.cy);
+      return dA <= t.range && dB <= t.range && dB + NEAREST_MARGIN < dA;
+    },
+    { max: 120 * SECOND, poll: TICK },
+  );
+  if (!posed.hit) {
+    throw unmetPrecondition(
+      "no instant arose with both units inside the tower's reach and the TRAILING one nearer, " +
+        "so `nearest` and `first` would have named the same unit and the pose could not tell " +
+        "them apart",
+    );
+  }
+  return { towerId, aId: lead.id, bId: trail.id };
+}
+
+// How far apart the HP pose separates its two units along the chain, in ticks of walking. ~27 px
+// between two Slugs: plainly two sprites, and small against the ~190 px stretch of corridor a
+// Tuned Capacitor covers, so the pair is in reach together for most of the crossing.
+//
+// The gap is deliberately no wider than it has to be. Everything this pose does — wearing one
+// unit down, and then measuring the choice — has to happen while BOTH units are inside the
+// tower's reach, and every pixel of gap is a pixel off the front of that window. It also costs
+// twice over: while the leader is in reach alone the tower is already shooting it, which drags
+// down the HP the wearing-down afterwards has to beat.
+const HP_GAP_TICKS = 0.7 * SECOND;
 // Bounded wait for the tower's in-flight shots to land before the measurement is baselined. See
 // `actHpTargets` for why this matters and why it is only best-effort.
 const CLEAR_SHOTS_TICKS = 1 * SECOND;
 // How long the pose watches the tower keep choosing, once both units are in reach and baselined.
-// An Emitter's cadence is ~13 ticks, so a second and a half is a good half-dozen shots — enough
-// that the unit it actually favours is unmistakable and one stray hit cannot flip the reading.
-const HP_MEASURE_TICKS = 1.5 * SECOND;
+// A Tuned Capacitor's cadence is ~37 ticks, so this is a couple of full cadences — enough that
+// the unit it favours is unmistakable, and short enough to finish before the pair walks out the
+// far side of the reach the wearing-down already spent half of.
+const HP_MEASURE_TICKS = 1.2 * SECOND;
+
+// How far below its partner the wounded unit of the pair is posed, as a fraction of the maximum
+// they share. Two fifths is unmistakable in a bar read at a glance, and far more than the
+// measurement that follows can close, so the pair cannot swap places mid-measurement and turn the
+// reading over.
+const WOUNDED_AT = 0.4;
 
 /**
- * ARRANGE half of the HP-targeting pose: arm the Emitter, release a HIGH-HP and a LOW-HP Mote a
- * beat apart, walk them up to the tower's reach, and set the targeting `mode`. Returns
- * `{ towerId, strongId, weakId, pickId, otherId }` — `pickId` being the unit `mode` is required
- * to choose.
+ * ARRANGE half of the HP-targeting pose: arm the Capacitor, release two identical Slugs a beat
+ * apart, walk them into reach, wound ONE of them outright, and only then arm the targeting `mode`.
+ * Returns `{ towerId, strongId, weakId, pickId, otherId }` — `pickId` being the unit `mode` is
+ * required to choose, which is the TRAILING unit whichever mode it is.
  *
- * The two units are both MOTES, differing only in the wave their HP is scaled to (`spawnUnit`'s
- * `options.wave`, `specs/instrumentation.md`). The pose used to use a Slug and a Cluster, which
- * works only while the pair is measured where it spawns: they carry different roster SPEEDS (38
- * vs 72 px/s), so the moment the pose involves any walking they draw apart, and by the time the
- * corridor tower can reach one of them the other is far outside its range and not a candidate for
- * any priority. One type at two wave scalings keeps them the same speed for the whole walk.
+ * WHY THE PAIR IS IDENTICAL. The two units used to be separated by scaling them to different waves
+ * (`spawnUnit`'s `options.wave`), which gives them different HP and different MAXIMUM HP. The
+ * check could read that difference; a reviewer could not see it, because an HP bar is a fraction
+ * of a unit's own maximum and two units at full health both draw a full bar however far apart
+ * their totals are. The recording showed two apparently identical Slugs and a tower choosing
+ * between them for reasons invisible on screen — which is not evidence of a targeting priority,
+ * it is a picture of a tower shooting. Identical units at one wave scaling share a maximum, so a
+ * difference in HP is a difference in the bar.
  *
- * WHY THEY ARE NO LONGER RELEASED ON THE SAME TICK. Same speed AND same release tick made them
- * exactly superimposed — identical coordinates for the entire clip. That was deliberate (it ties
- * progress and distance so only HP can distinguish them) but it made the media useless: the
- * recording shows ONE Mote, and "the tower picked the higher-HP unit of a pair" is not a thing a
- * reviewer can see when the pair is one sprite. It also made the check weaker than it reads,
- * because a build whose `strongest` actually implements `first` or `nearest` cannot be caught by
- * a pose where those all resolve to the same unit.
+ * WHY THE DIFFERENCE IS SET RATHER THAN SHOT IN. The difference used to be made by aiming the
+ * tower at one of the pair and letting it wear that unit down — which meant the pose LEANED on a
+ * targeting priority (`first` to hit the leader, `last` to hit the trailing one) in order to
+ * grade a targeting priority. Against a build whose `last` is broken the tower spent the sweep
+ * shooting the unit that was supposed to be left alone, and `weakest` could not be posed at all:
+ * it came back inconclusive on exactly the builds it existed to catch. `setUnitHp`
+ * (`specs/instrumentation.md`) removes the circularity — the wound is posed directly, no priority
+ * has to work for the scenario to exist, and a build that gets `mode` wrong now fails plainly
+ * instead of going ungraded.
  *
- * So the pair is separated, and separated in the direction that makes the check HARDER: the unit
- * the mode must NOT pick is released first, so it leads the other — further along the chain and
- * nearer the tower. A build that confuses `strongest` with `first` or `nearest` now picks the
- * wrong unit and fails, where the superimposed pose let it pass.
+ * Which unit is wounded is what makes each mode's answer the TRAILING one, and that is the point:
+ * a trailing unit is neither the furthest along nor the nearest, so a build that confuses the mode
+ * under test with `first` or `nearest` reaches for the wrong unit and fails.
+ *
+ *   * `strongest` wounds the LEADER, leaving the trailing unit the healthier of the two.
+ *   * `weakest` wounds the TRAILING unit, leaving it the hurt one.
+ *
+ * A Capacitor and Slugs, rather than the old Emitter and Motes, because the measurement has to fit
+ * inside the stretch of corridor over which the tower can reach both units: Slugs cross it at
+ * 38 px/s instead of 60, and a Capacitor's 108 px reach makes it longer to begin with.
  *
  * Pair with `actHpTargets`.
  */
 export async function arrangeHpTargets(api, mode) {
-  const towerId = await armTower(api, { type: "emitter", tier: 1 });
-  // The priority is armed before anything is within reach, so every shot the item sees was aimed
-  // under it — see APPROACH_LEAD for what went wrong when it was armed afterwards.
-  await api.call("setTargeting", towerId, mode);
-  // The decoy leads, the required pick trails. `strongest` must reach past the nearer, further-
-  // along weak one; `weakest` must reach past the nearer, further-along strong one.
-  const leadWave = mode === "strongest" ? 4 : 20;
-  const trailWave = mode === "strongest" ? 20 : 4;
-  const [lead] = await spawnControlled(api, "mote", { wave: leadWave });
-  await api.skip(HP_GAP_TICKS); // the decoy walks ahead
-  const [trail] = await spawnControlled(api, "mote", { wave: trailWave });
+  const towerId = await armTower(api, { type: "capacitor", tier: 2 });
+  const [lead] = await spawnControlled(api, "slug", { wave: 3 });
+  await api.skip(HP_GAP_TICKS); // one walks ahead: further along the chain, and nearer the tower
+  const [trail] = await spawnControlled(api, "slug", { wave: 3 });
   if (!lead || !trail) {
     throw unmetPrecondition("the HP-targeting pair could not both be released");
   }
+
+  // Walk the pair on until BOTH are inside the tower's reach: a priority only ever chooses among
+  // what is in range, so until both are there the tower is not making the choice under test.
+  const inReach = await api.skipUntil(
+    (s) => {
+      const t = towerById(s, towerId);
+      const a = unitById(s, lead.id);
+      const b = unitById(s, trail.id);
+      if (!t || !a || !b) return false;
+      return (
+        Math.hypot(a.x - t.cx, a.y - t.cy) <= t.range &&
+        Math.hypot(b.x - t.cx, b.y - t.cy) <= t.range
+      );
+    },
+    { max: 120 * SECOND, poll: TICK },
+  );
+  if (!inReach.hit) {
+    throw unmetPrecondition(
+      "the pair never came inside the tower's reach together, so there was no choice to pose",
+    );
+  }
+
+  // Wound one of them outright. Both were released alike, so they share a maximum and this is a
+  // difference a reviewer can read off the bars.
+  const woundedId = mode === "strongest" ? lead.id : trail.id;
+  const wounded = unitById(inReach.snap, woundedId);
+  if (!wounded) {
+    throw unmetPrecondition("the unit this pose has to wound was gone before it could be posed");
+  }
+  await api.call("setUnitHp", woundedId, Math.max(1, Math.round(wounded.maxHp * WOUNDED_AT)));
+
+  // Read it back: `setUnitHp` is part of the debug-API contract, and a build that ignores it has
+  // posed no difference for the priority to choose on. Failing loudly here beats measuring a pair
+  // that is still identical and reporting whatever the tower happened to do.
+  const posed = await api.snapshot();
+  const hurt = unitById(posed, woundedId);
+  const whole = unitById(posed, mode === "strongest" ? trail.id : lead.id);
+  if (!hurt || !whole || !(hurt.hp < whole.hp)) {
+    throw new Error(
+      `setUnitHp did not wound the unit it was given: ${woundedId} reads ` +
+        `${hurt ? Math.round(hurt.hp) : "gone"} of ${hurt ? Math.round(hurt.maxHp) : "?"} ` +
+        `against its partner's ${whole ? Math.round(whole.hp) : "gone"}`,
+    );
+  }
+
+  // Only now is the priority under test armed, so every shot the item goes on to see was aimed
+  // under it — see APPROACH_LEAD for what went wrong when a priority was armed afterwards.
+  await api.call("setTargeting", towerId, mode);
+
   const strongId = mode === "strongest" ? trail.id : lead.id;
   const weakId = mode === "strongest" ? lead.id : trail.id;
-  // Stop short of the TRAILING unit's reach, so the act opens with the pair still walking in and
-  // both of them on screen.
-  await skipToApproach(api, towerId, trail.id, {
-    lead: APPROACH_LEAD,
-    poll: APPROACH_POLL,
-  });
   return { towerId, strongId, weakId, pickId: trail.id, otherId: lead.id };
 }
 
@@ -932,16 +1124,13 @@ export async function arrangeHpTargets(api, mode) {
  * of them took. Returns `{ strong, weak, strongHp0, weakHp0, bothInReach, pickDamage,
  * otherDamage, firstHitWasPick }`.
  *
- * WHY IT BASELINES MID-ACT RATHER THAN AT THE OPENING FRAME. The pair walks the corridor 30 px
- * apart, so the LEADING unit crosses into the Emitter's reach about half a second before the
- * trailing one, and the tower quite correctly shoots it in the meantime — it is the only thing it
- * can see, and a priority only ever chooses among what is IN RANGE (`specs/towers.md`). Those
- * shots say nothing about the priority under test, but a baseline taken before them counts their
- * damage against it, which would fail whichever mode put its required pick at the back. So the
- * measurement starts once the choice is actually available: both in reach, and the tower's
- * in-flight shots landed (a shot is a traveling projectile that carries its damage to impact, so
- * one loosed at the leader an instant before the trailing unit arrived would otherwise land
- * inside the window and read as this priority's pick).
+ * WHY IT WAITS FOR THE AIR TO CLEAR BEFORE BASELINING. `arrangeHpTargets` hands over a pair that
+ * is already both in reach, and the tower has been firing at them under its default priority for
+ * the whole walk in. A shot is a traveling projectile that carries its damage to impact
+ * (`specs/towers.md`), so the last of those shots is still in the air when the priority under test
+ * is armed, and it lands a fraction of a second later — inside the measurement, against whichever
+ * unit the OLD priority chose. Baselining before it drains would count that damage against the
+ * new priority and could invert the reading outright.
  *
  * Waiting for the projectile list to drain is best-effort and bounded — a build with a fast enough
  * cadence may never show an empty one — which is why the verdict rests on how the damage is

@@ -5,11 +5,18 @@
 // must both be unchanged by the dismantle, and the structure removed.
 //
 // Placing the candidate is the arrange; the DISMANTLE is the behavior under test and is the act.
+//
+// WHY THIS IS A CLIP RATHER THAN A STILL. The claim is that two HUD readings do NOT move across
+// the dismantle. A still of the aftermath cannot show a value holding — it is one reading, and a
+// reviewer has nothing to compare it against — so the evidence has to carry both sides: the
+// candidate standing with the HUD as it was, the structure removed, and the same Charge and the
+// same spent stamp still on screen afterwards.
 
-import { startBuild, placeCandidate, towerAt, snap } from "../_helpers.mjs";
+import { startBuild, placeCandidate, towerAt, snap, SECOND } from "../_helpers.mjs";
 
-// A frame for the still, so the capture shows the HUD the assertions read. 100 ms = 6 ticks.
-const SETTLE_TICKS = 6;
+// A beat on the placed candidate before it is removed, and a beat on the board it leaves behind.
+const LEAD_TICKS = 1.5 * SECOND;
+const TAIL_TICKS = 2 * SECOND;
 
 export default function item() {
   // The candidate to dismantle, and the HUD either side of the dismantle.
@@ -28,12 +35,12 @@ export default function item() {
 
     async act(api) {
       s1 = await snap(api);
+      await api.advance(LEAD_TICKS); // the candidate standing, and the HUD it stands under
 
       await api.call("dismantle", candId);
       s2 = await snap(api);
 
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("hud");
+      await api.advance(TAIL_TICKS); // the freed footprint, with nothing returned for it
     },
 
     async assert(api, check) {
