@@ -257,9 +257,10 @@ fn modules_are_handed_over_in_a_stable_order() {
     assert_eq!(keys, vec!["alpha", "mid", "zeta"]);
 }
 
-/// A language that **compiles** — the fixture, which is the only registered-or-not language whose
-/// [`prepare_compiles`](ProgramLanguage::prepare_compiles) answers `true`, and therefore the only
-/// one against which "what a load cost is charged to the run" is an assertion rather than a promise.
+/// A language that **compiles**, without a real toolchain on the path: the fixture, whose
+/// [`prepare_compiles`](ProgramLanguage::prepare_compiles) answers `true` and whose prepare step is
+/// a few string tests. TypeScript answers `true` too and would serve, at the cost of running `tsc`
+/// inside a test about what a *load* is charged.
 fn compiling() -> &'static dyn ProgramLanguage {
     crate::sandbox::fixture_languages()
         .next()

@@ -12,8 +12,8 @@ use test_cabinet_core::gg::{
 use super::fixture::fixture_language;
 use super::*;
 
-/// The one language gg registers today, named explicitly wherever an assertion is about
-/// **TypeScript's** own answers rather than about whichever language happens to be the default.
+/// TypeScript, named explicitly wherever an assertion is about **TypeScript's** own answers rather
+/// than about whichever language happens to be the default.
 fn typescript() -> &'static dyn ProgramLanguage {
     language(GgProgramLanguage::TypeScript)
 }
@@ -242,6 +242,106 @@ fn every_language_names_its_templates_after_itself() {
     }
 }
 
+/// **The JavaScript arm is the TypeScript arm with the check taken out, and with nothing else
+/// taken out.**
+///
+/// This is the assertion that keeps the pair worth running. An A/B across two arms measures the
+/// check only while the check is the *only* thing that differs, and every other axis they could
+/// drift on is cheap to drift on: a catalogue regenerated from a pruned source, a prompt edited on
+/// one side, a strip that gained a refusal on one arm. So each is pinned here rather than left to
+/// the fact that both are generated today.
+///
+/// Four things must be equal — the surface a model is shown, down to its type annotations; the
+/// evaluator; the binding convention; and the lexical reading healing does — and exactly two must
+/// differ: which language the prompt says the model is writing, and whether a compiler is named.
+#[test]
+fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
+    let ts = typescript();
+    let js = language(GgProgramLanguage::JavaScript);
+
+    // What differs, and it is the whole of the arm.
+    assert_eq!(ts.checker(), Some("tsc"));
+    assert_eq!(js.checker(), None, "nothing judges a JavaScript program");
+    assert!(ts.prepare_compiles());
+    assert!(!js.prepare_compiles());
+
+    // The surface. Compared entry by entry rather than as whole catalogues, because the catalogues
+    // differ in the one field that says whose they are — and rendered to text so that a signature,
+    // an argument name and an argument's own description are all in the comparison.
+    let surface = |language: &'static dyn ProgramLanguage| {
+        crate::sandbox::catalogue_functions(language)
+            .iter()
+            .map(|function| {
+                format!(
+                    "{}.{} [{}] {} — {:?}",
+                    function.object, function.key, function.name, function.doc, function.signatures,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        surface(ts),
+        surface(js),
+        "the two arms show a model different signatures, so an A/B across them measures two things"
+    );
+    // Including the annotations, which is the point of keeping this catalogue typed: an unchecked
+    // arm shown untyped signatures would differ from the checked one in how much it was told.
+    assert!(
+        crate::sandbox::catalogue_functions(js)
+            .iter()
+            .any(|function| function.signatures[0].signature.contains(": string")),
+        "the JavaScript catalogue dropped its type annotations"
+    );
+
+    // The evaluator, the binding convention, and the reading healing does.
+    assert_eq!(ts.guest_component(), js.guest_component());
+    assert_eq!(js.binding_name("csv-tools"), "csvTools");
+    assert_eq!(
+        ts.healing().program_fence_tags(),
+        js.healing().program_fence_tags(),
+    );
+
+    // And a type annotation prepares on both, because "JavaScript" here is a program nothing
+    // checked rather than a narrower grammar.
+    for language in [ts, js] {
+        let prepared = language
+            .prepare_program("const total: number = 1;")
+            .unwrap_or_else(|err| panic!("{}: {err}", language.id()));
+        assert!(!prepared.source.contains(": number"), "{}", language.id());
+    }
+    // The one program that separates them: a call the SDK does not have is a compile error on the
+    // checked arm and reaches the guest on the other.
+    let mistyped = "view.openText(1, 2);";
+    assert!(
+        matches!(
+            ts.prepare_program(mistyped),
+            Err(PrepareFailure::Program(PrepareError::Compile(_)))
+        ),
+        "TypeScript's checker reads the program"
+    );
+    assert!(
+        js.prepare_program(mistyped).is_ok(),
+        "nothing on the JavaScript arm reads the program before it runs"
+    );
+}
+
+/// **The JavaScript arm's prompt names its own language and not the other's**, and says nothing
+/// about a compiler.
+///
+/// Both halves are the arm. A prompt that still said "TypeScript program" would be a copied
+/// template nobody re-read; one that kept the type-check section would tell a model its program is
+/// judged by something that never runs, which is worse than saying nothing.
+#[test]
+fn the_javascript_prompt_is_its_own_and_claims_no_compiler() {
+    let template = language(GgProgramLanguage::JavaScript)
+        .prompt()
+        .system_template;
+    assert!(template.contains("JavaScript program"), "{template}");
+    assert!(!template.contains("TypeScript"), "{template}");
+    assert!(!template.contains("tsc"), "{template}");
+    assert!(!template.contains("type-check"), "{template}");
+}
+
 // ---------------------------------------------------------------------------------------------
 // The seam has more than one implementation
 // ---------------------------------------------------------------------------------------------
@@ -250,6 +350,11 @@ fn every_language_names_its_templates_after_itself() {
 // `ProgramLanguage` that exists only under `#[cfg(test)]`. Its whole purpose is to make the
 // properties this module claims *falsifiable*: with one implementation, "the consumer asks the
 // language" and "the consumer knows TypeScript's answer" are the same observation.
+//
+// A registry with two entries in it did not change that, because the second entry is TypeScript's
+// own arm with the type check removed — it gives TypeScript's answer to every question here by
+// design. The one property below that genuinely has a registered pair to test is the artifact
+// rule, which is why that test walks both and the fixture.
 
 /// **The registry is the registered set, and nothing else.**
 ///
@@ -282,14 +387,85 @@ fn the_fixture_language_has_no_wire_id() {
     let _ = fixture_language().id();
 }
 
-/// **No language serves another language's artifacts.**
+/// The pairs of registered languages that **deliberately** share a committed artifact, and why.
+///
+/// The rule below is that a language is handed its own artifacts and never another's, because the
+/// shape every one of them was in before the seam was a `static` of TypeScript's that a second
+/// language would have silently inherited. This table is the one carve-out, written down rather
+/// than left as a property nobody notices is no longer true.
+///
+/// A pair listed here is held to something *stronger* than the rule, not weaker: the sharing must be
+/// real (the same bytes, not two files that happen to agree today), and everything a language owns
+/// beyond the shared artifact must still be its own.
+const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[(
+    GgProgramLanguage::TypeScript,
+    GgProgramLanguage::JavaScript,
+    "the two arms differ in whether gg type-checks a program before handing it over, and in \
+     nothing else — the same SDK, the same signatures, the same strip, one evaluator. A second, \
+     byte-identical 13.4 MB component in the repository would be a second copy of one artifact, \
+     with nothing to observe between them and a standing chance for the one thing the arms must \
+     share to diverge",
+)];
+
+/// Why `a` and `b` are allowed to share a component, or `None` if they are not.
+fn shared_artifacts(a: GgProgramLanguage, b: GgProgramLanguage) -> Option<&'static str> {
+    SHARED_ARTIFACTS
+        .iter()
+        .find(|(left, right, _)| (*left, *right) == (a, b) || (*left, *right) == (b, a))
+        .map(|(_, _, why)| *why)
+}
+
+/// **No language serves another language's artifacts**, except where the seam says so out loud.
 ///
 /// Four artifacts, each of which a consumer reaches through the trait object it was handed: the
 /// committed component, the catalogue's spellings, the prompt's templates, and the healing dialect.
 /// A consumer that had kept a `static` of TypeScript's — the shape every one of these was in before
 /// the seam — would return the same value for both languages here.
+///
+/// The rule is asserted over **every pair of registered languages** as well as against the fixture,
+/// because a registry with two real languages in it is the first tree where "one of them quietly
+/// serves the other's component" is a thing that can happen without a fixture to catch it. The one
+/// pair that does share is [declared](SHARED_ARTIFACTS) with its reason, and is held to the sharing
+/// being deliberate: the bytes must actually be identical, or the exemption is covering for
+/// something else.
 #[test]
 fn no_language_serves_another_languages_artifacts() {
+    let registered: Vec<&'static dyn ProgramLanguage> = all_languages().collect();
+    for (index, mine) in registered.iter().enumerate() {
+        for theirs in &registered[index + 1..] {
+            let why = shared_artifacts(mine.id(), theirs.id());
+            match why {
+                Some(why) => assert_eq!(
+                    mine.guest_component(),
+                    theirs.guest_component(),
+                    "{} and {} are declared to share a component ({why}), and do not",
+                    mine.id(),
+                    theirs.id(),
+                ),
+                None => assert_ne!(
+                    mine.guest_component(),
+                    theirs.guest_component(),
+                    "{} and {} were handed the same component bytes, and nothing in \
+                     `SHARED_ARTIFACTS` says they may be",
+                    mine.id(),
+                    theirs.id(),
+                ),
+            }
+            // Whatever an exemption covers, it never covers these: a language that answered another
+            // language's name, or rendered its prompt, would be a language an operator configured
+            // and did not get.
+            assert_ne!(mine.id(), theirs.id());
+            assert_ne!(mine.display_name(), theirs.display_name());
+            assert_ne!(
+                mine.prompt().system_template,
+                theirs.prompt().system_template,
+                "{} and {} render one system prompt",
+                mine.id(),
+                theirs.id(),
+            );
+        }
+    }
+
     let ts = typescript();
     let fixture = fixture_language();
 

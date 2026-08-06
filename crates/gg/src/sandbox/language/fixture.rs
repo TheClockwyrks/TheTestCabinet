@@ -13,6 +13,12 @@
 //! makes them falsifiable, a workflow before a second real language exists rather than a workflow
 //! after.
 //!
+//! A second language being registered did **not** retire it. [`JavaScript`](super::javascript) is
+//! TypeScript's arm with the type check removed: it shares that language's component, catalogue
+//! spellings, strip and dialect by design, so asking it any of the questions above gets
+//! TypeScript's answer back and proves nothing about who was asked. The fixture answers every one
+//! of them differently, which is the whole of what it is for.
+//!
 //! # What it is
 //!
 //! A stand-in for the *shape* a second language would take, deliberately not an imitation of any
@@ -103,10 +109,10 @@ pub(crate) struct FixtureLanguage {
     catalogue: &'static SignatureCatalogue,
     /// What this instance answers [`checker`](ProgramLanguage::checker) with.
     ///
-    /// Per instance because both answers now need a subject. Every *registered* language compiles —
-    /// TypeScript runs `tsc` over the model's program — so without a fixture that names no checker,
-    /// the seam's other branch would be a promise nothing exercises: that a language which compiles
-    /// nothing reports **nothing** rather than a zero.
+    /// Per instance because both answers need a subject, and one of them needs a subject the
+    /// registry cannot supply: [`JavaScript`](super::javascript) names no checker, but it is
+    /// TypeScript's arm rather than an independent implementation, so the free branch of the seam
+    /// would be exercised only by a language that shares the checked one's every other answer.
     ///
     /// The name is deliberately not `tsc`. A second language that checks its programs and calls its
     /// checker something else is the only thing that can show gg is telling a model *its* compiler's
@@ -178,8 +184,8 @@ impl ProgramLanguage for FixtureLanguage {
     /// language — it compiles nothing, of course, since nothing here evaluates anything, but that is
     /// what makes "a language that compiles has its programs timed, including the one its compiler
     /// rejected" an assertion rather than a promise.
-    /// [`a_language_that_does_not_compile`] names none and is the only subject the opposite claim
-    /// has left, now that every registered language compiles.
+    /// [`a_language_that_does_not_compile`] names none, and is the subject of the opposite claim
+    /// that owes nothing to a checked language's answers.
     fn checker(&self) -> Option<&'static str> {
         self.checker
     }

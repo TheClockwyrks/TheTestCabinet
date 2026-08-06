@@ -40,10 +40,12 @@ fn report(found: &[Disagreement]) -> String {
 
 /// **Every registered language describes one capability surface.**
 ///
-/// The headline assertion, and — with one language registered — a restatement of gg's own
-/// vocabularies as a property of that language's catalogue: the tool bijection, the ending calls,
-/// the ending roles, the gates, the spellings and the type closure. See the module documentation for
-/// what remains true, and what goes dormant, while only one language is registered.
+/// The headline assertion. Most of what it proves is each language's catalogue against gg's own
+/// vocabularies — the tool bijection, the ending calls, the ending roles, the gates, the spellings
+/// and the type closure — which holds per language and needs no second one. The comparative half
+/// runs over the registry too, though the registered pair is the easiest comparison there is, its
+/// two catalogues being one set of declarations reflected twice; the module documentation says why
+/// the fixture is still what makes that half mean something.
 #[test]
 fn every_registered_language_describes_one_capability_surface() {
     let found = disagreements(&registered());
