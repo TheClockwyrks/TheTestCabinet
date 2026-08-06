@@ -8,10 +8,13 @@
 # guest's artifacts are: gg's responses-as-code capability registers a language per guest, and each
 # one commits its artifacts under `crates/gg/src/sandbox/guests/<language-id>.*`.
 #
-# There is no signature catalogue here **yet**. This package is the Python arm's execution
-# substrate — the guest a program runs inside — and the idiomatic Python SDK it will be reflected
-# from is the next step. `crates/gg/src/sandbox/language/python.substrate.test.rs` is what proves
-# the artifact this script writes really runs, against gg's own linker and membrane.
+# The signature catalogue is the package's OTHER committed artifact and is emitted by
+# `signatures.sh`, not by this script. The split is deliberate and is what lets CI cover the
+# catalogue: reflecting it reads the sources and needs only a pinned `griffe`, where this needs
+# `componentize-py`, a network and 25 MB of output — and, being unreproducible (see below), would
+# fail a drift check every time it ran. `crates/gg/src/sandbox/language/python.substrate.test.rs` is
+# what proves the artifact this script writes really runs, and really binds what that catalogue
+# describes, against gg's own linker and membrane.
 #
 # The artifact is checked in, exactly as the TypeScript guest's is, so no build or CI step ever
 # needs `componentize-py`: the Rust host reads it with `include_bytes!`. That is also why this
@@ -23,7 +26,7 @@
 #   * crates/gg/wit/gg-sandbox.wit        (the membrane — a WIT change without a rebuild fails gg's
 #                                          instantiation test, which is the intended failure
 #                                          direction)
-#   * packages/gg-sandbox-python/src/**   (the shim, or the curated library set)
+#   * packages/gg-sandbox-python/src/**   (the shim, the SDK, or the curated library set)
 #   * packages/gg-sandbox-python/requirements.txt  (the pinned third-party wheels)
 #   * the pinned COMPONENTIZE_VERSION below
 #

@@ -27,10 +27,14 @@ What this shim does, and what each part is load-bearing for
    unwinding the traceback of a ``RecursionError`` it already caught — so ``except`` gives no
    protection and the turn dies as an opaque trap. The limit is clamped instead, and the program
    gets an ordinary catchable ``RecursionError``.
-3. **The agent's code modules are evaluated first** (:func:`_load_modules`), each into its own
+3. **The scope is built from the run** (:func:`gg.scope.build_scope`): the API objects this run
+   offers, and the types they speak in. It is the *surface* rather than the enforcement — the host
+   refuses a withheld call however a program reached it — but a name a model can see is a name it
+   will use, so an object carries exactly the functions the run enables.
+4. **The agent's code modules are evaluated first** (:func:`_load_modules`), each into its own
    namespace bound at ``lib.<name>``. A module that throws is reported and left empty rather than
    taking the program down with it: a broken skill belongs to whoever authored it.
-4. **Everything the program has to say is said through ``feedback``**, never through a trap and
+5. **Everything the program has to say is said through ``feedback``**, never through a trap and
    never through a return value. An uncaught exception is caught once, classified, rendered with a
    traceback containing only the program's own frames, and reported at the program's own
    coordinates.
@@ -38,19 +42,6 @@ What this shim does, and what each part is load-bearing for
 What it deliberately does not do is carry a program's value anywhere. A Python module has no
 return value to discard, so — unlike the JavaScript guest — there is nothing here that calls
 ``feedback.note_return``: the only ways a program shows itself something are a view and ``print``.
-
-The state of this file, honestly
----------------------------------
-
-This is the **execution substrate** and not yet the arm. The typed, namespaced Python SDK — the
-``fs``/``memory``/``tasks``/``view`` objects, the ``ToolError`` exception, the dataclasses and enums
-— is not written yet, so :func:`WitWorld.bound_tools` answers with the empty list and no gg tool
-name is bound into a program's scope. Everything *underneath* that is real and is exercised
-end to end against gg's own linker by ``crates/gg/src/sandbox/language/python.substrate.test.rs``:
-the component instantiates against the real membrane, a real Python program runs, the ambient WASI
-surface works, the host's capability gate refuses a withheld call with a typed error the program
-catches, an uncaught exception arrives as a located ``ProgramError``, and a runaway program is
-stopped by the execution timeout.
 """
 
 import io
@@ -67,26 +58,15 @@ from wit_world.imports import types as wit_types
 
 from componentize_py_types import Err
 
-# The rest of the wire, imported for its side effect: `componentize-py` bundles only the modules the
-# entry module's import closure reached, so an interface nothing imports is a binding a program
-# cannot reach even though the component declares the import. The SDK will hang off every one of
-# them; importing them here is what puts every one of them in the artifact. See `library` for the
-# same mechanism applied to the standard library, and for why it is a bake-time fact rather than a
-# policy.
-from wit_world.imports import (  # noqa: F401 — imported to be baked in, not to be used here.
-    board,
-    context,
-    delegation,
-    docs,
-    files,
-    helpers,
-    memories,
-    programs,
-    shell,
-    skills,
-    tasks,
-    views,
-)
+# The SDK: the typed, namespaced surface a program calls gg through, and the only thing here that
+# reaches the rest of the membrane. Importing it is also what BAKES the rest of the membrane in —
+# `componentize-py` bundles only the modules the entry module's import closure reached, so an
+# interface nothing imports is a binding a program could not reach even though the component
+# declares the import, and every one of `gg`'s tool modules imports the interface it wraps. See
+# `library` for the same mechanism applied to the standard library, and for why what a program can
+# import is a bake-time fact rather than a policy.
+from gg import scope as gg_scope
+from gg.errors import ToolError
 
 # Every library a program may reach for, likewise imported for its side effect. Its own docstring is
 # the authority on what the Python arm offers and what it deliberately does not.
@@ -251,7 +231,19 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
     own :class:`ErrorCode`, so the host classifies the turn from a value rather than from prose. A
     ``NameError`` is reported as :attr:`UNKNOWN_NAME` because that is what a model reaching for a
     capability this run does not offer produces in a guest that withholds the name.
+
+    A failed call arrives in **two** shapes and both are that middle class. The SDK raises its own
+    :class:`gg.errors.ToolError`, which is what a program sees; a program that reached past the SDK
+    into ``wit_world`` gets the generated ``Err`` wrapper. Reading only the first would classify the
+    second as an ordinary exception and lose the code the host branches on.
     """
+    if isinstance(exc, ToolError):
+        return feedback.ProgramError(
+            kind=feedback.ErrorKind.TOOL_FAILURE,
+            code=wit_types.ErrorCode[exc.code.name],
+            message=str(exc.args[0]) if exc.args else str(exc),
+            location=_locate(exc, filenames),
+        )
     if isinstance(exc, Err) and isinstance(exc.value, wit_types.ToolError):
         failure = exc.value
         return feedback.ProgramError(
@@ -262,7 +254,7 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
         )
     kind = (
         feedback.ErrorKind.UNKNOWN_NAME
-        if isinstance(exc, NameError)
+        if isinstance(exc, NameError) or _missing_capability(exc)
         else feedback.ErrorKind.OTHER
     )
     return feedback.ProgramError(
@@ -270,6 +262,23 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
         code=None,
         message=_render(exc, filenames),
         location=_locate(exc, filenames),
+    )
+
+
+def _missing_capability(exc: BaseException) -> bool:
+    """Whether ``exc`` is a program reaching for a function its API object does not carry.
+
+    This arm's spelling of the mistake a guest that could withhold a *name* reports as a
+    ``NameError``. An object this run offers is a real object with the run's functions on it, so
+    ``fs.read_file`` under a run with reading withheld is an ``AttributeError`` rather than an
+    unknown name — the same fact, and it has to be classified the same way or gg would count a
+    withheld capability as an ordinary program bug on one arm and not on the other.
+
+    The check is on the object the failure happened on, not on the exception's type: an
+    ``AttributeError`` against anything else is exactly the ordinary program bug it looks like.
+    """
+    return isinstance(exc, AttributeError) and isinstance(
+        getattr(exc, "obj", None), gg_scope.ApiObject
     )
 
 
@@ -325,8 +334,8 @@ class WitWorld(wit_world.WitWorld):
     ) -> None:
         """Evaluate one program, reporting everything it did over ``feedback``.
 
-        ``tools``, ``ending`` and ``library`` are the scope the SDK will be bound from and are not
-        read yet — see this module's docstring for what is and is not built.
+        The code modules are evaluated against the **same** scope the program gets, so a skill's
+        module may call ``fs.read_file`` exactly as a program does.
         """
         stream = _FeedbackStream()
         sys.stdout = stream
@@ -338,6 +347,7 @@ class WitWorld(wit_world.WitWorld):
         # guards its entry point with `if __name__ == "__main__":` has written correct Python and
         # must not be silently skipped.
         scope: Dict[str, Any] = {"__name__": "__main__"}
+        scope.update(gg_scope.build_scope(tools, ending, library))
         lib = _load_modules(modules, scope, filenames)
         if modules:
             scope["lib"] = lib
@@ -354,10 +364,12 @@ class WitWorld(wit_world.WitWorld):
         stream.flush()
 
     def bound_tools(self) -> List[str]:
-        """The gg tool names this component can bind: **none yet**.
+        """The gg tool names this component can bind.
 
-        The empty list is the honest answer while the Python SDK is unwritten. It becomes gg's whole
-        tool vocabulary with the SDK, and the registered-language drift gate — which calls this
-        export on the committed artifact — is what will hold it there.
+        Derived from the SDK's own catalogue rather than listed here, and filtered by whether the
+        module really defines the function — so a catalogue entry pointing at a name that does not
+        exist is a missing name in this answer rather than an attribute a program discovers by
+        calling it. gg compares it with ``ALL_TOOL_NAMES`` on the *committed artifact*, which is the
+        one drift check that catches a stale ``.wasm``.
         """
-        return []
+        return gg_scope.bound_tools()

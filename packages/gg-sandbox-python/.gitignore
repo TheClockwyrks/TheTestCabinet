@@ -2,3 +2,11 @@
 # derived from `requirements.txt` and `crates/gg/wit/gg-sandbox.wit`; only the component this
 # package bakes is committed, and it lives in the Rust crate that embeds it.
 .build/
+
+# The private environment `signatures.sh` puts `griffe` in. It is a toolchain, not a source: the
+# pin lives in `signatures.sh` and the catalogue it emits is committed in the Rust crate.
+.venv/
+
+# CPython's own build output. The sources here are read by `componentize-py` and by `griffe`, and
+# neither wants a stale `.pyc` beside them.
+__pycache__/

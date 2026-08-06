@@ -742,14 +742,23 @@ registered language that *did* touch that package is
 [JavaScript](#javascript-the-same-arm-unchecked), because it is not a new guest at all —
 it is this one's catalogue emitted a second time under a second id.)
 
-Python is no longer hypothetical here: its **guest exists**, in
-`packages/gg-sandbox-python/` — the shim, the curated library set, the hand-run build, and
-the committed component. What does *not* exist yet is its SDK and its
-registration, which is why `python` is not a value an operator can configure. The split is
-deliberate: a `ProgramLanguage` arm cannot be half-registered — the registry's `match` is
-exhaustive and every gate that iterates the registered set would immediately demand a
-catalogue, two templates and a healing dialect — so the artifact is proven first, on its own,
-and the registration lands in one piece with the surface it registers.
+Python is no longer hypothetical here: its **guest and its whole model-facing surface
+exist**, in `packages/gg-sandbox-python/` — the shim, the curated library set, the
+hand-written idiomatic SDK, the reflector, and both committed artifacts. What does *not*
+exist yet is its **registration**, which is why `python` is not a value an operator can
+configure. The split is deliberate: a `ProgramLanguage` arm cannot be half-registered — the
+registry's `match` is exhaustive and every gate that iterates the registered set would
+immediately demand two templates and a healing dialect — so the artifact and the surface are
+proven first, on their own, and the registration lands in one piece.
+
+The surface is not taken on trust in the meantime. The
+[agreement gate](#the-agreement-gate) runs against the committed Python catalogue **now**,
+wearing the [fixture language](#the-agreement-gate) so it can be handed a catalogue whose id
+the wire enum does not carry yet; and every one of the thirty-five tools is driven through the
+real membrane from its Python spelling, against the same expected JSON the TypeScript arm's
+crossing table asserts. That the two arms produce byte-identical arguments for the same
+capability is the property a cross-language study rests on, and it is checked a step before
+the commit least able to absorb a surprise.
 
 ### What was measured
 
@@ -758,9 +767,9 @@ and the guest that followed re-measured every one of them on the real artifact:
 
 | Question | Finding |
 | --- | --- |
-| Does another toolchain bind gg's existing WIT world? | **Yes.** `componentize-py` generates clean Python bindings for this exact world — 14 interfaces, ~55 typed functions with real records, enums and variants. WIT is a language-neutral IDL and behaves like one; no generic `call(name, json)` fallback was needed anywhere. |
+| Does another toolchain bind gg's existing WIT world? | **Yes.** `componentize-py` generates clean Python bindings for this exact world — 14 interfaces, ~55 typed functions with real records, enums and variants, already in `snake_case`. WIT is a language-neutral IDL and behaves like one; no generic `call(name, json)` fallback was needed anywhere, and the hand-written layer on top is thin because of it. |
 | What does baking one cost? | **~1.8 s**, which is a hand-run build step, not a problem. |
-| How big is the artifact? | **~23.5 MiB**, against the JavaScript guest's 13.4 MiB. Larger, and the same *kind* of number: both embed a whole runtime, and this one additionally carries a curated standard library. Not an exact number, because the build is not byte-reproducible — `componentize-py` snapshots a running interpreter's memory, so two builds of identical sources differ by tens of kilobytes. A test holds it to a 22–28 MiB band; **rebuilding to check whether the artifact is current does not work**, and its build script says so. |
+| How big is the artifact? | **~24 MiB**, against the JavaScript guest's 13.4 MiB. Larger, and the same *kind* of number: both embed a whole runtime, and this one additionally carries a curated standard library and the SDK. Not an exact number, because the build is not byte-reproducible — `componentize-py` snapshots a running interpreter's memory, so two builds of identical sources differ by tens of kilobytes. A test holds it to a 22–28 MiB band; **rebuilding to check whether the artifact is current does not work**, and its build script says so. |
 | What does it import? | The **full WASI p2 surface** — `wasi:cli`, `wasi:filesystem`, `wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io` — 20 interfaces beside the 15 membrane ones. |
 | What does a turn cost? | **~20 ms**, almost all of it the instantiate: ~17–22 ms to instantiate the component against the real linker and ~2.6 ms to evaluate a program. Against TypeScript's tens of microseconds and 0.7–3 ms that is a real difference and an irrelevant one — it is two hundredths of a second beside a model request measured in seconds. Baking the standard library in costs nothing here: a minimal component instantiates no faster. |
 | What does the one-per-process component compile cost? | **~3.5 s** in the dev test profile, paid by `precompile` and overlapped with the run's first model request. |
@@ -847,18 +856,30 @@ the first such language, which is the first turn a model can reach it from.**
 2. **Bind the one WIT.** `crates/gg/wit/gg-sandbox.wit` is the wire and there is exactly one
    copy of it. The guest binds it directly.
 3. **Hand-write the SDK**, idiomatic for the language, obeying the
-   [five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language) above.
+   [five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language) above. Python's is
+   `packages/gg-sandbox-python/src/gg/`: `catalogue.py` holds the identity data — which gg tool
+   is which function, on which object, gated by what — and every other module holds the
+   spellings. It is also where the guest's *surface* is built (`scope.py`), which is not the
+   same thing as the capability model: the objects follow the run, so a withheld tool is not an
+   attribute and an object with nothing enabled is not a name, while the **host** is what
+   refuses a call a program made by importing the package directly.
 4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in
    [the same shape](#the-catalogue), with `language: "python"` and the same `key`s: the
    `objects` section in presentation order, one entry per function with its `signatures` and
    each signature's arguments, every type with its own description and its members', and the
    `meta` section carrying `list`. It
-   need not use the TypeScript package's reflector — only the emitted JSON is contractual,
-   and a Python guest would reflect its own docstrings and type hints with its own script —
-   but it must reflect them rather than list them, because the completeness half of the
-   agreement gate fails a catalogue with a blank in it — and, for an argument, with a gap
-   where one should be: a signature that takes arguments and documents none fails, as does an
-   entry documenting no argument where another arm documents one.
+   need not use the TypeScript package's reflector — only the emitted JSON is contractual —
+   and Python's does not: `packages/gg-sandbox-python/tools/signatures.py` reads the SDK with
+   **`griffe`**, the language's own documentation tool, statically and without importing it
+   (every SDK module imports `wit_world`, which exists only inside the baked component). What
+   it reads is what a Python author already writes: the docstring's summary and body, its
+   `Args:` entries, its `Raises:` section, each parameter's annotation and default, each
+   dataclass field's and enum member's own docstring. It must reflect them rather than list
+   them, because the completeness half of the agreement gate fails a catalogue with a blank in
+   it — and, for an argument, with a gap where one should be: a signature that takes arguments
+   and documents none fails, as does an entry documenting no argument where another arm
+   documents one. The reflector refuses to emit either, so the failure lands on the author
+   rather than on a model.
 5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`. If the language
    type-checks the model's program, its compiler has to reach the run container, and there
    are two places for it. A compiler small enough to *be* an artifact goes under
@@ -896,7 +917,13 @@ the first such language, which is the first turn a model can reach it from.**
    already does for it and what still has to be true of the toolchain itself.
 9. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
    and re-cutting its checker, if it has one — so the drift gate covers them rather than only
-   diffing them.
+   diffing them. The script lists the stems it knows how to regenerate and **fails on one it
+   does not**, so a catalogue whose guest is never re-run is an error rather than a silent
+   pass. What it must not regenerate is a component: Python's is not byte-reproducible, so a
+   rebuild would fail the diff every time. Python's step also installs `uv`
+   (`scripts/ci/install-uv.sh`), which is how all three machines that run this — a
+   devcontainer with no usable `pip`, an Azure agent and a GitHub runner — reach the same
+   pinned `griffe`.
 10. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
    (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
    picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are
@@ -934,13 +961,28 @@ point, and every one of them is a spelling rather than an identity:
 - **`None`, not `undefined`.** An absent optional is `None`, and an optional field of a
   result is `T | None` rather than `T | undefined`.
 - **Exceptions for the wire's error arm.** WIT's `result<T, tool-error>` becomes a typed
-  exception raised at the call site — `except ToolError as e: if e.code == "conflict":` —
-  rather than a `ToolError` object thrown by hand. Same inversion, same reason (a surface
-  where every call returns `(ok, output)` forces a branch after every line and makes a
-  composed program unwritable), spelled the way the language spells it.
+  exception raised at the call site — `except ToolError as failure:`, then
+  `if failure.code is ToolErrorCode.CONFLICT:` — rather than a `ToolError` object thrown by
+  hand. Same inversion, same reason (a surface where every call returns `(ok, output)` forces
+  a branch after every line and makes a composed program unwritable), spelled the way the
+  language spells it. The code is an enum member rather than a string, on rule 3.
 - **Dataclasses and enums for results and fixed choices**, so a field is read as
   `entry.kind is EntryKind.FILE` rather than by string comparison, and the model's editor
   and the model's memory can both complete it.
+- **A record's fields are the function's own arguments.** The wire declares one
+  `memory-input` for three calls; the SDK spells it `memory.create_memory(name, description,
+  body, code=…)` rather than asking a model to construct a value before it can make a call.
+  A language whose optional arguments are keyword arguments has no reason to do otherwise —
+  and it is why this arm documents more arguments per entry than TypeScript does, which is
+  spelling and therefore free.
+- **A named sentinel where `None` is already taken.** A patch field that can be *cleared* has
+  three states, and Python spells "absent" as `None` — which is the request to clear it. So
+  the third is `UNCHANGED`: leave the argument out to keep what is there, pass `None` to empty
+  it, pass a value to replace it. TypeScript needs no such name, because `undefined` and
+  `null` are two words there and one here.
+- **`isinstance`, not a discriminant.** A read is `TextFile | ImageFile`, two classes a
+  program narrows with `isinstance` or a `match` statement, where TypeScript reads a `kind`
+  field off a union of object literals.
 
 What must not differ: which functions exist, which object each hangs off, what gates each
 one, and the [five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language). A

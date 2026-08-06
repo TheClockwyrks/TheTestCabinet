@@ -35,13 +35,21 @@
 #     language's catalogue is covered by this gate the day it lands.
 #
 #     Only the `signatures` half of each guest build is run here: rebuilding a
-#     component needs its own toolchain — `componentize-js` for TypeScript, which is
-#     deliberately not an installed dependency (it is driven by
-#     packages/gg-sandbox/build.sh via `npx`) — whereas `signatures` needs only the
-#     `typescript` the `npm ci` below already installs. The committed .wasm files
-#     therefore sit in the diffed directory untouched: nothing here regenerates one,
-#     so one cannot cause a false positive, and if one ever does diff then something
-#     rewrote a binary CI must not touch and failing is right.
+#     component needs its own toolchain — `componentize-js` for TypeScript and
+#     `componentize-py` for Python, neither of which is an installed dependency (each
+#     is driven by that package's own build.sh) — whereas emitting a catalogue reads
+#     the sources and needs only that language's documentation tool: the `typescript`
+#     the `npm ci` below already installs, and a pinned `griffe` that
+#     packages/gg-sandbox-python/signatures.sh fetches through uv. The committed .wasm
+#     files therefore sit in the diffed directory untouched: nothing here regenerates
+#     one, so one cannot cause a false positive, and if one ever does diff then
+#     something rewrote a binary CI must not touch and failing is right.
+#
+#     A guest need not be an npm package, and Python's is not — only the emitted JSON
+#     is contractual. That is why each language owns its own regeneration command and
+#     why this script installs uv: the devcontainer's base image ships no usable pip
+#     and a CI agent's system Python refuses one (PEP 668), so uv is how every machine
+#     that runs this reaches the same pinned `griffe`.
 #
 #  4. gg's program CHECKERS, under crates/gg/src/sandbox/checkers/. A language that
 #     type-checks a model's program carries its compiler and that compiler's standard
@@ -88,7 +96,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript"
+regenerated="typescript javascript python"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -109,6 +117,13 @@ done
 log "regenerate gg's sandbox signature catalogues (tsc + tools/signatures.mjs)"
 npm run --workspace @test-cabinet/gg-sandbox signatures
 
+log "install uv (the Python guest's catalogue is reflected with a pinned griffe)"
+./scripts/ci/install-uv.sh
+export PATH="$HOME/.local/bin:$PATH"
+
+log "regenerate the Python guest's signature catalogue (griffe + tools/signatures.py)"
+./packages/gg-sandbox-python/signatures.sh
+
 log "re-cut gg's program checkers (tools/checker.mjs)"
 npm run --workspace @test-cabinet/gg-sandbox checker
 
@@ -121,11 +136,13 @@ crates/gg/src/sandbox/guests/<language>.signatures.json no longer matches that
 language's guest SDK declarations, so the responses-as-code prompt would show
 models a surface the sandbox does not export.
 Run the regeneration for the language that drifted and commit the result — for
-TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`.
+TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
+`packages/gg-sandbox-python/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script
-— for TypeScript, packages/gg-sandbox/build.sh — and commit
+— packages/gg-sandbox/build.sh for TypeScript, packages/gg-sandbox-python/build.sh
+for Python — and commit
 crates/gg/src/sandbox/guests/<language>.component.wasm alongside.
 
 If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's

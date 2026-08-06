@@ -371,6 +371,23 @@ pub(crate) fn a_language_whose_catalogue(
     }))
 }
 
+/// A fixture carrying `json` **verbatim** — a candidate surface put in front of the
+/// [agreement gate](super::agreement) before the language that owns it is registered.
+///
+/// The registry's `match` is exhaustive and every gate that iterates the registered set demands two
+/// templates and a healing dialect, so a language's catalogue would otherwise go unchecked until the
+/// commit that registers it — which is the commit least able to absorb a surface that disagrees.
+/// Wearing the fixture is what lets the *real* gate read a real catalogue a step early.
+///
+/// The caller is responsible for the one field the gate never reads: `language` is the wire enum,
+/// and a language with no variant yet has no value to put in it.
+pub(crate) fn a_language_whose_catalogue_is(json: &str) -> &'static FixtureLanguage {
+    Box::leak(Box::new(FixtureLanguage {
+        catalogue: leak(json.to_string()),
+        checker: Some(FIXTURE_CHECKER),
+    }))
+}
+
 /// Every fixture language, for the `#[cfg(test)]` consumers that must know about them — today, the
 /// prompt engine, which cannot render a template it never registered.
 pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
