@@ -1939,7 +1939,7 @@ export type GgHealingStrategy =
  * not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
  * module default on the same grounds.
  */
-export type GgProgramLanguage = "typescript" | "javascript";
+export type GgProgramLanguage = "typescript" | "javascript" | "python";
 
 /**
  * What gg had to do to a model's response before it could run it — the healing record of one

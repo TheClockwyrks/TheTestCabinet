@@ -659,6 +659,7 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
 const PROGRAM_LANGUAGE_LABELS: Record<GgProgramLanguage, string> = {
   typescript: "TypeScript",
   javascript: "JavaScript (no type check)",
+  python: "Python",
 };
 
 // gg's own default, which is what the empty value resolves to (`GgProgramLanguage::default`).
@@ -679,7 +680,7 @@ export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
 ];
 
 export const PROGRAM_LANGUAGE_HINT =
-  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Empty is gg's default, TypeScript.";
+  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. JavaScript is the exception and is deliberate: it is the TypeScript arm with the type check removed and nothing else changed — the same signatures, annotations included — so an A/B across the two measures what checking a program before it runs is worth. Python is its own guest, a committed CPython, and its programs are checked by nothing before they run. Empty is gg's default, TypeScript.";
 
 export const ASSISTANT_MESSAGE_OPTIONS = [
   { value: "", label: "No post-processing (default)" },

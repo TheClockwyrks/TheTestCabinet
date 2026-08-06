@@ -2,53 +2,39 @@
 //! against gg's real membrane, really evaluating real Python against the typed surface a model is
 //! given.
 //!
-//! # Why this is a test file with no source file beside it
+//! # Why this is its own test file
 //!
-//! The Python arm is being built in three steps, and the third is the one that produces a source
-//! file. The first was the *substrate* — a guest that CPython lives inside, its build, and the proof
-//! that a program crosses into it, runs, reaches back through the membrane and comes back out. The
-//! second, this one, is the hand-written idiomatic SDK (`packages/gg-sandbox-python/src/gg/`) and
-//! the signature catalogue reflected out of it. The third **registers** `python` as a
-//! [`GgProgramLanguage`](test_cabinet_core::gg::GgProgramLanguage), which is what produces
-//! `language/python.rs` and turns this into its ordinary `python.test.rs`.
-//!
-//! Splitting it that way is deliberate: a `ProgramLanguage` arm cannot be half-registered. The
-//! registry's `match` is exhaustive, the enum's `ordinal()` is checked against `ALL` at compile
-//! time, and every gate that iterates [`all_languages`](super::all_languages) — the agreement gate,
-//! the prompt gates, the healing invariant — would immediately demand two Handlebars templates and a
-//! healing dialect that have not been written yet. So the artifact is proven *first*, on its own,
-//! and the registration lands in one piece with the surface it registers.
-//!
-//! The consequence for a reader: `python.component.wasm` is committed but is **not** in the release
-//! binary. Nothing outside this file `include_bytes!`s it, because there is nothing outside this
-//! file that could yet do anything with it.
+//! Because these tests cost a different order of magnitude from the ones next door in
+//! [`python.test.rs`](super::tests). Everything there is a pure function over text and runs in
+//! microseconds; every function here compiles a 25 MB component and instantiates it. Splitting them
+//! keeps "what does this arm do to a reply?" cheap to run and cheap to read, and keeps the expensive
+//! cases together where their cost is obvious.
 //!
 //! # What is proven here, and what "real" means
 //!
-//! Everything but the per-language component cache, which is keyed on the wire id an unregistered
-//! language does not have. So this file compiles the artifact through
-//! [`compile_bytes`](super::super::engine::compile_bytes), links it with
-//! [`linker`](super::super::linker) — the production linker, the whole membrane plus the whole
-//! ambient WASI surface — builds a [`bounded_store`](super::super::bounded_store) with the
-//! production ceilings, instantiates through the `bindgen!`-generated
-//! [`Sandbox`](super::super::membrane::Sandbox), and calls its `run` export. The tool side is
-//! [`FakeToolApi`](super::super::fake::FakeToolApi), which is what every other end-to-end sandbox
-//! test uses, and it records the exact JSON each call arrived as.
+//! All of it. The committed artifact is compiled through the production
+//! [component cache](super::super::super::engine::component), linked with
+//! [`linker`](super::super::super::linker) — the production linker, the whole membrane plus the whole
+//! ambient WASI surface — put in a [`bounded_store`](super::super::super::bounded_store) with the
+//! production ceilings, instantiated through the `bindgen!`-generated
+//! [`Sandbox`](super::super::super::membrane::Sandbox), and driven through its `run` export. The tool
+//! side is [`FakeToolApi`](super::super::super::fake::FakeToolApi), which is what every other
+//! end-to-end sandbox test uses, and it records the exact JSON each call arrived as.
 //!
 //! # Why these tests are consolidated
 //!
 //! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 25 MB component — around 3.5 s in the dev test profile. So each function drives
-//! *many* programs against many stores rather than being one behaviour per function, exactly as
+//! compile that component — around 3.5 s in the dev test profile. So each function drives *many*
+//! programs against many stores rather than being one behaviour per function, exactly as
 //! `sandbox.test.rs` does. Add a program to an existing function rather than adding a function.
 
-use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use test_cabinet_core::gg::GgProgramLanguage;
 use wasmtime::component::Component;
 
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome, typescript};
+use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, ProgramErrorKind, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -56,45 +42,36 @@ use crate::sandbox::{
 };
 use crate::tools::ToolOutcome;
 
-/// The committed Python guest, built by `packages/gg-sandbox-python/build.sh`.
-///
-/// Read here and nowhere else — see this module's own documentation for why the artifact is
-/// committed before anything in a release build references it.
-const COMPONENT: &[u8] = include_bytes!("../guests/python.component.wasm");
+/// This arm, resolved from the registry — the same `&'static dyn ProgramLanguage` a run resolves.
+fn python() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::Python)
+}
 
-/// The committed guest, compiled once per test process.
+/// The committed guest, compiled once per test process through the **production** cache.
 ///
-/// The same bargain [`engine::component`](super::super::engine::component) strikes for a run, and
-/// for the same reason: compiling 25 MB costs seconds and instantiating the result costs
-/// milliseconds, so a function that drives ten programs must not pay ten compiles. It is a plain
-/// `OnceLock` rather than the production cache because that cache is indexed by the wire id this
-/// language does not have yet.
+/// The same bargain a run strikes, and for the same reason: compiling 25 MB costs seconds and
+/// instantiating the result costs milliseconds, so a function that drives ten programs must not pay
+/// ten compiles. Reaching for it through [`engine::component`](super::super::super::engine::component)
+/// rather than a local `OnceLock` is what makes these cases exercise the slot this language's
+/// programs really come out of, indexed by its own wire id.
 fn component() -> &'static Component {
-    static COMPILED: OnceLock<Component> = OnceLock::new();
-    COMPILED.get_or_init(|| {
-        engine::compile_bytes(COMPONENT).expect("the committed Python guest compiles")
-    })
+    engine::component(python())
+        .expect("the committed Python guest compiles")
+        .0
 }
 
 /// Run one Python `program` through the real membrane, with `enabled`'s gg tools offered and
 /// `limits`'s ceilings armed.
 ///
-/// A near-copy of [`run_program`](crate::sandbox::run_program) with two things left out, each
-/// because it belongs to a *registered* language rather than to a component:
+/// A near-copy of [`run_program`](crate::sandbox::run_program) with **one** thing left out: the
+/// language's prepare step, which on this arm does nothing to the source anyway — that is what the
+/// eval-in-guest strategy means, and calling it here would assert the same identity the arm's own
+/// tests assert next door.
 ///
-/// * the language's prepare step — Python's is the SDK step's business, and this arm hands the
-///   source across unchanged, which is what the eval-in-guest strategy means;
-/// * the per-language component cache, which is indexed by the wire id this language does not have
-///   yet. [`component`] is this file's stand-in for it, so the compile is still paid once.
-///
-/// The [membrane state](MembraneState) is built with **TypeScript** as its language, because Python
-/// has no [wire id](test_cabinet_core::gg::GgProgramLanguage) to hold there yet. The membrane holds
-/// one for a single purpose — spelling a call's name back at the model inside a refusal, and inside
-/// the reason a picture was not shown — so the consequence is bounded and named: no assertion below
-/// reads such a spelling, the ones that read a refusal read its
-/// [code](test_cabinet_core::gg::GgToolFailure), and the one that reads a not-shown reason asserts
-/// only that there *is* one. The day this arm is registered those sentences say `view.open_file`
-/// rather than `view.openFile`, from the same catalogue and with nothing here to change.
+/// Everything else is production: the component comes out of the production cache under this
+/// language's own wire id, and the [membrane state](MembraneState) is built with **this language**,
+/// so a refusal that names a call back at the model spells it from this arm's catalogue —
+/// `view.open_file` rather than `view.openFile`.
 fn run_with(
     program: &str,
     enabled: &[String],
@@ -138,7 +115,7 @@ fn run_as(
         library,
     };
     let mut store = bounded_store(
-        MembraneState::new(api, typescript(), scope, limits, None),
+        MembraneState::new(api, python(), scope, limits, None),
         limits,
     );
     let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
@@ -628,9 +605,9 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // larger, that the build picked up something it should not have. It is committed, so nobody
     // re-reads its size.
     assert!(
-        (22 * 1024 * 1024..=28 * 1024 * 1024).contains(&COMPONENT.len()),
+        (22 * 1024 * 1024..=28 * 1024 * 1024).contains(&python().guest_component().len()),
         "the committed Python guest is {} bytes, outside the documented 22–28 MiB band",
-        COMPONENT.len()
+        python().guest_component().len()
     );
 
     // The bijection the committed artifact is held to: this guest's SDK binds gg's whole tool
@@ -646,7 +623,7 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
         library: false,
     };
     let mut store = bounded_store(
-        MembraneState::new(FakeToolApi::new(&log), typescript(), scope, limits, None),
+        MembraneState::new(FakeToolApi::new(&log), python(), scope, limits, None),
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
@@ -1269,40 +1246,14 @@ except ToolError as failure:
     assert_eq!(outcome.refusals.len(), 1, "the refusal is recorded");
 }
 
-/// The catalogue this arm commits, read a step before the language that owns it is registered.
+/// The catalogue this arm commits, read as JSON so a check can walk it section by section.
+///
+/// The *comparison* against the other arms is not here: the
+/// [agreement gate](super::super::agreement) runs over every registered language, so this one is
+/// inside it now that it is registered, and a second copy of that assertion would be a second thing
+/// to keep in step. What is here is the half no cross-language comparison can make — whether the
+/// surface this catalogue describes is the surface the committed `.wasm` really binds.
 const SIGNATURES: &str = include_str!("../guests/python.signatures.json");
-
-#[test]
-fn the_committed_catalogue_agrees_with_the_arm_it_will_be_compared_against() {
-    // The **real** agreement gate, over the real Python catalogue. It is what stands between a
-    // configured `language` param and an invalidated study: two internally-consistent surfaces that
-    // disagree with each other are two green test suites, and this is the only thing that compares
-    // them. Running it here rather than waiting for registration is deliberate — the commit that
-    // registers a language is the one least able to absorb a surface that turns out to disagree.
-    let mut document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Python catalogue is valid JSON");
-    assert_eq!(
-        document["language"],
-        json!("python"),
-        "the catalogue says whose spellings it carries"
-    );
-    // `language` is the wire enum, which has no `python` variant until the registration step adds
-    // one. The gate never reads it — provenance is asserted per *registered* language, against the
-    // language that embedded the file — so it is stood in for here rather than being the reason this
-    // check has to wait.
-    document["language"] = json!("typescript");
-    let candidate = super::fixture::a_language_whose_catalogue_is(&document.to_string());
-
-    let found = super::agreement::disagreements(&[typescript(), candidate]);
-    assert!(
-        found.is_empty(),
-        "the Python catalogue does not describe the same capability surface TypeScript does:\n{}",
-        found
-            .iter()
-            .map(|disagreement| format!("  - {}\n", disagreement.detail))
-            .collect::<String>()
-    );
-}
 
 #[test]
 fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
@@ -1551,7 +1502,7 @@ print(type(region).__name__, region.offset, region.limit)
         library: true,
     };
     let mut store = bounded_store(
-        MembraneState::new(api, typescript(), scope, limits, None),
+        MembraneState::new(api, python(), scope, limits, None),
         limits,
     );
     let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");

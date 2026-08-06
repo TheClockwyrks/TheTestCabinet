@@ -4354,6 +4354,15 @@ pub enum GgProgramLanguage {
     /// erased along with the rest of the types — so the arms do not also differ in how much the
     /// model was told about the surface.
     JavaScript,
+    /// Python: evaluated by a **committed CPython**, with no compiler anywhere on the turn path.
+    ///
+    /// The first arm whose guest carries its own interpreter rather than an engine gg lowers to.
+    /// `componentize-py` links a real CPython 3.14 against gg's WIT world, so a program crosses the
+    /// membrane as *source*, the standard library it is baked with is what a program may `import`,
+    /// and nothing is installed in the run container. Its SDK is hand-written and reads as Python
+    /// reads — `snake_case`, keyword arguments with real defaults, dataclasses for results, enums
+    /// for fixed choices, and a raised `ToolError` for the wire's error arm.
+    Python,
 }
 
 impl GgProgramLanguage {
@@ -4366,7 +4375,8 @@ impl GgProgramLanguage {
     /// to the enum and forgotten here is therefore a build failure rather than a language that
     /// silently vanishes from [`from_id`](Self::from_id), from gg's registry, and from every gate
     /// that iterates them.
-    pub const ALL: &'static [GgProgramLanguage] = &[Self::TypeScript, Self::JavaScript];
+    pub const ALL: &'static [GgProgramLanguage] =
+        &[Self::TypeScript, Self::JavaScript, Self::Python];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
     /// per-language table gg indexes by [`ordinal`](Self::ordinal).
@@ -4383,6 +4393,7 @@ impl GgProgramLanguage {
         match self {
             Self::TypeScript => const { Self::listed_at(0, Self::TypeScript) },
             Self::JavaScript => const { Self::listed_at(1, Self::JavaScript) },
+            Self::Python => const { Self::listed_at(2, Self::Python) },
         }
     }
 
@@ -4410,6 +4421,7 @@ impl GgProgramLanguage {
         match self {
             Self::TypeScript => "typescript",
             Self::JavaScript => "javascript",
+            Self::Python => "python",
         }
     }
 
@@ -4430,6 +4442,7 @@ impl GgProgramLanguage {
         match self {
             Self::TypeScript => "TypeScript",
             Self::JavaScript => "JavaScript",
+            Self::Python => "Python",
         }
     }
 }

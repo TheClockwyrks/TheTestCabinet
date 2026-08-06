@@ -378,12 +378,11 @@ pub enum ParameterKind {
     Positional,
     /// Passed by name — Python's keyword arguments, Kotlin's named ones — so the call site writes
     /// the parameter's name as well as its value.
-    #[allow(
-        dead_code,
-        reason = "no registered language passes arguments by name yet, so nothing constructs this \
-                  variant; the doc view and the reference page already render it, so the first \
-                  language that does needs no change beyond its own reflector"
-    )]
+    ///
+    /// [Python](super::language) is the registered language that emits it: every optional argument
+    /// on that arm is a keyword argument with a real default, which is what the language's own
+    /// readers and writers expect and is exactly the half of a call the seam leaves each language
+    /// free to spell for itself.
     Keyword,
 }
 
