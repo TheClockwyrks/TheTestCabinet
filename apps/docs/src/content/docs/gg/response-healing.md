@@ -101,10 +101,40 @@ then diverges where nothing else does. Its concurrency wrapper is a **`Thread`**
 has no `async` keyword and no suspension token at all: `Thread.new do … end.join` and the
 two-statement `worker = Thread.new do … end` … `worker.join` both come off, the
 `require "thread"` above either comes with them, and the count of tokens removed is **zero** —
-which is the honest number for a language that has none. Its lexer is the largest of the four,
-because Ruby has six string shapes and a heredoc; the one it deliberately does not read is the
-regular-expression literal, since `/…/` cannot be told from division without a parse, so a regex
+which is the honest number for a language that has none. Its lexer is the largest of the four
+dialects, because Ruby has six string shapes and a heredoc; the one it deliberately does not read is
+the regular-expression literal, since `/…/` cannot be told from division without a parse, so a regex
 carrying an apostrophe makes the scan **decline** rather than guess.
+
+[PureScript](/gg/program-languages/#purescript-a-compiler-in-the-image-a-library-set-in-the-binary)
+is where a derived answer runs the *other* way, and it is the best illustration on this page that a
+dialect is derived rather than copied. It is the first arm to **delete a `#` line**. Python and Ruby
+refuse to because `# Plan` is a comment in their languages and deleting it would delete the model's
+own words; PureScript comments with `--` and `{- … -}`, and `#` is `Data.Function.applyFlipped`, so
+a `## Plan` left in a program is a parse error rather than a comment. Same rule — never delete a
+comment, never keep a heading — opposite conclusion, because the language underneath is different.
+The cost of that answer is its own carve-out: `# map trim` is a pipeline continuation, so an
+*indented* single `#` applied to a lower-case name and an argument is code and is kept.
+
+It is also the first arm to need a clause for a **call with no brackets**. PureScript applies a
+function by juxtaposition, so `log "done"` and `throwError message` carry no bracket, no operator, no
+keyword and no dot for a lexical test to find — where every other arm's syntax hands the scan its
+call parentheses. Two answers: `"` is on this dialect's non-prose character list, which no other arm
+needs, and the sentence test reads the shape English is written in (a capital at the front or
+terminal punctuation at the end) rather than the tokens, which are identical to a word counter.
+Both were fixed against a demonstrated deletion, not a suspicion.
+
+Its concurrency wrapper is the only one that does not **enclose** the program: `main = launchAff_ do`
+is asynchronous because of the monad the `do` block is in, so the deletion is distributed across the
+wrapper token on `main`'s right-hand side and the `Effect.Aff` import that made it reachable — and
+what is left is the same block in `Effect`, the monad every call in the SDK is already in. The
+suspension-token count is **zero**, honestly, because PureScript has no `await`. And it is the first
+non-ECMAScript arm to answer *does this redeclare something?* with anything but "never": `purs`
+refuses two module headers and a repeated `main` **by name**, measured rather than assumed, which is
+the proof `drop-duplicate-program` needs — while a definition **with arguments** is deliberately not
+proof, since `f 0 = 1` and `f n = n` are two equations of one declaration. An import is never
+deleted, for the reason Python's never is and then some: `purs` resolves every one against a library
+set gg ships, and `import Gg` is the line without which a program has no surface at all.
 
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
