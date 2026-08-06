@@ -120,7 +120,7 @@ pub use language::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerPool, CompilerReport, PrepareContext, PrepareError, PromptDialect,
-    ResolvedProgramLanguage, Workspace, place, shared_toolchain_dir,
+    ResolvedProgramLanguage, Workspace, place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer

@@ -620,6 +620,15 @@ preparation's own tree — so what this constrains is the toolchain that can *on
 driven through a process shared between compilations. See
 [per-agent compiler isolation](../apps/docs/src/content/docs/gg/program-languages.md#per-agent-compiler-isolation).
 
+The tree carries **PureScript**'s toolchain today: `purs` and `esbuild`, both statically
+linked, both a single file, and both pinned by
+[`packages/gg-sandbox-purescript/purescript-version.sh`](../packages/gg-sandbox-purescript/purescript-version.sh)
+— which `build.sh` sources and passes in, so a pin is edited in one place. What is *not*
+here is the library set a PureScript program is compiled against: that is compiled once at
+build time and shipped inside gg's binary, because this image is built separately from the
+binary that runs in it and a library tree of a different vintage from the SDK compiled into
+it would mean a model shown one surface and compiled against another.
+
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner
 resolves (by test type and asset

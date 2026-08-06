@@ -1,0 +1,6 @@
+# The vendored toolchain, the staged tree and Spago's own working directories. Everything this
+# package COMMITS lands in crates/gg/src/sandbox/checkers/ instead.
+.build/
+.spago/
+output/
+node_modules/

@@ -35,7 +35,7 @@
 //! | Somewhere to put a compiler's output | [`Workspace::output`], inside that same private tree |
 //! | Running a compiler | [`PrepareContext::compiler`] — cwd, `HOME`, `TMPDIR` and the `XDG_*` roots all inside that tree |
 //! | A long-lived compiler instance (a daemon, a warm builder) | [`CompilerPool`] — exclusive checkout, so no two preparations can ever hold one instance |
-//! | Toolchain inputs too big to unpack per preparation | [`shared_toolchain_dir`] + [`place`] — content-keyed, written by rename, **read-only afterwards** |
+//! | Toolchain inputs too big to unpack per preparation | [`shared_toolchain_dir`] + [`place`] (one file) or [`place_tree`] (a whole directory) — content-keyed, written by rename, **read-only afterwards** |
 //!
 //! The environment redirection is the part that earns the most. A toolchain that writes to `output/`
 //! relative to its working directory, or to `~/.cache/<toolchain>`, or to `$TMPDIR` — which is most
@@ -522,6 +522,129 @@ pub fn place(path: &Path, contents: &str) -> Result<(), String> {
         let _ = std::fs::remove_file(&staged);
         format!("could not place {}: {error}", path.display())
     })
+}
+
+/// Build a **whole directory** of a [shared toolchain directory](shared_toolchain_dir)'s inputs,
+/// atomically, and seal it read-only.
+///
+/// [`place`]'s counterpart for a toolchain input that is a tree rather than a file — an unpacked
+/// standard library, a compiled dependency set. The discipline is the same one and the reasons are
+/// the same: `fill` writes into a staging directory under a process-unique name, and the finished
+/// tree is renamed into place, so a reader either does not see the directory at all or sees a
+/// complete one. A process that loses the race throws its own staging copy away and uses the winner's
+/// — the two are the same bytes by construction, because the key is content-derived.
+///
+/// The sealing is the part that is not merely tidy. The measured `purs` corruption — eight concurrent
+/// compiles into one output tree, two agents' programs interleaved into one artifact, every process
+/// exiting zero — is a *write* into a shared tree, and a shared tree nothing can write to cannot have
+/// it. So every file placed here is left unwritable and every directory unwritable, which turns a
+/// toolchain that tries into a loud failure at the moment it tries rather than into a wrong answer
+/// somewhere downstream. It is verified: a compile whose toolchain reached for a file in here failed
+/// with `Permission denied` naming the file, which is the failure this seals for.
+///
+/// Does nothing if `path` already exists, which is the ordinary case after the first preparation in
+/// a process.
+pub fn place_tree(
+    path: &Path,
+    fill: impl FnOnce(&Path) -> Result<(), String>,
+) -> Result<(), String> {
+    if path.is_dir() {
+        return Ok(());
+    }
+    let staged = path.with_extension(format!("{}.staged", std::process::id()));
+    // A staging directory left behind by a previous process that died mid-fill would otherwise make
+    // every later attempt fail on a half-built tree.
+    let _ = std::fs::remove_dir_all(&staged);
+    std::fs::create_dir_all(&staged)
+        .map_err(|error| format!("could not create {}: {error}", staged.display()))?;
+    if let Err(error) = fill(&staged).and_then(|()| seal(&staged)) {
+        let _ = remove_sealed(&staged);
+        return Err(error);
+    }
+    match std::fs::rename(&staged, path) {
+        Ok(()) => Ok(()),
+        // Somebody else finished first. Their tree is this tree — the caller's key is derived from
+        // the contents — so the loser discards its copy rather than failing.
+        Err(_) if path.is_dir() => {
+            let _ = remove_sealed(&staged);
+            Ok(())
+        }
+        Err(error) => {
+            let _ = remove_sealed(&staged);
+            Err(format!("could not place {}: {error}", path.display()))
+        }
+    }
+}
+
+/// Make everything under `root`, and `root` itself, unwritable.
+///
+/// Unix only, because that is where a mode is a mode; elsewhere this is a no-op and the tree is
+/// merely shared rather than sealed. gg runs its programs in Linux containers, so the platform that
+/// matters is covered — and a language that relied on the sealing for *correctness* rather than for
+/// early failure would be a language that had shared something it should not have.
+fn seal(root: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Depth-first: a directory is sealed only after everything inside it has been, since sealing
+        // it first would make its own children unreachable for writing.
+        let mut stack = vec![root.to_path_buf()];
+        let mut directories = Vec::new();
+        while let Some(directory) = stack.pop() {
+            let entries = std::fs::read_dir(&directory)
+                .map_err(|error| format!("could not read {}: {error}", directory.display()))?;
+            for entry in entries {
+                let entry =
+                    entry.map_err(|error| format!("could not read {}: {error}", root.display()))?;
+                let path = entry.path();
+                match entry.file_type() {
+                    Ok(kind) if kind.is_dir() => stack.push(path),
+                    Ok(_) => {
+                        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444))
+                            .map_err(|error| {
+                                format!("could not seal {}: {error}", path.display())
+                            })?
+                    }
+                    Err(error) => {
+                        return Err(format!("could not stat {}: {error}", path.display()));
+                    }
+                }
+            }
+            directories.push(directory);
+        }
+        for directory in directories.into_iter().rev() {
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o555))
+                .map_err(|error| format!("could not seal {}: {error}", directory.display()))?;
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = root;
+    Ok(())
+}
+
+/// Remove a tree [`seal`] may already have made unwritable.
+///
+/// `remove_dir_all` cannot unlink an entry out of a directory it has no write permission on, so the
+/// directories are opened back up first. Only ever pointed at a staging tree this process created.
+fn remove_sealed(root: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(directory) = stack.pop() {
+            let _ = std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o755));
+            let Ok(entries) = std::fs::read_dir(&directory) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+                    stack.push(entry.path());
+                }
+            }
+        }
+    }
+    std::fs::remove_dir_all(root)
+        .map_err(|error| format!("could not remove {}: {error}", root.display()))
 }
 
 /// **A pool of long-lived compiler instances, checked out exclusively** — the sanctioned answer for

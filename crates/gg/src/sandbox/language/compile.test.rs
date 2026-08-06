@@ -263,6 +263,88 @@ fn a_placed_toolchain_input_is_never_half_written() {
     );
 }
 
+/// A tree is placed whole and comes out **unwritable**, which is the property that turns the
+/// measured `purs` corruption — two agents' programs interleaved into one artifact, every process
+/// exiting zero — into a refusal at the moment a toolchain reaches for a shared file.
+#[test]
+fn a_placed_toolchain_tree_is_whole_and_cannot_be_written_to() {
+    let root = shared_toolchain_dir("gg-test-place-tree").expect("the directory is created");
+    let tree = root.join("tree");
+    let _ = remove_sealed(&tree);
+
+    place_tree(&tree, |staged| {
+        std::fs::create_dir(staged.join("nested"))
+            .map_err(|error| format!("could not create nested: {error}"))?;
+        std::fs::write(staged.join("nested").join("input.txt"), "the whole file")
+            .map_err(|error| format!("could not write: {error}"))
+    })
+    .expect("the tree is placed");
+
+    let placed = tree.join("nested").join("input.txt");
+    assert_eq!(std::fs::read_to_string(&placed).unwrap(), "the whole file");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for path in [&placed, &tree.join("nested"), &tree] {
+            let mode = std::fs::metadata(path)
+                .expect("the placed entry exists")
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o222, 0, "{} is sealed", path.display());
+        }
+        assert!(
+            std::fs::write(&placed, "rewritten").is_err(),
+            "a placed input refuses a write"
+        );
+    }
+
+    // Placing again is a no-op rather than a rebuild: this is what every preparation after the first
+    // in a process hits, and it must not re-run the fill.
+    place_tree(&tree, |_| Err("the fill must not run again".to_string()))
+        .expect("an already-placed tree is left alone");
+
+    // No `.staged` leftovers, for the reason a placed file has none.
+    let staged: Vec<_> = std::fs::read_dir(&root)
+        .expect("the directory reads")
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().contains(".staged"))
+        .collect();
+    assert!(
+        staged.is_empty(),
+        "{} staged trees left behind",
+        staged.len()
+    );
+
+    let _ = remove_sealed(&tree);
+}
+
+/// A fill that fails leaves **nothing** behind — not a placed tree a later preparation would read as
+/// complete, and not a staging directory the next attempt would trip over.
+#[test]
+fn a_tree_that_could_not_be_filled_is_not_placed() {
+    let root =
+        shared_toolchain_dir("gg-test-place-tree-failure").expect("the directory is created");
+    let tree = root.join("tree");
+    let _ = remove_sealed(&tree);
+
+    let failure = place_tree(&tree, |staged| {
+        std::fs::write(staged.join("half.txt"), "half a tree")
+            .map_err(|error| format!("could not write: {error}"))?;
+        Err("the toolchain ran out halfway".to_string())
+    })
+    .expect_err("the fill failed");
+    assert_eq!(failure, "the toolchain ran out halfway");
+    assert!(!tree.exists(), "nothing was placed");
+    assert!(
+        std::fs::read_dir(&root)
+            .expect("the directory reads")
+            .filter_map(Result::ok)
+            .next()
+            .is_none(),
+        "and no staging tree was left behind"
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // The pool
 // ---------------------------------------------------------------------------------------------

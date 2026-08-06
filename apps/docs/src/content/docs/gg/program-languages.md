@@ -444,6 +444,175 @@ lexical scope — the top level — rather than to the module it is evaluated ag
 `lib.helpers.LIMIT` does not exist however the file is written, and a `class` or a nested
 `module` is a constant by the same rule.
 
+## PureScript: a compiler in the image, a library set in the binary
+
+The fifth arm, and the first that is **not yet registered**: what exists is its execution
+substrate — the compile, the guest, and the proof that a real PureScript program runs through
+gg's real linker, membrane and store — with the SDK and the registration to follow. There is no
+`language: "purescript"` an operator can configure yet, deliberately: a `ProgramLanguage` cannot
+be half-registered, because the registry's match is exhaustive and every gate that iterates the
+registered set would demand a catalogue, two prompt templates and a healing dialect the moment
+the enum carried a variant for it.
+
+**A PureScript program is compiled to JavaScript on the host by `purs`, flattened into one
+script by `esbuild`, and evaluated by the same ECMAScript guest the TypeScript and JavaScript
+arms use.** Nothing crosses the membrane as PureScript, and nothing about the arm is per-run.
+
+### Why this arm has no component of its own
+
+It shares TypeScript's — the same sharing
+[JavaScript](#javascript-the-same-arm-unchecked) has, and for a related but distinct reason.
+[Ruby](#ruby-compiled-to-javascript-before-it-crosses) also compiles to JavaScript and does
+*not* share it, so the comparison is worth making explicitly:
+
+| | Ruby | PureScript |
+| --- | --- | --- |
+| Runtime the compiled program depends on | Opal's, 743 KB, needed on every turn | **none** — `purs` compiles the program's own code and the library code it used into ordinary JavaScript |
+| Cost of not baking it into a component | 45.6–51.0 ms per program | nothing to bake |
+| Could a code module see it? | no — a module is evaluated before the program | yes — a module is bundled exactly as a program is |
+| Effect on the TypeScript and JavaScript arms | `globalThis.Opal` in front of both | none: this arm adds nothing to the artifact |
+
+A component of PureScript's own would therefore differ from the shared one in **nothing at
+all**, and a second 20 MiB artifact that differs in nothing is a second artifact to keep in
+step with the WIT rather than an isolation boundary.
+
+The one thing that decision costs is worth stating rather than hiding: a guest backtrace is in
+the **bundle's** coordinates, not the model's PureScript, because owning `run` is what would let
+a guest map one to the other. The mapping is not lost — both `purs` and `esbuild` emit source
+maps, and the host that produced the bundle holds them — but `feedback.program-error` carries a
+single `location` and the guest picks the innermost frame, which once the SDK is linked into the
+bundle is inside the SDK. The fix is a frame *list* on the wire, which is a change shared with a
+future Java arm and rebuilds every committed component. It is neither made cheaper nor dearer by
+the component decision above.
+
+### The toolchain and the library set travel in opposite directions
+
+This is the first arm to need [the toolchain image](#where-a-compiler-lives-and-what-it-must-never-share),
+and the first whose committed artifact is not a compiler but the thing its compiler cannot work
+without. Both halves go the only way they can:
+
+| | Where it lives | Why |
+| --- | --- | --- |
+| `purs` (~100 MB) and `esbuild` (~10 MB) | `containers/gg-toolchains`, at `/opt/gg/toolchains/bin` | statically linked, one build per platform. gg is copied into a run container as a single file; a binary copies fine, a per-platform Haskell executable does not. |
+| The **library set, compiled** (1.2 MB gzipped) | inside gg's binary, unpacked once per machine | `purs` cannot type-check a program without both the sources *and* the compiled externs of everything it imports — with externs alone every import is `ModuleNotFound` — and compiling the set from scratch costs ~16 s, which no turn can pay. |
+
+The library set could have gone in the image beside `purs`, and deliberately does not. The image
+is built separately from the binary that runs in it, so a tree living there could be a different
+vintage from the gg reading it — and once this arm's SDK is compiled into that tree, that would
+mean a model shown one surface in its prompt and compiled against another. Both are versioned
+from one file (`packages/gg-sandbox-purescript/purescript-version.sh`), which the image build and
+the developer/CI install script both read, because externs are a compiler-version-private format:
+a tree built by one `purs` and read by another does not compile at all.
+
+### What the libraries are, and why they are generous
+
+The set is declared in `packages/gg-sandbox-purescript/spago.yaml`, resolved against a pinned
+registry package set, compiled by `build.sh`, and recorded package by package in
+`crates/gg/src/sandbox/checkers/purescript.compiler.json` — 49 packages and 309 modules as it
+stands. It carries the collections (`Data.Map`, `Data.Set`, arrays, lists, `Foreign.Object`), the
+monad transformers, `profunctor-lenses`, the `Effect` types including the two the sandbox's
+[ambient WASI](#wasi) makes real (`Effect.Now`, `Effect.Random`), and the everyday prelude,
+strings, records and dates.
+
+That is a rule rather than a kindness: commonly used libraries are available by default in every
+arm, and an arm that made a model live without `Data.Map` and a lens would be measuring how well
+it copes without its own idioms rather than how well it works. What is left out is left out for a
+reason — no JSON library, because
+[neither an argument nor a result is a JSON document](#the-rules-an-agent-facing-surface-obeys-in-every-language)
+a program assembles; no `aff`, because every call in this sandbox is synchronous.
+
+The manifest is what the drift gate holds the tarball to. Re-cutting the tree needs `purs`,
+Spago and the registry, so `scripts/ci/contract-drift.sh` verifies it by its **declared
+contents** instead — a test unpacks the committed tarball and compares every package and module
+against the manifest, so a tree rebuilt with a different set and committed without its manifest
+fails. `spago.yaml` and `spago.lock` are committed beside it, so what went in is reviewable even
+though what came out is a binary.
+
+### What compiling costs
+
+Measured on this repository's dev container, aarch64, against the committed tree, median of
+nine:
+
+| | |
+| --- | --- |
+| Hard-linking the tree into the preparation's own workspace (1,051 files) | ~19 ms |
+| `purs compile` — dominated by loading 9 MB of externs, not by the program | ~200 ms |
+| `esbuild` — bundling and tree-shaking the module graph | ~65 ms |
+| **End to end** | **~290 ms** |
+
+The feasibility study priced this arm at 0.45–0.65 s and expected a `purs ide server` daemon to
+be needed to bring it to 151–713 ms. It is cheaper than that here, and the difference is the
+staging: a real copy of the tree costs ~150 ms where a hard-linked one costs ~19 ms, and the
+study's figure included the copy. **So the daemon is not taken**, on a measurement rather than a
+preference — batch compilation already sits inside the range a warm daemon was measured in, and
+a daemon reused across preparations would make "what a preparation returns is a function of its
+input alone" a property of that daemon's cache invalidation rather than of the filesystem.
+
+Inside the guest, what a turn pays is a store, an instantiate and an evaluate: ~2.7 ms for a
+representative program, against ~2.1 ms for the equivalent plain JavaScript on the same
+artifact. That closeness is the whole benefit of sharing the component, and it is what a
+per-turn regression — a runtime that stopped being tree-shaken out — would move. It is asserted
+as the **ratio** rather than as a figure in milliseconds, because the same 2.7 ms reads as 53 ms
+beside the rest of gg's test suite: both numbers inflate together under load, so dividing one by
+the other cancels the machine out.
+
+### Isolation, which this arm is the reason for
+
+`purs` is one of the two toolchains whose silent corruption
+[the isolation rule](#per-agent-compiler-isolation) exists to prevent: eight concurrent compiles
+into one shared output tree produced a single `output/Main/index.js` holding two agents' programs
+interleaved, three times out of three, with every process exiting zero. The shape here is the
+opposite one, in three layers:
+
+1. **The shared tree is never written.** It is unpacked once per machine into a content-keyed
+   shared toolchain directory through `place_tree`, which renames a finished tree into place and
+   **seals every file and directory in it read-only**.
+2. **Each preparation compiles in its own tree**, hard-linked from that one in ~19 ms. Hard links
+   are what make a private tree affordable — and what makes the seal bite, since a link to a
+   read-only inode is read-only too. The two files `purs` rewrites whatever else it does
+   (`output/cache-db.json` and `output/package.json`) are staged as real copies; the other 1,050
+   stay linked and stay sealed.
+3. **The spawn goes through the seam**, so the working directory, `HOME`, `TMPDIR` and the
+   `XDG_*` roots are inside that private tree.
+
+The seal is not decoration: it is what *found* the second of those two writable files. Left
+hard-linked, the compile failed with `Permission denied` naming `output/package.json` instead of
+writing through into every other agent's tree — which is exactly the loud failure a seal exists
+to turn a silent corruption into. And the arrangement is verified by mutation, not only by
+passing: pointed at one shared output tree, the seam's own isolation gate failed this arm three
+independent ways at sixteen-way — artifacts that did not carry their own marker, artifacts that
+carried **another preparation's program**, and one preparation reading a `package.json` another
+was halfway through writing.
+
+### The two failures, and which is the model's
+
+`purs` is asked for `--json-errors`, so a rejection arrives as structured diagnostics with the
+compiler's own stable error code and its exact span rather than as prose to be scraped:
+
+| What happened | How it is reported |
+| --- | --- |
+| `ErrorParsingModule` / `ErrorParsingFFIModule` | `TranspileSyntax` — the parser could not read it |
+| any other `purs` code (`TypesDoNotUnify`, `UnknownName`, `NoInstanceFound`, …) | `TranspileCompile` — read whole and rejected, which is the band a typed arm exists to produce |
+| `esbuild` reporting no matching export for `main` | `TranspileCompile`, with a sentence saying the program must define `main :: Effect Unit` |
+| `purs` or `esbuild` could not run, was killed, or reported nothing about the program | [a toolchain failure](#a-compiler-has-two-ways-to-fail) — **not** the model's |
+
+An error `purs` reports in a file that is not the model's is a fault in gg's own shipped library
+tree, so it is a toolchain failure too: blaming a model for it would send it rewriting something
+that was never wrong.
+
+### What a PureScript program is
+
+A **module**, because PureScript has no loose statements: a program is a module with a `main` of
+type `Effect Unit`. gg rewrites its header to a fixed module name so the bundler can import the
+entry point by a fixed path — in place, so no line moves and no diagnostic coordinate has to be
+corrected — and a reply with no header at all is given one, which costs exactly one line and is
+the number every diagnostic is moved back by. A program that defines no `main` is refused with a
+sentence saying so rather than failing inside the guest.
+
+A code [skill](/gg/skills/)'s or [memory](/gg/memories/)'s module is an ordinary PureScript
+module too, compiled the same way; its exports are what `lib.<key>` offers, and they are curried,
+because that is what a PureScript function is.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -546,7 +715,9 @@ travel *inside* gg and need no image at all — TypeScript's `tsc` and the Opal 
 and runs with the `node` every run image already ships, which is why neither language has a
 block in the toolchain image. This section is about the ones that cannot: gg itself is
 copied in as a single static binary, which works because a binary copies fine — a JDK does
-not. So a gg run resolves a `<name>-gg` **variant** of the image it would otherwise get:
+not. [PureScript](#purescript-a-compiler-in-the-image-a-library-set-in-the-binary) is the
+first arm to need this, and it needs it for exactly that reason: `purs` is a ~100 MB
+statically linked Haskell executable with one build per platform. So a gg run resolves a `<name>-gg` **variant** of the image it would otherwise get:
 that image plus a toolchain tree (`containers/gg-toolchains/`, laid onto a parent by
 `containers/gg/Dockerfile`, resolved by `harness::gg_variant`).
 
@@ -615,7 +786,7 @@ else, and it hands out the only ground the seam offers
 | Somewhere for a compiler's artifacts | `workspace.output()`, inside that same private tree |
 | Running a compiler | `context.compiler(program)` — working directory, `HOME`, `TMPDIR` and the `XDG_*` roots all inside that tree, plus the timeout, the kill and the reap |
 | A long-lived compiler instance (a daemon, a warm builder) | `CompilerPool::checkout` — lends an instance **exclusively**, so no two preparations can hold one |
-| Toolchain inputs too big to unpack per preparation | `shared_toolchain_dir(key)` + `place(path, bytes)` — content-keyed, written by rename, **read-only afterwards** |
+| Toolchain inputs too big to unpack per preparation | `shared_toolchain_dir(key)` + `place(path, bytes)` for one file, or `place_tree(path, fill)` for a whole directory — content-keyed, written by rename, **sealed read-only afterwards** |
 
 The environment redirection is what earns the most. A toolchain that writes to `output/`
 relative to its working directory, or to `~/.cache/<toolchain>`, or to `$TMPDIR` — which is

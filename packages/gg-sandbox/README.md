@@ -171,11 +171,16 @@ obeys, and a worked walkthrough of adding Python — is
 [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md). What
 follows is this package's own side of it.
 
-A second program language is a **sibling directory**, and there is now one to read:
+A second program language is a **sibling directory**, and there are now three to read:
 [`packages/gg-sandbox-python/`](../gg-sandbox-python/), whose `build.sh` drives
-`componentize-py` and which is *not* an npm workspace and shares no code with this
-package. It is additive: nothing here changed when it landed. What it does share is
-three things, and only three.
+`componentize-py`; [`packages/gg-sandbox-ruby/`](../gg-sandbox-ruby/), which bakes
+Opal's runtime into a guest of its own; and
+[`packages/gg-sandbox-purescript/`](../gg-sandbox-purescript/), which bakes **no guest
+at all** — it compiles a library set the host's `purs` needs, because that arm's
+compiled programs are self-contained JavaScript evaluated by *this* package's
+component. None is an npm workspace and none shares code with this package. All are
+additive: nothing here changed when any of them landed. What they do share is three
+things, and only three.
 
 **1. The WIT.** `crates/gg/wit/gg-sandbox.wit` is the wire, and there is exactly one
 copy of it: ~14 interfaces of typed functions with real records, enums and variants,
@@ -203,9 +208,12 @@ committed, both embedded by that language's module in `crates/gg/src/sandbox/lan
 A catalogue is always the language's own — it carries the id it was generated for and the
 host asserts it — while a *component* may be shared by two languages whose programs it
 evaluates identically, as `javascript` shares this guest's.
-A language that type-checks the model's program commits its checker beside them, under
-`crates/gg/src/sandbox/checkers/<language-id>.*` — gg is copied as a single file into a run
-container, so a compiler it needs is a compiler it carries.
+A language whose prepare step judges the model's program commits what it judges it with
+beside them, under `crates/gg/src/sandbox/checkers/<language-id>.*` — gg is copied as a
+single file into a run container, so a compiler it needs is a compiler it carries. A
+compiler too large to carry is installed into the gg toolchain image instead, and what is
+committed is whatever the compiler cannot work without: `purescript`'s artifact there is its
+compiled library set, not a compiler at all.
 
 Everything else is that language's own. In particular its **SDK is hand-written and
 idiomatic for it** — `snake_case` names, keyword arguments where TypeScript takes a

@@ -1,0 +1,69 @@
+# The libraries a PureScript program is written against, and the ONLY thing this file decides.
+#
+# gg's rule for every language arm is that commonly used libraries are available by default — a
+# PureScript author reaches for `Data.Map`, `StateT` and a lens without asking, and an arm that made
+# them ask would be measuring how well a model can live without its standard idioms rather than how
+# well it works. So this set is deliberately generous and deliberately FIXED: it is compiled into the
+# tree `packages/gg-sandbox-purescript/build.sh` commits, every program is compiled against exactly
+# it, and nothing is installed at run time.
+#
+# What is here, and why:
+#
+#   the collections    arrays, lists, ordered-collections (`Map`/`Set`), foreign-object, unfoldable,
+#                      foldable-traversable — the data structures a program actually manipulates
+#   the effect types   effect, exceptions, refs, st, now, random, console — including the two the
+#                      sandbox's ambient WASI makes real (a clock and an entropy source)
+#   the monad stack    transformers (StateT, ReaderT, WriterT, ExceptT), free, identity, control
+#   the optics         profunctor-lenses — named by the owner specifically, and the reason
+#                      `profunctor`, `distributive` and friends arrive transitively
+#   the everyday       prelude, maybe, either, tuples, newtype, bifunctors, functions, partial,
+#                      strings, integers, numbers, enums, record, datetime
+#
+# What is NOT here is as deliberate. There is no JSON library, because neither an argument nor a
+# result the SDK takes is a JSON document a program assembles or parses — that is one of the seam's
+# rules, and shipping `argonaut` would invite a program to break it. There is no HTTP or Node
+# binding, because the guest is a wasm component and the way out of it is the SDK. And there is no
+# `aff`: every call in this sandbox is synchronous, so an asynchronous effect monad would be a
+# library whose whole point the sandbox refuses.
+#
+# Versions are resolved against the pinned registry package set (see `purescript-version.sh`) and
+# recorded package by package in the committed `spago.lock`.
+package:
+  name: gg-sandbox-purescript
+  dependencies:
+    - arrays
+    - bifunctors
+    - console
+    - control
+    - datetime
+    - effect
+    - either
+    - enums
+    - exceptions
+    - foldable-traversable
+    - foreign-object
+    - free
+    - functions
+    - identity
+    - integers
+    - lists
+    - maybe
+    - newtype
+    - now
+    - numbers
+    - ordered-collections
+    - partial
+    - prelude
+    - profunctor-lenses
+    - random
+    - record
+    - refs
+    - st
+    - strings
+    - transformers
+    - tuples
+    - unfoldable
+workspace:
+  packageSet:
+    registry: 80.3.0
+  extraPackages: {}

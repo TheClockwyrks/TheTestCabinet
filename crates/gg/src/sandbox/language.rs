@@ -70,7 +70,7 @@ use super::signatures::SignatureCatalogue;
 pub mod compile;
 
 pub use compile::{
-    CompilerCommand, CompilerPool, CompilerReport, PrepareContext, Workspace, place,
+    CompilerCommand, CompilerPool, CompilerReport, PrepareContext, Workspace, place, place_tree,
     shared_toolchain_dir,
 };
 
@@ -85,6 +85,17 @@ mod python;
 
 #[path = "language/ruby.rs"]
 mod ruby;
+
+/// The **PureScript arm's execution substrate** — its host-side `purs` compile and the ECMAScript
+/// guest it shares — ahead of the trait implementation that registers it.
+///
+/// A module with no [`ProgramLanguage`] arm beside it, for the reason [`ruby`] had none when its own
+/// substrate landed: a `ProgramLanguage` cannot be half-registered, because the registry's `match`
+/// below is exhaustive and every gate that iterates the registered set would demand a catalogue, two
+/// templates and a healing dialect the moment [`GgProgramLanguage`] carried a variant for it. Its own
+/// documentation says what the arm is and what registering it still needs.
+#[path = "language/purescript.rs"]
+mod purescript;
 
 /// The **cross-language agreement gate**: the assertion that every registered language describes the
 /// same capabilities, and that only their spellings differ.

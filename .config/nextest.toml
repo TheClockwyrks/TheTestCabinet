@@ -55,3 +55,16 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::ruby::substrate::the_baked_runtime_and_sdk_are_what_make_a_turn_affordable)'
 threads-required = "num-test-threads"
+
+# The PureScript arm's isolation gate spawns 32 real `purs` compiles and 32 real `esbuild`
+# bundles — sixteen serial baselines and sixteen concurrent, for the program half and the
+# module half — because the property it proves is that a compile's result belongs to its own
+# input at the concurrency a run really produces, and `purs` is one of the two toolchains
+# that was measured silently corrupting itself at eight. Measured on this repository's dev
+# container: 8.9 s alone, 41.9 s beside this module's other tests, against a default hard
+# kill at 120 s that would present as a mysterious hang rather than as a gate doing exactly
+# what it says. Bounded from the work rather than from the default, with room for a CI runner
+# with a quarter of the cores.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::purescript::substrate::sixteen_concurrent_preparations_each_get_their_own_program)'
+slow-timeout = { period = "120s", terminate-after = 3 }

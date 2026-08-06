@@ -62,10 +62,10 @@
 #    `crates/gg/src/sandbox/language/isolation.rs` is the gate that holds every language to
 #    this at 16-way concurrency, and it reproduces both measured bugs to prove it can.
 #
-# The layer is empty today, on purpose: this workflow builds the mechanism, and each
-# toolchain arrives with the language that needs it. An empty `/opt/gg` costs a gg run
-# nothing and means the resolution seam, the build, and the published variant images are
-# all exercisable before the first compiler lands.
+# Each toolchain arrives with the language that needs it, so this layer grows one block at
+# a time. It carried nothing at all until PureScript's arrived, which was deliberate: an
+# empty `/opt/gg` costs a gg run nothing and meant the resolution seam, the build and the
+# published variant images were all exercisable before the first compiler landed.
 
 FROM debian:bookworm-slim AS build
 
@@ -97,6 +97,53 @@ RUN mkdir -p /opt/gg/toolchains/bin
 # image at all; see `crates/gg/src/sandbox/language/ruby.compile.rs`. What needs a block
 # here is a toolchain that cannot be copied — a JDK, a Swift toolchain, a `purs` — which is
 # what this image exists for.
+
+# --- PureScript -------------------------------------------------------------
+# The first toolchain that is actually a toolchain. A PureScript program is compiled to
+# JavaScript on the host before it crosses the membrane and evaluated by the ECMAScript
+# guest, so this arm adds no engine — but the compiler cannot ride inside gg's binary the
+# way Opal does: `purs` is a ~100 MB statically linked Haskell executable with a separate
+# build per platform. `esbuild`, which flattens the module graph `purs` emits into the one
+# script the guest evaluates and tree-shakes away everything the program did not use, is a
+# 10 MB Go binary with the same property.
+#
+# Both are statically linked and neither reads a build-time prefix, so they satisfy
+# constraint 1 outright: the same two files work on the Debian-derived images and on
+# `blender-gg`'s Ubuntu. Both satisfy constraint 2 outright too — each is a plain
+# one-shot process with an explicit output directory, and `crates/gg` gives every
+# invocation its own hard-linked copy of the library tree, which is what the measured
+# `purs` corruption in this header's constraint 2 was the absence of.
+#
+# What is NOT here is the library set a program is compiled against. It is compiled once
+# by `packages/gg-sandbox-purescript/build.sh` and shipped inside gg's binary, because
+# this image is built separately from the binary that runs in it — and a library tree of a
+# different vintage from the SDK compiled into it would mean a model shown one surface and
+# compiled against another. See `crates/gg/src/sandbox/language/purescript.compile.rs`.
+#
+# The versions are the ones `packages/gg-sandbox-purescript/purescript-version.sh` pins and
+# `scripts/ci/install-purescript.sh` installs on a developer's or CI machine; they must
+# match, because externs are a compiler-version-private format and the committed tree was
+# compiled by exactly this `purs`.
+ARG PURS_VERSION=0.15.16
+ARG ESBUILD_VERSION=0.28.1
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+	apt-get update && apt-get install -y --no-install-recommends ca-certificates curl
+RUN set -eux; \
+	case "$(dpkg --print-architecture)" in \
+	amd64) purs_asset="linux64"; esbuild_platform="linux-x64" ;; \
+	arm64) purs_asset="linux-arm64"; esbuild_platform="linux-arm64" ;; \
+	*) echo "no pinned purs build for $(dpkg --print-architecture)" >&2; exit 1 ;; \
+	esac; \
+	curl -sSfL "https://github.com/purescript/purescript/releases/download/v${PURS_VERSION}/${purs_asset}.tar.gz" \
+	| tar -xz -C /tmp; \
+	install -m 0755 /tmp/purescript/purs /opt/gg/toolchains/bin/purs; \
+	curl -sSfL "https://registry.npmjs.org/@esbuild/${esbuild_platform}/-/${esbuild_platform}-${ESBUILD_VERSION}.tgz" \
+	| tar -xz -C /tmp; \
+	install -m 0755 /tmp/package/bin/esbuild /opt/gg/toolchains/bin/esbuild; \
+	rm -rf /tmp/purescript /tmp/package; \
+	/opt/gg/toolchains/bin/purs --version; \
+	/opt/gg/toolchains/bin/esbuild --version
 
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a

@@ -62,6 +62,12 @@
 #     `opal-compiler`, and the same argument holds twice over there because the SAME pin
 #     also decides the runtime baked into that language's guest. It is the same
 #     regenerate-and-diff rule, and each needs only Node.
+#
+#     PureScript's artifact in that directory is the one exception, and it is a declared
+#     one: it is not a compiler at all but the compiled LIBRARY SET a program is
+#     type-checked against, which needs `purs` and the registry to rebuild. It is verified
+#     by the manifest committed beside it rather than by re-cutting — see the exemption
+#     below, which is enforced rather than assumed.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -136,10 +142,20 @@ log "regenerate the Ruby guest's signature catalogue (YARD + tools/signatures.rb
 # whatever its pin said. Stems are the first dot-separated component of each file name,
 # which is the language id each artifact is named for.
 recut="typescript ruby"
+# The one exemption, and it is an exemption rather than an omission. PureScript's committed
+# artifact is not a compiler: it is the LIBRARY SET, compiled — 1.2 MB of externs and
+# JavaScript that `purs` needs before it can type-check anything. Re-cutting it needs `purs`,
+# Spago and the registry, takes about a minute, and produces a binary nobody can review by
+# reading. So it is verified by its CONTENTS instead: `purescript.compiler.json` declares
+# every package and module in the tree, and gg's own test unpacks the tarball and compares —
+# a tree rebuilt with a different library set and committed without its manifest fails there.
+# `spago.yaml` and `spago.lock` are committed beside the build, so what went in is reviewable
+# even though what came out is not.
+declared="purescript"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"
-	case " $recut " in
+	case " $recut $declared " in
 	*" $stem "*) ;;
 	*)
 		cat >&2 <<EOF
@@ -147,7 +163,8 @@ for artifact in crates/gg/src/sandbox/checkers/*; do
 error: $artifact has no re-cut step in this script.
 The compiler a $stem program is judged by could drift from its pin without the drift
 check noticing, because the check below only diffs what has already been written. Add
-the re-cut command for $stem here, and add "$stem" to \$recut.
+the re-cut command for $stem here, and add "$stem" to \$recut — or, if the artifact is
+verified by a committed manifest instead, add it to \$declared and say where.
 EOF
 		exit 1
 		;;

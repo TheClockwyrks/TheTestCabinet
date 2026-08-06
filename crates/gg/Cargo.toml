@@ -90,6 +90,16 @@ tiktoken-rs = { workspace = true }
 # the picture to its tool result as a base64 `data:` URL, which is how every provider
 # behind OpenRouter takes an inline image (`src/tools/filesystem.rs`, `src/client.rs`).
 base64 = { workspace = true }
+# Unpacking the PureScript arm's committed library set
+# (`src/sandbox/language/purescript.compile.rs`). `purs` cannot type-check a program
+# without the sources AND the compiled externs of everything it imports, and compiling
+# that set costs ~16 s — so it is compiled once at build time and shipped as a 1.2 MB
+# gzipped tar inside this binary, unpacked once per machine into a shared, sealed,
+# read-only directory. `flate2` is the workspace's gzip codec (pure-Rust `miniz_oxide`
+# backend, no system zlib); `tar` is the same pure-Rust reader `artifacts`, `driver` and
+# `publisher` already use on the run-tree artifact path.
+flate2 = { workspace = true }
+tar = "0.4"
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on

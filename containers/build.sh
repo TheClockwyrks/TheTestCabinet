@@ -214,7 +214,16 @@ build_tools() {
 # layer once however many variants are published.
 build_gg_toolchains() {
 	echo "==> building ${GG_TOOLCHAINS_IMAGE} (gg language toolchains; not pushed)"
+	# Every toolchain's version comes from the package that owns it rather than from a
+	# default in the Dockerfile, so a pin is edited in one place. PureScript's matters
+	# more than most: externs are a compiler-version-private format, so the `purs` in
+	# this image and the `purs` that compiled the committed library set inside gg's
+	# binary must be the same release or nothing compiles at all.
+	# shellcheck source=packages/gg-sandbox-purescript/purescript-version.sh
+	source "${SCRIPT_DIR}/../packages/gg-sandbox-purescript/purescript-version.sh"
 	"$DOCKER" build \
+		--build-arg "PURS_VERSION=${PURS_VERSION}" \
+		--build-arg "ESBUILD_VERSION=${ESBUILD_VERSION}" \
 		-t "${GG_TOOLCHAINS_IMAGE}" \
 		-f "${SCRIPT_DIR}/gg-toolchains/Dockerfile" "${SCRIPT_DIR}/.."
 }

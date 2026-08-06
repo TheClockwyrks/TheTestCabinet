@@ -19,6 +19,17 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
+# gg's PureScript program-language arm compiles a model's program with a real `purs` and
+# bundles it with a real `esbuild`, and its tests drive both. Neither can ride inside gg's
+# binary the way the Ruby arm's compiler does — `purs` is a ~100 MB statically linked
+# Haskell executable with a build per platform — so they are installed, here as in the run
+# image (containers/gg-toolchains/Dockerfile). Pinned in
+# packages/gg-sandbox-purescript/purescript-version.sh; idempotent, so an agent that
+# already has them pays nothing.
+log "install the PureScript toolchain (gg's purescript arm compiles with it)"
+./scripts/ci/install-purescript.sh
+export PATH="$HOME/.local/bin:$PATH"
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 
