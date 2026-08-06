@@ -813,8 +813,10 @@ pub fn heal(reply: &str, config: &HealingConfig, dialect: &dyn Dialect) -> Heale
 /// rather than a fence, [`scan_fences`] implements that rule, and trimming the first line's indent
 /// away would answer the question before the scanner could ask it: an indented ```` ```ts ```` would
 /// become a fence, gg would report unwrapping a wrapper that was never there, and the closing run —
-/// still indented, and now not a close — would be left in the program. Indentation is meaningless to
-/// a program and meaningful to Markdown, so it is kept and the scanner decides.
+/// still indented, and now not a close — would be left in the program. Leading indentation is
+/// Markdown's to interpret first, so it is kept here and the scanner decides; what is left of it
+/// once a wrapper comes off is [`dedent`]'s business, and that is a question about a *program*
+/// rather than about a reply.
 ///
 /// A byte-order mark is stripped only where one is defined to appear, at the very start.
 fn trim_reply(reply: &str) -> &str {
@@ -938,7 +940,9 @@ const MAX_FENCE_INDENT: usize = 3;
 struct FencedBlock {
     /// The first word of the opening fence's info string, lower-cased. Empty for an untagged fence.
     tag: String,
-    /// The block's contents, trimmed. Never empty — an empty block is not a block.
+    /// The block's contents, [dedented](dedent) — leading blank lines and trailing whitespace gone,
+    /// and the indentation its lines share removed from all of them. Never empty: an empty block is
+    /// not a block.
     body: String,
     /// How the block ended.
     close: FenceClose,
@@ -959,7 +963,12 @@ struct FenceScan<'a> {
 ///
 /// **Matches** a fence around the whole program — tagged or not, closed properly, closed with prose
 /// glued on, or never closed. **Rewrites** the response to the body of the one *candidate* block,
-/// trimmed; everything outside the fences is deleted.
+/// [dedented](dedent); everything outside the fences is deleted.
+///
+/// The dedent is part of the unwrap rather than a step after it: CommonMark lets a fence carry up to
+/// three spaces of indentation and models routinely indent a whole block under a lead-in, so the
+/// body arrives shifted right as a body and has to come out as a program. Every line moves by the
+/// same amount, which is what keeps the deletion a deletion.
 ///
 /// # Candidacy — a three-tier ladder, first non-empty tier wins
 ///
@@ -1146,16 +1155,15 @@ fn scan_fences<'a>(text: &'a str, dialect: &dyn Dialect) -> FenceScan<'a> {
             index += 1;
         }
 
-        let body = text[body_start..body_end].trim();
+        // `dedent` rather than `trim`: a block a model indented is a block whose *every* line is
+        // indented, and dedenting only the first one — which is all `trim` does — would hand a
+        // whitespace-significant language a program gg had misaligned. See [`dedent`].
+        let body = dedent(&text[body_start..body_end]);
         // An empty block is not a block: it offers nothing to run, and counting it would let a
         // model's illustrative ```` ``` ```` pair turn a single-program reply into several
         // candidates.
         if !body.is_empty() {
-            blocks.push(FencedBlock {
-                tag,
-                body: body.to_string(),
-                close,
-            });
+            blocks.push(FencedBlock { tag, body, close });
         }
     }
 
@@ -1314,7 +1322,10 @@ fn strip_prose(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
         .get(trailing_start)
         .map_or(text.len(), |(offset, _)| *offset);
     StrategyOutcome::Rewrote {
-        text: text[start..end].trim().to_string(),
+        // Dedented for the same reason an unwrapped fence is: prose above a program is routinely a
+        // lead-in that indents what follows it, and a program left half-dedented is one gg
+        // misaligned. See [`dedent`].
+        text: dedent(&text[start..end]),
         detail: HealingDetail::Prose { leading, trailing },
     }
 }
@@ -1619,6 +1630,79 @@ pub(crate) fn lines_with_offsets(src: &str) -> impl Iterator<Item = (usize, &str
         let line = raw.strip_suffix('\n').unwrap_or(raw);
         (start, line.strip_suffix('\r').unwrap_or(line))
     })
+}
+
+/// The longer common prefix of two strings, in whole characters.
+///
+/// `pub(crate)` for the same reason [`lines_with_offsets`] is: the skeleton dedents the body it
+/// unwraps and a dialect dedents the body it unwraps out of an `async` wrapper, and two spellings of
+/// "how much indentation do these lines share" is exactly the drift one shared helper removes.
+pub(crate) fn common_prefix<'a>(left: &'a str, right: &'a str) -> &'a str {
+    let end = left
+        .char_indices()
+        .zip(right.char_indices())
+        .take_while(|((_, a), (_, b))| a == b)
+        .map(|((index, c), _)| index + c.len_utf8())
+        .last()
+        .unwrap_or(0);
+    &left[..end]
+}
+
+/// `text` as a **program**: without its leading blank lines or its trailing whitespace, and with the
+/// indentation every one of its lines shares removed from all of them.
+///
+/// # Why this is not `str::trim`
+///
+/// Because `trim` dedents the first line and no other. A block a model indented — inside a list
+/// item, under a numbered step, or simply because it indented its whole answer — comes out of
+/// [`str::trim`](str::trim) with line 1 flush against the margin and every following line still
+/// carrying the indent the model wrote. In a language where indentation is punctuation that is not a
+/// cosmetic difference: `x = 1` followed by `␣␣␣y = 2` is an unexpected-indent error over a program
+/// the model wrote correctly, reported against text gg produced. The reply is untouched, the
+/// diagnostic is real, and nothing in it points at healing — which is what makes this the worst
+/// shape of defect the pipeline can have.
+///
+/// It stayed invisible because gg had one language and that language ignores leading whitespace,
+/// and because the [delete-only invariant](Dialect) compares *non-whitespace* characters, so it
+/// cannot see indentation at all by construction. Every line moving by the same amount is what makes
+/// this safe and what makes it a repair: relative indentation — the only thing a whitespace-
+/// significant language reads — is exactly what is preserved.
+///
+/// # What "shared" means
+///
+/// The longest whitespace prefix common to every **non-blank** line, compared as characters, so a
+/// tab-indented block and a space-indented one are each dedented by their own unit and a block
+/// mixing the two is dedented only by what its lines literally share. A blank line has no
+/// indentation to share and is not consulted; it gives up whatever leading whitespace it has.
+///
+/// Lines that begin inside a multi-line string are counted with the rest. That is deliberate: a
+/// prefix *every* line shares — the string's own lines included — is the block's indentation, and
+/// the only way it could have got there is that the model indented the block. A string whose lines
+/// start further left than the code around them lowers the shared prefix, which is the conservative
+/// answer.
+pub(crate) fn dedent(text: &str) -> String {
+    let text = text.trim_end();
+    let start = lines_with_offsets(text)
+        .find(|(_, line)| !line.trim().is_empty())
+        .map_or(text.len(), |(offset, _)| offset);
+    let text = &text[start..];
+
+    let indent = lines_with_offsets(text)
+        .filter(|(_, line)| !line.trim().is_empty())
+        .map(|(_, line)| &line[..line.len() - line.trim_start().len()])
+        .reduce(common_prefix)
+        .unwrap_or_default();
+    if indent.is_empty() {
+        return text.to_string();
+    }
+
+    // `split_inclusive` keeps each line's own terminator, so a reply written with `\r\n` keeps them.
+    text.split_inclusive('\n')
+        .map(|line| {
+            line.strip_prefix(indent)
+                .unwrap_or_else(|| line.trim_start_matches([' ', '\t']))
+        })
+        .collect()
 }
 
 /// `n` and its noun, pluralised the English way.

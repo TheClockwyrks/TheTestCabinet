@@ -95,15 +95,28 @@ drop a different line from it.
 
 ## The invariant that makes it honest
 
-> **Healing only ever deletes.** Every strategy removes contiguous text; `unwrap-async`
-> additionally removes leading whitespace from the body's lines. No strategy inserts a
-> character, moves a line, rewrites a token in place, or reorders anything. Therefore
-> **the healed program, with whitespace removed, is a subsequence of the response with
-> whitespace removed.**
+> **Healing only ever deletes.** Every strategy removes contiguous text; the three that
+> unwrap something — `strip-fences`, `strip-prose` and `unwrap-async` — additionally
+> remove the indentation the body's lines share. No strategy inserts a character, moves a
+> line, rewrites a token in place, or reorders anything. Therefore **the healed program,
+> with whitespace removed, is a subsequence of the response with whitespace removed.**
 
 One machine-checkable sentence that covers "never invents code" and "never reorders" for
 all six strategies at once. It is enforced as a property test over the whole fixture
 corpus — every captured real reply — under **every** configuration, all 2⁶ of them.
+
+Because it compares only non-whitespace characters, that sentence says nothing about
+indentation — so the dedent gets an invariant of its own:
+
+> **Unwrapping moves every line by the same indent.** After `strip-fences` and
+> `strip-prose`, there is a single indent that, put back in front of every non-blank line
+> of the program, yields a line the model really sent.
+
+One indent for all of them is exactly "the block moved"; two would be "gg misaligned it".
+That distinction is invisible in a language that ignores leading whitespace and is a
+syntax error in one where indentation is punctuation — over text the model never wrote,
+against a reply that is fine — which is why it is asserted separately rather than left to
+the subsequence property to imply.
 
 Where a strategy cannot apply cleanly it **declines**: silently, leaving the text exactly
 as it was. The asymmetry is deliberate. A missed repair costs one turn and a located
@@ -111,10 +124,11 @@ diagnostic; a wrong repair deletes the model's work. Only one of those is recove
 
 Dropping a byte-order mark, the blank lines around a reply and its trailing whitespace is
 **canonicalisation, not repair**: a program that differs from another only in that is the
-same program, so it is not counted. What is deliberately *kept* is the
+same program, so it is not counted. What is deliberately *kept* on the way in is the
 **indentation of the first content line** — four spaces make an indented code block rather
-than a fence, so un-indenting it here would answer a question the fence scanner exists to
-ask.
+than a fence, so un-indenting it there would answer a question the fence scanner exists to
+ask. Indentation is Markdown's to interpret first; what is left of it once a wrapper comes
+off is a question about a *program*, and that is the dedent's, below.
 
 ## The six strategies
 
@@ -183,7 +197,14 @@ because two of its rungs disagree on real inputs:
 | **D2** | **two or more candidates** | decline — gg cannot know which was meant, and picking one would delete a program the model wrote |
 | **D3** | exactly one candidate, but a line **outside the fences** is certainly code | decline — unwrapping would delete real code |
 | **D4** | zero candidates | decline |
-| — | otherwise | unwrap to the single candidate's body |
+| — | otherwise | unwrap to the single candidate's body, dedented |
+
+**The body is dedented, not trimmed.** CommonMark lets an opening fence carry up to three
+spaces, and models routinely indent a whole block under a lead-in ("1. First, run this:").
+Removing only the leading whitespace of the *text* — which is what trimming a body does —
+puts line 1 at the margin and leaves every line after it where the model had it. The
+indentation every line shares is removed from all of them instead, so the block's internal
+shape is exactly what it was.
 
 **D2 declines rather than refusing the reply.** The worst real reply measured — seven
 candidate blocks inside 9,800 bytes of narration — is compiled exactly as sent, and what
@@ -218,7 +239,10 @@ scanning past it, no paragraph heuristics — and **while an opening fence survi
 because its precondition ("a program with prose around it") is false while a wrapper is
 still there. It also declines when removal would leave nothing at all: a reply that is
 prose from end to end has no program under the explanation, so there is nothing to strip
-*to*, and it goes to the type-strip as the model wrote it.
+*to*, and it goes to the type-strip as the model wrote it. What it does keep is
+[dedented](#the-invariant-that-makes-it-honest), for the same reason an unwrapped fence
+is: a lead-in that indents the program it introduces would otherwise leave the program
+half-aligned.
 
 It is deliberately severe. A line is certainly prose only when it contains none of
 `` ` `` `;` `{` `}` `(` `)` `[` `]` `=` `<` `>` `|` `&` `$` `\`, contains no `//` or

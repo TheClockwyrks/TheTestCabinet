@@ -259,6 +259,14 @@ pub(crate) const CORPUS: &[Fixture] = &[
         reply: "const files = listDir(\"src\");\nreturn files.length;",
     },
     Fixture {
+        name: "indented-fence",
+        reply: "1. First, list the files:\n\n   ```ts\n   const files = listDir(\"src\");\n   return files.length;\n   ```\n",
+    },
+    Fixture {
+        name: "indented-fence-with-a-nested-block",
+        reply: "  ```ts\n  const files = listDir(\"src\");\n  for (const file of files) {\n    view.openFile(file);\n  }\n  ```",
+    },
+    Fixture {
         name: "windows-line-endings",
         reply: "Here is the program:\r\n\r\n```ts\r\nconst x = 1;\r\nreturn x;\r\n```\r\n",
     },
@@ -386,6 +394,61 @@ fn every_healed_program_is_a_subsequence_of_the_response() {
                 result.program
             );
         }
+    }
+}
+
+/// **The invariant the delete-only one cannot see: unwrapping moves every line by the same
+/// indent.**
+///
+/// [`is_subsequence`] compares non-whitespace characters, so a repair that dedented one line of a
+/// program and not the next would pass it — and passed it for as long as gg had one language, which
+/// is a language that ignores leading whitespace. The moment a program is written in one where
+/// indentation is punctuation, a half-dedented program is a syntax error over text the model never
+/// wrote, reported against a reply that is fine. The defect is invisible to every other property
+/// here by construction, so it gets one of its own.
+///
+/// The claim: after the two strategies that *unwrap* — [`StripFences`](HealingStrategy::StripFences)
+/// and [`StripProse`](HealingStrategy::StripProse) — there is a single indent that, put back in
+/// front of every non-blank line of the program, yields a line the model really sent. One indent for
+/// all of them is exactly "the block moved"; two would be "gg misaligned it".
+///
+/// Only those two are armed, deliberately. `unwrap-async` also dedents, but it removes `await`
+/// tokens from the lines it keeps, so its output is not made of the reply's lines at all and no
+/// line-wise property can be asserted of it — that strategy is pinned by its own dialect's tests.
+#[test]
+fn unwrapping_moves_every_line_of_the_program_by_one_indent() {
+    let mut config = HealingConfig::OFF;
+    config.set(HealingStrategy::StripFences, true);
+    config.set(HealingStrategy::StripProse, true);
+
+    for fixture in CORPUS {
+        let result = heal(fixture.reply, &config, dialect());
+        let program: Vec<&str> = result
+            .program
+            .lines()
+            .map(str::trim_end)
+            .filter(|line| !line.is_empty())
+            .collect();
+        if program.is_empty() {
+            continue;
+        }
+        let sent: std::collections::HashSet<&str> =
+            fixture.reply.lines().map(str::trim_end).collect();
+        // The candidate indents are the ones the reply actually uses, plus none at all.
+        let mut candidates: Vec<&str> = fixture
+            .reply
+            .lines()
+            .map(|line| &line[..line.len() - line.trim_start().len()])
+            .collect();
+        candidates.push("");
+        assert!(
+            candidates.iter().any(|indent| program
+                .iter()
+                .all(|line| sent.contains(format!("{indent}{line}").trim_end()))),
+            "{}: healing left the program's lines at two different indents\n--- program ---\n{}",
+            fixture.name,
+            result.program
+        );
     }
 }
 

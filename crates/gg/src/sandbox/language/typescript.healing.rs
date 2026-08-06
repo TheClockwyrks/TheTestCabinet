@@ -33,7 +33,9 @@
 //! a lexical shape test with its errors pointed in the safe direction, and every one of them
 //! **declines** rather than guesses when it cannot tell.
 
-use crate::healing::{AsyncWrapper, CodeMask, Dialect, Unwrapped, lines_with_offsets};
+use crate::healing::{
+    AsyncWrapper, CodeMask, Dialect, Unwrapped, common_prefix, lines_with_offsets,
+};
 
 /// TypeScript's dialect. A unit struct: everything it "holds" is the `const` data below.
 pub(in crate::sandbox::language) struct TypeScriptDialect;
@@ -501,18 +503,6 @@ fn strip_awaits(line: &str, mask: &CodeMask, base: usize, out: &mut String) -> u
     }
     out.push_str(&line[cursor..]);
     removed
-}
-
-/// The longer common prefix of two strings, in whole characters.
-fn common_prefix<'a>(left: &'a str, right: &'a str) -> &'a str {
-    let end = left
-        .char_indices()
-        .zip(right.char_indices())
-        .take_while(|((_, a), (_, b))| a == b)
-        .map(|((index, c), _)| index + c.len_utf8())
-        .last()
-        .unwrap_or(0);
-    &left[..end]
 }
 
 // ---------------------------------------------------------------------------------------------

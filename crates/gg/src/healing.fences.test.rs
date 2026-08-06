@@ -518,3 +518,98 @@ fn a_reply_with_windows_line_endings_heals_and_keeps_them() {
         }
     );
 }
+
+// ---------------------------------------------------------------------------------------------
+// Dedenting the body
+// ---------------------------------------------------------------------------------------------
+
+/// A fence a model indented yields a program at the margin, with **every** line moved by the same
+/// amount.
+///
+/// The shape is ordinary — a block under a numbered step, which is how a model writes "first do
+/// this" — and it is the one a `trim()` on the body gets wrong in the worst possible way: line 1
+/// comes out flush and every line after it keeps the indent, so the program gg runs is one gg
+/// misaligned. In a language where indentation is punctuation the model is then shown an
+/// unexpected-indent error over text it never wrote.
+#[test]
+fn an_indented_fence_dedents_its_whole_body() {
+    let result = healed(
+        "1. First, list the files:\n\n   ```ts\n   const files = listDir(\"src\");\n   return \
+         files.length;\n   ```\n",
+    );
+    assert_eq!(
+        result.program,
+        "const files = listDir(\"src\");\nreturn files.length;"
+    );
+    assert_eq!(result.strategies(), vec![HealingStrategy::StripFences]);
+}
+
+/// A body indented further than its fence is dedented too — by what its own lines share, not by
+/// what CommonMark would allow off the fence.
+///
+/// CommonMark removes only as much indentation as the opening fence carried, which would leave a
+/// block indented under a flush fence exactly as misaligned as before. What matters to a program is
+/// that its lines start at the margin, so the shared prefix is what goes.
+#[test]
+fn a_body_indented_past_its_fence_is_dedented_by_what_its_lines_share() {
+    let result = healed("```ts\n    const x = 1;\n    return x;\n```");
+    assert_eq!(result.program, "const x = 1;\nreturn x;");
+}
+
+/// Dedenting is uniform, so a body's **relative** indentation survives it intact — which is the
+/// whole of what a whitespace-significant language reads.
+#[test]
+fn dedenting_keeps_the_relative_indentation_of_a_nested_block() {
+    let result = healed(
+        "  ```ts\n  const files = listDir(\"src\");\n  for (const file of files) {\n    \
+         view.openFile(file);\n  }\n  ```",
+    );
+    assert_eq!(
+        result.program,
+        "const files = listDir(\"src\");\nfor (const file of files) {\n  view.openFile(file);\n}"
+    );
+}
+
+/// A blank line inside an indented body is not consulted for the shared prefix — it has no
+/// indentation to share — and is not left holding the indent everything else gave up.
+#[test]
+fn a_blank_line_does_not_hold_an_indented_body_back() {
+    let result = healed("  ```ts\n  const x = 1;\n\n  return x;\n  ```");
+    assert_eq!(result.program, "const x = 1;\n\nreturn x;");
+}
+
+/// A body whose lines share nothing is left exactly as the model wrote it: a block that is already
+/// at the margin has no indentation to remove, and one line of it starting further left than the
+/// rest lowers the shared prefix to nothing rather than shifting anything.
+#[test]
+fn a_body_that_shares_no_indentation_is_untouched() {
+    let result = healed("```ts\nconst x = 1;\n    return x;\n```");
+    assert_eq!(result.program, "const x = 1;\n    return x;");
+}
+
+/// An indented body written with Windows line endings dedents and keeps its endings: the dedent
+/// removes leading whitespace and nothing else.
+#[test]
+fn an_indented_body_with_windows_line_endings_dedents_and_keeps_them() {
+    let result = healed("  ```ts\r\n  const x = 1;\r\n  return x;\r\n  ```\r\n");
+    assert_eq!(result.program, "const x = 1;\r\nreturn x;");
+}
+
+/// Prose above an indented program dedents it too. `strip-prose` deletes whole lines, so without a
+/// dedent of its own it would hand back a program still carrying the lead-in's indentation on every
+/// line but the first.
+#[test]
+fn stripping_prose_dedents_what_it_leaves() {
+    let result = healed(
+        "Here is what I will do.\n\n  const files = listDir(\"src\");\n  return files.length;\n",
+    );
+    assert_eq!(
+        result.program,
+        "const files = listDir(\"src\");\nreturn files.length;"
+    );
+    assert!(
+        result.strategies().contains(&HealingStrategy::StripProse),
+        "{:?}",
+        result.applied
+    );
+}
