@@ -289,8 +289,9 @@ fn is_prose_line(raw: &str) -> bool {
         return false;
     }
     // 4. Not a call on a qualified name — the mirror of [`looks_like_code`]'s last clause, and the
-    //    one this predicate cannot do without: `view.openText "note" "done"` carries no bracket, no
-    //    operator and no keyword, and reads to a word counter as three words of English.
+    //    one this predicate cannot do without: `view.openText label summary` carries no bracket, no
+    //    operator and no keyword, and reads to a word counter as three words of English. It is
+    //    clause 5's case with a dot in the head, which is why that clause does not subsume it.
     if opens_with_qualified(line) {
         return false;
     }
