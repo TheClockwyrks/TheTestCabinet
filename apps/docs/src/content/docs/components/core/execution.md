@@ -60,9 +60,9 @@ example by deleting files.
   resolved per agent, so every toolchain has to be present together; and they are a
   variant rather than a layer on the shared image because they exist for that one
   harness. **Every** run image publishes a variant, and the name is derived rather
-  than looked up: a program's language is resolved per agent, so a gg run of any
-  kind may drive a compiled-language agent, and there is no test type or
-  `asset_kind` for which gg resolves an image with no compilers in it. Each variant
+  than looked up: because language is per agent, a gg run of any kind may drive a
+  compiled-language agent, so there is no test type or `asset_kind` for which gg
+  resolves an image with no compilers in it. Each variant
   pins on its own `TCAB_CONTAINER_IMAGE_*_GG` override. They are all registry
   images, and a runner resolves the one for the run from its **own
   registry configuration** — `TCAB_CONTAINER_REGISTRY` (default
