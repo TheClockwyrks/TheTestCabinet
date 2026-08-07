@@ -16,6 +16,7 @@ import {
   towerById,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   skipToFirstTarget,
   TICK,
@@ -57,7 +58,7 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("the Discharge Rig fires", fired);
       check.expectGt(
-        "a discharge cue plays on the shot (Web Audio sources started)",
+        audioCueLabel("a discharge cue plays on the shot", after),
         after,
         before,
       );

@@ -8,6 +8,7 @@ import {
   armTower,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   skipToFirstTarget,
   TICK,
@@ -57,7 +58,7 @@ export default function item() {
       check.expectOk("a unit walked into the gun's reach", unitId != null);
       check.expectOk("the unit is killed", killed);
       check.expectGt(
-        "a kill cue plays on the kill (Web Audio sources started)",
+        audioCueLabel("a kill cue plays on the kill", after),
         after,
         before,
       );

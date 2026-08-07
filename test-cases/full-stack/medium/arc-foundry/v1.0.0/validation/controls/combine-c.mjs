@@ -16,6 +16,11 @@ import { startBuild, placeCandidate, towerAt, snap, SECOND } from "../_helpers.m
 
 // A fold consumes a fresh candidate, which makes it the level's harvest and launches the wave;
 // two seconds is enough to see the folded piece stand and start working.
+// A beat on the board BEFORE the key is pressed. These items are about what a KEY DOES, and a
+// key press is instantaneous — so an act that opens on the press has already spent the only frame
+// in which the board looked like it did beforehand, and the clip is entirely aftermath. The lead-in
+// is what lets a reviewer see the state the accelerator changed.
+const LEAD_TICKS = 1.5 * SECOND;
 const CLIP_TICKS = 2 * SECOND;
 
 export default function item() {
@@ -36,6 +41,8 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the matched pair, before C folds it
+
       await api.call("press", "KeyC");
       s = await snap(api);
 

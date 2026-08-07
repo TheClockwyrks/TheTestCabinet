@@ -481,11 +481,15 @@ export async function spawnControlled(api, type, opts = {}) {
  * it. Pass `clear: false` for an item whose subject is the fold itself and the board it leaves
  * behind, where the wave the harvest sends is part of what the clip should show.
  */
-export async function assembleCombo(
-  api,
-  comboId,
-  { seed = 1, charge = 400, difficulty = "medium", clear = true } = {},
-) {
+/**
+ * ARRANGE. Pose a recipe's ingredient board through the real placement path and name the explicit
+ * combine multiset, WITHOUT committing the fold. Returns `{ ingredients, ids, initiatorId }`.
+ *
+ * Split out of `assembleCombo` so an item whose subject is the ASSEMBLY can hold on the posed
+ * ingredients and then fold them on camera (`commitCombo`), rather than being handed a board on
+ * which the fold has already happened.
+ */
+export async function arrangeComboBoard(api, comboId, { seed = 1, difficulty = "medium" } = {}) {
   const recipe = RECIPES[comboId];
   await startBuild(api, { seed, difficulty });
   await api.call("setIntegrity", 999);
@@ -494,10 +498,40 @@ export async function assembleCombo(
     const [type, tier] = recipe[i];
     const spot = SPOTS[i];
     const cand = await placeCandidate(api, type, tier, spot.col, spot.row);
+    if (!cand) {
+      throw unmetPrecondition(
+        `the ${type} T${tier} ingredient was refused at (${spot.col},${spot.row}); the recipe ` +
+          `board could not be posed`,
+      );
+    }
     ingredients.push({ id: cand.id, col: spot.col, row: spot.row });
   }
   const ids = ingredients.map((g) => g.id);
   await api.call("setCombineSet", ids);
+  return { ingredients, ids, initiatorId: ids[0] };
+}
+
+/**
+ * Commit the fold `arrangeComboBoard` posed and return the combination tower it produced (or
+ * `null` if none did). Legal in `act`, which is where an item whose evidence is the ASSEMBLY
+ * itself has to commit it — the fold is the event, and posing it in `arrange` puts it before the
+ * recording's first frame.
+ */
+export async function commitCombo(api, initiatorId) {
+  await api.call("combine", initiatorId);
+  const s = await api.snapshot();
+  const combo = s.towers.find(
+    (t) => t.kind === "combo" && t.col === SPOTS[0].col && t.row === SPOTS[0].row,
+  );
+  return combo ? combo.id : null;
+}
+
+export async function assembleCombo(
+  api,
+  comboId,
+  { seed = 1, charge = 400, difficulty = "medium", clear = true } = {},
+) {
+  const { ingredients, ids } = await arrangeComboBoard(api, comboId, { seed, difficulty });
   await api.call("combine", ids[0]);
   const s = await api.snapshot();
   const combo = s.towers.find(
@@ -640,15 +674,34 @@ export async function readMenu(api, { tries = 12, per = 80 } = {}) {
 
 /**
  * Click a menu choice by its `action`, the way a player would: find the entry the build reports
- * and click the middle of the rectangle it reported. Returns the entry, or null if the menu
- * offered no such choice (which a caller should treat as the navigation failing, not as a throw —
- * the point of the click is to find out whether the choice leads where the spec says).
+ * and click the middle of the rectangle it reported, then wait for the screen to change. Returns
+ * the entry, or null if the menu offered no such choice (which a caller should treat as the
+ * navigation failing, not as a throw — the point of the click is to find out whether the choice
+ * leads where the spec says).
  */
-export async function clickMenu(api, action) {
+export async function clickMenu(api, action, { tries = 12, per = 80 } = {}) {
   const entries = await readMenu(api);
   const entry = entries.find((e) => e && e.action === action && !e.disabled);
   if (!entry) return null;
+  const from = (await api.snapshot()).screen;
   await api.call("click", entry.x + entry.w / 2, entry.y + entry.h / 2);
+  // Wait for the navigation to LAND rather than assuming it landed by the next round trip.
+  //
+  // A build is free to handle its click asynchronously — one does, gating the menu action behind
+  // `await audio.resume()` so its own AudioContext is running before anything else happens, which
+  // is a perfectly sensible thing to do on a first interaction. The debug API's `click` returns as
+  // soon as it has dispatched, so a screen read taken on the very next call can beat the handler
+  // to it, and the item reports a state as unreachable when a player reaches it in one click.
+  // Nothing in `specs/instrumentation.md` requires a click to resolve synchronously — only that a
+  // click at the reported rectangle "must activate that choice" — so the wait is the check's job.
+  //
+  // A build that genuinely goes nowhere still returns after the full budget, which no check times.
+  // Read BEFORE settling, so a build that navigates synchronously — which is most of them, and
+  // the reference among them — pays nothing for this and its media is unchanged.
+  for (let i = 0; i < tries; i += 1) {
+    if ((await api.snapshot()).screen !== from) break;
+    await api.settle(per);
+  }
   return entry;
 }
 
@@ -755,19 +808,34 @@ const PACK_WAVE = 6;
  * already well inside range, and the first shot — the one the whole item is about — would be away
  * before the recording's first frame.
  */
-export async function arrangeSpreadPack(api, type, { tier = 1, count = PACK_COUNT } = {}) {
-  const towerId = await armTower(api, { type, tier });
+/**
+ * ARRANGE. Release `count` Motes at the Entry ONE AT A TIME, with a walk between releases, so the
+ * pack is spaced along the corridor rather than stacked on the spawn tile. Returns their ids in
+ * chain order (leader first).
+ *
+ * `spawnUnit`'s own `count` puts every unit at the Entry on the same tick, which leaves them at
+ * identical coordinates walking at identical speeds — one sprite as far as any recording is
+ * concerned. Any item whose claim is about SEVERAL units (a chain forking, a splash covering an
+ * area, a volley engaging distinct targets) then films a single Mote and demonstrates nothing.
+ */
+export async function releaseSpread(api, { count = PACK_COUNT, wave = PACK_WAVE, gap = PACK_GAP_TICKS } = {}) {
   const ids = [];
   for (let i = 0; i < count; i += 1) {
-    const [u] = await spawnControlled(api, "mote", { wave: PACK_WAVE });
+    const [u] = await spawnControlled(api, "mote", { wave });
     if (!u) {
       throw unmetPrecondition(
         `only ${ids.length} of ${count} pack units could be released; there is no pack to hit`,
       );
     }
     ids.push(u.id);
-    if (i < count - 1) await api.skip(PACK_GAP_TICKS); // this one walks ahead of the next
+    if (i < count - 1) await api.skip(gap); // this one walks ahead of the next
   }
+  return ids;
+}
+
+export async function arrangeSpreadPack(api, type, { tier = 1, count = PACK_COUNT } = {}) {
+  const towerId = await armTower(api, { type, tier });
+  const ids = await releaseSpread(api, { count });
   // Sweep coarsely: every sample is a round trip, and the record pass films those round trips as
   // a fast-forward before the act begins, so a fine poll buys only a longer burst of teleporting
   // units at the head of the clip.
@@ -1272,6 +1340,34 @@ export async function armAudio(api) {
   await api.settle(AUDIO_SETTLE_MS);
 }
 
+/**
+ * The label an audio-cue assertion carries, which changes when the build turns out not to use Web
+ * Audio at all.
+ *
+ * "act=0" on its own is a confusing thing to hand a reviewer who can plainly HEAR the build: it
+ * reads as "the cue did not play" when what actually happened may be that the cue played
+ * perfectly, through a path this probe cannot see. `api.audio` reports Web Audio sources — it
+ * wraps the source nodes' `start()` — and a build that plays its produced `.wav`s from an
+ * `<audio>` element instead starts none of them, so every audio item comes back zero while the
+ * yard is making noise. One run implementation does exactly that, and the flat "0" sent a reviewer
+ * looking for a missing sound that was not missing.
+ *
+ * `specs/assets.md` is not ambiguous about which it wants — the produced clips are "played via Web
+ * Audio", decoded with `decodeAudioData` — so such a build is failing a real requirement. It is
+ * just failing a different one from the one the bare number implies, and the verdict should say
+ * which. A count of zero across a whole item (the arming gesture included, which starts the music
+ * bed on any unmuted build) is the signature.
+ */
+export function audioCueLabel(what, count) {
+  if (count > 0) return `${what} (Web Audio sources started)`;
+  return (
+    `${what} — and this build started NO Web Audio source at any point in this item, so it is ` +
+    `not playing its produced .wav files the way \`specs/assets.md\` requires (decoded with ` +
+    `\`decodeAudioData\` and played through the Web Audio API). Sound played another way (an ` +
+    `<audio> element, say) is audible but invisible to this probe`
+  );
+}
+
 /** The number of Web Audio sources the build has started so far. */
 export async function audioCount(api) {
   return (await api.audio()).length;
@@ -1300,5 +1396,58 @@ export async function waitForAudio(api, baseline, { tries = 12, per = AUDIO_SETT
     await api.settle(per);
     n = await audioCount(api);
   }
+  return n;
+}
+
+// ---- Reading what a status-bar control actually DREW ---------------------------
+//
+// Some claims are about the HUD changing, not about a snapshot field changing — the mute control
+// showing that audio is muted, say (`specs/ui.md`). A snapshot read cannot see that: a build can
+// flip `muted` correctly and draw nothing at all, which is exactly what one run implementation
+// does. So the control itself is sampled.
+//
+// WHY THIS SAMPLES A REPORTED RECTANGLE RATHER THAN SWEEPING THE BAR. The first version of this
+// swept the whole 1280x56 band on a grid, because no spec pins where within the bar a build draws
+// any one control. That could not be made both cheap and sound: a mute indicator is a GLYPH, and
+// measured at 2 px across eight rows, toggling mute moved 8 of 5120 samples on one build (x
+// 1242..1248) and 8 on another (x 1206..1226). A grid coarse enough to be affordable swept
+// straight past both — reporting "nothing changed" for two builds that draw the indicator
+// correctly, and passing only because the one build that draws nothing also reported nothing.
+//
+// `statusControls()` (`specs/instrumentation.md`) closes that gap: the build reports the control's
+// own rectangle, so the sweep is a few dozen pixels rather than seventy thousand, and can be dense
+// enough to be conclusive.
+
+// How finely a reported control's rectangle is sampled, in logical px. A glyph stroke is ~2 px, so
+// stepping by 2 cannot fall between the strokes of one.
+const CONTROL_STEP = 2;
+
+/** Find one status-bar control by `action`, or null if the build reports none. */
+export async function statusControl(api, action) {
+  const controls = (await api.call("statusControls")) ?? [];
+  return controls.find((c) => c && c.action === action) ?? null;
+}
+
+/**
+ * Sample everything a reported status-bar control DREW, and return a signature of it for comparing
+ * one rendered state against another. `api.pixel` takes NORMALIZED coordinates over the largest
+ * canvas, so the control's logical rectangle is mapped onto them.
+ */
+export async function controlSignature(api, control) {
+  const sig = [];
+  if (!control) return sig;
+  for (let y = control.y; y < control.y + control.h; y += CONTROL_STEP) {
+    for (let x = control.x; x < control.x + control.w; x += CONTROL_STEP) {
+      const p = await api.pixel(x / STAGE_W, y / STAGE_H);
+      sig.push(`${p.r},${p.g},${p.b}`);
+    }
+  }
+  return sig;
+}
+
+/** How many samples differ between two control signatures. */
+export function signatureDiff(a, b) {
+  let n = 0;
+  for (let i = 0; i < Math.min(a.length, b.length); i += 1) if (a[i] !== b[i]) n += 1;
   return n;
 }

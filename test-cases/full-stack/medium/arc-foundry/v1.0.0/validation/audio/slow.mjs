@@ -16,6 +16,7 @@ import {
   towerById,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   skipToFirstTarget,
   TICK,
@@ -57,7 +58,7 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("the Choke fires", fired);
       check.expectGt(
-        "a slow hum plays on the shot (Web Audio sources started)",
+        audioCueLabel("a slow hum plays on the shot", after),
         after,
         before,
       );
