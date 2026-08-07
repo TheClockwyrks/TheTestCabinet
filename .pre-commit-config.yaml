@@ -98,6 +98,18 @@ repos:
         always_run: true
         pass_filenames: false
 
+      - id: build-context
+        name: Dockerfile build context
+        description: Reject a Dockerfile COPY whose source the .dockerignore allowlist keeps out of the build context.
+        entry: scripts/ci/build-context.sh
+        language: script
+        # Reads every Dockerfile against the one .dockerignore, so it does not take
+        # file arguments; trigger whenever either side of that pair is staged. This
+        # is the only gate that sees the defect at all — the image builds live on a
+        # GitHub workflow that runs on master/staging, long after the commit.
+        files: '(^|/)[^/]*Dockerfile[^/]*$|^\.dockerignore$'
+        pass_filenames: false
+
       - id: rust-fmt
         name: cargo fmt (--check)
         description: Enforce rustfmt formatting across the workspace.

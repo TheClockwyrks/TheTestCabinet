@@ -436,6 +436,21 @@ why the build context is the repository root rather than each image's directory
 (see `build.sh`); `build.sh` builds every asset-generation image `FROM` the base
 it builds alongside them, so they all stay in lockstep.
 
+### Adding a `COPY` from the build context
+
+`.dockerignore` at the repository root is an **allowlist**: it ignores everything
+(`*`) and then re-includes, by name, the paths a build actually reads. So a new
+`COPY <path>` in any Dockerfile here needs a matching `!/<path>` line — otherwise
+the build dies with `failed to compute cache key: "/<path>": not found`, preceded
+by `transferring context: 2B`, and nothing in the repository has changed to
+explain it. This has bitten twice (the Blender image's authoring helpers; the gg
+toolchain builder's Java installer, which took every `-gg` variant down with it,
+because `build.sh` is `set -euo pipefail` and builds that builder before all of
+them). `scripts/ci/build-context.sh` is the gate: it reads every tracked
+Dockerfile against `.dockerignore` and fails on a source that is missing or
+excluded, so the mistake is caught at commit time rather than the next time
+someone needs a run container. Run it after adding a `COPY`.
+
 ## The sample library and instrument bank
 
 The [`sfx-sample`](../apps/docs/src/content/docs/testing/asset-generation/audio-binaries.md)

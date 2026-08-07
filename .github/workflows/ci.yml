@@ -3,10 +3,11 @@ name: CI
 # Critical validation mirrored from the Azure DevOps pipeline (the primary CI).
 # Azure runs the full suite, including linting; GitHub runs only the checks that
 # would otherwise let a genuinely broken change through — the headless Rust crates
-# (build/tests), the front-end build, and the frozen-version gate (which protects
-# already-recorded run results, needs no toolchain, and takes seconds) — so a
-# green GitHub run still means the components actually build and pass. Linting
-# and spec checks are left to Azure.
+# (build/tests), the front-end build, the frozen-version gate (which protects
+# already-recorded run results, needs no toolchain, and takes seconds), and the
+# container build-context gate (which protects the image builds that live in this
+# same CI system) — so a green GitHub run still means the components actually build
+# and pass. Linting and spec checks are left to Azure.
 #
 # Both jobs call the same scripts/ci/ scripts the Azure pipeline uses. Dormant
 # until the repository is mirrored to GitHub (the same condition as the deploy
@@ -51,6 +52,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: ./scripts/ci/frozen-check.sh
+
+  # Mirrored here rather than left to Azure because the thing it protects lives on
+  # GitHub: `build-containers.yml` builds the run images, only on master/staging,
+  # and a `COPY` whose source the .dockerignore allowlist excludes fails that build
+  # with no other gate in the repository able to see it.
+  build-context:
+    name: Container build contexts (every COPY can see its source)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - run: ./scripts/ci/build-context.sh
 
   contract:
     name: Contract (regenerate & check for drift)

@@ -1064,7 +1064,11 @@ largest of any, so an arm that went untimed would look free and would not be.
 Three things, shipped three ways because each can only go one way. A JDK (~190 MB, a build per
 platform) and TeaVM's jars (~29 MB) go into the **gg toolchain image**, installed by
 `scripts/ci/install-java.sh`, which the Dockerfile runs rather than duplicating so the list of jars
-exists once. gg's own **compiler driver** goes inside gg's binary: it is a single `.java` file run
+exists once. Running it there rather than restating it makes this the first block in that image to
+read the **build context**, and the repository's `.dockerignore` is an allowlist — so the installer
+and the version file it sources are re-included there by name, and `scripts/ci/build-context.sh`
+holds every Dockerfile in the repository to the same thing. gg's own **compiler driver** goes inside
+gg's binary: it is a single `.java` file run
 by the JDK's single-file source-code launcher, so there is no jar to build, no binary artifact to
 commit and no reproducible-build gate — and a driver of a different vintage from the gg speaking to
 it is a protocol mismatch a version handshake refuses by number.
@@ -2093,7 +2097,14 @@ model reaches by accident rather than by writing a sleep.
    per-invocation working tree and output directory rather than only through a shared
    process. The Dockerfile's header states both constraints;
    [per-agent compiler isolation](#per-agent-compiler-isolation) states what the calling side
-   already does for it and what still has to be true of the toolchain itself.
+   already does for it and what still has to be true of the toolchain itself. If the step
+   `COPY`s anything out of the build context — Java's does, so that the image and a developer's
+   machine install from one pinned list rather than two — **re-include that path in
+   `.dockerignore`**, which is an allowlist: a `COPY` nobody re-included fails the build with
+   `failed to compute cache key: "/path": not found`, and takes the `-gg` variant of every
+   *other* language with it, because `containers/build.sh` builds this one builder before all of
+   them. `scripts/ci/build-context.sh` is the gate that catches it, and the only one that can —
+   the Rust suite, the drift gate and the lints all pass on a tree whose images cannot be built.
 9. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
    and re-cutting its checker, if it has one — so the drift gate covers them rather than only
    diffing them. The script lists the stems it knows how to regenerate and **fails on one it

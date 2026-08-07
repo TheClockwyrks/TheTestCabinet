@@ -38,10 +38,23 @@ and can be run from anywhere, including locally:
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
 | `contract-drift.sh`| regenerate TS bindings, JSON Schemas + gg's sandbox signature catalogue, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
+| `build-context.sh` | every Dockerfile `COPY` source survives the `.dockerignore` allowlist | yes |
 
 "Critical" scripts are the ones that catch a genuinely broken change (a crate or
 front end failing to build or test), so they run on both CI systems. The lint
 scripts run on Azure DevOps only.
+
+`build-context.sh` is the only gate that can see a broken container build without
+building one. `.dockerignore` is an **allowlist** (`*`, then explicit `!`
+re-inclusions), so a `Dockerfile` that `COPY`s a path nobody re-included fails at
+build time with `failed to compute cache key: "/path": not found` — and the image
+builds run on a GitHub workflow that only fires on `master`/`staging`, long after
+the commit that broke them. This script reads every tracked Dockerfile against the
+one `.dockerignore`, applying Docker's own matching rules, and fails on any context
+source that is missing or excluded. It has teeth: it reproduces both defects that
+have actually landed this way (the Blender image's authoring helpers, and the gg
+toolchain builder's Java installer — which broke the `-gg` variant of every
+language, not just Java's), and it self-tests its matcher before it trusts a verdict.
 
 `install-nextest.sh` is a provisioning helper rather than a validation check
 (hence no "Critical" mark): the Rust test scripts run the suite with

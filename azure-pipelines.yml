@@ -186,6 +186,19 @@ jobs:
       - script: ./scripts/ci/frozen-check.sh
         displayName: Verify frozen directories
 
+  # Also needs no toolchain and no history — it reads Dockerfiles against
+  # .dockerignore. It runs here rather than with the image builds because those live
+  # on a GitHub workflow that only fires on master/staging: a COPY that cannot see
+  # its source would otherwise land, and be found by whoever next needs a run
+  # container rather than by the change that broke it.
+  - job: buildcontext
+    displayName: "Containers: every Dockerfile COPY can see its source"
+    steps:
+      - checkout: self
+        fetchDepth: 1
+      - script: ./scripts/ci/build-context.sh
+        displayName: Verify build contexts
+
   - job: contract
     displayName: "Contract: regenerate & check for drift"
     # Regenerates the TS bindings + JSON Schemas from the Rust source and fails on
