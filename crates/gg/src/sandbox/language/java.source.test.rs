@@ -157,6 +157,55 @@ fn the_lexer_tells_code_from_everything_that_looks_like_it() {
     );
 }
 
+/// **A program that is not ASCII is read rather than crashed on.**
+///
+/// The lexer walks one **byte** at a time, so slicing the source at every step would panic on any
+/// index that is not a character boundary — and `&source[at..]` was exactly what it did. A single
+/// `é` in a string, a comment or an identifier would have taken the turn down with a slice index
+/// error rather than reaching javac, and a model writing a message in any language but English
+/// produces one on its first turn. Every delimiter this lexer looks for is ASCII, and an ASCII byte
+/// never appears inside a multi-byte UTF-8 sequence, so byte comparisons find exactly what string
+/// comparisons would.
+#[test]
+fn a_program_that_is_not_ascii_is_read_rather_than_crashed_on() {
+    let wrapped = wrap_program(
+        "String gruss = \"grüße, wörld — ✅\";\n\
+         // a cömment\n\
+         char accented = \'é\';\n\
+         import java.util.List;\n\
+         view.openText(\"grüße\", gruss);\n",
+    )
+    .expect("wraps");
+    let body = body(&wrapped);
+    // The import was still hoisted out of the body, which is the reading that had to survive.
+    assert!(
+        wrapped.source.contains("\nimport java.util.List;"),
+        "{}",
+        wrapped.source
+    );
+    assert!(body.contains("grüße, wörld — ✅"), "{body}");
+    // And it was blanked where it stood, so nothing below it moved.
+    assert!(
+        body.contains("char accented = 'é';\n\nview.openText("),
+        "{body}"
+    );
+
+    // And the mask really did keep the non-ASCII text out of the code, rather than merely not
+    // panicking: an `import` inside a text block full of it is not an import.
+    let wrapped = wrap_program(
+        "String usage = \"\"\"\n    \
+             Beispiel — über alles:\n    \
+             import java.nio.file.Paths;\n    \
+             \"\"\";\n",
+    )
+    .expect("wraps");
+    assert!(
+        !wrapped.source.contains("\nimport java.nio.file.Paths;"),
+        "an import inside a text block was hoisted: {}",
+        wrapped.source
+    );
+}
+
 #[test]
 fn a_declaration_is_found_past_its_own_annotations_and_generics() {
     let wrapped = wrap_module(

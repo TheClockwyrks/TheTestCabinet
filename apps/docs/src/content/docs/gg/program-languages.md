@@ -1130,6 +1130,19 @@ carry, so leaving the line would leave the one line of the repaired program that
 `java.util.concurrent` is in this arm's declared set, an unused import is legal Java, and deleting a
 working line is the one thing this subsystem must never do.
 
+Two smaller answers are worth naming because each is a place a naive scan loses the source. Every
+lexical scan on this arm — the healing dialect's *and* the wrapper's, which are two readings written
+for two purposes — compares **bytes** rather than slicing the source, because it walks one byte at a
+time and `&source[at..]` panics on any index that is not a character boundary: a single `é` in a
+string, a comment or an identifier would otherwise take the turn down with a slice index error
+rather than reaching javac, which a model writing a message in any language but English produces on
+its first turn. And a leading `*` is **not** read as code, even though it is how a Javadoc
+continuation line begins, because it is also how half the models that write a bullet list write one
+— and `strip-fences` declines outright when any line outside the fences is code-shaped, so reading
+it as code would send the most common real reply shape there is to javac whole. Nothing is lost:
+`strip-prose` deletes only runs from the two ends of a reply, and a run that would reach a Javadoc
+block stops at its `/**` opener.
+
 ### What a Java code module is, and the one gate that noticed
 
 A code module here is a **class body** while a program is a sequence of statements, which makes Java

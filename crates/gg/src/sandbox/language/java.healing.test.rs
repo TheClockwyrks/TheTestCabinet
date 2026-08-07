@@ -332,10 +332,23 @@ fn the_two_predicates_point_their_errors_in_the_safe_direction() {
         // Case matters: `For` opens a sentence and `for` opens a loop.
         "For each file I will read the header.",
         "Done.",
+        // A bullet is not a Javadoc continuation. `strip-fences` declines outright when any line
+        // outside the fences is code-shaped, so reading this as code would send the most common
+        // real reply shape — prose, one fenced program, prose — to javac whole.
+        "* read the manifest",
     ] {
         assert!(!java().looks_like_code(line), "read as code: {line}");
         assert!(java().is_prose_line(line), "not read as prose: {line}");
     }
+
+    // And the block a leading `*` would have protected is protected by its own opener instead: a
+    // reply that starts with a Javadoc comment loses no line of it, because `strip-prose` only
+    // deletes runs from the two ends and the run stops at `/**`.
+    let reply = "/**\n\
+                  * Reads the manifest and shows what is in it.\n\
+                  */\n\
+                 view.openText(\"manifest\", fs.readTextFile(\"manifest.json\"));\n";
+    assert_eq!(healed(reply).program, reply.trim_end());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -400,6 +413,45 @@ fn the_lexer_reads_every_shape_java_has_and_declines_the_one_it_cannot() {
     ] {
         assert!(java().code_mask(source).is_none(), "{source}");
     }
+}
+
+/// **A reply that is not ASCII is read rather than crashed on.**
+///
+/// Both scans here walk one **byte** at a time — the lexer over the whole source, and the
+/// declaration reader over one line — so slicing at every step panics on an index that is not a
+/// character boundary. A single `é` in a string, a comment or an identifier would take the turn
+/// down with a slice index error rather than being healed, and a model writing a message in any
+/// language but English produces one on its first turn. What is asserted is not merely that nothing
+/// panics but that the reading is still right: the text block's contents are still not code, and
+/// the accented declaration is still a declaration.
+#[test]
+fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
+    // Deliberately no top-level declaration, so the one *inside* the text block is the only thing
+    // that could make the reading below true.
+    let reply = "// a cömment: don\u{2019}t lose the place\n\
+                 System.out.println(\'é\');\n\
+                 view.openText(\"grüße — wörld ✅\", \"\"\"\n    \
+                     Beispiel — über alles:\n    \
+                     int total = 1;\n    \
+                     \"\"\");\n";
+    let mask = java().code_mask(reply).expect("it lexes");
+
+    // The text block's body is still not code, so the declaration inside it is not one.
+    let inside = reply.find("int total = 1;").expect("the block holds one");
+    assert!(!mask.is_code(inside));
+    assert!(!java().declares_a_redeclarable_binding(reply, &mask, 0));
+
+    // And an accented type or name is still read as a declaration rather than skipped.
+    for line in ["String grüße = \"a\";", "Größe size = new Größe();"] {
+        let mask = java().code_mask(line).expect("it lexes");
+        assert!(
+            java().declares_a_redeclarable_binding(line, &mask, 0),
+            "{line}"
+        );
+    }
+
+    // The whole pipeline runs over it, under every configuration, and only ever deletes.
+    crate::healing::tests::assert_delete_only(java(), &[reply], "Java");
 }
 
 /// **The fence tags are Java's**, and a transcript is not among them.

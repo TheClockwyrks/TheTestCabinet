@@ -325,42 +325,52 @@ fn declared_name(line: &str) -> Option<&str> {
 /// A type is an identifier, optionally qualified with dots, optionally carrying a balanced `<…>`
 /// argument list, and optionally suffixed with `[]`s. The balance is what lets `Map<String,
 /// List<Integer>>` be read as one token rather than as an inequality.
+///
+/// Scanned by **character** rather than by byte, because a model's reply is not ASCII and a byte
+/// scan lands mid-character: `line[at..]` panics unless `at` is a character boundary, so a single
+/// `é` anywhere on the line would take the turn down with a slice index error instead of being read
+/// as the ordinary identifier character Java says it is.
 fn type_end(line: &str) -> Option<&str> {
-    let bytes = line.as_bytes();
-    if !bytes
-        .first()
-        .is_some_and(|byte| is_ident_start(*byte as char))
-    {
+    if !line.starts_with(is_ident_start) {
         return None;
     }
-    let mut at = 0usize;
-    while at < bytes.len() && (is_ident_char(bytes[at] as char) || bytes[at] == b'.') {
-        at += 1;
-    }
-    if bytes.get(at) == Some(&b'<') {
+    let mut at = run_end(line, 0, |character| {
+        is_ident_char(character) || character == '.'
+    });
+    if line[at..].starts_with('<') {
         let mut depth = 0usize;
-        loop {
-            match bytes.get(at) {
-                Some(b'<') => depth += 1,
-                Some(b'>') => {
+        // An unbalanced `<` is a comparison rather than a type argument list, and there is no type
+        // here to have found — which is what leaving `closed` as `None` says.
+        let mut closed = None;
+        for (index, character) in line[at..].char_indices() {
+            match character {
+                '<' => depth += 1,
+                '>' => {
                     depth -= 1;
                     if depth == 0 {
-                        at += 1;
+                        closed = Some(at + index + 1);
                         break;
                     }
                 }
-                // An unbalanced `<` is a comparison rather than a type argument list, and there is
-                // no type here to have found.
-                Some(_) => {}
-                None => return None,
+                _ => {}
             }
-            at += 1;
         }
+        at = closed?;
     }
     while line[at..].starts_with("[]") {
         at += 2;
     }
     Some(&line[at..])
+}
+
+/// Where the run of characters `accept`s, starting at `from`, ends.
+fn run_end(line: &str, from: usize, accept: impl Fn(char) -> bool) -> usize {
+    for (index, character) in line[from..].char_indices() {
+        if !accept(character) {
+            return from + index;
+        }
+    }
+    line.len()
 }
 
 /// The identifier at the front of `text` and what follows it.
@@ -625,6 +635,15 @@ fn dedented(text: &str, mask: &CodeMask, body: std::ops::Range<usize>) -> String
 /// Its errors are asymmetric on purpose. A false positive costs a fence that could have been
 /// unwrapped (one turn, one located diagnostic); a false negative deletes a line of the model's
 /// program. So every clause below is a shape that only code has.
+///
+/// # One shape deliberately absent, because a real reply contains it
+///
+/// **A leading `*`.** It is a Javadoc continuation line, and it is also how half the models that
+/// write a bullet list write one. `strip-fences` declines outright when *any* line outside the
+/// fences is code-shaped, so reading `* read the manifest` as code would send a reply of
+/// prose-fence-prose to javac whole — which is the single most common real shape there is. Nothing
+/// is lost by leaving it out: `strip-prose` only deletes *runs* from the two ends of a reply, and
+/// the run that would reach a Javadoc block stops at its `/**` opener, which clause 3 does keep.
 fn looks_like_code(line: &str) -> bool {
     let line = line.trim();
     if line.is_empty() {
@@ -638,8 +657,8 @@ fn looks_like_code(line: &str) -> bool {
     if starts_with_keyword(line) {
         return true;
     }
-    // 3. It opens with a closer, a comment, a Javadoc continuation or an annotation.
-    if ["}", ")", "]", "//", "/*", "*", "@"]
+    // 3. It opens with a closer, a comment or an annotation.
+    if ["}", ")", "]", "//", "/*", "@"]
         .iter()
         .any(|prefix| line.starts_with(prefix))
     {
@@ -792,6 +811,14 @@ fn is_ident_char(c: char) -> bool {
 /// the correct failure mode for a reading already known to be wrong. It is not the same exposure
 /// TypeScript's regular-expression hole is, because Java has no `/`-delimited literal for a quote to
 /// hide inside.
+///
+/// # Why it compares bytes rather than slicing the source
+///
+/// Because the scan walks one **byte** at a time and a model's reply is not ASCII. `&src[at..]`
+/// panics unless `at` falls on a character boundary, so an `é` inside a string would take the turn
+/// down with a slice index error. Every delimiter here is ASCII, and an ASCII byte never appears
+/// inside a multi-byte UTF-8 sequence, so a byte comparison finds exactly what a string comparison
+/// would and cannot panic on the way.
 fn code_mask(src: &str) -> Option<CodeMask> {
     let bytes = src.as_bytes();
     let mut code = vec![true; bytes.len()];
@@ -802,31 +829,29 @@ fn code_mask(src: &str) -> Option<CodeMask> {
         let next = bytes.get(index + 1).copied();
         match byte {
             b'/' if next == Some(b'/') => {
-                let end = src[index..]
-                    .find('\n')
-                    .map_or(bytes.len(), |offset| index + offset);
+                let end = find(bytes, index, b"\n").unwrap_or(bytes.len());
                 mark(&mut code, index..end);
                 index = end;
             }
             b'/' if next == Some(b'*') => {
-                let end = src[index + 2..].find("*/")? + index + 4;
+                let end = find(bytes, index + 2, b"*/")? + 2;
                 mark(&mut code, index..end);
                 index = end;
             }
             // A text block first: `"""` also starts with `"`, and reading it as an empty string
             // followed by one would put its whole body back in the code.
-            b'"' if src[index..].starts_with("\"\"\"") => {
-                let end = quoted_end(src, index + 3, "\"\"\"", false)?;
+            b'"' if matches_at(bytes, index, b"\"\"\"") => {
+                let end = quoted_end(bytes, index + 3, b"\"\"\"", false)?;
                 mark(&mut code, index..end);
                 index = end;
             }
             b'"' => {
-                let end = quoted_end(src, index + 1, "\"", true)?;
+                let end = quoted_end(bytes, index + 1, b"\"", true)?;
                 mark(&mut code, index..end);
                 index = end;
             }
             b'\'' => {
-                let end = quoted_end(src, index + 1, "'", true)?;
+                let end = quoted_end(bytes, index + 1, b"'", true)?;
                 mark(&mut code, index..end);
                 index = end;
             }
@@ -841,8 +866,7 @@ fn code_mask(src: &str) -> Option<CodeMask> {
 /// `single_line` is what a string and a character literal have and a text block does not: Java
 /// forbids either from carrying a raw newline, so one still open at a `\n` is a scan that has lost
 /// its place and the whole mask is given up.
-fn quoted_end(src: &str, from: usize, terminator: &str, single_line: bool) -> Option<usize> {
-    let bytes = src.as_bytes();
+fn quoted_end(bytes: &[u8], from: usize, terminator: &[u8], single_line: bool) -> Option<usize> {
     let mut at = from;
     while at < bytes.len() {
         if bytes[at] == b'\\' {
@@ -855,12 +879,22 @@ fn quoted_end(src: &str, from: usize, terminator: &str, single_line: bool) -> Op
         if single_line && bytes[at] == b'\n' {
             return None;
         }
-        if src[at..].starts_with(terminator) {
+        if matches_at(bytes, at, terminator) {
             return Some(at + terminator.len());
         }
         at += 1;
     }
     None
+}
+
+/// Whether `needle`'s bytes stand at `at`.
+fn matches_at(bytes: &[u8], at: usize, needle: &[u8]) -> bool {
+    bytes.len() >= at + needle.len() && &bytes[at..at + needle.len()] == needle
+}
+
+/// Where `needle` next stands at or after `from`.
+fn find(bytes: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
+    (from..=bytes.len().saturating_sub(needle.len())).find(|at| matches_at(bytes, *at, needle))
 }
 
 /// Mark a run of bytes as not code.

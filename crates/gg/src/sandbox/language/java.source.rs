@@ -32,8 +32,17 @@
 //!
 //! Because the input is untrusted text a model wrote, and `import ` at the start of a line inside a
 //! text block is not an import. [`Lexer`] is the smallest thing that can tell code from a string,
-//! a character literal, a comment and a text block, and it is the same reading the healing dialect
-//! will want when this arm is registered.
+//! a character literal, a comment and a text block — the same reading the
+//! [healing dialect](super::healing) makes of a reply, arrived at independently because that one
+//! runs on text that is not yet known to be a program while this one runs on text about to be
+//! handed to javac.
+//!
+//! Everything it does is a **byte** comparison rather than a slice of the source, and that is not a
+//! style: the scan walks one byte at a time, so `&source[at..]` panics on any index that is not a
+//! character boundary. A single `é` in a string, a comment or an identifier would have taken the
+//! turn down with a slice index error rather than reaching javac. Every delimiter it looks for is
+//! ASCII, and an ASCII byte never appears inside a multi-byte UTF-8 sequence, so byte comparisons
+//! find exactly what string comparisons would.
 
 use super::super::{PrepareError, PrepareFailure};
 
@@ -433,40 +442,48 @@ impl<'a> Lexer<'a> {
 
     /// Call `found` for every run of bytes that is **not** code, with its offset, its length and
     /// what it was.
+    ///
+    /// # Why this compares bytes rather than slicing the source
+    ///
+    /// Because `at` walks one **byte** at a time and a model's Java is not ASCII. `&source[at..]`
+    /// panics unless `at` falls on a character boundary, so a single `é` — in a string, in a
+    /// comment, in an identifier, anywhere — would take the whole turn down with a slice index
+    /// error rather than reaching javac. Every delimiter this looks for is ASCII, and an ASCII byte
+    /// never appears inside a multi-byte UTF-8 sequence, so a byte comparison finds exactly what a
+    /// string comparison would and cannot panic on the way.
     fn walk(&self, mut found: impl FnMut(usize, usize, Skipped)) {
         let mut at = 0usize;
         while at < self.bytes.len() {
-            let rest = &self.source[at..];
-            if rest.starts_with("//") {
-                let end = rest.find('\n').map_or(self.bytes.len(), |end| at + end);
+            if self.matches(at, b"//") {
+                let end = self.find(at, b"\n").unwrap_or(self.bytes.len());
                 found(at, end - at, Skipped::Comment);
                 at = end;
                 continue;
             }
-            if let Some(after) = rest.strip_prefix("/*") {
-                let end = after
-                    .find("*/")
-                    .map_or(self.bytes.len(), |end| at + 2 + end + 2);
+            if self.matches(at, b"/*") {
+                let end = self
+                    .find(at + 2, b"*/")
+                    .map_or(self.bytes.len(), |end| end + 2);
                 found(at, end - at, Skipped::Comment);
                 at = end;
                 continue;
             }
             // A text block first: `"""` also starts with `"`, and reading it as an empty string
             // followed by one would put its whole body back in the code.
-            if rest.starts_with("\"\"\"") {
-                let end = self.quoted_end(at + 3, "\"\"\"");
+            if self.matches(at, b"\"\"\"") {
+                let end = self.quoted_end(at + 3, b"\"\"\"");
                 found(at, end - at, Skipped::Text);
                 at = end;
                 continue;
             }
-            if rest.starts_with('"') {
-                let end = self.quoted_end(at + 1, "\"");
+            if self.matches(at, b"\"") {
+                let end = self.quoted_end(at + 1, b"\"");
                 found(at, end - at, Skipped::Text);
                 at = end;
                 continue;
             }
-            if rest.starts_with('\'') {
-                let end = self.quoted_end(at + 1, "'");
+            if self.matches(at, b"'") {
+                let end = self.quoted_end(at + 1, b"'");
                 found(at, end - at, Skipped::Text);
                 at = end;
                 continue;
@@ -475,19 +492,29 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Whether `needle`'s bytes stand at `at`.
+    fn matches(&self, at: usize, needle: &[u8]) -> bool {
+        self.bytes.len() >= at + needle.len() && &self.bytes[at..at + needle.len()] == needle
+    }
+
+    /// Where `needle` next stands at or after `from`.
+    fn find(&self, from: usize, needle: &[u8]) -> Option<usize> {
+        (from..=self.bytes.len().saturating_sub(needle.len())).find(|at| self.matches(*at, needle))
+    }
+
     /// Where a quoted run that opened at `from` ends, past its closing `terminator`.
     ///
     /// Honours `\` escapes, so `"a\""` is one string. An unterminated one runs to the end of the
     /// source, which is a program javac will refuse anyway — and refusing it *here* would replace
     /// javac's located diagnostic with gg's opinion.
-    fn quoted_end(&self, from: usize, terminator: &str) -> usize {
+    fn quoted_end(&self, from: usize, terminator: &[u8]) -> usize {
         let mut at = from;
         while at < self.bytes.len() {
             if self.bytes[at] == b'\\' {
                 at += 2;
                 continue;
             }
-            if self.source[at..].starts_with(terminator) {
+            if self.matches(at, terminator) {
                 return at + terminator.len();
             }
             at += 1;
