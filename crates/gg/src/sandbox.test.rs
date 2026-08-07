@@ -26,6 +26,9 @@ mod membrane_tests;
 #[path = "sandbox.faults.test.rs"]
 mod fault_tests;
 
+#[path = "sandbox.compile.test.rs"]
+mod compile_tests;
+
 /// Run `program` with every tool bound, the canned invoker, and the default ceilings.
 fn run(program: &str) -> (SandboxOutcome, CallLog) {
     run_with(
