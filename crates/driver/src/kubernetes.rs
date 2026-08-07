@@ -124,8 +124,8 @@ pub struct KubernetesConfig {
     /// So the default is deliberately far longer than any real run rather than a
     /// tuned timeout: it must never be what ends a legitimate long orchestration.
     /// Nothing else in the system caps a run's duration, and a run that genuinely
-    /// needs more than [`DEFAULT_POD_ACTIVE_DEADLINE`] should raise this rather than
-    /// rely on it. `None` disables the backstop entirely.
+    /// needs more than the 24-hour `DEFAULT_POD_ACTIVE_DEADLINE` should raise this
+    /// rather than rely on it. `None` disables the backstop entirely.
     pub pod_active_deadline: Option<Duration>,
     /// The driver pod's own IP, used to route a watched asset-generation sandbox
     /// pod's live preview frames back to the driver via a `hostAlias`. `None`
