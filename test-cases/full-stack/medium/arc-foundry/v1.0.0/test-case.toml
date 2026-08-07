@@ -595,7 +595,7 @@ validation = { script = "validation/abilities/slow.mjs", outputs = [{ id = "slow
 id = "slow-nostack"
 title = "Slow does not stack"
 description = "Repeated slows on one unit do not compound: the effective slow stays the strongest single value (refreshed on hit), never the product of the two."
-validation = { script = "validation/abilities/slow-nostack.mjs", outputs = [{ id = "nostack", name = "A twice-slowed unit at the single strongest slow", kind = "image" }] }
+validation = { script = "validation/abilities/slow-nostack.mjs", outputs = [{ id = "nostack", name = "A repeatedly slowed unit holding at the single strongest slow", kind = "video" }] }
 [[review.categories.items]]
 id = "burn"
 title = "Burn ticks damage over time"
@@ -605,7 +605,7 @@ validation = { script = "validation/abilities/burn.mjs", outputs = [{ id = "burn
 id = "burn-nostack"
 title = "Burn does not stack"
 description = "Repeated burns on one unit do not add up: the burn damage-per-second stays the strongest single value (refreshed on hit), not the sum."
-validation = { script = "validation/abilities/burn-nostack.mjs", outputs = [{ id = "nostack", name = "A twice-burned unit at the single strongest burn", kind = "image" }] }
+validation = { script = "validation/abilities/burn-nostack.mjs", outputs = [{ id = "nostack", name = "A repeatedly burned unit holding at the single strongest burn", kind = "video" }] }
 [[review.categories.items]]
 id = "aura"
 title = "An aura buffs nearby firing towers"
@@ -635,7 +635,7 @@ validation = { script = "validation/combos/recipe-assembles.mjs", outputs = [{ i
 id = "lands-level0"
 title = "A combo lands at upgrade level 0"
 description = "A newly assembled combination tower lands at upgrade level 0 (its reduced landing block), so assembling it is a step up, not a cliff."
-validation = { script = "validation/combos/lands-level0.mjs", outputs = [{ id = "level0", name = "A freshly assembled combo at level 0", kind = "image" }] }
+validation = { script = "validation/combos/lands-level0.mjs", outputs = [{ id = "level0", name = "A recipe assembling and landing at level 0", kind = "video" }] }
 [[review.categories.items]]
 id = "upgrade-climbs"
 title = "Upgrading a combo climbs its level for Charge"
@@ -665,7 +665,7 @@ validation = { script = "validation/enemies/roster-stats.mjs", outputs = [{ id =
 id = "hp-scales-by-wave"
 title = "Only HP scales across waves"
 description = "As the waves deepen only HP scales (per the pinned formula); speed, bounty, and leak are unchanged wave to wave."
-validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "HP scaling with the wave, speed unchanged", kind = "image" }] }
+validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "The same tower killing a Wave-1 Mote while a Wave-10 one soaks it", kind = "video" }] }
 [[review.categories.items]]
 id = "filament-every-fourth"
 title = "The Filament flyer appears only every fourth wave"
@@ -685,7 +685,7 @@ title = "Difficulty"
 id = "only-waves-toughness"
 title = "Difficulty changes only wave count and toughness"
 description = "Easy / Medium / Hard change only the wave count (40 / 50 / 60) and the enemy HP scaling; starting Charge, Grid Integrity, the five-stamp allowance, and every economy value are identical on all three."
-validation = { script = "validation/difficulty/only-waves-toughness.mjs", outputs = [{ id = "diff", name = "The three difficulties' wave counts and shared economy", kind = "image" }] }
+validation = { script = "validation/difficulty/only-waves-toughness.mjs", outputs = [{ id = "diff-easy", name = "The opening build phase on Easy", kind = "image" }, { id = "diff-medium", name = "The opening build phase on Medium", kind = "image" }, { id = "diff-hard", name = "The opening build phase on Hard", kind = "image" }] }
 [[review.categories.items]]
 id = "select-menu"
 title = "Difficulty select reads what each entry changes"
@@ -781,7 +781,7 @@ validation = { script = "validation/controls/pause-space.mjs", outputs = [{ id =
 id = "mute-m"
 title = "M toggles mute"
 description = "Pressing M toggles audio mute."
-validation = { script = "validation/controls/mute-m.mjs", outputs = [{ id = "mute", name = "The title after toggling mute", kind = "image" }] }
+validation = { script = "validation/controls/mute-m.mjs", outputs = [{ id = "unmuted", name = "The status bar with audio unmuted", kind = "image" }, { id = "muted", name = "The status bar after M mutes it", kind = "image" }] }
 [[review.categories.items]]
 id = "panel-layout-stable"
 title = "The inspector's controls never move on their own"

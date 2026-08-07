@@ -28,6 +28,20 @@ export interface DebugContext {
   resetUi(): void; // clear the loop's menu-index / overlay / pending-map UI state
   panelButtons(): PanelButton[]; // the inspector's action buttons as last rendered
   menuButtons(): PanelButton[]; // the current menu screen's choices as last rendered
+  statusControls(): StatusControl[]; // the status bar's speed/pause/mute controls as last rendered
+}
+
+// One status-bar control as the bar last drew it: where it sits, what it reads, and the value it
+// is currently REPORTING — muted/paused for the toggles, the live multiplier for speed
+// (specs/instrumentation.md).
+export interface StatusControl {
+  action: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  state: boolean | number;
 }
 
 // One inspector action button as the panel last drew it: where it sits, what it reads, and
@@ -50,6 +64,7 @@ export interface FoundryDebugApi {
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
   menuButtons(): PanelButton[];
+  statusControls(): StatusControl[];
   startRun(options?: { map?: string; difficulty?: Difficulty }): void;
   setCharge(amount: number): void;
   setIntegrity(amount: number): void;
@@ -152,6 +167,14 @@ export function installDebugApi(ctx: DebugContext): void {
     // on any screen that is not a menu.
     menuButtons() {
       return ctx.menuButtons();
+    },
+
+    // The status bar's speed / pause / mute controls as the bar last drew them, each carrying the
+    // value it is currently READING as well as its rectangle — so a caller can both find the
+    // control without knowing where this build put it and check that what it draws agrees with
+    // the state it reports (specs/ui.md, specs/instrumentation.md).
+    statusControls() {
+      return ctx.statusControls();
     },
 
     // ---- Control operations (arrange preconditions; route through the real systems) ----

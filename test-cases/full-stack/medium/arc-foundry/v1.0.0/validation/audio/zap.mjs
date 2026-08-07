@@ -15,6 +15,7 @@ import {
   towerById,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   skipToFirstTarget,
   TICK,
@@ -56,7 +57,7 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("the Capacitor fires", fired);
       check.expectGt(
-        "a zap cue plays on the shot (Web Audio sources started)",
+        audioCueLabel("a zap cue plays on the shot", after),
         after,
         before,
       );
