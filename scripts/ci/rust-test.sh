@@ -39,6 +39,12 @@ export PATH="$HOME/.local/bin:$PATH"
 log "install the Java toolchain (gg's java arm compiles with it)"
 ./scripts/ci/install-java.sh
 
+# gg's Kotlin arm compiles with a real Kotlin compiler and hands the bytecode to the same TeaVM,
+# so this installs ~67 MB of compiler jars on top of what the line above put there — and it runs
+# that script itself, which is idempotent. Pinned in packages/gg-sandbox-kotlin/kotlin-version.sh.
+log "install the Kotlin toolchain (gg's kotlin arm compiles with it)"
+./scripts/ci/install-kotlin.sh
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 

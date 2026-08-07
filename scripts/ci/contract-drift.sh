@@ -189,7 +189,13 @@ recut="typescript ruby java"
 # an arm's front end before running it. Nothing cuts it either, and what it must not lose is
 # asserted over the text rather than by a diff: `jvm.test.rs` fails if the TeaVM settings that make
 # a `NullPointerException` an exception at all leave it.
-declared="purescript jvm"
+#
+# `kotlin` is the fourth, and it is Java's shape exactly: `kotlin.compiler.java` is this arm's own
+# half of that driver and `kotlin.toolchain.json` is its pin. Neither is cut from anything, both are
+# reviewable by reading, and `kotlin.compile.test.rs` is what fails when the pin and the shell side
+# that installs it name different releases — or when the scripting plugin's four file names, which
+# the compiler looks for by name and without which every program on this arm fails, leave the list.
+declared="purescript jvm kotlin"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

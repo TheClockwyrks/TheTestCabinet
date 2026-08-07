@@ -138,13 +138,33 @@
             CallLocation location = problem.getLocation();
             TextLocation source = location == null ? null : location.getSourceLocation();
             if (source != null) {
-                entry.file = new File(source.getFileName()).getName();
+                // TeaVM's own name for the file, kept WHOLE rather than reduced to its last
+                // component. A model's own file has no directory in it either way; a library's
+                // does, and `kotlin/concurrent/Thread.kt` says what a program reached through where
+                // `Thread.kt` says nothing. Each arm decides what a diagnostic in a file the model
+                // did not write means.
+                entry.file = source.getFileName();
                 entry.line = Math.max(source.getLine(), 0);
             }
             if (entry.file == null && location != null && location.getMethod() != null) {
                 entry.message = entry.message + " (in " + location.getMethod() + ")";
             }
             return entry;
+        }
+
+        /**
+         * The first error among `entries`, for a failure an operator reads rather than a model.
+         *
+         * <p>Used where a compiler refused something gg GENERATED, which is never the model's
+         * fault and must not be reported as a diagnostic about its program.
+         */
+        static String first(List<Entry> entries) {
+            for (Entry entry : entries) {
+                if (entry.error) {
+                    return entry.file + ":" + entry.line + ": " + entry.message;
+                }
+            }
+            return "it reported no diagnostic at all";
         }
 
         /** A throwable as one string, for the failure gg reports to an operator rather than a model. */

@@ -89,7 +89,7 @@
 //! green. The launcher compiles it in memory once per daemon, inside the JVM start this arm pays
 //! anyway.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -349,23 +349,15 @@ fn build(
     }
     verdict(&report, file, wrapped.shift)?;
 
-    let bundle = workspace.output().join(BUNDLE_FILE);
-    let compiled = std::fs::read_to_string(&bundle).map_err(|error| {
-        PrepareFailure::Toolchain(format!(
-            "TeaVM {} reported success but wrote no JavaScript to {}: {error}",
-            compiler_version(),
-            bundle.display(),
-        ))
-    })?;
-    let lines = std::fs::read_to_string(bundle.with_extension("js.map"))
-        .ok()
-        .map(|map| model_lines(&map, file, wrapped.shift))
-        .unwrap_or_default();
-    Ok(assemble(
-        &prelude(&lines, &label(file)),
-        &compiled,
+    jvm::assembled(
+        workspace.output(),
+        BUNDLE_FILE,
+        file,
+        wrapped.shift,
+        &label(file),
         &entry.tail(),
-    ))
+    )
+    .map_err(|error| PrepareFailure::Toolchain(format!("TeaVM {}: {error}", compiler_version())))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -507,198 +499,6 @@ impl Diagnostic {
         // discovered as a `ReferenceError` at run time.
         format!("{located}: {}", self.message.trim_end())
     }
-}
-
-// ---------------------------------------------------------------------------------------------
-// The bundle
-// ---------------------------------------------------------------------------------------------
-
-/// The JavaScript gg puts in front of every compiled program.
-///
-/// Three things, and each of them is load-bearing:
-///
-/// * `$ggMessage` — where the [entry class](entry_for_program)'s catch chain leaves the Java name and
-///   message of what failed. Empty means nothing Java threw, which is how a failure raised by a
-///   *binding* is rethrown untouched rather than re-described.
-/// * `$ggFailure` — where the same chain leaves the three fields of a **gg** failure the program did
-///   not catch. The SDK catches a refusal in JavaScript and raises a Java `ToolError` so that
-///   `catch (ToolError failure)` works at all; without this, one that *escaped* would reach the
-///   guest as a Java exception and be recorded as a program that threw something rather than as a
-///   tool that failed. The guest reads `tool`, `code` and `message` off whatever is thrown, so what
-///   goes back over is that record — the same shape the membrane itself raises.
-/// * `$ggLines` — TeaVM's source map, folded by [`model_lines`] into the change points of "whose
-///   code is this generated line?", with `0` for somebody else's. Looked up nearest-preceding,
-///   because a source map is sparse and a stack frame lands where the failure happened rather than
-///   where a segment starts.
-/// * `$ggBase` — how far the stack's line numbers are from the bundle's. Part of it is known
-///   (this prelude's own length); part is the engine's `Function` wrapper, which is calibrated at run
-///   time exactly as the guest's own shim calibrates it, so an engine update costs nothing.
-const PRELUDE: &str = r#"var $ggMessage = "";
-var $ggFailure = null;
-var $ggLines = __GG_LINES__;
-var $ggBase = __GG_BASE__;
-(function () {
-  try { new Function("throw new Error('calibrate')")(); } catch (thrown) {
-    var frames = String(thrown && thrown.stack).split("\n");
-    for (var index = 0; index < frames.length; index++) {
-      var found = /:(\d+):(\d+)/.exec(frames[index]);
-      if (found) { $ggBase += Number(found[1]) - 1; break; }
-    }
-  }
-})();
-function $ggModelLine(line) {
-  var low = 0, high = $ggLines.length - 1, found = -1;
-  while (low <= high) {
-    var middle = (low + high) >> 1;
-    if ($ggLines[middle][0] <= line) { found = middle; low = middle + 1; } else { high = middle - 1; }
-  }
-  return found < 0 ? 0 : $ggLines[found][1];
-}
-function $ggLocate(stack) {
-  if (typeof stack !== "string") return "";
-  var seen = [], located = [], frames = stack.split("\n"), pattern = /:(\d+):(\d+)/g;
-  for (var index = 0; index < frames.length; index++) {
-    var found = null, last = null;
-    pattern.lastIndex = 0;
-    while ((found = pattern.exec(frames[index])) !== null) last = found;
-    if (!last) continue;
-    var line = $ggModelLine(Number(last[1]) - $ggBase);
-    if (line === 0 || seen.indexOf(line) >= 0) continue;
-    seen.push(line);
-    located.push("\n    at __GG_LABEL__:" + line);
-  }
-  return located.join("");
-}
-"#;
-
-/// The prelude, with the model's line table in it and its own length accounted for.
-fn prelude(lines: &[(usize, usize)], label: &str) -> String {
-    let table: Vec<String> = lines
-        .iter()
-        .map(|(generated, model)| format!("[{generated},{model}]"))
-        .collect();
-    let filled = PRELUDE
-        .replace("__GG_LINES__", &format!("[{}]", table.join(",")))
-        .replace("__GG_LABEL__", label);
-    // Counted after the table is in, and the table is one line, so this is a constant — but derived
-    // rather than written down, because a prelude that grew by a line and a constant that did not
-    // would report every location one line out.
-    let length = filled.lines().count();
-    filled.replace("__GG_BASE__", &length.to_string())
-}
-
-/// The prelude, TeaVM's output and the call that starts it, in that order.
-fn assemble(prelude: &str, compiled: &str, tail: &str) -> String {
-    // TeaVM opens its output with `"use strict";`, which is a directive rather than a statement and
-    // is inert anywhere but the top of a body. That is fine and deliberate: the guest evaluates the
-    // whole of this as one function body, and a prelude in front of the directive is what makes the
-    // table reachable from inside TeaVM's own generated code.
-    format!("{prelude}{compiled}\n{tail}")
-}
-
-// ---------------------------------------------------------------------------------------------
-// The source map
-// ---------------------------------------------------------------------------------------------
-
-/// A source map, as much of one as this needs.
-#[derive(Debug, Deserialize)]
-struct SourceMap {
-    /// The files the generated code came from.
-    sources: Vec<String>,
-    /// The mappings, in the format's own base-64 VLQ.
-    mappings: String,
-}
-
-/// Fold TeaVM's source map down to the **change points** of "which of the model's lines is this
-/// generated line?", with `0` for a generated line that belongs to somebody else's code.
-///
-/// Not simply the model's own mappings, and the difference is what makes a located error land. A
-/// source map is **sparse**: TeaVM emits one segment per Java statement, at the first generated line
-/// of that statement's code, and a stack frame lands wherever the failure happened — which is
-/// routinely a later line of the same statement, with no segment of its own. Looking up an exact
-/// generated line therefore finds nothing most of the time. The correct reading, and the one every
-/// source-map consumer uses, is the segment at or **before** the position.
-///
-/// That in turn is why the classlib's mappings are kept as `0` rather than dropped: a frame deep
-/// inside `java.util` would otherwise fall back to whichever of the model's lines happened to come
-/// before it and be reported as the model's own. Recording those runs as "not yours" is what makes
-/// the nearest-preceding lookup safe.
-///
-/// Run-length compressed, so what ships is the handful of places the answer changes rather than one
-/// entry per generated line: an ordinary program's table is tens of pairs against a 44 KB map.
-///
-/// The model's line is already moved back over the wrapper, so nothing downstream has to know the
-/// shift. A map gg cannot read is not a failure — it costs a located message and nothing else, and
-/// refusing a program that compiled because its debug information was odd would be the wrong trade.
-fn model_lines(map: &str, file: &str, shift: usize) -> Vec<(usize, usize)> {
-    let Ok(map) = serde_json::from_str::<SourceMap>(map) else {
-        return Vec::new();
-    };
-    let mut lines: Vec<(usize, usize)> = Vec::new();
-    let mut source = 0i64;
-    let mut original = 0i64;
-    let mut previous = 0usize;
-    for (generated, segments) in map.mappings.split(';').enumerate() {
-        let mut first: Option<usize> = None;
-        for segment in segments.split(',').filter(|segment| !segment.is_empty()) {
-            let Some(fields) = vlq(segment) else { continue };
-            if fields.len() < 4 {
-                continue;
-            }
-            source += fields[1];
-            original += fields[2];
-            if first.is_some() {
-                continue;
-            }
-            // The first segment of a generated line is what that whole line is attributed to: a
-            // frame carries a column too, but a table keyed by line is what a stack can be read
-            // against without a second lookup.
-            let named = usize::try_from(source)
-                .ok()
-                .and_then(|index| map.sources.get(index))
-                .is_some_and(|name| Path::new(name).file_name().is_some_and(|it| it == file));
-            first = Some(match (named, usize::try_from(original)) {
-                // 0 is "not the model's code", which is a line number no source has.
-                (true, Ok(line)) => (line + 1).saturating_sub(shift).max(1),
-                _ => 0,
-            });
-        }
-        let Some(model) = first else { continue };
-        if model != previous || lines.is_empty() {
-            lines.push((generated + 1, model));
-            previous = model;
-        }
-    }
-    lines
-}
-
-/// Decode one base-64 VLQ segment into its fields.
-///
-/// `None` for a segment carrying a character the alphabet does not have, which is a map gg will not
-/// use rather than a program it will refuse.
-fn vlq(segment: &str) -> Option<Vec<i64>> {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut fields = Vec::new();
-    let mut value: i64 = 0;
-    let mut shift: u32 = 0;
-    for character in segment.bytes() {
-        let digit = ALPHABET.iter().position(|it| *it == character)? as i64;
-        let more = digit & 32 != 0;
-        value += (digit & 31) << shift;
-        shift += 5;
-        if more {
-            continue;
-        }
-        let negative = value & 1 != 0;
-        value >>= 1;
-        fields.push(match negative {
-            true => -value,
-            false => value,
-        });
-        value = 0;
-        shift = 0;
-    }
-    Some(fields)
 }
 
 // ---------------------------------------------------------------------------------------------

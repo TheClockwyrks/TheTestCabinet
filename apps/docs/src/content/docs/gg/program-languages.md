@@ -11,7 +11,9 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Six are registered, and between them they separate three things that used to be one. TypeScript
+Six are registered — and a seventh, [Kotlin](#kotlin-a-program-that-is-a-script), has its
+execution substrate built and its registration still to come. Between them the six separate three
+things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
@@ -1183,6 +1185,164 @@ concurrency. So a language may now answer with a module of its own shape, and th
 that program for every arm whose module is ordinary source of the language. The default is safe
 precisely because the baseline pass exists: a language for which it is wrong finds out from the gate
 rather than from a review.
+
+## Kotlin: a program that is a script
+
+The seventh arm, and the **first that is not registered yet**. What exists is its *execution
+substrate* — the compile that turns a model's Kotlin into something a guest can evaluate, the guest
+that evaluates it, and the proof that a real Kotlin program runs through gg's own linker, membrane
+and store — and not its SDK, its catalogue, its prompt or its healing dialect. Those land on the
+order every arm before it took, because a `ProgramLanguage` arm cannot be half-registered: the
+registry's `match` is exhaustive and every gate that iterates the registered set would immediately
+demand all four. Nothing here is reachable from a run; there is no `language` value that resolves to
+it.
+
+**A Kotlin program is compiled to bytecode by the Kotlin compiler and then to JavaScript by TeaVM,
+both inside a warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the
+TypeScript, JavaScript, PureScript and [Java](#java-a-warm-jvm-and-two-compilers-per-program) arms
+use.**
+
+That makes it the cheapest arm gg has added since Ruby, and cheap in the place a language arm is
+usually most expensive: **everything from bytecode onwards already existed**. The JDK, TeaVM, the
+[two settings that are not optional](#two-teavm-settings-that-are-not-optional), the reading of
+TeaVM's source map that turns a generated line back into the model's own, the shared guest — all of
+it is the Java arm's, and it is now literally shared rather than copied. `checkers/jvm.backend.java`
+is the half of gg's compiler driver that does not depend on which language the program was written
+in, and gg *assembles* each arm's driver out of that plus a front end of its own, because the JDK's
+single-file launcher compiles one file and `setStrict(true)` is a setting whose absence is
+[silent](#two-teavm-settings-that-are-not-optional).
+
+### Why a program is a script, which is the one decision that had to be measured
+
+Kotlin has no place for a loose statement in an ordinary `.kt` file, so the obvious shape is the one
+[Java takes](#what-a-java-program-is-here): wrap the reply in the body of a function gg declares.
+That shape was built, pointed at the real compiler, and found to be **wrong for this language**.
+Kotlin's rules for what may be declared *locally* are far tighter than Java's:
+
+| What a model wrote | What the compiler said |
+| --- | --- |
+| `object Registry { … }` | `LOCAL_OBJECT_NOT_ALLOWED` |
+| `interface Shape`, and so `sealed interface Event` | `LOCAL_INTERFACE_NOT_ALLOWED` |
+| `enum class Colour { … }` | `WRONG_MODIFIER_TARGET` — enum is not applicable to a local class |
+| `companion object` in a helper class | `WRONG_MODIFIER_CONTAINING_DECLARATION` |
+| `typealias Rows = List<Int>` | `UNSUPPORTED_FEATURE` — local type aliases are experimental |
+| `private fun helper() = 1` | `WRONG_MODIFIER_TARGET` — private is not applicable to a local function |
+
+Five of those six are ordinary modern Kotlin. A `sealed interface` with `data class` arms is *the*
+idiom for a closed set of cases, and `private fun` is what a Kotlin author types without thinking. An
+arm that refused them would be measuring how well a model copes with gg's wrapper rather than how
+well it works in Kotlin, which is the one thing a language study must not do.
+
+So a program is compiled as a **Kotlin script** — a real compilation shape of the language in which
+statements and declarations sit side by side at the top level, in whatever order the model wrote
+them. Every one of the six above compiles. Two things follow that no other compiled arm can say:
+
+- **a reply with no `import` in it is compiled byte for byte as the model wrote it.** There is
+  nothing to wrap, so the shift every diagnostic is moved back by is *zero* and a coordinate needs no
+  arithmetic at all;
+- **a function declared beside a value can still see it.** The alternative fix — hoisting
+  declarations to a file's top level to make `object` and `interface` legal — would have broken
+  exactly that, because a Kotlin top-level function cannot see a top-level statement's `val`. Both
+  work here.
+
+What the script shape costs is all in the toolchain, and all of it was found by running it: four
+scripting jars (the `-embeddable` variants, since the compiler they plug into is the embeddable
+one), loaded by four **unversioned** file names out of a `kotlin-home/lib` directory the installer
+lays out; the `-Xallow-any-scripts-in-source-roots` flag, which compiles a script where `-script`
+would compile it and then *run* it inside gg's own daemon; and three `idea.*` system properties,
+without which the compiler's IntelliJ core throws `Could not find installation home path` out of a
+static initialiser before it has read a line of the program. Each is pinned, each is asserted, and
+each fails in a way that looks like a diagnostic about the model's program if it is missing.
+
+One consequence is worth recording rather than discovering in a transcript: **a `main` the model
+declared is not called.** In a script, `fun main()` is a function like any other and the top-level
+statements are what run — so a model that wrapped its work in one has written a program that does
+nothing.
+
+### Why the compiler is embedded
+
+`kotlinc` is a shell script around a JVM and has no daemon of its own to ask, but the compiler warms
+dramatically when it is embedded. Measured on this repository's dev container, through this arm's own
+driver:
+
+| | |
+| --- | --- |
+| The first build in a JVM (the compiler's own class loading, then TeaVM's) | 1.7–9 s |
+| Every build after it — Kotlin | 0.14–0.4 s |
+| … and TeaVM | 0.15–0.6 s |
+| javac, on gg's own generated entry class | ~20–40 ms |
+
+So the shape is [Java's](#the-first-arm-whose-compiler-is-kept-warm), for the same reasons and with
+the same guarantees: a `CompilerPool` of four JVM **processes**, each lent to one preparation at a
+time, a fresh compiler and a fresh TeaVM build strategy per request, output written where the request
+says, and a JVM retired after 64 builds. Two preparations are never inside one JVM together, which is
+the precondition of the measured TeaVM corruption. The arm's own sixteen-way isolation gate drives
+**both** halves — 32 real builds through those four JVMs — and it is the seam's own gate pointed at an
+arm the registry does not carry yet.
+
+One thing this arm's handshake asks that Java's cannot: **which Kotlin release the daemon actually
+loaded**. That arm's driver names no release of anything it did not install; this one loads a
+compiler out of a directory a script filled, and a drifted one would word its diagnostics
+differently — which is the hardest kind of difference to attribute when two runs of a study
+disagree. A version that cannot be read at all is deliberately *not* a mismatch: that is a strange
+machine rather than a wrong one.
+
+### What a program may reach, and why that took being deliberate
+
+The Kotlin standard library, and nothing else. That is a claim gg can only make by construction: the
+driver runs with a 60 MB compiler and every TeaVM jar on its classpath, and a program compiled
+against *that* could import the compiler's own internals and — worse — `kotlinx.coroutines`, which is
+a runtime dependency of the compiler and which this sandbox cannot run. So the arm keeps **four**
+classpaths rather than one, and a model's program is compiled against two jars: the standard library,
+and the script runtime its script class extends. A code module gets one more, TeaVM's `@JSExport`,
+which gg writes into a module and an author never types.
+
+The difference that makes is visible in what a model reads. `import kotlinx.coroutines.*` compiled
+against the driver's classpath produced **forty-five** TeaVM errors inside `kotlinx/coroutines/*.kt`;
+compiled against the standard library it is one `UNRESOLVED_IMPORT` at the model's own line.
+
+### Where a diagnostic in somebody else's file comes from
+
+This is the one place the arm parts company with Java's, and the reason is the language rather than a
+preference.
+
+| Where an error is | Java's answer | Kotlin's |
+| --- | --- | --- |
+| the model's own file | the model's | the model's |
+| gg's generated entry class | [a toolchain failure](#a-compiler-has-two-ways-to-fail) | a toolchain failure |
+| a **library** file | a toolchain failure | **the model's**, with the library's own file named |
+
+A Java program reaches TeaVM's classlib *directly*, so a diagnostic in a file the model did not write
+is gg's own code and blaming a model for it would send it rewriting something that was never wrong. A
+Kotlin program reaches that same classlib **through a standard library written in Kotlin** — so
+`kotlin.concurrent.thread { … }` is refused at `kotlin/concurrent/Thread.kt:40`, which is a fact
+about the program the model wrote. It is reported as one, quoting the file the program reached
+through and not pretending the model can open it. TeaVM reports one problem per *call site*, so
+identical renderings are folded and at most eight reach the model with the rest counted — a model
+reads the first few and pays tokens for all of them.
+
+Two bands sit above that, and both are the compiler's own reading rather than gg's: Kotlin reports
+every parse failure under a single diagnostic name (`SYNTAX`), which is exactly the
+[`transpile_syntax`](#a-compiler-has-two-ways-to-fail) band, and everything else it refuses is the
+`transpile` one. Those names are only available because the compile asks for
+`-Xrender-internal-diagnostic-names`; without it, telling *the parser could not read this* from *I
+read it and disagreed* would mean matching on English.
+
+### What a Kotlin code module is
+
+An ordinary Kotlin **file**, not a script — which makes Kotlin the second arm (after
+[Java](#what-a-java-code-module-is-and-the-one-gate-that-noticed)) whose two preparation shapes are
+not the same shape. What `lib.<key>` binds is a namespace of functions; a Kotlin file's public
+top-level functions are exactly that, and they compile to the static methods of one class TeaVM can
+export. A script's declarations are members of a script *instance*, which is a thing that would have
+to be constructed before anything could be read off it.
+
+`private` and `internal` keep a function out, which is Kotlin's own visibility rule rather than
+anything gg invented; `@JSExport` is inserted **inline** before each exported `fun`, so no line
+moves. One detail is a measured trap rather than a choice: the file's JVM class and the name TeaVM
+exports it under must **differ**, because TeaVM declares both in the bundle's scope and when they are
+the same word the inner declaration shadows the outer one — leaving `lib.<key>` bound to `undefined`
+with no error anywhere, which is the quiet kind of wrong.
 
 ## What compiling costs, and where it is recorded
 

@@ -1,5 +1,8 @@
 //! The parts of the Java compile that are decisions rather than compilers: the toolchain pin, the
-//! diagnostic bands, the generated entry class and the source-map fold.
+//! diagnostic bands and the generated entry class.
+//!
+//! What TeaVM's own output is read with — the prelude, the source-map fold and its VLQ — is
+//! [shared with the Kotlin arm](crate::sandbox::language::jvm) and asserted there.
 //!
 //! None of these starts a JVM. [The substrate's tests](super::super::substrate) do, and prove that
 //! what is decided here matches what the real toolchain does.
@@ -198,63 +201,6 @@ fn the_entry_class_names_every_exception_it_catches() {
     // And the entry rethrows rather than swallowing — a program that failed must not be recorded as
     // one that finished, which is what the study measured an earlier draft of this doing.
     assert!(entry.contains("throw seen("));
-}
-
-#[test]
-fn the_prelude_accounts_for_its_own_length() {
-    let filled = prelude(&[(500, 3), (501, 4)], "program.java");
-    assert!(filled.contains("[[500,3],[501,4]]"));
-    // `$ggBase` starts at the prelude's own line count, because the stack reports a line in the
-    // whole evaluated body and the table is keyed by TeaVM's own. A prelude that grew by a line and
-    // a constant that did not would report every location one line out, so the number is derived.
-    let lines = filled.lines().count();
-    assert!(
-        filled.contains(&format!("var $ggBase = {lines};")),
-        "the prelude is {lines} lines: {}",
-        filled.lines().take(3).collect::<Vec<_>>().join(" / ")
-    );
-    assert!(!filled.contains("__GG_"), "every placeholder is filled");
-}
-
-#[test]
-fn the_source_map_is_folded_down_to_the_model_s_own_lines() {
-    // A map with two sources, one of them the model's file. `AAAA` is (column 0, source +0,
-    // line +0, column +0); the `;` are generated lines.
-    let map = r#"{"version":3,"sources":["Other.java","Program.java"],"names":[],
-      "mappings":"AAAA;;ACWA;AACA"}"#;
-    // Generated line 1 is somebody else's code, which is recorded as `0` rather than dropped — a
-    // frame that lands there must not fall back to whichever of the model's lines came before it.
-    // Generated line 3 maps to source 1 (`Program.java`) line 12, which with an 11-line wrapper is
-    // the model's line 1; generated line 4 is its line 2.
-    assert_eq!(
-        model_lines(map, "Program.java", 11),
-        [(1, 0), (3, 1), (4, 2)],
-        "the change points of whose code a generated line is, already shifted"
-    );
-    // A map naming only the classlib folds to one run of `0`, and a program error then carries no
-    // located line rather than a wrong one.
-    assert_eq!(model_lines(map, "Nothing.java", 11), [(1, 0)]);
-    // A map gg cannot read costs a located message and nothing else — never a refused program.
-    assert!(model_lines("not json", "Program.java", 0).is_empty());
-    assert!(
-        model_lines(
-            r#"{"version":3,"sources":["Program.java"],"names":[],"mappings":"!!!!"}"#,
-            "Program.java",
-            0
-        )
-        .is_empty()
-    );
-}
-
-#[test]
-fn the_vlq_alphabet_round_trips_the_values_a_map_uses() {
-    assert_eq!(vlq("AAAA"), Some(vec![0, 0, 0, 0]));
-    assert_eq!(vlq("ACWA"), Some(vec![0, 1, 11, 0]));
-    // A negative delta, which a map uses whenever a generated line goes back up its source.
-    assert_eq!(vlq("D"), Some(vec![-1]));
-    // Multi-digit continuation: four base-64 digits, five bits each, sign in the low bit.
-    assert_eq!(vlq("qxmBA"), Some(vec![19_733, 0]));
-    assert_eq!(vlq("*"), None, "a character the alphabet does not have");
 }
 
 #[test]

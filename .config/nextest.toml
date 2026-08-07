@@ -95,3 +95,15 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
 threads-required = "num-test-threads"
+
+# The Kotlin arm's own isolation gate, which is the seam's gate pointed at an arm the registry does
+# not carry yet. It drives both halves sixteen ways — 32 real builds through a pool of four warm
+# JVMs, each of which loads the Kotlin compiler and TeaVM — because the property it proves is that a
+# compile's result belongs to its own input at the concurrency a run really produces. Measured on
+# this repository's dev container: 18.5 s alone, against a default hard kill at 120 s that would
+# present as a mysterious hang rather than as a gate doing exactly what it says. Bounded from the
+# work rather than from the default, with room for a CI runner with a quarter of the cores. When this
+# arm registers, its 32 builds move into the seam's gate above and this override goes with them.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::kotlin::compile::tests::every_kotlin_compile_stands_on_ground_no_other_agent_can_reach)'
+slow-timeout = { period = "120s", terminate-after = 3 }

@@ -221,7 +221,10 @@ build_gg_toolchains() {
 	# binary must be the same release or nothing compiles at all.
 	# Java's pins are not build args: its block runs `scripts/ci/install-java.sh`, which
 	# reads `packages/gg-sandbox-java/java-version.sh` itself — one list of ~29 jars, read
-	# by the image and by a developer's machine rather than copied into both.
+	# by the image and by a developer's machine rather than copied into both. Kotlin's
+	# block does the same with `scripts/ci/install-kotlin.sh`, which RUNS the Java one:
+	# that arm compiles to JVM bytecode and hands it to the same TeaVM, so there is one
+	# JDK in this image rather than two.
 	# shellcheck source=packages/gg-sandbox-purescript/purescript-version.sh
 	source "${SCRIPT_DIR}/../packages/gg-sandbox-purescript/purescript-version.sh"
 	"$DOCKER" build \

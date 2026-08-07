@@ -79,6 +79,11 @@
 # variant, so a gg run image of ANY language stops being buildable.
 !/packages/gg-sandbox-java/java-version.sh
 !/scripts/ci/install-java.sh
+# The Kotlin arm does the same, and its installer RUNS the Java one — it compiles Kotlin to
+# JVM bytecode and hands that bytecode to the same TeaVM — so all four files are needed for
+# either block to build.
+!/packages/gg-sandbox-kotlin/kotlin-version.sh
+!/scripts/ci/install-kotlin.sh
 
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's

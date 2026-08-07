@@ -656,6 +656,17 @@ corruption's precondition impossible. gg's own compiler driver is *not* here —
 `.java` file inside gg's binary, run by the JDK's single-file source-code launcher, for the
 vintage reason PureScript's library set is not here either.
 
+**Kotlin** rides on top of that, and adds ~67 MB of compiler jars and nothing else: a Kotlin
+program is compiled to JVM bytecode and handed to the *same* TeaVM, so everything from
+bytecode onwards already exists here. Its installer
+([`scripts/ci/install-kotlin.sh`](../scripts/ci/install-kotlin.sh)) runs the Java one rather
+than installing a second JDK beside it. One directory it writes is not a classpath: gg
+compiles a model's program as a Kotlin **script** — because Kotlin refuses `object`,
+`interface`, `enum class`, `typealias` and `private fun` as *local* declarations, so a
+wrapper function would refuse five things a Kotlin author writes without thinking — and the
+compiler loads its scripting plugin by four unversioned file names out of a `kotlin-home/lib`
+tree the installer lays out.
+
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner
 resolves (by test type and asset

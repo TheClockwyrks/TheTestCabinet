@@ -24,14 +24,16 @@
 	// created root-owned (e.g. before the Dockerfile pre-created its mountpoint),
 	// reclaim it for the container user so CARGO_TARGET_DIR stays writable.
 	//
-	// The PureScript and Java toolchains are installed here rather than in the image
-	// because they are pinned by the repository
+	// The PureScript, Java and Kotlin toolchains are installed here rather than in the
+	// image because they are pinned by the repository
 	// (packages/gg-sandbox-purescript/purescript-version.sh,
-	// packages/gg-sandbox-java/java-version.sh) rather than by the container, and the
-	// repository is only mounted from this point on. Together they are ~500 MB of
-	// `purs`, `esbuild`, a JDK and TeaVM's jars, and gg's tests for those two arms run
-	// all of them.
-	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-purescript.sh || echo 'install-purescript failed; gg\u2019s PureScript tests need it \u2014 run scripts/ci/install-purescript.sh manually') && (bash scripts/ci/install-java.sh || echo 'install-java failed; gg\u2019s Java tests need it \u2014 run scripts/ci/install-java.sh manually')",
+	// packages/gg-sandbox-java/java-version.sh,
+	// packages/gg-sandbox-kotlin/kotlin-version.sh) rather than by the container, and the
+	// repository is only mounted from this point on. Together they are ~570 MB of
+	// `purs`, `esbuild`, a JDK, TeaVM's jars and the Kotlin compiler, and gg's tests for
+	// those arms run all of them. Only the Kotlin installer is named: it runs the Java one
+	// itself, because the two arms share the JDK and the TeaVM the second half needs.
+	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-purescript.sh || echo 'install-purescript failed; gg\u2019s PureScript tests need it \u2014 run scripts/ci/install-purescript.sh manually') && (bash scripts/ci/install-kotlin.sh || echo 'install-kotlin failed; gg\u2019s Java and Kotlin tests need it \u2014 run scripts/ci/install-kotlin.sh manually')",
 	"postStartCommand": "bash .devcontainer/tools/docker-socket-access.sh || true; if [ -S /tmp/ssh-agent.sock ]; then rm -f /tmp/devcontainer-ssh-agent.sock && (sudo socat UNIX-LISTEN:/tmp/devcontainer-ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock >/tmp/ssh-agent-socat.log 2>&1 &); fi",
 	"updateRemoteUserUID": false
 }

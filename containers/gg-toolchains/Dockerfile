@@ -179,6 +179,43 @@ RUN set -eux; \
 	rm -rf /tmp/gg-java; \
 	/opt/gg/toolchains/java/jdk/bin/javac --version
 
+# --- Kotlin -----------------------------------------------------------------
+# The second arm on the JVM road, and the cheapest one added yet: a Kotlin program is compiled to
+# bytecode by the Kotlin compiler and then handed to the SAME TeaVM the Java block above installed,
+# so everything from bytecode onwards already exists here. What this block adds is ~67 MB of Kotlin
+# compiler jars.
+#
+# Constraint 1 is satisfied the way the Java block satisfies it: these are plain jars named on a
+# classpath, with no installer and no distribution packaging.
+#
+# Constraint 2 is satisfied the same way too. The compiler is only affordable WARM — a cold compile
+# measured 1.7-9 s against 0.14-0.4 s in a JVM that has already done one, and `kotlinc` has no
+# daemon of its own to ask — so gg embeds `K2JVMCompiler` in a JVM it keeps, out of a `CompilerPool`
+# that lends each JVM to one preparation at a time. Two preparations are never inside one compiler.
+# See `crates/gg/src/sandbox/language/kotlin.compile.rs`.
+#
+# One thing here is not a classpath. gg compiles a model's program as a Kotlin SCRIPT — because
+# Kotlin refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as LOCAL
+# declarations, and a wrapper function would therefore refuse five things a Kotlin author writes
+# without thinking — and the compiler loads its scripting plugin by four UNVERSIONED file names out
+# of a `kotlin-home/lib` directory, which the installer writes.
+#
+# The versions are the ones `packages/gg-sandbox-kotlin/kotlin-version.sh` pins. The script is run
+# here for the same reason the Java one is, and it RUNS that one: this arm compiles through the same
+# JDK and the same TeaVM, and a second copy of either would be a second thing to keep in step.
+COPY packages/gg-sandbox-kotlin/kotlin-version.sh \
+	/tmp/gg-kotlin/packages/gg-sandbox-kotlin/kotlin-version.sh
+COPY packages/gg-sandbox-java/java-version.sh \
+	/tmp/gg-kotlin/packages/gg-sandbox-java/java-version.sh
+COPY scripts/ci/install-kotlin.sh /tmp/gg-kotlin/scripts/ci/install-kotlin.sh
+COPY scripts/ci/install-java.sh /tmp/gg-kotlin/scripts/ci/install-java.sh
+RUN set -eux; \
+	JAVA_INSTALL_DIR=/opt/gg/toolchains/java \
+	KOTLIN_INSTALL_DIR=/opt/gg/toolchains/kotlin \
+	bash /tmp/gg-kotlin/scripts/ci/install-kotlin.sh; \
+	rm -rf /tmp/gg-kotlin; \
+	test -f /opt/gg/toolchains/kotlin/kotlin-home/lib/kotlin-scripting-compiler.jar
+
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
 # `COPY --from` source, and keeping it to the toolchain tree alone means the gg run images
