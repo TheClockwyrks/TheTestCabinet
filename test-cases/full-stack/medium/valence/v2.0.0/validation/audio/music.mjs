@@ -12,7 +12,7 @@
 import {
   startRun,
   armAudio,
-  audioCount,
+  settledAudioCount,
   audioCountAbove,
   MAP,
 } from "../_helpers.mjs";
@@ -29,7 +29,9 @@ export default function item() {
     },
 
     async act(api) {
-      before = await audioCount(api); // nothing has played yet — no gesture so far
+      // Settled, so a build that started something on load has had every chance to have it
+      // show up before this is called a silent page.
+      before = await settledAudioCount(api); // nothing has played yet — no gesture so far
       await armAudio(api); // the real gesture that unlocks audio and starts the bed
       await api.advance(60); // ~1 s of gameplay underway while the bed loops
       // Wait for the bed rather than reading once: a build may defer it until its clip has

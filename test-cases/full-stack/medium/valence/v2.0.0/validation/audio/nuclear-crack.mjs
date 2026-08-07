@@ -73,9 +73,11 @@ export default function item() {
 
       cue = await cueOnImpact(api, unitId, emitted, {
         // The Reactor reloads slowly (0.6/s), so give the walk room for several shots.
+        // The measured window itself is no longer passed: `cueOnImpact` derives it from
+        // this tower's own reload, which for a Reactor is far more room than the fixed 45
+        // ticks it used to be given.
         shots: 8,
         approach: 900,
-        window: 45,
       });
       await api.advance(TAIL_TICKS);
     },

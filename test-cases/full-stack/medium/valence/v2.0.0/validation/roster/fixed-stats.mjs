@@ -15,7 +15,17 @@
 // FOUR runs. Only the first is arranged; the rest are posed inside `act` with `poseRun`,
 // since `api.reset` throws there.
 
-import { startRun, poseRun, MAP } from "../_helpers.mjs";
+import { startRun, poseRun, clipBudget, MAP } from "../_helpers.mjs";
+
+// How long each released unit is held on screen once the wave reaches it.
+//
+// This item compares FOUR units across four rounds, and each of them takes most of a minute
+// of game time to be released — the wave has to work through everything ahead of it. Filmed
+// in real time the record pass spent its whole budget waiting for the first one, so the clip
+// showed a single type and the comparison the item is making was invisible. The wait is now
+// instant and each unit gets two seconds on screen, which is what lets a reviewer see that
+// the Dimer in round 20 and the Dimer in round 38 are the same object.
+const HOLD_TICKS = 120;
 
 const MAX_WAVE_TICKS = 5400; // 5400 ticks = the old 90 s cap — game time, not wall clock
 
@@ -32,8 +42,9 @@ async function poseRound(api, begin, round) {
 /** Run a started round until the real wave system releases a unit of `type`. */
 async function actFirstOfType(api, type) {
   let found = null;
-  // poll 3 = the old 0.05 s chunk.
-  await api.until(
+  // poll 3 = the old 0.05 s chunk. Skipped, not advanced: the run-in is the wave working
+  // through everything ahead of this type, which is not what the item is about.
+  await api.skipUntil(
     (s) => {
       const u = s.matter.find((m) => m.type === type);
       if (u && found == null) found = u;
@@ -41,6 +52,8 @@ async function actFirstOfType(api, type) {
     },
     { max: MAX_WAVE_TICKS, poll: 3 },
   );
+  // ...and held, so the unit this item just read is actually on the recording.
+  await api.advance(HOLD_TICKS);
   return found;
 }
 
@@ -52,6 +65,8 @@ export default function item() {
 
   return {
     id: "roster.fixed-stats",
+
+    clipMs: clipBudget(4 * HOLD_TICKS),
 
     // Dimers arrive first in Round 20; that is the run this item arranges.
     async arrange(api) {

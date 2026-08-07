@@ -4,7 +4,13 @@
 // pauses are distinct. The check pauses in place with Space (screen stays the live board)
 // and then presses Escape, which opens the pause-menu screen over it.
 
-import { startRun, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  clipBudget,
+  LEAD_TICKS,
+  TAIL_TICKS,
+  MAP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let inplace;
@@ -13,20 +19,30 @@ export default function item() {
   return {
     id: "pause.esc-over-inplace",
 
-    // The precondition is the in-place pause; the behavior under test is what Escape
-    // does ON TOP of it, so only the first press belongs here.
+    clipMs: clipBudget(2 * LEAD_TICKS + TAIL_TICKS),
+
     async arrange(api) {
       await startRun(api, MAP.single, { round: 1 });
       await api.call("startRound");
-      await api.call("press", "Space"); // in-place pause
-      inplace = await api.snapshot();
     },
 
-    // Escape over an already-paused board, and the menu it opens.
+    // Both presses, and the two distinct states they produce. The in-place pause was
+    // previously applied in `arrange`, which meant the clip opened on a board that was
+    // already frozen — so the one thing this item is about, a menu opening OVER an existing
+    // in-place pause, had no visible "existing in-place pause" to open over.
     async act(api) {
+      // The round running.
+      await api.advance(LEAD_TICKS);
+
+      await api.call("press", "Space"); // in-place pause
+      inplace = await api.snapshot();
+      // Held frozen, on the live board, with no menu — the state Escape is about to layer over.
+      await api.advance(LEAD_TICKS);
+
       await api.call("press", "Escape"); // opens the menu even though already paused
       overScreen = (await api.snapshot()).screen;
       await api.settle(150);
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {
