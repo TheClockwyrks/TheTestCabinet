@@ -22,15 +22,27 @@
 // pulls away from its parent, instead of the recording cutting on the frame the burst first
 // appeared.
 
-import { coverAndPassThrough, focusOnParent, TICK } from "../_helpers.mjs";
+import {
+  coverAndPassThrough,
+  focusOnParent,
+  clipBudget,
+  LEAD_TICKS,
+  TICK,
+} from "../_helpers.mjs";
 
-const TAIL_TICKS = 90; // 90 ticks = 1.5 s of aftermath, so the burst and the shed atom read
+const MAX_SNAP_TICKS = 600;
+
+const TAIL_TICKS = 120; // 2 s of aftermath, so the burst and the shed atom read
 
 export default function item() {
   let r;
 
   return {
     id: "fx.bondsnap",
+
+    // Without a budget of its own the 10 s sweep above outran the runtime's 8 s default and
+    // the record pass stopped before the snap it was waiting for.
+    clipMs: clipBudget(LEAD_TICKS + MAX_SNAP_TICKS + TAIL_TICKS),
 
     async arrange(api) {
       await coverAndPassThrough(api, { kind: "cleaver", type: "polymer" });
@@ -40,11 +52,13 @@ export default function item() {
     // The Cleaver chipping the cluster until a bond snaps — which is both the check and
     // the burst the reviewer is being shown.
     async act(api) {
+      // The cluster travelling in with its pool intact.
+      await api.advance(LEAD_TICKS);
       // 600 ticks = 10 s of game time, comfortably the whole coverage window a Polymer
       // takes to cross at 40 px/s. Polled every TICK: a burst is short-lived and must not
       // be polled past.
       r = await api.until((s) => s.effects.some((e) => e.kind === "bondsnap"), {
-        max: 600,
+        max: MAX_SNAP_TICKS,
         poll: TICK,
       });
       await api.advance(TAIL_TICKS);

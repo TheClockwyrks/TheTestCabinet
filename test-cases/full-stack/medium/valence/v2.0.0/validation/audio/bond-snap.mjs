@@ -17,6 +17,7 @@ import {
   focusOnParent,
   armAudio,
   cueOnImpact,
+  unitById,
 } from "../_helpers.mjs";
 
 const TAIL_TICKS = 90; // 90 ticks = 1.5 s, so the clip shows the snap and its aftermath
@@ -38,9 +39,19 @@ export default function item() {
     },
 
     async act(api) {
-      cue = await cueOnImpact(api, unitId, (s) =>
-        s.effects.some((e) => e.kind === "bondsnap"),
-      );
+      // The event is the POOL FALLING, read off `bond`, not the one-frame `bondsnap` burst.
+      // `effects` lists "particle bursts currently playing" (specs/instrumentation.md) and a
+      // burst can be gone again in a frame, so sampling for it across a real-time window can
+      // step straight over it — which is a fact about the sampling rate, not about the
+      // build. The pool is a number that stays down once it has fallen, so it cannot be
+      // missed however coarsely the window is sampled, and it is exactly what
+      // specs/assets.md ties the cue to: "the snap on a chipped bond".
+      const bond0 = unitById(await api.snapshot(), unitId)?.bond ?? null;
+      cue = await cueOnImpact(api, unitId, (s) => {
+        const u = unitById(s, unitId);
+        if (bond0 == null) return false;
+        return u == null || (u.bond != null && u.bond < bond0);
+      });
       await api.advance(TAIL_TICKS);
     },
 
