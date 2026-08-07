@@ -1,4 +1,4 @@
-# `gg-sandbox-rust` — gg's Rust library set (and, later, its SDK)
+# `gg-sandbox-rust` — gg's Rust SDK and library set
 
 The **Rust** arm of gg's
 [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
@@ -17,17 +17,20 @@ component" and hand its bytes back from the preparation instead.
 
 What this package **is** is the crate a program is compiled against — named `gg`,
 because `rustc --extern gg=…` is what puts it in scope and so it is the first word of
-every Rust program in the study.
+every Rust program in the study. It carries the hand-written, idiomatic SDK a model
+calls (`fs`, `system`, `project`, `tasks`, `memory`, `view`, `context`, `agents`,
+`skills`, `programs`, `harness`, `review`), the shell gg's generated entry file names,
+and the generated bindings both are written against.
 
 ## What it commits
 
 | Artifact | What it is |
 | --- | --- |
-| [`crates/gg/src/sandbox/checkers/rust.libraries.tar.gz`](../../crates/gg/src/sandbox/checkers/) | Every `.rlib` a program links, gzipped. ~220 KB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`. |
-| [`crates/gg/src/sandbox/checkers/rust.toolchain.json`](../../crates/gg/src/sandbox/checkers/) | What that set was built by — the compiler, the target, the `wit-bindgen` release — and every crate in it. |
+| [`crates/gg/src/sandbox/checkers/rust.libraries.tar.gz`](../../crates/gg/src/sandbox/checkers/) | Every `.rlib` a program links — this SDK and the curated set — gzipped. ~9.4 MB, `include_bytes!`d by the host and unpacked once per machine into a shared, sealed, read-only directory named on `rustc -L`. |
+| [`crates/gg/src/sandbox/checkers/rust.toolchain.json`](../../crates/gg/src/sandbox/checkers/) | What that set was built by — the compiler, the target, the `wit-bindgen` release — and every crate in it, each marked with whether a **program** may name it. |
+| [`crates/gg/src/sandbox/guests/rust.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue: the whole of what a model is told about this surface, reflected out of this crate's own rustdoc by `signatures.sh`. |
 
-There is no `rust.component.wasm`. There is no `rust.signatures.json` **yet**: the
-signature catalogue arrives with the SDK.
+There is no `rust.component.wasm`: the component is the program, compiled per turn.
 
 ## Why the set is committed and the compiler is not
 
@@ -57,8 +60,13 @@ is.
 | --- | --- |
 | `rust-version.sh` | The pins: the compiler (read out of `rust-toolchain.toml`), the target, and the `wit-bindgen` release. Sourced by `build.sh` and by `containers/build.sh`. |
 | `Cargo.toml` | Its own workspace on purpose — it is compiled for wasm and its output is a set of `.rlib` files, so a member of the repository's workspace would be built by every `cargo build --workspace` for no reason. |
-| `src/lib.rs` | The crate's own front door: the generated bindings module, and the shell. |
+| `src/lib.rs` | The crate's own front door: the API-object modules, the `prelude` gg glob-imports into every program, and `log`. |
+| `src/fs.rs`, `src/system.rs`, … | One file per API object. Each declares its functions, the gg tools they dispatch (`TOOLS`), and the `list` every object carries. |
+| `src/types.rs`, `src/options.rs`, `src/error.rs` | The model-facing shapes: what a call hands back, what its optional arguments are carried in, and how one fails. |
+| `src/wire.rs` | The bridge onto the generated bindings — the only part of this crate a model never reads. |
+| `src/meta.rs` | The one `list` declaration, expanded into every object module by a macro so its documentation is written once. |
 | `src/program.rs` | The shell gg's generated entry file names: the panic hook, the `Failure` type a program's body returns, and what `bound-tools` answers. |
+| `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out. `tools/catalogue.py` is the identity half — which function is which gg tool, on which object, gated by what — and `tools/signatures.py` is everything else. |
 | `src/bindings.rs` | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `build.sh` writes it. |
 | `build.sh` | Fetches the pinned `wit-bindgen`, generates the bindings, compiles the set for `wasm32-unknown-unknown`, packs it and writes the manifest. |
 
@@ -79,16 +87,43 @@ together are what let the *program*'s crate export the world while the bindings 
 prebuilt. Without them the whole strategy collapses back to recompiling the binding surface
 on every turn.
 
+## The curated library set
+
+`std` is free, and `Cargo.toml`'s `[dependencies]` declares five crates a program may
+`use` with no manifest to edit: `regex`, `serde_json`, `base64`, `itertools` and
+`indexmap`. They sit under `# --- heading ---` comments, and those headings are
+**machine-readable**: `build.sh` marks exactly those crates `extern` in the manifest (which
+is what `rustc --extern` puts in a program's prelude) and `tools/signatures.py` groups the
+catalogue's library list by them. One declaration, two readers, so what a model is told it
+may use and what the compile lets it name cannot drift.
+
+Two constraints decide what may be in it, and both are hard:
+
+- **No proc macros, anywhere in the tree.** A proc macro is a host dynamic library, and an
+  rlib whose metadata names one cannot be loaded on any other architecture (measured:
+  `E0463`). That rules out `serde`'s `derive`, `thiserror` and `clap`; `build.sh` fails on
+  one rather than trusting nobody adds it.
+- **It must compile for `wasm32-unknown-unknown`**, which has no clock, no filesystem, no
+  sockets and no randomness. That rules out `rand`, `chrono` and `reqwest`. Reaching the
+  world is what `fs` and `system` are for.
+
 ## Building it
 
 ```sh
-packages/gg-sandbox-rust/build.sh
+packages/gg-sandbox-rust/build.sh      # the library set + the manifest
+packages/gg-sandbox-rust/signatures.sh # the signature catalogue
 ```
 
-Run it from a checkout (so `rustup` picks the pinned toolchain up) when
+Run `build.sh` from a checkout (so `rustup` picks the pinned toolchain up) when
 `crates/gg/wit/gg-sandbox.wit` changes, when this package's `src/` changes, or when
 `rust-toolchain.toml` bumps the compiler. It fetches the pinned `wit-bindgen` from GitHub;
 everything else is local.
+
+Run `signatures.sh` whenever a doc comment or a signature in `src/` changes — which is
+every time the surface changes. It needs no network and no `wit-bindgen`, only this
+checkout's own `rustdoc` and the `wasm32-unknown-unknown` standard library
+(`scripts/ci/install-rust-wasm.sh`); `scripts/ci/contract-drift.sh` runs it and fails on a
+stale committed catalogue.
 
 ## What a Rust program looks like
 

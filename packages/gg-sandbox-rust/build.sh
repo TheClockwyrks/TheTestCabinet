@@ -99,6 +99,21 @@ echo "==> compiling the library set for $GG_RUST_TARGET"
 	CARGO_TARGET_DIR="$BUILD/target" cargo build --release --target "$GG_RUST_TARGET"
 )
 
+# NO PROC MACRO may have been built. One in the tree would be a host `.so` named in an rlib's
+# metadata, and `rustc` then refuses the whole set on any other architecture — the failure that
+# decided this arm's whole build topology (see `rust-version.sh`). Checked rather than trusted,
+# because adding one is a one-line edit to the dependency list below and its consequence appears
+# only on somebody else's machine.
+HOST_DEPS="$BUILD/target/release/deps"
+if compgen -G "$HOST_DEPS/*.so" >/dev/null || compgen -G "$HOST_DEPS/*.dylib" >/dev/null; then
+	echo "error: a dependency in the curated set is (or pulls in) a PROC MACRO:" >&2
+	ls "$HOST_DEPS"/*.so "$HOST_DEPS"/*.dylib 2>/dev/null >&2
+	echo "       A proc macro is a host dynamic library. An rlib whose metadata names one" >&2
+	echo "       cannot be loaded on any other architecture (E0463), which would make the" >&2
+	echo "       committed set unusable in every run container. Remove it." >&2
+	exit 1
+fi
+
 # Every rlib the leaf's link needs, under its plain `lib<name>.rlib` name: `rustc -L dependency=`
 # finds a crate by either that or `lib<name>-<hash>.rlib`, and the plain name is what makes the
 # shipped set readable by a human staring at it in a run container.
@@ -113,10 +128,38 @@ ls -la "$STAGE"
 # --- The manifest -----------------------------------------------------------
 # What the set was built by, in the words gg compares against at run time. `rustc` is the load-
 # bearing one: it is what a mismatch is refused over.
+#
+# `extern` is the other load-bearing field, and it is the difference between a crate a MODEL may name
+# and one that is merely present. `rustc -L dependency=` finds every rlib here when something already
+# in the graph needs it; `--extern` is what puts a name in a program's own extern prelude. So the
+# SDK and the CURATED SET get one and the transitive closure under them does not — otherwise a
+# program could `use regex_syntax::…`, which is not a library this arm offers, merely one it carries.
+#
+# The curated set is read out of `Cargo.toml`: the dependencies declared after the first
+# `# --- heading ---` line, which is the same marker `tools/signatures.py` groups the catalogue's
+# library list by. One declaration, two readers.
+curated="$(awk '
+	/^\[dependencies\]/ { inside = 1; next }
+	/^\[/ { inside = 0 }
+	inside && /^# --- / { curated = 1; next }
+	inside && curated && /^[a-zA-Z0-9_-]+ *=/ { name = $1; gsub(/-/, "_", name); print name }
+' "$HERE/Cargo.toml")"
+echo "==> curated crates a program may name: gg $(echo "$curated" | tr '\n' ' ')"
+
 crates_json="$(
 	for rlib in "$STAGE"/*.rlib; do
 		name="$(basename "$rlib" .rlib)"
-		printf '{"name":"%s","bytes":%s}\n' "${name#lib}" "$(wc -c <"$rlib" | tr -d ' ')"
+		name="${name#lib}"
+		is_extern=false
+		if [ "$name" = "gg" ]; then
+			is_extern=true
+		else
+			for curated_name in $curated; do
+				if [ "$name" = "$curated_name" ]; then is_extern=true; fi
+			done
+		fi
+		printf '{"name":"%s","bytes":%s,"extern":%s}\n' \
+			"$name" "$(wc -c <"$rlib" | tr -d ' ')" "$is_extern"
 	done | paste -sd, -
 )"
 cat >"$CHECKERS/rust.toolchain.json" <<EOF

@@ -34,12 +34,19 @@ pub(super) const SDK_CRATE: &str = "gg";
 /// it is about. So the wrapper is dense on purpose, a model never sees it, and the correction is
 /// [`LINE_OFFSET`] — one.
 ///
-/// What it does, in order: declares the type the world's `run` and `bound-tools` are exported on;
-/// installs the panic hook that gets a located failure out of an aborting guest, telling it which
-/// file and how many lines of gg's own text precede the model's; calls the model's program and
-/// reports an `Err` it returned; answers `bound-tools` out of the SDK's own table; and invokes the
-/// `export!` macro the prebuilt library set carries, which is what makes this crate *be* the
-/// component rather than a library inside one.
+/// What it does, in order: brings the SDK's whole surface into scope; declares the type the world's
+/// `run` and `bound-tools` are exported on; installs the panic hook that gets a located failure out
+/// of an aborting guest, telling it which file and how many lines of gg's own text precede the
+/// model's; calls the model's program and reports an `Err` it returned; answers `bound-tools` out of
+/// the SDK's own table; and invokes the `export!` macro the prebuilt library set carries, which is
+/// what makes this crate *be* the component rather than a library inside one.
+///
+/// The import is a **glob**, and that is what makes it safe to write into someone else's program.
+/// Rust lets an explicit `use` shadow a glob-imported name, so a model that writes `use std::fs;`
+/// gets the standard library's `fs` and not this SDK's — where a list of explicit imports would have
+/// made that program an `E0252` about a name gg introduced. It also means a program never opens with
+/// an import line of its own: `fs::read_file("main.rs", ReadOptions::default())` is the first thing
+/// a model can write.
 ///
 /// `__gg_program`'s return type is what makes `?` work. A wrapper returning `()` would make the
 /// operator a Rust author reaches for first a hard `E0277` on the first line of the first program of
@@ -50,7 +57,8 @@ pub(super) const SDK_CRATE: &str = "gg";
 /// [`LINE_OFFSET`] is what it costs, and the assertion that it costs exactly that is a test.
 fn prologue() -> String {
     format!(
-        "struct __GgProgram; \
+        "use ::{SDK_CRATE}::prelude::*; \
+         struct __GgProgram; \
          impl ::{SDK_CRATE}::bindings::Guest for __GgProgram {{ \
          fn run(_program: ::std::string::String, \
          _modules: ::std::vec::Vec<::{SDK_CRATE}::bindings::CodeModule>, \

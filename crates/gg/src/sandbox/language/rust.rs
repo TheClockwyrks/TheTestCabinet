@@ -1,22 +1,25 @@
 //! **Rust** — the first arm whose component is compiled **per turn**, because the program and the
 //! artifact are the same object.
 //!
-//! What exists here today is this arm's **execution substrate** and nothing else: the compile that
-//! turns a model's Rust into a wasm component, and the proof that a real Rust program really does
-//! run through gg's own linker, membrane and store. The SDK and the
-//! [registration](super::ProgramLanguage) land later — a language arm cannot be half-registered,
-//! because the registry's `match` is exhaustive and every gate that iterates the registered set
-//! would immediately demand a catalogue, two Handlebars templates and a healing dialect. Nothing
-//! here is reachable from a run: there is no `language` value that resolves to it.
+//! What exists here today is this arm's **execution substrate and its model-facing surface**: the
+//! compile that turns a model's Rust into a wasm component, the hand-written SDK that program is
+//! compiled against, the catalogue reflected out of that SDK's own rustdoc, and the proof that all
+//! three run through gg's own linker, membrane and store. The [registration](super::ProgramLanguage)
+//! lands later — a language arm cannot be half-registered, because the registry's `match` is
+//! exhaustive and every gate that iterates the registered set would immediately demand two
+//! Handlebars templates and a healing dialect. Nothing here is reachable from a run: there is no
+//! `language` value that resolves to it.
 //!
 //! * [`compile`](self::compile) — the host-side `rustc` and the in-process component encode, what
 //!   they cost, what they share, and the two failures they tell apart;
 //! * [`source`](self::source) — what gg writes around a model's Rust, on one line, and the one shape
 //!   it refuses;
-//! * `packages/gg-sandbox-rust/` — the crate a program is compiled against, and the build that
-//!   commits it;
+//! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the
+//!   curated library set, and the builds that commit them;
 //! * `checkers/rust.libraries.tar.gz` and `checkers/rust.toolchain.json` — the compiled library set
-//!   and what built it.
+//!   and what built it;
+//! * `guests/rust.signatures.json` — the catalogue, which is the whole of what a model is told about
+//!   this surface.
 //!
 //! # Why this arm has no component to commit
 //!
@@ -45,11 +48,19 @@
 //! reaches for against a `Result`-returning SDK. A wrapper returning `()` would make it a hard
 //! `E0277` on the first line of the first program of the arm.
 //!
-//! The library set is `std` plus whatever `packages/gg-sandbox-rust/Cargo.toml` names — today just
-//! this arm's own crate and the `wit-bindgen` runtime under it. Curating the set a model may
-//! actually reach for is the SDK step's, and it is a real obligation rather than a nicety: a
-//! language whose collections and iterators are all present but whose `serde` is not is an arm
-//! handicapped in a way the study would read as the language's fault.
+//! The surface a program calls is `packages/gg-sandbox-rust`'s SDK, brought into scope by the one
+//! `use ::gg::prelude::*;` the wrapper writes — a **glob**, because Rust lets an explicit `use`
+//! shadow one and a program's own `use std::fs;` must win over gg's `fs`. Every API object is a
+//! module, every call hands back `Result<_, ToolError>`, and optional arguments are a struct with a
+//! `Default`. What that looks like in full is in `apps/docs/src/content/docs/gg/program-languages.md`.
+//!
+//! The library set is `std` plus the five crates `packages/gg-sandbox-rust/Cargo.toml` declares
+//! under a `# --- heading ---`: `regex`, `serde_json`, `base64`, `itertools` and `indexmap`. Only
+//! those and the SDK are named on `--extern`; the transitive closure under them is present, found
+//! by `-L dependency=`, and not a name a program may write. The manifest carries the flag, the
+//! catalogue's library list is reflected from the same headings, and a test compares the two before
+//! compiling a program that uses all five — because a model told it may reach for something the
+//! compile does not offer is a turn spent on gg's build.
 //!
 //! # What this arm has that no other does
 //!
@@ -64,7 +75,7 @@
 //!
 //! # What is not built yet, and what it blocks
 //!
-//! **Code modules.** A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
+//! **Code modules**, and nothing else. A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
 //! bound at `lib.<key>` by handing the guest its prepared source, and every arm so far can evaluate
 //! that source at run time. Rust cannot: a module is Rust, and Rust is compiled — so a module has to
 //! be linked into the same artifact as the program that uses it, which means the **program's**
@@ -105,3 +116,13 @@ pub(super) mod source;
 #[cfg(test)]
 #[path = "rust.substrate.test.rs"]
 mod substrate;
+
+/// **The Rust arm's model-facing surface** — the hand-written SDK, the catalogue reflected out of
+/// its own rustdoc, and the libraries this arm says a program may reach.
+///
+/// A separate file from [`substrate`] because it is a different claim: that one asks whether Rust
+/// runs here, this one asks whether what a model is *told* it may write is what the sandbox really
+/// has.
+#[cfg(test)]
+#[path = "rust.surface.test.rs"]
+mod surface;

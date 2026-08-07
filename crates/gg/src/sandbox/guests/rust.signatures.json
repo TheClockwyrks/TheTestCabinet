@@ -1,0 +1,2601 @@
+{
+  "language": "rust",
+  "generatedFrom": "packages/gg-sandbox-rust/src/ (rustdoc --output-format json)",
+  "libraries": [
+    {
+      "group": "Text and parsing",
+      "modules": [
+        "regex"
+      ]
+    },
+    {
+      "group": "Data formats",
+      "modules": [
+        "serde_json",
+        "base64"
+      ]
+    },
+    {
+      "group": "Collections and iteration",
+      "modules": [
+        "itertools",
+        "indexmap"
+      ]
+    },
+    {
+      "group": "The standard library, always in scope",
+      "modules": [
+        "std::collections",
+        "std::fmt",
+        "std::iter",
+        "std::str",
+        "std::string",
+        "std::vec",
+        "std::cmp",
+        "std::ops",
+        "std::num",
+        "std::error",
+        "std::mem",
+        "std::borrow"
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "object": "fs",
+      "doc": "read, write, and edit workspace files"
+    },
+    {
+      "object": "system",
+      "doc": "run shell commands in the workspace"
+    },
+    {
+      "object": "project",
+      "doc": "the epic/issue board — decompose work into dispatchable issues"
+    },
+    {
+      "object": "tasks",
+      "doc": "your task list"
+    },
+    {
+      "object": "memory",
+      "doc": "durable memories that survive context compaction"
+    },
+    {
+      "object": "view",
+      "doc": "show yourself a file, a value, or a function's documentation — the only way material enters your context"
+    },
+    {
+      "object": "context",
+      "doc": "manage your own context window"
+    },
+    {
+      "object": "agents",
+      "doc": "delegate work to child agents"
+    },
+    {
+      "object": "skills",
+      "doc": "read authored skills"
+    },
+    {
+      "object": "programs",
+      "doc": "fetch a program you already ran, and hand a patched copy back to be run"
+    },
+    {
+      "object": "harness",
+      "doc": "end your session"
+    },
+    {
+      "object": "review",
+      "doc": "return your verdict on the work you are reviewing"
+    }
+  ],
+  "meta": [
+    {
+      "key": "list",
+      "name": "list",
+      "signatures": [
+        {
+          "signature": "list() -> Vec<FunctionSummary>",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view::open_docs_view`.",
+      "types": [
+        "FunctionSummary"
+      ]
+    }
+  ],
+  "session": [
+    {
+      "key": "finish",
+      "name": "finish",
+      "object": "harness",
+      "signatures": [
+        {
+          "signature": "finish(summary: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What you did, in a sentence or two.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "ending": "standard"
+    },
+    {
+      "key": "approve",
+      "name": "approve",
+      "object": "review",
+      "signatures": [
+        {
+          "signature": "approve() -> Result<(), ToolError>",
+          "parameters": []
+        }
+      ],
+      "doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change. It takes nothing: an approval carries no obligation beyond itself.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "ending": "review"
+    },
+    {
+      "key": "request_changes",
+      "name": "request_changes",
+      "object": "review",
+      "signatures": [
+        {
+          "signature": "request_changes(items: &[&str]) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "items",
+              "type": "&[&str]",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Every change that must be made before the work can be accepted, one per entry: what is wrong, and what to change. It may not be empty.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. This ends your session, and does not stop your program.\n\nEach item says what is wrong and what to change; the list may not be empty.\n\n# Errors\n\n`InvalidArgument` when the list is empty.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "ending": "review"
+    }
+  ],
+  "views": [
+    {
+      "key": "open_file",
+      "name": "open_file",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to open. Relative to your workspace, or absolute.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "ReadOptions",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The window of lines to show; `ReadOptions::default()` shows the whole file.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a file AND show it to yourself: you get back exactly what `fs::read_file` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.\n\nThe split from `fs::read_file` is the point — `fs::read_file` gets bytes for your PROGRAM, `view::open_file` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `options.offset` and `options.limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs::read_file` of an image describes it without showing it.\n\nPictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); nothing is opened and nothing is shown when you pass that cap, so close one with `view::close` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.\n\n# Errors\n\n`LimitExceeded`, naming the cap, when opening a picture would pass your agent's image-view cap.",
+      "types": [
+        "ReadOptions",
+        "FileRead",
+        "ToolError",
+        "ToolErrorCode",
+        "TextFile",
+        "ImageFile"
+      ],
+      "requires": "read_file"
+    },
+    {
+      "key": "open_text",
+      "name": "open_text",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_text(label: &str, body: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to file the view under. It is what `view::close` takes, and opening the same label again replaces what it showed. It may not be empty.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to show yourself. An empty body is allowed: it is how you say that something you were showing is now empty.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.\n\nThis is the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty BODY is allowed, since it is how you say that something you were showing is now empty.\n\n# Errors\n\n`InvalidArgument` for an empty label — a view with no selector could never be closed or attributed — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "requires": null
+    },
+    {
+      "key": "open_docs_view",
+      "name": "open_docs_view",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_docs_view(name: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The function to document, by the name it is called on its object — `\"read_file\"` for `fs::read_file`. Every object's `list` is how you find out which names exist.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.\n\nThis is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view::close` closes it when you are done with it.\n\n# Errors\n\n`NotFound` for an unknown or unbound name.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "requires": null
+    },
+    {
+      "key": "close",
+      "name": "close",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "close(selector: &str) -> Result<u32, ToolError>",
+          "parameters": [
+            {
+              "name": "selector",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Close every view carrying `selector` and hand back how many were closed, freeing the tokens they occupied.\n\nFor a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "requires": null
+    },
+    {
+      "key": "current",
+      "name": "current",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "current() -> Vec<OpenView>",
+          "parameters": []
+        }
+      ],
+      "doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.\n\nIt is called `current` rather than `list` because every API object already carries a `list` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
+      "types": [
+        "OpenView",
+        "ToolError",
+        "ToolErrorCode",
+        "ViewKind",
+        "ViewRegion"
+      ],
+      "requires": null
+    }
+  ],
+  "programs": [
+    {
+      "key": "history",
+      "name": "history",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "history() -> Result<Vec<ProgramSummary>, ToolError>",
+          "parameters": []
+        }
+      ],
+      "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.\n\nIt lists shapes, not sources: fetch the one you want with `get`. The list survives a compaction, so it is also how you find a program whose text has left your context window. It is empty — never an error — for a session that has run nothing yet.",
+      "types": [
+        "ProgramSummary",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "key": "get",
+      "name": "get",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "get(turn: Option<u32>) -> Result<String, ToolError>",
+          "parameters": [
+            {
+              "name": "turn",
+              "type": "Option<u32>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The turn whose program to fetch, as `history` reports it; `None` fetches your most recent one.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "The exact source of one program you ran, as a `String`. With `None`, your most recent one.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs::rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\n# Errors\n\n`NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "key": "rerun",
+      "name": "rerun",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "rerun(source: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "source",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The program to run in place of this one, as Rust. It may not be blank.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program.\n\nUse it with `get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice.\n\nThe first call stands, because a silently replaced program is a change you cannot see. If your program then fails, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.\n\n# Errors\n\n`Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "tool": "shell",
+      "name": "shell",
+      "object": "system",
+      "signatures": [
+        {
+          "signature": "shell(command: &str, timeout_secs: Option<f64>) -> Result<ShellOutput, ToolError>",
+          "parameters": [
+            {
+              "name": "command",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The command line, run by `sh -c` with your workspace as its working directory.",
+              "fields": []
+            },
+            {
+              "name": "timeout_secs",
+              "type": "Option<f64>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "How long to let it run, in seconds, before killing it. `None` takes gg's default of 120, which is clamped to whatever is left of the run's wall-clock budget.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Run a command with `sh -c` in the workspace directory and hand back its merged stdout and stderr.\n\nA non-zero exit is NOT a failure — read `exit_code` on the result; only a process that could not be launched, or one the timeout killed, is an `Err`.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.\n\n# Errors\n\n`LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.",
+      "types": [
+        "ShellOutput",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "read_file",
+      "name": "read_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to read. Relative to your workspace, or absolute for anything else in this container.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "ReadOptions",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The window of lines to read; `ReadOptions::default()` reads the whole file.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a file, handing back a `FileRead::Text` or a `FileRead::Image` — the format is detected from the file's bytes, never its extension.\n\nThis gets bytes for your PROGRAM and puts NOTHING in your context window; `view::open_file` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.\n\nReading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `fs::read_file` is a file you have not looked at. `view::open_file` is the one way to actually see a picture.\n\nNarrow the two arms with an ordinary `match`, which needs no catch-all because the enum is closed:\n\n```\nmatch fs::read_file(\"logo.png\", ReadOptions::default())? {\n    FileRead::Text(text) => view::open_text(\"logo\", &text.contents)?,\n    FileRead::Image(picture) => view::open_text(\"logo\", &picture.label)?,\n}\n```\n\n# Errors\n\n`NotFound` for a missing path.",
+      "types": [
+        "ReadOptions",
+        "FileRead",
+        "ToolError",
+        "ToolErrorCode",
+        "TextFile",
+        "ImageFile"
+      ]
+    },
+    {
+      "tool": "write_file",
+      "name": "write_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "write_file(path: &str, contents: &str) -> Result<u64, ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+              "fields": []
+            },
+            {
+              "name": "contents",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The UTF-8 text to write. It replaces the file entirely.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and hand back the number of bytes written.\n\nWriting is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "edit_file",
+      "name": "edit_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "edit_file(path: &str, old_string: &str, new_string: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to edit.",
+              "fields": []
+            },
+            {
+              "name": "old_string",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The exact text to find, including its whitespace. It must appear exactly once.",
+              "fields": []
+            },
+            {
+              "name": "new_string",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The text to put in its place. An empty string deletes the match.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace the one exact occurrence of `old_string` in a file with `new_string`.\n\nWiden the surrounding context until the match is unique rather than counting occurrences.\n\n# Errors\n\n`NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it appears more than once.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "list_dir",
+      "name": "list_dir",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "list_dir(path: Option<&str>) -> Result<Vec<DirEntry>, ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "Option<&str>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The directory to list, relative to your workspace or absolute; `None` lists your workspace root.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "List a directory, sorted by name; `None` lists your workspace root.\n\nEach entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty `Vec`, not a failure.",
+      "types": [
+        "DirEntry",
+        "ToolError",
+        "ToolErrorCode",
+        "EntryKind"
+      ]
+    },
+    {
+      "tool": "read_skill",
+      "name": "read_skill",
+      "object": "skills",
+      "signatures": [
+        {
+          "signature": "read_skill(name: &str) -> Result<String, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The skill's name, as the system prompt lists it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a skill by name and hand back its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.\n\nA skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib::<key>` for the rest of your session and the reply names the key and what it offers. If it carries an on-use program, gg runs it once your program has ended, and whatever it shows you arrives on your next turn.\n\n# Errors\n\n`NotFound` — listing the skills that do exist — when the name is unknown.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "write_memory",
+      "name": "write_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "write_memory(name: &str, description: &str, body: &str, options: MemoryOptions<'_>) -> Result<MemoryUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's contents.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "MemoryOptions<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The code halves you may leave out.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Record a durable memory that survives context compaction, and hand back how much of the memory budget is now used.\n\nA memory may also carry **code**. `options.code` is a Rust module whose items are bound at `lib::<name>` in every later program you write, so a helper you get right once you never write again; `options.on_use` is a program gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.\n\n# Errors\n\n`Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more.",
+      "types": [
+        "MemoryOptions",
+        "MemoryUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "update_memory",
+      "name": "update_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "update_memory(name: &str, description: &str, body: &str, options: MemoryOptions<'_>) -> Result<MemoryUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The slug of the memory to replace.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The one-line description to replace the old one with.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The contents to replace the old ones with.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "MemoryOptions<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The code halves. Leaving one out clears the one the memory had.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace an existing memory's description and body, keyed on its `name`, and hand back the memory budget.\n\nIts code and on-use program are replaced too — leaving them out of `options` clears them.\n\n# Errors\n\n`NotFound` when no memory has that name.",
+      "types": [
+        "MemoryOptions",
+        "MemoryUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "create_memory",
+      "name": "create_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "create_memory(name: &str, description: &str, body: &str, options: MemoryOptions<'_>) -> Result<MemoryUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A one-line description of what the memory holds, which is its line in the index.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's initial contents, which stay out of your context window until you read them.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "MemoryOptions<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The code halves you may leave out. They load on that first read.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and hand back the memory budget.\n\nGive it a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents.\n\n# Errors\n\n`Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would breach a limit.",
+      "types": [
+        "MemoryOptions",
+        "MemoryUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "read_memory",
+      "name": "read_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "read_memory(name: &str) -> Result<String, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context.\n\nIf the memory carries code, reading it also loads that code: the reply names the `lib::<key>` it is bound at, and it stays bound for the rest of your session.\n\n# Errors\n\n`NotFound` when no memory has that slug.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "edit_memory",
+      "name": "edit_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The slug of the memory to revise.",
+              "fields": []
+            },
+            {
+              "name": "search",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The exact text to find in its contents. It must appear exactly once.",
+              "fields": []
+            },
+            {
+              "name": "replace",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The text to put in its place.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and hand back the memory budget.\n\nAppend by quoting the last line and replacing it with itself plus what you are adding.\n\n# Errors\n\n`NotFound` when the text does not appear, `Conflict` when it appears more than once, `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave the memory empty — delete it instead.",
+      "types": [
+        "MemoryUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "search_memories",
+      "name": "search_memories",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "search_memories(keywords: &[&str]) -> Result<Vec<MemoryHit>, ToolError>",
+          "parameters": [
+            {
+              "name": "keywords",
+              "type": "&[&str]",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The words to look for. Several specific words rank better than one sentence, because a memory is ranked by how many of them it mentions.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Find the memories mentioning any of `keywords`, best first.\n\nPlain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `memory::read_memory` the hits worth having in full. A search that matches nothing is an empty `Vec`.\n\n# Errors\n\n`InvalidArgument` when every keyword is empty.",
+      "types": [
+        "MemoryHit",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "delete_memory",
+      "name": "delete_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "delete_memory(name: &str) -> Result<MemoryUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.\n\n# Errors\n\n`NotFound` when no memory has that name.",
+      "types": [
+        "MemoryUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "add_task",
+      "name": "add_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "add_task(id: &str, title: &str, options: TaskOptions<'_>) -> Result<TaskUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The id you choose for it. It is what every other task call takes, and no two tasks may share one.",
+              "fields": []
+            },
+            {
+              "name": "title",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the work.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "TaskOptions<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The parts you may leave out: a description, and the tasks this one waits on.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Add a task to the task DAG and hand back the task budget.\n\n`options.blocked_by` names the tasks that must finish before this one and defaults to none.\n\n# Errors\n\n`Conflict` on a duplicate id or on an edge that would close a cycle.",
+      "types": [
+        "TaskOptions",
+        "TaskUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "update_task",
+      "name": "update_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "update_task(id: &str, patch: TaskPatch<'_>) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to revise.",
+              "fields": []
+            },
+            {
+              "name": "patch",
+              "type": "TaskPatch<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The fields to change. Supply at least one; a field left at its default is left alone.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Revise a task's title, description and/or status; supply at least one.\n\nA field left at its default is left alone, `description: TextEdit::Clear` empties it, and `description: TextEdit::Set(…)` replaces it.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "TaskPatch",
+        "ToolError",
+        "ToolErrorCode",
+        "TextEdit",
+        "TaskStatus"
+      ]
+    },
+    {
+      "tool": "set_blocked_by",
+      "name": "set_blocked_by",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "set_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task whose blockers to replace.",
+              "fields": []
+            },
+            {
+              "name": "blocked_by",
+              "type": "&[&str]",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The ids of every task that must now be done before it. An empty slice clears them all.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace a task's whole blocker set; an empty slice clears every blocker.\n\n# Errors\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "complete_task",
+      "name": "complete_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "complete_task(id: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to mark done.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "remove_task",
+      "name": "remove_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "remove_task(id: &str) -> Result<TaskUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Remove a task and every blocker edge pointing at it, and hand back the task budget.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "TaskUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "create_epic",
+      "name": "create_epic",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicCreated, ToolError>",
+          "parameters": [
+            {
+              "name": "prefix",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
+              "fields": []
+            },
+            {
+              "name": "title",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the body of work.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the epic covers, for a reader who has not seen its issues.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Create an epic to group related issues, and hand back the id its prefix resolved to together with the board budget.\n\n`prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\n# Errors\n\n`InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already holds it.",
+      "types": [
+        "EpicCreated",
+        "ToolError",
+        "ToolErrorCode",
+        "BoardUsage"
+      ]
+    },
+    {
+      "tool": "create_issue",
+      "name": "create_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "create_issue(title: &str, in_scope: &str, out_of_scope: &str, completion_criteria: &str, agent: &str, options: IssueOptions<'_>) -> Result<IssueCreated, ToolError>",
+          "parameters": [
+            {
+              "name": "title",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the work.",
+              "fields": []
+            },
+            {
+              "name": "in_scope",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
+              "fields": []
+            },
+            {
+              "name": "out_of_scope",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the issue deliberately does not cover, so the work stops where you meant it to.",
+              "fields": []
+            },
+            {
+              "name": "completion_criteria",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
+              "fields": []
+            },
+            {
+              "name": "agent",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent the issue is dispatched to. It must be one you may spawn.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "IssueOptions<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The parts you may leave out: a description, blockers, an epic, reviewers.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Create a self-contained, dispatchable issue, and hand back the id the board **assigned** it together with the board budget.\n\nThe id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; you do not choose it, so keep the returned one to block a later issue on this one or to wait for it. `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from, so write them for a reader with no other context.\n\n# Errors\n\n`InvalidArgument` when `agent` or a reviewer is not yours to assign, and `Conflict` on a blocker edge that would close a cycle.",
+      "types": [
+        "IssueOptions",
+        "IssueCreated",
+        "ToolError",
+        "ToolErrorCode",
+        "BoardUsage"
+      ]
+    },
+    {
+      "tool": "update_issue",
+      "name": "update_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "update_issue(id: &str, patch: IssuePatch<'_>) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to revise.",
+              "fields": []
+            },
+            {
+              "name": "patch",
+              "type": "IssuePatch<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The fields to change. Supply at least one; a field left at its default is left alone.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Revise an issue; supply at least one field.\n\nA field left at its default is left alone, `description: TextEdit::Clear` empties the description, and `epic: EpicAssignment::Ungroup` detaches the issue from its epic.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "IssuePatch",
+        "ToolError",
+        "ToolErrorCode",
+        "TextEdit",
+        "IssueStatus",
+        "EpicAssignment"
+      ]
+    },
+    {
+      "tool": "set_issue_blocked_by",
+      "name": "set_issue_blocked_by",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "set_issue_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue whose blockers to replace.",
+              "fields": []
+            },
+            {
+              "name": "blocked_by",
+              "type": "&[&str]",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The ids of every issue that must now be done before it. An empty slice clears them all.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace an issue's whole blocker set; an empty slice clears every blocker.\n\n# Errors\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "remove_epic",
+      "name": "remove_epic",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "remove_epic(id: &str) -> Result<BoardUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The epic to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "BoardUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "remove_issue",
+      "name": "remove_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "remove_issue(id: &str) -> Result<BoardUsage, ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "BoardUsage",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "wait_for_issue",
+      "name": "wait_for_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "wait_for_issue(id: &str) -> Result<String, ToolError>",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to wait on. It may not be the issue you were assigned.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Register a wait on an issue and hand back an acknowledgement.\n\nIt does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "evict_file_view",
+      "name": "evict_file_view",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "Option<&str>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file whose views to drop; `None` drops every file view you hold.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed.\n\nThe files on disk are untouched — this forgets what you read, not what exists.",
+      "types": [
+        "ReclaimReport",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "archive_thread",
+      "name": "archive_thread",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, ToolError>",
+          "parameters": [
+            {
+              "name": "ranges",
+              "type": "&[RangeInclusive<u32>]",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The inclusive spans of turn numbers to move out of your window. They may overlap.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Move whole turns out of your context window and report what that reclaimed.\n\nEvery result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping. A span is a Rust inclusive range and both ends are included, so `context::archive_thread(&[4..=19])` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `search_archive`.\n\n# Errors\n\n`InvalidArgument` for a span whose ends are not turn numbers.",
+      "types": [
+        "ReclaimReport",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "search_archive",
+      "name": "search_archive",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "search_archive(query: &str) -> Result<ArchiveSearch, ToolError>",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The substring to look for. Matching is case-insensitive.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.\n\nCheck `archive_empty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
+      "types": [
+        "ArchiveSearch",
+        "ToolError",
+        "ToolErrorCode",
+        "ArchiveHit",
+        "MessageRole"
+      ]
+    },
+    {
+      "tool": "compact",
+      "name": "compact",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "compact(summary: &str, files: &[&str]) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What your restarted window opens with. Write it for your future self: everything not in it and not re-read from `files` is gone.",
+              "fields": []
+            },
+            {
+              "name": "files",
+              "type": "&[&str]",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The paths to read afresh into the restarted window. An empty slice reads nothing back.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.\n\nYour skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do.\n\nIt does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.\n\n# Errors\n\n`Refused` when a compaction is already in flight and this call is not the one it asked for.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "spawn_subagent",
+      "name": "spawn_subagent",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "spawn_subagent(agent: &str, brief: Brief<'_>) -> Result<SubagentHandle, ToolError>",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent profile to run the child as, from the ones you may spawn. It selects the child's model, tools and instructions.",
+              "fields": []
+            },
+            {
+              "name": "brief",
+              "type": "Brief<'_>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the child is to do: `Brief::Prompt` with self-contained instructions, or `Brief::Issue` with the id of a board issue to brief it from.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Delegate scoped work to a child agent and hand back its handle immediately — the child runs in parallel while your program continues.\n\nName the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with either `Brief::Prompt(\"self-contained instructions\")` or `Brief::Issue(\"AUTH-1\")`. The child shares your workspace.\n\n# Errors\n\n`LimitExceeded` at the delegation depth cap, and `InvalidArgument` if `agent` is not one you may spawn.",
+      "types": [
+        "Brief",
+        "SubagentHandle",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "wait_for_subagents",
+      "name": "wait_for_subagents",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "wait_for_subagents(ids: Option<&[&str]>) -> Result<Vec<SubagentResult>, ToolError>",
+          "parameters": [
+            {
+              "name": "ids",
+              "type": "Option<&[&str]>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The children to wait for, as `agents::spawn_subagent` returned them; `None` waits for every one still outstanding.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Block until the named children have finished — or, with `None`, until every outstanding child has — and collect their results in dispatch order.\n\nThe run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child.\n\n# Errors\n\n`NotFound` for an unknown id.",
+      "types": [
+        "SubagentResult",
+        "ToolError",
+        "ToolErrorCode",
+        "AgentStatus"
+      ]
+    },
+    {
+      "tool": "send_message",
+      "name": "send_message",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "send_message(agent_id: &str, message: &str) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "agent_id",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The child to deliver to, as `agents::spawn_subagent` returned it.",
+              "fields": []
+            },
+            {
+              "name": "message",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to put in its inbox. It reads it at its next turn.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.\n\n# Errors\n\n`NotFound` for an unknown agent id, and `Conflict` when that child has already returned.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "transition_state",
+      "name": "transition_state",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "transition_state(state: &str, note: Option<&str>) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "state",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The state to move on to, named the way you name an agent to spawn.",
+              "fields": []
+            },
+            {
+              "name": "note",
+              "type": "Option<&str>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The opening message the next state's agent sees; `None` tells it nothing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn.\n\nBound only when a state machine is driving you and the state you are in has somewhere to go. Like `context::compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands.\n\n# Errors\n\n`InvalidArgument` for a state you may not move to, and `Refused` for a second declaration in one turn.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "exec",
+      "name": "exec",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "exec(agent: &str, prompt: Option<&str>) -> Result<(), ToolError>",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent to become, from the ones you may become.",
+              "fields": []
+            },
+            {
+              "name": "prompt",
+              "type": "Option<&str>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Its opening message. It already has your whole conversation, so this is the instruction rather than a briefing; `None` tells it nothing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.\n\nRegistered rather than performed, exactly as `agents::transition_state` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you.\n\n# Errors\n\n`InvalidArgument` for an agent you may not become, and `Refused` for a second succession in one turn.",
+      "types": [
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    },
+    {
+      "tool": "fork",
+      "name": "fork",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "fork(prompt: &str) -> Result<SubagentHandle, ToolError>",
+          "parameters": [
+            {
+              "name": "prompt",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the copy is to do instead of what you are doing. It has your whole conversation already, so write the difference rather than a briefing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Run a copy of yourself, in parallel, on something you will not do yourself.\n\nThe copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `agents::wait_for_subagents` can only collect it on a later turn — do not wait on it in the program that made it.\n\n# Errors\n\n`LimitExceeded` at the delegation depth cap.",
+      "types": [
+        "SubagentHandle",
+        "ToolError",
+        "ToolErrorCode"
+      ]
+    }
+  ],
+  "helpers": [
+    {
+      "key": "read_text_file",
+      "name": "read_text_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "read_text_file(path: &str, options: ReadOptions) -> Result<String, ToolError>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "&str",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to read. Relative to your workspace, or absolute.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "ReadOptions",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The window of lines to read; `ReadOptions::default()` reads the whole file.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a text file and hand back its contents directly — `fs::read_file` without the narrowing, for the common case.\n\nIt takes the same window options. Reading is the cheap direction of this sandbox, so a program that reads a dozen files to decide what to change is doing the right thing.\n\n# Errors\n\n`InvalidArgument` when the path names a picture; use `fs::read_file` to inspect those, and `view::open_file` to look at one.",
+      "types": [
+        "ReadOptions",
+        "ToolError",
+        "ToolErrorCode"
+      ],
+      "requires": "read_file"
+    }
+  ],
+  "types": [
+    {
+      "name": "AgentStatus",
+      "declaration": "enum AgentStatus { Completed, Exhausted, TimedOut, ModelError, AuthError, LimitExceeded }",
+      "doc": "How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.",
+      "members": [
+        {
+          "name": "Completed",
+          "type": null,
+          "doc": "It finished normally: it called `harness::finish`, and its summary is what it returned."
+        },
+        {
+          "name": "Exhausted",
+          "type": null,
+          "doc": "It hit the per-run turn ceiling."
+        },
+        {
+          "name": "TimedOut",
+          "type": null,
+          "doc": "It passed its wall-clock deadline."
+        },
+        {
+          "name": "ModelError",
+          "type": null,
+          "doc": "A model turn failed."
+        },
+        {
+          "name": "AuthError",
+          "type": null,
+          "doc": "The run's credential was refused."
+        },
+        {
+          "name": "LimitExceeded",
+          "type": null,
+          "doc": "An execution ceiling stopped it — consecutive errors, error rate, or cost."
+        }
+      ]
+    },
+    {
+      "name": "ArchiveHit",
+      "declaration": "struct ArchiveHit { seq: u32, role: MessageRole, text: String }",
+      "doc": "One archived message that matched a search.",
+      "members": [
+        {
+          "name": "seq",
+          "type": "u32",
+          "doc": "The archived message's sequence number."
+        },
+        {
+          "name": "role",
+          "type": "MessageRole",
+          "doc": "Who said it."
+        },
+        {
+          "name": "text",
+          "type": "String",
+          "doc": "The message text."
+        }
+      ]
+    },
+    {
+      "name": "ArchiveSearch",
+      "declaration": "struct ArchiveSearch { archive_empty: bool, hits: Vec<ArchiveHit> }",
+      "doc": "What `context::search_archive` found.",
+      "members": [
+        {
+          "name": "archive_empty",
+          "type": "bool",
+          "doc": "Nothing has been archived yet, so there was nothing to search. Deliberately distinct from a search that ran and matched nothing, so you do not archive again believing the first archive failed."
+        },
+        {
+          "name": "hits",
+          "type": "Vec<ArchiveHit>",
+          "doc": "The matches, most recent first, at most 8."
+        }
+      ]
+    },
+    {
+      "name": "BoardUsage",
+      "declaration": "struct BoardUsage { epics: u32, max_epics: u32, issues: u32, max_issues: u32 }",
+      "doc": "How much of the run's board budget is used, after the call that returned it.",
+      "members": [
+        {
+          "name": "epics",
+          "type": "u32",
+          "doc": "Epics currently on the board."
+        },
+        {
+          "name": "max_epics",
+          "type": "u32",
+          "doc": "The most epics this run allows."
+        },
+        {
+          "name": "issues",
+          "type": "u32",
+          "doc": "Issues currently on the board."
+        },
+        {
+          "name": "max_issues",
+          "type": "u32",
+          "doc": "The most issues this run allows."
+        }
+      ]
+    },
+    {
+      "name": "Brief",
+      "declaration": "enum Brief<'a> { Prompt(&'a str), Issue(&'a str) }",
+      "doc": "What a child agent is briefed with.\n\nThe choice is an `enum` rather than a pair of optional arguments, so \"both\" and \"neither\" are programs that do not compile instead of calls that fail at run time.",
+      "members": [
+        {
+          "name": "Prompt",
+          "type": "&'a str",
+          "doc": "Self-contained instructions for the child, which needs no other context."
+        },
+        {
+          "name": "Issue",
+          "type": "&'a str",
+          "doc": "The id of a board issue to brief the child from, as `project::create_issue` returned it."
+        }
+      ]
+    },
+    {
+      "name": "DirEntry",
+      "declaration": "struct DirEntry { name: String, kind: EntryKind }",
+      "doc": "One entry `fs::list_dir` found.",
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "doc": "The entry's bare name, with no directory part. Join it with the directory you listed."
+        },
+        {
+          "name": "kind",
+          "type": "EntryKind",
+          "doc": "What the entry is."
+        }
+      ]
+    },
+    {
+      "name": "EntryKind",
+      "declaration": "enum EntryKind { File, Directory, Other }",
+      "doc": "What a directory entry is.",
+      "members": [
+        {
+          "name": "File",
+          "type": null,
+          "doc": "An ordinary file."
+        },
+        {
+          "name": "Directory",
+          "type": null,
+          "doc": "A directory, which you can list in turn."
+        },
+        {
+          "name": "Other",
+          "type": null,
+          "doc": "Everything that is neither, a symlink among them."
+        }
+      ]
+    },
+    {
+      "name": "EpicAssignment",
+      "declaration": "enum EpicAssignment<'a> { Keep, Ungroup, Set(&'a str) }",
+      "doc": "How an issue's epic grouping changes — the same three-way shape as `TextEdit`, for a field whose value is an epic id.",
+      "members": [
+        {
+          "name": "Keep",
+          "type": null,
+          "doc": "Leave the grouping alone."
+        },
+        {
+          "name": "Ungroup",
+          "type": null,
+          "doc": "Detach the issue from its epic, leaving it ungrouped."
+        },
+        {
+          "name": "Set",
+          "type": "&'a str",
+          "doc": "Group the issue under this epic, by its id."
+        }
+      ]
+    },
+    {
+      "name": "EpicCreated",
+      "declaration": "struct EpicCreated { id: String, board: BoardUsage }",
+      "doc": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The epic's id — the prefix you gave, upper-cased (`auth` → `AUTH`). Group issues under it with this, and its issues are numbered from it (`AUTH-1`)."
+        },
+        {
+          "name": "board",
+          "type": "BoardUsage",
+          "doc": "How much of the board budget is used."
+        }
+      ]
+    },
+    {
+      "name": "FileRead",
+      "declaration": "enum FileRead { Text(TextFile), Image(ImageFile) }",
+      "doc": "What `fs::read_file` returned: a text file's window, or a picture's description.\n\nA picture is a different kind of thing from text, so it is a different variant rather than a string that happens to be binary — a program that treats an image as text is caught by the `match` instead of silently writing an empty string somewhere. Image *bytes* never enter the program: gg attaches the picture to the turn so you can look at it directly, which is worth far more than base64 in a variable.",
+      "members": [
+        {
+          "name": "Text",
+          "type": "TextFile",
+          "doc": "This file is text."
+        },
+        {
+          "name": "Image",
+          "type": "ImageFile",
+          "doc": "This file is a picture; gg shows it to you rather than handing you its bytes."
+        }
+      ]
+    },
+    {
+      "name": "FunctionSummary",
+      "declaration": "struct FunctionSummary { name: String, summary: String }",
+      "doc": "One function in an API object's directory, as `list` returns it.\n\nThe summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `view::open_docs_view`.",
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "doc": "The function name on its object — `read_file` in `fs::read_file`."
+        },
+        {
+          "name": "summary",
+          "type": "String",
+          "doc": "One line saying what it does: the first sentence of its documentation."
+        }
+      ]
+    },
+    {
+      "name": "ImageFile",
+      "declaration": "struct ImageFile { media_type: String, label: String, bytes: u64, shown: bool, not_shown_reason: Option<String> }",
+      "doc": "A picture's description, as the `FileRead::Image` arm of a read carries it.",
+      "members": [
+        {
+          "name": "media_type",
+          "type": "String",
+          "doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+        },
+        {
+          "name": "label",
+          "type": "String",
+          "doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+        },
+        {
+          "name": "bytes",
+          "type": "u64",
+          "doc": "The file's size in bytes."
+        },
+        {
+          "name": "shown",
+          "type": "bool",
+          "doc": "Whether the picture is being attached to this turn for you to look at."
+        },
+        {
+          "name": "not_shown_reason",
+          "type": "Option<String>",
+          "doc": "Why it is not being shown; `None` when `shown` is true."
+        }
+      ]
+    },
+    {
+      "name": "IssueCreated",
+      "declaration": "struct IssueCreated { id: String, board: BoardUsage }",
+      "doc": "An issue that was just created: the id the board assigned it, and the board budget.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on this one, or to wait for it."
+        },
+        {
+          "name": "board",
+          "type": "BoardUsage",
+          "doc": "How much of the board budget is used."
+        }
+      ]
+    },
+    {
+      "name": "IssueOptions",
+      "declaration": "struct IssueOptions<'a> { description: Option<&'a str>, blocked_by: &'a [&'a str], epic_id: Option<&'a str>, reviewers: &'a [&'a str] }",
+      "doc": "The parts of a new issue you may leave out. `Default` creates an ungrouped issue with no description, no blockers and no reviewers.",
+      "members": [
+        {
+          "name": "description",
+          "type": "Option<&'a str>",
+          "doc": "What the work is. Written for a child agent with no other context."
+        },
+        {
+          "name": "blocked_by",
+          "type": "&'a [&'a str]",
+          "doc": "The ids of every issue that must be done before this one."
+        },
+        {
+          "name": "epic_id",
+          "type": "Option<&'a str>",
+          "doc": "The id of an existing epic to group it under. Leave it out to leave the issue ungrouped and numbered under `ISSUE`."
+        },
+        {
+          "name": "reviewers",
+          "type": "&'a [&'a str]",
+          "doc": "The agents that must approve the work, from the set you may spawn. Required when this run's reviewers feature is on."
+        }
+      ]
+    },
+    {
+      "name": "IssuePatch",
+      "declaration": "struct IssuePatch<'a> { title: Option<&'a str>, description: TextEdit<'a>, in_scope: Option<&'a str>, out_of_scope: Option<&'a str>, completion_criteria: Option<&'a str>, status: Option<IssueStatus>, epic: EpicAssignment<'a> }",
+      "doc": "The fields an issue revision may change. `Default` changes nothing, which the call refuses — supply at least one.",
+      "members": [
+        {
+          "name": "title",
+          "type": "Option<&'a str>",
+          "doc": "The title to replace the old one with."
+        },
+        {
+          "name": "description",
+          "type": "TextEdit<'a>",
+          "doc": "A three-way edit of the description: `TextEdit::Keep` leaves it, `TextEdit::Clear` empties it, `TextEdit::Set` replaces it."
+        },
+        {
+          "name": "in_scope",
+          "type": "Option<&'a str>",
+          "doc": "The scope statement to replace the old one with."
+        },
+        {
+          "name": "out_of_scope",
+          "type": "Option<&'a str>",
+          "doc": "The non-scope statement to replace the old one with."
+        },
+        {
+          "name": "completion_criteria",
+          "type": "Option<&'a str>",
+          "doc": "The completion criteria to replace the old ones with."
+        },
+        {
+          "name": "status",
+          "type": "Option<IssueStatus>",
+          "doc": "Where the issue now stands."
+        },
+        {
+          "name": "epic",
+          "type": "EpicAssignment<'a>",
+          "doc": "A three-way change of epic grouping: `EpicAssignment::Keep` leaves it, `EpicAssignment::Ungroup` detaches the issue, `EpicAssignment::Set` regroups it."
+        }
+      ]
+    },
+    {
+      "name": "IssueStatus",
+      "declaration": "enum IssueStatus { Open, InProgress, Done }",
+      "doc": "Where an issue stands.",
+      "members": [
+        {
+          "name": "Open",
+          "type": null,
+          "doc": "Not started, and dispatchable once its blockers are done."
+        },
+        {
+          "name": "InProgress",
+          "type": null,
+          "doc": "Dispatched, with its assigned agent working on it."
+        },
+        {
+          "name": "Done",
+          "type": null,
+          "doc": "Finished and, where this run requires reviewers, approved."
+        }
+      ]
+    },
+    {
+      "name": "MemoryHit",
+      "declaration": "struct MemoryHit { name: String, description: String, matched: u32, occurrences: u32, excerpt: String }",
+      "doc": "One memory `memory::search_memories` matched, and the numbers it was ranked by.",
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "doc": "The memory's slug — what `memory::read_memory` takes."
+        },
+        {
+          "name": "description",
+          "type": "String",
+          "doc": "Its description, or `\"\"` when it was created without one."
+        },
+        {
+          "name": "matched",
+          "type": "u32",
+          "doc": "How many of your distinct keywords it matched — the primary ranking."
+        },
+        {
+          "name": "occurrences",
+          "type": "u32",
+          "doc": "How many times those keywords occur in it — the tiebreak."
+        },
+        {
+          "name": "excerpt",
+          "type": "String",
+          "doc": "A short window of the memory around its first match."
+        }
+      ]
+    },
+    {
+      "name": "MemoryOptions",
+      "declaration": "struct MemoryOptions<'a> { code: Option<&'a str>, on_use: Option<&'a str> }",
+      "doc": "The two code halves every write of a memory accepts, and may leave out. `Default` records a memory that is only prose.\n\nNeither is context: they cost you no window, are never shown back to you, and count against no body limit.",
+      "members": [
+        {
+          "name": "code",
+          "type": "Option<&'a str>",
+          "doc": "A Rust module whose items are bound at `lib::<name>` in every later program you write, so a helper you get right once you never write again."
+        },
+        {
+          "name": "on_use",
+          "type": "Option<&'a str>",
+          "doc": "A program gg runs the first time the memory comes into use, whose views reach you on your next turn."
+        }
+      ]
+    },
+    {
+      "name": "MemoryUsage",
+      "declaration": "struct MemoryUsage { count: u32, max_count: Option<u32>, total_chars: u32, max_total_chars: Option<u32>, index_chars: Option<u32>, max_index_chars: Option<u32> }",
+      "doc": "How much of the run's durable-memory budget is used, after the call that returned it.\n\nEvery maximum is an `Option`: each limit can be turned off, and a run's memory strategy applies only some of them, so `None` means nothing bounds that axis — check before subtracting.",
+      "members": [
+        {
+          "name": "count",
+          "type": "u32",
+          "doc": "Memories currently held."
+        },
+        {
+          "name": "max_count",
+          "type": "Option<u32>",
+          "doc": "The most memories this run allows, if it limits the count."
+        },
+        {
+          "name": "total_chars",
+          "type": "u32",
+          "doc": "Characters of body currently held, across all memories."
+        },
+        {
+          "name": "max_total_chars",
+          "type": "Option<u32>",
+          "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+        },
+        {
+          "name": "index_chars",
+          "type": "Option<u32>",
+          "doc": "Characters the memory index occupies, under a run that keeps one."
+        },
+        {
+          "name": "max_index_chars",
+          "type": "Option<u32>",
+          "doc": "The most characters the index may occupy, if it is limited."
+        }
+      ]
+    },
+    {
+      "name": "MessageRole",
+      "declaration": "enum MessageRole { System, User, Assistant, Tool }",
+      "doc": "Who said an archived message.",
+      "members": [
+        {
+          "name": "System",
+          "type": null,
+          "doc": "The system prompt."
+        },
+        {
+          "name": "User",
+          "type": null,
+          "doc": "A turn's input to you — a result, a view, or an operator's instruction."
+        },
+        {
+          "name": "Assistant",
+          "type": null,
+          "doc": "Something you said."
+        },
+        {
+          "name": "Tool",
+          "type": null,
+          "doc": "A tool result, on a session that made tool calls rather than writing programs."
+        }
+      ]
+    },
+    {
+      "name": "OpenView",
+      "declaration": "struct OpenView { kind: ViewKind, selector: String, tokens: u64, region: Option<ViewRegion> }",
+      "doc": "One view open in your context window, as `view::current` reports it.",
+      "members": [
+        {
+          "name": "kind",
+          "type": "ViewKind",
+          "doc": "Whether it is a file, text, or documentation view."
+        },
+        {
+          "name": "selector",
+          "type": "String",
+          "doc": "What `view::close` takes: a file's path, a text view's label, or a docs view's function name."
+        },
+        {
+          "name": "tokens",
+          "type": "u64",
+          "doc": "Roughly what holding it costs you, in tokens."
+        },
+        {
+          "name": "region",
+          "type": "Option<ViewRegion>",
+          "doc": "The line window a paged file view covers; `None` for a whole-file view and for text views."
+        }
+      ]
+    },
+    {
+      "name": "ProgramSummary",
+      "declaration": "struct ProgramSummary { turn: u32, lines: u32, chars: u32, ok: bool, error: Option<String> }",
+      "doc": "One program you have already run, as `programs::history` lists it.\n\nIt describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in front of you, which is the one thing the library exists to avoid. Fetch the source you actually want with `programs::get`.",
+      "members": [
+        {
+          "name": "turn",
+          "type": "u32",
+          "doc": "The turn it ran on — what `programs::get` takes."
+        },
+        {
+          "name": "lines",
+          "type": "u32",
+          "doc": "How many lines of source it was."
+        },
+        {
+          "name": "chars",
+          "type": "u32",
+          "doc": "How many characters of source it was."
+        },
+        {
+          "name": "ok",
+          "type": "bool",
+          "doc": "Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it."
+        },
+        {
+          "name": "error",
+          "type": "Option<String>",
+          "doc": "The error it ended with, when it did not run to its end."
+        }
+      ]
+    },
+    {
+      "name": "ReadOptions",
+      "declaration": "struct ReadOptions { offset: Option<u32>, limit: Option<u32> }",
+      "doc": "The window of lines a read covers. `Default` reads the whole file.\n\nBoth fields are honoured only under a **capped** read policy; under the unlimited policy the whole file comes back and both are ignored. The system prompt says which policy this run uses.",
+      "members": [
+        {
+          "name": "offset",
+          "type": "Option<u32>",
+          "doc": "The 1-based line to start at."
+        },
+        {
+          "name": "limit",
+          "type": "Option<u32>",
+          "doc": "How many lines to return from `offset`."
+        }
+      ]
+    },
+    {
+      "name": "ReclaimReport",
+      "declaration": "struct ReclaimReport { items: u32, reclaimed_tokens: u32, paths: Vec<String>, detail: String }",
+      "doc": "What a context reclaim actually freed from the live context window.",
+      "members": [
+        {
+          "name": "items",
+          "type": "u32",
+          "doc": "Context items dropped from the live window."
+        },
+        {
+          "name": "reclaimed_tokens",
+          "type": "u32",
+          "doc": "Approximately how many tokens that freed."
+        },
+        {
+          "name": "paths",
+          "type": "Vec<String>",
+          "doc": "The workspace paths whose views were evicted. Empty for an archive."
+        },
+        {
+          "name": "detail",
+          "type": "String",
+          "doc": "The prose summary of what was reclaimed."
+        }
+      ]
+    },
+    {
+      "name": "ShellOutput",
+      "declaration": "struct ShellOutput { exit_code: Option<i32>, output: String, truncated: bool }",
+      "doc": "What a command `system::shell` ran reported when it finished.",
+      "members": [
+        {
+          "name": "exit_code",
+          "type": "Option<i32>",
+          "doc": "The process's exit status; `None` when a signal killed it. Zero means success."
+        },
+        {
+          "name": "output",
+          "type": "String",
+          "doc": "Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output, at the configured line/character ceiling, with a note naming the files holding the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
+        },
+        {
+          "name": "truncated",
+          "type": "bool",
+          "doc": "Whether the cap cut `output`, dropping the head and keeping the tail."
+        }
+      ]
+    },
+    {
+      "name": "SubagentHandle",
+      "declaration": "struct SubagentHandle { id: String, slot: String, model_id: String }",
+      "doc": "A child agent that was spawned and is now running in parallel.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The child's id — pass it to `agents::wait_for_subagents` or `agents::send_message`."
+        },
+        {
+          "name": "slot",
+          "type": "String",
+          "doc": "The agent profile it runs as."
+        },
+        {
+          "name": "model_id",
+          "type": "String",
+          "doc": "The model actually bound to that agent."
+        }
+      ]
+    },
+    {
+      "name": "SubagentResult",
+      "declaration": "struct SubagentResult { id: String, status: Option<AgentStatus>, summary: String }",
+      "doc": "One child agent's collected result.",
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "doc": "The child's id."
+        },
+        {
+          "name": "status",
+          "type": "Option<AgentStatus>",
+          "doc": "How it finished; `None` when it produced no return value at all."
+        },
+        {
+          "name": "summary",
+          "type": "String",
+          "doc": "Its final message."
+        }
+      ]
+    },
+    {
+      "name": "TaskOptions",
+      "declaration": "struct TaskOptions<'a> { description: Option<&'a str>, blocked_by: &'a [&'a str] }",
+      "doc": "The parts of a new task you may leave out. `Default` adds a task with no description and no blockers.",
+      "members": [
+        {
+          "name": "description",
+          "type": "Option<&'a str>",
+          "doc": "What the work is, at whatever length is useful."
+        },
+        {
+          "name": "blocked_by",
+          "type": "&'a [&'a str]",
+          "doc": "The ids of the tasks that must be done before this one."
+        }
+      ]
+    },
+    {
+      "name": "TaskPatch",
+      "declaration": "struct TaskPatch<'a> { title: Option<&'a str>, description: TextEdit<'a>, status: Option<TaskStatus> }",
+      "doc": "The fields a task revision may change. `Default` changes nothing, which the call refuses — supply at least one.",
+      "members": [
+        {
+          "name": "title",
+          "type": "Option<&'a str>",
+          "doc": "The title to replace the old one with."
+        },
+        {
+          "name": "description",
+          "type": "TextEdit<'a>",
+          "doc": "A three-way edit of the description: `TextEdit::Keep` leaves it, `TextEdit::Clear` empties it, `TextEdit::Set` replaces it."
+        },
+        {
+          "name": "status",
+          "type": "Option<TaskStatus>",
+          "doc": "Where the task now stands."
+        }
+      ]
+    },
+    {
+      "name": "TaskStatus",
+      "declaration": "enum TaskStatus { Pending, InProgress, Done }",
+      "doc": "Where a task stands.",
+      "members": [
+        {
+          "name": "Pending",
+          "type": null,
+          "doc": "Not started. Every task begins here."
+        },
+        {
+          "name": "InProgress",
+          "type": null,
+          "doc": "Being worked on now."
+        },
+        {
+          "name": "Done",
+          "type": null,
+          "doc": "Finished. Tasks blocked on it become actionable once all their blockers are done."
+        }
+      ]
+    },
+    {
+      "name": "TaskUsage",
+      "declaration": "struct TaskUsage { count: u32, max_tasks: u32 }",
+      "doc": "How much of the run's task budget is used, after the call that returned it.",
+      "members": [
+        {
+          "name": "count",
+          "type": "u32",
+          "doc": "Tasks currently on the list."
+        },
+        {
+          "name": "max_tasks",
+          "type": "u32",
+          "doc": "The most tasks this run allows."
+        }
+      ]
+    },
+    {
+      "name": "TextEdit",
+      "declaration": "enum TextEdit<'a> { Keep, Clear, Set(&'a str) }",
+      "doc": "A **three-way** edit of an optional text field: leave it, empty it, or replace it.\n\nIt is an `enum` because the field really has three states and Rust has a word for that. An `Option<&str>` could only say two of them, which is how gg's older stringly interface ended up treating \"clear it\" and \"set it to the empty string\" as one request.\n\n`Keep` is the `Default`, so a patch built with `..Default::default()` leaves the field alone — which is what leaving a field out of a patch has to mean.",
+      "members": [
+        {
+          "name": "Keep",
+          "type": null,
+          "doc": "Leave the field as it is."
+        },
+        {
+          "name": "Clear",
+          "type": null,
+          "doc": "Empty the field."
+        },
+        {
+          "name": "Set",
+          "type": "&'a str",
+          "doc": "Replace the field with this text."
+        }
+      ]
+    },
+    {
+      "name": "TextFile",
+      "declaration": "struct TextFile { contents: String, first_line: u32, last_line: u32, total_lines: u32, byte_truncated: bool }",
+      "doc": "A text file's window, as the `FileRead::Text` arm of a read carries it.",
+      "members": [
+        {
+          "name": "contents",
+          "type": "String",
+          "doc": "The file's text, or just the requested window under a capped read policy."
+        },
+        {
+          "name": "first_line",
+          "type": "u32",
+          "doc": "The 1-based first line returned."
+        },
+        {
+          "name": "last_line",
+          "type": "u32",
+          "doc": "The 1-based last line returned."
+        },
+        {
+          "name": "total_lines",
+          "type": "u32",
+          "doc": "The file's total line count, so you know whether to page again."
+        },
+        {
+          "name": "byte_truncated",
+          "type": "bool",
+          "doc": "Whether a 256 KiB byte ceiling cut the returned text."
+        }
+      ]
+    },
+    {
+      "name": "ToolError",
+      "declaration": "struct ToolError { code: ToolErrorCode, tool: String, message: String }",
+      "doc": "A gg call that failed.\n\nEvery function in this SDK returns one of these in its `Err` arm. Branch on `code` when you expect a particular failure; let it out with `?` when you do not, and gg reports which call failed and where your program was.\n\nIt implements `std::error::Error`, so `?` converts it into the `Failure` your program's body returns, and it composes with `std`'s own fallible operations in one `?` chain.",
+      "members": [
+        {
+          "name": "code",
+          "type": "ToolErrorCode",
+          "doc": "The failure class, so a catch site branches on a value rather than on prose."
+        },
+        {
+          "name": "tool",
+          "type": "String",
+          "doc": "The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`)."
+        },
+        {
+          "name": "message",
+          "type": "String",
+          "doc": "What went wrong, in gg's words. Worth showing yourself; not worth matching on."
+        }
+      ]
+    },
+    {
+      "name": "ToolErrorCode",
+      "declaration": "enum ToolErrorCode { InvalidArgument, NotFound, Conflict, Refused, Unavailable, LimitExceeded, IoError, Other }",
+      "doc": "Why a gg call failed — the `code` on a `ToolError`, and the value a catch site branches on instead of matching on prose.",
+      "members": [
+        {
+          "name": "InvalidArgument",
+          "type": null,
+          "doc": "The arguments were malformed, ill-typed, or out of range — including a path that is absolute or climbs out of the workspace, and an agent name this run does not declare."
+        },
+        {
+          "name": "NotFound",
+          "type": null,
+          "doc": "The named file, skill, memory, task, epic, issue, subagent, stored program, or documentation entry does not exist."
+        },
+        {
+          "name": "Conflict",
+          "type": null,
+          "doc": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle, a duplicate id, a subagent that already returned."
+        },
+        {
+          "name": "Refused",
+          "type": null,
+          "doc": "gg refused the call on a rule about your state: a compaction in flight that this call is not the one it asked for, a memory call while your memories are read-only, a second ending or hand-over in a turn that already declared one, or a hook that blocked it. A ceiling you ran into is `LimitExceeded`, not this."
+        },
+        {
+          "name": "Unavailable",
+          "type": null,
+          "doc": "The call exists but this run's capability set does not offer it. Every name in this SDK is in scope whatever a run enables, because the crate is compiled once and a run's capability set is decided per run — so this is the failure a call gg withheld comes back as."
+        },
+        {
+          "name": "LimitExceeded",
+          "type": null,
+          "doc": "A gg-side ceiling was hit: a shell timeout, a store cap, the delegation depth cap, one of the view caps this program spends, or the run's wall-clock budget."
+        },
+        {
+          "name": "IoError",
+          "type": null,
+          "doc": "The underlying I/O or process failed."
+        },
+        {
+          "name": "Other",
+          "type": null,
+          "doc": "The failure was not classified. Reserved for outcomes raised outside a tool implementation; nothing you call produces it."
+        }
+      ]
+    },
+    {
+      "name": "ViewKind",
+      "declaration": "enum ViewKind { File, Text, Docs }",
+      "doc": "Which of the three kinds a view is.\n\nThe taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
+      "members": [
+        {
+          "name": "File",
+          "type": null,
+          "doc": "A file you opened; its selector is the path."
+        },
+        {
+          "name": "Text",
+          "type": null,
+          "doc": "A value you showed yourself; its selector is the label you gave it. A directory listing, a command's output, a child agent's answer and a table you assembled are all this."
+        },
+        {
+          "name": "Docs",
+          "type": null,
+          "doc": "A function's documentation; its selector is the function's name."
+        }
+      ]
+    },
+    {
+      "name": "ViewRegion",
+      "declaration": "struct ViewRegion { offset: u32, limit: u32 }",
+      "doc": "The window of lines a **paged** file view covers.",
+      "members": [
+        {
+          "name": "offset",
+          "type": "u32",
+          "doc": "The 1-based first line the view shows."
+        },
+        {
+          "name": "limit",
+          "type": "u32",
+          "doc": "How many lines it shows."
+        }
+      ]
+    }
+  ]
+}

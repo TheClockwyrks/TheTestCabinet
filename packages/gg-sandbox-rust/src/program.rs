@@ -8,18 +8,36 @@
 use crate::bindings::test_cabinet::gg::feedback;
 use crate::bindings::test_cabinet::gg::types::ErrorCode;
 
-/// The gg tool names this component can bind — what `bound-tools` answers.
+/// The gg tool names this component can bind, **object by object** — what `bound-tools` answers.
 ///
-/// **Empty, honestly.** gg's drift gate asks the committed artifact which tools it binds, and
-/// compares the answer with gg's own `ALL_TOOL_NAMES`; the answer has to come from the SDK's own
-/// binding table, because the whole point of asking the artifact is that it is a second, independent
-/// statement of the same fact. This arm has no SDK yet, so it binds no tool and says so. The SDK
-/// step is what fills this, out of the table it binds from — never by hand.
-pub const TOOLS: &[&str] = &[];
+/// gg's drift gate asks the committed artifact which tools it binds and compares the answer with
+/// gg's own `ALL_TOOL_NAMES`. The answer has to come from the SDK's own binding table rather than
+/// from a list written here, because the whole point of asking the artifact is that it is a second,
+/// independent statement of the same fact: each object module declares the tools *its own*
+/// functions dispatch, beside the functions that dispatch them, and this is the concatenation.
+///
+/// The five objects missing from it are missing because none of their functions is a gg tool:
+/// `view`, `programs`, `harness` and `review` are the model-facing carve-outs the WIT keeps outside
+/// the tool interfaces, and `fs`'s helper `read_text_file` dispatches `read_file` rather than a
+/// name of its own.
+const TOOLS: &[&[&str]] = &[
+    crate::fs::TOOLS,
+    crate::system::TOOLS,
+    crate::project::TOOLS,
+    crate::tasks::TOOLS,
+    crate::memory::TOOLS,
+    crate::context::TOOLS,
+    crate::agents::TOOLS,
+    crate::skills::TOOLS,
+];
 
 /// The gg tool names this component can bind, as `bound-tools` returns them.
 pub fn bound_tools() -> Vec<String> {
-    TOOLS.iter().map(|name| (*name).to_string()).collect()
+    TOOLS
+        .iter()
+        .flat_map(|object| object.iter())
+        .map(|name| (*name).to_string())
+        .collect()
 }
 
 /// Start a program: install the panic hook that gets a located failure out of an aborting guest.
@@ -112,22 +130,46 @@ pub struct Failure {
 impl Failure {
     /// Which of gg's [error kinds](feedback::ErrorKind) this is, as the guest reads it.
     ///
-    /// `Other` today, because there is no SDK error type to recognise yet. When there is, this is
-    /// where a `self.error.downcast_ref::<crate::Error>()` turns a failed gg call into
-    /// `ToolFailure` — matching what the ECMAScript arm's shim classifies an uncaught tool error as,
-    /// which is what makes the two arms' error taxonomies comparable rather than merely similar.
+    /// [`ToolFailure`](feedback::ErrorKind::ToolFailure) when the `?` that ended the program was a
+    /// failed gg call, and [`Other`](feedback::ErrorKind::Other) for anything the program failed on
+    /// its own account — a parse it did itself, a sentence it constructed with
+    /// [`message`]. That is the same split the ECMAScript arm's shim makes when it classifies an
+    /// uncaught error, which is what makes the two arms' error taxonomies comparable rather than
+    /// merely similar.
+    ///
+    /// [`UnknownName`](feedback::ErrorKind::UnknownName) is deliberately unreachable here and is not
+    /// a gap: a Rust program that names something out of scope does not run at all, because the
+    /// compile refused it — so on this arm that failure is a compile error a turn earlier rather
+    /// than a class of run-time fault.
     fn kind(&self) -> feedback::ErrorKind {
-        feedback::ErrorKind::Other
+        match self.tool_error() {
+            Some(_) => feedback::ErrorKind::ToolFailure,
+            None => feedback::ErrorKind::Other,
+        }
     }
 
     /// The failure class the **call** carried, for a program that ended on a failed gg call.
     ///
-    /// `None` for anything else, which is everything today. The host classifies a turn's error from
-    /// this rather than from [`kind`](Self::kind), because `Unavailable` — a model reaching for
-    /// something its run does not offer — has to be the same fact on an arm whose SDK is always in
-    /// scope as it is on an arm that can withhold a name.
+    /// `None` for anything else. The host classifies a turn's error from this rather than from
+    /// [`kind`](Self::kind), because `Unavailable` — a model reaching for something its run does not
+    /// offer — has to be the same fact on an arm whose SDK is always in scope as it is on an arm
+    /// that can withhold a name. This arm is the first kind: every name is in scope and the host is
+    /// what refuses.
     fn code(&self) -> Option<ErrorCode> {
-        None
+        Some(self.tool_error()?.code.to_wire())
+    }
+
+    /// The gg failure this program ended on, if that is what ended it.
+    ///
+    /// The downcast is why [`Failure`] boxes the error it was given rather than flattening it to a
+    /// string at the `?`: the class a failed call carried is the one thing the host cannot recover
+    /// from prose, and it is the field a query slices an arm's failures by.
+    ///
+    /// It reads the **head** of the chain, not the whole of it. A `ToolError` a program wrapped in
+    /// an error of its own is that program's failure, classified the way the program classified it;
+    /// digging past the wrapper would report a class the program deliberately reframed.
+    fn tool_error(&self) -> Option<&crate::ToolError> {
+        self.error.downcast_ref::<crate::ToolError>()
     }
 }
 

@@ -46,7 +46,10 @@
 #     fetches (PureScript's documentation tool IS its compiler), the JDK
 #     scripts/ci/install-java.sh fetches, whose `javadoc` runs a doclet of gg's own, and
 #     the Kotlin compiler scripts/ci/install-kotlin.sh fetches, whose own front end reads
-#     KDoc — the reading Dokka would itself be asking for, with one fewer thing pinned. The
+#     KDoc — the reading Dokka would itself be asking for, with one fewer thing pinned, and
+#     the `rustdoc` this checkout's own pinned toolchain already ships, whose JSON output is
+#     read under RUSTC_BOOTSTRAP because that output is unstable and this repository pins a
+#     stable compiler on purpose. The
 #     committed .wasm files therefore sit in the diffed directory untouched: nothing here regenerates one, so one cannot cause a
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
@@ -116,7 +119,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby purescript java kotlin"
+regenerated="typescript javascript python ruby purescript java kotlin rust"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -166,6 +169,12 @@ log "install the pinned Kotlin compiler (this arm's catalogue is reflected with 
 log "regenerate the Kotlin arm's signature catalogue (KDoc through the compiler's own PSI)"
 ./packages/gg-sandbox-kotlin/signatures.sh
 
+log "install the wasm target (the Rust arm's catalogue is reflected for the target it compiles to)"
+./scripts/ci/install-rust-wasm.sh
+
+log "regenerate the Rust arm's signature catalogue (rustdoc JSON + tools/signatures.py)"
+./packages/gg-sandbox-rust/signatures.sh
+
 # The same completeness rule the catalogues get, over the other committed directory: a
 # checker or compiler this script never re-cuts would sit in the diff below and be green
 # whatever its pin said. Stems are the first dot-separated component of each file name,
@@ -209,14 +218,17 @@ recut="typescript ruby java kotlin"
 #
 # `rust` is exempted for PureScript's reason and answered with a stronger check than a diff.
 # Its committed artifact is not a compiler either: `rust.libraries.tar.gz` is the compiled
-# LIBRARY SET — the `.rlib` files a model's program is linked against — and re-cutting it needs
-# the pinned `wit-bindgen` CLI downloaded from GitHub and a `wasm32-unknown-unknown` build, and
-# produces an archive of binaries nobody can review by reading. `rust.toolchain.json` declares
-# what built it and every crate in it, and gg's own tests compare all three ways: the manifest
-# against the archive's contents, the manifest's compiler against THIS CHECKOUT's `rustc` (an
-# `.rlib` cannot be read by any other release, so a bumped `rust-toolchain.toml` fails there by
-# name), and — the check no diff could make — a real Rust program compiled against the set and
-# run through the real membrane on every test run. A stale set does not merely differ; it stops
+# LIBRARY SET — this arm's SDK and the curated crates a model's program is linked against — and
+# re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
+# `wasm32-unknown-unknown` build, and produces an archive of binaries nobody can review by
+# reading. `rust.toolchain.json` declares what built it and every crate in it, and gg's own tests
+# compare it four ways: the manifest against the archive's contents; the manifest's compiler
+# against THIS CHECKOUT's `rustc` (an `.rlib` cannot be read by any other release, so a bumped
+# `rust-toolchain.toml` fails there by name); the crates the manifest marks `extern` against the
+# ones the CATALOGUE regenerated above tells a model it may name, which is the drift a stale
+# tarball beside a fresh catalogue would otherwise be; and — the check no diff could make — a
+# real Rust program, compiled against the set by the production prepare step and run through the
+# real membrane, that calls every one of them. A stale set does not merely differ; it stops
 # linking.
 declared="purescript jvm rust"
 for artifact in crates/gg/src/sandbox/checkers/*; do

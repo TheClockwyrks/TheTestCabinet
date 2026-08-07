@@ -155,6 +155,17 @@ struct Library {
     /// a link failure.
     #[allow(dead_code)]
     bytes: u64,
+    /// Whether a **program** may name this crate — the SDK and the curated library set, but not the
+    /// transitive closure under them.
+    ///
+    /// The difference is `--extern`, which is what puts a name in a program's extern prelude;
+    /// everything else is found by `-L dependency=` when something already in the graph needs it. A
+    /// set that put all seventeen in the prelude would offer a model `regex_syntax` and `hashbrown`,
+    /// which are crates this arm *carries* rather than crates it offers — and the catalogue's
+    /// library list, reflected from the same declaration, would then be describing a smaller surface
+    /// than the compile allows.
+    #[serde(rename = "extern")]
+    extern_: bool,
 }
 
 /// The parsed manifest, read once per process.
@@ -279,7 +290,7 @@ fn invoke_rustc(
         .arg("-o")
         .arg(artifact)
         .arg(PROGRAM_FILE);
-    for library in &manifest().crates {
+    for library in manifest().crates.iter().filter(|library| library.extern_) {
         command.arg("--extern").arg(format!(
             "{}={}",
             library.name,

@@ -29,9 +29,11 @@
 //! `rustc` produces between them; the one program shape gg refuses; and that all of it stays
 //! isolated at sixteen-way concurrency.
 //!
-//! The **SDK** is not here because it does not exist yet: a program in this file calls the raw
-//! generated bindings, which no model will ever be shown. `bound-tools` therefore answers an empty
-//! list, and that is asserted rather than skipped — it is what this component honestly binds today.
+//! The **SDK** is deliberately not here: a program in this file calls the raw generated bindings,
+//! which no model will ever be shown, so that what these tests prove is the substrate rather than
+//! the surface built on it. What a model actually writes — and what the committed catalogue says it
+//! may — is [`surface`](super::surface), including the check that this component binds exactly gg's
+//! tool vocabulary.
 //!
 //! # Why these tests are consolidated
 //!
@@ -58,7 +60,7 @@ use crate::sandbox::{
 use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
-fn prepare(source: &str) -> Vec<u8> {
+pub(super) fn prepare(source: &str) -> Vec<u8> {
     match compile_program(source, &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
@@ -87,11 +89,12 @@ fn prepare(source: &str) -> Vec<u8> {
 /// one consequence only: the language a membrane state carries decides how a refused call's name is
 /// spelled back at the model, and this arm has no catalogue to spell out of yet. Nothing else in the
 /// path reads it.
-fn evaluate(
+pub(super) fn evaluate(
     component: &[u8],
     enabled: &[String],
     modules: &[CodeModule],
     ending: RunEnding,
+    library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -104,7 +107,7 @@ fn evaluate(
         enabled,
         modules,
         ending,
-        library: false,
+        library,
     };
     let mut store = bounded_store(
         MembraneState::new(
@@ -124,7 +127,7 @@ fn evaluate(
         ),
     };
     let returned = bound
-        .call_run(&mut store, "", modules, enabled, ending.into(), false)
+        .call_run(&mut store, "", modules, enabled, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -136,11 +139,19 @@ fn evaluate(
 
 /// Compile and run one Rust program with no gg tool offered — the shape most cases here want.
 fn run(source: &str) -> SandboxOutcome {
-    evaluate(&prepare(source), &[], &[], RunEnding::None, canned_outcome).0
+    evaluate(
+        &prepare(source),
+        &[],
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not fail.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -155,7 +166,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// The failure a program did not handle, insisting that the sandbox itself did not fail.
-fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
+pub(super) fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
     match &outcome.result {
         Ok(result) => result
             .error
@@ -165,7 +176,11 @@ fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
     }
 }
 
-/// One `feedback.log` line, as a program writes it before this arm has an SDK.
+/// One `feedback.log` line, written against the raw bindings rather than through `gg::log`.
+///
+/// Deliberately under the SDK: what these tests exercise is the substrate, and a program here that
+/// went through the SDK would be asserting two things at once. The surface's own tests use
+/// `gg::log`.
 const LOG: &str = "::gg::bindings::test_cabinet::gg::feedback::log";
 
 #[test]
@@ -244,6 +259,7 @@ fn a_program_reaches_gg_and_ends_the_run_through_the_real_membrane() {
         &["read_file".to_string()],
         &[],
         RunEnding::Role(EndingRole::Standard),
+        false,
         |name, _arguments| match name {
             "read_file" => ToolOutcome::ok("hello gg", "read notes.md").with_data(
                 crate::tools::ToolData::FileText(crate::tools::FileTextData {
@@ -384,8 +400,8 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
         "the diagnostic's notes were dropped: {rendered}"
     );
 
-    // A name that does not resolve — the other band a model produces constantly, and the one that
-    // will mean "you called something the SDK does not have" once there is an SDK.
+    // A name that does not resolve — the other band a model produces constantly, and the one a model
+    // reaching for something the SDK does not have lands in.
     let failure = compile_program("no_such_function(1);\n", &PrepareContext::new())
         .expect_err("an unresolved name is refused");
     assert!(
@@ -482,10 +498,9 @@ fn what_a_program_costs_and_what_it_weighs() {
         component.len()
     );
 
-    // What the component itself says it can bind. Empty, honestly: this arm has no SDK yet, so it
-    // binds no gg tool — and asking the artifact is exactly how gg's registration-time drift gate
-    // will ask it once it does.
-    let (outcome, _log) = evaluate(&component, &[], &[], RunEnding::None, canned_outcome);
+    // And that the weighed artifact really runs. What it BINDS is
+    // `surface::the_component_binds_exactly_the_tools_gg_offers`, which asks the artifact itself.
+    let (outcome, _log) = evaluate(&component, &[], &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["weighed"]);
 }
 

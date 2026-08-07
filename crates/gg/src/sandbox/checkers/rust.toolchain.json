@@ -2,5 +2,5 @@
   "rustc": "1.97.1",
   "target": "wasm32-unknown-unknown",
   "witBindgen": "0.60.0",
-  "crates": [{"name":"gg","bytes":601928},{"name":"wit_bindgen","bytes":30530}]
+  "crates": [{"name":"aho_corasick","bytes":1673632,"extern":false},{"name":"base64","bytes":328660,"extern":true},{"name":"either","bytes":253318,"extern":false},{"name":"equivalent","bytes":9080,"extern":false},{"name":"gg","bytes":1111590,"extern":true},{"name":"hashbrown","bytes":1228102,"extern":false},{"name":"indexmap","bytes":1294194,"extern":true},{"name":"itertools","bytes":2650334,"extern":true},{"name":"itoa","bytes":67376,"extern":false},{"name":"memchr","bytes":536808,"extern":false},{"name":"regex","bytes":770448,"extern":true},{"name":"regex_automata","bytes":4537372,"extern":false},{"name":"regex_syntax","bytes":6500862,"extern":false},{"name":"serde_core","bytes":4767920,"extern":false},{"name":"serde_json","bytes":1692604,"extern":true},{"name":"wit_bindgen","bytes":30530,"extern":false},{"name":"zmij","bytes":110608,"extern":false}]
 }
