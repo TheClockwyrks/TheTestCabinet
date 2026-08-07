@@ -1,10 +1,19 @@
 # `gg-sandbox-java`
 
-The **Java** program language's toolchain pin, and nothing else.
+The **Java** program language's toolchain pin and its hand-written SDK.
 
-This directory is not a package and builds nothing. It holds one file —
-[`java-version.sh`](java-version.sh) — because two worlds have to install the same
-compiler and neither owns the other:
+| | |
+| --- | --- |
+| [`java-version.sh`](java-version.sh) | the JDK and TeaVM releases this arm is pinned to |
+| [`src/gg/`](src/gg/) | the **SDK** a model's program is compiled against, and the doc comments every word a model reads is reflected out of |
+| [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
+| [`build.sh`](build.sh) | compiles the SDK to `crates/gg/src/sandbox/checkers/java.sdk.jar` |
+| [`signatures.sh`](signatures.sh) | reflects `crates/gg/src/sandbox/guests/java.signatures.json` out of the SDK's Javadoc |
+| [`tools/`](tools/) | the doclet `signatures.sh` runs, and the identity table it reads |
+
+## Why the pin lives here
+
+Two worlds have to install the same compiler and neither owns the other:
 
 - [`scripts/ci/install-java.sh`](../../scripts/ci/install-java.sh), for a developer's or
   CI machine running gg's tests;
@@ -17,21 +26,29 @@ for the key of the directory it places its compiler driver in. It is not a dupli
 can drift: `java.compile.test.rs` fails if the two files ever name different releases, or
 if a TeaVM jar in the list is at a version other than the pinned one.
 
-## Why there is no build here
+## Three artifacts, shipped three ways
 
-Every other compiled arm has a `build.sh` in its own package directory, because every other
-one ships a **built artifact**: Ruby's Opal compiler is 2.9 MB of generated JavaScript,
-PureScript's library set is a 1.2 MB tarball of compiled externs. Java ships neither.
+Each of them can only go one way, and where each goes is the argument:
 
 - The **compiler** is a JDK and TeaVM's jars. Both are third-party, both are far too large
-  for gg's binary, and both are installed rather than built.
+  for gg's binary, and both are installed rather than built — into the
+  [gg toolchain image](../../containers/gg-toolchains/).
 - gg's own **compiler driver** — the thing that speaks to `javax.tools.JavaCompiler` and
   TeaVM's `InProcessBuildStrategy` on gg's behalf — is a single `.java` file at
   `crates/gg/src/sandbox/checkers/java.compiler.java`, embedded in gg's binary and run by
   the JDK's **single-file source-code launcher**. The launcher compiles it in memory once
-  per JVM, inside the start this arm pays anyway. So there is no jar, no committed binary
-  and no reproducible-build gate to keep green — and the driver a reviewer reads in the
-  diff is the driver that runs.
+  per JVM, inside the start this arm pays anyway. So there is no jar to build, no binary
+  artifact to commit and no reproducible-build gate to keep green — and the driver a
+  reviewer reads in the diff is the driver that runs.
+- The **SDK** is a jar, because a classpath entry is what Java calls a library, and it is
+  **committed** rather than installed beside TeaVM. The image is built separately from the
+  binary that runs in it, so an SDK living there could be a different vintage from the gg
+  whose catalogue describes it — and a model shown one surface in its prompt and compiled
+  against another is the failure this whole seam is built to prevent. Committed, the SDK and
+  the catalogue reflected from it move in one diff, and
+  [`scripts/ci/contract-drift.sh`](../../scripts/ci/contract-drift.sh) rebuilds both and
+  diffs them. `build.sh` fixes every jar entry's timestamp and sorts the entry list, so two
+  builds of identical sources are identical bytes.
 
 ## What the pins mean
 
@@ -50,6 +67,21 @@ time. An install step that runs a dependency resolver is an install step whose r
 depends on the day it ran, and this arm's whole point is that two runs of a study differ in
 the language and in nothing else.
 
+## Working on the SDK
+
+```sh
+scripts/ci/install-java.sh          # once: the JDK and TeaVM's jars
+packages/gg-sandbox-java/build.sh       # the jar a program is compiled against
+packages/gg-sandbox-java/signatures.sh  # the catalogue a model reads
+cargo nextest run -p test-cabinet-gg sandbox::language::java
+```
+
+Both scripts are gates as much as they are builds. `build.sh` compiles the model-facing
+package a second time under `-Xdoclint:all/protected -Werror`, so an undocumented parameter
+or a broken `{@link}` is an error; `signatures.sh` reads the same comments through the
+doclet API and refuses to emit a catalogue with a blank in it. Between them, prose a model
+would have been shown as an empty line fails on the author instead.
+
 ## Where the rest of this arm is
 
 - `crates/gg/src/sandbox/language/java.compile.rs` — the warm-JVM pool, the two failure
@@ -58,5 +90,8 @@ the language and in nothing else.
   export scan.
 - `crates/gg/src/sandbox/language/java.substrate.test.rs` — real Java through gg's real
   linker, membrane and store.
+- `crates/gg/src/sandbox/language/java.surface.test.rs` — every gg tool driven through that
+  membrane from its Java spelling, the agreement gate over the committed catalogue, and
+  every declared library driven into the real compiler.
 - [`gg/program-languages.md`](../../apps/docs/src/content/docs/gg/program-languages.md) —
   the prose, including what TeaVM is not.

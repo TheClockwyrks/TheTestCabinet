@@ -14,16 +14,17 @@
 //! the production ceilings, instantiated through the `bindgen!`-generated
 //! [`Sandbox`](super::super::super::membrane::Sandbox) and driven through its `run` export.
 //!
-//! # Why nothing here calls a gg tool
+//! # What is here and what is next door
 //!
-//! Because there is no Java SDK yet, and that is this arm's landing order rather than an oversight.
-//! What is provable now is everything up to that SDK — that a whole Java program compiles, converts,
-//! instantiates and runs; that what it prints reaches the host through the real membrane's
-//! `feedback` interface; that an uncaught failure is reported **with its Java class, its message and
-//! the model's own line** rather than trapping; that a code module becomes a namespace at
-//! `lib.<key>`; and that all of it stays isolated at sixteen-way concurrency across a pool of four
-//! warm JVMs. The crossing into [`ToolApi`](crate::sandbox::ToolApi) is one `@JSBody` away and is the
-//! SDK commit's.
+//! This file is the substrate: that a whole Java program compiles, converts, instantiates and runs;
+//! that what it prints reaches the host through the real membrane's `feedback` interface; that an
+//! uncaught failure is reported **with its Java class, its message and the model's own line** rather
+//! than trapping; that a code module becomes a namespace at `lib.<key>`; what TeaVM is not; and that
+//! all of it stays isolated at sixteen-way concurrency across a pool of four warm JVMs.
+//!
+//! What the **SDK** puts on top of it — every gg tool driven through the real membrane from its Java
+//! spelling, the catalogue reflected out of that SDK's own Javadoc, and the libraries this arm says
+//! a program may reach — is [next door](super::surface).
 //!
 //! # Why these tests are consolidated
 //!
@@ -83,12 +84,27 @@ fn prepare(source: &str) -> String {
 ///
 /// The [membrane state](MembraneState) is built with **TypeScript** as its language, and that is
 /// sound rather than sloppy: a language is held there to spell a call's name back at the model
-/// inside a refusal, and this arm's SDK — the thing that would give those names a Java spelling — is
-/// the next commit's. Nothing below reads a spelling.
+/// inside a refusal, and this arm has no wire id for that lookup to key on until it is registered.
+/// The one refusal these tests read is the SDK's own, which names the call in Java because the SDK
+/// wrote the sentence.
 fn evaluate(
     program: &str,
     enabled: &[String],
     modules: &[CodeModule],
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_as(program, enabled, modules, RunEnding::None, false, responder)
+}
+
+/// [`evaluate`], with the agent's [ending group](RunEnding) and its
+/// [program-library](crate::sandbox::ProgramScope) flag said out loud — the two facts that decide
+/// which of this SDK's objects the guest binds.
+pub(super) fn evaluate_as(
+    program: &str,
+    enabled: &[String],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -98,8 +114,8 @@ fn evaluate(
     let scope = ProgramScope {
         enabled,
         modules,
-        ending: RunEnding::None,
-        library: false,
+        ending,
+        library,
     };
     let mut store = bounded_store(
         MembraneState::new(api, typescript_language(), scope, limits, None),
@@ -118,22 +134,21 @@ fn evaluate(
             program,
             modules,
             enabled,
-            RunEnding::None.into(),
-            false,
+            ending.into(),
+            library,
         )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     let (outcome, _api) = reclaim(store, returned, None, None, None);
     (outcome, log)
 }
 
-/// Compile and run one Java program with no gg tool offered — the shape every case here wants,
-/// because this arm has no SDK to reach one with yet.
+/// Compile and run one Java program with no gg tool offered — the shape most cases here want.
 fn run(source: &str) -> SandboxOutcome {
     evaluate(&prepare(source), &[], &[], canned_outcome).0
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not fail.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -148,7 +163,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// The failure a program did not handle, insisting that the sandbox itself did not fail.
-fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
+pub(super) fn program_error(outcome: &SandboxOutcome) -> &ProgramError {
     match &outcome.result {
         Ok(result) => result
             .error

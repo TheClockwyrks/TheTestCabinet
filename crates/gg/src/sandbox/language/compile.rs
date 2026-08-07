@@ -516,6 +516,11 @@ pub fn shared_toolchain_dir(key: &str) -> Result<PathBuf, String> {
 /// so two processes racing to materialise the same version either both win or one overwrites the
 /// other with identical bytes.
 pub fn place(path: &Path, contents: &str) -> Result<(), String> {
+    place_bytes(path, contents.as_bytes())
+}
+
+/// [`place`], for an input that is not text — a jar, an archive, a compiled artifact gg carries.
+pub fn place_bytes(path: &Path, contents: &[u8]) -> Result<(), String> {
     let staged = path.with_extension(format!("{}.staged", std::process::id()));
     std::fs::write(&staged, contents)
         .map_err(|error| format!("could not write {}: {error}", staged.display()))?;

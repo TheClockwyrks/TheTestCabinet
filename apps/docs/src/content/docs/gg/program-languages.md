@@ -813,13 +813,16 @@ never is and then some: `purs` resolves every one of them against a library set 
 
 ## Java: a warm JVM, and an arm with no wire id yet
 
-**Not registered.** What exists is this arm's **execution substrate**: the compile that turns a
-model's Java into something a guest can evaluate, the guest that evaluates it, and the proof that
-a real Java program runs through gg's own linker, membrane and store. There is no `language` value
-that resolves to it, no SDK and no catalogue — a `ProgramLanguage` arm cannot be half-registered,
-because the registry's `match` is exhaustive and every gate that iterates the registered set would
-immediately demand a catalogue, two templates and a healing dialect. The order is the one the
-Python, Ruby and PureScript arms established.
+**Not registered.** What exists is this arm's **execution substrate** and its **surface**: the
+compile that turns a model's Java into something a guest can evaluate, the guest that evaluates it,
+the proof that a real Java program runs through gg's own linker, membrane and store, a hand-written
+idiomatic SDK, and the signature catalogue reflected out of that SDK's own Javadoc. What is left is
+the registration — there is no `language` value that resolves to it, no templates and no healing
+dialect — because a `ProgramLanguage` arm cannot be half-registered: the registry's `match` is
+exhaustive and every gate that iterates the registered set would immediately demand all three. The
+order is the one the Python, Ruby and PureScript arms established, and the surface is held to the
+[agreement gate](#the-agreement-gate) a step early rather than on the commit least able to absorb a
+disagreement.
 
 **A Java program is compiled to bytecode by `javac` and then to JavaScript by TeaVM, both inside a
 warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the TypeScript,
@@ -928,6 +931,124 @@ so the arm's own tests assert each of these:
 | `String.format("%%")` | `IllegalArgumentException: Unknown format conversion` at run time |
 | `java.nio.file` | **absent**, and deliberately: the sandbox's filesystem is reached through gg's own `fs` object, which is the surface a study compares |
 
+### What "native" means in Java
+
+An idiomatic Java SDK is not the TypeScript one with types moved to the left. Every difference
+below is a spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts
+each of them:
+
+- **An optional argument is an overload**, because Java has no default parameters and no keyword
+  arguments. `fs.readFile("main.java")` and `fs.readFile("main.java", 2, 5)`;
+  `system.shell("npm test")` and `system.shell("npm test", 30)`. That makes Java the arm the
+  catalogue's [overload groups](#one-entry-many-signatures) were designed for — **fourteen entries**
+  carry more than one signature here, against Ruby's two, and it is the first arm where the count of
+  signatures is routinely the interesting thing about an entry.
+- **Varargs where the argument is a list.** `review.requestChanges("widen the test", "name the
+  file")`, `memory.searchMemories("cargo", "nextest")`, `context.archiveThread(new TurnRange(4,
+  19))`, `agents.waitForSubagents()`. A trailing `...` also spells "and you may name none", which is
+  how the surface's optional *lists* stay one signature rather than two.
+- **A bag of optional fields is a builder**, which is what Java libraries do and what four optional
+  fields make unavoidable: `new IssueOptions().epic("AUTH").reviewers("critic")`,
+  `new TaskPatch().status(TaskStatus.DONE)`.
+- **A three-way patch field is two methods**, so no sentinel is needed and none is invented: never
+  naming `description` keeps it, `description(…)` replaces it, `clearDescription()` empties it —
+  where [Python](#what-native-bought-in-the-catalogue) needs an `UNCHANGED` because `None` is
+  already taken.
+- **A read is a sealed interface narrowed by a `switch`.** `FileRead` permits `TextFile` and
+  `ImageFile`, both records, so `switch (read) { case TextFile text -> …; case ImageFile picture ->
+  …; }` compiles with no `default` and the compiler knows the two arms are all there are. Every
+  other result is a `record` too, so a field is `read.contents()` and two reads of one file compare
+  equal.
+- **A fixed choice is an enum**, and one that has a wire spelling carries it as a method
+  (`TaskStatus.DONE.wireName()`), so gg's own vocabulary is reachable without being what the program
+  writes.
+- **A value the wire may leave out is `Optional`** — `Optional<ViewRegion> region()`,
+  `OptionalInt exitCode()` — which is the one place Java's answer is more ceremonious than every
+  other arm's and is still the right one: the alternative is a `null` a program forgets to check.
+- **A child agent's brief is a typed value.** `Brief.prompt("…")` or `Brief.issue("AUTH-1")`, so
+  "both" and "neither" are programs that do not compile, exactly as
+  [PureScript's constructor](#what-native-means-in-purescript) makes them.
+- **A failure is an unchecked exception.** `catch (ToolError failure)` and
+  `failure.code() == ToolErrorCode.NOT_FOUND`. Unchecked because a checked one would force a `try`
+  around every line and make a composed program unwritable — which is the same argument every arm
+  makes, spelled the way Java spells it.
+- **The surface is a static import.** gg's wrapper writes `import gg.*;` and
+  `import static gg.Gg.*;` into every program's header, so `fs.readFile` is an ordinary method call
+  on an ordinary object and a program that declares its own `view` shadows gg's by Java's own rule.
+  A code module gets the same header, which is why the import is *outside* the body in both shapes:
+  a field gg wrote into a class body would be a member the author did not write.
+- **`lib.<key>` is a small reflection surface**, because it has to be: a code module is compiled
+  separately and there is no `import` for javac to check the program against. `lib.text("helpers",
+  "slugify", "Some Title")`, `lib.number(…)`, `lib.flag(…)`, `lib.run(…)`, `lib.has(…)` — the
+  position a Java author is already in when they reach something at run time, answered the way Java
+  answers it. A key or a name this session has no module for is a `ToolError` carrying `NOT_FOUND`
+  rather than a `NullPointerException`.
+
+One thing the SDK does that no other arm's has to, and it is the difference between a `catch` clause
+that works and one that silently never fires. **TeaVM wraps a JavaScript exception crossing into
+Java in a `RuntimeException` it prefixes with `(JavaScript) `**, so a `ToolError` the host raised
+would not match `catch (ToolError failure)` at all. The SDK therefore catches the throw *in
+JavaScript*, inside the `@JSBody` that made the call, hands the three fields back as data, and
+raises a real Java exception. The half that follows from it is gg's rather than the SDK's: a
+`ToolError` that **escapes** must still reach the guest as a tool failure, because gg classifies a
+turn's error from the host's own code — so the generated entry class records those same three fields
+in the bundle's prelude on the way past, and the tail throws that record instead of the Java object.
+Both halves are asserted against the real membrane rather than described.
+
+### The catalogue, and what the doclet API buys
+
+`javadoc` with a doclet of gg's own reads the SDK and writes the catalogue, so a signature is
+javac's reading of the declaration rather than a string anybody typed and every word of prose comes
+off the thing it describes: a function's from its doc comment, an argument's from that argument's
+`@param`, a record component's from the `@param` on the record, an enum constant's from the comment
+above it, an API object's from the doc comment on the field of `gg.Gg` that holds it.
+
+This is the arm with **full sufficiency** — nothing here needs the `# Arguments` convention
+[PureScript](#the-catalogue-and-the-two-things-purescript-does-not-have) and Rust have to fall back
+on, because `ParamTree` carries the parameter's own name and `ThrowsTree` carries the failure prose.
+Two readings of the same comments have to agree before anything a model sees is written: `build.sh`
+compiles the model-facing package a second time under `-Xdoclint:all/protected -Werror`, which is
+the JDK's own completeness check, and the doclet refuses to emit a catalogue with a blank in it —
+including in the direction the per-entry checks cannot see, a public method of an API object that
+the identity table never names and no model would therefore be told about.
+
+The identity half — that `fs.readFile` **is** gg's `read_file`, that `view.openFile` is bound
+exactly when `read_file` is — is the one thing Java cannot say on the declaration, so it sits in
+`tools/GgCatalogue.java` and is checked against the SDK in both directions.
+
+### The library set is TeaVM's classlib, and it is checked against it
+
+There is nothing to install and nothing to bake: what a Java program may reach is what TeaVM can
+translate, which is a large subset of `java.base` plus the ThreeTen backport that makes `java.time`
+real. `packages/gg-sandbox-java/libraries.txt` declares that set in groups, the catalogue's
+[`libraries`](#the-catalogue) section is reflected from it, and the prompt renders it — so what a
+model is told it may import is read off the file that decides the claim rather than described in a
+template.
+
+The claim is then held to the artifact. `java_reaches_every_library_this_arm_says_it_may` drives
+every declared package through the real javac and the real TeaVM and requires a real class in each
+to compile **and** run, with the probe deliberately a call rather than an import, since TeaVM emits
+only what a call graph reached. Twenty-two packages, in six groups. The two absences found that way
+are recorded as absences rather than discovered in a transcript — `java.security` and
+`java.util.random` are not in the classlib — and both are, as ever on this arm, a located compile
+error on the turn that wrote them.
+
+Nine of those packages need no `import` at all, because gg's wrapper writes them into every
+program's header beside its own: a model that has to say `java.util.stream.Collectors` in full is a
+model spending its reply on ceremony no Java author would type.
+
+**No third-party library is shipped, and that is a finding rather than an omission.** The rule the
+seam states is that the libraries a language's authors reach for by default are available, and in
+Java that is overwhelmingly `java.base` itself — `Map`, `Stream`, `Optional`, `Pattern`,
+`BigDecimal`, `LocalDate`, records and sealed types are the language's own idioms, not somebody's
+package. What a Java author would reach *past* them for is a JSON library, which
+[no arm ships](#the-rules-an-agent-facing-surface-obeys-in-every-language) because neither an
+argument nor a result is a document a program assembles, and a collections or HTTP library, which
+would have to be translatable by TeaVM to be worth anything and which `system.shell` already covers
+the useful half of. So the set is generous by this language's standards while being the one arm that
+adds nothing to what its runtime carries — and the classlib being a *subset* of `java.base` is the
+part that had to be measured rather than assumed, which is what `libraries.txt` and its gate are.
+
 ### What it will declare as its checker
 
 Two compilers read a Java program, and the seam asks a language to name **one** — the thing its
@@ -946,6 +1067,17 @@ exists once. gg's own **compiler driver** goes inside gg's binary: it is a singl
 by the JDK's single-file source-code launcher, so there is no jar to build, no binary artifact to
 commit and no reproducible-build gate — and a driver of a different vintage from the gg speaking to
 it is a protocol mismatch a version handshake refuses by number.
+
+The **SDK** goes inside gg's binary too, as a committed jar, and that is the same split
+[PureScript's library set](#the-toolchain-and-the-library-set-travel-in-opposite-directions) is on
+and for the same reason: the image is built separately from the binary that runs in it, so an SDK
+living beside TeaVM could be a different vintage from the gg whose catalogue describes it — which
+would mean a model shown one surface in its prompt and compiled against another. Committed, the SDK
+and the catalogue reflected from it move in one diff, and unlike PureScript's tarball it is cheap
+enough to rebuild that `scripts/ci/contract-drift.sh` re-cuts and diffs it rather than verifying it
+by a manifest: 52 classes, a fixed entry timestamp and a sorted entry list, so two builds of
+identical sources are identical bytes. gg places it beside the driver in a shared directory whose
+key folds in a digest of both, so a gg carrying a different SDK never reads another build's jar.
 
 On a developer's or CI machine the same script installs under `~/.local/share/gg-java`, which
 `crates/gg` looks in by name. That is a departure from the PureScript arm, and it has a reason: this

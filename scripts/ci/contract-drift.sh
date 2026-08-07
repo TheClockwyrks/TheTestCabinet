@@ -42,8 +42,9 @@
 #     the `npm ci` below already installs, a pinned `griffe` that
 #     packages/gg-sandbox-python/signatures.sh fetches through uv, a pinned `yard`
 #     that packages/gg-sandbox-ruby/signatures.sh installs into the Ruby all three of
-#     these machines already ship, and — for PureScript, whose documentation tool IS
-#     its compiler — the pinned `purs` scripts/ci/install-purescript.sh fetches. The
+#     these machines already ship, the pinned `purs` scripts/ci/install-purescript.sh
+#     fetches (PureScript's documentation tool IS its compiler), and the JDK
+#     scripts/ci/install-java.sh fetches, whose `javadoc` runs a doclet of gg's own. The
 #     committed .wasm files therefore sit in the diffed directory untouched: nothing here regenerates one, so one cannot cause a
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
@@ -64,12 +65,17 @@
 #     also decides the runtime baked into that language's guest. It is the same
 #     regenerate-and-diff rule, and each needs only Node.
 #
-#     PureScript's and Java's artifacts in that directory are the two exceptions, and both
-#     are declared ones. PureScript's is not a compiler at all but the compiled LIBRARY SET
-#     a program is type-checked against, which needs `purs` and the registry to rebuild.
-#     Java's is gg's own compiler DRIVER, hand-written and reviewable as source, beside the
-#     pin it is run against. Both are verified by what is committed beside them rather than
-#     by re-cutting — see the exemptions below, which are enforced rather than assumed.
+#     PureScript's artifact in that directory is the one exception, and it is a declared one:
+#     it is not a compiler at all but the compiled LIBRARY SET a program is type-checked
+#     against, which needs `purs` and the registry to rebuild, and it is verified by what is
+#     committed beside it — see the exemption below, which is enforced rather than assumed.
+#
+#     Java's stem covers three files of three different kinds, and only one of them is re-cut
+#     here: the SDK jar, which is this arm's LIBRARY and is rebuilt reproducibly from
+#     packages/gg-sandbox-java/src. The other two are neither cut nor derived — the compiler
+#     DRIVER is gg's own hand-written source, reviewable by reading and diffing like any other,
+#     and the toolchain manifest is the pin itself. What could drift between those two and the
+#     shell side that installs them is what `java.compile.test.rs` fails on.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -108,7 +114,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby purescript"
+regenerated="typescript javascript python ruby purescript java"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -146,11 +152,17 @@ export PATH="$HOME/.local/bin:$PATH"
 log "regenerate the PureScript arm's signature catalogue (purs --codegen docs + tools/signatures.mjs)"
 ./packages/gg-sandbox-purescript/signatures.sh
 
+log "install the pinned JDK (the Java arm's catalogue is reflected with javadoc's doclet API)"
+./scripts/ci/install-java.sh
+
+log "regenerate the Java arm's signature catalogue (javadoc + tools/GgSignatures.java)"
+./packages/gg-sandbox-java/signatures.sh
+
 # The same completeness rule the catalogues get, over the other committed directory: a
 # checker or compiler this script never re-cuts would sit in the diff below and be green
 # whatever its pin said. Stems are the first dot-separated component of each file name,
 # which is the language id each artifact is named for.
-recut="typescript ruby"
+recut="typescript ruby java"
 # The one exemption, and it is an exemption rather than an omission. PureScript's committed
 # artifact is not a compiler: it is the LIBRARY SET, compiled — 1.2 MB of externs and
 # JavaScript that `purs` needs before it can type-check anything. Re-cutting it needs `purs`,
@@ -161,15 +173,17 @@ recut="typescript ruby"
 # `spago.yaml` and `spago.lock` are committed beside the build, so what went in is reviewable
 # even though what came out is not.
 #
-# Java's is the second, and it is an exemption of a different shape: nothing about it is
-# CUT from a pinned release at all. `java.compiler.java` is gg's own hand-written compiler
-# driver — a single source file run by the JDK's single-file launcher, reviewable by reading
-# and diffing like any other source — and `java.toolchain.json` is the pin itself rather than
-# something derived from one. What could drift is the pin against the shell side that installs
-# it, and `java.compile.test.rs` is what fails when the two name different releases, when a
-# TeaVM jar in the list is at another version, or when the driver's protocol constant and the
-# manifest's disagree.
-declared="purescript java"
+# Java's stem is in $recut rather than here, and it is worth saying what that re-cut does and
+# does not cover, because the stem names three files of three kinds. `java.sdk.jar` is this
+# arm's LIBRARY — the surface a model's program is compiled against — and it is rebuilt from
+# `packages/gg-sandbox-java/src` below, reproducibly (`jar --date` and a sorted entry list), so
+# an SDK edit committed without the jar fails the diff exactly as an unregenerated catalogue
+# does. `java.compiler.java` is gg's own hand-written compiler driver and `java.toolchain.json`
+# is the pin itself: neither is cut from anything, both are reviewable by reading, and what
+# could drift is the pin against the shell side that installs it — which `java.compile.test.rs`
+# fails on when the two name different releases, when a TeaVM jar in the list is at another
+# version, or when the driver's protocol constant and the manifest's disagree.
+declared="purescript"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"
@@ -195,6 +209,9 @@ npm run --workspace @test-cabinet/gg-sandbox checker
 log "re-cut the Ruby compiler (Opal, tools/compiler.mjs)"
 ./packages/gg-sandbox-ruby/compiler.sh
 
+log "rebuild the Java arm's SDK jar (javac + jar)"
+./packages/gg-sandbox-java/build.sh
+
 log "check for signature and checker drift"
 if ! git diff --exit-code -- crates/gg/src/sandbox/guests crates/gg/src/sandbox/checkers; then
 	cat >&2 <<'EOF'
@@ -207,7 +224,8 @@ Run the regeneration for the language that drifted and commit the result — for
 TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
 `packages/gg-sandbox-python/signatures.sh`; for Ruby,
 `packages/gg-sandbox-ruby/signatures.sh`; for PureScript,
-`packages/gg-sandbox-purescript/signatures.sh`.
+`packages/gg-sandbox-purescript/signatures.sh`; for Java,
+`packages/gg-sandbox-java/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script
@@ -216,7 +234,10 @@ for Python, packages/gg-sandbox-ruby/build.sh for Ruby — and commit
 crates/gg/src/sandbox/guests/<language>.component.wasm alongside. PureScript has no
 component of its own, and its SDK lives instead inside the committed LIBRARY TREE:
 run packages/gg-sandbox-purescript/build.sh and commit
-crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz with its manifest.
+crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz with its manifest. Java has no
+component of its own either, and its SDK is the committed JAR: run
+packages/gg-sandbox-java/build.sh and commit
+crates/gg/src/sandbox/checkers/java.sdk.jar with the regenerated catalogue.
 
 If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's
 program is compiled or type-checked with no longer matches the one installed here —

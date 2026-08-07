@@ -60,7 +60,8 @@ pub(super) const ENTRY_CLASS: &str = "GgEntry";
 /// a model spending its reply on ceremony no Java author would type — every one of these is in the
 /// first import block of ordinary Java. Anything outside them is still reachable, fully qualified or
 /// through an `import` the model writes itself, which [`hoist`] lifts into this same header.
-const DEFAULT_IMPORTS: [&str; 8] = [
+const DEFAULT_IMPORTS: [&str; 9] = [
+    "gg.*",
     "java.util.*",
     "java.util.function.*",
     "java.util.stream.*",
@@ -70,6 +71,22 @@ const DEFAULT_IMPORTS: [&str; 8] = [
     "java.text.*",
     "java.util.regex.*",
 ];
+
+/// How gg's own **API objects** reach a program: as a static import of the fields that hold them.
+///
+/// This is what makes `fs.readFile("main.java")` an ordinary method call on an ordinary object,
+/// which is [the seam's first rule](https://docs.testcabinet.ai/gg/program-languages/) — a
+/// namespaced binding rather than a dispatcher — spelled the way Java spells reaching a library:
+/// an `import`, resolved by javac against a jar on the classpath.
+///
+/// A static import rather than fields gg declares in the wrapper, because a **code module** is a
+/// class body and a field gg wrote into it would be a member the author did not write — and would
+/// shadow, or be shadowed by, one they did. An import is outside the body in both shapes.
+///
+/// Its names are gg's, not the classlib's, so a program that declares its own `view` shadows it
+/// exactly as it would shadow any other static import — which is Java's own rule and not one gg
+/// invented for this.
+const SURFACE_IMPORT: &str = "import static gg.Gg.*;";
 
 /// A model's source, wrapped into a compilation unit javac will read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,6 +168,7 @@ fn header_lines(hoisted: &[String]) -> Vec<String> {
         .iter()
         .map(|name| format!("import {name};"))
         .collect();
+    header.push(SURFACE_IMPORT.to_string());
     header.extend(hoisted.iter().cloned());
     header
 }

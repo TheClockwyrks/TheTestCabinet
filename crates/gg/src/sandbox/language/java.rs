@@ -1,18 +1,21 @@
 //! **Java** — the arm whose compiler is a **warm JVM** gg keeps between preparations, and whose
 //! program is compiled to JavaScript by TeaVM before the guest ever sees it.
 //!
-//! What exists here today is this arm's **execution substrate** and nothing else: the compile that
-//! turns a model's Java into something a guest can evaluate, the guest that evaluates it, and the
-//! proof that a real Java program really does run through gg's own linker, membrane and store. The
-//! SDK and the [registration](super::ProgramLanguage) land later — a language arm cannot be
+//! What exists here today is this arm's **execution substrate** and its **surface**: the compile
+//! that turns a model's Java into something a guest can evaluate, the guest that evaluates it, the
+//! proof that a real Java program really does run through gg's own linker, membrane and store, the
+//! hand-written SDK a program is compiled against, and the catalogue reflected out of that SDK's own
+//! Javadoc. Only the [registration](super::ProgramLanguage) is left — a language arm cannot be
 //! half-registered, because the registry's `match` is exhaustive and every gate that iterates the
-//! registered set would immediately demand a catalogue, two Handlebars templates and a healing
-//! dialect. Nothing here is reachable from a run: there is no `language` value that resolves to it.
+//! registered set would immediately demand two Handlebars templates and a healing dialect. Nothing
+//! here is reachable from a run: there is no `language` value that resolves to it.
 //!
 //! * [`compile`](self::compile) — the host-side `javac` and TeaVM build, what it costs, what it
 //!   shares, and the two failures it tells apart;
 //! * [`source`](self::source) — what gg does to a model's Java before javac sees it: the wrapper,
 //!   the import hoist and the export scan, all line-preserving;
+//! * `packages/gg-sandbox-java/src/gg/` — the SDK, and every word of prose a model reads about it;
+//! * `checkers/java.sdk.jar` — that SDK compiled, which is what a classpath entry is;
 //! * `checkers/java.compiler.java` — gg's own compiler driver, a single file run by the JDK's
 //!   single-file source-code launcher;
 //! * `checkers/java.toolchain.json` — the JDK and TeaVM releases this arm is pinned to.
@@ -58,12 +61,16 @@
 //!
 //! # What this arm has that no other does
 //!
-//! It is the only arm whose **compiler is kept warm**, and the only one whose program passes through
-//! two compilers before it runs. Both are stated in [`compile`](self::compile): the warmth is a
+//! Three things. It is the only arm whose **compiler is kept warm**, the only one whose program
+//! passes through **two compilers** before it runs, and the only one whose **SDK reaches a program
+//! the way that language reaches any library** — a jar on the classpath, imported by the header gg
+//! writes. The first two are stated in [`compile`](self::compile): the warmth is a
 //! [`CompilerPool`](crate::sandbox::CompilerPool) of processes rather than a shared builder — the
 //! shape the study measured silently producing no output for three of four concurrent builds — and
 //! the two compilers are why a diagnostic here can be javac's *or* TeaVM's, which are different
-//! bands of the same recoverable, model-facing error.
+//! bands of the same recoverable, model-facing error. The third is [`source`](self::source)'s: the
+//! wrapper's header carries `import gg.*;` and `import static gg.Gg.*;`, which is what makes
+//! `fs.readFile` an ordinary method call on an ordinary object.
 
 /// The `javac` and TeaVM build: the host-side step that turns a model's Java into the guest's
 /// JavaScript.
@@ -91,3 +98,15 @@ pub(super) mod source;
 #[cfg(test)]
 #[path = "java.substrate.test.rs"]
 mod substrate;
+
+/// **The Java arm's model-facing surface**, driven the same way: the hand-written SDK, the
+/// catalogue reflected out of its own Javadoc, and the libraries it says a program may reach.
+///
+/// Separate from [`substrate`] because it is a different claim. That file asks whether Java runs
+/// here; this one asks whether the thing a model is *told* it may write is the thing the sandbox
+/// really has — every gg tool driven through the real membrane from its Java spelling against the
+/// same expected JSON the other arms are held to, and the committed catalogue put in front of the
+/// [agreement gate](super::agreement) a step before the registration that would run it for free.
+#[cfg(test)]
+#[path = "java.surface.test.rs"]
+mod surface;

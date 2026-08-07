@@ -75,13 +75,14 @@
 //!
 //! # What the toolchain is, and where it lives
 //!
-//! Three things, shipped three ways because each can only go one way:
+//! Four things, shipped three ways because each can only go one way:
 //!
 //! | | Where | Why |
 //! | --- | --- | --- |
 //! | A JDK | the gg toolchain image, or `scripts/ci/install-java.sh` on a developer's machine | ~190 MB with a build per platform; it cannot ride inside a static binary |
 //! | TeaVM's jars | the same place | ~29 MB of third-party artifacts, pinned by version |
 //! | gg's compiler driver | **inside gg's binary** (`checkers/java.compiler.java`) | it is gg's own code, and a driver of a different vintage from the gg that speaks to it would be a protocol mismatch nobody notices |
+//! | this arm's SDK, compiled | **inside gg's binary** (`checkers/java.sdk.jar`) | it is the surface a program is compiled against, and one of a different vintage from the catalogue describing it would show a model a surface it is not compiled against |
 //!
 //! The driver is a **single `.java` file run by the JDK's single-file source-code launcher**, so
 //! there is no jar to build, no binary artifact to commit and no reproducible-build gate to keep
@@ -95,7 +96,7 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::sandbox::language::compile::{
-    CompilerDaemon, CompilerPool, daemon, place, shared_toolchain_dir,
+    CompilerDaemon, CompilerPool, daemon, place, place_bytes, shared_toolchain_dir,
 };
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
 
@@ -103,6 +104,20 @@ use super::source::{self, Wrapped};
 
 /// gg's own compiler driver: the program the warm JVM runs.
 const DRIVER: &str = include_str!("../checkers/java.compiler.java");
+
+/// This arm's **SDK**, compiled: the jar both compilers put on their classpath.
+///
+/// Java reaches a library through the classpath, so the surface a model writes against is a jar
+/// rather than a source tree — javac resolves `fs.readFile` against it and TeaVM translates the
+/// bytecode behind it out of the same file.
+///
+/// It rides **inside gg's binary** rather than in the [toolchain image](super), which is the split
+/// [PureScript](super::super::purescript)'s library tarball is on the same side of and for the same
+/// reason: the image is built separately from the binary that runs in it, so an SDK living there
+/// could be a different vintage from the gg whose catalogue describes it — and a model shown one
+/// surface in its prompt and compiled against another is the failure this seam exists to prevent.
+/// Committed, the SDK and the catalogue reflected from it move in one diff.
+const SDK: &[u8] = include_bytes!("../checkers/java.sdk.jar");
 
 /// What the toolchain the driver is run against is pinned to.
 const MANIFEST_JSON: &str = include_str!("../checkers/java.toolchain.json");
@@ -148,6 +163,9 @@ const BUILD_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// How long starting a JVM and reading its handshake may take.
 const START_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The name this arm's SDK jar is placed under, beside the driver.
+const SDK_FILE: &str = "gg-sdk.jar";
 
 /// The file a program's source is written into, and the one its diagnostics are located in.
 pub(super) const PROGRAM_FILE: &str = "Program.java";
@@ -267,7 +285,12 @@ impl Entry {
         // `main` is TeaVM's default export name, and the callback is how its runtime reports a
         // failure — DIRECTLY, as the callback's argument. A program that read `result.exception`
         // instead would report a failed program as a complete success, which was measured.
+        // A gg failure the program did not catch goes back as the record the membrane itself
+        // raises, BEFORE the Java description is considered: the guest classifies a tool failure
+        // from the host's own code, and a re-description would turn a refusal the model can act on
+        // into prose about a Java class.
         let start = "main([], function ($ggThrown) {\n  if (!$ggThrown) return;\n  \
+                     if ($ggFailure) throw $ggFailure;\n  \
                      if (!$ggMessage) throw $ggThrown;\n  \
                      throw new Error($ggMessage + $ggLocate($ggThrown.stack));\n});\n";
         match self {
@@ -508,6 +531,12 @@ impl Diagnostic {
 /// * `$ggMessage` — where the [entry class](entry_for_program)'s catch chain leaves the Java name and
 ///   message of what failed. Empty means nothing Java threw, which is how a failure raised by a
 ///   *binding* is rethrown untouched rather than re-described.
+/// * `$ggFailure` — where the same chain leaves the three fields of a **gg** failure the program did
+///   not catch. The SDK catches a refusal in JavaScript and raises a Java `ToolError` so that
+///   `catch (ToolError failure)` works at all; without this, one that *escaped* would reach the
+///   guest as a Java exception and be recorded as a program that threw something rather than as a
+///   tool that failed. The guest reads `tool`, `code` and `message` off whatever is thrown, so what
+///   goes back over is that record — the same shape the membrane itself raises.
 /// * `$ggLines` — TeaVM's source map, folded by [`model_lines`] into the change points of "whose
 ///   code is this generated line?", with `0` for somebody else's. Looked up nearest-preceding,
 ///   because a source map is sparse and a stack frame lands where the failure happened rather than
@@ -516,6 +545,7 @@ impl Diagnostic {
 ///   (this prelude's own length); part is the engine's `Function` wrapper, which is calibrated at run
 ///   time exactly as the guest's own shim calibrates it, so an engine update costs nothing.
 const PRELUDE: &str = r#"var $ggMessage = "";
+var $ggFailure = null;
 var $ggLines = __GG_LINES__;
 var $ggBase = __GG_BASE__;
 (function () {
@@ -737,8 +767,16 @@ fn entry_for_program() -> String {
          \x20   @JSBody(params = {{\"text\"}}, script = \"$ggMessage = text;\")\n\
          \x20   static native void describe(String text);\n\
          \n\
+         \x20   @JSBody(params = {{\"tool\", \"code\", \"message\"}}, \
+         script = \"$ggFailure = {{ tool: tool, code: code, message: message }};\")\n\
+         \x20   static native void refused(String tool, String code, String message);\n\
+         \n\
          \x20   public static void main(String[] args) throws Throwable {{\n\
          \x20       try {{ {program}.{method}(); }}\n\
+         \x20       catch (gg.ToolError failure) {{\n\
+         \x20           refused(failure.tool(), failure.code().wireName(), failure.getMessage());\n\
+         \x20           throw failure;\n\
+         \x20       }}\n\
          {chain}\
          \x20       catch (StackOverflowError failure) {{ throw seen(\"java.lang.StackOverflowError\", failure); }}\n\
          \x20       catch (Throwable failure) {{ throw seen(named(failure), failure); }}\n\
@@ -798,7 +836,11 @@ impl JavaCompiler {
     /// Start one, place the driver if this is the first, and read its handshake.
     fn start() -> Result<Self, String> {
         let toolchain = toolchain()?;
-        let driver = driver()?;
+        let placed = placed()?;
+        // The SDK goes on the same classpath TeaVM's own jars are on, which is the classpath the
+        // driver hands to javac *and* to TeaVM. A model's `fs.readFile("x")` therefore type-checks
+        // against the same bytes TeaVM translates, and there is no second path to keep in step.
+        let classpath = format!("{}:{}", toolchain.classpath, placed.sdk.display());
         let started = daemon(&toolchain.java).and_then(|mut command| {
             command
                 // A JVM that lives for sixty-four builds and is then replaced has no use for a
@@ -816,9 +858,9 @@ impl JavaCompiler {
                 .arg("-cp")
                 .arg(&toolchain.classpath)
                 // The driver's own source. The JDK's single-file launcher compiles it in memory,
-                // which is why there is no jar in this arm at all.
-                .arg(driver)
-                .arg(&toolchain.classpath);
+                // which is why gg builds no jar of its own for it.
+                .arg(&placed.driver)
+                .arg(&classpath);
             command.start()
         });
         started
@@ -877,31 +919,48 @@ fn handshake(greeting: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Where the driver source is on disk, placing it on first use.
+/// The two files gg carries inside its own binary, unpacked once per machine.
+pub(super) struct Placed {
+    /// gg's compiler driver, run by the JDK's single-file source-code launcher.
+    driver: PathBuf,
+    /// This arm's SDK, as the jar both compilers put on their classpath.
+    pub sdk: PathBuf,
+}
+
+/// Where gg's own two files are on disk, placing them on first use.
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the directory's key folds in
-/// the pinned TeaVM release **and** a digest of the driver's own bytes, so a gg carrying a different
-/// driver reads a different directory rather than another build's file; the write goes through
-/// [`place`], which renames a complete file into place. Nothing ever writes to it again — a JVM only
-/// reads it.
-fn driver() -> Result<&'static Path, String> {
-    static PLACED: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+/// the pinned TeaVM release **and** a digest of both files' own bytes, so a gg carrying a different
+/// driver or a different SDK reads a different directory rather than another build's files; each
+/// write goes through [`place`], which renames a complete file into place. Nothing ever writes to it
+/// again — a JVM only reads it.
+///
+/// The SDK's digest is in the key for a reason a driver's is not: an SDK edit changes what a
+/// program *compiles against*, so a stale jar left in a shared directory would compile a model's
+/// program against a surface its own prompt does not describe.
+pub(super) fn placed() -> Result<&'static Placed, String> {
+    static PLACED: std::sync::OnceLock<Result<Placed, String>> = std::sync::OnceLock::new();
     PLACED
         .get_or_init(|| {
             let mut hasher = std::collections::hash_map::DefaultHasher::new();
             DRIVER.hash(&mut hasher);
+            SDK.hash(&mut hasher);
             let root = shared_toolchain_dir(&format!(
                 "java-{}-{:016x}",
                 compiler_version(),
                 hasher.finish()
             ))?;
-            let path = root.join(DRIVER_FILE);
-            if !path.is_file() {
-                place(&path, DRIVER)?;
+            let driver = root.join(DRIVER_FILE);
+            if !driver.is_file() {
+                place(&driver, DRIVER)?;
             }
-            Ok(path)
+            let sdk = root.join(SDK_FILE);
+            if !sdk.is_file() {
+                place_bytes(&sdk, SDK)?;
+            }
+            Ok(Placed { driver, sdk })
         })
-        .as_deref()
+        .as_ref()
         .map_err(Clone::clone)
 }
 
