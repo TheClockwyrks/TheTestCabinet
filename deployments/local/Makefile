@@ -65,6 +65,15 @@ CLUSTER ?= tcab
 NS      ?= tcab-local
 OVERLAY := $(REPO)/deployments/k8s/overlays/local
 
+# The k3s image `cluster` creates the node from. Pinned — NOT left to k3d's built-in
+# default, which tracks whatever k3s was current when that k3d release was cut and so
+# drifts from the deployments as k3d ages. This mirrors the Kubernetes version the
+# staging/prod AKS clusters run, so the API server this stack validates and applies
+# against behaves like the real one; bump it in step with `KUBECTL_VERSION` in
+# .devcontainer/tools/k8s.sh. (k3s tags the image with `-k3s1`, not the `+k3s1` of the
+# upstream release tag.)
+K3S_IMAGE ?= rancher/k3s:v1.35.6-k3s1
+
 # Name k3d gives this cluster's kubeconfig context/cluster entry (used by the
 # `kubeconfig` target to repoint the API server for in-devcontainer access).
 KUBE_CTX := k3d-$(CLUSTER)
@@ -237,8 +246,8 @@ cluster:
 	else \
 	  host_repo="$$(docker inspect "$$(hostname)" --format '{{range .Mounts}}{{if eq .Destination "$(REPO)"}}{{.Source}}{{end}}{{end}}' 2>/dev/null || true)"; \
 	  if [ -z "$$host_repo" ]; then host_repo='$(REPO)'; fi; \
-	  echo "Creating k3d cluster '$(CLUSTER)' (mounting $$host_repo → /repo)…"; \
-	  k3d cluster create '$(CLUSTER)' --volume "$$host_repo:/repo@server:0" --wait; \
+	  echo "Creating k3d cluster '$(CLUSTER)' on $(K3S_IMAGE) (mounting $$host_repo → /repo)…"; \
+	  k3d cluster create '$(CLUSTER)' --image '$(K3S_IMAGE)' --volume "$$host_repo:/repo@server:0" --wait; \
 	fi
 	@k3d kubeconfig merge '$(CLUSTER)' --kubeconfig-merge-default --kubeconfig-switch-context >/dev/null
 	@$(MAKE) -s -f '$(firstword $(MAKEFILE_LIST))' kubeconfig
