@@ -130,8 +130,8 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    AuthMode, HarnessSlug, PriorGameJamEntry, PriorGameJamEntryRef, RunEnvironment, RunLinks,
-    RunRecord, RunState, RunStatus, RunSubject, RunTooling,
+    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunState,
+    RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -1061,16 +1061,10 @@ where
             // asked for something distinct. `None` for every other type, and for a jam
             // run that shipped no README.
             game_jam_readme: read_game_jam_readme(test_case.test_type, &artifacts.repo_path),
-            // …and record the earlier entries this run was itself briefed with, so the
-            // briefing is visible on the run rather than only inferable from the games.
-            game_jam_prior_entries: self
-                .prior_game_jam_entries
-                .iter()
-                .map(|entry| PriorGameJamEntryRef {
-                    run_id: entry.run_id.clone(),
-                    finished_at: entry.finished_at.clone(),
-                })
-                .collect(),
+            // …and record the earlier entries this run was itself briefed with —
+            // READMEs and all, since they are inputs the run was given and the Inputs
+            // tab shows them inline like every other seeded file.
+            game_jam_prior_entries: self.prior_game_jam_entries.clone(),
         };
 
         self.write_record(&record, &artifacts)?;

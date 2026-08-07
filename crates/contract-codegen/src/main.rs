@@ -57,7 +57,7 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "RunValidation",
     "RunLinks",
     "RunStatus",
-    "PriorGameJamEntryRef",
+    "PriorGameJamEntry",
     "HarnessSlug",
     "RunState",
     "AuthMode",
@@ -154,7 +154,7 @@ fn main() -> Result<()> {
                 val::PerformanceResult, val::PerformanceSnapshotCheck,
                 mp::ControllerKind, mp::ControllerRef, mp::MatchSummary, mp::Standing,
                 mp::TournamentRecord, val::ValidationSummary, rr::RunLinks, rr::RunStatus,
-                rr::PriorGameJamEntryRef, rr::RunRecord,
+                rr::PriorGameJamEntry, rr::RunRecord,
             ],
         },
         // The review value types (shared by the backend and snapshot

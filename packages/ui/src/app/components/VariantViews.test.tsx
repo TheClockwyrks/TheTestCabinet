@@ -78,4 +78,26 @@ describe("VariantInputsView", () => {
     expect(screen.queryByText("Script")).not.toBeInTheDocument();
     expect(screen.queryByText("Package")).not.toBeInTheDocument();
   });
+
+  // Files seeded into one run (a game jam's previous entries) read exactly like
+  // the variant's own seeded files — same accordion, body inline — and carry
+  // their own tag so it stays clear which run they belong to.
+  it("renders a run's own seeded files beside the variant's, tagged apart", () => {
+    render(
+      <VariantInputsView
+        variant={variant({ seededInputs: [], packages: [] })}
+        runSeededInputs={[
+          {
+            path: "previous-entries/entry-01.md",
+            kind: "entry",
+            text: "# Space Miner\n\nDig for ore.",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("Previous entry")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("previous-entries/entry-01.md"));
+    expect(screen.getByText("Space Miner")).toBeInTheDocument();
+  });
 });
