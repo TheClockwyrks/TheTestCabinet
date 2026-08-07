@@ -1,0 +1,43 @@
+# gg's **Rust** program-language library set.
+#
+# Deliberately its own workspace (`[workspace]`, empty) rather than a member of the repository's:
+# it is compiled for `wasm32-unknown-unknown` by `build.sh`, its output is a set of committed
+# `.rlib` files rather than a binary anything links, and a member would be built by every
+# `cargo build --workspace` in the repository for no reason.
+
+[workspace]
+
+[package]
+name = "gg"
+version = "0.7.0"
+edition = "2021"
+publish = false
+# The crate a model's program names. Short on purpose: `rustc --extern gg=…` is what puts it in
+# scope, so this is the word every Rust program in the study begins with.
+
+[lib]
+path = "src/lib.rs"
+# `rlib` and nothing else. The final artifact is the *program*'s `cdylib`, compiled per turn with
+# this named on `--extern`; this half is compiled once, at build time, and shipped inside gg's
+# binary. See `build.sh`.
+crate-type = ["rlib"]
+
+[dependencies]
+# The **runtime** half of `wit-bindgen`, and only that half: `default-features = false` drops the
+# `macros` feature, which is what keeps the `wit-bindgen-rust-macro` proc macro out of this rlib's
+# metadata. See `rust-version.sh` for why that matters — a proc macro is a host `.so`, and one
+# named in the metadata makes the whole library set unloadable on any other architecture.
+#
+# The generated bindings in `src/bindings.rs` are what use it, through `wit_bindgen::rt`.
+wit-bindgen = { version = "0.60", default-features = false }
+
+# One profile, because there is only one thing to build. `opt-level = "s"` because the artifact
+# crosses no wire but is compiled by wasmtime on every turn, and a smaller module compiles faster;
+# `panic = "abort"` because `wasm32-unknown-unknown` has no unwinder at all, so the alternative is
+# not a choice; `strip = "symbols"` because the name section is a third of the artifact and nothing
+# reads it — a Rust program's failures are located by the PANIC HOOK, out of `Location`, which is
+# static data rather than a symbol name.
+[profile.release]
+opt-level = "s"
+panic = "abort"
+strip = "symbols"

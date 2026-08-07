@@ -216,6 +216,68 @@ RUN set -eux; \
 	rm -rf /tmp/gg-kotlin; \
 	test -f /opt/gg/toolchains/kotlin/kotlin-home/lib/kotlin-scripting-compiler.jar
 
+# --- Rust -------------------------------------------------------------------
+# The heaviest toolchain in this image by a wide margin — **~376 MB** — and the first that is
+# not a compiler *for* a guest but the thing that PRODUCES one. Every other arm here compiles a
+# model's program into something an interpreter already inside a committed component evaluates;
+# `rustc` emits the component itself, per turn, because there is no Rust runtime to commit. See
+# `crates/gg/src/sandbox/language/rust.compile.rs`.
+#
+# Constraint 1 is satisfied by construction. A rustup toolchain directory is relocatable: `rustc`
+# derives its sysroot from its own path and finds `librustc_driver`/`libLLVM` through an `$ORIGIN`
+# rpath, so the tree works at this absolute path on the Debian-derived run images and on
+# `blender-gg`'s Ubuntu alike. Verified here by running the copy, not assumed.
+#
+# Constraint 2 is satisfied outright: `rustc` is a plain one-shot process with an explicit `-o`, it
+# has no daemon and nothing to keep warm (a compile is ~60 ms), and it only ever READS the library
+# set gg ships inside its own binary. Nothing here is written to by a compilation.
+#
+# WHAT IS PRUNED, and why each is safe. `cargo` (40 MB) — gg drives `rustc` directly, and a build
+# system on the turn path would be a second thing to isolate. `rustdoc`, `clippy-driver`, `rustfmt`
+# and their cargo shims — nothing on the turn path runs them. `lib/rustlib/src` (77 MB) — sources
+# for a debugger nothing here has. `share/` (896 MB of docs and man pages). And the HOST standard
+# library, `lib/rustlib/<host>/lib` (~160 MB): a cross-compile to wasm32 links the wasm standard
+# library, and the only thing that would want the host's is a proc macro, which a model's program
+# cannot have — gg's library set is pre-generated for exactly that reason
+# (packages/gg-sandbox-rust/rust-version.sh). What is KEPT out of that directory is
+# `lib/rustlib/<host>/bin`, which holds `rust-lld`: the linker every wasm32 build runs.
+#
+# The version is not defaulted here. `containers/build.sh` reads it out of `rust-toolchain.toml`
+# through `packages/gg-sandbox-rust/rust-version.sh` and passes it in, because the compiler in this
+# image and the compiler that built the `.rlib` set inside gg's binary must be the SAME release —
+# an `.rlib` is a compiler-version-private format and `rustc` refuses another release's with E0514.
+#
+# The build ends by compiling a `cdylib` for the target WITH THE COPY rather than with the rustup
+# installation — the relocated sysroot, the pruned host tree and `rust-lld` are exactly what a run
+# will use, and each of the three is a thing the pruning above could have broken.
+ARG RUST_VERSION
+ARG RUST_TARGET=wasm32-unknown-unknown
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+	apt-get update && apt-get install -y --no-install-recommends ca-certificates curl xz-utils
+RUN set -eux; \
+	test -n "${RUST_VERSION}"; \
+	host="$(uname -m)-unknown-linux-gnu"; \
+	export RUSTUP_HOME=/tmp/rustup CARGO_HOME=/tmp/cargo; \
+	curl -sSfL https://sh.rustup.rs \
+	| sh -s -- -y --no-modify-path --profile minimal \
+	--default-toolchain "${RUST_VERSION}" --target "${RUST_TARGET}"; \
+	src="/tmp/rustup/toolchains/${RUST_VERSION}-${host}"; \
+	dst=/opt/gg/toolchains/rust; \
+	mkdir -p "$dst/bin" "$dst/lib/rustlib/${host}"; \
+	cp -a "$src/bin/rustc" "$dst/bin/"; \
+	cp -a "$src"/lib/*.so* "$dst/lib/"; \
+	cp -a "$src/lib/rustlib/${RUST_TARGET}" "$dst/lib/rustlib/"; \
+	cp -a "$src/lib/rustlib/${host}/bin" "$dst/lib/rustlib/${host}/"; \
+	rm -rf /tmp/rustup /tmp/cargo; \
+	printf '#[unsafe(no_mangle)] pub extern "C" fn smoke() -> u32 { 1 }\n' >/tmp/smoke.rs; \
+	"$dst/bin/rustc" --edition 2024 --target "${RUST_TARGET}" --crate-type cdylib \
+	-Copt-level=s -Cstrip=symbols -Cpanic=abort -o /tmp/smoke.wasm /tmp/smoke.rs; \
+	test -s /tmp/smoke.wasm; \
+	rm -f /tmp/smoke.rs /tmp/smoke.wasm; \
+	"$dst/bin/rustc" --version; \
+	du -sh "$dst"
+
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
 # `COPY --from` source, and keeping it to the toolchain tree alone means the gg run images

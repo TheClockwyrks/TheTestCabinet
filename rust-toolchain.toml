@@ -5,6 +5,22 @@
 # `RUST_VERSION` in .devcontainer/docker-compose.yml and
 # containers/base-wasm/Dockerfile and the `rust:<version>-bookworm` builder tags
 # under containers/ — they must all stay on the same compiler.
+#
+# ONE MORE THING MOVES WITH IT, and it is not a tag. gg's Rust program-language arm
+# compiles a model's program against a set of `.rlib` files committed under
+# crates/gg/src/sandbox/checkers/, and an `.rlib` is a compiler-version-private
+# format — `rustc` refuses one built by any other release outright, with E0514. So a
+# bump here invalidates that set and
+# `packages/gg-sandbox-rust/build.sh` must be re-run in the same commit.
+# `the_committed_library_set_was_built_by_this_checkouts_compiler` fails until it is.
 [toolchain]
 channel = "1.97.1"
 components = ["rustfmt", "clippy"]
+# `targets` is deliberately NOT listed here, even though gg's Rust arm compiles a model's
+# program to `wasm32-unknown-unknown` and its tests drive a real `rustc` doing so. A target
+# named in this file is fetched by rustup on the FIRST cargo invocation of every checkout —
+# including inside `containers/tools` and the other `rust:<version>-bookworm` builder
+# images, none of which cross-compile anything — so it would turn several image builds into
+# network-dependent ones to serve one crate's tests. It is installed explicitly instead, by
+# scripts/ci/install-rust-wasm.sh, exactly as the PureScript, Java and Kotlin arms'
+# toolchains are.

@@ -206,7 +206,19 @@ recut="typescript ruby java kotlin"
 # pin and the shell side that installs it is what `kotlin.compile.test.rs` fails on — including when
 # the scripting plugin's four file names, which the compiler looks for by name and without which
 # every program on this arm fails, leave the list.
-declared="purescript jvm"
+#
+# `rust` is exempted for PureScript's reason and answered with a stronger check than a diff.
+# Its committed artifact is not a compiler either: `rust.libraries.tar.gz` is the compiled
+# LIBRARY SET — the `.rlib` files a model's program is linked against — and re-cutting it needs
+# the pinned `wit-bindgen` CLI downloaded from GitHub and a `wasm32-unknown-unknown` build, and
+# produces an archive of binaries nobody can review by reading. `rust.toolchain.json` declares
+# what built it and every crate in it, and gg's own tests compare all three ways: the manifest
+# against the archive's contents, the manifest's compiler against THIS CHECKOUT's `rustc` (an
+# `.rlib` cannot be read by any other release, so a bumped `rust-toolchain.toml` fails there by
+# name), and — the check no diff could make — a real Rust program compiled against the set and
+# run through the real membrane on every test run. A stale set does not merely differ; it stops
+# linking.
+declared="purescript jvm rust"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

@@ -269,6 +269,20 @@ wasmtime = { version = "45", default-features = false, features = [
 # async entry point, so this changes their build surface and not their behaviour.
 wasmtime-wasi = { version = "45", default-features = false, features = ["p2"] }
 
+# Turning a core wasm module into a **component**, in process, on the turn path
+# (`crates/gg/src/sandbox/language/rust.compile.rs`). The Rust program language compiles a
+# model's program with `rustc --target wasm32-unknown-unknown`, which emits a core module
+# carrying the `component-type` custom section `wit-bindgen` put there; this crate reads that
+# section and encodes the component gg's engine then instantiates. It is the same step the
+# `wasm-tools component new` CLI performs, taken as a library so no second binary has to be
+# installed in a run container and no artifact has to round-trip through a file.
+#
+# Pinned to the wasmparser line `wasmtime` 45 is built on (0.248), so the whole workspace
+# resolves ONE `wasmparser`/`wasm-encoder` pair: an encoder from a newer line may emit a
+# component feature the runtime's validator does not know, and the failure would be a
+# validation error on a program nobody wrote wrong.
+wit-component = "0.248"
+
 # Desktop shell. Pinned to Tauri v2 so the desktop crate can inherit them.
 tauri = { version = "2", features = [] }
 tauri-build = { version = "2", features = [] }

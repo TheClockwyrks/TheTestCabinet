@@ -45,6 +45,15 @@ log "install the Java toolchain (gg's java arm compiles with it)"
 log "install the Kotlin toolchain (gg's kotlin arm compiles with it)"
 ./scripts/ci/install-kotlin.sh
 
+# gg's Rust arm compiles a model's program to `wasm32-unknown-unknown` with a real `rustc` — the
+# same one that builds this repository, because an .rlib is a compiler-version-private format and
+# the committed library set must be read by the release that built it. What is not automatic is
+# that target's STANDARD LIBRARY, which is a separate rustup component; this installs it. Not
+# `targets` in rust-toolchain.toml, which would fetch it inside every builder image that
+# cross-compiles nothing — see the script's own header. Idempotent.
+log "install the wasm32 target (gg's rust arm compiles a model's program to it)"
+./scripts/ci/install-rust-wasm.sh
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 

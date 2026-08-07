@@ -1,0 +1,6 @@
+{
+  "rustc": "1.97.1",
+  "target": "wasm32-unknown-unknown",
+  "witBindgen": "0.60.0",
+  "crates": [{"name":"gg","bytes":601928},{"name":"wit_bindgen","bytes":30530}]
+}

@@ -100,6 +100,12 @@ base64 = { workspace = true }
 # `publisher` already use on the run-tree artifact path.
 flate2 = { workspace = true }
 tar = "0.4"
+# Encoding the core wasm module `rustc` emits into the component gg's engine instantiates
+# (`src/sandbox/language/rust.compile.rs`). The Rust arm is the first whose artifact is
+# produced per program rather than committed, so this step runs on the turn path — in
+# process, from the bytes the compiler wrote, with no `wasm-tools` binary to install in a run
+# container. See the workspace pin for why its version tracks wasmtime's wasmparser line.
+wit-component = { workspace = true }
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on

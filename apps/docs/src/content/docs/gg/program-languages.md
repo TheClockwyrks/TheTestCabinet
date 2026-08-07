@@ -1711,6 +1711,17 @@ resolves and the names `containers/image-names.sh` publishes ever disagree. The 
 doubled image set and CI matrix; the thing it buys is that "does this image have the
 toolchains?" has one answer.
 
+What the tree carries today, and what each weighs: `purs` and `esbuild` (~110 MB), a
+Temurin JDK with TeaVM's jars (~154 MB), the Kotlin compiler on top of it (~67 MB), and a
+pruned `rustc` with the `wasm32-unknown-unknown` standard library (**~376 MB**, the largest
+by a wide margin). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
+library and `rust-lld` — `cargo`, `rustdoc`, the lint tools, the standard-library sources
+and the *host* standard library are all removed, none of which a cross-compile of a program
+with no proc macros touches. That toolchain's version is the one place a pin is **not** the
+arm's own: it is `rust-toolchain.toml`'s, because an `.rlib` is a compiler-version-private
+format and the compiler in the image must be exactly the one that built the library set
+inside gg's binary, so there is only one Rust release in the repository at all.
+
 ### Per-agent compiler isolation
 
 This is the rule **every** language integration satisfies, and the one whose violation gg

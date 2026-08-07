@@ -105,6 +105,16 @@ mod java;
 #[path = "language/kotlin.rs"]
 mod kotlin;
 
+/// The **Rust** arm's execution substrate, ahead of its SDK and its registration.
+///
+/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
+/// run can configure reaches it and every gate that iterates the registered set passes it by. What
+/// is here is the compile — the first that produces the *component* rather than a source for one —
+/// and the proof that its output runs through the real membrane; the module's own documentation says
+/// what is still missing, and which seam change the registration is blocked on.
+#[path = "language/rust.rs"]
+mod rust;
+
 /// The **cross-language agreement gate**: the assertion that every registered language describes the
 /// same capabilities, and that only their spellings differ.
 ///

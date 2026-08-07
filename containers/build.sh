@@ -225,11 +225,20 @@ build_gg_toolchains() {
 	# block does the same with `scripts/ci/install-kotlin.sh`, which RUNS the Java one:
 	# that arm compiles to JVM bytecode and hands it to the same TeaVM, so there is one
 	# JDK in this image rather than two.
+	# Rust's pin is not this arm's to choose: it is `rust-toolchain.toml`'s, read here through
+	# packages/gg-sandbox-rust/rust-version.sh. The compiler in this image and the compiler
+	# that built the `.rlib` set inside gg's binary must be the same release — an `.rlib` is a
+	# compiler-version-private format — so having only one Rust release in the repository is
+	# what makes the two impossible to get out of step.
 	# shellcheck source=packages/gg-sandbox-purescript/purescript-version.sh
 	source "${SCRIPT_DIR}/../packages/gg-sandbox-purescript/purescript-version.sh"
+	# shellcheck source=packages/gg-sandbox-rust/rust-version.sh
+	source "${SCRIPT_DIR}/../packages/gg-sandbox-rust/rust-version.sh"
 	"$DOCKER" build \
 		--build-arg "PURS_VERSION=${PURS_VERSION}" \
 		--build-arg "ESBUILD_VERSION=${ESBUILD_VERSION}" \
+		--build-arg "RUST_VERSION=${GG_RUST_VERSION}" \
+		--build-arg "RUST_TARGET=${GG_RUST_TARGET}" \
 		-t "${GG_TOOLCHAINS_IMAGE}" \
 		-f "${SCRIPT_DIR}/gg-toolchains/Dockerfile" "${SCRIPT_DIR}/.."
 }

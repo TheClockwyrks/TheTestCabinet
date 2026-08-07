@@ -152,7 +152,8 @@ containers/
 ├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
-│                               #   responses-as-code programs may need, under /opt/gg. Not a run image
+│                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
+│                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc). Not a run image
 │                               #   and never published — the `-gg` variants `COPY --from` it
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
@@ -666,6 +667,22 @@ compiles a model's program as a Kotlin **script** — because Kotlin refuses `ob
 wrapper function would refuse five things a Kotlin author writes without thinking — and the
 compiler loads its scripting plugin by four unversioned file names out of a `kotlin-home/lib`
 tree the installer lays out.
+
+**Rust** is the heaviest thing in the tree — **~376 MB** — and the first that is not a
+compiler *for* a guest. Every arm above compiles a model's program into something an
+interpreter already inside a committed component evaluates; `rustc` emits the component
+itself, per turn, because there is no Rust runtime to commit. What is installed is a rustup
+`minimal` toolchain pruned to `rustc`, its two shared libraries, the
+`wasm32-unknown-unknown` standard library and `rust-lld` — with `cargo`, `rustdoc`, the
+lint tools, the standard-library sources, the documentation share and the *host* standard
+library all removed, none of which a cross-compile of a program with no proc macros
+touches. A rustup toolchain directory is relocatable (`rustc` derives its sysroot from its
+own path), and the Dockerfile proves it by compiling a `cdylib` with the pruned copy before
+the layer is exported. Its version is not pinned in this image or in its package: it is
+[`rust-toolchain.toml`](../rust-toolchain.toml)'s, because an `.rlib` is a
+compiler-version-private format and the compiler here must be exactly the one that built
+the library set inside gg's binary — so there is only one Rust release in the repository at
+all. That set is not here, for the vintage reason PureScript's is not.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner
