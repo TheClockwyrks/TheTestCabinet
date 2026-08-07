@@ -129,3 +129,30 @@ fn waiting_reason_describes_an_image_pull_failure() {
 fn no_container_status_yields_no_reason() {
     assert!(container_failure_reason(&Pod::default()).is_none());
 }
+
+#[test]
+fn sandbox_selector_pins_both_the_job_id_and_the_driver_managed_by() {
+    let selector = sandbox_selector("job-123");
+
+    assert_eq!(
+        selector,
+        "tcab.dev/job-id=job-123,app.kubernetes.io/managed-by=tcab-driver"
+    );
+}
+
+#[test]
+fn sandbox_selector_cannot_match_a_driver_job_pod() {
+    // This is the safety property that keeps the reaper from destroying the very
+    // evidence `failure_detail` reads. A driver Job's pod carries the SAME job-id
+    // label as the sandbox it created, and differs only by `managed-by` — so the
+    // selector must constrain that key, not just the job id.
+    let selector = sandbox_selector("job-123");
+
+    assert!(selector.contains(&format!(
+        "app.kubernetes.io/managed-by={SANDBOX_MANAGED_BY}"
+    )));
+    assert!(!selector.contains(&format!(
+        "app.kubernetes.io/managed-by={}",
+        crate::job::MANAGED_BY
+    )));
+}

@@ -74,6 +74,31 @@ backend already recorded `canceled`). The path is identical on the local
 through a driver pod. A late status the winding-down driver might still post is
 ignored by the backend, so it can never resurrect a canceled run.
 
+## Sandbox lifetime
+
+The driver deletes the sandbox pod it created at the end of every run, and again on
+[cancellation](#cancellation). Both of those are **in-process**, so a driver that
+dies by `SIGKILL` — an OOM kill, an eviction, a node drain, a spot preemption — runs
+neither, and the sandbox it leaves behind would otherwise live forever: its
+keep-alive command is `sleep infinity`, and it deliberately carries no
+`ownerReference` for Kubernetes to garbage-collect it by. (Its only candidate parent
+is the driver `Job`, which `ttlSecondsAfterFinished` reaps minutes after the run
+ends — as an owner that would cascade-delete healthy sandboxes out from under long
+runs.) A leaked sandbox holds its CPU and memory *requests* against the node for as
+long as it lives, which crowds out new runs.
+
+Two mechanisms outside the driver close that gap:
+
+- The [dispatcher](/components/dispatcher/overview/) **reaps** the sandbox. It
+  watches every driver `Job` it created, so it learns when one fails terminally, and
+  deletes the pods carrying that job's id and the driver's `managed-by` label. This
+  is the primary path and it runs within a poll interval of the death.
+- The sandbox pod carries an **`activeDeadlineSeconds`** of its own
+  (`TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`, default 24h; `0` disables it) as a
+  last-resort backstop for the case where the dispatcher is down or lacks the RBAC
+  too. It is sized to outlast any real run — it is a leak bound, **not** a run
+  timeout, and nothing else caps a run's duration.
+
 ## Artifacts
 
 Because the sandbox pod is ephemeral — its disk is lost on exit — the driver

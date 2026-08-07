@@ -167,14 +167,21 @@ Run execution now involves **two** in-cluster identities, each a namespaced
 ### Dispatcher (`tcab-dispatcher`)
 
 The dispatcher claims queued runs, creates one Job per run, watches them, and —
-when a driver pod dies — reads its logs for failure reporting. It creates **no
-pods directly**.
+when a driver pod dies — reads its logs for failure reporting and deletes the
+sandbox pods that driver orphaned. It creates **no pods directly**.
 
 | Resource | Verbs | Why |
 | --- | --- | --- |
 | `batch`/`jobs` | `create`, `get`, `list`, `watch`, `delete` | create the per-run driver Job, watch it to completion, delete it |
-| `core`/`pods` | `get`, `list` | find the Job's driver pod |
+| `core`/`pods` | `get`, `list`, `delete` | find the Job's driver pod; reap the sandbox pods a `SIGKILL`ed driver could not delete itself ([sandbox reaping](/components/dispatcher/overview/#sandbox-reaping)) |
 | `core`/`pods/log` | `get` | surface a dead driver pod's logs in the run's failure detail |
+
+`delete` here is for **sandbox** pods, not driver pods: the reaper's selector pins
+the driver's `managed-by` label as well as the job id, so it cannot match a driver
+Job's own pod. If a deployment points the driver at a different sandbox namespace
+(`TCAB_K8S_NAMESPACE`), grant the same pod `list`/`delete` there too — otherwise
+reaping fails in that namespace (logged, never fatal, with the sandbox's
+`activeDeadlineSeconds` as the remaining backstop).
 
 ### Driver (`tcab-driver`)
 
@@ -186,6 +193,12 @@ process that creates the untrusted sandbox pod. The dispatcher names this
 | --- | --- | --- |
 | `core`/`pods` | `create`, `get`, `list`, `delete` | start the sandbox pod, wait for it to be `Running`, delete it when the run ends |
 | `core`/`pods/exec` | `create` | seed the working tree and run the harness session in the sandbox pod |
+
+The driver's own delete only covers the runs it survives to the end of; a driver
+killed by `SIGKILL` leaves its sandbox behind, which is why the dispatcher reaps
+above and why each sandbox carries an `activeDeadlineSeconds`
+(`TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`, default 24h). See
+[sandbox lifetime](/components/driver/overview/#sandbox-lifetime).
 
 Both are namespaced `Role`s scoped to the run namespace; neither creates
 Deployments, Services, or RBAC objects, and neither touches anything outside its
@@ -215,9 +228,11 @@ and
 | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | Queue-admission cap on concurrent runs | `8` |
 | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How often to poll the queue | `2` |
 | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | TTL after which a finished Job is garbage-collected | `300` |
+| `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `_MEMORY_REQUEST` | no | Requests on the driver container. Present to keep the driver pod out of the `BestEffort` QoS class, where it is evicted and OOM-killed first — taking its sandbox cleanup with it | `100m` / `512Mi` |
+| `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` / `_MEMORY_LIMIT` | no | Limits on the driver container. Unset by default on purpose: a memory limit re-introduces the same `SIGKILL`, and the driver holds a whole run tree in memory while tarring it | — |
 | `TCAB_DISPATCHER_DRIVER_SECRETS` | yes | Comma-separated `Secret` names mounted into each driver Job via `envFrom` — how the harness API key reaches the run engine | — |
 | `TCAB_ARTIFACTS_URL` | yes | The artifact `Service`, forwarded to each driver so it can upload | — |
-| `TCAB_K8S_*` (sandbox passthroughs) | no | `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_CPU_REQUEST`/`_LIMIT`, `TCAB_K8S_RUN_MEMORY_REQUEST`/`_LIMIT`, `TCAB_K8S_IMAGE_PULL_SECRETS`, `TCAB_K8S_POD_READY_TIMEOUT_SECONDS`, `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_POD_PREFIX` — forwarded verbatim into each driver Job | per-variable |
+| `TCAB_K8S_*` (sandbox passthroughs) | no | `TCAB_K8S_NAMESPACE`, `TCAB_K8S_RUN_CPU_REQUEST`/`_LIMIT`, `TCAB_K8S_RUN_MEMORY_REQUEST`/`_LIMIT`, `TCAB_K8S_IMAGE_PULL_SECRETS`, `TCAB_K8S_POD_READY_TIMEOUT_SECONDS`, `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS`, `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS`, `TCAB_K8S_RUN_POD_PREFIX` — forwarded verbatim into each driver Job | per-variable |
 
 Concurrency scales with the cluster: `TCAB_DISPATCHER_MAX_INFLIGHT` plus the
 cluster's own capacity admit runs, rather than a hand-sized pool. There is no
