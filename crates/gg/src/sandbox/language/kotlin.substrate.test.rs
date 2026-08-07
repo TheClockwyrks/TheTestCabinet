@@ -383,6 +383,36 @@ println("carried on")
 }
 
 #[test]
+fn a_refusal_raised_under_the_program_rather_than_by_it_is_passed_through_undescribed() {
+    // The stated EXCEPTION to the function above, held by a test rather than left in a comment,
+    // because it is the one shape in which a model is not shown its own line.
+    //
+    // A refusal the sandbox itself raises — here `setTimeout`, which a started `Thread` is scheduled
+    // with — arrives in the JVM as a JavaScript exception TeaVM wrapped, and
+    // [the entry class](super::compile) is required NOT to describe one: gg classifies a failure from
+    // what the host said, and re-describing it would replace a sentence a model can act on with prose
+    // about a class it never wrote. So `$ggMessage` is never set, the bundle's tail rethrows the
+    // object untouched, and the source-map fold that puts `at program.kts:N` on a described failure
+    // never runs.
+    let outcome = run("println(\"before\")\nThread { println(\"inside\") }.start()\n");
+    let failure = program_error(&outcome);
+    assert!(
+        failure.message.contains("setTimeout is not available"),
+        "the host's own sentence reaches the model verbatim: {failure:?}",
+    );
+    assert!(
+        !failure.message.contains("java.lang."),
+        "and is not wrapped in prose about a class the model never wrote: {failure:?}",
+    );
+    assert!(
+        !failure.message.contains("program.kts:"),
+        "the cost, said out loud: this is the one failure with no line of the model's own on it — \
+         locating it would mean describing it. {failure:?}",
+    );
+    assert_eq!(outcome.logs, ["before"]);
+}
+
+#[test]
 fn a_code_module_is_a_kotlin_file_bound_at_lib() {
     // A code module is an ordinary Kotlin FILE rather than a script — this arm's two preparation
     // shapes differ, which is a thing only the Java arm could say before it. Its public top-level

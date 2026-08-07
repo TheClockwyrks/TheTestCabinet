@@ -914,6 +914,15 @@ stated rather than hidden.
   TeaVM's runtime where the exception was constructed. So the model reads the right line in the
   **message** and a meaningless one in the **location**. The fix is a frame list on the wire, shared
   with the PureScript arm.
+- **One failure has no model line at all, in either JVM arm**, and it is the price of the rethrow
+  above rather than a defect on top of it. A refusal the sandbox itself raised — `setTimeout is not
+  available in the sandbox`, which is what a started `Thread` runs into — reaches the JVM as a
+  JavaScript exception TeaVM wrapped, and the catch chain is required to pass it through
+  *undescribed* so that gg classifies it from what the host said. Describing and locating are the
+  same act here: only the branch that sets a description folds the source map, so this failure
+  carries the host's own sentence and no `at program.java:N`. That is the better half of the trade —
+  the sentence names the mistake more precisely than a line number would — and both arms hold it
+  with a test rather than leaving the located-line property to read as unconditional.
 
 There is one more property, and it was not expected: **what TeaVM's classlib is missing is a
 located compile error rather than a run-time surprise**. `java.nio.file.Paths` is

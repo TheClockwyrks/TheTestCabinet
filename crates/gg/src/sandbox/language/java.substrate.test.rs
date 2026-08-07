@@ -590,6 +590,15 @@ fn what_teavm_is_not_is_recorded_rather_than_assumed() {
         !refusal.message.contains("java.lang.RuntimeException"),
         "a failure a binding raised is not re-described as a Java one: {refusal:?}"
     );
+    // Which costs exactly one thing, and it is recorded here rather than left for a reader to take
+    // the located-line property as unconditional: describing a failure and LOCATING it are the same
+    // act on this road, because only the branch that sets a description folds TeaVM's source map. So
+    // this is the one failure in the arm that carries no `at program.java:N` — the host's own
+    // sentence instead, which names the mistake more precisely than a line number would.
+    assert!(
+        !refusal.message.contains("program.java:"),
+        "a refusal passed through undescribed is also unlocated, and that is the trade: {refusal:?}"
+    );
 
     // 6. `String.format` DOES NOT KNOW `%%`. TeaVM's formatter carries the conversions a program
     //    normally reaches for and raises `IllegalArgumentException: Unknown format conversion` for

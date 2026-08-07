@@ -525,6 +525,25 @@ const CAUGHT: [&str; 14] = [
 /// `RuntimeException` whose message TeaVM prefixes with this. gg must not describe one: the guest
 /// classifies a tool failure from what the host said, and a re-description would turn a refusal the
 /// model can act on into prose about a class it never wrote.
+///
+/// # What that costs, said out loud
+///
+/// This is the **one** failure a Kotlin program can produce that carries no line of the model's own.
+/// Locating a failure and describing it are the same act here: `$ggMessage` is what
+/// [the tail](Entry::tail) branches on, and only the branch that sets it runs `$ggLocate` over
+/// TeaVM's source map. A refusal that arrives wearing this marker takes the pass-through branch
+/// instead, so the coordinate that reaches the outcome is the generated bundle's rather than the
+/// program's — `line 2529, column 19` of something the model never saw.
+///
+/// Kept, rather than fixed by locating without describing, because the two are not separable on this
+/// road: what the guest classifies from is the thrown value itself, and the only place a located line
+/// could go is the message it must not touch. The refusal's own sentence is the thing a model acts on
+/// — `setTimeout is not available in the sandbox` names the mistake far more precisely than a line
+/// number would — so the trade is deliberate and not this arm's alone: it follows from the shared
+/// [JVM road](super::super::jvm) and [Java's arm](super::super::java::compile) is on exactly the same
+/// terms. `a_refusal_raised_under_the_program_rather_than_by_it_is_passed_through_undescribed` in
+/// [the substrate tests](super::substrate) holds it, so a future reader finds the exception rather
+/// than the unqualified claim.
 const FOREIGN_MARKER: &str = "(JavaScript) ";
 
 /// The entry class for a **program**: run the model's script, describe what it threw, and rethrow it.
