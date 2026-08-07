@@ -83,11 +83,29 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # rather than the timeout, is now the thing to watch: each further compiled arm adds its own 32
 # builds here, and the two JVM arms additionally contend for cores, since eight warm JVMs holding a
 # compiler and TeaVM apiece is several gigabytes of a container that has to hold everything else too.
-# Rust's 32 are by far the cheapest of the compiled arms — `rustc` is a one-shot process with nothing
-# warm to be, and the arm's own hand-pointed copy of this gate ran its 32 in ~1.5 s standalone before
-# it was deleted in favour of this one.
+# Rust's 32 are the cheapest of the compiled arms per compile — `rustc` is a one-shot process with
+# nothing warm to be, and the arm's own hand-pointed copy of this gate ran its 32 in ~1.5 s
+# standalone before it was deleted in favour of this one. What that copy could not show is what the
+# same 32 cost *here*, beside seven other arms' compiles competing for the same cores: measured at
+# 108.3 s run as its own group and **152.8 s** under `cargo nextest run --workspace`, against the
+# 180 s this override then carried. A
+# gate 27 s from its own ceiling is the coin flip this override exists to prevent, so the ceiling
+# moves to 300 s. The headroom, not the timeout, is still the thing to watch — and the arithmetic to
+# watch it with is now measured rather than assumed: an eighth arm nearly trebled the figure a
+# seventh left, because these compiles contend rather than queue.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
+slow-timeout = { period = "300s", terminate-after = 3 }
+
+# The seam's two other per-language sweeps, which the eighth arm pushed past the default's *warning*
+# line and within sight of its kill. Neither drives sixteen-way concurrency; each simply prepares one
+# program per registered language, and an eighth compiled arm is an eighth compiler to start.
+# Measured under `cargo nextest run --workspace`: the workspace gate at 61.6 s and the compile-cost
+# gate at 64.6 s, against a default that warns at 60 s and kills at 120 s. Both passed and both are
+# now one bad-tempered CI runner away from being terminated for doing exactly what they say, so both
+# are bounded from the work in the same way every other sweep here is.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::no_two_preparations_of_a_language_are_handed_the_same_workspace) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost))'
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 # The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above
