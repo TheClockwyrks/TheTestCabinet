@@ -75,7 +75,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # before it reads the program; Java's and now Kotlin's, whose builds go through pools of four warm
 # JVMs because TeaVM is the toolchain that was measured silently producing no output for three of
 # four concurrent builds. Measured on this repository's dev container: 19.5 s alone with five arms
-# registered, 36.9 s with Java's, THE_KOTLIN_FIGURE with Kotlin's, and 116.8 s beside the whole
+# registered, 36.9 s with Java's, 64.7 s with Kotlin's, and 116.8 s beside the whole
 # workspace before either JVM arm landed — against the default hard kill at 120 s, which it reached
 # on one run and then passed on the retry with 3.2 s to spare. A gate that is a coin flip under CI
 # load reads as a hang rather than as the thing it proves, and the property it proves does not weaken
