@@ -183,7 +183,13 @@ recut="typescript ruby java"
 # could drift is the pin against the shell side that installs it — which `java.compile.test.rs`
 # fails on when the two name different releases, when a TeaVM jar in the list is at another
 # version, or when the driver's protocol constant and the manifest's disagree.
-declared="purescript"
+#
+# `jvm` is the third, and it is the same kind as Java's driver: `jvm.backend.java` is the half of
+# that hand-written driver the two JVM arms SHARE — javac, TeaVM and the JSON — which gg appends to
+# an arm's front end before running it. Nothing cuts it either, and what it must not lose is
+# asserted over the text rather than by a diff: `jvm.test.rs` fails if the TeaVM settings that make
+# a `NullPointerException` an exception at all leave it.
+declared="purescript jvm"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

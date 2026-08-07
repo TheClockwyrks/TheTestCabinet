@@ -1085,6 +1085,18 @@ by the JDK's single-file source-code launcher, so there is no jar to build, no b
 commit and no reproducible-build gate — and a driver of a different vintage from the gg speaking to
 it is a protocol mismatch a version handshake refuses by number.
 
+That single file is **assembled from two**, and the split is not cosmetic. `javac`, the TeaVM build,
+the two diagnostic shapes and the little JSON the driver speaks are the same whatever language the
+program was written in, so they live once, in `checkers/jvm.backend.java`, which gg appends to an
+arm's own front end before closing the class. The reason is
+[`setStrict(true)`](#two-teavm-settings-that-are-not-optional): it fails **silently** when it goes
+missing, so a second copy of the code that sets it would be a standing chance for one arm to lose it
+and for nobody to notice — the same argument that has
+[JavaScript](#javascript-the-same-arm-unchecked) serve TypeScript's committed component rather than a
+byte-identical copy of it. The launcher compiles one *file*, so sharing here means gg builds the
+file; the assembled text is what is placed on disk, and what the shared directory's key is taken
+over.
+
 The **SDK** goes inside gg's binary too, as a committed jar, and that is the same split
 [PureScript's library set](#the-toolchain-and-the-library-set-travel-in-opposite-directions) is on
 and for the same reason: the image is built separately from the binary that runs in it, so an SDK

@@ -89,21 +89,23 @@
 //! green. The launcher compiles it in memory once per daemon, inside the JVM start this arm pays
 //! anyway.
 
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{
-    CompilerDaemon, CompilerPool, daemon, place, place_bytes, shared_toolchain_dir,
-};
+use crate::sandbox::language::compile::{CompilerDaemon, CompilerPool, daemon, place, place_bytes};
+use crate::sandbox::language::jvm::{self, HOME_ROOT, IMAGE_ROOT, JAVA_ENV, TEAVM_ENV};
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
 
 use super::source::{self, Wrapped};
 
-/// gg's own compiler driver: the program the warm JVM runs.
-const DRIVER: &str = include_str!("../checkers/java.compiler.java");
+/// This arm's half of gg's compiler driver: the front end that reads a model's **Java**.
+///
+/// What runs is this text with [the shared JVM backend](jvm::driver) — `javac`, TeaVM, the
+/// diagnostic shapes and the JSON — appended to it, because those are the same whatever language a
+/// program was written in and one of TeaVM's settings fails silently when it goes missing.
+const FRONT: &str = include_str!("../checkers/java.compiler.java");
 
 /// This arm's **SDK**, compiled: the jar both compilers put on their classpath.
 ///
@@ -121,22 +123,6 @@ const SDK: &[u8] = include_bytes!("../checkers/java.sdk.jar");
 
 /// What the toolchain the driver is run against is pinned to.
 const MANIFEST_JSON: &str = include_str!("../checkers/java.toolchain.json");
-
-/// The environment variable an operator points at a JDK's `java` when it is not where gg looks.
-pub(super) const JAVA_ENV: &str = "TCAB_GG_JAVA";
-
-/// The environment variable an operator points at the directory of TeaVM jars.
-pub(super) const TEAVM_ENV: &str = "TCAB_GG_TEAVM";
-
-/// Where `containers/gg-toolchains` installs this arm's toolchain in a gg run image.
-const IMAGE_ROOT: &str = "/opt/gg/toolchains/java";
-
-/// Where `scripts/ci/install-java.sh` installs it on a developer's or CI machine, under `$HOME`.
-///
-/// Looked at because this arm's toolchain is not a binary on `PATH` — it is a JDK *and* a directory
-/// of jars — so there is no `PATH` lookup that could find it, and a test suite that needed an
-/// environment variable set by hand would be a test suite that is red on a fresh clone.
-const HOME_ROOT: &str = ".local/share/gg-java";
 
 /// How many programs one JVM builds before it is thrown away.
 ///
@@ -838,7 +824,7 @@ struct JavaCompiler {
 impl JavaCompiler {
     /// Start one, place the driver if this is the first, and read its handshake.
     fn start() -> Result<Self, String> {
-        let toolchain = toolchain()?;
+        let toolchain = jvm::toolchain()?;
         let placed = placed()?;
         // The SDK goes on the same classpath TeaVM's own jars are on, which is the classpath the
         // driver hands to javac *and* to TeaVM. A model's `fs.readFile("x")` therefore type-checks
@@ -945,17 +931,11 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
     static PLACED: std::sync::OnceLock<Result<Placed, String>> = std::sync::OnceLock::new();
     PLACED
         .get_or_init(|| {
-            let mut hasher = std::collections::hash_map::DefaultHasher::new();
-            DRIVER.hash(&mut hasher);
-            SDK.hash(&mut hasher);
-            let root = shared_toolchain_dir(&format!(
-                "java-{}-{:016x}",
-                compiler_version(),
-                hasher.finish()
-            ))?;
+            let source = jvm::driver(FRONT);
+            let root = jvm::placed_dir("java", compiler_version(), &[source.as_bytes(), SDK])?;
             let driver = root.join(DRIVER_FILE);
             if !driver.is_file() {
-                place(&driver, DRIVER)?;
+                place(&driver, &source)?;
             }
             let sdk = root.join(SDK_FILE);
             if !sdk.is_file() {
@@ -965,94 +945,6 @@ pub(super) fn placed() -> Result<&'static Placed, String> {
         })
         .as_ref()
         .map_err(Clone::clone)
-}
-
-/// The JDK and the jars this machine compiles Java with.
-struct Toolchain {
-    /// The `java` a daemon is started as.
-    java: PathBuf,
-    /// Every jar of the toolchain, joined the way a JVM wants them.
-    classpath: String,
-}
-
-/// Find the toolchain, once per process.
-///
-/// Looked for in the order "what an operator said, then what the gg run image guarantees, then what
-/// `scripts/ci/install-java.sh` puts under `$HOME`". There is no `PATH` step for the jars — a
-/// directory is not on `PATH` — so the `$HOME` fallback is what makes this arm's tests green on a
-/// machine that has merely run the install script.
-fn toolchain() -> Result<&'static Toolchain, String> {
-    static TOOLCHAIN: std::sync::OnceLock<Result<Toolchain, String>> = std::sync::OnceLock::new();
-    TOOLCHAIN
-        .get_or_init(find_toolchain)
-        .as_ref()
-        .map_err(Clone::clone)
-}
-
-/// Look for the JDK and the jars.
-fn find_toolchain() -> Result<Toolchain, String> {
-    let roots: Vec<PathBuf> = std::iter::once(PathBuf::from(IMAGE_ROOT))
-        .chain(std::env::var_os("HOME").map(|home| PathBuf::from(home).join(HOME_ROOT)))
-        .collect();
-
-    let java = named(JAVA_ENV)
-        .or_else(|| {
-            roots
-                .iter()
-                .map(|root| root.join("jdk").join("bin").join("java"))
-                .find(|path| path.is_file())
-        })
-        // A `java` on `PATH` is the last answer rather than none: a developer's machine has one, and
-        // a JDK gg did not install still compiles a program correctly — it is only the *diagnostics*
-        // that could word themselves differently from the pinned one.
-        .unwrap_or_else(|| PathBuf::from("java"));
-
-    let libraries = named(TEAVM_ENV)
-        .or_else(|| {
-            roots
-                .iter()
-                .map(|root| root.join("libs"))
-                .find(|path| path.is_dir())
-        })
-        .ok_or_else(|| {
-            format!(
-                "gg found no TeaVM jars. They are installed in {IMAGE_ROOT}/libs by \
-                 containers/gg-toolchains and under ~/{HOME_ROOT}/libs by \
-                 scripts/ci/install-java.sh; {TEAVM_ENV} names another directory."
-            )
-        })?;
-
-    // Every jar in the directory rather than a list gg carries: the directory is written by the
-    // install script and the toolchain image from one pinned list, and a second copy of that list in
-    // Rust would be a second thing to keep in step for no gain.
-    let mut jars: Vec<PathBuf> = std::fs::read_dir(&libraries)
-        .map_err(|error| format!("could not read {}: {error}", libraries.display()))?
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension().is_some_and(|it| it == "jar"))
-        .collect();
-    if jars.is_empty() {
-        return Err(format!(
-            "{} holds no jars; run scripts/ci/install-java.sh",
-            libraries.display()
-        ));
-    }
-    // Sorted so a classpath is the same on two machines with the same jars, which is one fewer thing
-    // to wonder about when two runs disagree.
-    jars.sort();
-    let classpath = jars
-        .iter()
-        .map(|path| path.to_string_lossy().into_owned())
-        .collect::<Vec<_>>()
-        .join(":");
-    Ok(Toolchain { java, classpath })
-}
-
-/// What an operator named in `variable`, when they named anything.
-fn named(variable: &str) -> Option<PathBuf> {
-    std::env::var_os(variable)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
 }
 
 #[cfg(test)]

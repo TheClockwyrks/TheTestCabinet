@@ -37,24 +37,23 @@ fn the_rust_and_shell_halves_of_the_toolchain_pin_agree() {
 
 #[test]
 fn the_driver_gg_carries_speaks_the_protocol_gg_expects() {
-    // The driver is a single `.java` file gg embeds and runs with the JDK's source launcher, so its
-    // protocol constant and the manifest's are the two ends of one number. They cannot be derived
-    // from each other — one is Java and one is JSON — so they are compared.
+    // The driver is a single `.java` file gg assembles and runs with the JDK's source launcher, so
+    // its protocol constant and the manifest's are the two ends of one number. They cannot be
+    // derived from each other — one is Java and one is JSON — so they are compared.
     assert!(
-        DRIVER.contains(&format!("PROTOCOL = {}", manifest().protocol)),
+        FRONT.contains(&format!("PROTOCOL = {}", manifest().protocol)),
         "checkers/java.compiler.java speaks a different protocol from java.toolchain.json ({})",
         manifest().protocol,
     );
-    // The two settings the study named as mandatory and easy to miss. `setStrict(false)` would make
-    // `catch (NullPointerException)` silently fail to catch, and any module type but `NONE` would
-    // put the API objects the guest binds out of the program's reach.
+    // The two settings the study named as mandatory and easy to miss now live in the half both JVM
+    // arms run, which is where they are asserted (see `jvm.test.rs`). What is asserted here is that
+    // this arm's driver really is assembled out of both halves: a front end run on its own would
+    // reach no TeaVM at all.
+    let assembled = jvm::driver(FRONT);
     assert!(
-        DRIVER.contains("setStrict(true)"),
-        "strict mode is not optional"
-    );
-    assert!(
-        DRIVER.contains("setJsModuleType(JSModuleType.NONE)"),
-        "the module type is not optional"
+        assembled.contains("setStrict(true)")
+            && assembled.contains("setJsModuleType(JSModuleType.NONE)"),
+        "the Java arm's assembled driver carries the shared TeaVM build",
     );
 }
 

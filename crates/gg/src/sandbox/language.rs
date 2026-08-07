@@ -89,6 +89,16 @@ mod ruby;
 #[path = "language/purescript.rs"]
 mod purescript;
 
+/// What the two **JVM** arms share: the JDK and TeaVM they both compile through, and the half of
+/// gg's compiler driver that is the same whatever language the program was written in.
+///
+/// Not a language and not registered anywhere. It exists because [Java](java) and
+/// [Kotlin](kotlin) reach the same guest by the same road, and one of TeaVM's two mandatory
+/// settings fails *silently* when it goes missing — so a second copy of the code that sets it
+/// would be a standing chance for one arm to lose it and for nobody to notice.
+#[path = "language/jvm.rs"]
+mod jvm;
+
 #[path = "language/java.rs"]
 mod java;
 
