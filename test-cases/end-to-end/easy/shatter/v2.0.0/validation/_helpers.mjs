@@ -178,6 +178,20 @@ export function angleDelta(from, to) {
  * systems without a stray rock ending the run. A scenario then poses exactly the
  * bodies it needs, and `act` steps the real sim.
  *
+ * ANY OPENING WAVE BANNER IS SETTLED FIRST, so the scenario is posed into a field
+ * that is actually running. `specs/gameplay.md` puts the banner BEFORE the spawn
+ * and `validation/waves/banner.mjs` spells out what that allows: a build may open
+ * play with its wave 1 banner already showing and hold the wave until it has
+ * finished. During that beat there are no rocks by design, so a build has nothing
+ * to move and may reasonably do less work — and a scenario posed into it is posed
+ * into a lull. Settling first costs a build that spawns with `startGame` nothing
+ * (the predicate holds on the first read), and `skipUntil` is instant in BOTH
+ * passes, so no verdict and no clip changes shape.
+ *
+ * Note what this does NOT cover: `clearRocks` leaves the field empty, and an empty
+ * field is a cleared wave, so a check that steps before posing a rock raises a
+ * fresh banner of its own. That is what `arrangeBystanderRock` is for.
+ *
  * This is arrange-only by convention: it starts a scenario from scratch, and doing
  * that inside `act` cuts the recording into two takes with a title screen between
  * them. An item that needs a second scenario reaches it with setters instead.
@@ -185,6 +199,7 @@ export function angleDelta(from, to) {
 export async function newGame(api, seed = 1) {
   await api.reset({ seed });
   await api.call("startGame");
+  await api.skipUntil((s) => !s.waveBanner, { max: ticks(4), poll: 6 });
   await api.call("clearRocks");
   await api.call("removeSaucer");
   await api.call("setInvuln", 99); // seconds — keep the ship alive through the measurement

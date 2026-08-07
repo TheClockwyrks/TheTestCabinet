@@ -33,7 +33,24 @@
 // (`act`), so the clip shows the saucer holding a dead-straight, constant-speed line while
 // the rock opposite it visibly accelerates into the star. 1 s x 120 Hz = 120 ticks.
 
-import { newGame, STAR_X, STAR_Y, SAUCER_CRUISE, ticks } from "../_helpers.mjs";
+// A bystander rock is parked before the single step below. `newGame` leaves the field empty,
+// and an empty field is a cleared wave, so that step raises a WAVE banner — a beat with no
+// rocks on it by design, which a build is entitled to spend doing less. Both bodies here
+// would then sit still and the control would report gravity as absent, failing the item on
+// its own setup. The bystander keeps the field occupied so the crossing runs in ordinary play.
+// It is parked at the default spot, well clear of the star's row that both bodies fly.
+//
+// Because it is added FIRST, the control rock is not `rocks[0]`; the index `addRock` returns
+// is what identifies it (`specs/instrumentation.md`: "adds one rock and returns its index").
+
+import {
+  newGame,
+  arrangeBystanderRock,
+  STAR_X,
+  STAR_Y,
+  SAUCER_CRUISE,
+  ticks,
+} from "../_helpers.mjs";
 
 // Both bodies start this far out, on opposite sides of the star, and cruise inward — far
 // enough that neither reaches the saucer's avoidance radius or the core within the window.
@@ -47,12 +64,15 @@ export default function item() {
   let startX;
   let s;
   let r;
+  // Which rock on the field is the control — see the header.
+  let controlIndex;
 
   return {
     id: "gravity.saucer-free",
 
     async arrange(api) {
       await newGame(api);
+      await arrangeBystanderRock(api); // keeps the field occupied — see the header
       await api.call("spawnSaucer");
       // Ask for a heading, then give the build one step to answer with whatever its
       // saucer actually flies. `skip` rather than `advance`: it is instant in BOTH
@@ -66,7 +86,7 @@ export default function item() {
       const k = Math.sign(cruise) || 1;
       startX = STAR_X - k * OFFSET;
       await api.call("setSaucer", { x: startX, y: STAR_Y, vy: 0 });
-      await api.call("addRock", "large", {
+      controlIndex = await api.call("addRock", "large", {
         x: STAR_X + k * OFFSET,
         y: STAR_Y,
         vx: -cruise,
@@ -78,7 +98,7 @@ export default function item() {
       await api.advance(ticks(SPAN));
       const snap = await api.snapshot();
       s = snap.saucer;
-      r = snap.rocks[0];
+      r = snap.rocks[controlIndex];
     },
 
     async assert(api, check) {
