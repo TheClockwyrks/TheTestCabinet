@@ -102,15 +102,25 @@ export default function item() {
         "the saucer crossed the edge it was heading for and re-entered on the far side",
         wrapped,
       );
-      check.expectLt(
-        "it was near that edge before wrapping",
-        dir > 0 ? FIELD_W - before.x : before.x,
-        80,
+      // Both edge readings are gaps measured from INSIDE the field, so a build that
+      // never wrapped is reported as what it is. `specs/playfield.md` keeps every
+      // coordinate in range by wrapping it, so a conformant `x` is always within
+      // `[0, FIELD_W)` and both gaps land in `[0, edge)`. A build that lets its saucer
+      // run off the field instead reports a NEGATIVE gap, which a bare upper bound
+      // reads as comfortably inside — it passed "it was near that edge" on a saucer
+      // 400 px past it, in the same verdict that failed for never having wrapped.
+      const gapBefore = dir > 0 ? FIELD_W - before.x : before.x;
+      const gapAfter =
+        dir > 0 ? (after?.x ?? FIELD_W) : FIELD_W - (after?.x ?? 0);
+      check.expectOk(
+        `it reached that edge before wrapping (${gapBefore.toFixed(1)} px from it, ` +
+          `measured inside the field)`,
+        gapBefore >= 0 && gapBefore < 80,
       );
-      check.expectLt(
-        "it reappeared at the opposite edge",
-        dir > 0 ? (after?.x ?? FIELD_W) : FIELD_W - (after?.x ?? 0),
-        60,
+      check.expectOk(
+        `it reappeared at the opposite edge (${gapAfter.toFixed(1)} px from it, ` +
+          `measured inside the field)`,
+        gapAfter >= 0 && gapAfter < 60,
       );
       check.expectClose(
         "it carries the same horizontal velocity across the wrap",

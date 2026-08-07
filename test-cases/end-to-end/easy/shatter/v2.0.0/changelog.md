@@ -1,3 +1,70 @@
+## What `startGame()` promises, said the same way in both specs
+
+`specs/instrumentation.md` said `startGame()` "enters the in-game state and spawns the
+first wave"; `specs/gameplay.md` put the `WAVE N` banner before the spawn and kept the
+field clear for the whole of it. Read together they described a field that is both
+populated and empty at the same instant, and builds split on which sentence to believe —
+the reference implementations spawn wave 1 at once, while model builds opened on a
+banner. Both openings are legitimate and both specs now say so: the call guarantees a
+game that has STARTED, not one with rocks on the field, and `snapshot().waveBanner` says
+which opening a build chose. What stays fixed is the order *within* a banner, which is
+`waves/banner`'s subject.
+
+`newGame` settles that opening banner before posing anything, which is what the whole
+validation set was quietly assuming it did not have to. A build that opened play on a
+banner handed every scripted item a scenario posed into a beat with no rocks in it — one
+run failed twelve items on it, reporting the same setup fault under the names of gravity,
+splitting, recycling, scoring, wrapping and audio, none of which were broken. The settle
+is `skipUntil`, instant in both passes, so a build that spawns with `startGame` waits no
+time and no clip or verdict changes shape.
+
+`saucer/avoids-star` and `gravity/saucer-free` now park a bystander rock, as the rock and
+scoring items already did. `newGame` leaves the field empty and neither item puts a rock
+on it, so the first step of each cleared a wave and raised a banner of its own — the
+saucer then sat still for the whole sweep and both items reported a steering or gravity
+fault that had not happened. `saucer-free` identifies its control rock by the index
+`addRock` returns rather than as `rocks[0]`, which the bystander now occupies.
+
+## The banner is a breather from rocks, not a pause
+
+`specs/gameplay.md` said the field stays clear for the banner and the ship keeps flying
+through it, which a build can read as permission to stop simulating for a second and a
+half. Nothing catches that, because a banner has no rocks on it by definition — except
+that the saucer's cadence is its own and owes nothing to wave boundaries, so it is
+routinely still hunting when the last rock dies. One build froze it: for the whole banner
+the saucer hung motionless and could not be shot down, its bullets passed through the
+ship, and then it snapped back into motion. That is an ordinary end of wave, not an
+artefact of being driven.
+
+The spec now separates the two ideas — the field is clear of ROCKS, and everything else
+carries on — and says outright that a saucer already on the field keeps hunting, keeps
+firing, and can still be shot down. A new item, `waves/plays-through-banner`, grades it:
+it clears a wave with a saucer up, then inside the banner confirms the ship still flies,
+the saucer still travels, and a round put in front of it still connects.
+
+## Validation: three items graded something other than their subject
+
+- `controls/advances-in-real-time` required rocks on the field the instant play began,
+  which is the reading of `startGame` the specs have now settled the other way — it
+  reported a build that boots correctly as having no scenario to grade. It waits for the
+  wave, and takes its second witness from the furthest of a posed coasting ship and the
+  drifting rocks, so a build that opens on a banner and one that ignores `setShip`'s
+  velocity each still leave one witness standing. The ship is deliberately not made
+  invulnerable: builds blink an invulnerable ship, which erased it from the stills.
+- `audio/thrust` asked only whether Web Audio sources were started across the hold, which
+  marks a silent build correctly and a sustained one wrongly — the idiomatic way to hold
+  a sound is one voice started once and left running with its gain ramped, and that
+  starts nothing during the thrust at all. It now accepts either sources started over the
+  thrust in excess of an identical idle window, or silence in both windows with a voice
+  brought up by the arming gesture. Reading the arming step specifically, rather than
+  every source since page load, keeps a start-of-game cue from satisfying it.
+- `wrap/saucer` bounded the run-up from above only, so a build whose saucer ran off the
+  field satisfied "it was near that edge before wrapping" at 400 px PAST it — an `ok`
+  line inside the same verdict that was failing for never having wrapped. Both edge
+  readings are now gaps measured from inside the field, which is where
+  `specs/playfield.md` keeps every coordinate. No verdict moves; the failure just names
+  itself.
+
 ## The fire interval is a whole number of ticks
 
 `specs/ship.md` asked for shots "at least 0.18 seconds apart", which is 21.6 ticks at the
