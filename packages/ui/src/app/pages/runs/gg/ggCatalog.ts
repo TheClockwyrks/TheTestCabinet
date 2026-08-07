@@ -664,6 +664,7 @@ const PROGRAM_LANGUAGE_LABELS: Record<GgProgramLanguage, string> = {
   purescript: "PureScript",
   java: "Java",
   kotlin: "Kotlin",
+  rust: "Rust",
 };
 
 // gg's own default, which is what the empty value resolves to (`GgProgramLanguage::default`).

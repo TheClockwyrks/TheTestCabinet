@@ -382,10 +382,13 @@ struct Spelled<'a, T> {
 /// to invalidate.
 fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
     let mut api: BTreeMap<&'static str, BTreeMap<&'static str, CallSpelling>> = BTreeMap::new();
+    // How this language joins an object to one of its functions: `.` everywhere but Rust, where an
+    // API object is a module and the step is `::`.
+    let separator = language.member_separator();
     for function in crate::sandbox::catalogue_functions(language) {
-        let call = format!("{}.{}", function.object, function.name);
+        let call = format!("{}{separator}{}", function.object, function.name);
         let signature = match function.signatures.first() {
-            Some(entry) => format!("{}.{}", function.object, entry.signature),
+            Some(entry) => format!("{}{separator}{}", function.object, entry.signature),
             None => call.clone(),
         };
         api.entry(function.object).or_default().insert(

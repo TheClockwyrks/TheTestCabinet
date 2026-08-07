@@ -50,7 +50,6 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use super::compile::compile_program;
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
-use crate::sandbox::language::isolation::{Preparation, breaches};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -85,10 +84,9 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// so a copy of the loop that skipped it would prove nothing about the failure this arm actually
 /// produces.
 ///
-/// The [membrane state](MembraneState) is built with **TypeScript**, and that is a placeholder with
-/// one consequence only: the language a membrane state carries decides how a refused call's name is
-/// spelled back at the model, and this arm has no catalogue to spell out of yet. Nothing else in the
-/// path reads it.
+/// The [membrane state](MembraneState) is built with **this** language, which is what decides how a
+/// refused call's name is spelled back at the model — `view::open_text` rather than
+/// `view.open_text`, since an API object here is a module.
 pub(super) fn evaluate(
     component: &[u8],
     enabled: &[String],
@@ -112,7 +110,7 @@ pub(super) fn evaluate(
     let mut store = bounded_store(
         MembraneState::new(
             api,
-            crate::sandbox::language(GgProgramLanguage::TypeScript),
+            crate::sandbox::language(GgProgramLanguage::Rust),
             scope,
             limits,
             None,
@@ -510,60 +508,65 @@ fn what_a_program_costs_and_what_it_weighs() {
     assert_eq!(logs(&outcome), ["weighed"]);
 }
 
-/// The production prepare step, as the [isolation gate](crate::sandbox::language::isolation) drives
-/// it.
-struct RustCompile;
-
-impl Preparation for RustCompile {
-    fn describe(&self) -> String {
-        "Rust program".to_string()
-    }
-
-    /// A program whose marker rides inside a **call's argument**, where a compiler that eliminates
-    /// dead code cannot drop it — which on this arm is not a precaution but the whole point:
-    /// `wasm-ld` dead-strips a `cdylib`, and a marker in an unused constant would vanish from every
-    /// artifact and make the gate assert nothing.
-    fn source(&self, marker: &str) -> String {
-        format!("{LOG}(\"{marker}\");\n")
-    }
-
-    /// The artifact, byte for byte, as text.
-    ///
-    /// Each byte becomes the `char` of the same value rather than going through
-    /// [`String::from_utf8_lossy`], which would replace every invalid sequence with one replacement
-    /// character and make two different wasm modules compare equal. This mapping is lossless *and*
-    /// leaves an ASCII marker in the data section findable as an ordinary substring.
-    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        compile_program(source, &[], context)
-            .map_err(|failure| failure.to_string())
-            .map(|prepared| {
-                prepared
-                    .component
-                    .expect("a compiled arm hands back a component")
-                    .into_iter()
-                    .map(char::from)
-                    .collect()
-            })
-    }
-}
-
+/// **A program reaches a code module, and a module that does not build is refused at the read.**
+///
+/// The whole of what makes a Rust [code skill](crate::skills) work, driven end to end: the module is
+/// prepared on its own — which is where its author's diagnostic comes from — and then *linked into
+/// the program that reads it*, because Rust has no run-time moment at which a namespace could be
+/// bound.
+///
+/// It is the one behaviour on this arm that the interpreted arms get for free from their guests, so
+/// it is asserted here rather than trusted.
 #[test]
-fn the_compile_is_isolated_at_sixteen_way_concurrency() {
-    // The gate that holds every language to "what a preparation returns is a function of its input
-    // alone", at the concurrency `limits.maxParallel` really produces. This arm compiles into its
-    // own workspace and only ever READS the shared library set, so it should pass without having
-    // done anything special — which is the property being asserted, not an accident being
-    // tolerated.
-    super::compile::warm();
-    let breaches = breaches(&RustCompile);
+fn a_program_reaches_a_code_module_that_was_linked_into_it() {
+    let module = crate::sandbox::prepare_module(
+        crate::sandbox::language(GgProgramLanguage::Rust),
+        "pub fn shout(word: &str) -> String {\n    word.to_uppercase()\n}\n\npub const MARK: u32 = 7;\n",
+    )
+    .expect("an ordinary Rust module compiles");
+    assert_eq!(
+        module.exports,
+        vec!["shout".to_string(), "MARK".to_string()],
+        "a module's namespace is every public item it declares, in source order"
+    );
+
+    let modules = [CodeModule {
+        name: "csv_tools".to_string(),
+        source: module.source,
+    }];
+    let prepared = crate::sandbox::prepare_program(
+        crate::sandbox::language(GgProgramLanguage::Rust),
+        &format!("{LOG}(&::std::format!(\"{{}} {{}}\", lib::csv_tools::shout(\"ok\"), lib::csv_tools::MARK));\n"),
+        &modules,
+    )
+    .expect("a program compiles against the modules in its scope");
+    let component = prepared
+        .component
+        .expect("a compiled arm hands back a component");
+    let (outcome, _log) = evaluate(
+        &component,
+        &[],
+        &modules,
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["OK 7"]);
+
+    // And a module the compiler refuses is the module author's failure, reported at the read rather
+    // than two turns later against somebody else's program.
+    let failure = crate::sandbox::prepare_module(
+        crate::sandbox::language(GgProgramLanguage::Rust),
+        "pub fn broken() -> u32 {\n    \"seventeen\"\n}\n",
+    )
+    .expect_err("a module that does not type-check is refused");
+    let PrepareFailure::Program(crate::sandbox::PrepareError::Compile(rendered)) = &failure else {
+        panic!("a module's own type error was not reported as a compile error: {failure}");
+    };
+    assert!(rendered.contains("E0308"), "{rendered}");
     assert!(
-        breaches.is_empty(),
-        "the Rust compile is not isolated per preparation:\n{}",
-        breaches
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
+        rendered.contains("line 2"),
+        "a module's diagnostic must land in the module author's own coordinates: {rendered}"
     );
 }
 

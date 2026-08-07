@@ -4423,6 +4423,27 @@ pub enum GgProgramLanguage {
     /// omit, and a `ToolError` caught with `catch` or `runCatching`. And it is declared in the
     /// **root package**, so a program reaches the whole surface with no `import` at all.
     Kotlin,
+    /// Rust: **compiled by `rustc` into the wasm component that turn is evaluated by** — the first
+    /// arm whose artifact is the program.
+    ///
+    /// Every language before it evaluates a *string*: its committed component carries a whole
+    /// runtime (a CPython, an Opal, a JavaScript engine) and a program crosses the membrane as
+    /// source that runtime reads. `rustc` produces no such thing — it produces the program — so this
+    /// arm commits **no component at all** and compiles one per turn instead, against a prebuilt
+    /// library set that ships inside gg's binary. It is also the only arm with **no exception
+    /// mechanism in the guest**: `wasm32-unknown-unknown` has no unwinder, so a panic aborts and
+    /// traps, and what saves the error surface is a panic *hook* that reports through the host with
+    /// the model's own line and column before the abort.
+    ///
+    /// A **code module** here is linked into the same artifact as the program that reads it, which
+    /// is why the seam hands the modules in scope to a program's preparation at all: nothing can be
+    /// bound at `lib::<key>` after the compile. Its SDK is hand-written and reads as Rust reads:
+    /// `snake_case`, an API object as a **module** so a call is a path, `Result<_, ToolError>`
+    /// everywhere so `?` composes gg's calls with `std`'s own fallible ones, a struct with `Default`
+    /// and functional update where a call has two or more optional arguments and a bare `Option<T>`
+    /// where it has one, real `enum`s for fixed choices, a `RangeInclusive` for a span of turns, and
+    /// one glob (`use gg::prelude::*;`) that a program's own `use` may shadow.
+    Rust,
 }
 
 impl GgProgramLanguage {
@@ -4443,6 +4464,7 @@ impl GgProgramLanguage {
         Self::PureScript,
         Self::Java,
         Self::Kotlin,
+        Self::Rust,
     ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
@@ -4465,6 +4487,7 @@ impl GgProgramLanguage {
             Self::PureScript => const { Self::listed_at(4, Self::PureScript) },
             Self::Java => const { Self::listed_at(5, Self::Java) },
             Self::Kotlin => const { Self::listed_at(6, Self::Kotlin) },
+            Self::Rust => const { Self::listed_at(7, Self::Rust) },
         }
     }
 
@@ -4497,6 +4520,7 @@ impl GgProgramLanguage {
             Self::PureScript => "purescript",
             Self::Java => "java",
             Self::Kotlin => "kotlin",
+            Self::Rust => "rust",
         }
     }
 
@@ -4522,6 +4546,7 @@ impl GgProgramLanguage {
             Self::PureScript => "PureScript",
             Self::Java => "Java",
             Self::Kotlin => "Kotlin",
+            Self::Rust => "Rust",
         }
     }
 }

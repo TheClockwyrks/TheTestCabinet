@@ -56,17 +56,23 @@ fn every_registered_language_describes_one_capability_surface() {
     );
 }
 
-/// **Every registered language's committed component binds exactly the tools gg offers.**
+/// **Every registered language's component binds exactly the tools gg offers.**
 ///
-/// Two gates in one test, both against the committed `.wasm` rather than against a source file.
-/// Instantiating proves the artifact imports exactly what the membrane provides — a WIT change with
-/// no rebuild fails here — and asking the guest which tools it binds proves the artifact is not
-/// merely *loadable* but current.
+/// Two gates in one test, both against the `.wasm` rather than against a source file. Instantiating
+/// proves the artifact imports exactly what the membrane provides — a WIT change with no rebuild
+/// fails here — and asking the guest which tools it binds proves the artifact is not merely
+/// *loadable* but current.
 ///
 /// It lives with the agreement gate rather than beside the sandbox's execution tests because it is
 /// the same assertion as the catalogue's tool bijection, one layer down: the catalogue says what a
 /// language *documents*, the component says what it *binds*, and a language whose two halves
 /// disagreed would offer a study an arm that documents one surface and runs another.
+///
+/// For a [compiled arm](super::super::PreparedProgram::component) the artifact asked is one this
+/// test **compiled seconds ago**, out of the one whole program the seam guarantees every language
+/// can write. That is stronger evidence rather than weaker: a stale artifact is not a failure mode
+/// an arm of that shape has, so what the check catches instead is the SDK's own binding table
+/// falling out of step with the functions beside it.
 ///
 /// One blind spot, worth stating so nobody over-trusts the instantiation half: the guest imports the
 /// eight tool families, `session`, `docs`, `views` and `feedback`. It never imports `types` or
@@ -81,14 +87,24 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
     expected.sort();
 
     for language in registered() {
-        let mut bound = crate::sandbox::component_bound_tools(language, None)
-            .expect("the committed guest instantiates and reports its tools");
+        // An interpreted arm is asked about its committed component; a compiled one has none to
+        // ask, so it is given a program to compile — `open_docs_views_statement` is the one whole
+        // program every language is required to be able to write, and a sibling gate already
+        // asserts each can prepare what it generated.
+        let artifact = language.compiles_component().then(|| {
+            crate::sandbox::prepare_program(language, &language.open_docs_views_statement(&[]), &[])
+                .expect("a compiled arm compiles the program its own seam generated")
+                .component
+                .expect("a compiled arm hands back the component it compiled")
+        });
+        let mut bound = crate::sandbox::component_bound_tools(language, artifact)
+            .expect("the guest instantiates and reports its tools");
         bound.sort();
         assert_eq!(
             bound,
             expected,
-            "{}: the committed component and gg's tool vocabulary have drifted apart — rebuild \
-             the guest with `packages/gg-sandbox/build.sh`",
+            "{}: the component and gg's tool vocabulary have drifted apart — rebuild the guest \
+             with `packages/gg-sandbox/build.sh`",
             language.display_name()
         );
     }

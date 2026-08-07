@@ -101,7 +101,7 @@ then diverges where nothing else does. Its concurrency wrapper is a **`Thread`**
 has no `async` keyword and no suspension token at all: `Thread.new do … end.join` and the
 two-statement `worker = Thread.new do … end` … `worker.join` both come off, the
 `require "thread"` above either comes with them, and the count of tokens removed is **zero** —
-which is the honest number for a language that has none. Its lexer is the largest of the seven
+which is the honest number for a language that has none. Its lexer is the largest of the eight
 dialects, because Ruby has six string shapes and a heredoc; the one it deliberately does not read is
 the regular-expression literal, since `/…/` cannot be told from division without a parse, so a regex
 carrying an apostrophe makes the scan **decline** rather than guess.
@@ -180,6 +180,29 @@ Ruby's conclusion reached from Kotlin's classpath rather than theirs. And it is 
 suspension token to delete**: Kotlin marks suspension on the declaration rather than at the call
 site, so a `suspend fun` inside the wrapper cannot survive the wrapper coming off, the modifier goes
 with it, and the count is honestly non-zero where Java's and Ruby's are honestly zero.
+
+[Rust](/gg/program-languages/#what-its-dialect-says-and-the-three-answers-nobody-else-gives) gives
+**three** answers no other registered arm gives, and each is the same rule reading a different
+grammar. **`let` is not part of the redeclaration proof**, because Rust *shadows*: a second `let` of
+one name is ordinary, deliberate, everyday Rust, so a duplicated program made only of `let`s and
+calls is one that runs its work twice rather than one the compiler refuses — and deleting its second
+half would delete work the model asked to have done. The proof rests on **items** instead (`fn`,
+`struct`, `enum`, `trait`, `type`, `const`, `static`, `mod`, each `E0428` twice in one block) and on
+a single-name `use`, which is `E0252`; a glob import is excluded, because writing one twice is
+legal. **Nothing is done about an import, and nothing needs to be**: this is the one arm whose
+`is_import_statement` answers "no" because the line *works* — a program here is a function body,
+Rust admits an item wherever a statement may stand, so `use std::collections::HashMap;` resolves
+exactly where the model wrote it, with nothing to hoist and nothing to delete. And **the lexer has
+to tell a character literal from a lifetime**: `'a'` is a `char` and `'a` is a lifetime, and a scan
+that read the `'` of `&'static str` as an opening quote would swallow the rest of the program. The
+rule that resolves it — a `'` opens a literal only when one character and a closing `'` follow —
+has a second effect worth having: an apostrophe in a stray line of English is ordinary punctuation
+here, so a reply of prose around a program still lexes where the identical apostrophe leaves
+Kotlin's scan with no mask at all. Its wrapper is `std::thread::spawn(|| { … })`, a measured failure
+rather than an assumed one (it compiles for this target and then panics, because the target has no
+threads); the `use` above it is **kept**, which is Java's answer reached from this arm's own library
+set; and the token it deletes is `.await`, which is Rust's suspension marker in the one place it
+lives — after the expression rather than in front of it.
 
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need

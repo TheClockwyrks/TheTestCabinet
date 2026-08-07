@@ -102,7 +102,7 @@ fn backticked(text: &str) -> Vec<&str> {
 /// Only the head, because what follows it is the call's *arguments*, which are the template's own
 /// worked example and are written in that language's syntax. A span that does not begin with two
 /// identifiers separated by a dot is not naming a call and is answered with `None`.
-fn call_head(span: &str) -> Option<(&str, &str)> {
+fn call_head<'a>(span: &'a str, separator: &str) -> Option<(&'a str, &'a str)> {
     let ident = |text: &str| -> usize {
         text.char_indices()
             .take_while(|(index, character)| {
@@ -113,10 +113,10 @@ fn call_head(span: &str) -> Option<(&str, &str)> {
             .count()
     };
     let object_len = ident(span);
-    if object_len == 0 || !span[object_len..].starts_with('.') {
+    if object_len == 0 || !span[object_len..].starts_with(separator) {
         return None;
     }
-    let after = &span[object_len + 1..];
+    let after = &span[object_len + separator.len()..];
     let name_len = ident(after);
     if name_len == 0 {
         return None;
@@ -303,7 +303,7 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
             render_code_nothing_shown_for(language),
         );
         for span in backticked(&rendered) {
-            let Some((object, name)) = call_head(span) else {
+            let Some((object, name)) = call_head(span, language.member_separator()) else {
                 continue;
             };
             if !objects.contains(&object) {
@@ -364,7 +364,7 @@ fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
             render_code_nothing_shown_for(language),
         );
         for span in backticked(&rendered) {
-            let Some((object, name)) = call_head(span) else {
+            let Some((object, name)) = call_head(span, language.member_separator()) else {
                 continue;
             };
             let Some(function) = bound
@@ -376,7 +376,9 @@ fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
                 // defect in two sentences.
                 continue;
             };
-            let Some(quoted) = quoted_arguments(&span[object.len() + 1 + name.len()..]) else {
+            let Some(quoted) = quoted_arguments(
+                &span[object.len() + language.member_separator().len() + name.len()..],
+            ) else {
                 continue;
             };
             let takes = function.signatures.iter().any(|entry| {

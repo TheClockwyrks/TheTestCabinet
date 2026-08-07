@@ -24,6 +24,7 @@ const PROGRAM_LANGUAGE_NAMES: Record<GgProgramLanguage, string> = {
   purescript: "PureScript",
   java: "Java",
   kotlin: "Kotlin",
+  rust: "Rust",
 };
 
 // The Reference surface: the header, the sentence saying where the document came from, the

@@ -11,7 +11,7 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Seven are registered, and between them they separate three things that used to be one. TypeScript
+Eight are registered, and between them they separate four things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
@@ -23,10 +23,13 @@ with no type system anywhere;
 of that axis, **compiled and totally typed** by a real compiler that lives in the run image
 rather than inside gg; **[Java](#java-a-warm-jvm-and-two-compilers-per-program)** is the arm a
 study reads for what a *big* compile costs, since its program passes through two compilers inside
-a JVM gg keeps warm between programs; and **[Kotlin](#kotlin-a-program-that-is-a-script)** rides
+a JVM gg keeps warm between programs; **[Kotlin](#kotlin-a-program-that-is-a-script)** rides
 that same road from bytecode onwards, which makes the pair the closest thing this seam has to a
 **controlled experiment on the language itself** — one toolchain, one guest, one classlib, two
-surfaces written the way each language is really written. This page is the
+surfaces written the way each language is really written; and
+**[Rust](#rust-the-program-is-the-artifact)** is the fourth thing: the first arm that ships **no
+guest at all**, because its compiler produces the program rather than something that later reads
+one. This page is the
 design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
@@ -1581,6 +1584,114 @@ at all, because its answer decides whether gg deletes the model's work. Both rea
 awkward shapes (a `${…}` template, a **nested** block comment, a backquoted identifier), each of
 which is a place a Java-shaped scan silently loses the source rather than declining.
 
+## Rust: the program is the artifact
+
+The eighth arm: `language: "rust"` is a value an operator configures, and it is the first arm that
+is a **different shape** rather than a different language.
+
+**A Rust program is compiled by `rustc` into the wasm component that turn is evaluated by.** There
+is no guest. Every arm before this one ships a committed `.wasm` carrying a whole language runtime —
+a CPython, an Opal, a JavaScript engine — and hands it the model's reply as a *string* to read.
+`rustc` produces no such thing: it produces the program. The seam's two shapes and what carries
+them are described under [an arm whose artifact is the program](#an-arm-whose-artifact-is-the-program);
+what its SDK looks like is [above](#what-rusts-sdk-looks-like); the rest of this section is what a
+model and an operator see.
+
+Measured in this repository's dev container, aarch64, on an ordinary program: `rustc` — the whole
+compile, including the link — and the in-process component encode together are **~60 ms**, wasmtime's
+`Component::new` on the result is **~9 ms**, and the artifact is **~25 KB**, because the link
+dead-strips everything the program did not reach. The compiler itself is **~376 MB** and lives in
+the [gg toolchain image](#where-a-compiler-lives-and-what-it-must-never-share); the library set it
+compiles against is 9.4 MB gzipped inside gg's binary, which is the same split every compiled arm
+here makes and for the same two reasons.
+
+### The one arm with no exception mechanism at all
+
+`wasm32-unknown-unknown` has no unwinder, so `panic = "unwind"` is not available on it and a panic
+**aborts** — which traps the store, and a trap carries no message, no class and no location. Taken
+literally that would make every Rust panic reach the model as "your program trapped", which is the
+least useful thing gg could say about a failure it can describe exactly.
+
+What saves it is that a panic *hook* runs before the abort, on a live guest, and can make an
+ordinary synchronous host call. gg installs one that completes `feedback.report-error` carrying the
+panic's message and the **model's own line and column**, out of `std::panic::Location` — static
+data, which is why `-C strip=symbols` costs this arm nothing even though it deletes the name
+section. The host half prefers what the program said about itself over the trap that followed it,
+and displaces only an ordinary trap: a timeout or an out-of-memory is a ceiling gg imposed, so a
+program that reported an error and *then* ran away is still recorded as the runaway.
+
+The ordinary path is not a panic at all. Every call returns `Result<_, ToolError>` and the body gg
+wraps a program in returns `Result<(), Failure>`, so `?` is what a Rust author reaches for and an
+unhandled failure ends the turn with the failed call's own class attached.
+
+### What its dialect says, and the three answers nobody else gives
+
+Its [healing dialect](/gg/response-healing/) is `crates/gg/src/sandbox/language/rust.healing.rs`, and
+three of its answers are ones no other registered arm gives.
+
+**`let` is not part of the redeclaration proof.** On every other arm the keyword that opens a
+binding is the whole of that proof — a second `const`, `val`, `def` or `let` of one name is refused
+before a statement runs, which is exactly the warrant
+[`drop-duplicate-program`](/gg/response-healing/) needs. Rust **shadows**: `let total = 1;
+let total = 2;` is ordinary, deliberate, everyday Rust, so a duplicated program made only of `let`s
+and calls is one that *runs its work twice* rather than one the compiler refuses. The proof here
+rests on **items** instead — `fn`, `struct`, `enum`, `union`, `trait`, `type`, `const`, `static`,
+`mod`, each `E0428` twice in one block — and on a single-name `use`, which is `E0252`. Both were
+measured against `rustc` rather than reasoned about, and a glob import is excluded because writing
+one twice is legal. A duplicated program with no item and no import declines, which is the honest
+answer: it would have run.
+
+**Nothing is done about an import, and nothing needs to be.** Every other arm either deletes the
+model's `import` lines — they have no module loader — or hoists them somewhere they resolve, which
+is what the two JVM arms do. Rust needs neither: a program here is a function body, Rust admits an
+**item** wherever a statement may stand, and `use std::collections::HashMap;` therefore resolves
+exactly where the model wrote it. This is the one arm that answers "no" to
+`is_import_statement` because the line *works*, rather than because gg moved it.
+
+**The lexer has to tell a character literal from a lifetime.** `'a'` is a `char` and `'a` is a
+lifetime, and they open with the same byte — a hazard no other arm's `'` carries. A scan that read
+the `'` of `&'static str` as an opening quote would swallow the rest of the program into a string,
+and every strategy that consults the mask would then be reading the wrong text. So a `'` here opens
+a literal **only** when what follows it is one character and then a closing `'`. That rule has a
+second effect worth having: an apostrophe in a stray line of English (`don't`) is ordinary code
+punctuation rather than an unterminated literal, so a reply of prose around a program still lexes —
+where the identical apostrophe leaves Kotlin's scan with no mask at all.
+
+Two more of its lexer's answers are its own without being disagreements. A Rust string may **span
+newlines**, so a `"` still open at a `\n` is not evidence of anything, which is the opposite of every
+other C-shaped arm; and a **raw** string carries its own fence (`r"…"`, `r#"…"#`, `r##"…"##`, with
+`b` and `c` prefixes), so the fence has to be counted rather than looked for. A backtick goes back
+*off* the non-prose list, which is Java's answer and not Kotlin's: Rust has no backtick anywhere in
+its grammar — an identifier that needs escaping is written `r#type` — so a lead-in written with an
+inline code span may be deleted here.
+
+Its concurrency wrapper is `std::thread::spawn(|| { … })`, in both the immediate and the
+bound-and-joined shapes, and it is a **measured** failure rather than an assumed one: `spawn`
+compiles for this target and then panics, because the target has no threads. The `use` lines above
+it are **kept**, which is Java's answer rather than Kotlin's and for this arm's own reason —
+`std::thread` really is in its library set, so the line resolves and an unused import is a warning
+gg has already silenced. `.await` inside the body comes off and is counted, which is Rust's
+suspension token in the one place it lives: after the expression rather than in front of it.
+Deliberately *not* recognised is any `async` shape — `block_on(async { … })` needs `futures` or
+`tokio`, neither of which is in the library set, so a program that reaches for one already gets
+`E0433` naming the crate before it runs.
+
+### What a Rust program is, and the one shape it refuses
+
+A **sequence of statements**, as on every arm but PureScript, put inside the body of a function gg
+declares — because Rust has nowhere else for a statement to live, and because a function body admits
+everything a Rust author writes: `use`, `struct`, `enum`, `trait`, `impl`, `fn`, `const`, `static`,
+`mod`, `#[derive(…)]` and even an inner `#![allow(…)]`. The wrapper is **one line**, which is the
+whole of the arithmetic that keeps a diagnostic at the model's own line and column, and the
+[code modules](#a-module-a-program-has-to-be-linked-against) it declares go *below* the model's
+text where they move nothing.
+
+The one refusal is a program that defines **`fn main`**. There is no `main` on this arm, so a model
+that put its work inside one has written a local function nothing calls — and gg would otherwise
+report a clean turn over a program that did nothing, which round 1 established is the one failure a
+model cannot recover from. It is refused by name, at the line, with a sentence saying what to write
+instead.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -1920,9 +2031,9 @@ instantly in every gate that iterates languages.
 | What it supplies | Why it belongs to the language |
 | --- | --- |
 | An **id** and a **display name** | The id is the config value, the telemetry value and the stem of its committed artifacts; the display name is what the model reads in its prompt and its diagnostics. |
-| **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, the stack sizing an unguarded recursive-descent parser forces on untrusted text, and then a `tsc` pass over the unstripped source. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
+| **Preparing a program** | Turning a model's reply into source its guest can evaluate, given the [code modules](#a-module-a-program-has-to-be-linked-against) already in that agent's scope. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, the stack sizing an unguarded recursive-descent parser forces on untrusted text, and then a `tsc` pass over the unstripped source. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
-| **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
+| **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something that yields a namespace, bound at `lib.<key>` — for an interpreted arm, source its guest evaluates; for a [compiled](#a-module-a-program-has-to-be-linked-against) one, source the *next program's* compile is built against. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
 | Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reads through `object.list()` and `view.openDocsView()`. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
@@ -1978,14 +2089,44 @@ the artifact which tools it binds asks a **freshly compiled** one: it is stronge
 than the committed case rather than weaker, because a stale artifact is not a failure mode
 an arm of this shape has.
 
-The first arm of this shape is **Rust** (`crates/gg/src/sandbox/language/rust.rs`,
-`packages/gg-sandbox-rust/`). Its execution substrate, its SDK and its
-[catalogue](#what-rusts-sdk-looks-like) have landed; it is **not a registered language yet**,
-because no `language` value resolves to it, and its one remaining blocker is a seam change
-rather than an SDK — a Rust [code skill](/gg/skills/#code-skills)'s module is Rust, and Rust
-is compiled, so a module has to be linked into the same artifact as the program that uses
-it, which means preparing a **program** has to see the modules in its scope. It does not
-yet.
+The first arm of this shape is **[Rust](#rust-the-program-is-the-artifact)**
+(`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`), and the C++ and
+Swift arms are the same shape and inherit it unchanged.
+
+#### A module a program has to be linked against
+
+A compiled arm changes one more thing, and it changes it for **every** language rather than
+only for itself: preparing a *program* is handed the [code modules](/gg/skills/#code-skills)
+in that agent's scope.
+
+On an interpreted arm nothing needed that. The guest is given each module's prepared source
+beside the program and evaluates it first, so `lib.<key>` is bound at run time and a
+program's preparation has no business knowing what is in scope. A compiled arm has no such
+moment. A Rust module is Rust, Rust links, and the only artifact a module can end up in is
+the artifact of a program that was compiled against it — so a seam that withheld the modules
+from the program's preparation would be a seam on which a code skill *silently bound
+nothing* on one arm of a study about capability.
+
+So the modules travel with the source, every interpreted arm ignores the parameter, and the
+compiled one writes each module beside its entry file. Two consequences are visible from
+outside:
+
+- **the binding is a path, not a property.** `lib::csv_tools::parse(…)` is resolved by the
+  compiler, so a key or a function that does not exist is a diagnostic on the turn that
+  wrote it, where an interpreted arm finds out when the call is reached;
+- **a module is compiled twice** — once alone when it is read, only to be checked, and again
+  as part of every program that uses it. The first compile is what buys the *location*:
+  without it a module that does not build would take down every program the agent wrote from
+  then on, with the diagnostic landing against the turn's own program in a file the model
+  never saw.
+
+The same change removed a second preparation nothing wanted. A code skill's **on-use script**
+is prepared at the read, so that whoever wrote it gets a located diagnostic there; it used to
+be prepared a second time when it ran. That was harmless on an arm whose prepared output is
+source in the language it read and nonsense everywhere else — a compiled arm's prepared
+program is not source at all, so re-preparing it would have compiled the empty string and
+reported a clean run over a script that never executed. The queued script now carries the
+whole prepared program and is run as-is.
 
 #### What Rust's SDK looks like
 

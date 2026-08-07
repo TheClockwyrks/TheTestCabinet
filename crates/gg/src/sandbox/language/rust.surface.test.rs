@@ -25,10 +25,12 @@ use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 /// The catalogue this arm commits, read as a **document** rather than through
-/// [`SignatureCatalogue`](crate::sandbox::signatures) — because that type deserialises its
-/// `language` field into the wire enum, and this arm has no wire id to deserialise into yet. The
-/// registration step is what turns these into the parsed reading every other arm's tests get; until
-/// then the JSON is read as JSON, which is enough to say what it says.
+/// [`SignatureCatalogue`](crate::sandbox::signatures) — deliberately, and now that this arm is
+/// registered, for a reason of its own: the parsed reading is a *projection*, and a field the parser
+/// does not model is one these tests could not notice was missing. The parsed reading is asserted
+/// next door, in [`rust.test.rs`](super::tests), where what is being checked is that the catalogue
+/// gg loads is this language's. Here the JSON is read as JSON, which is what lets a test say the
+/// file carries a section at all.
 const SIGNATURES: &str = include_str!("../guests/rust.signatures.json");
 
 /// The committed catalogue, parsed as JSON.
@@ -677,7 +679,7 @@ fn the_component_binds_exactly_the_tools_gg_offers() {
     // makes asking the artifact worth anything.
     let component = prepare("");
     let mut bound = crate::sandbox::component_bound_tools(
-        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript),
+        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Rust),
         Some(component),
     )
     .expect("a freshly compiled Rust program instantiates and reports its tools");

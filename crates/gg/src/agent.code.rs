@@ -1808,7 +1808,7 @@ impl LoopToolApi {
             .load(self.language, origin, name, code, on_use)
         {
             Ok(loaded) => {
-                if let Some(note) = loaded.note(origin) {
+                if let Some(note) = loaded.note(origin, self.language) {
                     outcome.output.push_str(&note);
                 }
             }
@@ -1870,7 +1870,7 @@ impl LoopToolApi {
             code.on_use.as_deref(),
         ) {
             Ok(loaded) => {
-                if let Some(note) = loaded.note(KnowledgeOrigin::Memory) {
+                if let Some(note) = loaded.note(KnowledgeOrigin::Memory, self.language) {
                     outcome.output.push_str(&note);
                 }
                 outcome

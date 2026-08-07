@@ -106,13 +106,6 @@ mod java;
 #[path = "language/kotlin.rs"]
 mod kotlin;
 
-/// The **Rust** arm's execution substrate, ahead of its SDK and its registration.
-///
-/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
-/// run can configure reaches it and every gate that iterates the registered set passes it by. What
-/// is here is the compile — the first that produces the *component* rather than a source for one —
-/// and the proof that its output runs through the real membrane; the module's own documentation says
-/// what is still missing, and which seam change the registration is blocked on.
 #[path = "language/rust.rs"]
 mod rust;
 
@@ -164,6 +157,22 @@ pub(crate) use fixture::fixture_languages;
 pub trait ProgramLanguage: Send + Sync + 'static {
     /// The wire id this language is configured, recorded and sliced by.
     fn id(&self) -> GgProgramLanguage;
+
+    /// How this language writes the step from an **API object** to one of its functions —
+    /// `"."` for almost everyone, `"::"` for a language whose objects are modules.
+    ///
+    /// A spelling, and one of the few the seam has to know about rather than resolve from a
+    /// catalogue: every function's *name* comes out of the catalogue, but the punctuation between an
+    /// object and its function is not a name and appears in no declaration. gg quotes qualified calls
+    /// in its own sentences ([`spell`]) and in every prompt template
+    /// (`{{api.view.open_text.call}}`), so a language that writes `view::open_text` and is quoted as
+    /// `view.open_text` is one whose model reads a prompt full of code that does not compile.
+    ///
+    /// The **object** half is still identity and no language may rename it. This is only how the two
+    /// halves are joined. `"."` is the default because it is what every arm but one writes.
+    fn member_separator(&self) -> &'static str {
+        "."
+    }
 
     /// This language's name as a **human** reads it — `"TypeScript"`.
     ///
@@ -764,7 +773,7 @@ pub(crate) const MODEL_FACING_CALLS: [SurfaceCall; 47] = [
 /// the right failure anyway, where panicking mid-run is not.
 pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
     let name = super::signatures::spelling(language, call).unwrap_or(call.key);
-    format!("{}.{name}", call.object)
+    format!("{}{}{name}", call.object, language.member_separator())
 }
 
 /// The `offset`/`limit` window a synthesized file-view call re-opens — the same pair the model would
@@ -791,6 +800,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
         GgProgramLanguage::PureScript => &purescript::PURESCRIPT,
         GgProgramLanguage::Java => &java::JAVA,
         GgProgramLanguage::Kotlin => &kotlin::KOTLIN,
+        GgProgramLanguage::Rust => &rust::RUST,
     }
 }
 
@@ -1034,6 +1044,7 @@ pub struct ResolvedProgramLanguage {
 /// | `"purescript"` | [`PureScript`](GgProgramLanguage::PureScript) — type-checked and compiled to JavaScript by the image's `purs`, bundled, then evaluated |
 /// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM, then evaluated |
 /// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled as a script by the Kotlin compiler and TeaVM in a warm JVM, then evaluated |
+/// | `"rust"` | [`Rust`](GgProgramLanguage::Rust) — compiled by `rustc` into the wasm component the turn is evaluated by |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason

@@ -83,6 +83,9 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # rather than the timeout, is now the thing to watch: each further compiled arm adds its own 32
 # builds here, and the two JVM arms additionally contend for cores, since eight warm JVMs holding a
 # compiler and TeaVM apiece is several gigabytes of a container that has to hold everything else too.
+# Rust's 32 are by far the cheapest of the compiled arms — `rustc` is a one-shot process with nothing
+# warm to be, and the arm's own hand-pointed copy of this gate ran its 32 in ~1.5 s standalone before
+# it was deleted in favour of this one.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
 slow-timeout = { period = "180s", terminate-after = 3 }

@@ -1,19 +1,16 @@
 //! **Rust** — the first arm whose component is compiled **per turn**, because the program and the
 //! artifact are the same object.
 //!
-//! What exists here today is this arm's **execution substrate and its model-facing surface**: the
-//! compile that turns a model's Rust into a wasm component, the hand-written SDK that program is
-//! compiled against, the catalogue reflected out of that SDK's own rustdoc, and the proof that all
-//! three run through gg's own linker, membrane and store. The [registration](super::ProgramLanguage)
-//! lands later — a language arm cannot be half-registered, because the registry's `match` is
-//! exhaustive and every gate that iterates the registered set would immediately demand two
-//! Handlebars templates and a healing dialect. Nothing here is reachable from a run: there is no
-//! `language` value that resolves to it.
+//! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`compile`](self::compile) — the host-side `rustc` and the in-process component encode, what
 //!   they cost, what they share, and the two failures they tell apart;
-//! * [`source`](self::source) — what gg writes around a model's Rust, on one line, and the one shape
-//!   it refuses;
+//! * [`source`](self::source) — what gg writes around a model's Rust, on one line, the one shape it
+//!   refuses, and how a code module is declared below the program that reads it;
+//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
+//!   lexical questions of, three of whose answers no other arm gives;
+//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
+//!   in Rust's syntax;
 //! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the
 //!   curated library set, and the builds that commit them;
 //! * `checkers/rust.libraries.tar.gz` and `checkers/rust.toolchain.json` — the compiled library set
@@ -82,35 +79,315 @@
 //! can end up in is the artifact of a program that was compiled against it.
 //!
 //! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
-//! scope, this arm writes each one beside the entry file, and [`source`](self::source) declares them
-//! below the program where they move none of its lines. A module is compiled **twice** — once alone
-//! when it is read, only to be checked, and once as part of every program that uses it — and the
-//! first compile is what buys the *location*: without it a module that does not build would take
-//! down every program the agent wrote from then on, with the diagnostic landing against the turn's
-//! own program in a file the model never saw.
+//! scope, this arm writes each one beside the entry file, and
+//! [`source`](self::source::exports) declares them below the program where they move none of its
+//! lines. The consequence a model can see is that `lib::csv_tools::parse` is a **path** rather than
+//! a property lookup: a key that does not exist is a diagnostic on the turn that wrote it, where an
+//! interpreted arm finds out when the call is reached.
 //!
-//! # What is not built yet
-//!
-//! The [registration](super::ProgramLanguage) — the trait implementation, a healing dialect, two
-//! Handlebars templates and a wire id. Nothing here is reachable from a run: there is no `language`
-//! value that resolves to it.
+//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
+//! it is read, only to be checked, and once as part of every program that uses it. Without the first
+//! compile, a module that does not build would take down every program the agent wrote from then on,
+//! with the diagnostic landing against the turn's own program in a file the model never saw. See
+//! [`compile::compile_module`].
+
+use std::sync::OnceLock;
+
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use crate::sandbox::signatures::SignatureCatalogue;
+
+use super::{
+    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+};
 
 /// The `rustc` build and the in-process component encode: the host-side step that turns a model's
 /// Rust into the component that evaluates it.
-///
-/// `#[allow(dead_code)]` until the trait implementation calls it, exactly as
-/// [Ruby](super::ruby)'s, [PureScript](super::purescript)'s and [Java](super::java)'s were between
-/// their own substrate and their registration: nothing on the turn path can reach a language the
-/// registry has no arm for, so every entry point here is reached only by this arm's own tests.
-#[allow(dead_code)]
 #[path = "rust.compile.rs"]
 pub(super) mod compile;
 
-/// The entry file gg writes around a model's Rust — one line of prologue, and the one shape it
-/// refuses.
-#[allow(dead_code)]
+/// The entry file gg writes around a model's Rust — one line of prologue, the one shape it refuses,
+/// and the declarations that put a code module at `lib::<key>`.
 #[path = "rust.source.rs"]
 pub(super) mod source;
+
+/// The lexical reading of a reply — Rust's answers to healing's questions, three of which no other
+/// arm gives.
+#[path = "rust.healing.rs"]
+pub(super) mod healing;
+
+/// The committed catalogue, reflected out of the SDK's own rustdoc by
+/// `packages/gg-sandbox-rust/signatures.sh` — `rustdoc`'s own JSON, read by `tools/signatures.py`.
+const SIGNATURES: &str = include_str!("../guests/rust.signatures.json");
+
+/// The parsed catalogue, parsed once per process.
+static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
+
+/// Everything gg *says* about a Rust program that is written in Rust's own syntax.
+///
+/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
+/// Individual function spellings are **not** here and not in the templates either: every name and
+/// signature they quote is resolved from this language's committed catalogue when the template
+/// renders.
+static PROMPT: PromptDialect = PromptDialect {
+    system_template: include_str!("../../../templates/system-code.rust.hbs"),
+    system_template_name: "system-code.rust",
+    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.rust.hbs"),
+    nothing_shown_template_name: "code-nothing-shown.rust",
+};
+
+/// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
+/// straight to `&'static dyn ProgramLanguage`.
+pub(super) static RUST: Rust = Rust;
+
+/// Rust: compiled by `rustc` into the wasm component that evaluates it, per turn.
+pub(super) struct Rust;
+
+impl ProgramLanguage for Rust {
+    fn id(&self) -> GgProgramLanguage {
+        GgProgramLanguage::Rust
+    }
+
+    fn display_name(&self) -> &'static str {
+        GgProgramLanguage::Rust.display_name()
+    }
+
+    /// **`::`** — the one arm that does not write `.`, because here an API object is a **module**
+    /// and reaching a function on one is a path rather than a field access.
+    ///
+    /// It is the difference between a prompt full of `view::open_text` and a prompt full of
+    /// `view.open_text`, which on this arm is `E0423: expected value, found module` — so a model
+    /// would be taught, in every sentence gg writes about a call, a spelling that cannot compile.
+    fn member_separator(&self) -> &'static str {
+        "::"
+    }
+
+    /// One `rustc` over the entry file, the modules in scope and the committed library set, then an
+    /// in-process component encode — see [`compile`] for what it costs, what it shares, and how it
+    /// tells a program `rustc` refused from a `rustc` that could not run.
+    fn prepare_program(
+        &self,
+        source: &str,
+        modules: &[CodeModule],
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
+        compile::compile_program(source, modules, context)
+    }
+
+    /// `rustc`, which is what a Rust programmer calls the compiler and what its own binary is
+    /// called.
+    ///
+    /// Not `wit-component`, which encodes the module `rustc` emitted into a component and judges
+    /// nothing about the program: the same reason the JVM arms name their front end rather than
+    /// TeaVM. Naming a checker is also what has this arm's compile
+    /// [recorded](crate::sandbox::SandboxOutcome::compile) on every turn, the failing path included
+    /// — which matters more here than anywhere, since this is the arm where the compile *is* the
+    /// artifact.
+    fn checker(&self) -> Option<&'static str> {
+        Some("rustc")
+    }
+
+    /// Unpack the committed library set now, so the first code turn does not.
+    ///
+    /// The whole of this arm's warm-up, and the smallest of any compiled arm's: there is no daemon
+    /// to start and no compiler to load, because `rustc` is a one-shot process whose cost is the
+    /// compile rather than the start-up. Idempotent and best effort — a failure here is the failure
+    /// the first compile makes, and there it is classified, counted and reported as a
+    /// [toolchain failure](PrepareFailure::Toolchain).
+    fn warm_prepare(&self) {
+        compile::warm();
+    }
+
+    /// The module's own `rustc`, asked for metadata rather than an artifact — and the names its
+    /// namespace offers, read from the author's own source.
+    ///
+    /// What comes back is **source**, which is what a linked language's module has to be: it is an
+    /// input to the [program compile](compile::compile_program) that binds it, not something a guest
+    /// could load on its own.
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
+        compile::compile_module(source, context)
+    }
+
+    /// `.rs`, and nothing else. Nothing else in the registry compiles Rust.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["rs"]
+    }
+
+    /// [snake_case](self::binding_name) — Rust's own convention for a name a program writes, and
+    /// this SDK's for every function it binds.
+    fn binding_name(&self, name: &str) -> String {
+        binding_name(name)
+    }
+
+    /// **None.** This arm commits no component, because the component *is* the program: see this
+    /// module's own documentation, and [`PreparedProgram::component`].
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        None
+    }
+
+    /// The committed catalogue, parsed once and checked to be **this** language's.
+    ///
+    /// Every registered language commits one of these under its own stem, and each carries the
+    /// language it was generated for; checking it here is what stops a catalogue filed — or
+    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
+    /// sandbox nobody has.
+    fn catalogue(&self) -> &'static SignatureCatalogue {
+        CATALOGUE.get_or_init(|| {
+            let catalogue = SignatureCatalogue::parse(SIGNATURES)
+                .expect("the committed signature catalogue is valid JSON of the expected shape");
+            assert_eq!(
+                catalogue.language,
+                GgProgramLanguage::Rust,
+                "`guests/rust.signatures.json` was generated for another program language",
+            );
+            catalogue
+        })
+    }
+
+    fn healing(&self) -> &'static dyn crate::healing::Dialect {
+        &healing::RUST_DIALECT
+    }
+
+    fn prompt(&self) -> &'static PromptDialect {
+        &PROMPT
+    }
+
+    /// [`view::open_file("src/main.rs", ReadOptions::default())?;`](self::open_file_statement) —
+    /// with the window as the two fields of that struct.
+    fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+    }
+
+    /// [An array of names and a `for` over it](self::open_docs_views_statement), each iteration
+    /// opening one documentation view.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+    }
+
+    /// One `pub fn` returning `name` — because this is the third arm whose module shape is not its
+    /// program shape, and the first for which the difference is the whole language.
+    ///
+    /// A program here is a **sequence of statements** and a module is a **file**, and Rust has no
+    /// statement at a file's top level: the seam's default subject (this language's generated
+    /// documentation program, which opens with a `let`) is not a Rust module at all and is refused
+    /// as a syntax error. The `name` rides in as a returned **string literal**, which is where the
+    /// module's one export hands it back.
+    #[cfg(test)]
+    fn isolation_module(&self, name: &str) -> String {
+        format!(
+            "pub fn marker() -> &'static str {{
+    {}
+}}
+",
+            serde_json::Value::String(name.to_string())
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The syntax this arm writes
+// ---------------------------------------------------------------------------------------------
+
+/// `csv-tools` → `csv_tools`, `my_helpers.v2` → `my_helpers_v2`, `9lives` → `_9lives`.
+///
+/// snake_case because that is what Rust spells a name in and what this SDK spells every bound
+/// function in, so a program reaching `lib::csv_tools::parse(…)` reads like the rest of its own
+/// scope. Any separator — `-`, `.`, or anything a name should not have had — becomes `_`, a run of
+/// them becomes one, an upper-case letter is lowered, a name that is nothing but separators becomes
+/// `module`, and a leading digit is prefixed.
+///
+/// It has to be a valid Rust **identifier** for a stronger reason than any other arm's does: on this
+/// arm the key is a path segment the compiler resolves (`lib::<key>`), not a string looked up at run
+/// time, so a key Rust could not parse would be a program that does not compile rather than a call
+/// that fails.
+///
+/// Deliberately ASCII-only, though Rust identifiers may be Unicode, for the reason every other arm
+/// gives: a name a model has to reproduce exactly is one that should have no characters it could get
+/// wrong.
+pub(super) fn binding_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut separated = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if separated && !out.is_empty() {
+                out.push('_');
+            }
+            separated = false;
+            out.extend(ch.to_lowercase());
+        } else {
+            separated = true;
+        }
+    }
+    if out.is_empty() {
+        return "module".to_string();
+    }
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// `view::open_file("src/main.rs", ReadOptions::default())?;`, or the same call with a
+/// `ReadOptions { offset: Some(400), limit: Some(200) }` for a window — with `view::open_file`
+/// already spelled by the language that asked.
+///
+/// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
+/// into the agent's own transcript and read by the model as an example of its own output, so
+/// anything clever in it is a style the run did not intend to teach. The one thing it *does* teach is
+/// the `?`, which is not decoration — a program's body returns `Result<(), Failure>`, and a call
+/// whose `Result` went unused would be the model's first example of ignoring a failure.
+///
+/// The window is the two fields of this arm's options struct, written out rather than left to
+/// `..Default::default()`: `ReadOptions` has exactly two fields and this statement sets both, so a
+/// functional-update tail would be a construction a Rust author would not write.
+///
+/// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
+/// statement that would not parse: Rust's string literals accept exactly the escapes JSON's do.
+pub(super) fn open_file_statement(
+    open_file: &str,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let path = serde_json::Value::String(path.to_string());
+    match window {
+        Some(window) => format!(
+            "{open_file}({path}, ReadOptions {{ offset: Some({}), limit: Some({}) }})?;",
+            window.offset, window.limit
+        ),
+        None => format!("{open_file}({path}, ReadOptions::default())?;"),
+    }
+}
+
+/// An array of names and a `for` over it, each iteration opening one documentation view.
+///
+/// An array and a loop rather than one statement per name because the list is as long as the family
+/// — eleven calls written out would be a program a model reads as a style to copy — and an **array**
+/// rather than a `Vec` because it is a fixed list of `&'static str` and `vec![]` would allocate for
+/// nothing. `for name in functions` iterates it by value, which is what a Rust author writes for an
+/// array of `Copy` elements.
+///
+/// The empty case carries a type annotation, because an empty array literal has no element type to
+/// infer and `[]` alone is `E0282`.
+pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    let entries: Vec<String> = names
+        .iter()
+        .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+        .collect();
+    let listed = match entries.is_empty() {
+        true => "let functions: [&str; 0] = [];\n".to_string(),
+        false => format!("let functions = [\n{},\n];\n", entries.join(",\n")),
+    };
+    format!("{listed}for name in functions {{\n    {open_docs_view}(name)?;\n}}\n")
+}
+
+#[cfg(test)]
+#[path = "rust.test.rs"]
+mod tests;
 
 /// **The Rust arm's execution substrate**, driven end to end through gg's real compiler, linker,
 /// membrane and store.

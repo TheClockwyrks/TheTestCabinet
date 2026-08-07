@@ -80,10 +80,13 @@ showing the model source it cannot call.
 ### Code the agent's programs can call
 
 Reading a code skill binds its exports at **`lib.<key>`** in every program the agent writes
-from then on. The key is the skill's name in camel case (`csv-tools` → `lib.csvTools`),
-deduplicated with a numeric suffix if something else already claimed it — and **the reply
-to the read states the key it really got, and what it exports**, because a binding path a
-model has to guess is a binding path it will guess wrong:
+from then on. The key is the skill's name in that language's own convention (`csv-tools` →
+`lib.csvTools`, or `lib::csv_tools` on
+[Rust](/gg/program-languages/#rust-the-program-is-the-artifact), where an API object is a
+module), deduplicated with a numeric suffix if something else already claimed it — and **the
+reply to the read states the key it really got, in the reader's own syntax, and what it
+exports**, because a binding path a model has to guess is a binding path it will guess
+wrong:
 
 ```text
 ---

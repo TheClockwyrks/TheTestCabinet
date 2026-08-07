@@ -13,6 +13,11 @@ fn ts() -> &'static dyn ProgramLanguage {
     crate::sandbox::language(GgProgramLanguage::TypeScript)
 }
 
+/// The one arm whose API objects are modules, for the note that is written in its syntax.
+fn rust() -> &'static dyn ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::Rust)
+}
+
 /// A registry with `csv-tools` loaded, as most of these start.
 fn with_csv_tools() -> (KnowledgeModules, Loaded) {
     let mut modules = KnowledgeModules::new();
@@ -43,12 +48,27 @@ fn a_loaded_module_is_bound_at_a_camel_cased_key() {
 fn the_note_states_the_binding_path_and_what_it_exports() {
     let (_, loaded) = with_csv_tools();
     let note = loaded
-        .note(KnowledgeOrigin::Skill)
+        .note(KnowledgeOrigin::Skill, ts())
         .expect("a loaded module produces a note");
     // The model must never have to guess where its code went.
     assert!(note.contains("lib.csvTools"), "{note}");
     assert!(note.contains("parse"), "{note}");
     assert!(note.contains("skill"), "{note}");
+}
+
+/// **The binding path is written in the reader's own syntax.**
+///
+/// The note is the only place a model is told where its code went, and it is quoted rather than
+/// inferred precisely so the model cannot get it wrong. On an arm whose API objects are **modules**
+/// that means `lib::csv_tools::<name>`: `lib.csvTools.<name>` is not a path Rust will accept, so a
+/// note written with the other arms' separator would be a binding the model has not been given.
+#[test]
+fn the_note_writes_the_binding_path_in_the_readers_own_syntax() {
+    let (_, loaded) = with_csv_tools();
+    let note = loaded
+        .note(KnowledgeOrigin::Skill, rust())
+        .expect("a loaded module produces a note");
+    assert!(note.contains("lib::csvTools::<name>"), "{note}");
 }
 
 #[test]
@@ -58,7 +78,7 @@ fn a_prose_skill_produces_no_note_at_all() {
         .load(ts(), KnowledgeOrigin::Skill, "prose", None, None)
         .expect("a skill with no code loads");
     assert!(loaded.is_empty());
-    assert_eq!(loaded.note(KnowledgeOrigin::Skill), None);
+    assert_eq!(loaded.note(KnowledgeOrigin::Skill, ts()), None);
     assert!(modules.code_modules().is_empty());
 }
 

@@ -745,7 +745,10 @@ directly:
   with one or two cores, gets its first program back before the warm-up has finished and
   that program compiles the component inside its own span. The field is what separates
   "this program was slow" from "this program paid the one shared compile", and it is
-  absent on every turn that did not. Beside it is `compileMs`, which is the *other*
+  absent on every turn that did not — except on
+  [Rust](/gg/program-languages/#rust-the-program-is-the-artifact), where there is no shared
+  component at all and the field is present on **every** turn, carrying the ~9 ms that turn's own
+  freshly compiled artifact took to instantiate. Beside it is `compileMs`, which is the *other*
   compile and belongs to the turn rather than to the process: what this turn's
   [language](/gg/program-languages/) spent compiling for it, including any compiler that
   step shells out to — the program itself, each replacement it handed over to, the code
@@ -763,7 +766,10 @@ directly:
   [Java](/gg/program-languages/#java-a-warm-jvm-and-two-compilers-per-program) and
   [Kotlin](/gg/program-languages/#kotlin-a-program-that-is-a-script), whose ~0.3–0.6 s per turn
   through a warm JVM is the largest figure this field carries — and whose readings are directly
-  comparable, since the two spend it on one road) or only grammar
+  comparable, since the two spend it on one road, and
+  [Rust](/gg/program-languages/#rust-the-program-is-the-artifact), whose ~60 ms per turn is the
+  *smallest* of any compiled arm and is also the one whose product is the component the turn is then
+  evaluated by) or only grammar
   ([Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses)),
   **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it

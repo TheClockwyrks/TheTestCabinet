@@ -161,14 +161,25 @@ impl Loaded {
     /// string crosses the membrane, and a binding path the model has to infer is a binding path it
     /// will get wrong. An empty [`Loaded`] appends nothing, so a prose skill's reply is untouched.
     ///
-    pub fn note(&self, origin: KnowledgeOrigin) -> Option<String> {
+    /// The path is written with the **reader's own**
+    /// [separator](ProgramLanguage::member_separator), for the same reason every call gg quotes back
+    /// at a model is spelled in that model's language: on an arm where an API object is a module,
+    /// `lib.<key>.<name>` is not a path the compiler will accept, and a binding quoted in a syntax
+    /// the model cannot use is a binding it has not been given.
+    pub fn note(
+        &self,
+        origin: KnowledgeOrigin,
+        language: &'static dyn ProgramLanguage,
+    ) -> Option<String> {
         if self.is_empty() {
             return None;
         }
+        let step = language.member_separator();
         let mut note = String::new();
         if let Some(key) = &self.key {
             note.push_str(&format!(
-                "\n\n---\nThe code this {} carries is loaded: call it as `lib.{key}.<name>`",
+                "\n\n---\nThe code this {} carries is loaded: call it as \
+                 `lib{step}{key}{step}<name>`",
                 origin.noun()
             ));
             if self.exports.is_empty() {

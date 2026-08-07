@@ -270,7 +270,12 @@ fn every_model_facing_call_resolves_in_every_language() {
                 });
             assert_eq!(
                 crate::sandbox::spell(language, call),
-                format!("{}.{}", call.object, entry.name),
+                format!(
+                    "{}{}{}",
+                    call.object,
+                    language.member_separator(),
+                    entry.name
+                ),
                 "{}: the quoted spelling is not the one the catalogue gives that key",
                 language.id()
             );
