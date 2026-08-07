@@ -57,6 +57,7 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 
 use crate::limits::TurnErrorType;
 
+use super::CodeModule;
 use super::signatures::SignatureCatalogue;
 
 /// The **ground a prepare step compiles on** — the private per-preparation workspace, the isolated
@@ -178,6 +179,26 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// parser, and where it refuses — with a sentence the model can act on — anything the sandbox
     /// has no implementation of.
     ///
+    /// # Why the modules are here
+    ///
+    /// `modules` is what this agent has already loaded by reading a code
+    /// [skill](crate::skills) or [memory](crate::memories) — each one already through
+    /// [`prepare_module`](Self::prepare_module) — and it is passed to the **program's** preparation
+    /// because for one shape of arm the two cannot be prepared apart.
+    ///
+    /// An **interpreted** arm ignores it entirely: its guest is handed the same list on the wire and
+    /// evaluates each module before the program, so the binding at `lib.<key>` is made at run time
+    /// and a program's preparation has no business knowing what is in scope. A **compiled** arm has
+    /// no such moment. Rust's module is Rust, Rust is compiled, and a compiled module is only
+    /// reachable from the program that was linked against it — so on that arm the modules are
+    /// *inputs to the program's compile*, and a seam that withheld them would be a seam on which a
+    /// code skill silently bound nothing.
+    ///
+    /// The list is the modules **in scope**, in binding order, which is exactly what
+    /// [`ProgramScope::modules`](super::ProgramScope) carries to the guest. An implementation that
+    /// does not need them is not required to say so; ignoring the parameter is the whole of what an
+    /// interpreted arm does with it.
+    ///
     /// A language that runs a **compiler** here must say which of the two failures it hit: a program
     /// the compiler read and rejected is a [`PrepareError::Compile`] the model is shown, and a
     /// compiler that could not finish at all is a [`PrepareFailure::Toolchain`] the model is not
@@ -220,6 +241,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     fn prepare_program(
         &self,
         source: &str,
+        modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure>;
 

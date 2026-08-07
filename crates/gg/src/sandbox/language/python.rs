@@ -80,8 +80,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// Reading a module's own top level for the names it leaves behind.
@@ -157,6 +157,7 @@ impl ProgramLanguage for Python {
     fn prepare_program(
         &self,
         source: &str,
+        _modules: &[CodeModule],
         _context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
         Ok(PreparedProgram {

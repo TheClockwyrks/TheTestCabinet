@@ -1,8 +1,9 @@
 //! **What gg puts around a model's Rust** before `rustc` sees it: the entry file, the one shape it
-//! refuses, and the single line of offset that keeps every diagnostic in the model's own
-//! coordinates.
+//! refuses, the single line of offset that keeps every diagnostic in the model's own coordinates —
+//! and the same three answers for a **code module**, which on this arm is a second file compiled
+//! into the same crate.
 
-use crate::sandbox::PrepareError;
+use crate::sandbox::{CodeModule, PrepareError};
 
 /// The file a program is compiled under, and the one its diagnostics are located in.
 ///
@@ -82,21 +83,191 @@ fn prologue() -> String {
 /// fail to parse — a syntax error in gg's wrapper reported against the model's own last line. The
 /// separator makes a trailing expression a statement, which is what a program's last line means
 /// here anyway: a value a program computes and does not open a view of is discarded.
+///
+/// Everything gg adds that is not part of the program's body goes **here**, below the model's last
+/// line, and that is the whole reason the [module declarations](module_declarations) are written
+/// after it rather than before the prologue: an item added above the model's text would move every
+/// line of it and falsify [`LINE_OFFSET`].
 const EPILOGUE: &str = "\n;\n::core::result::Result::Ok(())\n}\n";
 
 /// How many lines of [`PROLOGUE`] precede the model's first — the number every diagnostic's line is
 /// moved back by, and the number the guest's panic hook is told.
 pub(super) const LINE_OFFSET: usize = 1;
 
-/// The entry file for a model's `program`, and nothing else.
+/// The entry file for a model's `program`, with the code [modules](CodeModule) in scope declared
+/// below it.
 ///
 /// Line-preserving by construction: the model's text is copied verbatim between a one-line prologue
 /// and an epilogue that begins on a line of its own, so the model's line *n* is line *n + 1* of the
-/// file and no column moves at all.
-pub(super) fn wrap(program: &str) -> Result<String, PrepareError> {
+/// file and no column moves at all — and the module declarations come after all of it, where they
+/// move nothing.
+pub(super) fn wrap(program: &str, modules: &[CodeModule]) -> Result<String, PrepareError> {
     refuse_main(program)?;
-    Ok(format!("{}\n{program}{EPILOGUE}", prologue()))
+    Ok(format!(
+        "{}\n{program}{EPILOGUE}{}",
+        prologue(),
+        module_declarations(modules)
+    ))
 }
+
+// ---------------------------------------------------------------------------------------------
+// Code modules
+// ---------------------------------------------------------------------------------------------
+
+/// The file a code module is compiled under, given its binding key — `module_csv_tools.rs`.
+///
+/// A fixed name per key inside a workspace that is private per preparation, on the same terms
+/// [`PROGRAM_FILE`] is. The key is already a Rust identifier ([`binding_name`](super::binding_name))
+/// so it cannot produce a path component that is not one.
+pub(super) fn module_file(key: &str) -> String {
+    format!("module_{key}.rs")
+}
+
+/// Everything gg writes **before** a code module's first line — the same one-line glob the program
+/// gets, for the same reason and with the same [offset](LINE_OFFSET).
+///
+/// A module is its own file, so nothing the program imported reaches it: without this, a skill's
+/// code could not call `fs::read_file` at all. It is the same glob rather than a list, so a module
+/// that writes `use std::fs;` wins over gg's `fs` exactly as a program does.
+fn module_prologue() -> String {
+    format!("use ::{SDK_CRATE}::prelude::*;")
+}
+
+/// A code module's own file: the one-line prologue, then the author's source verbatim.
+///
+/// This is what [`PreparedModule::source`](crate::sandbox::PreparedModule) carries on this arm, and
+/// it is **source rather than an artifact** — which is what a compiled arm's module has to be. A
+/// module cannot be compiled into anything reachable on its own: Rust links, so the only artifact a
+/// module can end up in is the artifact of a program that was built against it, and that program is
+/// compiled a turn later by [`wrap`]. What the module's own preparation buys is the *check* — the
+/// author gets `rustc`'s diagnostic at the read, in the module's own coordinates, rather than a
+/// program that stops compiling for reasons in somebody else's file.
+pub(super) fn wrap_module(source: &str) -> String {
+    format!("{}\n{source}", module_prologue())
+}
+
+/// The declarations that put every module in scope at `lib::<key>`, written below the program.
+///
+/// Two items per module rather than one, and the shape is forced by `#[path]`'s own resolution
+/// rules: a `#[path]` on a `mod` **inside an inline module block** of a crate root is resolved
+/// relative to a directory named after the inline module, so `mod lib { #[path = "…"] pub mod x; }`
+/// would send `rustc` looking in `lib/`. Declaring each module at the crate root — where `#[path]`
+/// is relative to the file's own directory — and re-exporting it into `lib` puts the file where it
+/// is and the name where a model was told it would be.
+///
+/// `lib` is a module rather than an object because that is what a namespace is in Rust:
+/// `lib::csv_tools::parse(…)` is a path, checked at compile time, and a key that does not exist is a
+/// diagnostic on the turn that wrote it rather than a failure at run time. That is the divergence
+/// from every interpreted arm, where `lib.csvTools` is a property looked up on a value the guest
+/// built — and it is spelling rather than identity: the same modules, bound under the same keys.
+///
+/// Empty for an agent that has loaded nothing, so an ordinary program's entry file is exactly what
+/// it was before code modules existed.
+fn module_declarations(modules: &[CodeModule]) -> String {
+    if modules.is_empty() {
+        return String::new();
+    }
+    let mut declared = String::new();
+    let mut exported = String::new();
+    for module in modules {
+        declared.push_str(&format!(
+            "#[path = {:?}] mod {MODULE_PREFIX}{};\n",
+            module_file(&module.name),
+            module.name
+        ));
+        exported.push_str(&format!(
+            "    pub(crate) use super::{MODULE_PREFIX}{0} as {0};\n",
+            module.name
+        ));
+    }
+    format!("{declared}#[allow(unused_imports)] mod lib {{\n{exported}}}\n")
+}
+
+/// What the crate-root declaration of a code module is named, so that a module called `lib`, or one
+/// called the same thing as an item the model's own program declares at the top level, cannot
+/// collide with it.
+const MODULE_PREFIX: &str = "__gg_module_";
+
+/// The names a code module's namespace offers, in source order — what the reply that binds it tells
+/// the model it may call.
+///
+/// Read from the module's **own source** rather than out of anything the compiler produced, for the
+/// reason every other arm reads its own: these are what the skill's author is *told* the namespace
+/// holds, and a second reading of the same fact is a second chance for the two to disagree.
+///
+/// A public item at the module's top level is one of its names, whatever kind it is — `pub fn`,
+/// `pub struct`, `pub enum`, `pub const`, `pub static`, `pub type`, `pub trait`, `pub mod`, and the
+/// restricted forms (`pub(crate)`, `pub(super)`) that are still visible to the program, since a
+/// module and its program are one crate here. That is wider than the function lists the interpreted
+/// arms report, and it is right: a Rust module whose namespace is a `struct` and its `impl` offers
+/// that type, and a listing that named only its functions would be describing something else.
+///
+/// The scan is lexical and **unindented-only**, like every other reading in this arm: a `pub fn`
+/// nested inside an `impl` or a `mod` is indented, is not a name the program reaches directly, and
+/// is not reported.
+pub(super) fn exports(source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in source.lines() {
+        if line.starts_with([' ', '\t']) {
+            continue;
+        }
+        let Some(name) = exported_name(line) else {
+            continue;
+        };
+        if !names.iter().any(|seen| seen == name) {
+            names.push(name.to_string());
+        }
+    }
+    names
+}
+
+/// The name `line` makes public, if it makes one.
+fn exported_name(line: &str) -> Option<&str> {
+    let rest = line.trim().strip_prefix("pub")?;
+    // `pub(crate)`, `pub(super)`, `pub(in …)` — visible to the program, which is in the same crate.
+    let rest = match rest.strip_prefix('(') {
+        Some(inner) => inner.split_once(')')?.1,
+        None => rest,
+    };
+    let mut rest = rest.strip_prefix(char::is_whitespace)?.trim_start();
+    // The modifiers a public item may carry between `pub` and the keyword that says what it is,
+    // consumed in whatever order they were written (`async unsafe fn`, `unsafe extern fn`).
+    //
+    // `const` is deliberately absent from that list and handled below instead, because it is the one
+    // word that is both a modifier and an item keyword: `const fn helper()` declares `helper` and
+    // `const LIMIT: usize = 10` declares `LIMIT`.
+    loop {
+        let (word, after) = rest.split_once(char::is_whitespace)?;
+        if word == "const" && after.trim_start().starts_with("fn ") {
+            rest = after.trim_start();
+            continue;
+        }
+        if !["unsafe", "async", "extern", "default"].contains(&word) {
+            break;
+        }
+        rest = after.trim_start();
+    }
+    let (keyword, after) = rest.split_once(char::is_whitespace)?;
+    if !ITEM_KEYWORDS.contains(&keyword) {
+        return None;
+    }
+    let after = after.trim_start();
+    let end = after
+        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .unwrap_or(after.len());
+    (end > 0).then(|| &after[..end])
+}
+
+/// The item keywords whose declaration names something a program may reach through `lib::<key>`.
+///
+/// `impl` is deliberately absent: it declares no name of its own, and the type it is written for is
+/// already listed by its own declaration. `use` is absent for the opposite reason — a `pub use` is a
+/// re-export whose name is the *end* of a path rather than the word after the keyword, which this
+/// lexical scan cannot read correctly, and reporting the wrong half of one would be worse than
+/// leaving it out.
+const ITEM_KEYWORDS: [&str; 8] = [
+    "fn", "struct", "enum", "trait", "const", "static", "type", "mod",
+];
 
 /// Refuse a program that defines `fn main` and expects gg to call it.
 ///

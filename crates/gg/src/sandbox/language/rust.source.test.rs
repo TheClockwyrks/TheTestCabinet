@@ -32,7 +32,7 @@ fn the_prologue_is_one_line_and_the_offset_says_so() {
 #[test]
 fn every_line_of_the_model_moves_down_by_exactly_the_offset() {
     let program = "let alpha = 1;\nlet beta = alpha + 1;\n\nlet gamma = beta * 2;\n";
-    let wrapped = wrap(program).expect("an ordinary program is wrapped");
+    let wrapped = wrap(program, &[]).expect("an ordinary program is wrapped");
     let lines: Vec<&str> = wrapped.lines().collect();
     for (index, original) in program.lines().enumerate() {
         assert_eq!(
@@ -53,7 +53,7 @@ fn every_line_of_the_model_moves_down_by_exactly_the_offset() {
 /// there is.
 #[test]
 fn a_program_ending_in_an_expression_is_separated_from_the_epilogue() {
-    let wrapped = wrap("let total = 1 + 1;\ntotal").expect("a trailing expression is wrapped");
+    let wrapped = wrap("let total = 1 + 1;\ntotal", &[]).expect("a trailing expression is wrapped");
     assert!(
         wrapped.contains("total\n;\n"),
         "the separator is missing: {wrapped}"
@@ -71,7 +71,7 @@ fn a_program_that_defines_main_is_refused_and_its_neighbours_are_not() {
         "fn main<T>() {}",
         "let x = 1;\nfn main() { }",
     ] {
-        let error = wrap(refused).expect_err("a program that defines main is refused");
+        let error = wrap(refused, &[]).expect_err("a program that defines main is refused");
         assert!(
             matches!(error, PrepareError::Unsupported(_)),
             "{refused:?} was refused as {error:?} rather than as unsupported"
@@ -85,7 +85,7 @@ fn a_program_that_defines_main_is_refused_and_its_neighbours_are_not() {
         "let note = \"fn main() {}\";",
         "fn mainline(value: u32) -> u32 { value }",
     ] {
-        wrap(allowed).unwrap_or_else(|error| panic!("{allowed:?} was refused: {error}"));
+        wrap(allowed, &[]).unwrap_or_else(|error| panic!("{allowed:?} was refused: {error}"));
     }
 }
 
@@ -95,7 +95,7 @@ fn a_program_that_defines_main_is_refused_and_its_neighbours_are_not() {
 /// only place a model is told the shape of a program on this arm outside its system prompt.
 #[test]
 fn the_refusal_locates_itself_and_says_what_to_do() {
-    let error = wrap("let alpha = 1;\n\nfn main() {\n    alpha;\n}\n")
+    let error = wrap("let alpha = 1;\n\nfn main() {\n    alpha;\n}\n", &[])
         .expect_err("a program that defines main is refused");
     let PrepareError::Unsupported(reason) = error else {
         panic!("expected an unsupported refusal");

@@ -45,8 +45,8 @@ use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::typescript;
 use super::{
-    FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
-    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// The committed catalogue for this language: the same SDK declarations TypeScript's is reflected
@@ -104,6 +104,7 @@ impl ProgramLanguage for JavaScript {
     fn prepare_program(
         &self,
         source: &str,
+        _modules: &[CodeModule],
         _context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
         Ok(typescript::prepare::prepare_program(source)?)

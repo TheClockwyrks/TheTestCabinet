@@ -106,13 +106,17 @@ fn a_program_is_compiled_to_the_target_the_arm_chose() {
 /// that was never wrong.
 #[test]
 fn a_failure_with_no_diagnostic_is_not_blamed_on_the_model() {
-    let failure = classify(&CompilerReport {
-        ok: false,
-        code: Some(101),
-        status: "exited with status 101".to_string(),
-        stdout: String::new(),
-        stderr: "error: internal compiler error: broken MIR\n".to_string(),
-    })
+    let failure = classify(
+        &CompilerReport {
+            ok: false,
+            code: Some(101),
+            status: "exited with status 101".to_string(),
+            stdout: String::new(),
+            stderr: "error: internal compiler error: broken MIR\n".to_string(),
+        },
+        PROGRAM_FILE,
+        40,
+    )
     .expect_err("a compiler that reported nothing structured is a failure");
     let PrepareFailure::Toolchain(reported) = &failure else {
         panic!("a compiler crash was blamed on the model: {failure}");
@@ -121,13 +125,17 @@ fn a_failure_with_no_diagnostic_is_not_blamed_on_the_model() {
     assert!(reported.contains("broken MIR"), "{reported}");
 
     // And a compiler that exited zero decided nothing at all.
-    classify(&CompilerReport {
-        ok: true,
-        code: Some(0),
-        status: "exited with status 0".to_string(),
-        stdout: String::new(),
-        stderr: String::new(),
-    })
+    classify(
+        &CompilerReport {
+            ok: true,
+            code: Some(0),
+            status: "exited with status 0".to_string(),
+            stdout: String::new(),
+            stderr: String::new(),
+        },
+        PROGRAM_FILE,
+        40,
+    )
     .expect("a clean compile is not a failure");
 }
 
@@ -139,26 +147,30 @@ fn a_failure_with_no_diagnostic_is_not_blamed_on_the_model() {
 /// shares the number.
 #[test]
 fn a_diagnostic_in_ggs_own_wrapper_is_reported_without_a_location() {
-    let failure = classify(&CompilerReport {
-        ok: false,
-        code: Some(1),
-        status: "exited with status 1".to_string(),
-        stdout: String::new(),
-        stderr: serde_json::json!({
-            "level": "error",
-            "message": "cannot find crate `gg`",
-            "code": { "code": "E0463" },
-            "spans": [{
-                "file_name": "/gg/lib/libgg.rlib",
-                "is_primary": true,
-                "line_start": 4,
-                "column_start": 9,
-                "label": null,
-            }],
-            "children": [],
-        })
-        .to_string(),
-    })
+    let failure = classify(
+        &CompilerReport {
+            ok: false,
+            code: Some(1),
+            status: "exited with status 1".to_string(),
+            stdout: String::new(),
+            stderr: serde_json::json!({
+                "level": "error",
+                "message": "cannot find crate `gg`",
+                "code": { "code": "E0463" },
+                "spans": [{
+                    "file_name": "/gg/lib/libgg.rlib",
+                    "is_primary": true,
+                    "line_start": 4,
+                    "column_start": 9,
+                    "label": null,
+                }],
+                "children": [],
+            })
+            .to_string(),
+        },
+        PROGRAM_FILE,
+        40,
+    )
     .expect_err("a diagnostic is a failure");
     let PrepareFailure::Program(PrepareError::Compile(rendered)) = &failure else {
         panic!("expected a compile error: {failure}");
@@ -178,34 +190,38 @@ fn a_diagnostic_in_ggs_own_wrapper_is_reported_without_a_location() {
 /// could not read the compiler's diagnostics".
 #[test]
 fn a_non_json_line_beside_the_diagnostics_is_ignored() {
-    let failure = classify(&CompilerReport {
-        ok: false,
-        code: Some(1),
-        status: "exited with status 1".to_string(),
-        stdout: String::new(),
-        stderr: format!(
-            "warning: some wrapper wrote prose here\n{}\n",
-            serde_json::json!({
-                "level": "error",
-                "message": "mismatched types",
-                "code": { "code": "E0308" },
-                "spans": [{
-                    "file_name": PROGRAM_FILE,
-                    "is_primary": true,
-                    "line_start": 6,
-                    "column_start": 18,
-                    "label": "expected `u32`, found `&str`",
-                }],
-                "children": [{
-                    "level": "help",
-                    "message": "consider parsing it",
-                    "code": null,
-                    "spans": [],
-                    "children": [],
-                }],
-            })
-        ),
-    })
+    let failure = classify(
+        &CompilerReport {
+            ok: false,
+            code: Some(1),
+            status: "exited with status 1".to_string(),
+            stdout: String::new(),
+            stderr: format!(
+                "warning: some wrapper wrote prose here\n{}\n",
+                serde_json::json!({
+                    "level": "error",
+                    "message": "mismatched types",
+                    "code": { "code": "E0308" },
+                    "spans": [{
+                        "file_name": PROGRAM_FILE,
+                        "is_primary": true,
+                        "line_start": 6,
+                        "column_start": 18,
+                        "label": "expected `u32`, found `&str`",
+                    }],
+                    "children": [{
+                        "level": "help",
+                        "message": "consider parsing it",
+                        "code": null,
+                        "spans": [],
+                        "children": [],
+                    }],
+                })
+            ),
+        },
+        PROGRAM_FILE,
+        40,
+    )
     .expect_err("a type error is a failure");
     let rendered = failure.to_string();
     assert!(

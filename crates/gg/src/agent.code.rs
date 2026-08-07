@@ -47,8 +47,8 @@ use crate::knowledge::{KnowledgeError, KnowledgeModules, KnowledgeOrigin, Pendin
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    ProgramError, ProgramLanguage, ProgramScope, RunEnding, SandboxViewOpened, ToolApi,
-    UnreachableTail, ViewOpenOutcome, ViewRefusal,
+    PreparedProgram, ProgramError, ProgramLanguage, ProgramScope, RunEnding, SandboxViewOpened,
+    ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal, run_prepared_program,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -1510,6 +1510,25 @@ fn run_program_charged(
     (outcome, api)
 }
 
+/// The same drain around an [already-prepared](run_prepared_program) program — an on-use script.
+///
+/// The script itself cost nothing to prepare *here*: it was prepared at the read. What this drains
+/// is what the script's **own** reads cost, since a skill's on-use script may read another skill and
+/// make the language prepare a module part-way through, exactly as a turn's program can.
+fn run_prepared_charged(
+    language: &'static dyn ProgramLanguage,
+    program: PreparedProgram,
+    scope: ProgramScope<'_>,
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    api: LoopToolApi,
+) -> (SandboxOutcome, LoopToolApi) {
+    let (mut outcome, mut api) =
+        run_prepared_program(language, program, scope, limits, deadline, api);
+    outcome.compile = SandboxOutcome::summed_compile(outcome.compile, api.knowledge.take_compile());
+    (outcome, api)
+}
+
 /// Fold what an on-use script did into the turn that triggered it, and hand back the sentence its
 /// failure earns, if it failed.
 ///
@@ -1571,14 +1590,14 @@ fn run_on_use_scripts(
     for PendingOnUse {
         origin,
         name,
-        source,
+        program,
         module,
     } in pending
     {
         let modules: Vec<_> = module.into_iter().collect();
-        let (script, returned) = run_program_charged(
+        let (script, returned) = run_prepared_charged(
             language,
-            &source,
+            program,
             ProgramScope {
                 enabled,
                 modules: &modules,

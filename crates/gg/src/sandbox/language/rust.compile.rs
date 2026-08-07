@@ -93,8 +93,8 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::sandbox::{
-    CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedProgram, place_tree,
-    shared_toolchain_dir,
+    CodeModule, CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
+    PreparedProgram, Workspace, place_tree, shared_toolchain_dir,
 };
 
 use super::source::{CRATE_NAME, LINE_OFFSET, PROGRAM_FILE};
@@ -210,28 +210,44 @@ pub(super) fn warm() {
 /// guest to evaluate, because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
         unreachable: None,
-        component: Some(compile(source, context)?),
+        component: Some(compile(source, modules, context)?),
     })
 }
 
 /// Compile one model program into a component, or say why it could not be.
-fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFailure> {
+///
+/// `modules` are this agent's loaded code [skills](crate::skills) and
+/// [memories](crate::memories), each already through [`compile_module`]. They are **inputs to this
+/// compile**, which is what makes this arm's preparation take them at all: a Rust module is Rust,
+/// and Rust is linked, so a module is only reachable from the artifact it was built into. Each is
+/// written beside the program as its own file and declared under `lib::<key>`.
+fn compile(
+    program: &str,
+    modules: &[CodeModule],
+    context: &PrepareContext,
+) -> Result<Vec<u8>, PrepareFailure> {
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let wrapped = super::source::wrap(program)?;
+    let wrapped = super::source::wrap(program, modules)?;
     workspace
         .write(PROGRAM_FILE, &wrapped)
         .map_err(PrepareFailure::Toolchain)?;
+    for module in modules {
+        workspace
+            .write(&super::source::module_file(&module.name), &module.source)
+            .map_err(PrepareFailure::Toolchain)?;
+    }
 
     let artifact = workspace.output().join(ARTIFACT_FILE);
     let report = invoke_rustc(&artifact, libraries, context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report)?;
+    classify(&report, PROGRAM_FILE, program.lines().count())?;
 
     let module = std::fs::read(&artifact).map_err(|error| {
         PrepareFailure::Toolchain(format!(
@@ -243,27 +259,60 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
     componentize(&module).map_err(PrepareFailure::Toolchain)
 }
 
+/// The file a code module is **checked** under, before it is ever linked into a program.
+const MODULE_FILE: &str = "module.rs";
+
+/// Check a code [skill](crate::skills)'s or [memory](crate::memories)'s Rust, and report the names
+/// its namespace offers.
+///
+/// What comes back is **source**, not an artifact, and that is the honest shape for a linked
+/// language: there is nothing a module can be compiled into that a later program could load, so what
+/// this hands on is the file the next [program compile](compile) will build against.
+///
+/// The compiler still runs, and what it buys is the *location*. Without it a module that does not
+/// compile would take down every program the agent writes from then on — the diagnostic would arrive
+/// against the turn's own program, in a file the model never wrote, on every turn until the module
+/// was somehow unloaded. Running `rustc` here instead means the author is told at the read, at the
+/// module's own line and column, exactly as every other compiled arm tells them.
+///
+/// `--emit=metadata` rather than a full build: this output is thrown away, so asking for code
+/// generation would be paying LLVM for an artifact nothing reads. Everything a model can get wrong
+/// — a name that does not resolve, a type error, a trait not satisfied — is decided before that
+/// point.
+pub(super) fn compile_module(
+    source: &str,
+    context: &PrepareContext,
+) -> Result<PreparedModule, PrepareFailure> {
+    let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+
+    let wrapped = super::source::wrap_module(source);
+    workspace
+        .write(MODULE_FILE, &wrapped)
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let report =
+        invoke_module_check(workspace, libraries, context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, MODULE_FILE, source.lines().count())?;
+
+    Ok(PreparedModule {
+        exports: super::source::exports(source),
+        source: wrapped,
+    })
+}
+
 // ---------------------------------------------------------------------------------------------
 // The compiler
 // ---------------------------------------------------------------------------------------------
 
-/// Spawn `rustc` over the entry file this preparation just wrote.
+/// Spawn `rustc` over the entry file this preparation just wrote, and link the component.
 fn invoke_rustc(
     artifact: &Path,
     libraries: &Libraries,
     context: &PrepareContext,
 ) -> Result<CompilerReport, String> {
-    let rustc = tool(RUSTC_ENV, "rustc");
-    let mut command = context
-        .compiler(&rustc)
-        .map_err(|error| format!("{}{error}", spawn_prefix(&rustc)))?;
+    let (rustc, mut command) = rustc(libraries, context)?;
     command
-        // The repository's own edition, so a model writes the Rust this decade rather than the Rust
-        // of whichever edition happened to be `rustc`'s default.
-        .arg("--edition")
-        .arg("2024")
-        .arg("--target")
-        .arg(target())
         .arg("--crate-type")
         .arg("cdylib")
         .arg("--crate-name")
@@ -275,6 +324,55 @@ fn invoke_rustc(
         // Not a size optimisation so much as the removal of a section nothing reads: a Rust
         // program's failures are located by its panic hook, out of `Location`, which survives this.
         .arg("-Cstrip=symbols")
+        .arg("-o")
+        .arg(artifact)
+        .arg(PROGRAM_FILE);
+    run(rustc, command)
+}
+
+/// Spawn `rustc` over the code module this preparation just wrote, asking for **metadata only**.
+///
+/// Every diagnostic a module's author can be answerable for is produced before code generation, and
+/// the output of this invocation is thrown away, so a `cdylib` here would be paying LLVM and
+/// `wasm-ld` for an artifact nothing loads. The one thing it must still do is *link nothing*, which
+/// is why the crate type is `lib` rather than the program's: a module has no `export!` and no
+/// component-type section, so asking for a `cdylib` would fail on the absence of what the program's
+/// own wrapper supplies.
+fn invoke_module_check(
+    workspace: &Workspace,
+    libraries: &Libraries,
+    context: &PrepareContext,
+) -> Result<CompilerReport, String> {
+    let (rustc, mut command) = rustc(libraries, context)?;
+    command
+        .arg("--crate-type")
+        .arg("lib")
+        .arg("--crate-name")
+        .arg("module")
+        .arg("--emit=metadata")
+        .arg("--out-dir")
+        .arg(workspace.output())
+        .arg(MODULE_FILE);
+    run(rustc, command)
+}
+
+/// A `rustc` invocation carrying everything both compiles need: where the toolchain is, which
+/// target and edition, the library set, and the two settings the target leaves no choice about.
+fn rustc<'a>(
+    libraries: &Libraries,
+    context: &'a PrepareContext,
+) -> Result<(String, crate::sandbox::CompilerCommand<'a>), String> {
+    let rustc = tool(RUSTC_ENV, "rustc");
+    let mut command = context
+        .compiler(&rustc)
+        .map_err(|error| format!("{}{error}", spawn_prefix(&rustc)))?;
+    command
+        // The repository's own edition, so a model writes the Rust this decade rather than the Rust
+        // of whichever edition happened to be `rustc`'s default.
+        .arg("--edition")
+        .arg("2024")
+        .arg("--target")
+        .arg(target())
         // `wasm32-unknown-unknown` has no unwinder, so this is the only setting the target supports
         // and naming it is how a mismatch with the library set becomes impossible rather than
         // implicit.
@@ -286,10 +384,7 @@ fn invoke_rustc(
         // prose — and so the one-line offset gg's wrapper costs can be subtracted from it.
         .arg("--error-format=json")
         .arg("-L")
-        .arg(format!("dependency={}", libraries.tree.display()))
-        .arg("-o")
-        .arg(artifact)
-        .arg(PROGRAM_FILE);
+        .arg(format!("dependency={}", libraries.tree.display()));
     for library in manifest().crates.iter().filter(|library| library.extern_) {
         command.arg("--extern").arg(format!(
             "{}={}",
@@ -308,6 +403,15 @@ fn invoke_rustc(
     // refused with `E0514`. In a run container `rustc` is a real binary and this is an environment
     // variable it does not read.
     command.env("RUSTUP_TOOLCHAIN", compiler_version());
+    Ok((rustc, command))
+}
+
+/// Run a prepared `rustc` invocation under this arm's timeout, naming the toolchain if it could not
+/// be started at all.
+fn run(
+    rustc: String,
+    mut command: crate::sandbox::CompilerCommand<'_>,
+) -> Result<CompilerReport, String> {
     command
         .run(COMPILE_TIMEOUT)
         .map_err(|error| match error.starts_with("could not run") {
@@ -394,18 +498,19 @@ impl Diagnostic {
         self.level == "error"
     }
 
-    /// This diagnostic, rendered in the model's own coordinates.
+    /// This diagnostic, rendered in the coordinates of `file` — the model's own program, or the
+    /// module whose author is being told about it.
     ///
     /// `rustc`'s own `rendered` field is deliberately not used. It carries a source excerpt with the
     /// **entry file's** line numbers printed into it, which would have to be rewritten line by line
     /// to be true — and a rendering gg assembles from the structured fields cannot disagree with the
     /// location gg reports.
-    fn render(&self) -> String {
+    fn render(&self, file: &str, lines: usize) -> String {
         let mut rendered = match &self.code {
             Some(code) => format!("error[{}]: {}", code.code, self.message),
             None => format!("error: {}", self.message),
         };
-        if let Some(span) = self.primary() {
+        if let Some(span) = self.primary(file, lines) {
             rendered.push_str(&format!(
                 "\n  --> line {}, column {}",
                 span.line_start.saturating_sub(LINE_OFFSET),
@@ -423,15 +528,24 @@ impl Diagnostic {
         rendered
     }
 
-    /// The span this diagnostic is about, in the model's own file.
+    /// The span this diagnostic is about, in the author's own text.
     ///
-    /// A diagnostic whose only spans are in gg's wrapper or in a library has none: reporting its
-    /// line as if it were the model's would point at whichever of the model's lines shares the
-    /// number.
-    fn primary(&self) -> Option<&Span> {
-        self.spans
-            .iter()
-            .find(|span| span.is_primary && span.file_name == PROGRAM_FILE)
+    /// A diagnostic whose only spans are in a library, or — for a program compiled beside code
+    /// modules — in **somebody else's module**, has none: reporting its line as if it were the
+    /// model's would point at whichever of the model's lines shares the number.
+    ///
+    /// So is one in gg's own wrapper, which is why `lines` is here. The wrapper's *prologue* is
+    /// subtracted by [`LINE_OFFSET`], but its epilogue and the
+    /// [module declarations](super::source) below it are in the same file and further down — so a
+    /// diagnostic gg's own generated text earned would otherwise be reported at a line past the end
+    /// of the program the model wrote. Above the author's last line it is located; past it, it is
+    /// reported without one.
+    fn primary(&self, file: &str, lines: usize) -> Option<&Span> {
+        self.spans.iter().find(|span| {
+            span.is_primary
+                && span.file_name == file
+                && (LINE_OFFSET + 1..=LINE_OFFSET + lines).contains(&span.line_start)
+        })
     }
 }
 
@@ -448,7 +562,7 @@ impl Diagnostic {
 /// mark a diagnostic as a parse failure — an unclosed brace and a borrow error are both an
 /// `error[E….]` from one pass over the file. Inventing the distinction from the error code would be
 /// gg guessing at a taxonomy the compiler does not have.
-fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
+fn classify(report: &CompilerReport, file: &str, lines: usize) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
@@ -466,7 +580,7 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
         .collect();
     if errors.is_empty() {
         return Err(PrepareFailure::Toolchain(format!(
-            "rustc {} {} without reporting a diagnostic in the program{}",
+            "rustc {} {} without reporting a diagnostic in {file}{}",
             compiler_version(),
             report.status,
             report.stderr_tail(),
@@ -480,7 +594,7 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
     Err(PrepareFailure::Program(PrepareError::Compile(
         errors
             .iter()
-            .map(|diagnostic| diagnostic.render())
+            .map(|diagnostic| diagnostic.render(file, lines))
             .collect::<Vec<_>>()
             .join("\n\n"),
     )))

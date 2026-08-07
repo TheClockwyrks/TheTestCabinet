@@ -43,7 +43,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::{Duration, Instant};
 
 use crate::sandbox::{
-    CodeModule, PrepareFailure, ProgramLanguage, SandboxOutcome, prepare_module, prepare_program,
+    CodeModule, PrepareFailure, PreparedProgram, ProgramLanguage, SandboxOutcome, prepare_module,
+    prepare_program,
 };
 
 /// Where a piece of loaded code came from — what a failure names, and what the reply to the read
@@ -80,8 +81,16 @@ pub struct PendingOnUse {
     pub origin: KnowledgeOrigin,
     /// The skill's name or the memory's slug, for the sentence a failure produces.
     pub name: String,
-    /// The prepared script, as its guest evaluates it.
-    pub source: String,
+    /// The prepared script — already through its language's
+    /// [prepare step](crate::sandbox::ProgramLanguage::prepare_program), which is why it is a whole
+    /// [`PreparedProgram`] and not the text it was written as.
+    ///
+    /// It is prepared **once**, here at the read, and run as-is. Preparing it again at the point of
+    /// running would be a second trip through a compiler on every arm that has one, and on a
+    /// compiled arm it would not even be the same program: a Rust script's prepared form is a wasm
+    /// component and its source is empty, so a second preparation would compile nothing and report
+    /// a clean run over a script that never executed.
+    pub program: PreparedProgram,
     /// The one module bound into its scope: the same thing's own code, if it carries any. An on-use
     /// script sees its own module and no other — it runs at a moment the agent did not choose, so
     /// letting it reach whatever else happened to be loaded would make its behaviour depend on the
@@ -151,6 +160,7 @@ impl Loaded {
     /// It is appended rather than returned separately because the read's result *is* the body: one
     /// string crosses the membrane, and a binding path the model has to infer is a binding path it
     /// will get wrong. An empty [`Loaded`] appends nothing, so a prose skill's reply is untouched.
+    ///
     pub fn note(&self, origin: KnowledgeOrigin) -> Option<String> {
         if self.is_empty() {
             return None;
@@ -273,25 +283,29 @@ impl KnowledgeModules {
         if let Some(source) = on_use
             && first_use
         {
-            let script = self
-                .timed(language, || prepare_program(language, source))
-                .map(|prepared| prepared.source)
-                .map_err(|error| KnowledgeError {
-                    origin,
-                    name: name.to_string(),
-                    half: "onUse",
-                    error,
-                })?;
+            // The module is resolved **before** the script is prepared, not after, because a
+            // compiled language links the modules in scope into the artifact it produces: a script
+            // prepared without its own module in hand would be a script whose `lib` binding is
+            // missing on exactly the arms where it cannot be added later.
             let module = loaded.key.as_ref().and_then(|key| {
                 self.loaded.get(key).map(|source| CodeModule {
                     name: key.clone(),
                     source: source.clone(),
                 })
             });
+            let modules: Vec<CodeModule> = module.iter().cloned().collect();
+            let script = self
+                .timed(language, || prepare_program(language, source, &modules))
+                .map_err(|error| KnowledgeError {
+                    origin,
+                    name: name.to_string(),
+                    half: "onUse",
+                    error,
+                })?;
             self.pending.push(PendingOnUse {
                 origin,
                 name: name.to_string(),
-                source: script,
+                program: script,
                 module,
             });
             loaded.on_use = true;

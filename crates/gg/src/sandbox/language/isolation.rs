@@ -414,14 +414,35 @@ impl Preparation for LanguagePreparation {
         match self.half {
             Half::Program => self
                 .language
-                .prepare_program(source, context)
-                .map(|prepared| prepared.source),
+                .prepare_program(source, &[], context)
+                .map(artifact),
             Half::Module => self
                 .language
                 .prepare_module(source, context)
                 .map(|prepared| prepared.source),
         }
         .map_err(|failure| failure.to_string())
+    }
+}
+
+/// What a prepared program's **artifact** is, as text this gate can compare and search for a marker.
+///
+/// The two shapes of arm keep their artifacts in different places, and the gate's question is the
+/// same for both — *is this a function of the input alone?* — so it asks it of whichever one the
+/// language filled in. An interpreted arm's is
+/// [`source`](super::PreparedProgram::source); a **compiled** arm's is the wasm
+/// [`component`](super::PreparedProgram::component) it produced for this program and nothing else.
+///
+/// The component's bytes are mapped **one byte to one `char` of the same value** rather than through
+/// [`String::from_utf8_lossy`], and the difference is load-bearing: lossy decoding replaces every
+/// invalid sequence with one replacement character, so two wasm modules that differ only inside such
+/// a sequence would compare *equal* and the stability check would pass over a real breach. This
+/// mapping is lossless, and it still leaves an ASCII marker in the data section findable as an
+/// ordinary substring.
+fn artifact(prepared: super::PreparedProgram) -> String {
+    match prepared.component {
+        Some(component) => component.into_iter().map(char::from).collect(),
+        None => prepared.source,
     }
 }
 

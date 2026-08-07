@@ -31,7 +31,7 @@ fn a_program_crosses_as_the_model_wrote_it() {
         "",
     ] {
         let prepared = python()
-            .prepare_program(source, &PrepareContext::new())
+            .prepare_program(source, &[], &PrepareContext::new())
             .expect("this arm prepares every reply, because nothing on the host reads it");
         assert_eq!(prepared.source, source);
         // There is no top-level statement that ends a Python module early — no `return` to write
@@ -134,7 +134,7 @@ fn the_generated_documentation_program_is_python() {
          for name in functions:\n    view.open_docs_view(name)\n"
     );
     python()
-        .prepare_program(&program, &PrepareContext::new())
+        .prepare_program(&program, &[], &PrepareContext::new())
         .expect("this arm prepares the program it generated");
 }
 

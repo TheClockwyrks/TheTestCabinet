@@ -232,12 +232,6 @@ pub fn run_program<A: ToolApi>(
     deadline: Option<Instant>,
     api: A,
 ) -> (SandboxOutcome, A) {
-    let ProgramScope {
-        enabled,
-        modules,
-        ending,
-        library,
-    } = scope;
     // A test may have armed one of the failures gg's own machinery would have to be broken to
     // produce; see `force_next_program_fault`. The `api` is handed straight back — this fault is a
     // stand-in for a before-start failure, which never runs the program and never touches state.
@@ -251,7 +245,7 @@ pub fn run_program<A: ToolApi>(
     // reading is taken around both outcomes because a rejected program is the one whose cost would
     // otherwise be reported as nothing.
     let started = Instant::now();
-    let prepared = prepare_program(language, program);
+    let prepared = prepare_program(language, program, scope.modules);
     let compile = language.prepare_compiles().then(|| started.elapsed());
     let prepared = match prepared {
         Ok(prepared) => prepared,
@@ -265,6 +259,56 @@ pub fn run_program<A: ToolApi>(
             );
         }
     };
+    evaluate(language, prepared, scope, limits, deadline, api, compile)
+}
+
+/// Run a program that has **already been prepared** — the on-use script of a code
+/// [skill](crate::skills) or [memory](crate::memories), which was prepared at the read so that
+/// whoever wrote it got a located diagnostic there rather than two turns later.
+///
+/// It exists because a preparation is not repeatable in general. Preparing an already-prepared
+/// program happens to be harmless on an arm whose output is source in the same language it read
+/// (TypeScript's strip is idempotent), and is nonsense on every other shape: a Java arm handed its
+/// own translated JavaScript back would refuse it, and a **compiled** arm's prepared program is not
+/// source at all — Rust's is a wasm component and its
+/// [`source`](PreparedProgram::source) is empty, so re-preparing it would compile the empty program
+/// and report a clean run over a script that did nothing.
+///
+/// [`compile`](SandboxOutcome::compile) is `None` here, and that is an absence rather than a
+/// missing measurement: what preparing this script cost was charged where it was spent, at the read,
+/// onto [`KnowledgeModules::take_compile`](crate::knowledge::KnowledgeModules::take_compile).
+pub fn run_prepared_program<A: ToolApi>(
+    language: &'static dyn ProgramLanguage,
+    prepared: PreparedProgram,
+    scope: ProgramScope<'_>,
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    api: A,
+) -> (SandboxOutcome, A) {
+    #[cfg(test)]
+    if let Some(error) = forced_fault() {
+        return (SandboxOutcome::before_start(error, None), api);
+    }
+    evaluate(language, prepared, scope, limits, deadline, api, None)
+}
+
+/// Instantiate the component this program is evaluated by and run it — everything both entry points
+/// do once there is a [`PreparedProgram`] in hand.
+fn evaluate<A: ToolApi>(
+    language: &'static dyn ProgramLanguage,
+    prepared: PreparedProgram,
+    scope: ProgramScope<'_>,
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    api: A,
+    compile: Option<Duration>,
+) -> (SandboxOutcome, A) {
+    let ProgramScope {
+        enabled,
+        modules,
+        ending,
+        library,
+    } = scope;
     let unreachable = prepared.unreachable;
     // Either the language's committed component, or — for an arm whose prepare step compiled the
     // program itself into one — this program's own. The wait is reported the same way for both.
@@ -489,11 +533,17 @@ pub fn precompile(
 /// between two preparations would be the corruption it exists to prevent. The context is dropped
 /// when this returns, which is what removes the workspace; a language that wants an artifact must
 /// read it before it hands one back.
+///
+/// `modules` is what the agent has loaded from code skills and memories, already prepared. Every
+/// language is handed it; only one whose programs are **compiled** reads it, because only there is a
+/// module something the program has to be built against rather than something its guest evaluates
+/// beside it. See [`ProgramLanguage::prepare_program`].
 pub fn prepare_program(
     language: &'static dyn ProgramLanguage,
     source: &str,
+    modules: &[CodeModule],
 ) -> Result<PreparedProgram, PrepareFailure> {
-    language.prepare_program(source, &PrepareContext::new())
+    language.prepare_program(source, modules, &PrepareContext::new())
 }
 
 /// Prepare a code [skill](crate::skills)'s or [memory](crate::memories)'s source for `language`'s

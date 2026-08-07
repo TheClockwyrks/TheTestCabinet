@@ -62,8 +62,8 @@ use crate::healing::{CodeMask, Dialect, Unwrapped};
 use crate::sandbox::signatures::SignatureCatalogue;
 
 use super::{
-    FileWindow, PrepareContext, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
-    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+    CodeModule, FileWindow, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
+    PreparedProgram, ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
 /// TypeScript's committed catalogue, read a second time rather than reached for through
@@ -159,6 +159,7 @@ impl ProgramLanguage for FixtureLanguage {
     fn prepare_program(
         &self,
         source: &str,
+        _modules: &[CodeModule],
         context: &PrepareContext,
     ) -> Result<PreparedProgram, PrepareFailure> {
         if source.contains("??") {
@@ -210,7 +211,7 @@ impl ProgramLanguage for FixtureLanguage {
         source: &str,
         context: &PrepareContext,
     ) -> Result<PreparedModule, PrepareFailure> {
-        let prepared = self.prepare_program(source, context)?;
+        let prepared = self.prepare_program(source, &[], context)?;
         let exports: Vec<String> = prepared
             .source
             .lines()

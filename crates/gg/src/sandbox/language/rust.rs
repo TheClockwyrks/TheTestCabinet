@@ -73,22 +73,27 @@
 //! [`keep_reported_error`](crate::sandbox), which prefers what the program said about itself over
 //! the trap that followed it.
 //!
-//! # What is not built yet, and what it blocks
+//! # And a code module is **linked**, which is why the seam hands a program its modules
 //!
-//! **Code modules**, and nothing else. A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
-//! bound at `lib.<key>` by handing the guest its prepared source, and every arm so far can evaluate
-//! that source at run time. Rust cannot: a module is Rust, and Rust is compiled — so a module has to
-//! be linked into the same artifact as the program that uses it, which means the **program's**
-//! preparation has to see it. It does not:
-//! [`prepare_program`](super::ProgramLanguage::prepare_program) takes a source and a context, and
-//! the modules reach the sandbox separately, on [`ProgramScope`](crate::sandbox::ProgramScope).
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib::<key>`
+//! for every program the agent writes afterwards. On every arm before this one that binding is made
+//! at *run time*: the guest is handed each module's prepared source beside the program and evaluates
+//! it first. Rust has no such moment — a module is Rust, Rust links, and the only artifact a module
+//! can end up in is the artifact of a program that was compiled against it.
 //!
-//! That is a seam change — `prepare_program` taking the modules in scope, and `knowledge`'s pending
-//! on-use script carrying a whole [`PreparedProgram`](super::PreparedProgram) rather than a
-//! `String` — and it is deliberately not made here, because it touches every arm and belongs with
-//! the work that needs it. **The registration step must make it first**: without it a Rust agent
-//! that reads a code skill gets no `lib` binding at all, which is a capability silently absent on
-//! one arm of a study about capability.
+//! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
+//! scope, this arm writes each one beside the entry file, and [`source`](self::source) declares them
+//! below the program where they move none of its lines. A module is compiled **twice** — once alone
+//! when it is read, only to be checked, and once as part of every program that uses it — and the
+//! first compile is what buys the *location*: without it a module that does not build would take
+//! down every program the agent wrote from then on, with the diagnostic landing against the turn's
+//! own program in a file the model never saw.
+//!
+//! # What is not built yet
+//!
+//! The [registration](super::ProgramLanguage) — the trait implementation, a healing dialect, two
+//! Handlebars templates and a wire id. Nothing here is reachable from a run: there is no `language`
+//! value that resolves to it.
 
 /// The `rustc` build and the in-process component encode: the host-side step that turns a model's
 /// Rust into the component that evaluates it.

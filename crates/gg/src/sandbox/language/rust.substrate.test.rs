@@ -61,7 +61,7 @@ use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -379,8 +379,12 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     // model-facing, located in the model's own coordinates — and, on this arm, the single most
     // interesting band a study can collect, because it is a program the model wrote whole and got
     // wrong about the surface it was writing against.
-    let failure = compile_program("let total: u32 = \"seventeen\";\n", &PrepareContext::new())
-        .expect_err("a type error is refused");
+    let failure = compile_program(
+        "let total: u32 = \"seventeen\";\n",
+        &[],
+        &PrepareContext::new(),
+    )
+    .expect_err("a type error is refused");
     let PrepareFailure::Program(error) = &failure else {
         panic!("a type error was reported as a toolchain failure: {failure}");
     };
@@ -402,7 +406,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
 
     // A name that does not resolve — the other band a model produces constantly, and the one a model
     // reaching for something the SDK does not have lands in.
-    let failure = compile_program("no_such_function(1);\n", &PrepareContext::new())
+    let failure = compile_program("no_such_function(1);\n", &[], &PrepareContext::new())
         .expect_err("an unresolved name is refused");
     assert!(
         failure.to_string().contains("E0425"),
@@ -412,7 +416,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     // A syntax error. It arrives in the same band, and that is a fact about Rust rather than a
     // shortcut: `rustc` has no parse-only phase a program passes before meaning is considered, and
     // it does not mark a diagnostic as a parse failure.
-    let failure = compile_program("let x = ;\n", &PrepareContext::new())
+    let failure = compile_program("let x = ;\n", &[], &PrepareContext::new())
         .expect_err("a syntax error is refused");
     let PrepareFailure::Program(crate::sandbox::PrepareError::Compile(rendered)) = &failure else {
         panic!("a syntax error was not reported as a compile error: {failure}");
@@ -425,7 +429,7 @@ fn the_compiler_tells_a_rejected_program_from_a_broken_toolchain() {
     // A compiler that is not there at all is the OTHER band, and the model is not blamed for it:
     // there is no diagnostic, so there is nothing for it to fix.
     let failure = temporarily_pointing_rustc_at("gg-no-such-compiler", || {
-        compile_program("let x = 1;\n", &PrepareContext::new())
+        compile_program("let x = 1;\n", &[], &PrepareContext::new())
             .expect_err("a missing compiler is refused")
     });
     let PrepareFailure::Toolchain(reported) = &failure else {
@@ -444,6 +448,7 @@ fn a_program_that_defines_main_is_refused_by_name() {
     // model cannot recover from, so it is refused with a sentence saying what to write instead.
     let failure = compile_program(
         "fn main() {\n    println!(\"hello\");\n}\n",
+        &[],
         &PrepareContext::new(),
     )
     .expect_err("a program that defines main is refused");
@@ -459,6 +464,7 @@ fn a_program_that_defines_main_is_refused_by_name() {
     // A function that merely starts with those letters is not one.
     compile_program(
         "fn maintain(value: u32) -> u32 { value + 1 }\nlet _ = maintain(1);\n",
+        &[],
         &PrepareContext::new(),
     )
     .expect("`fn maintain` is not `fn main`");
@@ -528,7 +534,7 @@ impl Preparation for RustCompile {
     /// character and make two different wasm modules compare equal. This mapping is lossless *and*
     /// leaves an ASCII marker in the data section findable as an ordinary substring.
     fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        compile_program(source, context)
+        compile_program(source, &[], context)
             .map_err(|failure| failure.to_string())
             .map(|prepared| {
                 prepared
