@@ -119,8 +119,9 @@ pub use language::{
 // which of its five shapes a diagnostic is has to be able to see them.
 #[allow(unused_imports)]
 pub use language::{
-    CompilerCommand, CompilerPool, CompilerReport, PrepareContext, PrepareError, PromptDialect,
-    ResolvedProgramLanguage, Workspace, place, place_tree, shared_toolchain_dir,
+    CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
+    PromptDialect, ResolvedProgramLanguage, Workspace, daemon, place, place_tree,
+    shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer

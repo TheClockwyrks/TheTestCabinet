@@ -35,6 +35,7 @@
 //! | Somewhere to put a compiler's output | [`Workspace::output`], inside that same private tree |
 //! | Running a compiler | [`PrepareContext::compiler`] — cwd, `HOME`, `TMPDIR` and the `XDG_*` roots all inside that tree |
 //! | A long-lived compiler instance (a daemon, a warm builder) | [`CompilerPool`] — exclusive checkout, so no two preparations can ever hold one instance |
+//! | A long-lived compiler **process** to put in that pool | [`daemon`] — started on a private tree of its own, spoken to a request at a time, killed and reaped when it is dropped |
 //! | Toolchain inputs too big to unpack per preparation | [`shared_toolchain_dir`] + [`place`] (one file) or [`place_tree`] (a whole directory) — content-keyed, written by rename, **read-only afterwards** |
 //!
 //! The environment redirection is the part that earns the most. A toolchain that writes to `output/`
@@ -645,6 +646,268 @@ fn remove_sealed(root: &Path) -> Result<(), String> {
     }
     std::fs::remove_dir_all(root)
         .map_err(|error| format!("could not remove {}: {error}", root.display()))
+}
+
+/// **A compiler process that outlives one preparation** — the process half of what
+/// [`CompilerPool`] lends.
+///
+/// [`CompilerCommand`] runs a compiler and waits for it to exit, which is the right shape for a
+/// toolchain whose cost is reading its input. It is the wrong shape for one whose cost is *starting*:
+/// a JVM that spends 4–9 s cold and 0.3–0.6 s warm is a compiler that must be spoken to rather than
+/// spawned, and the study measured exactly that spread. So this is a process gg starts once, hands a
+/// request at a time, and reads a reply from.
+///
+/// # Why this is not a hole in the isolation contract
+///
+/// A daemon *is* shared — that is the point of it — so it is safe only under the same discipline
+/// [`CompilerPool`] exists to impose, and it is deliberately awkward to reach any other way:
+///
+/// * **It is lent exclusively.** One of these belongs in a [`CompilerPool`], so at most one
+///   preparation is talking to it at any moment. A `static CompilerDaemon` shared by every
+///   preparation is the measured TeaVM bug with extra steps, and the [isolation gate](super::isolation)
+///   catches its consequence.
+/// * **It is told where to write, per request.** A daemon has no memory of where the last request's
+///   output went; a language passes this preparation's own [`Workspace`] path in the request, so what
+///   a build writes is still a function of that build's input.
+/// * **It gets ground of its own.** Its working directory, `HOME`, `TMPDIR` and `XDG_*` roots are a
+///   private tree created with it and removed with it — *not* any preparation's workspace, which is
+///   removed when that preparation ends and would leave a live daemon standing on a deleted
+///   directory.
+///
+/// What a daemon must not do is carry state from one request into the next. That cannot be enforced
+/// from here — it is a property of the program on the other end of the pipe — so the language that
+/// starts one owes the argument in its own documentation, and the isolation gate is what tests it.
+pub struct CompilerDaemon {
+    /// How the process was named, for the failure that says gg could not talk to it.
+    program: String,
+    /// The process itself, killed and reaped on drop.
+    child: std::process::Child,
+    /// Its standard input, which requests are written to.
+    stdin: std::process::ChildStdin,
+    /// Its replies, one line at a time, read by a thread so that waiting for one can time out.
+    replies: std::sync::mpsc::Receiver<String>,
+    /// The private tree it runs in, removed when it ends.
+    tree: PathBuf,
+    /// Where its stderr is captured, for the operator-facing failure.
+    stderr: PathBuf,
+}
+
+/// A [`CompilerDaemon`] being built: the same isolation [`CompilerCommand`] applies, minus the wait.
+pub struct DaemonCommand {
+    /// How the process is named.
+    program: String,
+    /// The command being built.
+    command: Command,
+    /// Its private tree.
+    tree: PathBuf,
+    /// Where its stderr will be captured.
+    stderr: PathBuf,
+}
+
+/// The counter that makes every daemon's tree unique.
+static NEXT_DAEMON: AtomicU64 = AtomicU64::new(0);
+
+/// Point a long-lived compiler process at `program`, on ground of its own.
+///
+/// Free rather than a method on [`PrepareContext`] deliberately: a daemon outlives the preparation
+/// that first needed it, so it cannot be rooted in that preparation's workspace and cannot be minted
+/// from something that only exists for one call. What it *is* rooted in is a tree with the same
+/// redirection every compiler here gets, so a toolchain that caches under `HOME` caches inside a
+/// directory that dies with the daemon.
+pub fn daemon(program: impl AsRef<OsStr>) -> Result<DaemonCommand, String> {
+    let program = program.as_ref();
+    let parent = std::env::temp_dir().join("gg-daemon");
+    std::fs::create_dir_all(&parent)
+        .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+    let tree = parent.join(format!(
+        "{}-{}",
+        std::process::id(),
+        NEXT_DAEMON.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir(&tree).map_err(|error| {
+        format!(
+            "could not create the private compiler-daemon tree {}: {error}",
+            tree.display()
+        )
+    })?;
+    let work = tree.join("work");
+    let home = tree.join("home");
+    let tmp = tree.join("tmp");
+    for path in [
+        &work,
+        &home,
+        &tmp,
+        &home.join(".cache"),
+        &home.join(".config"),
+        &home.join(".local").join("share"),
+    ] {
+        std::fs::create_dir_all(path)
+            .map_err(|error| format!("could not create {}: {error}", path.display()))?;
+    }
+
+    let mut command = Command::new(program);
+    command
+        .current_dir(&work)
+        .env("HOME", &home)
+        .env("XDG_CACHE_HOME", home.join(".cache"))
+        .env("XDG_CONFIG_HOME", home.join(".config"))
+        .env("XDG_DATA_HOME", home.join(".local").join("share"))
+        .env("TMPDIR", &tmp)
+        .env("TMP", &tmp)
+        .env("TEMP", &tmp);
+    Ok(DaemonCommand {
+        program: program.to_string_lossy().into_owned(),
+        command,
+        stderr: tree.join("daemon.err"),
+        tree,
+    })
+}
+
+impl DaemonCommand {
+    /// Add one argument.
+    pub fn arg(&mut self, arg: impl AsRef<OsStr>) -> &mut Self {
+        self.command.arg(arg);
+        self
+    }
+
+    /// Add several arguments.
+    // The one daemon there is names its half-dozen one at a time; a language with a computed
+    // argument list wants this.
+    #[allow(dead_code)]
+    pub fn args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        self.command.args(args);
+        self
+    }
+
+    /// Set one environment variable, after the redirection — the same escape hatch, and the same
+    /// burden of saying why, that [`CompilerCommand::env`] carries.
+    pub fn env(&mut self, key: impl AsRef<OsStr>, value: impl AsRef<OsStr>) -> &mut Self {
+        self.command.env(key, value);
+        self
+    }
+
+    /// Start it, and hand back something that can be spoken to.
+    ///
+    /// stdout is a pipe, because it is the reply channel. stderr is a **file** in the daemon's own
+    /// tree, for the reason [`CompilerCommand::run`] captures both to files: nothing drains a
+    /// daemon's stderr, and a toolchain that filled that pipe would wedge behind it forever rather
+    /// than merely being noisy.
+    pub fn start(mut self) -> Result<CompilerDaemon, String> {
+        let stderr = std::fs::File::create(&self.stderr).map_err(|error| {
+            format!(
+                "could not open {} for a compiler daemon: {error}",
+                self.stderr.display()
+            )
+        })?;
+        let mut child = self
+            .command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(stderr))
+            .spawn()
+            .map_err(|error| {
+                let _ = std::fs::remove_dir_all(&self.tree);
+                format!("could not start `{}`: {error}", self.program)
+            })?;
+        let stdin = child.stdin.take().expect("a piped stdin is present");
+        let stdout = child.stdout.take().expect("a piped stdout is present");
+        let (sender, replies) = std::sync::mpsc::channel();
+        // A reader thread rather than a blocking read on the pipe, so that waiting for a reply can
+        // have a deadline. A daemon that wedges mid-build must cost one preparation a timeout, not
+        // the run.
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stdout).lines() {
+                let Ok(line) = line else { return };
+                if sender.send(line).is_err() {
+                    return;
+                }
+            }
+        });
+        Ok(CompilerDaemon {
+            program: self.program,
+            child,
+            stdin,
+            replies,
+            tree: self.tree,
+            stderr: self.stderr,
+        })
+    }
+}
+
+impl CompilerDaemon {
+    /// Write one request line and wait for one reply line, giving up after `timeout`.
+    ///
+    /// `request` must not contain a newline: the protocol is one line each way, and a request that
+    /// carried one would be read as two.
+    pub fn request(&mut self, request: &str, timeout: Duration) -> Result<String, String> {
+        use std::io::Write;
+        debug_assert!(
+            !request.contains('\n'),
+            "a daemon request is one line: {request}"
+        );
+        self.stdin
+            .write_all(request.as_bytes())
+            .and_then(|()| self.stdin.write_all(b"\n"))
+            .and_then(|()| self.stdin.flush())
+            .map_err(|error| {
+                format!(
+                    "could not send a request to `{}`: {error}{}",
+                    self.program,
+                    self.stderr_tail()
+                )
+            })?;
+        self.reply(timeout)
+    }
+
+    /// Wait for one line the daemon sends without being asked — its handshake.
+    pub fn reply(&mut self, timeout: Duration) -> Result<String, String> {
+        match self.replies.recv_timeout(timeout) {
+            Ok(line) => Ok(line),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(format!(
+                "`{}` did not answer within {timeout:?}{}",
+                self.program,
+                self.stderr_tail()
+            )),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+                "`{}` ended without answering{}",
+                self.program,
+                self.stderr_tail()
+            )),
+        }
+    }
+
+    /// The last few lines the daemon wrote to stderr, prefixed for an operator's log.
+    ///
+    /// Read from the file each time rather than remembered, because the interesting lines are
+    /// usually the ones written just before the failure being reported.
+    pub fn stderr_tail(&self) -> String {
+        let Ok(stderr) = std::fs::read_to_string(&self.stderr) else {
+            return String::new();
+        };
+        let stderr = stderr.trim();
+        if stderr.is_empty() {
+            return String::new();
+        }
+        let lines: Vec<&str> = stderr.lines().rev().take(10).collect();
+        let text: Vec<&str> = lines.into_iter().rev().collect();
+        format!(": {}", text.join(" | "))
+    }
+}
+
+impl Drop for CompilerDaemon {
+    fn drop(&mut self) {
+        // Closing stdin is how a well-behaved daemon is asked to stop; the kill is for one that is
+        // not, or is mid-build. Both, in that order, because a process killed while holding the
+        // reader thread's pipe would otherwise leave the thread parked on a read that never ends.
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        let _ = std::fs::remove_dir_all(&self.tree);
+    }
 }
 
 /// **A pool of long-lived compiler instances, checked out exclusively** — the sanctioned answer for

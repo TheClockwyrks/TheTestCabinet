@@ -145,6 +145,40 @@ RUN set -eux; \
 	/opt/gg/toolchains/bin/purs --version; \
 	/opt/gg/toolchains/bin/esbuild --version
 
+# --- Java -------------------------------------------------------------------
+# The first toolchain here that is not one file. A Java program is compiled to bytecode by `javac`
+# and then to JavaScript by TeaVM, both on the host before the program crosses the membrane, so this
+# arm adds no engine either — but it needs a JDK (javac is a JDK, not a JRE) and ~29 MB of TeaVM
+# jars named on a classpath.
+#
+# Eclipse Temurin satisfies constraint 1 outright: a plain relocatable tarball per platform, with no
+# installer and no distribution packaging, so the same tree works on the Debian-derived run images
+# and on `blender-gg`'s Ubuntu.
+#
+# Constraint 2 is the interesting one, because this is the arm the measured TeaVM corruption was
+# found on — one `InProcessBuildStrategy` driven from four threads produced no output for three of
+# them while throwing nothing. A JDK is *not* excluded by that constraint: what the constraint bars
+# is a toolchain that can only be driven through a process shared between compilations, and this one
+# is driven through a `CompilerPool` of JVMs that lends each to one preparation at a time. The pool
+# is what makes the warmth affordable — a cold build is 4-9 s and a warm one is 0.33-0.56 s — and
+# what makes the measured bug's precondition impossible. See
+# `crates/gg/src/sandbox/language/java.compile.rs`.
+#
+# What is NOT here is gg's own compiler driver. It is a single `.java` file inside gg's binary
+# (`crates/gg/src/sandbox/checkers/java.compiler.java`), run by the JDK's single-file source-code
+# launcher — because this image is built separately from the binary that runs in it, and a driver of
+# one vintage speaking to a gg of another is a protocol mismatch nobody notices.
+#
+# The versions are the ones `packages/gg-sandbox-java/java-version.sh` pins and
+# `scripts/ci/install-java.sh` installs on a developer's or CI machine; the script is run here so
+# there is one list of jars rather than two.
+COPY packages/gg-sandbox-java/java-version.sh /tmp/gg-java/packages/gg-sandbox-java/java-version.sh
+COPY scripts/ci/install-java.sh /tmp/gg-java/scripts/ci/install-java.sh
+RUN set -eux; \
+	JAVA_INSTALL_DIR=/opt/gg/toolchains/java bash /tmp/gg-java/scripts/ci/install-java.sh; \
+	rm -rf /tmp/gg-java; \
+	/opt/gg/toolchains/java/jdk/bin/javac --version
+
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
 # `COPY --from` source, and keeping it to the toolchain tree alone means the gg run images

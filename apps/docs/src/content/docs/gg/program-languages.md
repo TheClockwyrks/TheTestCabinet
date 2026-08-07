@@ -811,6 +811,162 @@ An import is **never** deleted, for the reason [Python's](#python-a-guest-that-c
 never is and then some: `purs` resolves every one of them against a library set gg ships, and
 `import Gg` is the line without which a program has no surface at all.
 
+## Java: a warm JVM, and an arm with no wire id yet
+
+**Not registered.** What exists is this arm's **execution substrate**: the compile that turns a
+model's Java into something a guest can evaluate, the guest that evaluates it, and the proof that
+a real Java program runs through gg's own linker, membrane and store. There is no `language` value
+that resolves to it, no SDK and no catalogue — a `ProgramLanguage` arm cannot be half-registered,
+because the registry's `match` is exhaustive and every gate that iterates the registered set would
+immediately demand a catalogue, two templates and a healing dialect. The order is the one the
+Python, Ruby and PureScript arms established.
+
+**A Java program is compiled to bytecode by `javac` and then to JavaScript by TeaVM, both inside a
+warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the TypeScript,
+JavaScript and PureScript arms use.**
+
+### The first arm whose compiler is kept warm
+
+Java is the first toolchain gg cannot afford to spawn per compile. Measured on this repository's
+dev container: a cold `java` that starts a JVM, loads TeaVM and builds costs **4–9 s**; the same
+build in a JVM that has already done one costs **0.33–0.56 s**, of which ~30 ms is `javac` and the
+rest is TeaVM. A per-compile process would make this arm ten times dearer than every other one,
+which is a difference in the *harness* rather than in the language.
+
+Warmth is also exactly where the study's measured TeaVM corruption lives: one
+`InProcessBuildStrategy` driven from four threads produced **no output at all for three of the
+four**, and `build()` threw nothing. So the warmth is the shape the seam sanctions rather than the
+shape that broke — a `CompilerPool` of four JVM **processes**, each lent to one preparation at a
+time, started through the seam's new `daemon()` affordance onto a private tree of its own. Two
+preparations can never be inside one JVM together, so the measured bug's precondition does not
+exist. A JVM is retired after 64 builds, because every build makes a fresh class loader over the
+toolchain's jars and metaspace is not something gg can reclaim from here.
+
+The gate was **verified by mutation, and one of the two mutations did not fire** — which is the
+more useful half. Pointed at a single shared `classes` directory, the arm's sixteen-way gate failed
+four independent ways, including artifacts carrying *another preparation's program*. Made to reuse
+one `InProcessBuildStrategy` across builds, it **passed**, because the pool has already removed the
+precondition the measured bug needed. The fresh strategy is kept for what it is — cheap, and the
+only thing that makes a build independent of the last one through the same JVM — rather than for a
+failure this gate has been shown to catch.
+
+### Two TeaVM settings that are not optional
+
+- `setJsModuleType(NONE)`, so the emitted code names its entry point as a **bare identifier** in
+  the enclosing scope. The guest evaluates a program as the body of a function whose parameters are
+  the API objects, and a module wrapper would put those names out of the program's reach.
+- `setStrict(true)`, without which TeaVM omits the null and bounds checks that make a
+  `NullPointerException` an exception at all — and `catch (NullPointerException)` **silently fails
+  to catch**. A program that failed would be recorded as one that succeeded, which is the one class
+  of error a measurement harness must never make.
+
+### What a Java program is, here
+
+A **sequence of statements**, as on every arm but PureScript. Java has nowhere for a loose
+statement to live, so gg wraps the reply in the body of a method of a class it declares. Two
+lexical transforms make that survivable, and both are **line-preserving**, because a diagnostic is
+only worth handing back if it names the line the model wrote:
+
+- an `import` the model wrote is copied into the header and **blanked where it stood**, so a Java
+  author's first instinct is not a syntax error on every turn and no later line moves;
+- a `package` declaration is refused by name, because there is nowhere for it to go and dropping
+  one silently would leave a model wondering why its own type names did not resolve.
+
+One thing this shape costs, and it is Java's rather than gg's: a helper type declared in a program
+is a **local** declaration, and a local declaration may not carry an access modifier. `class Helper
+{}` is fine; `public class Helper {}` is `modifier public not allowed here`. That is a located
+compile error the model can act on, which is the band it belongs in — the alternative, hoisting the
+declaration out of the body, would move its lines and make every diagnostic after it point
+somewhere the model did not write.
+
+A **code module** is a class body, and its `public static` methods become the namespace at
+`lib.<key>` — Java's own visibility rule, so nothing gg-specific is written in a skill file. gg
+inserts `@JSExport` inline before each of them (inline, so no line moves) and TeaVM's
+`@JSExportClasses` emits them onto an object the bundle hands back.
+
+### The error surface, which is what the study said this arm would get wrong
+
+The feasibility study's stated worry was that an uncaught `NullPointerException` arrives as
+`Error: Error: null` at a line inside TeaVM's runtime. Both halves are fixed, and what is left is
+stated rather than hidden.
+
+- **The name and the message** come from an **enumerated catch chain** in gg's generated entry
+  class rather than from `getClass().getName()`, which TeaVM answers `null` for a
+  `NullPointerException`. Twelve classes are named one by one, subtype before supertype because
+  Java takes the first clause that matches. The chain hands the description to JavaScript and
+  **rethrows the original**, so a failure a *binding* threw reaches the guest as itself rather than
+  wrapped in gg's opinion of it.
+- **The location** comes from TeaVM's own source map, folded on the host into a compact
+  generated-line → model-line table and shipped in the bundle's prelude. A `NullPointerException`
+  on the model's line 3 is reported as `java.lang.NullPointerException` followed by `at
+  program.java:3`. The fold keeps the classlib's runs as "not yours" rather than dropping them,
+  because a source map is sparse and the lookup is nearest-preceding: without them a frame deep in
+  `java.util` would be attributed to whichever of the model's lines came before it.
+- **What is still wrong** is the `location` *field*. `feedback.program-error` carries one, the guest
+  fills it from the innermost frame of what was thrown, and for this arm that frame is inside
+  TeaVM's runtime where the exception was constructed. So the model reads the right line in the
+  **message** and a meaningless one in the **location**. The fix is a frame list on the wire, shared
+  with the PureScript arm.
+
+There is one more property, and it was not expected: **what TeaVM's classlib is missing is a
+located compile error rather than a run-time surprise**. `java.nio.file.Paths` is
+`program.java:1: Class java.nio.file.Paths was not found` on the turn that wrote it, which is a far
+better answer than a `ReferenceError` three turns later.
+
+### What TeaVM is not, recorded rather than assumed
+
+TeaVM is not a JVM. A study has to record where it differs rather than discover it in a transcript,
+so the arm's own tests assert each of these:
+
+| | |
+| --- | --- |
+| Integer division by zero | **0**, not `ArithmeticException`. It is JavaScript's `(7/0)\|0`, and `setStrict(true)` does not insert this check. This arm's sharpest semantic edge |
+| A *constant* division by zero | **breaks the compiler** — TeaVM folds it and throws out of its own optimiser. Reported as a toolchain failure, because it is not a diagnostic about the program |
+| Floating-point division by zero | `Infinity`, which is what Java says too |
+| `java.time` | **present** — `LocalDate`, `Duration`, `Instant`, `DateTimeFormatter` all work, via a bundled ThreeTen backport transpiled off the bootclasspath. The first feasibility pass concluded it was absent from a `grep` that was right about the tree and wrong about the outcome |
+| A started `Thread` | **refused**. TeaVM schedules one with `setTimeout`, which this sandbox denies because `run` is synchronous and there is no event loop |
+| `String.format("%%")` | `IllegalArgumentException: Unknown format conversion` at run time |
+| `java.nio.file` | **absent**, and deliberately: the sandbox's filesystem is reached through gg's own `fs` object, which is the surface a study compares |
+
+### What it will declare as its checker
+
+Two compilers read a Java program, and the seam asks a language to name **one** — the thing its
+own users would say a program is judged by. That is `javac`: TeaVM translates what javac accepted
+and judges nothing about the program except that its classlib carries what the program reached.
+Naming one is also what has the ~0.4 s compile [recorded](#what-compiling-costs-and-where-it-is-recorded)
+rather than absorbed, on the failing path as much as the succeeding one — and this arm's is the
+largest of any, so an arm that went untimed would look free and would not be.
+
+### Where the toolchain lives
+
+Three things, shipped three ways because each can only go one way. A JDK (~190 MB, a build per
+platform) and TeaVM's jars (~29 MB) go into the **gg toolchain image**, installed by
+`scripts/ci/install-java.sh`, which the Dockerfile runs rather than duplicating so the list of jars
+exists once. gg's own **compiler driver** goes inside gg's binary: it is a single `.java` file run
+by the JDK's single-file source-code launcher, so there is no jar to build, no binary artifact to
+commit and no reproducible-build gate — and a driver of a different vintage from the gg speaking to
+it is a protocol mismatch a version handshake refuses by number.
+
+On a developer's or CI machine the same script installs under `~/.local/share/gg-java`, which
+`crates/gg` looks in by name. That is a departure from the PureScript arm, and it has a reason: this
+toolchain is not a binary on `PATH` but a JDK *and* a directory of jars, and there is no `PATH`
+lookup for a directory.
+
+### What this arm pays inside the guest
+
+More than any other, and it is measured rather than assumed: **~9 ms** per turn for a small program
+against ~2 ms for the equivalent JavaScript on the same artifact. A compiled Java program carries as
+much of TeaVM's 1,213-class classlib as its call graph reached — ~600 KB for an ordinary one.
+
+The obvious response is a component of this arm's own, so `componentize-js` pre-initialises the
+classlib under wizer the way Ruby's holds Opal. It does not work, and the reason is TeaVM rather
+than gg: TeaVM does not *have* a runtime to bake. It emits, per program, only the classlib methods
+that program reached, renamed and inlined into the same file. There is no stable object two programs
+could share, so a component carrying one would carry the wrong 600 KB for every program that was not
+the one it was built from. This arm therefore shares the ECMAScript guest, like JavaScript and
+PureScript, and the seam's "no language is served another's artifacts" rule will name the pair when
+it registers.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -984,6 +1140,7 @@ else, and it hands out the only ground the seam offers
 | Somewhere for a compiler's artifacts | `workspace.output()`, inside that same private tree |
 | Running a compiler | `context.compiler(program)` — working directory, `HOME`, `TMPDIR` and the `XDG_*` roots all inside that tree, plus the timeout, the kill and the reap |
 | A long-lived compiler instance (a daemon, a warm builder) | `CompilerPool::checkout` — lends an instance **exclusively**, so no two preparations can hold one |
+| A long-lived compiler **process** to put in that pool | `daemon(program)` — started on a private tree of its own rather than on any preparation's workspace, spoken to one request at a time with a deadline, killed and reaped when it is dropped |
 | Toolchain inputs too big to unpack per preparation | `shared_toolchain_dir(key)` + `place(path, bytes)` for one file, or `place_tree(path, fill)` for a whole directory — content-keyed, written by rename, **sealed read-only afterwards** |
 
 The environment redirection is what earns the most. A toolchain that writes to `output/`
@@ -997,7 +1154,10 @@ between an affordable arm and an unaffordable one — a `purs ide server` turns 
 151–713 ms, an embedded `kotlinc` turns 9.7 s into 140 ms — and the obvious way to keep one
 warm is a `static` instance every preparation reaches, which is precisely the TeaVM bug. A
 checkout **owns** its instance for the length of one compilation, so exclusivity is a
-property of the borrow checker rather than of a discipline.
+property of the borrow checker rather than of a discipline. The [Java arm](#java-a-warm-jvm-and-an-arm-with-no-wire-id-yet)
+is the first to need it — a cold JVM is 4–9 s and a warm one 0.33–0.56 s — and its own tree
+is why `daemon()` exists rather than a preparation's `compiler()`: a daemon outlives the
+preparation that started it, and a workspace does not.
 
 #### What holds a language to it
 

@@ -30,6 +30,15 @@ log "install the PureScript toolchain (gg's purescript arm compiles with it)"
 ./scripts/ci/install-purescript.sh
 export PATH="$HOME/.local/bin:$PATH"
 
+# gg's Java program-language arm compiles a model's program with a real `javac` and a real TeaVM,
+# and its tests drive both. Neither can ride inside gg's binary — a JDK is ~190 MB with a build per
+# platform, and TeaVM is ~29 MB of jars named on a classpath rather than a binary on PATH — so they
+# are installed, here as in the run image (containers/gg-toolchains/Dockerfile). Pinned in
+# packages/gg-sandbox-java/java-version.sh; idempotent, so an agent that already has them pays
+# nothing. `crates/gg` looks under $HOME for them by name, so nothing has to be exported.
+log "install the Java toolchain (gg's java arm compiles with it)"
+./scripts/ci/install-java.sh
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 

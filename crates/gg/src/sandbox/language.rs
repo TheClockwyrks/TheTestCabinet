@@ -70,8 +70,8 @@ use super::signatures::SignatureCatalogue;
 pub mod compile;
 
 pub use compile::{
-    CompilerCommand, CompilerPool, CompilerReport, PrepareContext, Workspace, place, place_tree,
-    shared_toolchain_dir,
+    CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, Workspace,
+    daemon, place, place_tree, shared_toolchain_dir,
 };
 
 #[path = "language/typescript.rs"]
@@ -88,6 +88,15 @@ mod ruby;
 
 #[path = "language/purescript.rs"]
 mod purescript;
+
+/// The **Java** arm's execution substrate, ahead of its SDK and its registration.
+///
+/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
+/// run can configure reaches it and every gate that iterates the registered set passes it by. What
+/// is here is the compile and the proof that its output runs through the real membrane; the module's
+/// own documentation says what is still missing.
+#[path = "language/java.rs"]
+mod java;
 
 /// The **cross-language agreement gate**: the assertion that every registered language describes the
 /// same capabilities, and that only their spellings differ.

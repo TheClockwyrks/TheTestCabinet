@@ -219,6 +219,9 @@ build_gg_toolchains() {
 	# more than most: externs are a compiler-version-private format, so the `purs` in
 	# this image and the `purs` that compiled the committed library set inside gg's
 	# binary must be the same release or nothing compiles at all.
+	# Java's pins are not build args: its block runs `scripts/ci/install-java.sh`, which
+	# reads `packages/gg-sandbox-java/java-version.sh` itself — one list of ~29 jars, read
+	# by the image and by a developer's machine rather than copied into both.
 	# shellcheck source=packages/gg-sandbox-purescript/purescript-version.sh
 	source "${SCRIPT_DIR}/../packages/gg-sandbox-purescript/purescript-version.sh"
 	"$DOCKER" build \

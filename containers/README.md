@@ -629,6 +629,18 @@ build time and shipped inside gg's binary, because this image is built separatel
 binary that runs in it and a library tree of a different vintage from the SDK compiled into
 it would mean a model shown one surface and compiled against another.
 
+It carries **Java**'s too, and that one is not a single file: a Temurin JDK (javac is a JDK,
+not a JRE) and ~29 MB of TeaVM jars, pinned by
+[`packages/gg-sandbox-java/java-version.sh`](../packages/gg-sandbox-java/java-version.sh) and
+installed by [`scripts/ci/install-java.sh`](../scripts/ci/install-java.sh) — which the
+Dockerfile runs rather than duplicating, so the list of jars exists once. A JDK is not
+excluded by the "shared process" constraint above: gg drives it through a **pool** of warm
+JVMs that lends each to one preparation at a time, which is what makes a warm build
+(0.33–0.56 s) affordable where a cold one is 4–9 s, and what makes the measured TeaVM
+corruption's precondition impossible. gg's own compiler driver is *not* here — it is one
+`.java` file inside gg's binary, run by the JDK's single-file source-code launcher, for the
+vintage reason PureScript's library set is not here either.
+
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner
 resolves (by test type and asset

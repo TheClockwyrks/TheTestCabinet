@@ -64,11 +64,12 @@
 #     also decides the runtime baked into that language's guest. It is the same
 #     regenerate-and-diff rule, and each needs only Node.
 #
-#     PureScript's artifact in that directory is the one exception, and it is a declared
-#     one: it is not a compiler at all but the compiled LIBRARY SET a program is
-#     type-checked against, which needs `purs` and the registry to rebuild. It is verified
-#     by the manifest committed beside it rather than by re-cutting — see the exemption
-#     below, which is enforced rather than assumed.
+#     PureScript's and Java's artifacts in that directory are the two exceptions, and both
+#     are declared ones. PureScript's is not a compiler at all but the compiled LIBRARY SET
+#     a program is type-checked against, which needs `purs` and the registry to rebuild.
+#     Java's is gg's own compiler DRIVER, hand-written and reviewable as source, beside the
+#     pin it is run against. Both are verified by what is committed beside them rather than
+#     by re-cutting — see the exemptions below, which are enforced rather than assumed.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -159,7 +160,16 @@ recut="typescript ruby"
 # a tree rebuilt with a different library set and committed without its manifest fails there.
 # `spago.yaml` and `spago.lock` are committed beside the build, so what went in is reviewable
 # even though what came out is not.
-declared="purescript"
+#
+# Java's is the second, and it is an exemption of a different shape: nothing about it is
+# CUT from a pinned release at all. `java.compiler.java` is gg's own hand-written compiler
+# driver — a single source file run by the JDK's single-file launcher, reviewable by reading
+# and diffing like any other source — and `java.toolchain.json` is the pin itself rather than
+# something derived from one. What could drift is the pin against the shell side that installs
+# it, and `java.compile.test.rs` is what fails when the two name different releases, when a
+# TeaVM jar in the list is at another version, or when the driver's protocol constant and the
+# manifest's disagree.
+declared="purescript java"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

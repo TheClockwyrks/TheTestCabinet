@@ -81,3 +81,25 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
 slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The Java arm's isolation gate drives 32 real builds — sixteen serial baselines and sixteen
+# concurrent, for the program half and the module half — through a pool of four warm JVMs, because
+# the property it proves is that a compile's result belongs to its own input at the concurrency a run
+# really produces, and TeaVM is the toolchain that was measured silently producing no output for
+# three of four concurrent builds. Measured on this repository's dev container: 12.4 s alone and
+# 31.4 s beside this module's other tests, against a default hard kill at 120 s that would present as
+# a mysterious hang rather than as a gate doing exactly what it says. Bounded from the work rather
+# than from the default, with room for a CI runner with a quarter of the cores.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::sixteen_concurrent_preparations_each_get_their_own_program)'
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above
+# and with the same remedy: it asserts that a second build through the pool is meaningfully cheaper
+# than the first, and the only way to observe that is a wall-clock reading of two real builds. Under
+# contention the cold build and the warm ones inflate differently — the cold one is dominated by a
+# JVM start that the scheduler can stretch — so giving it every slot is what makes the reading a
+# reading of the pool rather than of the load average.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
+threads-required = "num-test-threads"
