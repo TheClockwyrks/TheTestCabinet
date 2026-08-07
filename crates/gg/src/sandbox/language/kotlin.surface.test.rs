@@ -23,7 +23,7 @@ use super::compile::compile_program;
 use super::substrate::{evaluate_as, logs, program_error};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::PrepareContext;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, typescript as typescript_language};
+use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::tools::ToolOutcome;
@@ -582,38 +582,6 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 // ---------------------------------------------------------------------------------------------
 // The catalogue
 // ---------------------------------------------------------------------------------------------
-
-#[test]
-fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
-    // The **real** agreement gate, over the real Kotlin catalogue. It is what stands between a
-    // configured `language` param and an invalidated study: two internally-consistent surfaces that
-    // disagree with each other are two green test suites, and this is the only thing that compares
-    // them. Running it here rather than waiting for registration is deliberate — the commit that
-    // registers a language is the one least able to absorb a surface that turns out to disagree.
-    let mut document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Kotlin catalogue is valid JSON");
-    assert_eq!(
-        document["language"],
-        json!("kotlin"),
-        "the catalogue says whose spellings it carries"
-    );
-    // `language` is the wire enum, which has no `kotlin` variant until the registration step adds
-    // one. The gate never reads it — provenance is asserted per *registered* language, against the
-    // language that embedded the file — so it is stood in for here rather than being the reason this
-    // check has to wait.
-    document["language"] = json!("typescript");
-    let candidate = super::super::fixture::a_language_whose_catalogue_is(&document.to_string());
-
-    let found = super::super::agreement::disagreements(&[typescript_language(), candidate]);
-    assert!(
-        found.is_empty(),
-        "the Kotlin catalogue does not describe the same capability surface TypeScript does:\n{}",
-        found
-            .iter()
-            .map(|disagreement| format!("  - {}\n", disagreement.detail))
-            .collect::<String>()
-    );
-}
 
 #[test]
 fn the_catalogue_carries_the_defaults_this_arm_expresses_an_optional_argument_as() {

@@ -1,20 +1,21 @@
 //! **Kotlin** — the arm whose program is a **script**, compiled by a warm JVM to bytecode and then
 //! to JavaScript by TeaVM before the guest ever sees it.
 //!
-//! What exists here today is this arm's **execution substrate** and its **surface**: the compile that
-//! turns a model's Kotlin into something a guest can evaluate, the guest that evaluates it, the proof
-//! that a real Kotlin program really does run through gg's own linker, membrane and store, the
-//! hand-written SDK a program is compiled against, and the catalogue reflected out of that SDK's own
-//! KDoc. Only the [registration](super::ProgramLanguage) is left — a language arm cannot be
-//! half-registered, because the registry's `match` is exhaustive and every gate that iterates the
-//! registered set would immediately demand two Handlebars templates and a healing dialect. Nothing
-//! here is reachable from a run: there is no `language` value that resolves to it.
+//! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`compile`](self::compile) — the host-side build, what it costs, what it shares, and the two
 //!   failures it tells apart;
 //! * [`source`](self::source) — what gg does to a model's Kotlin before the compiler sees it, which
 //!   for a program is almost nothing;
+//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
+//!   lexical questions of: the fence tags, the two predicates, the template-aware lexer, the
+//!   redeclaration proof and the three concurrency wrappers — five of whose answers differ from
+//!   [Java's](super::java::healing), on the arm that shares a compiler with it;
+//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
+//!   in Kotlin's syntax;
 //! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
+//! * `guests/kotlin.signatures.json` — the catalogue reflected out of that SDK's own KDoc by the
+//!   compiler's own front end;
 //! * `checkers/kotlin.sdk.jar` — that SDK compiled, which is what a classpath entry is;
 //! * `checkers/kotlin.compiler.java` — this arm's half of gg's compiler driver;
 //! * `checkers/kotlin.toolchain.json` — the Kotlin release this arm is pinned to.
@@ -64,29 +65,320 @@
 //! stronger fence than a package would give it — every declaration in it is `internal`, which is
 //! module visibility, and a program is its own module.
 
+use std::sync::OnceLock;
+
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use crate::sandbox::signatures::SignatureCatalogue;
+
+use super::{
+    FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage,
+    PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+};
+
 /// The Kotlin and TeaVM build: the host-side step that turns a model's Kotlin into the guest's
 /// JavaScript.
-///
-/// `#[allow(dead_code)]` until the trait implementation calls it, exactly as
-/// [Java](super::java)'s, [Ruby](super::ruby)'s and [PureScript](super::purescript)'s were between
-/// their own substrate and their registration: nothing on the turn path can reach a language the
-/// registry has no arm for, so every entry point here is reached only by this arm's own tests.
-#[allow(dead_code)]
 #[path = "kotlin.compile.rs"]
 pub(super) mod compile;
 
 /// The import hoist and the export scan — what gg does to a model's Kotlin before the compiler sees
 /// it, and why a program needs so little of it.
-#[allow(dead_code)]
 #[path = "kotlin.source.rs"]
 pub(super) mod source;
+
+/// The lexical reading of a reply — Kotlin's answers to healing's questions, five of which differ
+/// from the other JVM arm's for reasons its own module documentation gives.
+#[path = "kotlin.healing.rs"]
+pub(super) mod healing;
+
+/// The committed catalogue, reflected out of the SDK's own KDoc by
+/// `packages/gg-sandbox-kotlin/signatures.sh` — the compiler's own front end reading the same
+/// `KtFile` the compiler compiles.
+const SIGNATURES: &str = include_str!("../guests/kotlin.signatures.json");
+
+/// The parsed catalogue, parsed once per process.
+static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
+
+/// Everything gg *says* about a Kotlin program that is written in Kotlin's own syntax.
+///
+/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
+/// Individual function spellings are **not** here and not in the templates either: every name and
+/// signature they quote is resolved from this language's committed catalogue when the template
+/// renders.
+static PROMPT: PromptDialect = PromptDialect {
+    system_template: include_str!("../../../templates/system-code.kotlin.hbs"),
+    system_template_name: "system-code.kotlin",
+    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.kotlin.hbs"),
+    nothing_shown_template_name: "code-nothing-shown.kotlin",
+};
+
+/// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
+/// straight to `&'static dyn ProgramLanguage`.
+pub(super) static KOTLIN: Kotlin = Kotlin;
+
+/// Kotlin: compiled as a script to bytecode by the Kotlin compiler and then to JavaScript by TeaVM,
+/// inside a warm JVM, and evaluated by the ECMAScript guest.
+pub(super) struct Kotlin;
+
+impl ProgramLanguage for Kotlin {
+    fn id(&self) -> GgProgramLanguage {
+        GgProgramLanguage::Kotlin
+    }
+
+    fn display_name(&self) -> &'static str {
+        GgProgramLanguage::Kotlin.display_name()
+    }
+
+    /// The import hoist, the Kotlin compile and the TeaVM translation, in this preparation's own
+    /// workspace and in a JVM lent to it alone — see [`compile`] for what it costs, what it shares,
+    /// and how it tells a program a compiler refused from a compiler that could not run.
+    fn prepare_program(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
+        compile::compile_program(source, context)
+    }
+
+    /// `kotlinc`, which is what a Kotlin programmer calls the compiler — even though gg drives it
+    /// [embedded rather than as that binary](compile), because `kotlinc` is a shell script around a
+    /// JVM and this arm needs the JVM warm.
+    ///
+    /// Not TeaVM, on the same grounds [Java's arm](super::java) does not name it: it translates what
+    /// the Kotlin compiler accepted and judges nothing about the program except that its classlib
+    /// carries what the program reached. Naming a checker is also what has this arm's compile
+    /// [recorded](crate::sandbox::SandboxOutcome::compile) on every turn, the failing path included.
+    fn checker(&self) -> Option<&'static str> {
+        Some("kotlinc")
+    }
+
+    /// Start one JVM and place the compiler driver and the SDK jar now, so the first code turn pays
+    /// for neither.
+    ///
+    /// This arm needs it as much as [Java's](super::java) does and for a sharper reason: the first
+    /// build in a JVM costs 1.7–9 s against 0.14–0.4 s after it, because the Kotlin compiler's own
+    /// class loading is what is being paid for. A run whose first program paid that would report a
+    /// compile time an order of magnitude above every one after it. Idempotent and best effort — a
+    /// failure here is the failure the first compile makes, and there it is classified, counted and
+    /// reported as a [toolchain failure](PrepareFailure::Toolchain).
+    fn warm_prepare(&self) {
+        compile::warm();
+    }
+
+    /// The same two compilers a program gets, pointed at an ordinary Kotlin **file** rather than a
+    /// script — and the names the resulting namespace offers.
+    ///
+    /// The names are read from the model's own source by [`source`](self::source)'s export scan
+    /// rather than out of the compiled bundle, because they are what the skill's author is *told*
+    /// the namespace holds.
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
+        let (source, exports) = compile::compile_module(source, context)?;
+        Ok(PreparedModule { source, exports })
+    }
+
+    /// `.kt`, and nothing else.
+    ///
+    /// One extension, like [Java](super::java)'s and [Ruby](super::ruby)'s: nothing else in the
+    /// registry can compile a Kotlin module. `.kts` is deliberately **not** a second spelling even
+    /// though a *program* on this arm is a script — a code module is compiled as an ordinary file,
+    /// because what `lib.<key>` binds is a namespace of functions and a script's declarations are
+    /// members of an instance that would have to be constructed first. Offering `skill.kts` would
+    /// name a shape this arm does not compile.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["kt"]
+    }
+
+    /// [camelCase](self::binding_name) — Kotlin's own convention for a name a program writes, and
+    /// this SDK's for everything else.
+    fn binding_name(&self, name: &str) -> String {
+        binding_name(name)
+    }
+
+    /// The ECMAScript guest, which is [TypeScript](super::typescript)'s.
+    ///
+    /// A declared share rather than an accident, and the same one [Java](super::java) makes for the
+    /// reason that arm's documentation gives: TeaVM has no runtime object two programs could share,
+    /// so a component of this arm's own would carry nothing.
+    fn guest_component(&self) -> &'static [u8] {
+        super::typescript::COMPONENT
+    }
+
+    /// The committed catalogue, parsed once and checked to be **this** language's.
+    ///
+    /// Every registered language commits one of these under its own stem, and each carries the
+    /// language it was generated for; checking it here is what stops a catalogue filed — or
+    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
+    /// sandbox nobody has.
+    fn catalogue(&self) -> &'static SignatureCatalogue {
+        CATALOGUE.get_or_init(|| {
+            let catalogue = SignatureCatalogue::parse(SIGNATURES)
+                .expect("the committed signature catalogue is valid JSON of the expected shape");
+            assert_eq!(
+                catalogue.language,
+                GgProgramLanguage::Kotlin,
+                "`guests/kotlin.signatures.json` was generated for another program language",
+            );
+            catalogue
+        })
+    }
+
+    fn healing(&self) -> &'static dyn crate::healing::Dialect {
+        &healing::KOTLIN_DIALECT
+    }
+
+    fn prompt(&self) -> &'static PromptDialect {
+        &PROMPT
+    }
+
+    /// [`view.openFile("src/Main.kt")`](self::open_file_statement), with the window as two
+    /// **named** arguments and no terminator.
+    fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+    }
+
+    /// [A `listOf(…)` of names and a `for` over it](self::open_docs_views_statement), each iteration
+    /// opening one documentation view.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+    }
+
+    /// One public top-level function returning `name` — because this is the second arm whose module
+    /// shape is not its program shape.
+    ///
+    /// A program here is a script and a module is an ordinary file whose **public top-level
+    /// functions** are its namespace, so the seam's default subject (this language's generated
+    /// documentation program) is a module that declares no function at all and is refused by name.
+    /// The `name` rides in as a returned **string literal**, where neither the Kotlin compiler's
+    /// constant folding nor TeaVM's reachability pruning can drop it: it is the value the module's
+    /// one export hands back.
+    #[cfg(test)]
+    fn isolation_module(&self, name: &str) -> String {
+        format!(
+            "fun marker(): String = {}\n",
+            serde_json::Value::String(name.to_string())
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The syntax this arm writes
+// ---------------------------------------------------------------------------------------------
+
+/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
+///
+/// camelCase because that is what Kotlin spells a name in and what this SDK spells every other bound
+/// function in, so a program reaching `lib.text("csvTools", "parse", …)` reads like the rest of its
+/// own scope. Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next
+/// word rather than surviving; a name that is nothing but separators becomes `module`, and a leading
+/// digit is prefixed.
+///
+/// The result is held to being a valid Kotlin **identifier** even though this arm reaches a module by
+/// *string* — `lib.text(key, name, …)` rather than a property access, because a code module is
+/// compiled separately and there is no `import` for the compiler to check a program against. The key
+/// is quoted back to the model in the reply that binds it and typed out in every program that uses
+/// it, so a key a Kotlin author could not have written is a key a model will get wrong.
+///
+/// Deliberately ASCII-only, though Kotlin identifiers may be Unicode and may even be backquoted, for
+/// the same reason: a name a model has to reproduce exactly is one that should have no characters it
+/// could get wrong.
+pub(super) fn binding_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut capitalize = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if capitalize {
+                out.extend(ch.to_uppercase());
+                capitalize = false;
+            } else {
+                out.push(ch);
+            }
+        } else {
+            capitalize = !out.is_empty();
+        }
+    }
+    if out.is_empty() {
+        return "module".to_string();
+    }
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// `view.openFile("src/Main.kt")`, or `view.openFile("src/Main.kt", offset = 400, limit = 200)` for
+/// a window — with `view.openFile` already spelled by the language that asked.
+///
+/// Deliberately the plainest statement that does the job: no `val`, no printing. It is synthesized
+/// into the agent's own transcript and read by the model as an example of its own output, so anything
+/// clever in it is a style the run did not intend to teach.
+///
+/// The window is two **named** arguments of the one signature, which is this arm's idiom for an
+/// optional argument and the shape the system prompt teaches — and it is exactly where this arm and
+/// [Java's](super::java) are meant to look different, since there the same window is two positional
+/// arguments of a second overload. There is **no terminator**, because Kotlin statements end at the
+/// newline and a stray semicolon is a style no Kotlin author writes.
+///
+/// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
+/// statement that would not parse: Kotlin's string literals accept exactly the escapes JSON's do —
+/// and a `$` in a path is left alone deliberately, because it only begins a template inside a string
+/// this function never writes one of.
+pub(super) fn open_file_statement(
+    open_file: &str,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let path = serde_json::Value::String(path.to_string());
+    match window {
+        Some(window) => format!(
+            "{open_file}({path}, offset = {}, limit = {})",
+            window.offset, window.limit
+        ),
+        None => format!("{open_file}({path})"),
+    }
+}
+
+/// A `listOf(…)` of names and a `for` over it, each iteration opening one documentation view.
+///
+/// A list and a loop rather than one statement per name because the list is as long as the family —
+/// eleven calls written out would be a program a model reads as a style to copy — and a `for` rather
+/// than `forEach { … }` for a reason that is this arm's own: a **trailing lambda** is the shape this
+/// arm's [healing dialect](self::healing) reads as a whole-program concurrency wrapper, and a program
+/// gg generates should not teach a shape gg spends effort undoing.
+///
+/// `listOf` needs no import — it is in `kotlin.collections`, which every Kotlin file imports by
+/// default — and the empty case is `listOf<String>()`, whose element type has to be written out
+/// because there is no declared type beside it to infer from.
+pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    let entries: Vec<String> = names
+        .iter()
+        .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+        .collect();
+    let listed = match entries.is_empty() {
+        true => "val functions = listOf<String>()\n".to_string(),
+        false => format!("val functions = listOf(\n{}\n)\n", entries.join(",\n")),
+    };
+    format!(
+        "{listed}\
+         for (name in functions) {{\n    \
+             {open_docs_view}(name)\n\
+         }}\n"
+    )
+}
+
+#[cfg(test)]
+#[path = "kotlin.test.rs"]
+mod tests;
 
 /// **The Kotlin arm's execution substrate**, driven end to end through gg's real compiler, linker,
 /// membrane and store.
 ///
-/// A separate test file from any unit tests, because these are a different kind of test: each one
+/// A separate test file from [`tests`], because these are a different kind of test: each one
 /// compiles a 20 MB component and starts a JVM that loads the Kotlin compiler and TeaVM, which is
-/// seconds rather than microseconds.
+/// seconds rather than microseconds, where everything next door is a pure function over text.
 #[cfg(test)]
 #[path = "kotlin.substrate.test.rs"]
 mod substrate;
@@ -97,8 +389,7 @@ mod substrate;
 /// Separate from [`substrate`] because it is a different claim. That file asks whether Kotlin runs
 /// here; this one asks whether the thing a model is *told* it may write is the thing the sandbox
 /// really has — every gg tool driven through the real membrane from its Kotlin spelling against the
-/// same expected JSON the other arms are held to, and the committed catalogue put in front of the
-/// [agreement gate](super::agreement) a step before the registration that would run it for free.
+/// same expected JSON the other arms are held to.
 #[cfg(test)]
 #[path = "kotlin.surface.test.rs"]
 mod surface;

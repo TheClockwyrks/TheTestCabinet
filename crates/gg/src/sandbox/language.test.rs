@@ -537,6 +537,37 @@ const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
          evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
          a third decision",
     ),
+    (
+        GgProgramLanguage::Java,
+        GgProgramLanguage::Kotlin,
+        "the two JVM arms reach this guest by one road: a Kotlin program is compiled to bytecode \
+         and then to JavaScript by the same TeaVM, through the same driver backend, so the \
+         argument that a component of Java's own would carry nothing carries over unchanged. This \
+         is the pair the sharing is *about* — the other three Kotlin entries below are its \
+         consequences — and it is the pair where sharing an artifact is most worth saying out \
+         loud, because these two also share a compiler road, a classlib and a library claim. What \
+         they must not share is the surface a model writes against, and that is asserted \
+         separately: this arm carries no overload group at all where Java carries fourteen",
+    ),
+    (
+        GgProgramLanguage::TypeScript,
+        GgProgramLanguage::Kotlin,
+        "TypeScript's component is the ECMAScript guest every host-compiled arm is evaluated by, \
+         and Kotlin's output is JavaScript by the time it crosses",
+    ),
+    (
+        GgProgramLanguage::JavaScript,
+        GgProgramLanguage::Kotlin,
+        "the transitive half of the entry above: JavaScript serves TypeScript's component and so \
+         does Kotlin, so this pair shares one by consequence rather than by a third decision",
+    ),
+    (
+        GgProgramLanguage::PureScript,
+        GgProgramLanguage::Kotlin,
+        "the other transitive half: both arms compile to JavaScript on the host and both are \
+         evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
+         a third decision",
+    ),
 ];
 
 /// Why `a` and `b` are allowed to share a component, or `None` if they are not.

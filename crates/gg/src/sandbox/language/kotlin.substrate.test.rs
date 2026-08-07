@@ -42,7 +42,7 @@ use wasmtime::component::Component;
 
 use super::super::typescript;
 use super::compile::{compile_module, compile_program, warm};
-use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome, typescript as language};
+use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -66,6 +66,12 @@ fn component() -> &'static Component {
     })
 }
 
+/// This arm, resolved from the registry — the same trait object a run resolves, reached the same
+/// way production reaches it.
+fn language() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin)
+}
+
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 fn prepare(source: &str) -> String {
     match compile_program(source, &PrepareContext::new()) {
@@ -78,13 +84,11 @@ fn prepare(source: &str) -> String {
 /// and `modules` bound at `lib.<name>`.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
-/// belongs to a *registered* language rather than to an artifact: the per-language component cache.
+/// is an optimisation rather than a behaviour: the per-language component cache.
 ///
-/// The [membrane state](MembraneState) is built with **TypeScript** as its language, and that is
-/// sound rather than sloppy: a language is held there to spell a call's name back at the model
-/// inside a refusal, and this arm has no wire id for that lookup to key on until it is registered.
-/// The one refusal these tests read is the SDK's own, which names the call in Kotlin because the SDK
-/// wrote the sentence.
+/// The [membrane state](MembraneState) is built with **this** language, which is what a run does —
+/// a language is held there to spell a call's name back at the model inside a refusal, and a refusal
+/// these tests read must therefore name the call the way a Kotlin program wrote it.
 fn evaluate(
     program: &str,
     enabled: &[String],

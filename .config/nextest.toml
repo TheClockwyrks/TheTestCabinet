@@ -72,19 +72,20 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # The seam's OWN isolation gate, for the same reason and by the same arithmetic. It drives every
 # registered language's program and module steps sixteen ways, so each compiled arm added to the
 # registry costs it another 32 real compiles — PureScript's, since `purs` reads 9 MB of externs
-# before it reads the program, and now Java's, whose 32 builds go through a pool of four warm JVMs
-# because TeaVM is the toolchain that was measured silently producing no output for three of four
-# concurrent builds. Measured on this repository's dev container: 19.5 s alone with five arms
-# registered, 36.9 s alone with Java's, and 116.8 s beside the whole workspace before Java landed —
-# against the default hard kill at 120 s, which it reached on one run and then passed on the retry
-# with 3.2 s to spare. A gate that is a coin flip under CI load reads as a hang rather than as the
-# thing it proves, and the property it proves does not weaken when the machine is busy. Bounded from
-# the work rather than from the default, with room for the language arms still to register — though
-# the headroom is now the thing to watch rather than the timeout, since each further compiled arm
-# adds its own 32 builds here.
+# before it reads the program; Java's and now Kotlin's, whose builds go through pools of four warm
+# JVMs because TeaVM is the toolchain that was measured silently producing no output for three of
+# four concurrent builds. Measured on this repository's dev container: 19.5 s alone with five arms
+# registered, 36.9 s with Java's, THE_KOTLIN_FIGURE with Kotlin's, and 116.8 s beside the whole
+# workspace before either JVM arm landed — against the default hard kill at 120 s, which it reached
+# on one run and then passed on the retry with 3.2 s to spare. A gate that is a coin flip under CI
+# load reads as a hang rather than as the thing it proves, and the property it proves does not weaken
+# when the machine is busy. Bounded from the work rather than from the default — and the headroom,
+# rather than the timeout, is now the thing to watch: each further compiled arm adds its own 32
+# builds here, and the two JVM arms additionally contend for cores, since eight warm JVMs holding a
+# compiler and TeaVM apiece is several gigabytes of a container that has to hold everything else too.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
-slow-timeout = { period = "120s", terminate-after = 3 }
+slow-timeout = { period = "180s", terminate-after = 3 }
 
 # The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above
 # and with the same remedy: it asserts that a second build through the pool is meaningfully cheaper
@@ -95,15 +96,3 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
 threads-required = "num-test-threads"
-
-# The Kotlin arm's own isolation gate, which is the seam's gate pointed at an arm the registry does
-# not carry yet. It drives both halves sixteen ways — 32 real builds through a pool of four warm
-# JVMs, each of which loads the Kotlin compiler and TeaVM — because the property it proves is that a
-# compile's result belongs to its own input at the concurrency a run really produces. Measured on
-# this repository's dev container: 18.5 s alone, against a default hard kill at 120 s that would
-# present as a mysterious hang rather than as a gate doing exactly what it says. Bounded from the
-# work rather than from the default, with room for a CI runner with a quarter of the cores. When this
-# arm registers, its 32 builds move into the seam's gate above and this override goes with them.
-[[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and test(=sandbox::language::kotlin::compile::tests::every_kotlin_compile_stands_on_ground_no_other_agent_can_reach)'
-slow-timeout = { period = "120s", terminate-after = 3 }

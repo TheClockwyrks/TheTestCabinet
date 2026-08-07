@@ -1,11 +1,13 @@
-//! The parts of the Kotlin compile that are decisions rather than compilers: the toolchain pin, the
-//! diagnostic bands, the generated entry class — and the one thing here that *does* start a JVM,
-//! because it is the seam's own isolation gate and this arm cannot be inside it yet.
+//! The parts of the Kotlin compile that are **decisions rather than compilers**: the toolchain pin,
+//! the diagnostic bands and the generated entry class. Nothing here starts a JVM, which is why every
+//! case in this file runs in microseconds.
 //!
-//! What TeaVM's own output is read with — the prelude, the source-map fold and its VLQ — is
+//! Two things it deliberately no longer holds. The sixteen-way isolation gate lived here while this
+//! arm had no wire id for [the seam's own gate](crate::sandbox::language::isolation) to reach it by;
+//! now that it is registered, that gate drives both halves of this arm along with every other
+//! language's, and a second copy would be 32 real builds asserting a property already asserted. And
+//! what TeaVM's own output is read with — the prelude, the source-map fold and its VLQ — is
 //! [shared with the Java arm](crate::sandbox::language::jvm) and asserted there.
-
-use crate::sandbox::language::isolation::{Preparation, breaches};
 
 use super::*;
 
@@ -389,74 +391,4 @@ fn a_module_bundle_hands_its_namespace_back_and_a_program_does_not() {
     // Both start the same way, because both are TeaVM's own entry point and both report a failure
     // through the callback rather than through a field nothing reads.
     assert!(Entry::Program.tail().starts_with("main([], function"));
-}
-
-/// One of the two things this arm compiles, driven by the
-/// [isolation gate](crate::sandbox::language::isolation).
-///
-/// The gate walks the *registered* languages, and this arm has no wire id yet — so it is pointed at
-/// this arm by hand until it is registered. Both halves are driven, and on this arm they are not the
-/// same shape: a program is a script and a module is a file, compiled against different classpaths
-/// through different generated entry classes.
-struct KotlinPreparation {
-    /// Whether this is the program half.
-    program: bool,
-}
-
-impl Preparation for KotlinPreparation {
-    fn describe(&self) -> String {
-        match self.program {
-            true => "Kotlin program".to_string(),
-            false => "Kotlin module".to_string(),
-        }
-    }
-
-    /// A source whose marker rides inside a **call**, so no compiler that eliminates dead code can
-    /// drop it and leave two preparations looking identical.
-    fn source(&self, marker: &str) -> String {
-        match self.program {
-            true => format!("println({marker:?})\n"),
-            false => format!("fun announce(): String = {marker:?}\n"),
-        }
-    }
-
-    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        match self.program {
-            true => compile_program(source, context)
-                .map(|prepared| prepared.source)
-                .map_err(|failure| failure.to_string()),
-            false => compile_module(source, context)
-                .map(|(compiled, _exports)| compiled)
-                .map_err(|failure| failure.to_string()),
-        }
-    }
-}
-
-#[test]
-fn every_kotlin_compile_stands_on_ground_no_other_agent_can_reach() {
-    // Sixteen at once — `limits.maxParallel`'s ceiling, which is how many agents may be compiling
-    // simultaneously in one process, through a pool of four warm JVMs. The gate requires every
-    // artifact to carry its own marker, to carry nobody else's, to equal what the same input
-    // produced alone, and no two preparations to have been handed the same workspace.
-    //
-    // This is the arm where that matters most and the reason the pool is processes rather than a
-    // shared builder: one `InProcessBuildStrategy` driven from four threads was measured producing
-    // no output at all for three of them while throwing nothing.
-    warm();
-    for program in [true, false] {
-        let breaches = breaches(&KotlinPreparation { program });
-        assert!(
-            breaches.is_empty(),
-            "compiling a Kotlin {} is not isolated per preparation: {}",
-            match program {
-                true => "program",
-                false => "module",
-            },
-            breaches
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("; "),
-        );
-    }
 }

@@ -4406,6 +4406,23 @@ pub enum GgProgramLanguage {
     /// choice, a sealed interface narrowed by a `switch`, `Optional` for what the wire may omit,
     /// and an unchecked `ToolError`.
     Java,
+    /// Kotlin: **compiled as a script** to bytecode by the Kotlin compiler and then to JavaScript by
+    /// TeaVM, both inside a **warm JVM** gg keeps between preparations, and evaluated by the same
+    /// ECMAScript guest [`TypeScript`](Self::TypeScript) uses.
+    ///
+    /// It rides [`Java`](Self::Java)'s road from bytecode onwards and diverges in front of it. A
+    /// program here is a **Kotlin script** rather than the body of a function gg declares, because
+    /// this language refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as
+    /// *local* declarations — so a reply with no `import` in it is compiled **byte for byte as the
+    /// model wrote it**, which no other compiled arm can say. Its SDK is hand-written and reads as
+    /// Kotlin reads, which is deliberately nothing like Java's given that the two share a compiler,
+    /// a guest and a classlib: **default arguments passed by name** where Java has fourteen overload
+    /// groups and this arm has none, more default arguments where Java has a builder, `data class`es
+    /// for results, `enum class`es for fixed choices, sealed types for a closed set and for a
+    /// three-way patch, an `IntRange` for a span of turns, nullable types for what the wire may
+    /// omit, and a `ToolError` caught with `catch` or `runCatching`. And it is declared in the
+    /// **root package**, so a program reaches the whole surface with no `import` at all.
+    Kotlin,
 }
 
 impl GgProgramLanguage {
@@ -4425,6 +4442,7 @@ impl GgProgramLanguage {
         Self::Ruby,
         Self::PureScript,
         Self::Java,
+        Self::Kotlin,
     ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
@@ -4446,6 +4464,7 @@ impl GgProgramLanguage {
             Self::Ruby => const { Self::listed_at(3, Self::Ruby) },
             Self::PureScript => const { Self::listed_at(4, Self::PureScript) },
             Self::Java => const { Self::listed_at(5, Self::Java) },
+            Self::Kotlin => const { Self::listed_at(6, Self::Kotlin) },
         }
     }
 
@@ -4477,6 +4496,7 @@ impl GgProgramLanguage {
             Self::Ruby => "ruby",
             Self::PureScript => "purescript",
             Self::Java => "java",
+            Self::Kotlin => "kotlin",
         }
     }
 
@@ -4501,6 +4521,7 @@ impl GgProgramLanguage {
             Self::Ruby => "Ruby",
             Self::PureScript => "PureScript",
             Self::Java => "Java",
+            Self::Kotlin => "Kotlin",
         }
     }
 }

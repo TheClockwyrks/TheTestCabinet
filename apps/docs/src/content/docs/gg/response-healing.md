@@ -101,7 +101,7 @@ then diverges where nothing else does. Its concurrency wrapper is a **`Thread`**
 has no `async` keyword and no suspension token at all: `Thread.new do … end.join` and the
 two-statement `worker = Thread.new do … end` … `worker.join` both come off, the
 `require "thread"` above either comes with them, and the count of tokens removed is **zero** —
-which is the honest number for a language that has none. Its lexer is the largest of the five
+which is the honest number for a language that has none. Its lexer is the largest of the seven
 dialects, because Ruby has six string shapes and a heredoc; the one it deliberately does not read is
 the regular-expression literal, since `/…/` cannot be told from division without a parse, so a regex
 carrying an apostrophe makes the scan **decline** rather than guess.
@@ -160,6 +160,26 @@ start a thread keeps every statement above it. And the `import` above the wrappe
 Python's arm takes its `import asyncio` and Ruby's its `require "thread"`: those name something
 their guest does not carry, while `java.util.concurrent` is in this arm's declared set and an unused
 import is legal Java.
+
+[Kotlin](/gg/program-languages/#what-its-dialect-says-and-the-five-answers-the-other-jvm-arm-does-not-give)
+is the sharpest evidence of all of this, because it is the arm that could most easily have been
+handed Java's dialect and moved on: the two share a compiler road, a guest and a classlib, and gg's
+preparation does the same import hoist to both. **Five** of the lexical answers still differ. A
+**backtick** goes back on the non-prose list, because Kotlin has backquoted identifiers, so this arm
+may not delete the inline-code-span lead-in Java may. A **`;`** says almost nothing, because a Kotlin
+statement ends at the newline — so the weight moves to the keyword clause, a chain-continuation
+clause (`.map { … }`, `?.let { … }`) and one clause no other C-shaped arm needs, a line that carries
+an **assignment**, without which `total += 1` is a line this dialect could say nothing about. The
+redeclaration proof needs **no deny list at all**, because every Kotlin declaration is keyword-led
+where Java's is "a type, a name and a terminator" — and it is a wider proof than any other arm's,
+since a program here is a *script* whose top level refuses a second `fun` or `object` of one name as
+readily as a second `val`. The **import above the wrapper is deleted**, exactly reversing Java's
+answer on the same road: `kotlinx.coroutines` is not on this arm's program classpath, so leaving the
+line would leave the one line of the repaired program that still fails — which is Python's and
+Ruby's conclusion reached from Kotlin's classpath rather than theirs. And it is the **one arm with a
+suspension token to delete**: Kotlin marks suspension on the declaration rather than at the call
+site, so a `suspend fun` inside the wrapper cannot survive the wrapper coming off, the modifier goes
+with it, and the count is honestly non-zero where Java's and Ruby's are honestly zero.
 
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need

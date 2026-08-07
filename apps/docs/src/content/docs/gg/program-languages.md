@@ -11,9 +11,7 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Six are registered — and a seventh, [Kotlin](#kotlin-a-program-that-is-a-script), has its
-execution substrate and its surface built, with its registration still to come. Between them the six separate three
-things that used to be one. TypeScript
+Seven are registered, and between them they separate three things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
@@ -23,9 +21,12 @@ interpreter does; **[Ruby](#ruby-compiled-to-javascript-before-it-crosses)** is
 with no type system anywhere;
 **[PureScript](#purescript-a-compiler-in-the-image-a-library-set-in-the-binary)** is the far end
 of that axis, **compiled and totally typed** by a real compiler that lives in the run image
-rather than inside gg; and **[Java](#java-a-warm-jvm-and-two-compilers-per-program)** is the arm a
-study reads for what a *big* compile costs, since it is the only one whose program passes through
-two compilers and the only one whose compiler gg keeps warm between programs. This page is the
+rather than inside gg; **[Java](#java-a-warm-jvm-and-two-compilers-per-program)** is the arm a
+study reads for what a *big* compile costs, since its program passes through two compilers inside
+a JVM gg keeps warm between programs; and **[Kotlin](#kotlin-a-program-that-is-a-script)** rides
+that same road from bytecode onwards, which makes the pair the closest thing this seam has to a
+**controlled experiment on the language itself** — one toolchain, one guest, one classlib, two
+surfaces written the way each language is really written. This page is the
 design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
@@ -1188,23 +1189,23 @@ rather than from a review.
 
 ## Kotlin: a program that is a script
 
-The seventh arm, and the **first that is not registered yet**. What exists is its *execution
-substrate* — the compile that turns a model's Kotlin into something a guest can evaluate, the guest
-that evaluates it, and the proof that a real Kotlin program runs through gg's own linker, membrane
-and store — and its *surface*: the hand-written SDK a program is compiled against, and the catalogue
-reflected out of that SDK's own KDoc. What is left is its prompt, its healing dialect and the
-registration itself, which land on the order every arm before it took, because a `ProgramLanguage`
-arm cannot be half-registered: the registry's `match` is exhaustive and every gate that iterates the
-registered set would immediately demand all three. Nothing here is reachable from a run; there is no
-`language` value that resolves to it.
+The seventh arm: `language: "kotlin"` is a value an operator configures.
+
+It is the cheapest arm gg has added, and cheap in the place a language arm is usually most
+expensive — everything from bytecode onwards already existed. That is also what makes it the most
+*useful* arm to have added: run beside [Java](#java-a-warm-jvm-and-two-compilers-per-program) it is
+as close to a controlled experiment on a language as this seam can get. One JDK, one TeaVM, one
+guest, one classlib, one compile shape, one pool discipline. What differs is the language a model
+writes and the surface it writes against — and the surface is deliberately as far from Java's as
+two idiomatic surfaces over one capability set can be, because a transliterated one would have made
+the pair measure the toolchain.
 
 **A Kotlin program is compiled to bytecode by the Kotlin compiler and then to JavaScript by TeaVM,
 both inside a warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the
 TypeScript, JavaScript, PureScript and [Java](#java-a-warm-jvm-and-two-compilers-per-program) arms
 use.**
 
-That makes it the cheapest arm gg has added since Ruby, and cheap in the place a language arm is
-usually most expensive: **everything from bytecode onwards already existed**. The JDK, TeaVM, the
+**Everything from bytecode onwards already existed.** The JDK, TeaVM, the
 [two settings that are not optional](#two-teavm-settings-that-are-not-optional), the reading of
 TeaVM's source map that turns a generated line back into the model's own, the shared guest — all of
 it is the Java arm's, and it is now literally shared rather than copied. `checkers/jvm.backend.java`
@@ -1277,9 +1278,11 @@ So the shape is [Java's](#the-first-arm-whose-compiler-is-kept-warm), for the sa
 the same guarantees: a `CompilerPool` of four JVM **processes**, each lent to one preparation at a
 time, a fresh compiler and a fresh TeaVM build strategy per request, output written where the request
 says, and a JVM retired after 64 builds. Two preparations are never inside one JVM together, which is
-the precondition of the measured TeaVM corruption. The arm's own sixteen-way isolation gate drives
-**both** halves — 32 real builds through those four JVMs — and it is the seam's own gate pointed at an
-arm the registry does not carry yet.
+the precondition of the measured TeaVM corruption. [The seam's own isolation
+gate](#per-agent-compiler-isolation) drives **both** halves sixteen ways — 32 real builds through
+those four JVMs — which is what registration bought: the gate walks the registry, so an arm is
+inside it the moment it has a wire id, and the hand-pointed copy this arm carried before then was
+deleted with the commit that registered it.
 
 One thing this arm's handshake asks that Java's cannot: **which Kotlin release the daemon actually
 loaded**. That arm's driver names no release of anything it did not install; this one loads a
@@ -1485,6 +1488,89 @@ dependency of the compiler and because it is the first thing a model reaching fo
 compiled against the driver's classpath it produced **forty-five** TeaVM errors inside somebody else's
 files, and compiled against the standard library it is one `Unresolved reference 'kotlinx'` at the
 model's own line. That is a fact about the arm recorded as a test rather than a sentence.
+
+### The checker this arm names
+
+`kotlinc` — what a Kotlin author calls the compiler, even though gg drives the compiler class
+[embedded rather than as that binary](#why-the-compiler-is-embedded). Not TeaVM, on the same grounds
+[Java does not name it](#what-it-declares-as-its-checker): it translates what the Kotlin compiler
+accepted and judges nothing about the program except that its classlib carries what the program
+reached. Naming a checker is also what has this arm's compile
+[recorded](#what-compiling-costs-and-where-it-is-recorded) on every turn, the failing path included.
+
+### What its dialect says, and the five answers the other JVM arm does not give
+
+This is the arm that shows a [healing dialect](/gg/response-healing/) is **derived** rather than
+copied. Java is the language closest to Kotlin that gg registers, the two share a compiler road, a
+guest and a classlib, and gg's preparation does the same import hoist to both — and *five* of the
+lexical answers still differ. Every one of them is the same rule reading a different grammar.
+
+| Question | Java's answer | Kotlin's |
+| --- | --- | --- |
+| Is a backtick code punctuation? | no — Java's grammar has no backtick | **yes** — backquoted identifiers |
+| Is `;` what says "this line is code"? | yes, its strongest single clause | **it says almost nothing** |
+| What proves a repeated tail could not have run? | a local variable or a local type | **any declaration at all**, `fun` and `object` included |
+| Does the import above a concurrency wrapper survive? | yes, it resolves | **no**, it names something unreachable |
+| Is there a suspension token to delete? | no, and zero is reported | **yes** — `suspend`, on a declaration |
+
+**A backtick is code here.** Kotlin has backquoted identifiers, so a line carrying one may perfectly
+well be code, and the rule that every clause of the prose predicate be a shape *only English has*
+puts the backtick back on the non-prose list beside TypeScript's, Python's and Ruby's. Java may
+delete a lead-in written with an inline code span; this arm may not. On the `#` character the two
+agree and both differ from Python and Ruby, for the same reason in reverse: Kotlin has no `#` token
+at all, so a `#` line is certainly not Kotlin.
+
+**There is no statement terminator to lean on.** Java's strongest reading of "this is code" is a `;`
+that ends a statement; a Kotlin statement simply ends at the newline. So the weight moves onto the
+keyword clause, the call clause, a **chain-continuation** clause (`.map { … }`, `?.let { … }` — how
+a Kotlin author breaks a long expression, and how nobody writes a sentence) and one clause no other
+C-shaped arm needs: a line that carries an **assignment**. Without it `total += 1` is a line the
+dialect could say nothing at all about.
+
+**Every declaration is keyword-led, so the redeclaration proof needs no deny list.** Java's reading
+has to recognise "a type, a name and a terminator" and then subtract two dozen statement keywords
+that match the same shape — `return value;`, `throw failure;`, a second identical `import`, each of
+which may legally appear twice. Kotlin puts `val`, `var`, `fun`, `class`, `object`, `interface` or
+`typealias` in front of every declaration it has, so the reading recognises the keyword and
+everything else declines by construction. It is also a **wider** proof than any arm's: a program's
+top level here is a *script's*, where the compiler refuses a second `fun` or `object` of one name as
+readily as a second `val` — measured, as `Overload resolution ambiguity` and `Duplicate JVM class
+name`.
+
+**The concurrency wrapper is three shapes, and all three are measured failures.**
+`runBlocking { … }` is `Unresolved reference 'kotlinx'`, because that library is deliberately not on
+[the program classpath](#what-a-program-may-reach-and-why-that-took-being-deliberate);
+`thread { … }` is refused by TeaVM inside `kotlin/concurrent/Thread.kt`; and `Thread { … }.start()`
+compiles and then fails with `setTimeout is not available in the sandbox` before a line of the
+model's own work runs. Kotlin's trailing-lambda syntax puts the block *outside* the parentheses, so
+`runBlocking(Dispatchers.Default) { … }` and `thread(start = false) { … }` are the same wrapper with
+an argument list in the middle — a shape Java's arm cannot have, since there the lambda is inside
+the call. The match is **anchored** to the head, which matters more here than anywhere: in Kotlin
+`something { … }` is the shape of half the expressions a program writes.
+
+**The import above it is deleted**, where Java's is kept, and that is the divergence that shows the
+rule is about the *program* rather than about the language family. Java keeps
+`import java.util.concurrent.CompletableFuture;` because that package is in its declared set, so the
+line resolves and an unused import is legal. Kotlin's wrapper library is not reachable at all, so
+leaving the line behind would leave the one line of the repaired program that still fails — which is
+[Python's answer](/gg/response-healing/) and Ruby's, reached from Kotlin's classpath rather than
+from theirs.
+
+**And this is the one arm with a suspension token to delete.** Kotlin marks suspension on the
+*declaration* rather than at the call site: there is no `await`, and a suspending call is written
+exactly like any other. But a `suspend fun` declared inside the wrapper cannot be called once the
+wrapper is off, so the modifier comes off with it and is counted — which is what makes the repair
+actually run, and what makes this arm report a non-zero count where Java's and Ruby's report the
+honest zero of a language with no such token.
+
+Two more answers are its own without being disagreements. The fence tags are `kotlin`, `kt` and
+**`kts`**, which is not a slip: a program here really is compiled as a script, so a model that
+tagged its block with the script extension tagged it correctly. And the arm carries **two lexers**
+rather than reusing one — the preparation's, which is total and tolerant because the compiler is
+downstream of it, and the dialect's, which must be able to say *I lost my place* and return nothing
+at all, because its answer decides whether gg deletes the model's work. Both read Kotlin's three
+awkward shapes (a `${…}` template, a **nested** block comment, a backquoted identifier), each of
+which is a place a Java-shaped scan silently loses the source rather than declining.
 
 ## What compiling costs, and where it is recorded
 
