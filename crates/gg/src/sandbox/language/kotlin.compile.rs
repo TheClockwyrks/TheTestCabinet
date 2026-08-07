@@ -68,7 +68,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use crate::sandbox::language::compile::{CompilerDaemon, CompilerPool, daemon, place};
+use crate::sandbox::language::compile::{CompilerDaemon, CompilerPool, daemon, place, place_bytes};
 use crate::sandbox::language::jvm;
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
 
@@ -79,6 +79,18 @@ const FRONT: &str = include_str!("../checkers/kotlin.compiler.java");
 
 /// What the toolchain the driver is run against is pinned to.
 const MANIFEST_JSON: &str = include_str!("../checkers/kotlin.toolchain.json");
+
+/// This arm's **SDK**, compiled: the jar both compilers put on the classpath a model's own source is
+/// read against.
+///
+/// Inside gg's binary rather than beside the compiler in the toolchain image, and that is the same
+/// split [the Java arm's SDK](super::super::java::compile) and
+/// [PureScript's library set](super::super::purescript) are on, for the same reason: the image is
+/// built separately from the binary that runs in it, so an SDK living there could be a different
+/// vintage from the gg whose catalogue describes it — and a model shown one surface in its prompt and
+/// compiled against another is the failure this whole seam exists to prevent. Committed, the SDK and
+/// the catalogue reflected from it move in one diff.
+const SDK: &[u8] = include_bytes!("../checkers/kotlin.sdk.jar");
 
 /// The environment variable an operator points at the directory of Kotlin jars.
 pub(super) const KOTLIN_ENV: &str = "TCAB_GG_KOTLIN";
@@ -136,6 +148,9 @@ const BUNDLE_FILE: &str = "program.js";
 /// The name the driver is placed under. The JDK's single-file launcher requires the file name to
 /// match the public class it holds.
 const DRIVER_FILE: &str = "GgCompiler.java";
+
+/// The name this arm's SDK jar is placed under, beside the driver.
+const SDK_FILE: &str = "gg-sdk.jar";
 
 /// The name a model's own file is reported under in a located failure: `Program.kts` becomes
 /// `program.kts` and `Module.kt` becomes `module.kt`.
@@ -514,6 +529,14 @@ const FOREIGN_MARKER: &str = "(JavaScript) ";
 
 /// The entry class for a **program**: run the model's script, describe what it threw, and rethrow it.
 ///
+/// The first `catch` is this arm's SDK rather than the language's, and it is the half no SDK could do
+/// for itself: a `ToolError` the program did not handle must reach the guest as a **tool failure**,
+/// because gg classifies a turn's error from the host's own code. The SDK catches a refusal in
+/// JavaScript and raises a real Kotlin exception so that `catch (failure: ToolError)` works at all;
+/// this records the same three fields on the way past, and the bundle's tail throws that record
+/// instead of the exception object. `ToolError` is named with no package, because this SDK declares
+/// its surface in the root one — which is what makes a program need no `import` at all.
+///
 /// Written in Java rather than in Kotlin, which is worth saying because the program it starts is
 /// Kotlin. A Kotlin entry class would have to be compiled by the compiler this class exists to
 /// wrap — before the model's own source, in a second pass, against annotations
@@ -534,8 +557,17 @@ fn entry_for_program() -> String {
          \x20   @JSBody(params = {{\"text\"}}, script = \"$ggMessage = text;\")\n\
          \x20   static native void describe(String text);\n\
          \n\
+         \x20   @JSBody(params = {{\"tool\", \"code\", \"message\"}}, \
+         script = \"$ggFailure = {{ tool: tool, code: code, message: message }};\")\n\
+         \x20   static native void refused(String tool, String code, String message);\n\
+         \n\
          \x20   public static void main(String[] args) throws Throwable {{\n\
          \x20       try {{ new {program}(new String[0]); }}\n\
+         \x20       catch (ToolError failure) {{\n\
+         \x20           refused(failure.getTool(), failure.getCode().getWireName(), \
+         failure.getMessage());\n\
+         \x20           throw failure;\n\
+         \x20       }}\n\
          {chain}\
          \x20       catch (StackOverflowError failure) {{ throw seen(\"java.lang.StackOverflowError\", failure); }}\n\
          \x20       catch (Throwable failure) {{ throw seen(named(failure), failure); }}\n\
@@ -594,7 +626,13 @@ impl KotlinCompiler {
     /// Start one, place the driver if this is the first, and read its handshake.
     fn start() -> Result<Self, String> {
         let toolchain = toolchain()?;
-        let driver = placed()?;
+        let placed = placed()?;
+        // The SDK goes on the two classpaths a MODEL's own source is read against, and on neither of
+        // the others: a program that could reach the compiler's own jars could import
+        // `kotlinx.coroutines`, which this sandbox cannot run. So `fs.readFile("x")` type-checks
+        // against the same bytes TeaVM translates, and there is no second path to keep in step.
+        let program_path = format!("{}:{}", toolchain.program_path, placed.sdk.display());
+        let module_path = format!("{}:{}", toolchain.module_path, placed.sdk.display());
         let started = daemon(&toolchain.java).and_then(|mut command| {
             command
                 // A developer's shell may carry either of these, and a JVM that picks one up prints
@@ -613,10 +651,10 @@ impl KotlinCompiler {
                 .arg(&toolchain.classpath)
                 // The driver's own source. The JDK's single-file launcher compiles it in memory,
                 // which is why gg builds no jar of its own for it.
-                .arg(driver)
+                .arg(&placed.driver)
                 .arg(&toolchain.compile_path)
-                .arg(&toolchain.program_path)
-                .arg(&toolchain.module_path)
+                .arg(&program_path)
+                .arg(&module_path)
                 .arg(&toolchain.home);
             command.start()
         });
@@ -689,27 +727,43 @@ fn handshake(greeting: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Where gg's own driver is on disk, placing it on first use.
+/// Where gg's own driver and this arm's SDK are on disk, placing each on first use.
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the directory's key folds in
-/// the pinned Kotlin release **and** a digest of the assembled driver's own bytes, so a gg carrying a
-/// different driver reads a different directory rather than another build's file; the write goes
-/// through [`place`], which renames a complete file into place. Nothing ever writes to it again — a
-/// JVM only reads it.
-fn placed() -> Result<&'static PathBuf, String> {
-    static PLACED: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+/// the pinned Kotlin release, a digest of the assembled driver's own bytes **and** one of the
+/// [SDK](SDK), so a gg carrying either a different driver or a different surface reads a different
+/// directory rather than another build's files; each write goes through [`place`], which renames a
+/// complete file into place. Nothing ever writes to it again — a JVM only reads it.
+fn placed() -> Result<&'static Placed, String> {
+    static PLACED: std::sync::OnceLock<Result<Placed, String>> = std::sync::OnceLock::new();
     PLACED
         .get_or_init(|| {
             let source = jvm::driver(FRONT);
-            let root = jvm::placed_dir("kotlin", compiler_version(), &[source.as_bytes()])?;
+            let root = jvm::placed_dir("kotlin", compiler_version(), &[source.as_bytes(), SDK])?;
             let driver = root.join(DRIVER_FILE);
             if !driver.is_file() {
                 place(&driver, &source)?;
             }
-            Ok(driver)
+            let sdk = root.join(SDK_FILE);
+            if !sdk.is_file() {
+                place_bytes(&sdk, SDK)?;
+            }
+            Ok(Placed { driver, sdk })
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// The two files gg places for itself: its own compiler driver, and this arm's SDK.
+///
+/// The SDK's digest is in the directory's key for a reason the driver's alone would not cover: an SDK
+/// edit changes what a *program* may write, so a gg carrying one build of it must never read another
+/// build's jar out of a directory they would otherwise share.
+struct Placed {
+    /// gg's own compiler driver, assembled and written out for the single-file launcher.
+    driver: PathBuf,
+    /// This arm's SDK, as the jar a model's program is compiled against.
+    sdk: PathBuf,
 }
 
 /// What this arm compiles with: one JDK, four classpaths and the directory the scripting plugin is
@@ -731,6 +785,9 @@ struct Toolchain {
     /// cannot run. Compiled against the standard library alone, `import kotlinx.coroutines.*` is an
     /// `UNRESOLVED_IMPORT` at the model's own line rather than forty-five TeaVM errors inside
     /// somebody else's file.
+    ///
+    /// This arm's [SDK](SDK) is appended to it as the daemon starts, because that jar is placed
+    /// rather than installed and its path is not known until then.
     program_path: String,
     /// What a code **module** is compiled against: the above plus TeaVM's `@JSExport`, which gg
     /// writes into a module and an author never types.

@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Reflect the Kotlin program language's signature catalogue out of the SDK's own KDoc, and write it
+# to crates/gg/src/sandbox/guests/kotlin.signatures.json.
+#
+# WHICH DOCUMENTATION TOOL, AND WHY NOT DOKKA. Kotlin's documentation tool is Dokka, and Dokka has no
+# JSON output — its formats are HTML, GFM, Jekyll and Javadoc. Emitting anything else means writing a
+# Dokka PLUGIN: a second Kotlin artifact compiled against `dokka-core`, run through `dokka-cli` with a
+# plugins classpath, and pinned separately from the compiler that compiles a model's program. And
+# Dokka reads KDoc by asking the compiler's own front end for it, which is what `tools/GgSignatures.kt`
+# does directly: `KotlinCoreEnvironment` builds the compiler's project, the same `KtFile` the compiler
+# compiles is what gets read, and `KDoc` is the compiler's own KDoc parser rather than a regular
+# expression over comments.
+#
+# The property that decides it is the one PureScript's arm has, whose documentation tool IS its
+# compiler: THE RELEASE THAT DESCRIBES THE SURFACE IS THE RELEASE THAT COMPILES A PROGRAM AGAINST IT,
+# because both come out of `kotlin-version.sh`'s single pinned `kotlin-compiler-embeddable`. A Dokka
+# pinned separately could read a KDoc dialect the compiler no longer does, and a model would be shown
+# the difference.
+#
+# `build.sh` compiles the same sources under `-Xexplicit-api=strict -Werror`, which is Kotlin's own
+# public-API completeness check, so two independent readings have to agree before anything a model
+# reads is written — and this reflector refuses to emit a catalogue with a blank in it, so a missing
+# `@param` is an error on the author rather than a gap a model discovers.
+#
+# Usage:
+#   packages/gg-sandbox-kotlin/signatures.sh
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/../.." && pwd)"
+OUT="$ROOT/crates/gg/src/sandbox/guests/kotlin.signatures.json"
+
+KOTLIN_DIR="${KOTLIN_INSTALL_DIR:-$HOME/.local/share/gg-kotlin}"
+JAVA_DIR="${JAVA_INSTALL_DIR:-$HOME/.local/share/gg-java}"
+JAVA="${TCAB_GG_JAVA:-$JAVA_DIR/jdk/bin/java}"
+KOTLIN_LIBS="${TCAB_GG_KOTLIN_LIBS:-$KOTLIN_DIR/libs}"
+
+if [ ! -x "$JAVA" ]; then
+	echo "error: no java at $JAVA — run scripts/ci/install-kotlin.sh" >&2
+	exit 1
+fi
+if [ ! -d "$KOTLIN_LIBS" ]; then
+	echo "error: no Kotlin jars at $KOTLIN_LIBS — run scripts/ci/install-kotlin.sh" >&2
+	exit 1
+fi
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+COMPILER="$(find "$KOTLIN_LIBS" -name '*.jar' | sort | tr '\n' ':')"
+
+# The reflector itself, compiled into a directory the JVM is then pointed at. It is gg's own code and
+# it runs on a developer's machine rather than in a run container, so there is nothing to commit.
+"$JAVA" -cp "$COMPILER" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
+	-classpath "$COMPILER" \
+	-d "$WORK/tool" \
+	-jvm-target 21 \
+	-no-stdlib -no-reflect \
+	-nowarn \
+	"$HERE/tools/GgCatalogue.kt" "$HERE/tools/GgSignatures.kt"
+
+"$JAVA" -cp "$WORK/tool:$COMPILER" tools.GgSignaturesKt \
+	--src "$HERE/src" \
+	--libraries "$HERE/libraries.txt" \
+	--out "$WORK/kotlin.signatures.json"
+
+mv "$WORK/kotlin.signatures.json" "$OUT"
+echo "wrote $OUT ($(wc -c <"$OUT") bytes)"

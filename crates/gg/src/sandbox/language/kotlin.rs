@@ -1,18 +1,21 @@
 //! **Kotlin** — the arm whose program is a **script**, compiled by a warm JVM to bytecode and then
 //! to JavaScript by TeaVM before the guest ever sees it.
 //!
-//! What exists here today is this arm's **execution substrate** and nothing else: the compile that
-//! turns a model's Kotlin into something a guest can evaluate, the guest that evaluates it, and the
-//! proof that a real Kotlin program really does run through gg's own linker, membrane and store. The
-//! SDK and the [registration](super::ProgramLanguage) land later — a language arm cannot be
+//! What exists here today is this arm's **execution substrate** and its **surface**: the compile that
+//! turns a model's Kotlin into something a guest can evaluate, the guest that evaluates it, the proof
+//! that a real Kotlin program really does run through gg's own linker, membrane and store, the
+//! hand-written SDK a program is compiled against, and the catalogue reflected out of that SDK's own
+//! KDoc. Only the [registration](super::ProgramLanguage) is left — a language arm cannot be
 //! half-registered, because the registry's `match` is exhaustive and every gate that iterates the
-//! registered set would immediately demand a catalogue, two Handlebars templates and a healing
-//! dialect. Nothing here is reachable from a run: there is no `language` value that resolves to it.
+//! registered set would immediately demand two Handlebars templates and a healing dialect. Nothing
+//! here is reachable from a run: there is no `language` value that resolves to it.
 //!
 //! * [`compile`](self::compile) — the host-side build, what it costs, what it shares, and the two
 //!   failures it tells apart;
 //! * [`source`](self::source) — what gg does to a model's Kotlin before the compiler sees it, which
 //!   for a program is almost nothing;
+//! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
+//! * `checkers/kotlin.sdk.jar` — that SDK compiled, which is what a classpath entry is;
 //! * `checkers/kotlin.compiler.java` — this arm's half of gg's compiler driver;
 //! * `checkers/kotlin.toolchain.json` — the Kotlin release this arm is pinned to.
 //!
@@ -51,6 +54,15 @@
 //! annotation gg writes into it. [Java](super::java) is the only other arm whose two preparation
 //! shapes differ at all, and it is why the seam's
 //! [isolation gate](super::isolation) lets a language answer with a module of its own shape.
+//!
+//! And its **SDK is declared in the root package**, which is what no other arm's could be. Kotlin
+//! forbids importing from the root package into a named one and resolves a name in the *same* package
+//! with no import at all — and a model's program, having no `package` line, is itself in the root
+//! one. So `fs.readFile("main.kt")` resolves with nothing written above it, and the substrate's
+//! headline property survives the SDK: a reply with no `import` in it is still compiled byte for
+//! byte, with a shift of zero. The bridge stays out of a program's reach all the same, and by a
+//! stronger fence than a package would give it — every declaration in it is `internal`, which is
+//! module visibility, and a program is its own module.
 
 /// The Kotlin and TeaVM build: the host-side step that turns a model's Kotlin into the guest's
 /// JavaScript.
@@ -78,3 +90,15 @@ pub(super) mod source;
 #[cfg(test)]
 #[path = "kotlin.substrate.test.rs"]
 mod substrate;
+
+/// **The Kotlin arm's model-facing surface**, driven the same way: the hand-written SDK, the
+/// catalogue reflected out of its own KDoc, and the libraries it says a program may reach.
+///
+/// Separate from [`substrate`] because it is a different claim. That file asks whether Kotlin runs
+/// here; this one asks whether the thing a model is *told* it may write is the thing the sandbox
+/// really has — every gg tool driven through the real membrane from its Kotlin spelling against the
+/// same expected JSON the other arms are held to, and the committed catalogue put in front of the
+/// [agreement gate](super::agreement) a step before the registration that would run it for free.
+#[cfg(test)]
+#[path = "kotlin.surface.test.rs"]
+mod surface;

@@ -43,8 +43,10 @@
 #     packages/gg-sandbox-python/signatures.sh fetches through uv, a pinned `yard`
 #     that packages/gg-sandbox-ruby/signatures.sh installs into the Ruby all three of
 #     these machines already ship, the pinned `purs` scripts/ci/install-purescript.sh
-#     fetches (PureScript's documentation tool IS its compiler), and the JDK
-#     scripts/ci/install-java.sh fetches, whose `javadoc` runs a doclet of gg's own. The
+#     fetches (PureScript's documentation tool IS its compiler), the JDK
+#     scripts/ci/install-java.sh fetches, whose `javadoc` runs a doclet of gg's own, and
+#     the Kotlin compiler scripts/ci/install-kotlin.sh fetches, whose own front end reads
+#     KDoc — the reading Dokka would itself be asking for, with one fewer thing pinned. The
 #     committed .wasm files therefore sit in the diffed directory untouched: nothing here regenerates one, so one cannot cause a
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
@@ -114,7 +116,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby purescript java"
+regenerated="typescript javascript python ruby purescript java kotlin"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -158,11 +160,17 @@ log "install the pinned JDK (the Java arm's catalogue is reflected with javadoc'
 log "regenerate the Java arm's signature catalogue (javadoc + tools/GgSignatures.java)"
 ./packages/gg-sandbox-java/signatures.sh
 
+log "install the pinned Kotlin compiler (this arm's catalogue is reflected with its own front end)"
+./scripts/ci/install-kotlin.sh
+
+log "regenerate the Kotlin arm's signature catalogue (KDoc through the compiler's own PSI)"
+./packages/gg-sandbox-kotlin/signatures.sh
+
 # The same completeness rule the catalogues get, over the other committed directory: a
 # checker or compiler this script never re-cuts would sit in the diff below and be green
 # whatever its pin said. Stems are the first dot-separated component of each file name,
 # which is the language id each artifact is named for.
-recut="typescript ruby java"
+recut="typescript ruby java kotlin"
 # The one exemption, and it is an exemption rather than an omission. PureScript's committed
 # artifact is not a compiler: it is the LIBRARY SET, compiled — 1.2 MB of externs and
 # JavaScript that `purs` needs before it can type-check anything. Re-cutting it needs `purs`,
@@ -190,12 +198,15 @@ recut="typescript ruby java"
 # asserted over the text rather than by a diff: `jvm.test.rs` fails if the TeaVM settings that make
 # a `NullPointerException` an exception at all leave it.
 #
-# `kotlin` is the fourth, and it is Java's shape exactly: `kotlin.compiler.java` is this arm's own
-# half of that driver and `kotlin.toolchain.json` is its pin. Neither is cut from anything, both are
-# reviewable by reading, and `kotlin.compile.test.rs` is what fails when the pin and the shell side
-# that installs it name different releases — or when the scripting plugin's four file names, which
-# the compiler looks for by name and without which every program on this arm fails, leave the list.
-declared="purescript jvm kotlin"
+# `kotlin`'s stem is in $recut for the same reason Java's is, and covers the same three kinds of
+# file: `kotlin.sdk.jar` is this arm's LIBRARY and is rebuilt below out of
+# `packages/gg-sandbox-kotlin/src`, reproducibly, so an SDK edit committed without the jar fails the
+# diff; `kotlin.compiler.java` is this arm's own half of gg's hand-written driver and
+# `kotlin.toolchain.json` is its pin, and neither is cut from anything. What could drift between the
+# pin and the shell side that installs it is what `kotlin.compile.test.rs` fails on — including when
+# the scripting plugin's four file names, which the compiler looks for by name and without which
+# every program on this arm fails, leave the list.
+declared="purescript jvm"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"
@@ -224,6 +235,9 @@ log "re-cut the Ruby compiler (Opal, tools/compiler.mjs)"
 log "rebuild the Java arm's SDK jar (javac + jar)"
 ./packages/gg-sandbox-java/build.sh
 
+log "rebuild the Kotlin arm's SDK jar (kotlinc + jar)"
+./packages/gg-sandbox-kotlin/build.sh
+
 log "check for signature and checker drift"
 if ! git diff --exit-code -- crates/gg/src/sandbox/guests crates/gg/src/sandbox/checkers; then
 	cat >&2 <<'EOF'
@@ -237,7 +251,8 @@ TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
 `packages/gg-sandbox-python/signatures.sh`; for Ruby,
 `packages/gg-sandbox-ruby/signatures.sh`; for PureScript,
 `packages/gg-sandbox-purescript/signatures.sh`; for Java,
-`packages/gg-sandbox-java/signatures.sh`.
+`packages/gg-sandbox-java/signatures.sh`; for Kotlin,
+`packages/gg-sandbox-kotlin/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script
@@ -249,7 +264,9 @@ run packages/gg-sandbox-purescript/build.sh and commit
 crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz with its manifest. Java has no
 component of its own either, and its SDK is the committed JAR: run
 packages/gg-sandbox-java/build.sh and commit
-crates/gg/src/sandbox/checkers/java.sdk.jar with the regenerated catalogue.
+crates/gg/src/sandbox/checkers/java.sdk.jar with the regenerated catalogue. Kotlin shares
+that guest and that arrangement: run packages/gg-sandbox-kotlin/build.sh and commit
+crates/gg/src/sandbox/checkers/kotlin.sdk.jar with its catalogue.
 
 If instead crates/gg/src/sandbox/checkers/ drifted, the pinned compiler a model's
 program is compiled or type-checked with no longer matches the one installed here —

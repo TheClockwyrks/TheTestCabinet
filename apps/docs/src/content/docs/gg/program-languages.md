@@ -12,7 +12,7 @@ that component needs from the host, how the prompt teaches it, which
 that language rather than baked in.
 
 Six are registered — and a seventh, [Kotlin](#kotlin-a-program-that-is-a-script), has its
-execution substrate built and its registration still to come. Between them the six separate three
+execution substrate and its surface built, with its registration still to come. Between them the six separate three
 things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
@@ -1191,11 +1191,12 @@ rather than from a review.
 The seventh arm, and the **first that is not registered yet**. What exists is its *execution
 substrate* — the compile that turns a model's Kotlin into something a guest can evaluate, the guest
 that evaluates it, and the proof that a real Kotlin program runs through gg's own linker, membrane
-and store — and not its SDK, its catalogue, its prompt or its healing dialect. Those land on the
-order every arm before it took, because a `ProgramLanguage` arm cannot be half-registered: the
-registry's `match` is exhaustive and every gate that iterates the registered set would immediately
-demand all four. Nothing here is reachable from a run; there is no `language` value that resolves to
-it.
+and store — and its *surface*: the hand-written SDK a program is compiled against, and the catalogue
+reflected out of that SDK's own KDoc. What is left is its prompt, its healing dialect and the
+registration itself, which land on the order every arm before it took, because a `ProgramLanguage`
+arm cannot be half-registered: the registry's `match` is exhaustive and every gate that iterates the
+registered set would immediately demand all three. Nothing here is reachable from a run; there is no
+`language` value that resolves to it.
 
 **A Kotlin program is compiled to bytecode by the Kotlin compiler and then to JavaScript by TeaVM,
 both inside a warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the
@@ -1343,6 +1344,147 @@ moves. One detail is a measured trap rather than a choice: the file's JVM class 
 exports it under must **differ**, because TeaVM declares both in the bundle's scope and when they are
 the same word the inner declaration shadows the outer one — leaving `lib.<key>` bound to `undefined`
 with no error anywhere, which is the quiet kind of wrong.
+
+### What "native" means in Kotlin
+
+An idiomatic Kotlin SDK is not the Java one with the types moved right — and this is the arm where
+that matters most, because the two share a compiler road, a guest and a classlib, so a surface that
+was merely Java's transliterated would make the pair measure the *toolchain* rather than the
+language. Every difference below is a spelling rather than an identity, and the
+[agreement gate](#the-agreement-gate) accepts each of them:
+
+- **An optional argument is a default argument, passed by name.** `fs.readFile("main.kt", offset = 2,
+  limit = 5)`, `system.shell("npm test", timeoutSecs = 30)`. Where
+  [Java](#what-native-means-in-java) needs fourteen **overload groups**, this arm needs **none at
+  all**: every entry in its catalogue carries exactly one signature, and the optional half of it is
+  `kind: "keyword"` with a stated default. Those are the two shapes the catalogue's
+  [`signatures` array](#one-entry-many-signatures) was designed to hold, produced by two arms that
+  compile through the same two compilers — which is as close as the seam comes to an experiment on its
+  own schema.
+- **A bag of optional fields is more default arguments, not a builder.**
+  `project.createIssue(title, inScope, outOfScope, criteria, "builder", epicId = "AUTH", reviewers =
+  listOf("critic"))` — where Java's answer to four optional fields is an object whose setters chain.
+  The same goes for the two halves of code a memory may carry: they are `code = …` and `onUse = …`
+  rather than a value to build first, so "an on-use script and no module" is one named argument.
+- **A three-way patch field is a `sealed interface`, and needs no sentinel constant.** `null` is
+  already "leave it alone" here, because leaving an argument out *is* passing `null` — so the third
+  state is a **value**: `description = Patch.Replace("…")`, `description = Patch.Clear`. That is what
+  [Python's `UNCHANGED`](#what-native-bought-in-the-catalogue) is, given a type.
+- **A span of turns is a range**, because that is what a span of integers is in this language:
+  `context.archiveThread(4..19, 30..<36)`. Ruby is the other arm that can say it that way; Java has to
+  construct a record per span.
+- **A read is a sealed interface narrowed by `when`**, which needs no `else` — `is TextFile ->
+  read.contents`, `is ImageFile -> read.label` — and every result is a `data class`, so a field is
+  `read.contents`, two reads of one file compare equal, and `val (id, slot, model) = handle`
+  destructures.
+- **A value the wire may leave out is nullable.** `exitCode: Int?`, `region: ViewRegion?`, where Java
+  reaches for `Optional` and `OptionalInt`. This is the one place the seam's own note about Kotlin was
+  already written down before the arm existed, and the arm did not have to argue for it.
+- **A fixed choice is an `enum class`**, and one with a wire spelling carries it as a property
+  (`TaskStatus.DONE.wireName`) rather than as a method, because a Kotlin author reads a value as a
+  value. A child agent's brief is a **sealed** one instead — `Brief.Prompt("…")` or
+  `Brief.Issue("AUTH-1")` — so "both" and "neither" are programs that do not compile, exactly as
+  [PureScript's constructor](#what-native-means-in-purescript) and Java's typed value make them.
+- **A failure is an exception, caught with `catch` or `runCatching`.** Kotlin has no checked
+  exceptions at all, so the argument every other arm has to make — that a checked one would force a
+  `try` around every line — is made by the language. `failure.code == ToolErrorCode.NOT_FOUND` reads a
+  property. A surface returning `Result<T>` was the alternative and is not taken, for the reason the
+  language's own guidance gives: `Result` is for a value you will branch on immediately, and a program
+  that branched after every line would be unwritable.
+- **`lib.<key>` is a small reflection surface**, as [Java's](#what-native-means-in-java) is and for the
+  same reason: a code module is compiled separately and there is no `import` for the compiler to check
+  the program against. `lib.text("helpers", "slugify", "Some Title")`, `lib.number(…)`, `lib.flag(…)`,
+  `lib.run(…)`, `lib.has(…)`.
+
+**And the surface needs no import at all**, which no other arm's does. That is not a convenience: it
+is what keeps the substrate's headline property true now that there is a surface to reach. Kotlin
+**forbids importing from the root package** into a named one, and resolves a name in the *same*
+package with no import — and a model's program, having no `package` line, is itself in the root
+package. So the SDK is declared there, `fs.readFile("main.kt")` resolves with nothing written above
+it, and **a reply with no `import` in it is still compiled byte for byte, with a shift of zero**.
+Every other compiled arm writes a header and moves every diagnostic back over it.
+
+The bridge stays out of a program's reach all the same, and by a stronger fence than a package would
+have given it: every declaration in it is `internal`, which is *module* visibility, and a model's
+program is compiled as its own module against the SDK's jar. A program cannot name the crossing at
+all — where Java's arm relies on package-private and PureScript's on a module the program could
+import if it knew the name.
+
+One thing about that jar is a measured trap rather than a choice, and it is the shape of bug that is
+found in the wrong week: it must carry `META-INF/<module>.kotlin_module` as well as its class files.
+That file is what tells the compiler which facade class a package's **top-level** declarations live
+in, and a jar built from `*.class` alone compiles, ships, and answers every `fs.readFile` in every
+program with `Unresolved reference 'fs'` — a sentence about gg's packaging wearing the shape of a
+diagnostic about the model's program.
+
+### The catalogue, and the documentation tool that is the compiler
+
+Kotlin's documentation tool is **Dokka**, and this arm does not use it. Dokka has no JSON output —
+its formats are HTML, GFM, Jekyll and Javadoc — so emitting a catalogue through it means writing a
+Dokka *plugin*: a second Kotlin artifact compiled against `dokka-core`, run through `dokka-cli` with
+a plugins classpath, and **pinned separately from the compiler that compiles a model's program**.
+
+What Dokka does to read KDoc is ask the compiler's own front end for it, and that is what
+`tools/GgSignatures.kt` does directly: `KotlinCoreEnvironment` builds the compiler's project,
+`PsiFileFactory` parses each SDK file into the same `KtFile` the compiler compiles, and `KDoc` is the
+compiler's own KDoc parser rather than a regular expression over comments. The difference is a
+dependency, not a reading — and the property that decides it is the one
+[PureScript's arm](#the-catalogue-and-the-two-things-purescript-does-not-have) has, whose
+documentation tool *is* its compiler: **the release that describes the surface is the release that
+compiles a program against it**, because both come out of one pinned `kotlin-compiler-embeddable`. A
+Dokka pinned separately could read a KDoc dialect the compiler no longer does, and a model would be
+shown the difference.
+
+It is a **parse** rather than an analysis, deliberately: what a model needs to read is the type the
+SDK's author *wrote* — `Patch<String>?`, `List<DirEntry>` — rather than a resolver's fully qualified
+expansion of it.
+
+This arm has **full sufficiency**, as Java does: nothing needs the `# Arguments` convention
+PureScript and Rust fall back on, because KDoc has `@param` for an argument, `@property` for a
+type's field and for an enum's own constructor property, `@throws` for the failure prose, and a
+declaration's own comment for an enum entry. The completeness half is two independent readings that
+have to agree: `build.sh` compiles the SDK a second time under **`-Xexplicit-api=strict -Werror`**,
+which is Kotlin's own public-API check — every declaration a model can see states its visibility and
+its return type — and the reflector refuses to emit a catalogue with a blank in it, an identity the
+SDK does not declare, a `@param` naming an argument the function does not take, or a public function
+of an API object that the identity table never names.
+
+Two renderings are the reflector's own decision rather than the language's. A signature says
+`: Unit` out loud where a block-bodied Kotlin function would state nothing, because *that a call
+returns nothing* is exactly what tells a model the rest of its program still runs after it — the
+same thing TypeScript's `void` is load-bearing for. And a sealed type's declaration carries its arms
+inline (`sealed interface Patch<out T> { data class Replace<out T>(val value: T) : Patch<T>; data
+object Clear : Patch<Nothing> }`), because Kotlin has no `permits` clause to name them with and a
+bare `sealed interface Patch` would tell a model nothing about how to write one.
+
+### The library set is the standard library, and it is checked against it
+
+There is nothing to install and nothing to bake: what a Kotlin program may reach is the **Kotlin
+standard library**, as TeaVM's classlib is able to translate it.
+`packages/gg-sandbox-kotlin/libraries.txt` declares that set in groups, the catalogue's
+[`libraries`](#the-catalogue) section is reflected from it, and the prompt renders it — so what a
+model is told it may import is read off the file that decides the claim rather than described in a
+template.
+
+The claim is then held to the artifact. `kotlin_reaches_every_library_this_arm_says_it_may` drives
+every declared package through the real Kotlin compiler and the real TeaVM and requires a real
+declaration in each to compile **and** run, with the probe deliberately a call rather than an import,
+since TeaVM emits only what a call graph reached. Seventeen packages, in three groups.
+
+The first group needs no `import` line at all, and neither does gg's own surface: Kotlin's default
+imports already cover `kotlin`, `kotlin.collections`, `kotlin.text`, `kotlin.ranges`,
+`kotlin.sequences`, `kotlin.comparisons` and `kotlin.io` in every file, and the SDK is in the root
+package the program is itself compiled in. A program that reaches for `kotlin.math`, `kotlin.time`
+or `java.time` writes one line; everything else is already there.
+
+**No third-party library is shipped**, and on this arm that is not even a judgement call — it is
+what the [four classpaths](#what-a-program-may-reach-and-why-that-took-being-deliberate) are for. The
+driver runs with a 60 MB compiler and every TeaVM jar on *its* classpath; a program is compiled
+against two jars and gg's SDK. `kotlinx.coroutines` is the one that matters, because it is a runtime
+dependency of the compiler and because it is the first thing a model reaching for concurrency writes:
+compiled against the driver's classpath it produced **forty-five** TeaVM errors inside somebody else's
+files, and compiled against the standard library it is one `Unresolved reference 'kotlinx'` at the
+model's own line. That is a fact about the arm recorded as a test rather than a sentence.
 
 ## What compiling costs, and where it is recorded
 
