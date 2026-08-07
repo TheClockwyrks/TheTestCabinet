@@ -169,6 +169,32 @@ fn round_trips_through_json() {
 }
 
 #[test]
+fn prior_game_jam_entries_carry_the_seeded_readme() {
+    // The entries are inputs to the run, so the record has to carry the README
+    // body it was actually shown — not just a pointer to the run it came from,
+    // which the Inputs tab could not render inline (and which may never publish).
+    let mut record = sample_record();
+    record.game_jam_prior_entries = vec![PriorGameJamEntry {
+        run_id: "run-older".to_string(),
+        finished_at: "2026-01-01T00:00:00Z".to_string(),
+        readme: "# Space Miner\n\nDig for ore.".to_string(),
+    }];
+
+    let value = serde_json::to_value(&record).expect("serialize");
+
+    assert_eq!(
+        value["gameJamPriorEntries"],
+        json!([{
+            "runId": "run-older",
+            "finishedAt": "2026-01-01T00:00:00Z",
+            "readme": "# Space Miner\n\nDig for ore."
+        }])
+    );
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed, record);
+}
+
+#[test]
 fn orchestrator_slug_defaults_to_one_shot_for_older_records() {
     // A record written before orchestrator selection existed omits the field;
     // it must still deserialize, defaulting the slug to the original behaviour.

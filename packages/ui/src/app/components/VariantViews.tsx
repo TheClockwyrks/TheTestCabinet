@@ -23,6 +23,7 @@ export type InputKind =
   | "script"
   | "package"
   | "reference"
+  | "entry"
   | "asset";
 
 /** The tag text shown for each input kind. */
@@ -32,14 +33,38 @@ const INPUT_KIND_LABELS: Record<InputKind, string> = {
   script: "Script",
   package: "Package",
   reference: "Reference",
+  entry: "Previous entry",
   asset: "Asset",
 };
 
+/**
+ * A text file seeded into one particular run rather than authored on its variant —
+ * today, the `previous-entries/` READMEs a repeated game-jam run is briefed with.
+ * It is still an input the model was handed, so it reads as one: same accordion,
+ * same body rendering, its own tag.
+ */
+export interface RunSeededInput {
+  /** Path of the file inside the seeded repository, as the model saw it. */
+  path: string;
+  /** The tag to show for it. */
+  kind: InputKind;
+  /** The file's contents, rendered inline. */
+  text: string;
+}
+
 // The inputs lead with the prompt (the first thing the model sees, naming the
-// specs that follow), then the seeded spec files, then the reference media. Each
-// entry is tagged with its input kind rather than its media type. The `key`
-// collapses every panel again when the variant changes.
-export function VariantInputsView({ variant }: { variant: VariantSummary }) {
+// specs that follow), then the seeded spec files — the variant's, then any seeded
+// for this run alone — then the reference media. Each entry is tagged with its
+// input kind rather than its media type. The `key` collapses every panel again
+// when the variant changes.
+export function VariantInputsView({
+  variant,
+  runSeededInputs = [],
+}: {
+  variant: VariantSummary;
+  /** Files seeded into a single run, shown alongside the variant's own inputs. */
+  runSeededInputs?: RunSeededInput[];
+}) {
   const entries: AccordionEntry[] = [
     // The prompt is always carried (every host provides it), but guard against an
     // empty one anyway.
@@ -63,6 +88,13 @@ export function VariantInputsView({ variant }: { variant: VariantSummary }) {
           ? INPUT_KIND_LABELS.script
           : INPUT_KIND_LABELS.spec,
       body: <SeededBody input={input} />,
+    })),
+    // …then the files this run alone was seeded with, read the same way as the
+    // variant's own: by their path in the workspace, body inline.
+    ...runSeededInputs.map((input) => ({
+      path: input.path,
+      kind: INPUT_KIND_LABELS[input.kind],
+      body: <Markdown>{fence(input.path, input.text)}</Markdown>,
     })),
     // The Test Cabinet runtime packages the build is given — baked into the run
     // image and depended on by the seeded `package.json`, so the build imports them

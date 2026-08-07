@@ -494,46 +494,35 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub game_jam_readme: Option<String>,
     /// The earlier entries this **game-jam** run was seeded with and briefed to build
-    /// something distinct from: the id and finish time of each prior run of the same
-    /// jam by the same model whose README was placed in the run's
-    /// `previous-entries/` folder, oldest first.
+    /// something distinct from: every prior run of the same jam by the same model whose
+    /// gameplay README was written into the run's `previous-entries/` folder, oldest
+    /// first — README body included, exactly as this run was shown it.
     ///
     /// Empty for a jam's first run by a model (and for every other test type). Unlike
-    /// [`game_jam_readme`](Self::game_jam_readme) this *is* meant to be shown: it is
-    /// how a reviewer — or whoever is asking why a model built the same game twice —
-    /// can see what history a run actually had. The READMEs themselves are not
-    /// duplicated here; each is on the run it names. Defaulted and omitted when empty
-    /// so records written before the field existed still deserialize.
+    /// [`game_jam_readme`](Self::game_jam_readme) these *are* meant to be shown: they
+    /// are inputs to the run, the only ones not shared with every other run of the jam,
+    /// and the Inputs tab renders each README inline beside the jam's prompt and specs.
+    /// The bodies are carried here rather than looked up from the runs that produced
+    /// them, because that is what makes them readable as inputs — a prior run may never
+    /// be published, and a record has to stand on its own. Defaulted and omitted when
+    /// empty so records written before the field existed still deserialize.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub game_jam_prior_entries: Vec<PriorGameJamEntryRef>,
-}
-
-/// A pointer to one earlier game-jam entry a run was seeded with: which run it was
-/// and when it finished, as recorded on the later run.
-///
-/// The [`PriorGameJamEntry`] the driver fetches minus the README body — the record
-/// notes *that* a run was briefed with an entry and which run it came from, and
-/// leaves the text on the run that produced it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub struct PriorGameJamEntryRef {
-    /// The earlier run's id.
-    pub run_id: String,
-    /// RFC 3339 timestamp of when the earlier run finished.
-    pub finished_at: String,
+    pub game_jam_prior_entries: Vec<PriorGameJamEntry>,
 }
 
 /// One earlier game-jam run's gameplay README, as served back to a new run of the
 /// same jam by the same model (under any harness) so the new run can build something
 /// distinct from what came before.
 ///
-/// This is not part of the published [`RunRecord`] contract — it is the internal
-/// DTO the backend returns from `GET /game-jams/{slug}/prior-readmes` and the driver
-/// threads into seeding and the prompt. The `readme` is the prior run's captured
+/// One type serves both ends of that trip: it is what the backend returns from
+/// `GET /game-jams/{slug}/prior-readmes` and the driver threads into seeding and the
+/// prompt, *and* what the new run records in
+/// [`RunRecord::game_jam_prior_entries`](RunRecord::game_jam_prior_entries) as the
+/// inputs it was given. The `readme` is the prior run's captured
 /// [`RunRecord::game_jam_readme`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct PriorGameJamEntry {
     /// The prior run's id, carried so an entry can be traced back to its run.
     pub run_id: String,
