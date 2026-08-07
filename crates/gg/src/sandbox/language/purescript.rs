@@ -250,8 +250,8 @@ impl ProgramLanguage for PureScript {
     /// Declared sharing rather than an accident: see this module's documentation for the measurement
     /// that settled it, and `SHARED_ARTIFACTS` in the seam's own tests for the pair being written
     /// down.
-    fn guest_component(&self) -> &'static [u8] {
-        super::typescript::COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(super::typescript::COMPONENT)
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

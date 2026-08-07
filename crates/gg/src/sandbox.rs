@@ -266,7 +266,9 @@ pub fn run_program<A: ToolApi>(
         }
     };
     let unreachable = prepared.unreachable;
-    let (component, compile_wait) = match engine::component(language) {
+    // Either the language's committed component, or — for an arm whose prepare step compiled the
+    // program itself into one — this program's own. The wait is reported the same way for both.
+    let (component, compile_wait) = match engine::program_component(language, prepared.component) {
         Ok(component) => component,
         Err(error) => return (SandboxOutcome::before_start(error, compile), api),
     };
@@ -280,7 +282,7 @@ pub fn run_program<A: ToolApi>(
         limits,
     );
 
-    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component.get(), &linker) {
         Ok(bound) => bound,
         Err(error) => {
             // An instantiation failure is either the memory cap denying the guest its heap or the
@@ -308,7 +310,34 @@ pub fn run_program<A: ToolApi>(
     if returned.is_err() {
         store.data_mut().revoke_completion();
     }
+    let returned = keep_reported_error(returned, &store);
     reclaim(store, returned, unreachable, compile, compile_wait)
+}
+
+/// Keep a **failure the program already reported** rather than replacing it with the trap that
+/// followed.
+///
+/// A guest with an exception mechanism catches its own throw, calls `feedback.report-error` with a
+/// message and a location, and returns normally — so the trap and the error never coexist and this
+/// changes nothing for it. A guest without one cannot: `wasm32-unknown-unknown` has no unwinder, so
+/// a Rust program's panic runs its hook and then **aborts**, which traps the store. The hook's host
+/// call completes first and gg has the message, the class and the model's own line and column
+/// already recorded; taking the trap as the verdict would throw all of that away and tell the model
+/// "your program trapped" over a panic gg can describe exactly.
+///
+/// Only an ordinary [`Trap`](SandboxError::Trap) is displaced. A
+/// [timeout](SandboxError::Timeout) and an [out-of-memory](SandboxError::OutOfMemory) are ceilings
+/// gg imposed rather than anything the program said about itself, and a program that reported an
+/// error and *then* ran away must be reported as the runaway — otherwise a loop after a caught
+/// failure would be recorded as the caught failure.
+fn keep_reported_error<A: ToolApi>(
+    returned: Result<(), SandboxError>,
+    store: &Store<MembraneState<A>>,
+) -> Result<(), SandboxError> {
+    match returned {
+        Err(SandboxError::Trap(_)) if store.data().reported_error() => Ok(()),
+        other => other,
+    }
 }
 
 /// A linker carrying the whole membrane, and the host's WASI beside it.
@@ -438,6 +467,13 @@ pub fn precompile(
     // reported here at all: a language that could not warm its prepare step fails in the step
     // itself, on a turn, where the failure is classified and the model is told.
     language.warm_prepare();
+    // A language that compiles a component **per program** has none to warm: there is no artifact
+    // of it that is not a particular turn's program, so the only thing warming could compile here
+    // is bytes no turn will use. Its warm-up is entirely its prepare step's, which is where its
+    // toolchain and library set are unpacked.
+    if language.compiles_component() {
+        return Ok(None);
+    }
     engine::component(language).map(|(_, compiled_in)| compiled_in)
 }
 
@@ -501,17 +537,25 @@ pub fn scope_tools(registry: &ToolRegistry) -> Vec<String> {
 /// toolset.
 pub const FINISH_FUNCTION: &str = "finish";
 
-/// The gg tool names `language`'s **committed component itself** says it can bind.
+/// The gg tool names `language`'s **component itself** says it can bind.
 ///
 /// This asks the artifact rather than a source file, which is the one drift no compiler and no
 /// source-level test can catch: a tool added, renamed or removed in gg with a stale `.wasm` still
 /// checked in. It exists only for that test — a run never needs to ask, because the run's own
 /// enabled set is what it passes in.
+///
+/// `artifact` is how a language that [compiles a component per program](ProgramLanguage) is asked:
+/// it has no committed artifact to interrogate, so the caller compiles one program and hands the
+/// bytes in. `None` means "the committed one", which is every other arm. The artifact is *stronger*
+/// evidence in the compiled case rather than weaker — it cannot be stale, because it was built from
+/// this checkout's SDK moments earlier.
 #[cfg(test)]
 pub(crate) fn component_bound_tools(
     language: &'static dyn ProgramLanguage,
+    artifact: Option<Vec<u8>>,
 ) -> Result<Vec<String>, SandboxError> {
-    let (component, _) = engine::component(language)?;
+    let (holder, _) = engine::program_component(language, artifact)?;
+    let component = holder.get();
     let linker = linker::<fake::FakeToolApi>()?;
     let limits = SandboxLimits::default();
     let log = fake::CallLog::default();

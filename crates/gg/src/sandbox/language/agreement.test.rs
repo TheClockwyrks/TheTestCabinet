@@ -81,7 +81,7 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
     expected.sort();
 
     for language in registered() {
-        let mut bound = crate::sandbox::component_bound_tools(language)
+        let mut bound = crate::sandbox::component_bound_tools(language, None)
             .expect("the committed guest instantiates and reports its tools");
         bound.sort();
         assert_eq!(
@@ -721,7 +721,9 @@ fn the_order_of_the_arms_does_not_decide_the_verdict() {
 fn the_gate_needs_no_guest() {
     let fixture = fixture_language();
     assert!(
-        !fixture.guest_component().is_empty(),
+        fixture
+            .guest_component()
+            .is_some_and(|bytes| !bytes.is_empty()),
         "the fixture's stub stands where a component would be"
     );
     assert!(disagreements(&[fixture]).is_empty());

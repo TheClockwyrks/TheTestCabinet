@@ -678,10 +678,13 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // sources differ by tens of kilobytes. Far smaller would mean the library set was dropped; far
     // larger, that the build picked up something it should not have. It is committed, so nobody
     // re-reads its size.
+    let guest = python()
+        .guest_component()
+        .expect("the Python arm's programs are evaluated by a committed component");
     assert!(
-        (22 * 1024 * 1024..=28 * 1024 * 1024).contains(&python().guest_component().len()),
+        (22 * 1024 * 1024..=28 * 1024 * 1024).contains(&guest.len()),
         "the committed Python guest is {} bytes, outside the documented 22–28 MiB band",
-        python().guest_component().len()
+        guest.len()
     );
 
     // The bijection the committed artifact is held to: this guest's SDK binds gg's whole tool

@@ -150,8 +150,8 @@ impl ProgramLanguage for JavaScript {
     /// second chance for the arms to diverge in the one place they must not. The seam's
     /// "no language serves another's artifacts" gate names this pair explicitly, so the exemption is
     /// declared rather than assumed.
-    fn guest_component(&self) -> &'static [u8] {
-        typescript::COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(typescript::COMPONENT)
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

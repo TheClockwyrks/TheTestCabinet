@@ -203,8 +203,8 @@ impl ProgramLanguage for Kotlin {
     /// A declared share rather than an accident, and the same one [Java](super::java) makes for the
     /// reason that arm's documentation gives: TeaVM has no runtime object two programs could share,
     /// so a component of this arm's own would carry nothing.
-    fn guest_component(&self) -> &'static [u8] {
-        super::typescript::COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(super::typescript::COMPONENT)
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

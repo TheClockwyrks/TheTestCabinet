@@ -220,8 +220,8 @@ impl ProgramLanguage for Ruby {
         binding_name(name)
     }
 
-    fn guest_component(&self) -> &'static [u8] {
-        COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(COMPONENT)
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

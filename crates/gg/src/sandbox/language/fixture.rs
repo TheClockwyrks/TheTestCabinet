@@ -187,6 +187,7 @@ impl ProgramLanguage for FixtureLanguage {
         Ok(PreparedProgram {
             source: self.build(&strip_comments(source), context)?,
             unreachable: None,
+            component: None,
         })
     }
 
@@ -236,8 +237,8 @@ impl ProgramLanguage for FixtureLanguage {
         &["fixture"]
     }
 
-    fn guest_component(&self) -> &'static [u8] {
-        COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(COMPONENT)
     }
 
     fn catalogue(&self) -> &'static SignatureCatalogue {

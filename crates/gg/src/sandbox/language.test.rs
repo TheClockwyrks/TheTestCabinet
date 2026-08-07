@@ -63,14 +63,26 @@ fn the_registry_is_derived_from_the_core_enum() {
 /// non-empty — the two things a language cannot run a single program without, and both of which are
 /// committed files that a rename or a bad merge could quietly detach from the language that claims
 /// them.
+///
+/// A language that [compiles a component per program](ProgramLanguage::guest_component) has no
+/// committed one, and that is not a hole here: it is required to answer `None` rather than empty
+/// bytes, so "the artifact went missing" and "this arm has no artifact" stay different answers. Its
+/// component is proved by its own substrate test, which compiles one and runs a program through it.
 #[test]
 fn every_registered_language_carries_its_committed_artifacts() {
     for language in all_languages() {
-        assert!(
-            !language.guest_component().is_empty(),
-            "{} has no committed guest component",
-            language.id()
-        );
+        match language.guest_component() {
+            Some(bytes) => assert!(
+                !bytes.is_empty(),
+                "{} claims a committed guest component and carries no bytes",
+                language.id()
+            ),
+            None => assert!(
+                language.compiles_component(),
+                "{} committed no guest component and does not compile one either",
+                language.id()
+            ),
+        }
         let catalogue = language.catalogue();
         assert!(
             !catalogue.tools.is_empty(),

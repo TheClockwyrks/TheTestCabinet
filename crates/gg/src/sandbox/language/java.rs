@@ -210,8 +210,8 @@ impl ProgramLanguage for Java {
     /// than by analogy: see this module's documentation for why TeaVM has no runtime for a component
     /// of this arm's own to bake, and `SHARED_ARTIFACTS` in the seam's own tests for the pairs being
     /// written down.
-    fn guest_component(&self) -> &'static [u8] {
-        super::typescript::COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(super::typescript::COMPONENT)
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

@@ -317,14 +317,38 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     fn binding_name(&self, name: &str) -> String;
 
     /// The committed guest component that evaluates this language's prepared source, embedded in
-    /// the binary.
+    /// the binary — or `None` for a language that compiles **the program itself** into a component,
+    /// per turn.
     ///
     /// Usually a language's own. It need not be: two languages that differ in what gg does to a
     /// program *before* handing it over, and not in what evaluates it, are entitled to one component
     /// — [`JavaScript`](javascript) serves [`TypeScript`](typescript)'s, and the seam's
     /// "no language serves another's artifacts" gate names that pair so the sharing is declared
     /// rather than inferred from a passing test.
-    fn guest_component(&self) -> &'static [u8];
+    ///
+    /// # Why `None` is a real answer and not an omission
+    ///
+    /// A committed component is what an **interpreted** arm has: Python's holds a whole CPython,
+    /// Ruby's holds Opal, the ECMAScript one holds a JavaScript engine, and every program of that
+    /// language crosses the membrane as a *string* the runtime inside evaluates. A **compiled** arm
+    /// has no such thing to commit. `rustc` does not produce a Rust runtime that later runs a
+    /// program; it produces the program, as a wasm module, and that module is the component. There
+    /// is no artifact of that language that is not a particular program — so a language of this
+    /// shape answers `None` here and hands its bytes back on
+    /// [`PreparedProgram::component`](PreparedProgram::component) instead.
+    ///
+    /// The two are not both allowed to be present. A language that committed a component *and*
+    /// compiled one per program would have two answers to "what evaluated this turn", and the run's
+    /// record could only carry one of them.
+    fn guest_component(&self) -> Option<&'static [u8]>;
+
+    /// Whether this language's [prepare step](Self::prepare_program) produces the component its
+    /// program is evaluated by, rather than handing source to a
+    /// [committed](Self::guest_component) one. Derived rather than declared, so the two can never
+    /// disagree.
+    fn compiles_component(&self) -> bool {
+        self.guest_component().is_none()
+    }
 
     /// The committed signature catalogue for this language's SDK, parsed once per process.
     fn catalogue(&self) -> &'static SignatureCatalogue;
@@ -761,10 +785,34 @@ pub fn all_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreparedProgram {
     /// The source the guest evaluates. For TypeScript, the type-stripped JavaScript.
+    ///
+    /// Empty for a language that [compiled its own component](Self::component): there is no source
+    /// left to evaluate, because the program *is* the artifact. The `program` parameter of the
+    /// world's `run` is handed it anyway rather than being made optional — a guest that does not
+    /// read it costs nothing to pass an empty string to, and making the wire's shape depend on the
+    /// arm would be a difference between two arms of a study in the one place there must not be one.
     pub source: String,
     /// Top-level statements the program wrote that cannot execute, when it wrote any. See
     /// [`UnreachableTail`].
     pub unreachable: Option<UnreachableTail>,
+    /// **The component that evaluates this program**, for a language that compiled one *for this
+    /// program* — `None` for every language whose programs are evaluated by a
+    /// [committed](ProgramLanguage::guest_component) one.
+    ///
+    /// Two shapes of arm, and the seam carries both because the languages that have each are not
+    /// negotiable. An interpreted arm (Python, Ruby, the ECMAScript pair) ships one component
+    /// holding a whole language runtime, compiles it once per process, and hands it a string every
+    /// turn. A **compiled** arm has no runtime to ship: `rustc` emits a wasm module *for the
+    /// program*, and the artifact and the program are the same object. There is nothing to commit
+    /// and nothing to cache — every turn produces different bytes — so the per-process
+    /// [component cache](super::engine) is bypassed for these and the compile is paid inside the
+    /// turn, where [`SandboxOutcome::compile_wait`](super::SandboxOutcome::compile_wait) records it.
+    ///
+    /// It rides on the prepared program rather than being asked for separately because it *is* the
+    /// preparation's output: a second call would be a second compile, and a language that cached the
+    /// answer between the two would be caching one program's artifact where the next program could
+    /// reach it — the exact failure [`compile`] exists to prevent.
+    pub component: Option<Vec<u8>>,
 }
 
 /// A code module that prepared cleanly: the source whose evaluation produces the module's namespace,

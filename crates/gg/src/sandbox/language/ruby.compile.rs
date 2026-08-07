@@ -210,6 +210,7 @@ pub(super) fn compile_program(
     Ok(PreparedProgram {
         source: compile(PROGRAM_FILE, source, context)?,
         unreachable: None,
+        component: None,
     })
 }
 

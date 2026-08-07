@@ -171,18 +171,77 @@ pub(crate) fn shared_engine() -> &'static Engine {
 pub(crate) fn component(
     language: &'static dyn ProgramLanguage,
 ) -> Result<(&'static Component, Option<Duration>), SandboxError> {
+    let Some(bytes) = language.guest_component() else {
+        return Err(SandboxError::Compile(format!(
+            "{} compiles a component per program and has no committed one to share",
+            language.id()
+        )));
+    };
     let slot = slot(language.id());
     if let Some(component) = slot.get() {
         return Ok((component, None));
     }
     let started = Instant::now();
-    let compiled = compile_bytes(language.guest_component())?;
+    let compiled = compile_bytes(bytes)?;
     let _ = slot.set(compiled);
     Ok((
         slot.get()
             .expect("the component was just set, and a `OnceLock` never unsets"),
         Some(started.elapsed()),
     ))
+}
+
+/// **The component one program is evaluated by**, and how long this caller spent getting it.
+///
+/// The one place the two shapes of arm meet. A language whose prepare step
+/// [compiled a component for this program](super::PreparedProgram::component) has its bytes
+/// compiled here, now, for this turn and no other; every other language gets the process-wide
+/// [committed](component) one, compiled at most once.
+///
+/// The duration means the same thing in both cases — *what this caller waited for a component* —
+/// and it is `Some` on every turn of a compiled arm rather than only the first. That is not a
+/// defect to be optimised away later: a wasm module that is a different program every turn has
+/// nothing a cache could hold, and the honest thing is to report the cost on every turn so a
+/// cross-language comparison reads it rather than losing it in the response residual.
+pub(crate) fn program_component(
+    language: &'static dyn ProgramLanguage,
+    prepared: Option<Vec<u8>>,
+) -> Result<(ProgramComponent, Option<Duration>), SandboxError> {
+    let Some(bytes) = prepared else {
+        let (component, waited) = component(language)?;
+        return Ok((ProgramComponent::Shared(component), waited));
+    };
+    let started = Instant::now();
+    let compiled = compile_bytes(&bytes)?;
+    Ok((
+        ProgramComponent::PerProgram(compiled),
+        Some(started.elapsed()),
+    ))
+}
+
+/// The compiled component one program is evaluated by, and where it came from.
+///
+/// Two variants rather than one `Cow`-shaped borrow because the lifetimes genuinely differ: a
+/// committed component lives in a process-wide [`OnceLock`] and is `&'static`, while a program's own
+/// is owned by the turn that compiled it and is dropped with it. Nothing downstream cares which —
+/// [`get`](Self::get) is the whole interface — but the store that instantiates it must be able to
+/// hold either.
+pub(crate) enum ProgramComponent {
+    /// The language's committed component, compiled once per process and shared by every program it
+    /// evaluates.
+    Shared(&'static Component),
+    /// A component compiled for this program alone, and dropped when the turn ends.
+    PerProgram(Component),
+}
+
+impl ProgramComponent {
+    /// The component, whichever it is.
+    pub(crate) fn get(&self) -> &Component {
+        match self {
+            Self::Shared(component) => component,
+            Self::PerProgram(component) => component,
+        }
+    }
 }
 
 /// How many times this process compiled a component. The assertion behind
@@ -215,7 +274,9 @@ pub(crate) fn compile_bytes(bytes: &[u8]) -> Result<Component, SandboxError> {
 /// build.
 #[cfg(test)]
 pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'static [u8] {
-    language.guest_component()
+    language
+        .guest_component()
+        .expect("a language whose size band is under test commits a component")
 }
 
 /// Map a wasmtime error onto the right [`SandboxError`].

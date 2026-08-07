@@ -164,6 +164,7 @@ impl ProgramLanguage for Python {
             // A Python module has no statement that ends it early — there is no top-level `return`
             // to write anything after — so the shape this field records does not exist on this arm.
             unreachable: None,
+            component: None,
         })
     }
 
@@ -208,8 +209,8 @@ impl ProgramLanguage for Python {
         binding_name(name)
     }
 
-    fn guest_component(&self) -> &'static [u8] {
-        COMPONENT
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(COMPONENT)
     }
 
     /// The committed catalogue, parsed once and checked to be **this** language's.

@@ -206,6 +206,7 @@ pub(super) fn compile_program(
     Ok(PreparedProgram {
         source: build(PROGRAM_FILE, &wrapped, Entry::Program, context)?,
         unreachable: None,
+        component: None,
     })
 }
 

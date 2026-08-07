@@ -294,6 +294,7 @@ pub(super) fn compile_program(
     Ok(PreparedProgram {
         source: compile(PROGRAM_FILE, source, Entry::Program, context)?,
         unreachable: None,
+        component: None,
     })
 }
 

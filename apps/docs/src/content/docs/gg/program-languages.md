@@ -1912,7 +1912,7 @@ instantly in every gate that iterates languages.
 | **Preparing a program** | Turning a model's reply into source its guest can evaluate. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, the stack sizing an unguarded recursive-descent parser forces on untrusted text, and then a `tsc` pass over the unstripped source. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
-| Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |
+| Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
 | Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reads through `object.list()` and `view.openDocsView()`. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and nothing else. Not one function name: every call a template quotes is resolved from that language's catalogue when the template renders — see [nothing quotes a call by hand](#nothing-quotes-a-call-by-hand). |
@@ -1927,6 +1927,53 @@ language's own — it carries the id it was generated for and the host asserts i
 [JavaScript](#javascript-the-same-arm-unchecked) has no `.wasm` of its own and serves
 TypeScript's, which is why the pair is named in the seam's exemption table rather than left
 to be inferred from a test that happens to pass.
+
+### An arm whose artifact is the program
+
+Every arm described above evaluates a **string**. Python's committed component holds a whole
+CPython, Ruby's holds Opal, the ECMAScript one holds a JavaScript engine, and what crosses
+the membrane is source those runtimes read. That shape has a name — an *interpreted* arm —
+and it is not the only one.
+
+A **compiled** arm has no runtime to commit. `rustc` does not produce a Rust interpreter
+that later runs a program; it produces the program, as a wasm module, and that module *is*
+the component. There is no artifact of the language that is not one particular program, so
+there is nothing to check in and nothing a per-process cache could hold.
+
+The seam carries both shapes, and the difference is two fields:
+
+- a language answers **nothing** for its guest component, which is a real answer rather
+  than an omission — the seam's "every registered language carries its committed artifacts"
+  gate requires such a language to say so, so "the artifact went missing" and "this arm has
+  no artifact" stay different failures;
+- and its prepare step hands back the **bytes it compiled**, on the prepared program,
+  beside the source. They ride together because they *are* the preparation's output: asking
+  for the artifact separately would be a second compile, and a language that cached the
+  answer between the two would be caching one program's artifact where the next program
+  could reach it — the exact failure [isolation](#per-agent-compiler-isolation) exists to
+  prevent.
+
+What it costs is one wasmtime `Component::new` per turn instead of one per process, and
+that cost is **reported rather than hidden**: it lands in the same `compileWaitMs` an
+interpreted arm reports on its first turn only, so a cross-language query reads it instead
+of losing it in the response residual. It is small, because a compiled arm's artifacts are
+small — the link dead-strips everything the program did not reach, so an ordinary Rust
+program is tens of kilobytes and instantiates in single-digit milliseconds.
+
+Two things follow that a language author should expect. There is nothing for
+[precompile](/gg/responses-as-code/) to warm, so such an arm's warm-up is entirely its
+prepare step's — unpacking its toolchain and its library set. And the drift gate that asks
+the artifact which tools it binds asks a **freshly compiled** one: it is stronger evidence
+than the committed case rather than weaker, because a stale artifact is not a failure mode
+an arm of this shape has.
+
+The first arm of this shape is **Rust**, whose execution substrate has landed ahead of its
+SDK and its registration (`crates/gg/src/sandbox/language/rust.rs`). It is not a registered
+language yet: no `language` value resolves to it, and its remaining blocker is a seam change
+rather than an SDK — a Rust [code skill](/gg/skills/#code-skills)'s module is Rust, and Rust
+is compiled, so a module has to be linked into the same artifact as the program that uses
+it, which means preparing a **program** has to see the modules in its scope. It does not
+yet.
 
 The prompt is **per language and not one template with branches**, which looks like
 duplication and is not. Its example programs are written in one language's syntax — a list

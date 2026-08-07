@@ -511,6 +511,18 @@ impl<A: ToolApi> MembraneState<A> {
         self.timed_out
     }
 
+    /// Whether the program **said why it failed** before it stopped running.
+    ///
+    /// Read by [`keep_reported_error`](super::keep_reported_error) after a trap, and only there. A
+    /// guest that catches its own throw reports the failure and then returns normally, so for every
+    /// arm with an exception mechanism this is never consulted; a guest without one — a Rust program
+    /// on `wasm32-unknown-unknown`, whose panic hook makes this call and whose panic then aborts —
+    /// reaches the host with the failure recorded and the store trapped, and the recorded failure is
+    /// the better of the two things gg could tell the model.
+    pub(crate) fn reported_error(&self) -> bool {
+        self.program_error.is_some()
+    }
+
     /// Record that the guest outran its execution timeout, for [`classify`](super::engine::classify)
     /// to read after the resulting trap unwinds. Called from the store's epoch-deadline callback.
     pub(crate) fn mark_timed_out(&mut self) {

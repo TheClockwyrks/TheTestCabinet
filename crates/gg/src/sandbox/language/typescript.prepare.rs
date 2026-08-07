@@ -295,6 +295,7 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
     Ok(PreparedProgram {
         source: Codegen::new().build(&program).code,
         unreachable,
+        component: None,
     })
 }
 
