@@ -752,6 +752,52 @@ const PROBES: [(&str, &str); 22] = [
     // stream rather than on the classlib. It is covered by the manifest check below.
 ];
 
+/// Methods a model reaches for first, inside packages [`PROBES`] has already established.
+///
+/// The package probes answer "may I import this?"; these answer the question a model actually asks,
+/// which is "may I call this?". They are different questions because TeaVM's classlib is a subset of
+/// `java.base` at **method** granularity as well as class granularity — a declared package can carry
+/// a class that is missing a method every Java author uses. Two such gaps are recorded in
+/// [`ABSENT`], and they are the reason this list exists: a declaration that is true of the package
+/// and false of the call is a claim a model pays for.
+const IDIOMS: [&str; 15] = [
+    "System.out.println(\"  padded  \".strip());",
+    // The workaround the prompt offers for the absent `String.lines()`, held to the artifact so the
+    // advice is measured rather than plausible.
+    "System.out.println(String.valueOf(\"a\\nb\".split(\"\\n\").length));",
+    "System.out.println(\"ab\".repeat(2));",
+    "System.out.println(String.valueOf(\" \".isBlank()));",
+    "System.out.println(String.join(\"-\", \"a\", \"b\"));",
+    "System.out.println(String.valueOf(Map.of(\"a\", 1).get(\"a\")));",
+    "System.out.println(String.valueOf(Stream.of(1, 2).toList().size()));",
+    "System.out.println(Optional.of(\"a\").orElseThrow());",
+    "var inferred = List.of(\"a\", \"b\"); System.out.println(String.valueOf(inferred.size()));",
+    "System.out.println(String.valueOf(Math.floorMod(-3, 5)));",
+    "System.out.println(Arrays.toString(new int[] {1, 2}));",
+    "System.out.println(String.valueOf(\
+     Collections.unmodifiableList(new ArrayList<>(List.of(\"a\"))).size()));",
+    "record Pair(int left, int right) {} System.out.println(new Pair(1, 2).toString());",
+    "System.out.println(String.valueOf(new StringBuilder(\"ab\").reverse()));",
+    "System.out.println(String.format(\"%.2f\", 1.5));",
+];
+
+/// Calls that a Java author would expect to work and that TeaVM's classlib does not carry.
+///
+/// Recorded rather than discovered in a transcript, because a study has to be able to say what each
+/// arm was not given. The first two are whole packages; the last two are **methods inside packages
+/// this arm declares**, which is the sharper fact: `String.lines()` is a first-reach-for method for
+/// a model splitting a shell command's output, and `java.lang` is declared reachable.
+///
+/// Each costs the model a turn and nothing else — the diagnostic arrives at the model's own line on
+/// the turn that wrote it — which is why the prompt and the docs name these by name rather than
+/// leaving "a large subset" to be discovered.
+const ABSENT: [&str; 4] = [
+    "System.out.println(java.security.MessageDigest.getInstance(\"SHA-256\").getAlgorithm());\n",
+    "System.out.println(String.valueOf(java.util.random.RandomGenerator.getDefault().nextInt(5)));\n",
+    "System.out.println(String.valueOf(\"a\\nb\".lines().count()));\n",
+    "System.out.println(new java.util.StringJoiner(\",\").add(\"a\").add(\"b\").toString());\n",
+];
+
 #[test]
 fn java_reaches_every_library_this_arm_says_it_may() {
     // The claim `libraries.txt` makes about the ARTIFACT, held to the artifact. What a Java program
@@ -781,28 +827,30 @@ fn java_reaches_every_library_this_arm_says_it_may() {
     );
 
     // One program, for the reason the crossing table is one: a compile costs a warm JVM ~0.4 s.
-    // Every probe prints, so a package that compiled and then failed at run time is caught too.
+    // Every probe prints, so a package that compiled and then failed at run time is caught too —
+    // and the method-level idioms ride in the same program, since they are the same question asked
+    // at the granularity a model experiences.
     let program: String = PROBES
         .iter()
-        .map(|(_, statement)| format!("{statement}\n"))
+        .map(|(_, statement)| *statement)
+        .chain(IDIOMS)
+        .map(|statement| format!("{statement}\n"))
         .collect();
     let (outcome, _log) = run_with(&program, &[], canned_outcome);
     assert_eq!(
         logs(&outcome).len(),
-        PROBES.len(),
+        PROBES.len() + IDIOMS.len(),
         "every probe printed exactly once: {:?}",
         outcome.logs
     );
 
-    // The two absences are facts about TeaVM's classlib rather than policies, and are recorded as
-    // such: a study has to say what each arm was NOT given.
-    for absent in [
-        "System.out.println(java.security.MessageDigest.getInstance(\"SHA-256\").getAlgorithm());\n",
-        "System.out.println(String.valueOf(\
-         java.util.random.RandomGenerator.getDefault().nextInt(5)));\n",
-    ] {
+    // The absences are facts about TeaVM's classlib rather than policies, and are recorded as such:
+    // a study has to say what each arm was NOT given. Two are packages and two are methods inside
+    // packages this arm declares — the shape a "large subset" claim hides.
+    for absent in ABSENT {
         let failure = compile_program(absent, &PrepareContext::new())
-            .expect_err("a classlib gap is refused at compile time");
+            .err()
+            .unwrap_or_else(|| panic!("a classlib gap is refused at compile time: {absent}"));
         assert!(
             failure.to_string().contains("program.java:1"),
             "and is refused at the model's own line rather than at run time: {failure}"

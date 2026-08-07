@@ -1029,10 +1029,22 @@ template.
 The claim is then held to the artifact. `java_reaches_every_library_this_arm_says_it_may` drives
 every declared package through the real javac and the real TeaVM and requires a real class in each
 to compile **and** run, with the probe deliberately a call rather than an import, since TeaVM emits
-only what a call graph reached. Twenty-two packages, in six groups. The two absences found that way
-are recorded as absences rather than discovered in a transcript — `java.security` and
-`java.util.random` are not in the classlib — and both are, as ever on this arm, a located compile
-error on the turn that wrote them.
+only what a call graph reached. Twenty-two packages, in six groups.
+
+**The subset is a subset at method granularity, not only at class granularity**, and that is the
+part of "a large subset of `java.base`" a study reader would otherwise get wrong: a package this arm
+declares can carry a class that is missing a method every Java author uses. So the gate probes both
+questions — one call per declared package for "may I import this?", and fifteen of the idioms a
+model reaches for first (`strip`, `repeat`, `isBlank`, `String.join`, `Map.of`, `Stream.toList`,
+`Optional.orElseThrow`, `var`, `Math.floorMod`, records, `Arrays.toString`,
+`Collections.unmodifiableList`, `StringBuilder.reverse`, `String.format`, `split`) for "may I call
+this?". Four absences found that way are recorded as absences rather than discovered in a
+transcript: two packages — `java.security`, `java.util.random` — and two **methods inside declared
+packages**, `String.lines()` and `java.util.StringJoiner`, of which the first is a first-reach-for
+method for a model splitting a shell command's output. All four are, as ever on this arm, a located
+compile error on the turn that wrote them, and all four are named in the system prompt beside a
+working alternative, because a gap the model is told about costs it nothing and a gap it discovers
+costs it a turn.
 
 Nine of those packages need no `import` at all, because gg's wrapper writes them into every
 program's header beside its own: a model that has to say `java.util.stream.Collectors` in full is a

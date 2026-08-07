@@ -105,8 +105,8 @@ try {
 ### The libraries you may use
 
 A program here reaches the Java standard library through TeaVM, which carries a
-large subset of it rather than all of it. A class outside that subset is a
-compile error naming the class, on the turn that wrote it, so you find out
+large subset of it rather than all of it. Anything outside that subset is a
+compile error naming what was missing, on the turn that wrote it, so you find out
 immediately rather than half way through a program. This is what is here:
 
 {{#each libraries}}
@@ -114,9 +114,14 @@ immediately rather than half way through a program. This is what is here:
 {{/each}}
 
 Records, sealed types, `switch` patterns, text blocks, `var`, streams and
-`Optional` all work, and this SDK uses every one of them. Three absences are
-worth knowing before you spend a turn on one: there is no `java.nio.file` — the
-workspace is reached through the `fs` object below — no `java.security`, and no
+`Optional` all work, and this SDK uses every one of them.
+
+The subset is a subset by **method** as well as by class, so a package listed
+above can still be missing a method you would expect. The absences worth knowing
+before you spend a turn on one: there is no `java.nio.file` — the workspace is
+reached through the `fs` object below — no `java.security`, no
+`java.util.random`, no `String.lines()` (use `text.split("\n")`), no
+`java.util.StringJoiner` (use `String.join` or `Collectors.joining`), and no
 third-party library of any kind.
 {{/if}}
 
