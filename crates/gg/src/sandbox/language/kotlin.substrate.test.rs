@@ -57,8 +57,11 @@ use crate::tools::ToolOutcome;
 /// [Java](super::super::java) has for the same measured reason: TeaVM emits per program only the
 /// classlib that program reached, so a component of this arm's own would carry nothing.
 ///
-/// A plain `OnceLock` rather than the production per-language cache because that cache is indexed by
-/// the wire id this language does not have yet.
+/// A plain `OnceLock` naming [`typescript::COMPONENT`] rather than
+/// [the production per-language cache](crate::sandbox::engine::component), which this arm's
+/// registration would now reach perfectly well. The share is the point: asking the registry would
+/// hand back these same bytes through an indirection, and this file is where the fact that they are
+/// the *other* arm's artifact has to be legible rather than inferred.
 fn component() -> &'static Component {
     static COMPILED: OnceLock<Component> = OnceLock::new();
     COMPILED.get_or_init(|| {
@@ -417,8 +420,11 @@ internal fun alsoHidden(): String = "not offered either"
     assert_eq!(logs(&outcome), ["bound"]);
 
     // And the namespace really answers, through the guest, from a program written in a language that
-    // knows nothing about it: `lib.<key>` is JavaScript's own object here because there is no Kotlin
-    // SDK to reach it with yet.
+    // knows nothing about it. Reached from JavaScript deliberately: what is asserted here is that the
+    // GUEST binds `lib.<key>` to what compiling this module left behind, which is a claim about the
+    // module half of this arm's preparation and holds whether or not an SDK exists to reach it.
+    // Kotlin's own `Lib` reaching the same namespace is the separate claim
+    // [the surface file makes](super::surface).
     let (outcome, _log) = evaluate(
         &format!(
             "{}\n",

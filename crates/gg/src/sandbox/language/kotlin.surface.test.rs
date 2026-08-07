@@ -19,18 +19,21 @@
 
 use serde_json::{Value, json};
 
-use super::compile::compile_program;
+use super::compile::{compile_module, compile_program};
 use super::substrate::{evaluate_as, logs, program_error};
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::PrepareContext;
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
+use crate::sandbox::{CodeModule, PrepareContext};
 use crate::tools::ToolOutcome;
 
-/// The catalogue this arm commits, read as a document rather than through the language, because what
-/// is asserted below is a property of the emitted JSON — and because there is no registered language
-/// to reach it through yet.
+/// The catalogue this arm commits, read as a **document** rather than through the language.
+///
+/// What every assertion below makes is a claim about the emitted JSON's own shape — which key a
+/// parameter's prose hangs off, whether a default is recorded beside it — so reading it as a document
+/// is the reading that can fail. Resolving it through the registry would only prove that the registry
+/// hands back the bytes this file already has.
 const SIGNATURES: &str = include_str!("../guests/kotlin.signatures.json");
 
 /// Compile and run one Kotlin program, with the ending group and the library flag said out loud.
@@ -823,4 +826,106 @@ fn what_this_arm_does_not_carry_is_recorded_rather_than_discovered() {
             "the diagnostic for `{source}` does not name what a model would act on: {rendered}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// A code module, reached from Kotlin
+// ---------------------------------------------------------------------------------------------
+
+#[test]
+fn a_code_module_is_reached_from_kotlin_rather_than_only_from_javascript() {
+    // `lib` is the one place in this SDK where the PROGRAM says what type it expects, because a code
+    // module is compiled separately and there is no `import` for the compiler to check the two
+    // against — the position a Kotlin author is in when they reach something at run time, answered
+    // the way Kotlin answers it. That makes it the one part of the surface a compile cannot vouch
+    // for, so the whole of it is driven here: the four readings, the presence check, the refusal, and
+    // the lowering each Kotlin value goes through on the way across.
+    //
+    // [The substrate's own module test](super::substrate) reaches the same namespace from
+    // JavaScript, which is the claim that the guest binds `lib.<key>` at all. This is the different
+    // claim that Kotlin's own `Lib` reaches it — and it is the claim the study rests on, because
+    // `lib` is the surface where [Java's arm](super::super::java) and this one are deliberately
+    // alike, so a difference in what a model can do with it would be a difference in the harness
+    // rather than in the language.
+    let (module, exports) = compile_module(
+        r#"private val seen: MutableList<String> = mutableListOf()
+
+fun greet(who: String): String = "hello, " + who.uppercase()
+
+fun add(left: Int, right: Int): Int = left + right
+
+fun negated(flag: Boolean): Boolean = !flag
+
+fun describe(ratio: Double, note: String): String = "$ratio/$note"
+
+fun remember(word: String) {
+    seen.add(word)
+}
+
+fun recalled(): String = seen.joinToString("+")
+"#,
+        &PrepareContext::new(),
+    )
+    .expect("the Kotlin toolchain compiles a code module");
+    assert_eq!(
+        exports,
+        [
+            "greet", "add", "negated", "describe", "remember", "recalled"
+        ],
+        "a module's public top-level functions are its namespace, in the order it declares them",
+    );
+
+    let (outcome, _log) = evaluate_as(
+        &match compile_program(
+            r#"println(lib.text("helpers", "greet", "gg"))
+println(lib.number("helpers", "add", 40, 2))
+println(lib.flag("helpers", "negated", false))
+println(lib.text("helpers", "describe", 1.5, listOf(1, 2)))
+println(lib.has("helpers", "greet"))
+println(lib.has("helpers", "absent"))
+lib.run("helpers", "remember", "one")
+lib.run("helpers", "remember", "two")
+println(lib.text("helpers", "recalled"))
+try {
+    lib.run("helpers", "absent")
+} catch (failure: ToolError) {
+    println(failure.code.wireName)
+}
+"#,
+            &PrepareContext::new(),
+        ) {
+            Ok(prepared) => prepared.source,
+            Err(failure) => panic!("the Kotlin toolchain did not compile this program: {failure}"),
+        },
+        &[],
+        &[CodeModule {
+            name: "helpers".to_string(),
+            source: module,
+        }],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            // The four readings, one per lowering: text, a whole number, a flag, and the two values
+            // `lower` has no branch of its own for — a `Double`, and anything else, which crosses as
+            // its `toString()`.
+            "hello, GG",
+            "42",
+            "true",
+            "1.5/[1, 2]",
+            // A namespace answers about itself before it is called, which is what lets a program
+            // depend on a module it is not certain was read.
+            "true",
+            "false",
+            // `run` really calls: the module remembered both words across two crossings, so a `run`
+            // that quietly did nothing would read here rather than pass.
+            "one+two",
+            // And a missing export is a gg failure an ordinary Kotlin `catch` catches, rather than a
+            // null the next line trips over.
+            "not-found",
+        ]
+    );
 }
