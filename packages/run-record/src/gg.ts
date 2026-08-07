@@ -1944,7 +1944,8 @@ export type GgProgramLanguage =
   | "javascript"
   | "python"
   | "ruby"
-  | "purescript";
+  | "purescript"
+  | "java";
 
 /**
  * What gg had to do to a model's response before it could run it — the healing record of one

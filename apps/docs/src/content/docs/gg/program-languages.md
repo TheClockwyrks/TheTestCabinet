@@ -11,17 +11,20 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Five are registered, and between them they separate three things that used to be one. TypeScript
+Six are registered, and between them they separate three things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
 different language rather than a variation on one, and nothing reads its programs before the
 interpreter does; **[Ruby](#ruby-compiled-to-javascript-before-it-crosses)** is
 **compiled without being typed** — a real compiler reads the whole program and may refuse it,
-with no type system anywhere; and
+with no type system anywhere;
 **[PureScript](#purescript-a-compiler-in-the-image-a-library-set-in-the-binary)** is the far end
 of that axis, **compiled and totally typed** by a real compiler that lives in the run image
-rather than inside gg. This page is the design of the seam: why the
+rather than inside gg; and **[Java](#java-a-warm-jvm-and-two-compilers-per-program)** is the arm a
+study reads for what a *big* compile costs, since it is the only one whose program passes through
+two compilers and the only one whose compiler gg keeps warm between programs. This page is the
+design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
 capabilities, and what adding another actually costs.
@@ -811,22 +814,20 @@ An import is **never** deleted, for the reason [Python's](#python-a-guest-that-c
 never is and then some: `purs` resolves every one of them against a library set gg ships, and
 `import Gg` is the line without which a program has no surface at all.
 
-## Java: a warm JVM, and an arm with no wire id yet
+## Java: a warm JVM, and two compilers per program
 
-**Not registered.** What exists is this arm's **execution substrate** and its **surface**: the
-compile that turns a model's Java into something a guest can evaluate, the guest that evaluates it,
-the proof that a real Java program runs through gg's own linker, membrane and store, a hand-written
-idiomatic SDK, and the signature catalogue reflected out of that SDK's own Javadoc. What is left is
-the registration — there is no `language` value that resolves to it, no templates and no healing
-dialect — because a `ProgramLanguage` arm cannot be half-registered: the registry's `match` is
-exhaustive and every gate that iterates the registered set would immediately demand all three. The
-order is the one the Python, Ruby and PureScript arms established, and the surface is held to the
-[agreement gate](#the-agreement-gate) a step early rather than on the commit least able to absorb a
-disagreement.
+The sixth registered language, `language: "java"`, and the first arm whose **compiler is kept warm**
+between programs.
 
 **A Java program is compiled to bytecode by `javac` and then to JavaScript by TeaVM, both inside a
 warm JVM gg keeps between preparations, and evaluated by the same ECMAScript guest the TypeScript,
 JavaScript and PureScript arms use.**
+
+That makes it the only arm whose program passes through **two** compilers, which is what a
+diagnostic here is a diagnostic *of*: javac's when the program is wrong about a type, an overload or
+a name, and TeaVM's when it is wrong about what the standard library carries. Both are the same
+recoverable, model-facing [compile error](#a-compiler-has-two-ways-to-fail), reported under javac's
+name because that is [the one this language's own users would name](#what-it-declares-as-its-checker).
 
 ### The first arm whose compiler is kept warm
 
@@ -1049,7 +1050,7 @@ the useful half of. So the set is generous by this language's standards while be
 adds nothing to what its runtime carries — and the classlib being a *subset* of `java.base` is the
 part that had to be measured rather than assumed, which is what `libraries.txt` and its gate are.
 
-### What it will declare as its checker
+### What it declares as its checker
 
 Two compilers read a Java program, and the seam asks a language to name **one** — the thing its
 own users would say a program is judged by. That is `javac`: TeaVM translates what javac accepted
@@ -1096,8 +1097,51 @@ than gg: TeaVM does not *have* a runtime to bake. It emits, per program, only th
 that program reached, renamed and inlined into the same file. There is no stable object two programs
 could share, so a component carrying one would carry the wrong 600 KB for every program that was not
 the one it was built from. This arm therefore shares the ECMAScript guest, like JavaScript and
-PureScript, and the seam's "no language is served another's artifacts" rule will name the pair when
-it registers.
+PureScript, and the seam's "no language is served another's artifacts" rule names all three pairs in
+its exemption table with that measurement as the reason.
+
+### What its dialect says, and the four answers nobody else gives
+
+Java's syntax is the closest of any arm to TypeScript's, and handing it TypeScript's
+[healing dialect](/gg/response-healing/) would have been wrong in four places — each one the *same
+rule* reaching a different conclusion because the language is different.
+
+| Question | This arm's answer | Why |
+| --- | --- | --- |
+| Is this line an import? | **Never** | On the ECMAScript arms an `import` is dead text: the guest has no module loader, so dropping it can only help. Here gg's own wrapper **hoists** every `import` a model wrote into the compilation unit's header, so the line resolves and does its job — and one javac cannot resolve is a located compile error on the turn that wrote it, which is a better answer than a silent deletion. `drop-imports` never fires here. |
+| Is a `#` line prose? | **Yes, and it is deleted** | [Python](#python-a-guest-that-carries-its-own-interpreter) and [Ruby](#ruby-compiled-to-javascript-before-it-crosses) refuse to touch one, because `# Plan` is a comment in those languages as well as a Markdown heading. Java has no `#` at all — not a comment, not an operator, not a legal token — so a `#` line is certainly not Java and leaving one in a program is a syntax error rather than a surviving comment. What is never prose here is a `//` line. |
+| Is a **backtick** code punctuation? | **No** | Every other C-shaped dialect lists it, because in ECMAScript a backtick opens a template literal. Java has no template literal and no backtick anywhere in its grammar, so a line carrying one is *certainly* prose — which is what lets a lead-in written with an inline code span be deleted here where TypeScript's dialect has to keep it. |
+| What does the language refuse to declare twice? | A **local variable**, or a local type | ECMAScript makes redeclaring a `const` an early error; Java makes redeclaring a local in one block a compile error, and a program's statements *are* one block. So a repeated tail declaring `String plan = …`, or a local `class`/`record`/`interface`/`enum`, is a reply that could not have compiled as sent — which is exactly the proof `drop-duplicate-program` needs. A statement keyword followed by a name (`return value;`, `assert ok;`, a second identical `import`) is deliberately *not* proof, because every one of those may legally appear twice. |
+
+The concurrency wrapper is a **thread**. Java has no `async` keyword and no suspension token — every
+call in the language already blocks — so the shape a model wraps a whole program in is
+`new Thread(() -> { … }).start();`, or the same thing declared and started under a name, or a
+`CompletableFuture` run and joined. Unwrapping it is provably a repair rather than a change of
+behaviour: TeaVM schedules a started thread with `setTimeout`, which this sandbox denies, so a
+program wearing one fails before a line of the model's own work runs. **Zero** suspension tokens are
+reported, because this language has none to delete.
+
+Two details of that repair are its own. The match is **anchored to the constructor** — the text
+between where the wrapper may start and the lambda's `{` has to be one of the recognised
+constructors and nothing else — so a program whose *last* statement happens to start a thread keeps
+every statement above it. And the `import` above the wrapper **stays**, where Python's arm deletes
+the `import asyncio` and Ruby's the `require "thread"`: those two name something their guest does not
+carry, so leaving the line would leave the one line of the repaired program that still fails, while
+`java.util.concurrent` is in this arm's declared set, an unused import is legal Java, and deleting a
+working line is the one thing this subsystem must never do.
+
+### What a Java code module is, and the one gate that noticed
+
+A code module here is a **class body** while a program is a sequence of statements, which makes Java
+the only arm whose two preparation shapes are not the same shape. The
+[isolation gate](#per-agent-compiler-isolation) drives both steps sixteen ways and had, until this
+arm, been able to use the one whole program the seam guarantees every language can write — its
+generated documentation script — as the subject for both. For Java that script is a module offering
+nothing, and the gate said so by name on its first run, from the baseline pass it makes *before* any
+concurrency. So a language may now answer with a module of its own shape, and the default remains
+that program for every arm whose module is ordinary source of the language. The default is safe
+precisely because the baseline pass exists: a language for which it is wrong finds out from the gate
+rather than from a review.
 
 ## What compiling costs, and where it is recorded
 
@@ -1286,7 +1330,7 @@ between an affordable arm and an unaffordable one — a `purs ide server` turns 
 151–713 ms, an embedded `kotlinc` turns 9.7 s into 140 ms — and the obvious way to keep one
 warm is a `static` instance every preparation reaches, which is precisely the TeaVM bug. A
 checkout **owns** its instance for the length of one compilation, so exclusivity is a
-property of the borrow checker rather than of a discipline. The [Java arm](#java-a-warm-jvm-and-an-arm-with-no-wire-id-yet)
+property of the borrow checker rather than of a discipline. The [Java arm](#java-a-warm-jvm-and-two-compilers-per-program)
 is the first to need it — a cold JVM is 4–9 s and a warm one 0.33–0.56 s — and its own tree
 is why `daemon()` exists rather than a preparation's `compiler()`: a daemon outlives the
 preparation that started it, and a workspace does not.
@@ -1305,7 +1349,13 @@ Three gates, none of which a language opts into:
    *whole program* the seam requires every language to be able to write. It used to be a single
    synthesized file-view statement, and PureScript is why it is not: a language whose programs are
    **modules** has no compiling artifact for one loose line, so that subject would have failed this
-   gate's own baseline over syntax rather than over anything about isolation. The list of languages
+   gate's own baseline over syntax rather than over anything about isolation. For the **module**
+   half a language may answer with a subject of its own shape, and
+   [Java](#what-a-java-code-module-is-and-the-one-gate-that-noticed) is why: a Java module is a
+   class body while a Java program is a statement sequence, so that same program is a module
+   offering nothing. The default stays the program, and it is safe to default because the baseline
+   pass runs each subject **alone** before any concurrency and names the language whose baseline
+   failed. The list of languages
    is derived from the registry, so a new arm is inside the gate the moment it compiles —
    including one that compiles nothing:
    [Python](#python-a-guest-that-carries-its-own-interpreter) is driven sixteen ways like
@@ -2021,7 +2071,9 @@ model reaches by accident rather than by writing a sleep.
    skill's code has one file name per language and each agent reads its own), the healing
    dialect, the prompt dialect, the two templates (`system-code.python.hbs`, `code-nothing-shown.python.hbs`) — whose every quoted
    call is an `{{api.…}}` reference and never a literal — and the healing fixtures its dialect
-   must survive.
+   must survive. If a code module in this language is not the same *shape* as a program — Java's
+   is a class body — answer `isolation_module` as well, so the
+   [isolation gate](#per-agent-compiler-isolation) has a module it can drive.
 8. **Install its toolchain**, if it needs one at run time, in
    `containers/gg-toolchains/Dockerfile` — under `/opt/gg/toolchains` and nowhere else,
    relocatable across the Debian- and Ubuntu-based run images, and drivable with a

@@ -101,7 +101,7 @@ then diverges where nothing else does. Its concurrency wrapper is a **`Thread`**
 has no `async` keyword and no suspension token at all: `Thread.new do … end.join` and the
 two-statement `worker = Thread.new do … end` … `worker.join` both come off, the
 `require "thread"` above either comes with them, and the count of tokens removed is **zero** —
-which is the honest number for a language that has none. Its lexer is the largest of the four
+which is the honest number for a language that has none. Its lexer is the largest of the five
 dialects, because Ruby has six string shapes and a heredoc; the one it deliberately does not read is
 the regular-expression literal, since `/…/` cannot be told from division without a parse, so a regex
 carrying an apostrophe makes the scan **decline** rather than guess.
@@ -135,6 +135,31 @@ the proof `drop-duplicate-program` needs — while a definition **with arguments
 proof, since `f 0 = 1` and `f n = n` are two equations of one declaration. An import is never
 deleted, for the reason Python's never is and then some: `purs` resolves every one against a library
 set gg ships, and `import Gg` is the line without which a program has no surface at all.
+
+[Java](/gg/program-languages/#what-its-dialect-says-and-the-four-answers-nobody-else-gives) is the
+arm closest to TypeScript in syntax and therefore the best evidence that a dialect is *derived*
+rather than copied: four of its answers differ, and every one of them is the same rule reaching a
+different conclusion. An import is **never** deleted here for a reason no other arm has — gg's own
+wrapper hoists every `import` a model wrote into the compilation unit's header, so the line resolves
+and is doing its job, and one javac cannot resolve is a located compile error rather than something
+to delete. A `#` line **is** prose and is deleted, agreeing with PureScript against Python and Ruby,
+because Java has no `#` token at all. A **backtick** is not on the non-prose character list, which
+every other C-shaped dialect puts it on: Java has no template literal, so a line carrying one is
+certainly not Java and a lead-in written with an inline code span can be deleted here where
+TypeScript's dialect has to keep it. And what the language refuses twice is a **local variable** —
+or a local `class`, `record`, `interface` or `enum` — rather than a `const`, since a program's
+statements are one block; a statement keyword followed by a name (`return value;`, a second
+identical `import`) is deliberately not proof, because each of those may legally appear twice.
+
+Its concurrency wrapper is a **thread**, like Ruby's and for the same reason — no `async` keyword
+and no suspension token, so the count removed is **zero** — but its safety argument is the
+sandbox's: TeaVM schedules a started thread with `setTimeout`, which this guest denies, so a program
+wearing one fails before any of the model's own work runs. Two details of the repair are Java's
+alone. The match is **anchored to the constructor**, so a program whose last statement happens to
+start a thread keeps every statement above it. And the `import` above the wrapper **stays**, where
+Python's arm takes its `import asyncio` and Ruby's its `require "thread"`: those name something
+their guest does not carry, while `java.util.concurrent` is in this arm's declared set and an unused
+import is legal Java.
 
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need

@@ -4390,6 +4390,22 @@ pub enum GgProgramLanguage {
     /// row-checked record, `Maybe`/`Either` where a PureScript author expects them, `data` types
     /// for fixed choices, and a thrown failure caught with `attempt`.
     PureScript,
+    /// Java: **compiled to bytecode by `javac` and then to JavaScript by TeaVM**, both inside a
+    /// **warm JVM** gg keeps between preparations, and evaluated by the same ECMAScript guest
+    /// [`TypeScript`](Self::TypeScript) uses.
+    ///
+    /// The first arm whose compiler gg cannot afford to *start* per program — a cold build costs
+    /// 4–9 s against 0.33–0.56 s in a JVM that has already done one — so it is the first served by
+    /// a pool of long-lived compiler processes rather than by a process per compile. It is also the
+    /// only arm whose program passes through **two** compilers, which is why a diagnostic here can
+    /// be `javac`'s (a type error, a name that does not resolve) or TeaVM's (a class of the
+    /// standard library its classlib does not carry) — two bands of the one recoverable,
+    /// model-facing error. Its SDK is hand-written and reads as Java reads: `camelCase`,
+    /// **overloads** where every other arm has a default argument or a keyword, varargs for a list,
+    /// builders for a bag of optional fields, records for every result, enums for every fixed
+    /// choice, a sealed interface narrowed by a `switch`, `Optional` for what the wire may omit,
+    /// and an unchecked `ToolError`.
+    Java,
 }
 
 impl GgProgramLanguage {
@@ -4408,6 +4424,7 @@ impl GgProgramLanguage {
         Self::Python,
         Self::Ruby,
         Self::PureScript,
+        Self::Java,
     ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
@@ -4428,6 +4445,7 @@ impl GgProgramLanguage {
             Self::Python => const { Self::listed_at(2, Self::Python) },
             Self::Ruby => const { Self::listed_at(3, Self::Ruby) },
             Self::PureScript => const { Self::listed_at(4, Self::PureScript) },
+            Self::Java => const { Self::listed_at(5, Self::Java) },
         }
     }
 
@@ -4458,6 +4476,7 @@ impl GgProgramLanguage {
             Self::Python => "python",
             Self::Ruby => "ruby",
             Self::PureScript => "purescript",
+            Self::Java => "java",
         }
     }
 
@@ -4481,6 +4500,7 @@ impl GgProgramLanguage {
             Self::Python => "Python",
             Self::Ruby => "Ruby",
             Self::PureScript => "PureScript",
+            Self::Java => "Java",
         }
     }
 }

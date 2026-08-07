@@ -40,11 +40,11 @@ use std::time::Instant;
 use serde_json::Value;
 use wasmtime::component::Component;
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::super::typescript;
 use super::compile::{compile_module, compile_program};
-use crate::sandbox::fake::{
-    CallLog, FakeToolApi, canned_outcome, typescript as typescript_language,
-};
+use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{ProgramError, SandboxError, SandboxOutcome};
 use crate::sandbox::{
@@ -82,11 +82,9 @@ fn prepare(source: &str) -> String {
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
 /// belongs to a *registered* language rather than to an artifact: the per-language component cache.
 ///
-/// The [membrane state](MembraneState) is built with **TypeScript** as its language, and that is
-/// sound rather than sloppy: a language is held there to spell a call's name back at the model
-/// inside a refusal, and this arm has no wire id for that lookup to key on until it is registered.
-/// The one refusal these tests read is the SDK's own, which names the call in Java because the SDK
-/// wrote the sentence.
+/// The [membrane state](MembraneState) is built with **this** language, which is what a run does:
+/// the host spells a withheld call's name back at the model out of the language's own catalogue, so
+/// a refusal these tests read is the one a Java agent would really be handed.
 fn evaluate(
     program: &str,
     enabled: &[String],
@@ -118,7 +116,13 @@ pub(super) fn evaluate_as(
         library,
     };
     let mut store = bounded_store(
-        MembraneState::new(api, typescript_language(), scope, limits, None),
+        MembraneState::new(
+            api,
+            crate::sandbox::language(GgProgramLanguage::Java),
+            scope,
+            limits,
+            None,
+        ),
         limits,
     );
     let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
@@ -679,78 +683,6 @@ fn the_arm_shares_the_ecmascript_guest_rather_than_carrying_its_own() {
         logs(&evaluate("console.log('shared');", &[], &[], canned_outcome).0),
         ["shared"]
     );
-}
-
-#[test]
-fn sixteen_concurrent_preparations_each_get_their_own_program() {
-    // The measured TeaVM bug, and the only one of the two silent-corruption bugs that is THIS arm's:
-    // one `InProcessBuildStrategy` driven from four threads produced no output at all for three of
-    // the four, and `build()` threw nothing. Every process exited zero. That is what this drives.
-    //
-    // It is the seam's own isolation harness — the same one every registered language is held to,
-    // generic over a preparation precisely so an unregistered arm can be held to it too — at its
-    // full sixteen-way width, over both halves. It is not a copy of that gate; it is that gate,
-    // pointed here. Sixteen preparations against a pool of four warm JVMs, so twelve of them are
-    // also waiting for a checkout while four are building.
-    for preparation in [
-        &JavaPreparation::Program as &dyn super::super::isolation::Preparation,
-        &JavaPreparation::Module,
-    ] {
-        let breaches = super::super::isolation::breaches(preparation);
-        assert!(
-            breaches.is_empty(),
-            "{} is not isolated: {}",
-            preparation.describe(),
-            breaches
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join("; "),
-        );
-    }
-}
-
-/// One half of this arm's preparation, as the [isolation harness](super::super::isolation) drives it.
-///
-/// A local implementation rather than an entry in that harness's own list because this language is
-/// not registered — `preparations()` is derived from the registry, so this arm joins it for free the
-/// day it has a trait implementation, and until then it is held to the same standard from here.
-enum JavaPreparation {
-    /// A model's reply.
-    Program,
-    /// A code skill's or memory's module.
-    Module,
-}
-
-impl super::super::isolation::Preparation for JavaPreparation {
-    fn describe(&self) -> String {
-        match self {
-            Self::Program => "Java program".to_string(),
-            Self::Module => "Java module".to_string(),
-        }
-    }
-
-    /// A source carrying `marker` inside a **string literal a call consumes**, so that neither
-    /// javac's constant folding nor TeaVM's reachability pruning can drop it: it is the argument to
-    /// the one thing the program does, or the value the module's one export returns.
-    fn source(&self, marker: &str) -> String {
-        match self {
-            Self::Program => {
-                format!("System.out.println(\"/gg/isolation/{marker}.txt\");\n")
-            }
-            Self::Module => format!(
-                "public static String marker() {{ return \"/gg/isolation/{marker}.txt\"; }}\n"
-            ),
-        }
-    }
-
-    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        match self {
-            Self::Program => compile_program(source, context).map(|prepared| prepared.source),
-            Self::Module => compile_module(source, context).map(|(source, _)| source),
-        }
-        .map_err(|failure| failure.to_string())
-    }
 }
 
 #[test]

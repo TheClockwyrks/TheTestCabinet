@@ -759,8 +759,9 @@ directly:
   language that compiles, whether that compiler checks types
   ([TypeScript](/gg/program-languages/#stripped-and-checked), and
   [PureScript](/gg/program-languages/#purescript-a-compiler-in-the-image-a-library-set-in-the-binary),
-  whose ~290 ms per turn is the largest figure this field carries and whose check is a real type
-  system rather than a gradual one) or only grammar
+  whose check is a real type system rather than a gradual one, and
+  [Java](/gg/program-languages/#java-a-warm-jvm-and-two-compilers-per-program), whose ~0.4 s per
+  turn through a warm JVM is the largest figure this field carries) or only grammar
   ([Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses)),
   **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it

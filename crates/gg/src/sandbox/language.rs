@@ -89,12 +89,6 @@ mod ruby;
 #[path = "language/purescript.rs"]
 mod purescript;
 
-/// The **Java** arm's execution substrate, ahead of its SDK and its registration.
-///
-/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
-/// run can configure reaches it and every gate that iterates the registered set passes it by. What
-/// is here is the compile and the proof that its output runs through the real membrane; the module's
-/// own documentation says what is still missing.
 #[path = "language/java.rs"]
 mod java;
 
@@ -374,6 +368,30 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     #[cfg(test)]
     fn healing_fixtures(&self) -> &'static [&'static str] {
         self.healing().fixtures()
+    }
+
+    /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
+    /// artifact will still hold it — the subject the [isolation gate](isolation) drives this
+    /// language's [module step](Self::prepare_module) with.
+    ///
+    /// That gate drives *both* preparation steps sixteen ways, so it needs a source valid for each,
+    /// and the seam guarantees exactly one whole program per language:
+    /// [`open_docs_views_statement`](Self::open_docs_views_statement). Wherever a code module is
+    /// **ordinary source of the language** — which is every arm but one — that program is a module
+    /// too, so it is the default and no language has to answer this.
+    ///
+    /// [Java](java) is the exception and is the reason this exists: a Java program is a sequence of
+    /// statements and a Java code module is a **class body**, so neither shape is the other and the
+    /// default is a module that offers nothing.
+    ///
+    /// A default rather than a required method, even though a default can be silently wrong,
+    /// because the thing that would notice already does: the gate prepares every subject **alone**
+    /// before any concurrency and reports the language whose baseline failed, by name and with the
+    /// preparation's own diagnostic. A language for which the default is wrong finds out on the
+    /// first run of the gate rather than by review.
+    #[cfg(test)]
+    fn isolation_module(&self, name: &str) -> String {
+        self.open_docs_views_statement(&[name])
     }
 }
 
@@ -700,6 +718,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
         GgProgramLanguage::Python => &python::PYTHON,
         GgProgramLanguage::Ruby => &ruby::RUBY,
         GgProgramLanguage::PureScript => &purescript::PURESCRIPT,
+        GgProgramLanguage::Java => &java::JAVA,
     }
 }
 
@@ -917,6 +936,7 @@ pub struct ResolvedProgramLanguage {
 /// | `"python"` | [`Python`](GgProgramLanguage::Python) — a committed CPython, evaluating the reply as written |
 /// | `"ruby"` | [`Ruby`](GgProgramLanguage::Ruby) — compiled to JavaScript by the committed Opal, then evaluated |
 /// | `"purescript"` | [`PureScript`](GgProgramLanguage::PureScript) — type-checked and compiled to JavaScript by the image's `purs`, bundled, then evaluated |
+/// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM, then evaluated |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason

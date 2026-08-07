@@ -32,6 +32,11 @@ use crate::tools::ToolOutcome;
 /// is asserted below is a property of the emitted JSON.
 const SIGNATURES: &str = include_str!("../guests/java.signatures.json");
 
+/// This arm, resolved from the registry — the same trait object a run resolves.
+fn java_language() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Java)
+}
+
 /// Compile and run one Java program, with the ending group and the library flag said out loud.
 fn run_as(
     source: &str,
@@ -75,10 +80,10 @@ struct Crossing {
 /// Deliberately the same table `sandbox.membrane.test.rs` drives the TypeScript arm with and the
 /// Python, Ruby and PureScript substrate tests drive theirs with, down to the arguments and the
 /// expected JSON — because the expected JSON is the point. gg's dispatch is language-independent:
-/// five arms writing the same call in their own idioms must produce **byte-identical** arguments, or
+/// six arms writing the same call in their own idioms must produce **byte-identical** arguments, or
 /// they are not running the same experiment. An overload that lowered onto the wrong wire field, a
 /// `clearDescription()` read as "leave it alone" instead of "clear it", an enum constant whose wire
-/// word did not translate — none of them is a compile error in any of the five, and all of them are
+/// word did not translate — none of them is a compile error in any of the six, and all of them are
 /// visible here.
 fn crossings() -> Vec<Crossing> {
     vec![
@@ -563,34 +568,23 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
-    // The **real** agreement gate, over the real Java catalogue. It is what stands between a
-    // configured `language` param and an invalidated study: two internally-consistent surfaces that
-    // disagree with each other are two green test suites, and this is the only thing that compares
-    // them. Running it here rather than waiting for registration is deliberate — the commit that
-    // registers a language is the one least able to absorb a surface that turns out to disagree.
-    let mut document: Value =
+fn the_committed_catalogue_says_whose_spellings_it_carries() {
+    // The agreement gate itself now runs over this arm for free, because the arm is registered:
+    // `agreement.test.rs` compares every registered language identity-for-identity, and this
+    // catalogue is in it. What is left here is the one claim that gate cannot make — that the
+    // committed file was generated **for Java** — asserted against the document rather than through
+    // the language, so it holds even if the registration's own provenance check were removed.
+    let document: Value =
         serde_json::from_str(SIGNATURES).expect("the committed Java catalogue is valid JSON");
     assert_eq!(
         document["language"],
         json!("java"),
         "the catalogue says whose spellings it carries"
     );
-    // `language` is the wire enum, which has no `java` variant until the registration step adds
-    // one. The gate never reads it — provenance is asserted per *registered* language, against the
-    // language that embedded the file — so it is stood in for here rather than being the reason this
-    // check has to wait.
-    document["language"] = json!("typescript");
-    let candidate = super::super::fixture::a_language_whose_catalogue_is(&document.to_string());
-
-    let found = super::super::agreement::disagreements(&[typescript_language(), candidate]);
     assert!(
-        found.is_empty(),
-        "the Java catalogue does not describe the same capability surface TypeScript does:\n{}",
-        found
-            .iter()
-            .map(|disagreement| format!("  - {}\n", disagreement.detail))
-            .collect::<String>()
+        super::super::agreement::disagreements(&[typescript_language(), java_language()])
+            .is_empty(),
+        "the registered Java arm does not describe the same capability surface TypeScript does"
     );
 }
 

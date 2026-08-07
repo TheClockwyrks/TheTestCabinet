@@ -391,10 +391,13 @@ fn build(
 #[serde(rename_all = "camelCase")]
 struct Report {
     /// Whether the build produced JavaScript.
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "the diagnostics are the verdict")
-    )]
+    ///
+    /// Part of the driver's protocol and deliberately kept, though nothing reads it: the
+    /// [verdict](verdict) is decided by the diagnostics, because a build that "succeeded" with an
+    /// error among them is a driver bug rather than a program gg should run. Dropping the field
+    /// would leave a wire value serde silently discards and nothing in the diff to say gg had seen
+    /// it.
+    #[allow(dead_code, reason = "the diagnostics are the verdict")]
     ok: bool,
     /// A failure of gg's driver or of TeaVM itself rather than of the program — nothing read the
     /// model's Java, so there is no diagnostic and the model is not blamed.

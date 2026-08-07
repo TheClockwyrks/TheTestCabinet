@@ -22,6 +22,7 @@ const PROGRAM_LANGUAGE_NAMES: Record<GgProgramLanguage, string> = {
   python: "Python",
   ruby: "Ruby",
   purescript: "PureScript",
+  java: "Java",
 };
 
 // The Reference surface: the header, the sentence saying where the document came from, the

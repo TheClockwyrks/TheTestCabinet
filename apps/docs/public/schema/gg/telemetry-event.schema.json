@@ -917,6 +917,11 @@
           "const": "purescript",
           "description": "PureScript: **compiled to JavaScript on the host by `purs`**, flattened into one script by\n`esbuild`, and evaluated by the same ECMAScript guest\n[`TypeScript`](Self::TypeScript) uses.\n\nThe first arm whose compiler is a **binary in the run image** rather than something gg\ncarries — `purs` is a ~100 MB statically linked Haskell executable — and the first whose\ncommitted artifact is not a compiler but the compiled library set that compiler cannot work\nwithout, gg's own SDK compiled into it. It is checked in the strongest sense any arm is:\na real type system reads the whole program, so a call written with the wrong argument shape\ncosts a diagnostic rather than a turn. Its SDK is hand-written and reads as PureScript\nreads — curried functions, an API object as a record of functions, optional arguments as a\nrow-checked record, `Maybe`/`Either` where a PureScript author expects them, `data` types\nfor fixed choices, and a thrown failure caught with `attempt`.",
           "type": "string"
+        },
+        {
+          "const": "java",
+          "description": "Java: **compiled to bytecode by `javac` and then to JavaScript by TeaVM**, both inside a\n**warm JVM** gg keeps between preparations, and evaluated by the same ECMAScript guest\n[`TypeScript`](Self::TypeScript) uses.\n\nThe first arm whose compiler gg cannot afford to *start* per program — a cold build costs\n4–9 s against 0.33–0.56 s in a JVM that has already done one — so it is the first served by\na pool of long-lived compiler processes rather than by a process per compile. It is also the\nonly arm whose program passes through **two** compilers, which is why a diagnostic here can\nbe `javac`'s (a type error, a name that does not resolve) or TeaVM's (a class of the\nstandard library its classlib does not carry) — two bands of the one recoverable,\nmodel-facing error. Its SDK is hand-written and reads as Java reads: `camelCase`,\n**overloads** where every other arm has a default argument or a keyword, varargs for a list,\nbuilders for a bag of optional fields, records for every result, enums for every fixed\nchoice, a sealed interface narrowed by a `switch`, `Optional` for what the wire may omit,\nand an unchecked `ToolError`.",
+          "type": "string"
         }
       ]
     },

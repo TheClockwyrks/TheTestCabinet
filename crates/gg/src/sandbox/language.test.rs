@@ -512,6 +512,31 @@ const SHARED_ARTIFACTS: &[(GgProgramLanguage, GgProgramLanguage, &str)] = &[
         "the transitive half of the two entries above: JavaScript serves TypeScript's component and \
          so does PureScript, so this pair shares one by consequence rather than by a third decision",
     ),
+    (
+        GgProgramLanguage::TypeScript,
+        GgProgramLanguage::Java,
+        "a Java program is compiled to JavaScript by TeaVM before it crosses, and the alternative — \
+         a component of Java's own, with the classlib pre-initialised into it the way Ruby's holds \
+         Opal — is not available: TeaVM has no runtime to bake. It emits, per program, only the \
+         classlib methods that program's call graph reached, renamed and inlined into the same \
+         file, so there is no stable object two programs could share and a component carrying one \
+         would carry the wrong 600 KB for every program that was not the one it was built from. \
+         The cost of sharing is measured rather than hidden: ~9 ms of evaluation per turn against \
+         ~2 ms for the equivalent plain JavaScript on the same artifact",
+    ),
+    (
+        GgProgramLanguage::JavaScript,
+        GgProgramLanguage::Java,
+        "the transitive half of the entry above: JavaScript serves TypeScript's component and so \
+         does Java, so this pair shares one by consequence rather than by a third decision",
+    ),
+    (
+        GgProgramLanguage::PureScript,
+        GgProgramLanguage::Java,
+        "the other transitive half: both arms compile to JavaScript on the host and both are \
+         evaluated by TypeScript's component, so this pair shares one by consequence rather than by \
+         a third decision",
+    ),
 ];
 
 /// Why `a` and `b` are allowed to share a component, or `None` if they are not.
