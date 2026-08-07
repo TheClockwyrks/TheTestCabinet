@@ -54,8 +54,17 @@ on:
     # `crates/` (the `draw`/`draw-sheet` tools, the `voxel`/`voxel-anim` tools, and
     # the Foray CLI + buildkit + reference modules), so a change to those crates
     # must rebuild the images too — not just a change under `containers/`.
+    #
+    # `.dockerignore` and the gg toolchain installer are here for a subtler reason:
+    # both are INPUTS to a build that lives entirely under `containers/`, and neither
+    # is under it. `.dockerignore` is an allowlist, so the fix for a `COPY` that
+    # cannot see its source is an edit to that file alone — which, without this
+    # trigger, would leave the broken build unretried until something else pushed.
     paths:
+      - ".dockerignore"
       - "containers/**"
+      - "scripts/ci/install-java.sh"
+      - "packages/gg-sandbox-java/java-version.sh"
       - "crates/draw/**"
       - "crates/voxel/**"
       - "crates/voxel-anim/**"

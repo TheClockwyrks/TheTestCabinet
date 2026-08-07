@@ -68,6 +68,18 @@
 !/containers/blender/tcab_blend_export.py
 !/containers/blender/tcab-blend
 
+# The gg language-toolchain builder (containers/gg-toolchains/Dockerfile) installs the
+# Java arm's JDK and TeaVM jars by running the SAME script a developer's or CI machine
+# runs, so there is one pinned list of versions rather than two: it COPYs
+# scripts/ci/install-java.sh and the version file that script sources. Both live outside
+# every path re-included above (nothing under crates/ reaches them), so without this the
+# COPYs fail with "not found" against the allowlisted context (transferring context: 2B) —
+# the same trap the Blender entry above records. That failure is not confined to Java:
+# containers/build.sh is `set -euo pipefail` and builds this builder before every `-gg`
+# variant, so a gg run image of ANY language stops being buildable.
+!/packages/gg-sandbox-java/java-version.sh
+!/scripts/ci/install-java.sh
+
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's
 # `COPY test-cases/.../references/training`). It is the one test-case tree a build
