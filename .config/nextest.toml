@@ -96,3 +96,20 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
 threads-required = "num-test-threads"
+
+# The Kotlin arm's compile-driving tests, which are the dearest per-test work in this workspace and
+# the only ones measured reaching the default hard kill. Every one of them is its own process under
+# nextest, and the first thing each does is compile a 20 MB component and start a JVM that loads the
+# Kotlin compiler AND TeaVM — so the cost is paid per test rather than amortised, and it is this
+# arm's own: the same tests on the other JVM arm cost a third as much, because javac is not the
+# Kotlin compiler. Measured on this repository's dev container: 54.1 s for the whole arm's 63 tests
+# run as their own group, with the heaviest single test at 54.0 s — and under
+# `cargo nextest run --workspace`, `a_real_kotlin_program_runs_through_the_real_membrane` was
+# terminated at 120.3 s by the 60 s × 2 default and then passed at 60.1 s on the retry. That is the
+# coin flip the PureScript and seam gates above are bounded away from: a retry that lands is a green
+# run that cost two minutes of wall clock to a test doing exactly what it says, and three that do not
+# are a red run naming the wrong thing. Bounded from the work rather than from the default, with room
+# for a CI runner with a quarter of the cores.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::kotlin::(substrate|surface)::/)'
+slow-timeout = { period = "120s", terminate-after = 3 }
