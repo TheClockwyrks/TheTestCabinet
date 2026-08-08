@@ -7,32 +7,60 @@
 // `main` to, and which `wasm-ld` resolves at the link every turn runs.
 //
 // It is not the SDK. Nothing here is model-facing and nothing here is in a signature catalogue; a
-// program written by a model will call the curated surface this arm's SDK step adds, which is
-// compiled against the same `sandbox.h` this file is.
+// program written by a model calls the curated surface in `sdk/`, which is compiled against the
+// same `sandbox.h` this file is.
 
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <string>
 #include <typeinfo>
+#include <vector>
 
-#include "prelude.hpp"
+extern "C" {
+#include "sandbox.h"
+}
+
+#include "sdk/api.hpp"
+#include "sdk/error.hpp"
+
+// The entry point of the model's own program.
+//
+// clang lowers a wasm translation unit's `main` to `__main_void` when it is `int main()` and to
+// `__main_argc_argv` when it takes arguments — and wasi-libc supplies a `__main_void` that calls
+// the latter, so this single name reaches both spellings. It is declared here rather than taken
+// from the prelude because this file is compiled ONCE, at build time, and has no business reading
+// the header a model's program is precompiled against.
+//
+// It is worth knowing why the shell cannot simply call `main`: in C++ `main` may not be named or
+// called by a program at all ([basic.start.main]), and clang enforces it. `__main_void` is the
+// symbol the language lowers it to, so naming that is naming the same function without writing
+// the one call the standard forbids.
+extern "C" int __main_void(void);
 
 // **The gg tool names this component can bind** — what `bound-tools` answers.
 //
-// **Empty, and it is an honest empty rather than a stub.** This arm has no SDK yet: nothing in a
-// program's scope dispatches a gg tool by name, so there is no name to report. The drift gate that
-// compares a registered arm's answer with gg's own `ALL_TOOL_NAMES` does not run against this arm,
-// because this arm is not registered — and when the SDK lands, this function becomes what the
-// Swift arm's is: a concatenation of each API object's own binding table, so that what the artifact
-// reports and what the SDK declares are one statement rather than two that can disagree.
+// It is `gg::bound_tool_names()`, which is assembled from the SDK's own per-object tables: each
+// API object states the tools it dispatches in the same translation unit as the functions that
+// dispatch them, so a tool that gained a function without gaining an entry — or the reverse — is a
+// failing gate rather than a silent difference between what a model may call and what gg thinks it
+// may call.
 //
-// A null pointer with a zero length is what the generated post-return is written for (it frees
-// nothing when the length is zero), so this is the shape of "no names" rather than an allocation of
-// none.
+// `std::malloc` rather than `new`, because the generated post-return frees this list and every
+// string in it with `free()`. A zero-length list keeps a null pointer, which is the shape the
+// post-return is written for.
 extern "C" void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
+  const std::vector<std::string> names = gg::bound_tool_names();
+  ret->len = names.size();
   ret->ptr = nullptr;
-  ret->len = 0;
+  if (names.empty()) return;
+  ret->ptr = (sandbox_string_t *)std::malloc(names.size() * sizeof(sandbox_string_t));
+  for (std::size_t at = 0; at < names.size(); at++) {
+    ret->ptr[at].len = names[at].size();
+    ret->ptr[at].ptr = (uint8_t *)std::malloc(names[at].size());
+    std::memcpy(ret->ptr[at].ptr, names[at].data(), names[at].size());
+  }
 }
 
 // **What an uncaught exception is reported as**, and the reason this shell has a `catch` in it at
@@ -50,11 +78,12 @@ extern "C" void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
 // `what()`, reported over `feedback.report-error` as a located-nowhere program error — which is what
 // the Rust arm's panic hook buys that arm, reached a different way.
 //
-// **`OTHER` and no code**, deliberately. This is the substrate: nothing in a program's scope raises
-// a gg `tool-error` yet, because there is no SDK — the generated bindings hand a failure back as a
-// return value. When the SDK lands it will throw a `ToolError` carrying the wire's own `error-code`,
-// and *this* is the function that has to start reading it, because the host classifies a turn from
-// that code rather than from the kind.
+// **The code is read off a `gg::tool_error`**, which is the whole reason that exception carries
+// one. The host classifies a turn from the code rather than from the kind, so a failed
+// `fs::read_file` that nothing caught arrives as `not-found` and is recorded as the same class of
+// failure it would be on every other arm. Anything else a program threw has no gg code at all and
+// is reported without one, which is honest: a `std::out_of_range` a model's own `.at()` raised is
+// not a gg failure.
 //
 // **No location**, honestly. C++ has no portable way to ask a caught exception where it was thrown,
 // and the frames are gone by the time this runs. A model reads what failed and not where — the same
@@ -99,18 +128,38 @@ static std::string demangled(const char *mangled) {
   return out.empty() ? name : out;
 }
 
-static void report_uncaught(const char *kind, const char *what) {
+static void report_uncaught(const char *kind, const char *what,
+                            const test_cabinet_gg_types_error_code_t *code) {
   std::string message = std::string("uncaught ") + kind;
   if (what != nullptr && *what != '\0') {
     message += ": ";
     message += what;
   }
   test_cabinet_gg_feedback_program_error_t error;
-  error.kind = TEST_CABINET_GG_FEEDBACK_ERROR_KIND_OTHER;
-  error.code.is_some = false;
+  error.kind = code == nullptr ? TEST_CABINET_GG_FEEDBACK_ERROR_KIND_OTHER
+                               : TEST_CABINET_GG_FEEDBACK_ERROR_KIND_TOOL_FAILURE;
+  error.code.is_some = code != nullptr;
+  if (code != nullptr) error.code.val = *code;
   error.location.is_some = false;
   sandbox_string_set(&error.message, message.c_str());
   test_cabinet_gg_feedback_report_error(&error);
+}
+
+// The wire's code for a failure the SDK threw.
+static test_cabinet_gg_types_error_code_t wire_code(gg::tool_error_code code) {
+  switch (code) {
+    case gg::tool_error_code::invalid_argument:
+      return TEST_CABINET_GG_TYPES_ERROR_CODE_INVALID_ARGUMENT;
+    case gg::tool_error_code::not_found: return TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND;
+    case gg::tool_error_code::conflict: return TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT;
+    case gg::tool_error_code::refused: return TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED;
+    case gg::tool_error_code::unavailable: return TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE;
+    case gg::tool_error_code::limit_exceeded:
+      return TEST_CABINET_GG_TYPES_ERROR_CODE_LIMIT_EXCEEDED;
+    case gg::tool_error_code::io_error: return TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR;
+    case gg::tool_error_code::other: return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
+  }
+  return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
 }
 
 // **Evaluate one program** — the sandbox world's `run`.
@@ -143,17 +192,23 @@ extern "C" void exports_sandbox_run(sandbox_string_t *program,
     // `return 1` is not an error gg invents a band for, exactly as a top-level `return` on the
     // ECMAScript arms is not.
     (void)__main_void();
+  } catch (const gg::tool_error &failure) {
+    // A gg call the program did not catch. `what()` is already gg's own sentence about it — the
+    // call, the class and the guidance — so what is added here is only that nothing caught it, and
+    // the CODE, which is what the host classifies the turn by.
+    const test_cabinet_gg_types_error_code_t code = wire_code(failure.code());
+    report_uncaught("gg::tool_error", failure.what(), &code);
   } catch (const std::exception &failure) {
     // `typeid` rather than a fixed string, so a model reading the report sees the class it actually
     // threw — its own `struct TooSmall : std::runtime_error` rather than `std::exception`. The name
     // is the ABI's mangled one; it is left as it is rather than demangled here, because
     // `__cxa_demangle` pulls the whole demangler into every artifact this arm ever produces to
     // pretty-print one line of one failing turn.
-    report_uncaught(demangled(typeid(failure).name()).c_str(), failure.what());
+    report_uncaught(demangled(typeid(failure).name()).c_str(), failure.what(), nullptr);
   } catch (...) {
     // C++ lets a program throw anything at all, and models do — `throw "a string literal"` and
     // `throw 42` are both legal. There is nothing to ask such a value, so what is reported is that
     // it happened, which is still more than `thrown Wasm exception`.
-    report_uncaught("exception that is not a std::exception", nullptr);
+    report_uncaught("exception that is not a std::exception", nullptr, nullptr);
   }
 }

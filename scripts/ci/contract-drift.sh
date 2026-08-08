@@ -51,7 +51,12 @@
 #     read under RUSTC_BOOTSTRAP because that output is unstable and this repository pins a
 #     stable compiler on purpose, and the Swift toolchain scripts/ci/install-swift.sh fetches,
 #     whose `-emit-symbol-graph` is the machinery DocC itself is built on — so that arm needs no
-#     documentation tool beyond the compiler it already compiles every program with. The
+#     documentation tool beyond the compiler it already compiles every program with, and the
+#     wasi-sdk scripts/ci/install-wasi-sdk.sh fetches, whose `clang++` carries a documentation
+#     parser of its own: `-ast-dump=json` prints which comment attaches to which declaration and
+#     each `\param`'s prose attached to the parameter it names, which makes C++ one of the few arms
+#     whose per-parameter documentation slot is the language's rather than a convention standing in
+#     for one. The
 #     committed .wasm files therefore sit in the diffed directory untouched: nothing here regenerates one, so one cannot cause a
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
@@ -121,7 +126,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby purescript java kotlin rust swift"
+regenerated="typescript javascript python ruby purescript java kotlin rust swift cpp"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -182,6 +187,12 @@ log "install the pinned Swift toolchain (this arm's catalogue is reflected with 
 
 log "regenerate the Swift arm's signature catalogue (symbol graph + tools/signatures.py)"
 ./packages/gg-sandbox-swift/signatures.sh
+
+log "install the pinned wasi-sdk (the C++ arm's catalogue is reflected with its own clang)"
+./scripts/ci/install-wasi-sdk.sh
+
+log "regenerate the C++ arm's signature catalogue (clang's comment AST + tools/signatures.py)"
+./packages/gg-sandbox-cpp/signatures.sh
 
 # A SIGNATURE STEP MAY WRITE ITS CATALOGUE AND NOTHING ELSE, and this is where that is enforced
 # rather than assumed. The check at the bottom diffs both committed directories at once, so a
@@ -295,12 +306,13 @@ recut="typescript ruby java kotlin"
 # production prepare step and run through the real membrane, that imports every one of them.
 #
 # `cpp` is exempted on the same terms and is the cheapest of the three to argue. Its three committed
-# artifacts are not a compiler either. `cpp.guest.tar.gz` is 36 KB of compile INPUTS — the C bindings
-# generated from crates/gg/wit and compiled to a wasm object, the component-type object naming the
-# world, the prelude every program is precompiled against, and gg's own shell as both source and a
-# prebuilt object — and re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
-# ~200 MB wasi-sdk. `cpp.adapter.wasm` is a 52 KB binary downloaded from a wasmtime release. Neither
-# is reviewable by reading. Nothing above re-cuts them, and — as with Rust and Swift — that is a
+# artifacts are not a compiler either. `cpp.guest.tar.gz` is ~100 KB of compile INPUTS — the C
+# bindings generated from crates/gg/wit and compiled to a wasm object, the component-type object
+# naming the world, gg's hand-written SDK as headers and as a prebuilt object, the prelude every
+# program is precompiled against, and gg's own shell as both source and a prebuilt object — and
+# re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a ~200 MB wasi-sdk.
+# `cpp.adapter.wasm` is a 52 KB binary downloaded from a wasmtime release. Neither is reviewable by
+# reading. Nothing above re-cuts them, and — as with Rust and Swift — that is a
 # property rather than a hope: the bindings both build steps need are their own script,
 # packages/gg-sandbox-cpp/bindings.sh.
 # Unlike Swift's, this set IS byte-reproducible — clang stamps no per-invocation nonce and
@@ -308,12 +320,15 @@ recut="typescript ruby java kotlin"
 # than a failing one. It stays out anyway, because the only thing that would buy is a ~200 MB
 # toolchain download on every CI run to confirm bytes a manifest already describes.
 # `cpp.toolchain.json` declares what built them, every file in the archive and every standard-library
-# header the prelude puts in front of a program, and gg's own tests compare it four ways: the manifest
+# header the prelude puts in front of a program, and gg's own tests compare it five ways: the manifest
 # against the archive's contents, file by file and byte count by byte count; the archive's copy of the
-# prelude and the shell against THIS CHECKOUT's sources, so an edit without a rebuild fails by name
-# rather than compiling every program against the old one; the headers the manifest claims against the
-# ones the prelude really includes; and — the check no diff could make — a real C++ program, compiled
-# against the archive by the production prepare step and run through the real membrane.
+# prelude, the shell and every SDK header against THIS CHECKOUT's sources, so an edit without a
+# rebuild fails by name rather than compiling every program against a surface the catalogue does not
+# describe; the headers the manifest claims against the ones the prelude really includes; the headers
+# the CATALOGUE regenerated above tells a model it may include against those same ones, which is the
+# drift a stale archive beside a fresh catalogue would otherwise be; and — the check no diff could
+# make — real C++ programs, compiled against the archive by the production prepare step and run
+# through the real membrane, that call every function the SDK offers.
 declared="purescript jvm rust swift cpp"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
@@ -360,7 +375,10 @@ TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
 `packages/gg-sandbox-ruby/signatures.sh`; for PureScript,
 `packages/gg-sandbox-purescript/signatures.sh`; for Java,
 `packages/gg-sandbox-java/signatures.sh`; for Kotlin,
-`packages/gg-sandbox-kotlin/signatures.sh`.
+`packages/gg-sandbox-kotlin/signatures.sh`; for Rust,
+`packages/gg-sandbox-rust/signatures.sh`; for Swift,
+`packages/gg-sandbox-swift/signatures.sh`; for C++,
+`packages/gg-sandbox-cpp/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script

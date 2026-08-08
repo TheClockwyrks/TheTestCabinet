@@ -1,23 +1,41 @@
 //! **C++** — the third arm whose component is compiled **per turn**, and the second whose program
 //! is compiled *verbatim*.
 //!
-//! What exists here today is this arm's **execution substrate** and nothing else: the compile that
-//! turns a model's C++ into a wasm component, and the proof that a real C++ program really does run
-//! through gg's own linker, membrane and store. The SDK and the
-//! [registration](super::ProgramLanguage) land later — a language arm cannot be half-registered,
+//! What exists here today is this arm's **execution substrate** and its **model-facing surface**:
+//! the compile that turns a model's C++ into a wasm component, the hand-written SDK that program is
+//! written against, and the catalogue reflected out of that SDK's own documentation. The
+//! [registration](super::ProgramLanguage) lands later — a language arm cannot be half-registered,
 //! because the registry's `match` is exhaustive and every gate that iterates the registered set
-//! would immediately demand a catalogue, two Handlebars templates and a healing dialect. Nothing
-//! here is reachable from a run: there is no `language` value that resolves to it.
+//! would immediately demand two Handlebars templates and a healing dialect. Nothing here is
+//! reachable from a run: there is no `language` value that resolves to it.
 //!
 //! * [`compile`](self::compile) — the host-side `clang++`, the precompiled prelude that makes it
 //!   affordable, the in-process component encode with the preview1 adapter, what they cost, what
 //!   they share, and the two failures they tell apart;
 //! * [`source`](self::source) — the one thing gg reads out of a reply, which is whether it defines
 //!   `main`, and the lexer that reads it;
-//! * `packages/gg-sandbox-cpp/` — the prelude every program is compiled against, the shell it is
-//!   linked with, and the build that commits them;
+//! * `packages/gg-sandbox-cpp/Sources/sdk/` — the SDK, hand-written and idiomatic, whose `///`
+//!   comments are the model-facing documentation and whose `//` comments are not;
+//! * `packages/gg-sandbox-cpp/signatures.sh` — the reflection, out of clang's own comment AST;
 //! * `checkers/cpp.guest.tar.gz`, `checkers/cpp.adapter.wasm` and `checkers/cpp.toolchain.json` —
-//!   the compile inputs, the adapter, and what built them.
+//!   the compile inputs, the adapter, and what built them;
+//! * `guests/cpp.signatures.json` — the committed catalogue.
+//!
+//! # What the surface looks like, and the one thing that forced it
+//!
+//! **Every API object is a `namespace` inside `namespace gg`, and the prelude ends with
+//! `using namespace gg;`** — so a program writes `fs::read_file(…)` with no import line of its own.
+//! The `gg` namespace is forced rather than chosen, and by one object's name: `<cstdlib>` declares
+//! `int system(const char *)` at global scope, and `namespace system { … }` beside it is
+//! *redefinition of 'system' as different kind of symbol*. Qualified lookup for a
+//! nested-name-specifier considers only namespaces and types and never functions, so once the
+//! surface is in a namespace the C library's `system` cannot shadow the object.
+//!
+//! Everything else is spelling, and it is written to read like the standard library it arrives
+//! beside: `snake_case` throughout, `enum class` for a fixed choice, aggregates with public members
+//! for a record, `std::variant` for a value that is one of two things, a **default argument** for
+//! one optional part and a **designated initialiser** for several, and a thrown `gg::tool_error` —
+//! a `std::runtime_error` — for a call that failed.
 //!
 //! # Why this arm has no component to commit
 //!
@@ -84,7 +102,7 @@
 //! # What is not built yet, and what it blocks
 //!
 //! **Code modules.** A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
-//! bound at `lib.<key>` for every program the agent writes afterwards, and on a compiled arm that
+//! bound at `lib::<key>` for every program the agent writes afterwards, and on a compiled arm that
 //! binding is a **link**: the module has to be built into the same artifact as the program that uses
 //! it. The seam already hands a program's preparation the modules in its scope — the Rust arm's
 //! registration made that change — so nothing structural is missing.
@@ -96,9 +114,14 @@
 //! one that decided the program shape: a module author will write `#include <vector>` at the top of
 //! their file, and a `#include` inside a namespace puts the whole of `std` inside `lib::csv_tools`.
 //! Hoisting the includes out is a rewrite of the author's file, which is the one thing this arm has
-//! so far never done — and the alternative, relying on the prelude so a module needs no include at
-//! all, is a rule a model has to be *told*, which makes it the SDK's decision rather than the
-//! compile's.
+//! so far never done — and the alternative is to rely on the precompiled prelude, which already puts
+//! the standard library and gg's whole surface in front of a module as it does in front of a
+//! program, so a module *needs* no include at all.
+//!
+//! The SDK is what makes that alternative real rather than merely available: a module author writing
+//! against this arm has `std::vector` and `fs::read_file` in scope before they type anything. What
+//! is left is telling them so, which is a sentence in the two prompt templates — and the templates
+//! are part of registration.
 //!
 //! Until it is made, [`compile_program`](self::compile::compile_program) takes no modules and this
 //! arm must not be registered: a C++ agent that read a code skill would otherwise get no `lib`
@@ -130,3 +153,14 @@ pub(super) mod source;
 #[cfg(test)]
 #[path = "cpp.substrate.test.rs"]
 mod substrate;
+
+/// **The C++ arm's model-facing surface**: the hand-written SDK, the catalogue reflected out of its
+/// own documentation, and the library set it says a program may include.
+///
+/// A separate test file from [`substrate`], because it is a different claim. That one asks whether
+/// C++ runs here; this asks whether the thing a model is *told* it may write is the thing the
+/// sandbox really has — which is the only question a cross-language study rests on, and the one
+/// whose failure is silent.
+#[cfg(test)]
+#[path = "cpp.surface.test.rs"]
+mod surface;

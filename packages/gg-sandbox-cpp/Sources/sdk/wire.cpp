@@ -1,0 +1,363 @@
+// The bridge's implementation. See `wire.hpp` for what it is and why it is shaped this way.
+
+#include "wire.hpp"
+
+#include <utility>
+
+namespace gg {
+
+tool_error::tool_error(tool_error_code code, std::string tool, std::string message)
+    // gg's own sentence about a failed call: the call, the class, and what went wrong. It is gg's
+    // convention rather than C++'s — the same line the ECMAScript guest's shim writes and the
+    // native tool-calling path shows — so two arms whose uncaught failures read differently would
+    // be two arms whose error rates a study could not compare.
+    : std::runtime_error("`" + tool + "` failed (" + std::string(gg_name(code)) + "): " + message),
+      code_(code),
+      tool_(std::move(tool)),
+      message_(std::move(message)) {}
+
+std::string_view gg_name(tool_error_code code) noexcept {
+  switch (code) {
+    case tool_error_code::invalid_argument: return "invalid-argument";
+    case tool_error_code::not_found: return "not-found";
+    case tool_error_code::conflict: return "conflict";
+    case tool_error_code::refused: return "refused";
+    case tool_error_code::unavailable: return "unavailable";
+    case tool_error_code::limit_exceeded: return "limit-exceeded";
+    case tool_error_code::io_error: return "io-error";
+    case tool_error_code::other: return "other";
+  }
+  return "other";
+}
+
+text_edit text_edit::clear() {
+  text_edit edit;
+  edit.tag_ = TEST_CABINET_GG_TYPES_TEXT_EDIT_CLEAR;
+  return edit;
+}
+
+text_edit text_edit::set(std::string text) {
+  text_edit edit;
+  edit.tag_ = TEST_CABINET_GG_TYPES_TEXT_EDIT_SET;
+  edit.text_ = std::move(text);
+  return edit;
+}
+
+epic_assignment epic_assignment::ungroup() {
+  epic_assignment change;
+  change.tag_ = TEST_CABINET_GG_BOARD_EPIC_ASSIGNMENT_UNGROUP;
+  return change;
+}
+
+epic_assignment epic_assignment::set(std::string epic_id) {
+  epic_assignment change;
+  change.tag_ = TEST_CABINET_GG_BOARD_EPIC_ASSIGNMENT_SET;
+  change.epic_id_ = std::move(epic_id);
+  return change;
+}
+
+brief brief::prompt(std::string instructions) { return brief(false, std::move(instructions)); }
+
+brief brief::issue(std::string id) { return brief(true, std::move(id)); }
+
+namespace detail {
+
+// ------------------------------------------------------------------------------------------------
+// Lowering
+// ------------------------------------------------------------------------------------------------
+
+sandbox_string_t scratch::str(std::string_view text) {
+  const std::string& stored = strings_.emplace_back(text);
+  sandbox_string_t lowered{};
+  // `data()` on a `std::string` is never null, so an empty argument lowers to a valid pointer with
+  // a zero length rather than to a null the ABI is not specified to accept.
+  lowered.ptr = reinterpret_cast<std::uint8_t*>(const_cast<char*>(stored.data()));
+  lowered.len = stored.size();
+  return lowered;
+}
+
+sandbox_option_string_t scratch::opt(const std::optional<std::string_view>& text) {
+  sandbox_option_string_t lowered{};
+  lowered.is_some = text.has_value();
+  if (text.has_value()) lowered.val = str(*text);
+  return lowered;
+}
+
+sandbox_option_string_t scratch::opt(const std::optional<std::string>& text) {
+  sandbox_option_string_t lowered{};
+  lowered.is_some = text.has_value();
+  if (text.has_value()) lowered.val = str(*text);
+  return lowered;
+}
+
+sandbox_list_string_t scratch::list(const std::vector<std::string>& texts) {
+  std::vector<sandbox_string_t>& items = lists_.emplace_back();
+  items.reserve(texts.size());
+  for (const std::string& text : texts) items.push_back(str(text));
+  sandbox_list_string_t lowered{};
+  lowered.ptr = items.data();
+  lowered.len = items.size();
+  return lowered;
+}
+
+test_cabinet_gg_context_list_turn_range_t scratch::turn_ranges(
+    const std::vector<turn_range>& ranges) {
+  std::vector<test_cabinet_gg_context_turn_range_t>& items = ranges_.emplace_back();
+  items.reserve(ranges.size());
+  for (const turn_range& span : ranges) {
+    test_cabinet_gg_context_turn_range_t lowered{};
+    lowered.start = span.from;
+    lowered.end = span.to;
+    items.push_back(lowered);
+  }
+  test_cabinet_gg_context_list_turn_range_t lowered{};
+  lowered.ptr = items.data();
+  lowered.len = items.size();
+  return lowered;
+}
+
+test_cabinet_gg_types_text_edit_t scratch::edit(const text_edit& value) {
+  test_cabinet_gg_types_text_edit_t lowered{};
+  lowered.tag = value.tag();
+  if (value.tag() == TEST_CABINET_GG_TYPES_TEXT_EDIT_SET) lowered.val.set = str(value.text());
+  return lowered;
+}
+
+test_cabinet_gg_board_epic_assignment_t scratch::epic(const epic_assignment& value) {
+  test_cabinet_gg_board_epic_assignment_t lowered{};
+  lowered.tag = value.tag();
+  if (value.tag() == TEST_CABINET_GG_BOARD_EPIC_ASSIGNMENT_SET) {
+    lowered.val.set = str(value.epic_id());
+  }
+  return lowered;
+}
+
+window::window(const read_window& from) : offset_(from.offset), limit_(from.limit) {
+  if (offset_.has_value()) offset_value_ = *offset_;
+  if (limit_.has_value()) limit_value_ = *limit_;
+}
+
+std::uint32_t* window::offset() { return offset_.has_value() ? &offset_value_ : nullptr; }
+
+std::uint32_t* window::limit() { return limit_.has_value() ? &limit_value_ : nullptr; }
+
+test_cabinet_gg_tasks_task_status_t lower(task_status status) {
+  switch (status) {
+    case task_status::pending: return TEST_CABINET_GG_TASKS_TASK_STATUS_PENDING;
+    case task_status::in_progress: return TEST_CABINET_GG_TASKS_TASK_STATUS_IN_PROGRESS;
+    case task_status::done: return TEST_CABINET_GG_TASKS_TASK_STATUS_DONE;
+  }
+  return TEST_CABINET_GG_TASKS_TASK_STATUS_PENDING;
+}
+
+test_cabinet_gg_board_issue_status_t lower(issue_status status) {
+  switch (status) {
+    case issue_status::open: return TEST_CABINET_GG_BOARD_ISSUE_STATUS_OPEN;
+    case issue_status::in_progress: return TEST_CABINET_GG_BOARD_ISSUE_STATUS_IN_PROGRESS;
+    case issue_status::done: return TEST_CABINET_GG_BOARD_ISSUE_STATUS_DONE;
+  }
+  return TEST_CABINET_GG_BOARD_ISSUE_STATUS_OPEN;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Lifting
+// ------------------------------------------------------------------------------------------------
+
+std::string lift(const sandbox_string_t& text) {
+  if (text.ptr == nullptr || text.len == 0) return {};
+  return std::string(reinterpret_cast<const char*>(text.ptr), text.len);
+}
+
+std::optional<std::string> lift(const sandbox_option_string_t& text) {
+  if (!text.is_some) return std::nullopt;
+  return lift(text.val);
+}
+
+std::vector<std::string> lift(const sandbox_list_string_t& texts) {
+  return lift_each(texts.ptr, texts.len,
+                   [](const sandbox_string_t& text) { return lift(text); });
+}
+
+void fail(test_cabinet_gg_types_tool_error_t& failure) {
+  tool_error thrown(lift_error_code(failure.code), lift(failure.tool), lift(failure.message));
+  test_cabinet_gg_types_tool_error_free(&failure);
+  throw thrown;
+}
+
+tool_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire) {
+  switch (wire) {
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_INVALID_ARGUMENT:
+      return tool_error_code::invalid_argument;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND: return tool_error_code::not_found;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT: return tool_error_code::conflict;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED: return tool_error_code::refused;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE: return tool_error_code::unavailable;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_LIMIT_EXCEEDED: return tool_error_code::limit_exceeded;
+    case TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR: return tool_error_code::io_error;
+    default: return tool_error_code::other;
+  }
+}
+
+entry_kind lift_entry_kind(test_cabinet_gg_files_entry_kind_t wire) {
+  switch (wire) {
+    case TEST_CABINET_GG_FILES_ENTRY_KIND_FILE: return entry_kind::file;
+    case TEST_CABINET_GG_FILES_ENTRY_KIND_DIRECTORY: return entry_kind::directory;
+    default: return entry_kind::other;
+  }
+}
+
+message_role lift_message_role(test_cabinet_gg_context_message_role_t wire) {
+  switch (wire) {
+    case TEST_CABINET_GG_CONTEXT_MESSAGE_ROLE_SYSTEM: return message_role::system;
+    case TEST_CABINET_GG_CONTEXT_MESSAGE_ROLE_USER: return message_role::user;
+    case TEST_CABINET_GG_CONTEXT_MESSAGE_ROLE_ASSISTANT: return message_role::assistant;
+    default: return message_role::tool;
+  }
+}
+
+view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire) {
+  switch (wire) {
+    case TEST_CABINET_GG_VIEWS_VIEW_KIND_FILE: return view_kind::file;
+    case TEST_CABINET_GG_VIEWS_VIEW_KIND_TEXT: return view_kind::text;
+    default: return view_kind::docs;
+  }
+}
+
+agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire) {
+  switch (wire) {
+    case TEST_CABINET_GG_DELEGATION_AGENT_STATUS_COMPLETED: return agent_status::completed;
+    case TEST_CABINET_GG_DELEGATION_AGENT_STATUS_EXHAUSTED: return agent_status::exhausted;
+    case TEST_CABINET_GG_DELEGATION_AGENT_STATUS_TIMED_OUT: return agent_status::timed_out;
+    case TEST_CABINET_GG_DELEGATION_AGENT_STATUS_MODEL_ERROR: return agent_status::model_error;
+    case TEST_CABINET_GG_DELEGATION_AGENT_STATUS_AUTH_ERROR: return agent_status::auth_error;
+    default: return agent_status::limit_exceeded;
+  }
+}
+
+shell_output lift_shell_output(test_cabinet_gg_shell_shell_output_t& wire) {
+  shell_output out;
+  if (wire.exit_code.is_some) out.exit_code = wire.exit_code.val;
+  out.output = lift(wire.output);
+  out.truncated = wire.truncated;
+  test_cabinet_gg_shell_shell_output_free(&wire);
+  return out;
+}
+
+file_read lift_file_read(test_cabinet_gg_files_file_read_t& wire) {
+  file_read read = [&]() -> file_read {
+    if (wire.tag == TEST_CABINET_GG_FILES_FILE_READ_IMAGE) {
+      image_file picture;
+      picture.media_type = lift(wire.val.image.media_type);
+      picture.label = lift(wire.val.image.label);
+      picture.bytes = wire.val.image.bytes;
+      picture.shown = wire.val.image.shown;
+      picture.not_shown_reason = lift(wire.val.image.not_shown_reason);
+      return picture;
+    }
+    text_file text;
+    text.contents = lift(wire.val.text.contents);
+    text.first_line = wire.val.text.first_line;
+    text.last_line = wire.val.text.last_line;
+    text.total_lines = wire.val.text.total_lines;
+    text.byte_truncated = wire.val.text.byte_truncated;
+    return text;
+  }();
+  test_cabinet_gg_files_file_read_free(&wire);
+  return read;
+}
+
+dir_entry lift_dir_entry(const test_cabinet_gg_files_dir_entry_t& wire) {
+  return dir_entry{lift(wire.name), lift_entry_kind(wire.kind)};
+}
+
+memory_usage lift_memory_usage(const test_cabinet_gg_memories_memory_usage_t& wire) {
+  memory_usage usage;
+  usage.count = wire.count;
+  if (wire.max_count.is_some) usage.max_count = wire.max_count.val;
+  usage.total_chars = wire.total_chars;
+  if (wire.max_total_chars.is_some) usage.max_total_chars = wire.max_total_chars.val;
+  if (wire.index_chars.is_some) usage.index_chars = wire.index_chars.val;
+  if (wire.max_index_chars.is_some) usage.max_index_chars = wire.max_index_chars.val;
+  return usage;
+}
+
+memory_hit lift_memory_hit(const test_cabinet_gg_memories_memory_hit_t& wire) {
+  memory_hit hit;
+  hit.name = lift(wire.name);
+  hit.description = lift(wire.description);
+  hit.matched = wire.matched;
+  hit.occurrences = wire.occurrences;
+  hit.excerpt = lift(wire.excerpt);
+  return hit;
+}
+
+task_usage lift_task_usage(const test_cabinet_gg_tasks_task_usage_t& wire) {
+  return task_usage{wire.count, wire.max_tasks};
+}
+
+board_usage lift_board_usage(const test_cabinet_gg_board_board_usage_t& wire) {
+  return board_usage{wire.epics, wire.max_epics, wire.issues, wire.max_issues};
+}
+
+reclaim_report lift_reclaim_report(test_cabinet_gg_context_reclaim_report_t& wire) {
+  reclaim_report report;
+  report.items = wire.items;
+  report.reclaimed_tokens = wire.reclaimed_tokens;
+  report.paths = lift(wire.paths);
+  report.detail = lift(wire.detail);
+  test_cabinet_gg_context_reclaim_report_free(&wire);
+  return report;
+}
+
+archive_search lift_archive_search(test_cabinet_gg_context_archive_search_t& wire) {
+  archive_search found;
+  found.archive_empty = wire.archive_empty;
+  found.hits = lift_each(wire.hits.ptr, wire.hits.len,
+                         [](const test_cabinet_gg_context_archive_hit_t& hit) {
+                           return archive_hit{hit.seq, lift_message_role(hit.role),
+                                              lift(hit.text)};
+                         });
+  test_cabinet_gg_context_archive_search_free(&wire);
+  return found;
+}
+
+open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire) {
+  open_view open;
+  open.kind = lift_view_kind(wire.kind);
+  open.selector = lift(wire.selector);
+  open.tokens = wire.tokens;
+  if (wire.region.is_some) open.region = view_region{wire.region.val.offset, wire.region.val.limit};
+  return open;
+}
+
+function_summary lift_function_summary(const test_cabinet_gg_docs_function_summary_t& wire) {
+  return function_summary{lift(wire.name), lift(wire.summary)};
+}
+
+program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire) {
+  program_summary summary;
+  summary.turn = wire.turn;
+  summary.lines = wire.lines;
+  summary.chars = wire.chars;
+  summary.ok = wire.ok;
+  summary.error = lift(wire.error);
+  return summary;
+}
+
+subagent_handle lift_subagent_handle(test_cabinet_gg_delegation_subagent_handle_t& wire) {
+  subagent_handle handle{lift(wire.id), lift(wire.slot), lift(wire.model_id)};
+  test_cabinet_gg_delegation_subagent_handle_free(&wire);
+  return handle;
+}
+
+subagent_result lift_subagent_result(const test_cabinet_gg_delegation_subagent_result_t& wire) {
+  subagent_result result;
+  result.id = lift(wire.id);
+  if (wire.status.is_some) result.status = lift_agent_status(wire.status.val);
+  result.summary = lift(wire.summary);
+  return result;
+}
+
+}  // namespace detail
+
+}  // namespace gg

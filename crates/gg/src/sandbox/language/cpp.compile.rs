@@ -159,8 +159,9 @@ use crate::sandbox::{
 };
 
 /// Everything a compile needs on disk that is not the model's own file: the generated WIT header,
-/// the prelude the program is compiled against, gg's shell as source and as a prebuilt object, the
-/// compiled bindings object, and the component-type object that names the world.
+/// gg's hand-written SDK as headers and as a prebuilt object, the prelude the program is compiled
+/// against, gg's shell as source and as a prebuilt object, the compiled bindings object, and the
+/// component-type object that names the world.
 ///
 /// Embedded for the reason the guest components are: gg is copied as a single file into an
 /// ephemeral run container and must carry everything it needs with it. Built by
@@ -495,7 +496,10 @@ fn invoke_clang(
         // library in front of the model's file with no line of gg's own in it.
         .arg("-include-pch")
         .arg(prelude)
-        // Where `sandbox.h` and `prelude.hpp` are, for a program that includes one by name.
+        // Where the SDK's headers and `prelude.hpp` are, for a program that includes one by name.
+        // A model's program needs no include at all — the precompiled prelude is already in front
+        // of it — but writing `#include "sdk/gg.hpp"` anyway costs nothing, which is the point of
+        // compiling the reply verbatim.
         .arg("-I")
         .arg(guest.tree())
         // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
@@ -516,6 +520,11 @@ fn invoke_clang(
         .arg(artifact)
         .arg(PROGRAM_FILE)
         .arg(guest.file("shell.o"))
+        // gg's own SDK, whose declarations the prelude already put in front of the program and
+        // whose bodies are here. One object rather than an archive, because `--gc-sections` above
+        // works at function granularity: an artifact for a program that calls two of its
+        // thirty-eight functions carries two of them.
+        .arg(guest.file("sdk.o"))
         .arg(guest.file("sandbox.o"))
         .arg(guest.file("sandbox_component_type.o"))
         // Named explicitly, because the driver does not add it and the failure without it is four

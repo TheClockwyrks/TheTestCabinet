@@ -29,10 +29,10 @@
 //! diagnostic carries the model's own line; the two bands `clang++` produces between them; and the
 //! seam's own isolation gate driven sixteen ways.
 //!
-//! What is **not** here is a surface. This arm has no SDK yet, so the programs below call the
-//! generated wire header directly — `test_cabinet_gg_feedback_log`, `test_cabinet_gg_files_read_file`
-//! — which is deliberately *not* what a model will ever write. It is what an SDK will be written
-//! against, and driving it is what proves the crossing rather than the spelling.
+//! The programs below are written the way a model writes one — `gg::log`, `fs::read_file`,
+//! `text_edit::set` — because the SDK is what a program actually has. What they are *for* is still
+//! the substrate: that the crossing happens, not that it is spelled well.
+//! [`surface`](super::surface) is where the spelling is driven, function by function.
 //!
 //! # Why these tests are consolidated
 //!
@@ -57,21 +57,8 @@ use crate::sandbox::{
 };
 use crate::tools::ToolOutcome;
 
-/// What every program here writes with, since this arm has no SDK: the generated wire header's own
-/// `feedback.log`, wrapped in the two lines it takes to make a `sandbox_string_t`.
-///
-/// It is a *prologue in the test*, never in the compile: the programs below are still handed to
-/// `compile_program` byte for byte, so the verbatim property this arm rests on is not quietly
-/// undone by the harness. Its length is fixed and known, which is what lets
-/// [`a_cpp_program_is_compiled_verbatim`] assert a line number the model wrote.
-const LOG: &str = "static void log(const std::string &line) {\n\
-                   \x20 sandbox_string_t text;\n\
-                   \x20 sandbox_string_set(&text, line.c_str());\n\
-                   \x20 test_cabinet_gg_feedback_log(&text);\n\
-                   }\n";
-
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
-fn prepare(source: &str) -> Vec<u8> {
+pub(super) fn prepare(source: &str) -> Vec<u8> {
     match compile_program(source, &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
@@ -97,9 +84,11 @@ fn prepare(source: &str) -> Vec<u8> {
 /// The [membrane state](MembraneState) is built with TypeScript's arm, because this one has no wire
 /// id yet. Nothing these tests assert depends on it: the language decides how a *refused* call's
 /// name is spelled back at the model, and no program here is refused one.
-fn evaluate(
+pub(super) fn evaluate(
     component: &[u8],
     enabled: &[String],
+    ending: RunEnding,
+    library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -111,8 +100,8 @@ fn evaluate(
     let scope = ProgramScope {
         enabled,
         modules: &[],
-        ending: RunEnding::None,
-        library: false,
+        ending,
+        library,
     };
     let mut store = bounded_store(
         MembraneState::new(
@@ -132,7 +121,7 @@ fn evaluate(
         ),
     };
     let returned = bound
-        .call_run(&mut store, "", &[], enabled, RunEnding::None.into(), false)
+        .call_run(&mut store, "", &[], enabled, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -144,11 +133,18 @@ fn evaluate(
 
 /// Compile and run one C++ program with no gg tool offered — the shape most cases here want.
 fn run(source: &str) -> SandboxOutcome {
-    evaluate(&prepare(source), &[], canned_outcome).0
+    evaluate(
+        &prepare(source),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not fail.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -163,7 +159,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// The sandbox failure a program produced, insisting there was one.
-fn sandbox_error(outcome: &SandboxOutcome) -> &SandboxError {
+pub(super) fn sandbox_error(outcome: &SandboxOutcome) -> &SandboxError {
     match &outcome.result {
         Err(error) => error,
         Ok(result) => panic!(
@@ -181,8 +177,7 @@ fn a_real_cpp_program_runs_through_the_real_membrane() {
     // `std::format`, a structured binding, `std::optional` and `std::expected`. The point is not
     // that any one of them is doubtful — it is that a whole C++ program survives `clang++`, the
     // component encode and the crossing rather than a subset.
-    let outcome = run(&format!(
-        "#include <algorithm>\n\
+    let outcome = run("#include <algorithm>\n\
          #include <expected>\n\
          #include <format>\n\
          #include <map>\n\
@@ -191,61 +186,59 @@ fn a_real_cpp_program_runs_through_the_real_membrane() {
          #include <string>\n\
          #include <vector>\n\
          \n\
-         {LOG}\n\
-         namespace inventory {{\n\
+         namespace inventory {\n\
          \n\
-         struct Entry {{\n\
+         struct Entry {\n\
          \x20 std::string word;\n\
          \x20 int count;\n\
-         \x20 std::string label() const {{ return std::format(\"{{}}={{}}\", word, count); }}\n\
-         }};\n\
+         \x20 std::string label() const { return std::format(\"{}={}\", word, count); }\n\
+         };\n\
          \n\
-         template <std::ranges::range R> int total(const R &rows) {{\n\
+         template <std::ranges::range R> int total(const R &rows) {\n\
          \x20 int sum = 0;\n\
          \x20 for (const auto &row : rows) sum += row.count;\n\
          \x20 return sum;\n\
-         }}\n\
+         }\n\
          \n\
-         std::expected<Entry, std::string> best(const std::vector<Entry> &rows) {{\n\
+         std::expected<Entry, std::string> best(const std::vector<Entry> &rows) {\n\
          \x20 if (rows.empty()) return std::unexpected(\"nothing to rank\");\n\
          \x20 return rows.front();\n\
-         }}\n\
+         }\n\
          \n\
-         }}  // namespace inventory\n\
+         }  // namespace inventory\n\
          \n\
-         int main() {{\n\
+         int main() {\n\
          \x20 const std::string text = \"the quick brown fox the lazy dog the end\";\n\
          \x20 std::map<std::string, int> counts;\n\
-         \x20 for (const auto part : std::views::split(text, ' ')) {{\n\
+         \x20 for (const auto part : std::views::split(text, ' ')) {\n\
          \x20   counts[std::string(part.begin(), part.end())] += 1;\n\
-         \x20 }}\n\
+         \x20 }\n\
          \x20 std::vector<inventory::Entry> rows;\n\
-         \x20 for (const auto &[word, count] : counts) rows.push_back({{word, count}});\n\
-         \x20 std::ranges::sort(rows, [](const auto &a, const auto &b) {{\n\
+         \x20 for (const auto &[word, count] : counts) rows.push_back({word, count});\n\
+         \x20 std::ranges::sort(rows, [](const auto &a, const auto &b) {\n\
          \x20   return a.count != b.count ? a.count > b.count : a.word < b.word;\n\
-         \x20 }});\n\
-         \x20 if (auto top = inventory::best(rows); top) {{\n\
-         \x20   log(std::format(\"top {{}}\", top->label()));\n\
-         \x20 }} else {{\n\
-         \x20   log(std::format(\"failed: {{}}\", top.error()));\n\
-         \x20 }}\n\
-         \x20 log(std::format(\"distinct {{}} total {{}}\", rows.size(), inventory::total(rows)));\n\
+         \x20 });\n\
+         \x20 if (auto top = inventory::best(rows); top) {\n\
+         \x20   log(std::format(\"top {}\", top->label()));\n\
+         \x20 } else {\n\
+         \x20   log(std::format(\"failed: {}\", top.error()));\n\
+         \x20 }\n\
+         \x20 log(std::format(\"distinct {} total {}\", rows.size(), inventory::total(rows)));\n\
          \x20 std::vector<std::string> shortest;\n\
-         \x20 for (const auto &row : rows | std::views::filter([](const auto &row) {{\n\
+         \x20 for (const auto &row : rows | std::views::filter([](const auto &row) {\n\
          \x20        return row.word.size() <= 3;\n\
-         \x20      }})) {{\n\
+         \x20      })) {\n\
          \x20   shortest.push_back(row.word);\n\
-         \x20 }}\n\
+         \x20 }\n\
          \x20 std::ranges::sort(shortest);\n\
          \x20 std::string joined;\n\
-         \x20 for (const auto &word : shortest) {{\n\
+         \x20 for (const auto &word : shortest) {\n\
          \x20   if (!joined.empty()) joined += \",\";\n\
          \x20   joined += word;\n\
-         \x20 }}\n\
-         \x20 log(std::format(\"short {{}}\", joined));\n\
+         \x20 }\n\
+         \x20 log(std::format(\"short {}\", joined));\n\
          \x20 return 0;\n\
-         }}\n"
-    ));
+         }\n");
 
     assert_eq!(
         logs(&outcome),
@@ -256,39 +249,29 @@ fn a_real_cpp_program_runs_through_the_real_membrane() {
 
 #[test]
 fn a_cpp_program_dispatches_a_real_call_through_the_membrane() {
-    // `files.read-file` takes a string and hands back a variant, which is the shortest round trip
-    // this arm has through the membrane that is not a bare string. What it proves is that a C++
-    // program's arguments are lowered, that gg's host dispatches the tool, and that what comes back
-    // is a value the program can compute with — through the generated bindings an SDK will later be
-    // written against.
-    let program = format!(
-        "#include <string>\n\
-         {LOG}\n\
-         int main() {{\n\
-         \x20 sandbox_string_t path;\n\
-         \x20 sandbox_string_set(&path, \"notes.md\");\n\
-         \x20 test_cabinet_gg_files_file_read_t read;\n\
-         \x20 test_cabinet_gg_files_tool_error_t failure;\n\
-         \x20 if (!test_cabinet_gg_files_read_file(&path, nullptr, nullptr, &read, &failure)) {{\n\
-         \x20   log(\"the read failed\");\n\
-         \x20   return 1;\n\
-         \x20 }}\n\
-         \x20 if (read.tag != TEST_CABINET_GG_FILES_FILE_READ_TEXT) {{\n\
+    // `fs::read_file` takes a string and hands back a `std::variant`, which is the shortest round
+    // trip this arm has through the membrane that is not a bare string. What it proves is that a
+    // C++ program's arguments are lowered, that gg's host dispatches the tool, and that what comes
+    // back is a value the program can compute with — through the SDK a model actually writes.
+    let program = "#include <string>\n\
+         int main() {\n\
+         \x20 const auto read = fs::read_file(\"notes.md\");\n\
+         \x20 const auto *text = std::get_if<text_file>(&read);\n\
+         \x20 if (text == nullptr) {\n\
          \x20   log(\"that was a picture\");\n\
          \x20   return 1;\n\
-         \x20 }}\n\
-         \x20 const std::string contents((const char *)read.val.text.contents.ptr,\n\
-         \x20                            read.val.text.contents.len);\n\
-         \x20 const std::string first = contents.substr(0, contents.find('\\n'));\n\
+         \x20 }\n\
+         \x20 const std::string first = text->contents.substr(0, text->contents.find('\\n'));\n\
          \x20 std::string shouted;\n\
          \x20 for (char letter : first) shouted += (char)std::toupper((unsigned char)letter);\n\
          \x20 log(\"read \" + shouted);\n\
          \x20 return 0;\n\
-         }}\n"
-    );
+         }\n";
     let (outcome, calls) = evaluate(
-        &prepare(&program),
+        &prepare(program),
         &["read_file".to_string()],
+        RunEnding::None,
+        false,
         canned_outcome,
     );
 
@@ -314,42 +297,39 @@ fn a_cpp_program_throws_and_catches_which_no_other_compiled_arm_can_do() {
     // Everything it takes is being exercised at once: `-fwasm-exceptions` with the standardised
     // encoding, libc++'s `eh` build, `-lunwind`, and `Config::wasm_exceptions` on gg's engine. Any
     // one of them missing and this program either does not link or does not load.
-    let outcome = run(&format!(
-        "#include <stdexcept>\n\
+    let outcome = run("#include <stdexcept>\n\
          #include <string>\n\
          #include <vector>\n\
-         {LOG}\n\
-         struct TooSmall : std::runtime_error {{\n\
-         \x20 explicit TooSmall(const std::string &what) : std::runtime_error(what) {{}}\n\
-         }};\n\
+         struct TooSmall : std::runtime_error {\n\
+         \x20 explicit TooSmall(const std::string &what) : std::runtime_error(what) {}\n\
+         };\n\
          \n\
-         static int checked(const std::vector<int> &values, std::size_t index) {{\n\
+         static int checked(const std::vector<int> &values, std::size_t index) {\n\
          \x20 if (index >= values.size()) throw TooSmall(\"only \" + std::to_string(values.size()));\n\
          \x20 return values.at(index);\n\
-         }}\n\
+         }\n\
          \n\
-         int main() {{\n\
-         \x20 const std::vector<int> values{{1, 2, 3}};\n\
-         \x20 try {{\n\
+         int main() {\n\
+         \x20 const std::vector<int> values{1, 2, 3};\n\
+         \x20 try {\n\
          \x20   log(\"got \" + std::to_string(checked(values, 1)));\n\
          \x20   log(\"got \" + std::to_string(checked(values, 9)));\n\
-         \x20 }} catch (const TooSmall &failure) {{\n\
+         \x20 } catch (const TooSmall &failure) {\n\
          \x20   log(std::string(\"caught my own: \") + failure.what());\n\
-         \x20 }}\n\
-         \x20 try {{\n\
+         \x20 }\n\
+         \x20 try {\n\
          \x20   (void)values.at(9);\n\
-         \x20 }} catch (const std::out_of_range &failure) {{\n\
+         \x20 } catch (const std::out_of_range &failure) {\n\
          \x20   log(\"caught the library's out_of_range\");\n\
-         \x20 }}\n\
-         \x20 try {{\n\
+         \x20 }\n\
+         \x20 try {\n\
          \x20   (void)std::stoi(\"not a number\");\n\
-         \x20 }} catch (const std::exception &failure) {{\n\
+         \x20 } catch (const std::exception &failure) {\n\
          \x20   log(\"caught stoi\");\n\
-         \x20 }}\n\
+         \x20 }\n\
          \x20 log(\"still running\");\n\
          \x20 return 0;\n\
-         }}\n"
-    ));
+         }\n");
 
     assert_eq!(
         logs(&outcome),
@@ -365,7 +345,7 @@ fn a_cpp_program_throws_and_catches_which_no_other_compiled_arm_can_do() {
 }
 
 /// The model-facing error a program reported, insisting the sandbox ran it and that it failed.
-fn program_error(outcome: &SandboxOutcome) -> &crate::sandbox::outcome::ProgramError {
+pub(super) fn program_error(outcome: &SandboxOutcome) -> &crate::sandbox::outcome::ProgramError {
     match &outcome.result {
         Ok(result) => result.error.as_ref().unwrap_or_else(|| {
             panic!(
@@ -395,21 +375,18 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
     //
     //    The class is the model's own, demangled: `inventory::TooSmall`, not `N9inventory8TooSmallE`
     //    and not `std::exception`.
-    let uncaught = run(&format!(
-        "#include <stdexcept>\n\
+    let uncaught = run("#include <stdexcept>\n\
          #include <string>\n\
-         {LOG}\n\
-         namespace inventory {{\n\
-         struct TooSmall : std::runtime_error {{\n\
-         \x20 explicit TooSmall(const std::string &what) : std::runtime_error(what) {{}}\n\
-         }};\n\
-         }}\n\
+         namespace inventory {\n\
+         struct TooSmall : std::runtime_error {\n\
+         \x20 explicit TooSmall(const std::string &what) : std::runtime_error(what) {}\n\
+         };\n\
+         }\n\
          \n\
-         int main() {{\n\
+         int main() {\n\
          \x20 log(\"before\");\n\
          \x20 throw inventory::TooSmall(\"gg substrate threw this\");\n\
-         }}\n"
-    ));
+         }\n");
     let error = program_error(&uncaught);
     assert!(
         error.message.contains("gg substrate threw this"),
@@ -435,31 +412,27 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
     // A thrown value that is not a `std::exception` at all, which C++ allows and models write.
     // There is nothing to ask such a value, so what is reported is that it happened — still more
     // than `thrown Wasm exception`.
-    let raw = run(&format!(
-        "{LOG}\nint main() {{\n\x20 log(\"before\");\n\x20 throw 42;\n}}\n"
-    ));
+    let raw = run("int main() {\n\x20 log(\"before\");\n\x20 throw 42;\n}\n");
     assert!(
         program_error(&raw).message.contains("not a std::exception"),
         "a thrown `int` did not reach the model at all: {}",
         program_error(&raw).message
     );
 
-    // 2. A libc++ HARDENING check. wasi-sdk builds libc++ with hardening on by default, so an
-    //    out-of-bounds `operator[]` is a checked abort with the library's own message rather than a
-    //    silent read of whatever was there. It aborts rather than throwing, so gg's `catch` cannot
-    //    stand in front of it — what carries the words is the guest's stderr, which gg keeps.
-    //    gg asked for none of this and gets it, and it is the single largest thing standing between
-    //    this arm and undefined behaviour.
-    let hardened = run(&format!(
-        "#include <vector>\n\
-         {LOG}\n\
-         int main() {{\n\
-         \x20 std::vector<int> values{{1, 2, 3}};\n\
+    // 2. A libc++ HARDENING check. wasi-sdk ships libc++ configured to check NOTHING, and gg
+    //    compiles every translation unit at `extensive` — so an out-of-bounds `operator[]` is a
+    //    checked trap with the library's own message rather than a silent read of whatever was
+    //    there. It traps rather than throwing, so gg's `catch` cannot stand in front of it; what
+    //    carries the words is a synthetic inlined frame in the debug information, which is why
+    //    `-g1` is what makes the sentence readable at all. It is the single largest thing standing
+    //    between this arm and undefined behaviour.
+    let hardened = run("#include <vector>\n\
+         int main() {\n\
+         \x20 std::vector<int> values{1, 2, 3};\n\
          \x20 log(\"before\");\n\
          \x20 log(std::to_string(values[9]));\n\
          \x20 return 0;\n\
-         }}\n"
-    ));
+         }\n");
     let failure = sandbox_error(&hardened).to_string();
     assert!(
         failure.contains("libc++ Hardening assertion") && failure.contains("index out of bounds"),
@@ -482,17 +455,16 @@ fn the_three_ways_a_cpp_program_fails_reach_the_model_differently() {
     //    coordinate rather than an address, and there is nothing gg can do to make it more than
     //    that. This is the comparability risk this arm carries: in a run record, a failure the
     //    LANGUAGE caused here is hard to tell from a model that reasoned badly.
-    let undefined = run(&format!(
-        "{LOG}\n\
-         static int divide(int left, int right) {{ return left / right; }}\n\
+    let undefined = run(
+        "         static int divide(int left, int right) { return left / right; }\n\
          \n\
-         int main() {{\n\
+         int main() {\n\
          \x20 log(\"before\");\n\
          \x20 int zero = 0;\n\
          \x20 log(std::to_string(divide(7, zero)));\n\
          \x20 return 0;\n\
-         }}\n"
-    ));
+         }\n",
+    );
     let failure = sandbox_error(&undefined).to_string();
     assert!(
         failure.contains("main.cpp"),
@@ -513,16 +485,13 @@ fn what_a_program_writes_to_stderr_reaches_the_model() {
     // tail of it rather than letting it go to the run's own log. On this arm it is not merely
     // available but load-bearing: it is where libc++ puts BOTH of the failure messages the test
     // above reads. Here it is exercised the way a program would use it on purpose.
-    let outcome = run(&format!(
-        "#include <cstdio>\n\
-         {LOG}\n\
-         int main() {{\n\
+    let outcome = run("#include <cstdio>\n\
+         int main() {\n\
          \x20 log(\"logged\");\n\
          \x20 std::fputs(\"gg substrate said this on stderr\\n\", stderr);\n\
          \x20 std::fflush(stderr);\n\
          \x20 std::abort();\n\
-         }}\n"
-    ));
+         }\n");
 
     let failure = sandbox_error(&outcome).to_string();
     assert!(
@@ -560,16 +529,13 @@ fn a_reply_that_defines_no_main_is_refused_before_it_is_compiled() {
     // And the linker really would have accepted it, which is what makes the refusal necessary rather
     // than defensive. The same source with a `main` that does nothing compiles and runs clean, so
     // the difference above is the entry point and not anything else about the program.
-    let outcome = run(&format!(
-        "#include <string>\n\
-         {LOG}\n\
-         static std::string helper() {{ return \"something runs\"; }}\n\
+    let outcome = run("#include <string>\n\
+         static std::string helper() { return \"something runs\"; }\n\
          \n\
-         int main() {{\n\
+         int main() {\n\
          \x20 log(helper());\n\
          \x20 return 0;\n\
-         }}\n"
-    ));
+         }\n");
     assert_eq!(logs(&outcome), ["something runs"]);
 }
 
@@ -641,7 +607,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         "/nonexistent/gg-wasi-sdk",
         || {
             compile_program(
-                &format!("{LOG}\nint main() {{ log(\"hi\"); return 0; }}\n"),
+                "int main() { log(\"hi\"); return 0; }\n",
                 &PrepareContext::new(),
             )
         },
@@ -687,22 +653,19 @@ fn a_cpp_program_is_compiled_verbatim() {
     // And the reverse: an `#include`, a `namespace` and a `template` all compile, which is the whole
     // reason a reply is a translation unit rather than a function body — a `template` may not be
     // declared at block scope at all.
-    let outcome = run(&format!(
-        "#include <string>\n\
-         {LOG}\n\
-         namespace greeting {{\n\
-         template <typename T> std::string shout(const T &value) {{\n\
+    let outcome = run("#include <string>\n\
+         namespace greeting {\n\
+         template <typename T> std::string shout(const T &value) {\n\
          \x20 std::string text = std::string(value);\n\
          \x20 for (auto &letter : text) letter = (char)std::toupper((unsigned char)letter);\n\
          \x20 return text;\n\
-         }}\n\
-         }}\n\
+         }\n\
+         }\n\
          \n\
-         int main() {{\n\
+         int main() {\n\
          \x20 log(greeting::shout(\"hello\"));\n\
          \x20 return 0;\n\
-         }}\n"
-    ));
+         }\n");
     assert_eq!(logs(&outcome), ["HELLO"]);
 }
 
@@ -716,9 +679,7 @@ fn the_prelude_is_precompiled_once_and_read_only_afterwards() {
     // toolchain directory puts it, and that it is SEALED — because a shared tree a compilation can
     // write to is the measured `purs` corruption exactly, and this is the one shared file on this arm
     // that gg produces rather than ships.
-    let component = prepare(&format!(
-        "{LOG}\nint main() {{ log(\"warm\"); return 0; }}\n"
-    ));
+    let component = prepare("int main() { log(\"warm\"); return 0; }\n");
     assert!(!component.is_empty());
 
     let home = compile::wasi_sdk_home().expect("resolving the wasi-sdk home never fails");
@@ -749,10 +710,7 @@ fn the_prelude_is_precompiled_once_and_read_only_afterwards() {
     let outcome = run("int main() {\n\
          \x20 std::vector<int> values{3, 1, 2};\n\
          \x20 std::ranges::sort(values);\n\
-         \x20 sandbox_string_t text;\n\
-         \x20 const std::string line = std::format(\"{} {} {}\", values[0], values[1], values[2]);\n\
-         \x20 sandbox_string_set(&text, line.c_str());\n\
-         \x20 test_cabinet_gg_feedback_log(&text);\n\
+         \x20 log(std::format(\"{} {} {}\", values[0], values[1], values[2]));\n\
          \x20 return 0;\n\
          }\n");
     assert_eq!(logs(&outcome), ["1 2 3"]);
@@ -768,14 +726,10 @@ fn what_compiling_a_cpp_program_cost_is_a_reading_the_seam_can_take() {
     // Bounds rather than a figure: the reading is a wall clock on a shared machine. What would fail
     // this is a compile that did not happen at all.
     compile::warm();
-    let _ = prepare(&format!(
-        "{LOG}\nint main() {{ log(\"warmed\"); return 0; }}\n"
-    ));
+    let _ = prepare("int main() { log(\"warmed\"); return 0; }\n");
 
     let started = Instant::now();
-    let _ = prepare(&format!(
-        "{LOG}\nint main() {{ log(\"compiled\"); return 0; }}\n"
-    ));
+    let _ = prepare("int main() { log(\"compiled\"); return 0; }\n");
     let accepted = started.elapsed();
 
     let started = Instant::now();
@@ -805,9 +759,7 @@ fn what_a_compiled_cpp_program_weighs_is_a_per_turn_cost() {
     // The band is wide and low-sided on purpose. What would fail it is a jump, and a jump would mean
     // the link stopped dead-stripping or something new became reachable from the shell.
     let started = Instant::now();
-    let component = prepare(&format!(
-        "{LOG}\nint main() {{ log(\"weighed\"); return 0; }}\n"
-    ));
+    let component = prepare("int main() { log(\"weighed\"); return 0; }\n");
     let compiled = started.elapsed();
 
     assert!(
@@ -829,7 +781,7 @@ fn what_a_compiled_cpp_program_weighs_is_a_per_turn_cost() {
         component.len()
     );
 
-    let (outcome, _log) = evaluate(&component, &[], canned_outcome);
+    let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["weighed"]);
 }
 
@@ -863,9 +815,7 @@ impl Preparation for CppCompile {
     fn source(&self, marker: &str) -> String {
         format!(
             "int main() {{\n\
-             \x20 sandbox_string_t text;\n\
-             \x20 sandbox_string_set(&text, \"{marker}\");\n\
-             \x20 test_cabinet_gg_feedback_log(&text);\n\
+             \x20 log(\"{marker}\");\n\
              \x20 return 0;\n\
              }}\n"
         )

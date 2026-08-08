@@ -1,0 +1,2675 @@
+{
+  "language": "cpp",
+  "generatedFrom": "packages/gg-sandbox-cpp/Sources/sdk/ (clang++ -ast-dump=json)",
+  "libraries": [
+    {
+      "group": "Language support and concepts",
+      "modules": [
+        "<compare>",
+        "<concepts>",
+        "<cstddef>",
+        "<cstdint>",
+        "<initializer_list>",
+        "<limits>",
+        "<source_location>",
+        "<type_traits>",
+        "<typeinfo>",
+        "<utility>",
+        "<version>"
+      ]
+    },
+    {
+      "group": "Diagnostics",
+      "modules": [
+        "<cassert>",
+        "<exception>",
+        "<stdexcept>",
+        "<system_error>"
+      ]
+    },
+    {
+      "group": "Memory and general utilities",
+      "modules": [
+        "<bit>",
+        "<functional>",
+        "<memory>",
+        "<optional>",
+        "<tuple>",
+        "<variant>"
+      ]
+    },
+    {
+      "group": "Errors as values",
+      "modules": [
+        "<expected>"
+      ]
+    },
+    {
+      "group": "Strings, text and formatting",
+      "modules": [
+        "<charconv>",
+        "<cstring>",
+        "<format>",
+        "<regex>",
+        "<string>",
+        "<string_view>"
+      ]
+    },
+    {
+      "group": "Containers",
+      "modules": [
+        "<array>",
+        "<bitset>",
+        "<deque>",
+        "<forward_list>",
+        "<list>",
+        "<map>",
+        "<queue>",
+        "<set>",
+        "<span>",
+        "<stack>",
+        "<unordered_map>",
+        "<unordered_set>",
+        "<vector>"
+      ]
+    },
+    {
+      "group": "Iterators, ranges and algorithms",
+      "modules": [
+        "<algorithm>",
+        "<iterator>",
+        "<numeric>",
+        "<ranges>"
+      ]
+    },
+    {
+      "group": "Numerics and time",
+      "modules": [
+        "<chrono>",
+        "<cmath>",
+        "<complex>",
+        "<numbers>",
+        "<random>",
+        "<ratio>"
+      ]
+    },
+    {
+      "group": "Streams",
+      "modules": [
+        "<iomanip>",
+        "<sstream>"
+      ]
+    }
+  ],
+  "objects": [
+    {
+      "object": "fs",
+      "doc": "read, write, and edit workspace files"
+    },
+    {
+      "object": "system",
+      "doc": "run shell commands in the workspace"
+    },
+    {
+      "object": "project",
+      "doc": "the epic/issue board — decompose work into dispatchable issues"
+    },
+    {
+      "object": "tasks",
+      "doc": "your task list"
+    },
+    {
+      "object": "memory",
+      "doc": "durable memories that survive context compaction"
+    },
+    {
+      "object": "view",
+      "doc": "show yourself a file, a value, or a function's documentation — the only way material enters your context"
+    },
+    {
+      "object": "context",
+      "doc": "manage your own context window"
+    },
+    {
+      "object": "agents",
+      "doc": "delegate work to child agents"
+    },
+    {
+      "object": "skills",
+      "doc": "read authored skills"
+    },
+    {
+      "object": "programs",
+      "doc": "fetch a program you already ran, and hand a patched copy back to be run"
+    },
+    {
+      "object": "harness",
+      "doc": "end your session"
+    },
+    {
+      "object": "review",
+      "doc": "return your verdict on the work you are reviewing"
+    }
+  ],
+  "meta": [
+    {
+      "key": "list",
+      "name": "list",
+      "signatures": [
+        {
+          "signature": "list() -> std::vector<function_summary>",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view::open_docs_view`.\n\nReturns: the functions this object really bound, each with its one-line summary.",
+      "types": [
+        "function_summary",
+        "tool_error",
+        "tool_error_code"
+      ]
+    }
+  ],
+  "session": [
+    {
+      "key": "finish",
+      "name": "finish",
+      "object": "harness",
+      "signatures": [
+        {
+          "signature": "finish(std::string_view summary) -> void",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What you did, in a sentence or two.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.\n\nThrows: tool_error `unavailable` when your role does not end this way, and `invalid_argument` for an empty summary.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ],
+      "ending": "standard"
+    },
+    {
+      "key": "approve",
+      "name": "approve",
+      "object": "review",
+      "signatures": [
+        {
+          "signature": "approve() -> void",
+          "parameters": []
+        }
+      ],
+      "doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change. It takes nothing: an approval carries no obligation beyond itself.\n\nThrows: tool_error `unavailable` when your role is not to review.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ],
+      "ending": "review"
+    },
+    {
+      "key": "request_changes",
+      "name": "request_changes",
+      "object": "review",
+      "signatures": [
+        {
+          "signature": "request_changes(std::vector<std::string> items) -> void",
+          "parameters": [
+            {
+              "name": "items",
+              "type": "std::vector<std::string>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Every change that must be made before the work can be accepted, one per entry: what is wrong, and what to change. It may not be empty.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. This ends your session, and does not stop your program.\n\nEach item says what is wrong and what to change; the list may not be empty.\n\nThrows: tool_error `unavailable` when your role is not to review, and `invalid_argument` when the list is empty.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ],
+      "ending": "review"
+    }
+  ],
+  "views": [
+    {
+      "key": "open_file",
+      "name": "open_file",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_file(std::string_view path, read_window window = {}) -> file_read",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to open. Relative to your workspace, or absolute.",
+              "fields": []
+            },
+            {
+              "name": "window",
+              "type": "read_window",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The lines to show; leave it out to show the whole file.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a file AND show it to yourself: you get back exactly what `fs::read_file` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.\n\nThe split from `fs::read_file` is the point — `fs::read_file` gets bytes for your PROGRAM, `view::open_file` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `window.offset` and `window.limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs::read_file` of an image describes it without showing it.\n\nPictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); nothing is opened and nothing is shown when you pass that cap, so close one with `view::close` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.\n\nReturns: the same read `fs::read_file` would have handed back.\nThrows: tool_error `limit_exceeded`, naming the cap, when opening a picture would pass your agent's image-view cap.",
+      "types": [
+        "read_window",
+        "file_read",
+        "tool_error",
+        "tool_error_code",
+        "text_file",
+        "image_file"
+      ],
+      "requires": "read_file"
+    },
+    {
+      "key": "open_text",
+      "name": "open_text",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_text(std::string_view label, std::string_view body) -> void",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to file the view under. It is what `view::close` takes, and opening the same label again replaces what it showed. It may not be empty.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to show yourself. An empty body is allowed: it is how you say that something you were showing is now empty.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.\n\nThis is the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty BODY is allowed, since it is how you say that something you were showing is now empty.\n\nThrows: tool_error `invalid_argument` for an empty label — a view with no selector could never be closed or attributed — and `limit_exceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ],
+      "requires": null
+    },
+    {
+      "key": "open_docs_view",
+      "name": "open_docs_view",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "open_docs_view(std::string_view name) -> void",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The function to document, by the name it is called on its object — `\"read_file\"` for `fs::read_file`. Every object's `list` is how you find out which names exist.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.\n\nThis is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view::close` closes it when you are done with it.\n\nThrows: tool_error `not_found` for an unknown or unbound name.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ],
+      "requires": null
+    },
+    {
+      "key": "close",
+      "name": "close",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "close(std::string_view selector) -> std::uint32_t",
+          "parameters": [
+            {
+              "name": "selector",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Close every view carrying `selector` and hand back how many were closed, freeing the tokens they occupied.\n\nFor a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.\n\nReturns: how many views were closed.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ],
+      "requires": null
+    },
+    {
+      "key": "current",
+      "name": "current",
+      "object": "view",
+      "signatures": [
+        {
+          "signature": "current() -> std::vector<open_view>",
+          "parameters": []
+        }
+      ],
+      "doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.\n\nIt is called `current` rather than `list` because every API object already carries a `list` that lists that object's own functions. Read it before deciding what to close when your window is filling up.\n\nReturns: every view open in your context window right now.",
+      "types": [
+        "open_view",
+        "tool_error",
+        "tool_error_code",
+        "view_kind",
+        "view_region"
+      ],
+      "requires": null
+    }
+  ],
+  "programs": [
+    {
+      "key": "history",
+      "name": "history",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "history() -> std::vector<program_summary>",
+          "parameters": []
+        }
+      ],
+      "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.\n\nIt lists shapes, not sources: fetch the one you want with `programs::get`. The list survives a compaction, so it is also how you find a program whose text has left your context window. It is empty — never an error — for a session that has run nothing yet.\n\nReturns: one summary per program you have run, oldest first.",
+      "types": [
+        "program_summary",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "key": "get",
+      "name": "get",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "get(std::optional<std::uint32_t> turn = std::nullopt) -> std::string",
+          "parameters": [
+            {
+              "name": "turn",
+              "type": "std::optional<std::uint32_t>",
+              "optional": true,
+              "kind": "positional",
+              "default": "std::nullopt",
+              "doc": "The turn whose program to fetch, as `history` reports it; leave it out to fetch your most recent one.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "The exact source of one program you ran. With no argument, your most recent one.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs::rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\nReturns: that program's exact source.\nThrows: tool_error `not_found`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "key": "rerun",
+      "name": "rerun",
+      "object": "programs",
+      "signatures": [
+        {
+          "signature": "rerun(std::string_view source) -> void",
+          "parameters": [
+            {
+              "name": "source",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The program to run in place of this one, as C++. It may not be blank, and it must define `main`.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program.\n\nUse it with `get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice.\n\nThe first call stands, because a silently replaced program is a change you cannot see. If your program then fails, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.\n\nThrows: tool_error `refused` for a second hand-over in one turn, and `invalid_argument` for a blank source.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "tool": "shell",
+      "name": "shell",
+      "object": "system",
+      "signatures": [
+        {
+          "signature": "shell(std::string_view command, std::optional<double> timeout_secs = std::nullopt) -> shell_output",
+          "parameters": [
+            {
+              "name": "command",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The command line, run by `sh -c` with your workspace as its working directory.",
+              "fields": []
+            },
+            {
+              "name": "timeout_secs",
+              "type": "std::optional<double>",
+              "optional": true,
+              "kind": "positional",
+              "default": "std::nullopt",
+              "doc": "How long to let it run, in seconds, before killing it. Leave it out to take gg's default of 120, which is clamped to whatever is left of the run's wall-clock budget.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Run a command with `sh -c` in the workspace directory and hand back its merged stdout and stderr.\n\nA non-zero exit is NOT a failure — read `exit_code` on the result; only a process that could not be launched, or one the timeout killed, throws.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.\n\nReturns: what the process reported when it finished.\nThrows: tool_error `limit_exceeded` when the timeout killed the process, and `io_error` when it could not be launched.",
+      "types": [
+        "shell_output",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "read_file",
+      "name": "read_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "read_file(std::string_view path, read_window window = {}) -> file_read",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to read. Relative to your workspace, or absolute for anything else in this container.",
+              "fields": []
+            },
+            {
+              "name": "window",
+              "type": "read_window",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The lines to read; leave it out to read the whole file.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a file, handing back a `text_file` or an `image_file` — the format is detected from the file's bytes, never its extension.\n\nThis gets bytes for your PROGRAM and puts NOTHING in your context window; `view::open_file` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.\n\nReading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `fs::read_file` is a file you have not looked at. `view::open_file` is the one way to actually see a picture.\n\nNarrow the two alternatives the way you narrow any `std::variant`:\n\n```cpp\nconst auto read = fs::read_file(\"logo.png\");\nif (const auto* text = std::get_if<text_file>(&read)) {\n  view::open_text(\"logo\", text->contents);\n} else {\n  view::open_text(\"logo\", std::get<image_file>(read).label);\n}\n```\n\nReturns: the file's text window, or the picture's description.\nThrows: tool_error `not_found` for a missing path.",
+      "types": [
+        "read_window",
+        "file_read",
+        "tool_error",
+        "tool_error_code",
+        "text_file",
+        "image_file"
+      ]
+    },
+    {
+      "tool": "write_file",
+      "name": "write_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "write_file(std::string_view path, std::string_view contents) -> std::uint64_t",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+              "fields": []
+            },
+            {
+              "name": "contents",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The UTF-8 text to write. It replaces the file entirely.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and hand back the number of bytes written.\n\nWriting is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.\n\nReturns: how many bytes were written.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "edit_file",
+      "name": "edit_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "edit_file(std::string_view path, std::string_view old_string, std::string_view new_string) -> void",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to edit.",
+              "fields": []
+            },
+            {
+              "name": "old_string",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The exact text to find, including its whitespace. It must appear exactly once.",
+              "fields": []
+            },
+            {
+              "name": "new_string",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The text to put in its place. An empty string deletes the match.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace the one exact occurrence of `old_string` in a file with `new_string`.\n\nWiden the surrounding context until the match is unique rather than counting occurrences.\n\nThrows: tool_error `not_found` when the text does not appear, and `conflict` — with the number of matches — when it appears more than once.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "list_dir",
+      "name": "list_dir",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "list_dir(std::optional<std::string_view> path = std::nullopt) -> std::vector<dir_entry>",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::optional<std::string_view>",
+              "optional": true,
+              "kind": "positional",
+              "default": "std::nullopt",
+              "doc": "The directory to list, relative to your workspace or absolute. Leave it out to list your workspace root.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "List a directory, sorted by name; leaving the path out lists your workspace root.\n\nEach entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty vector, not a failure.\n\nReturns: the directory's entries, sorted by name.",
+      "types": [
+        "dir_entry",
+        "tool_error",
+        "tool_error_code",
+        "entry_kind"
+      ]
+    },
+    {
+      "tool": "read_skill",
+      "name": "read_skill",
+      "object": "skills",
+      "signatures": [
+        {
+          "signature": "read_skill(std::string_view name) -> std::string",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The skill's name, as the system prompt lists it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a skill by name and hand back its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.\n\nA skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib::<key>` for the rest of your session and the reply names the key and what it offers. If it carries an on-use program, gg runs it once your program has ended, and whatever it shows you arrives on your next turn.\n\nReturns: the skill's body, with its front matter stripped.\nThrows: tool_error `not_found` — listing the skills that do exist — when the name is unknown.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "write_memory",
+      "name": "write_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "write_memory(std::string_view name, std::string_view description, std::string_view body, memory_options options = {}) -> memory_usage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's contents.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "memory_options",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The code halves you may leave out.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Record a durable memory that survives context compaction, and hand back how much of the memory budget is now used.\n\nA memory may also carry **code**. `options.code` is a C++ translation unit whose declarations are bound at `lib::<name>` in every later program you write, so a helper you get right once you never write again; `options.on_use` is a program gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.\n\nReturns: how much of the memory budget is now used.\nThrows: tool_error `conflict` on a duplicate name, and `limit_exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more.",
+      "types": [
+        "memory_options",
+        "memory_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "update_memory",
+      "name": "update_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "update_memory(std::string_view name, std::string_view description, std::string_view body, memory_options options = {}) -> memory_usage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The slug of the memory to replace.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The one-line description to replace the old one with.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The contents to replace the old ones with.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "memory_options",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The code halves. Leaving one out clears the one the memory had.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace an existing memory's description and body, keyed on its `name`, and hand back the memory budget.\n\nIts code and on-use program are replaced too — leaving them out of `options` clears them.\n\nReturns: how much of the memory budget is now used.\nThrows: tool_error `not_found` when no memory has that name.",
+      "types": [
+        "memory_options",
+        "memory_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "create_memory",
+      "name": "create_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "create_memory(std::string_view name, std::string_view description, std::string_view body, memory_options options = {}) -> memory_usage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A one-line description of what the memory holds, which is its line in the index.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's initial contents, which stay out of your context window until you read them.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "memory_options",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The code halves you may leave out. They load on that first read.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and hand back the memory budget.\n\nGive it a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents.\n\nReturns: how much of the memory budget is now used.\nThrows: tool_error `conflict` on a duplicate slug, and `limit_exceeded` when the contents, or the index entry, would breach a limit.",
+      "types": [
+        "memory_options",
+        "memory_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "read_memory",
+      "name": "read_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "read_memory(std::string_view name) -> std::string",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context.\n\nIf the memory carries code, reading it also loads that code: the reply names the `lib::<key>` it is bound at, and it stays bound for the rest of your session.\n\nReturns: the memory's full contents.\nThrows: tool_error `not_found` when no memory has that slug.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "edit_memory",
+      "name": "edit_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "edit_memory(std::string_view name, std::string_view search, std::string_view replace) -> memory_usage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The slug of the memory to revise.",
+              "fields": []
+            },
+            {
+              "name": "search",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The exact text to find in its contents. It must appear exactly once.",
+              "fields": []
+            },
+            {
+              "name": "replace",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The text to put in its place.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and hand back the memory budget.\n\nAppend by quoting the last line and replacing it with itself plus what you are adding.\n\nReturns: how much of the memory budget is now used.\nThrows: tool_error `not_found` when the text does not appear, `conflict` when it appears more than once, `limit_exceeded` when the result would be too long, and `invalid_argument` when the edit would leave the memory empty — delete it instead.",
+      "types": [
+        "memory_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "search_memories",
+      "name": "search_memories",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "search_memories(std::vector<std::string> keywords) -> std::vector<memory_hit>",
+          "parameters": [
+            {
+              "name": "keywords",
+              "type": "std::vector<std::string>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The words to look for. Several specific words rank better than one sentence, because a memory is ranked by how many of them it mentions.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Find the memories mentioning any of `keywords`, best first.\n\nPlain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `memory::read_memory` the hits worth having in full. A search that matches nothing is an empty vector.\n\nReturns: the memories that matched, best first.\nThrows: tool_error `invalid_argument` when every keyword is empty.",
+      "types": [
+        "memory_hit",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "delete_memory",
+      "name": "delete_memory",
+      "object": "memory",
+      "signatures": [
+        {
+          "signature": "delete_memory(std::string_view name) -> memory_usage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The memory's slug.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.\n\nReturns: how much of the memory budget is left in use.\nThrows: tool_error `not_found` when no memory has that name.",
+      "types": [
+        "memory_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "add_task",
+      "name": "add_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "add_task(std::string_view id, std::string_view title, task_options options = {}) -> task_usage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The id you choose for it. It is what every other task call takes, and no two tasks may share one.",
+              "fields": []
+            },
+            {
+              "name": "title",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the work.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "task_options",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The parts you may leave out: a description, and the tasks this one waits on.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Add a task to the task DAG and hand back the task budget.\n\n`options.blocked_by` names the tasks that must finish before this one and defaults to none.\n\nReturns: how much of the task budget is used.\nThrows: tool_error `conflict` on a duplicate id or on an edge that would close a cycle.",
+      "types": [
+        "task_options",
+        "task_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "update_task",
+      "name": "update_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "update_task(std::string_view id, task_patch patch) -> void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to revise.",
+              "fields": []
+            },
+            {
+              "name": "patch",
+              "type": "task_patch",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The fields to change. Supply at least one; a field left at its default is left alone.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Revise a task's title, description and/or status; supply at least one.\n\nA field left at its default is left alone, `text_edit::clear()` empties the description, and `text_edit::set(…)` replaces it.\n\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "task_patch",
+        "tool_error",
+        "tool_error_code",
+        "text_edit",
+        "task_status"
+      ]
+    },
+    {
+      "tool": "set_blocked_by",
+      "name": "set_blocked_by",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "set_blocked_by(std::string_view id, std::vector<std::string> blocked_by) -> void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task whose blockers to replace.",
+              "fields": []
+            },
+            {
+              "name": "blocked_by",
+              "type": "std::vector<std::string>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The ids of every task that must now be done before it. An empty vector clears them all.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace a task's whole blocker set; an empty vector clears every blocker.\n\nThrows: tool_error `not_found` for an unknown id, and `conflict` when an edge would close a cycle.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "complete_task",
+      "name": "complete_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "complete_task(std::string_view id) -> void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to mark done.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done.\n\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "remove_task",
+      "name": "remove_task",
+      "object": "tasks",
+      "signatures": [
+        {
+          "signature": "remove_task(std::string_view id) -> task_usage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The task to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Remove a task and every blocker edge pointing at it, and hand back the task budget.\n\nReturns: how much of the task budget is left in use.\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "task_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "create_epic",
+      "name": "create_epic",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "create_epic(std::string_view prefix, std::string_view title, std::string_view description) -> epic_created",
+          "parameters": [
+            {
+              "name": "prefix",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
+              "fields": []
+            },
+            {
+              "name": "title",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the body of work.",
+              "fields": []
+            },
+            {
+              "name": "description",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the epic covers, for a reader who has not seen its issues.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Create an epic to group related issues, and hand back the id its prefix resolved to together with the board budget.\n\n`prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\nReturns: the id the prefix resolved to, and the board budget.\nThrows: tool_error `invalid_argument` when the prefix is not 3-6 letters, and `conflict` when another epic already holds it.",
+      "types": [
+        "epic_created",
+        "tool_error",
+        "tool_error_code",
+        "board_usage"
+      ]
+    },
+    {
+      "tool": "create_issue",
+      "name": "create_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "create_issue(std::string_view title, std::string_view in_scope, std::string_view out_of_scope, std::string_view completion_criteria, std::string_view agent, issue_options options = {}) -> issue_created",
+          "parameters": [
+            {
+              "name": "title",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "A short line naming the work.",
+              "fields": []
+            },
+            {
+              "name": "in_scope",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
+              "fields": []
+            },
+            {
+              "name": "out_of_scope",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the issue deliberately does not cover, so the work stops where you meant it to.",
+              "fields": []
+            },
+            {
+              "name": "completion_criteria",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
+              "fields": []
+            },
+            {
+              "name": "agent",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent the issue is dispatched to. It must be one you may spawn.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "issue_options",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The parts you may leave out: a description, blockers, an epic, reviewers.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Create a self-contained, dispatchable issue, and hand back the id the board **assigned** it together with the board budget.\n\nThe id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; you do not choose it, so keep the returned one to block a later issue on this one or to wait for it. `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from, so write them for a reader with no other context.\n\nReturns: the id the board assigned, and the board budget.\nThrows: tool_error `invalid_argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker edge that would close a cycle.",
+      "types": [
+        "issue_options",
+        "issue_created",
+        "tool_error",
+        "tool_error_code",
+        "board_usage"
+      ]
+    },
+    {
+      "tool": "update_issue",
+      "name": "update_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "update_issue(std::string_view id, issue_patch patch) -> void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to revise.",
+              "fields": []
+            },
+            {
+              "name": "patch",
+              "type": "issue_patch",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The fields to change. Supply at least one; a field left at its default is left alone.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Revise an issue; supply at least one field.\n\nA field left at its default is left alone, `text_edit::clear()` empties the description, and `epic_assignment::ungroup()` detaches the issue from its epic.\n\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "issue_patch",
+        "tool_error",
+        "tool_error_code",
+        "text_edit",
+        "issue_status",
+        "epic_assignment"
+      ]
+    },
+    {
+      "tool": "set_issue_blocked_by",
+      "name": "set_issue_blocked_by",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "set_issue_blocked_by(std::string_view id, std::vector<std::string> blocked_by) -> void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue whose blockers to replace.",
+              "fields": []
+            },
+            {
+              "name": "blocked_by",
+              "type": "std::vector<std::string>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The ids of every issue that must now be done before it. An empty vector clears them all.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Replace an issue's whole blocker set; an empty vector clears every blocker.\n\nThrows: tool_error `not_found` for an unknown id, and `conflict` when an edge would close a cycle.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "remove_epic",
+      "name": "remove_epic",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "remove_epic(std::string_view id) -> board_usage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The epic to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.\n\nReturns: how much of the board budget is left in use.\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "board_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "remove_issue",
+      "name": "remove_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "remove_issue(std::string_view id) -> board_usage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.\n\nReturns: how much of the board budget is left in use.\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "board_usage",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "wait_for_issue",
+      "name": "wait_for_issue",
+      "object": "project",
+      "signatures": [
+        {
+          "signature": "wait_for_issue(std::string_view id) -> std::string",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The issue to wait on. It may not be the issue you were assigned.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Register a wait on an issue and hand back an acknowledgement.\n\nIt does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement.\n\nReturns: gg's acknowledgement of the registered wait.\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "evict_file_view",
+      "name": "evict_file_view",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "evict_file_view(std::optional<std::string_view> path = std::nullopt) -> reclaim_report",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::optional<std::string_view>",
+              "optional": true,
+              "kind": "positional",
+              "default": "std::nullopt",
+              "doc": "The file whose views to drop; leave it out to drop every file view you hold.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed.\n\nThe files on disk are untouched — this forgets what you read, not what exists.\n\nReturns: what the reclaim actually freed.",
+      "types": [
+        "reclaim_report",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "archive_thread",
+      "name": "archive_thread",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "archive_thread(std::vector<turn_range> ranges) -> reclaim_report",
+          "parameters": [
+            {
+              "name": "ranges",
+              "type": "std::vector<turn_range>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The inclusive spans of turn numbers to move out of your window. They may overlap.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Move whole turns out of your context window and report what that reclaimed.\n\nEvery result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping. Both ends of a span are included, so `context::archive_thread({{4, 19}})` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `search_archive`.\n\nReturns: what the archive actually freed.\nThrows: tool_error `invalid_argument` for a span whose ends are not turn numbers.",
+      "types": [
+        "turn_range",
+        "reclaim_report",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "search_archive",
+      "name": "search_archive",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "search_archive(std::string_view query) -> archive_search",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The substring to look for. Matching is case-insensitive.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.\n\nCheck `archive_empty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.\n\nReturns: whether anything is archived at all, and the matches.",
+      "types": [
+        "archive_search",
+        "tool_error",
+        "tool_error_code",
+        "archive_hit",
+        "message_role"
+      ]
+    },
+    {
+      "tool": "compact",
+      "name": "compact",
+      "object": "context",
+      "signatures": [
+        {
+          "signature": "compact(std::string_view summary, std::vector<std::string> files) -> void",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What your restarted window opens with. Write it for your future self: everything not in it and not re-read from `files` is gone.",
+              "fields": []
+            },
+            {
+              "name": "files",
+              "type": "std::vector<std::string>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The paths to read afresh into the restarted window. An empty vector reads nothing back.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.\n\nYour skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do.\n\nIt does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.\n\nThrows: tool_error `refused` when a compaction is already in flight and this call is not the one it asked for.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "spawn_subagent",
+      "name": "spawn_subagent",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "spawn_subagent(std::string_view agent, brief task) -> subagent_handle",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent profile to run the child as, from the ones you may spawn. It selects the child's model, tools and instructions.",
+              "fields": []
+            },
+            {
+              "name": "task",
+              "type": "brief",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the child is to do: `brief::prompt` with self-contained instructions, or `brief::issue` with the id of a board issue to brief it from.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Delegate scoped work to a child agent and hand back its handle immediately — the child runs in parallel while your program continues.\n\nName the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with either `brief::prompt(\"self-contained instructions\")` or `brief::issue(\"AUTH-1\")`. The child shares your workspace.\n\nReturns: the child's handle, to wait for it or message it.\nThrows: tool_error `limit_exceeded` at the delegation depth cap, and `invalid_argument` if `agent` is not one you may spawn.",
+      "types": [
+        "brief",
+        "subagent_handle",
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "wait_for_subagents",
+      "name": "wait_for_subagents",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "wait_for_subagents() -> std::vector<subagent_result>",
+          "parameters": []
+        },
+        {
+          "signature": "wait_for_subagents(std::vector<std::string> ids) -> std::vector<subagent_result>",
+          "parameters": [
+            {
+              "name": "ids",
+              "type": "std::vector<std::string>",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The children to wait for, as `agents::spawn_subagent` returned them.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Block until the named children have finished, and collect their results in dispatch order.\n\nCalled with **no arguments at all** it waits for every child still outstanding, which is the usual shape: the run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child.\n\nReturns: one result per named child, in dispatch order.\nThrows: tool_error `not_found` for an unknown id.",
+      "types": [
+        "subagent_result",
+        "tool_error",
+        "tool_error_code",
+        "agent_status"
+      ]
+    },
+    {
+      "tool": "send_message",
+      "name": "send_message",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "send_message(std::string_view agent_id, std::string_view message) -> void",
+          "parameters": [
+            {
+              "name": "agent_id",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The child to deliver to, as `agents::spawn_subagent` returned it.",
+              "fields": []
+            },
+            {
+              "name": "message",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What to put in its inbox. It reads it at its next turn.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.\n\nThrows: tool_error `not_found` for an unknown agent id, and `conflict` when that child has already returned.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "transition_state",
+      "name": "transition_state",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "transition_state(std::string_view state, std::optional<std::string_view> note = std::nullopt) -> void",
+          "parameters": [
+            {
+              "name": "state",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The state to move on to, named the way you name an agent to spawn.",
+              "fields": []
+            },
+            {
+              "name": "note",
+              "type": "std::optional<std::string_view>",
+              "optional": true,
+              "kind": "positional",
+              "default": "std::nullopt",
+              "doc": "The opening message the next state's agent sees; leave it out to tell it nothing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn.\n\nBound only when a state machine is driving you and the state you are in has somewhere to go. Like `context::compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands.\n\nThrows: tool_error `invalid_argument` for a state you may not move to, and `refused` for a second declaration in one turn.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "exec",
+      "name": "exec",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "exec(std::string_view agent, std::optional<std::string_view> prompt = std::nullopt) -> void",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The agent to become, from the ones you may become.",
+              "fields": []
+            },
+            {
+              "name": "prompt",
+              "type": "std::optional<std::string_view>",
+              "optional": true,
+              "kind": "positional",
+              "default": "std::nullopt",
+              "doc": "Its opening message. It already has your whole conversation, so this is the instruction rather than a briefing; leave it out to tell it nothing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.\n\nRegistered rather than performed, exactly as `agents::transition_state` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you.\n\nThrows: tool_error `invalid_argument` for an agent you may not become, and `refused` for a second succession in one turn.",
+      "types": [
+        "tool_error",
+        "tool_error_code"
+      ]
+    },
+    {
+      "tool": "fork",
+      "name": "fork",
+      "object": "agents",
+      "signatures": [
+        {
+          "signature": "fork(std::string_view prompt) -> subagent_handle",
+          "parameters": [
+            {
+              "name": "prompt",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "What the copy is to do instead of what you are doing. It has your whole conversation already, so write the difference rather than a briefing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Run a copy of yourself, in parallel, on something you will not do yourself.\n\nThe copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `agents::wait_for_subagents` can only collect it on a later turn — do not wait on it in the program that made it.\n\nReturns: the copy's handle.\nThrows: tool_error `limit_exceeded` at the delegation depth cap.",
+      "types": [
+        "subagent_handle",
+        "tool_error",
+        "tool_error_code"
+      ]
+    }
+  ],
+  "helpers": [
+    {
+      "key": "read_text_file",
+      "name": "read_text_file",
+      "object": "fs",
+      "signatures": [
+        {
+          "signature": "read_text_file(std::string_view path, read_window window = {}) -> std::string",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The file to read. Relative to your workspace, or absolute.",
+              "fields": []
+            },
+            {
+              "name": "window",
+              "type": "read_window",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The lines to read; leave it out to read the whole file.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Read a text file and hand back its contents directly — `fs::read_file` without the narrowing, for the common case.\n\nIt takes the same window. Reading is the cheap direction of this sandbox, so a program that reads a dozen files to decide what to change is doing the right thing.\n\nReturns: the file's text.\nThrows: tool_error `invalid_argument` when the path names a picture; use `fs::read_file` to inspect those, and `view::open_file` to look at one.",
+      "types": [
+        "read_window",
+        "tool_error",
+        "tool_error_code"
+      ],
+      "requires": "read_file"
+    }
+  ],
+  "types": [
+    {
+      "name": "agent_status",
+      "declaration": "enum class agent_status { completed, exhausted, timed_out, model_error, auth_error, limit_exceeded }",
+      "doc": "How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.",
+      "members": [
+        {
+          "name": "completed",
+          "type": null,
+          "doc": "It finished normally: it called `harness::finish`, and its summary is what it returned."
+        },
+        {
+          "name": "exhausted",
+          "type": null,
+          "doc": "It hit the per-run turn ceiling."
+        },
+        {
+          "name": "timed_out",
+          "type": null,
+          "doc": "It passed its wall-clock deadline."
+        },
+        {
+          "name": "model_error",
+          "type": null,
+          "doc": "A model turn failed."
+        },
+        {
+          "name": "auth_error",
+          "type": null,
+          "doc": "The run's credential was refused."
+        },
+        {
+          "name": "limit_exceeded",
+          "type": null,
+          "doc": "An execution ceiling stopped it — consecutive errors, error rate, or cost."
+        }
+      ]
+    },
+    {
+      "name": "archive_hit",
+      "declaration": "struct archive_hit { std::uint32_t seq; message_role role; std::string text; }",
+      "doc": "One archived message that matched a search.",
+      "members": [
+        {
+          "name": "seq",
+          "type": "std::uint32_t",
+          "doc": "The archived message's sequence number."
+        },
+        {
+          "name": "role",
+          "type": "message_role",
+          "doc": "Who said it."
+        },
+        {
+          "name": "text",
+          "type": "std::string",
+          "doc": "The message text."
+        }
+      ]
+    },
+    {
+      "name": "archive_search",
+      "declaration": "struct archive_search { bool archive_empty; std::vector<archive_hit> hits; }",
+      "doc": "What `context::search_archive` found.",
+      "members": [
+        {
+          "name": "archive_empty",
+          "type": "bool",
+          "doc": "Nothing has been archived yet, so there was nothing to search. Deliberately distinct from a search that ran and matched nothing, so you do not archive again believing the first archive failed."
+        },
+        {
+          "name": "hits",
+          "type": "std::vector<archive_hit>",
+          "doc": "The matches, most recent first, at most 8."
+        }
+      ]
+    },
+    {
+      "name": "board_usage",
+      "declaration": "struct board_usage { std::uint32_t epics; std::uint32_t max_epics; std::uint32_t issues; std::uint32_t max_issues; }",
+      "doc": "How much of the run's board budget is used, after the call that returned it.",
+      "members": [
+        {
+          "name": "epics",
+          "type": "std::uint32_t",
+          "doc": "Epics currently on the board."
+        },
+        {
+          "name": "max_epics",
+          "type": "std::uint32_t",
+          "doc": "The most epics this run allows."
+        },
+        {
+          "name": "issues",
+          "type": "std::uint32_t",
+          "doc": "Issues currently on the board."
+        },
+        {
+          "name": "max_issues",
+          "type": "std::uint32_t",
+          "doc": "The most issues this run allows."
+        }
+      ]
+    },
+    {
+      "name": "brief",
+      "declaration": "class brief { static brief prompt(std::string instructions); static brief issue(std::string id); }",
+      "doc": "What a child agent is briefed with — self-contained instructions, or a board issue.\n\nIt is one value with two named factories rather than two optional arguments, so \"both\" and \"neither\" are programs that do not compile instead of calls that fail at run time. There is nothing to read back off it: a program builds one and hands it over.",
+      "members": [
+        {
+          "name": "prompt",
+          "type": "static brief prompt(std::string instructions)",
+          "doc": "Brief the child with self-contained instructions, which it needs no other context to act on."
+        },
+        {
+          "name": "issue",
+          "type": "static brief issue(std::string id)",
+          "doc": "Brief the child from a board issue, whose scope, non-scope and completion criteria become its instructions."
+        }
+      ]
+    },
+    {
+      "name": "dir_entry",
+      "declaration": "struct dir_entry { std::string name; entry_kind kind; }",
+      "doc": "One entry `fs::list_dir` found.",
+      "members": [
+        {
+          "name": "name",
+          "type": "std::string",
+          "doc": "The entry's bare name, with no directory part. Join it with the directory you listed."
+        },
+        {
+          "name": "kind",
+          "type": "entry_kind",
+          "doc": "What the entry is."
+        }
+      ]
+    },
+    {
+      "name": "entry_kind",
+      "declaration": "enum class entry_kind { file, directory, other }",
+      "doc": "What a directory entry is.",
+      "members": [
+        {
+          "name": "file",
+          "type": null,
+          "doc": "An ordinary file."
+        },
+        {
+          "name": "directory",
+          "type": null,
+          "doc": "A directory, which you can list in turn."
+        },
+        {
+          "name": "other",
+          "type": null,
+          "doc": "Everything that is neither, a symlink among them."
+        }
+      ]
+    },
+    {
+      "name": "epic_assignment",
+      "declaration": "class epic_assignment { epic_assignment(); static epic_assignment ungroup(); static epic_assignment set(std::string epic_id); }",
+      "doc": "How an issue's epic grouping changes — the same three-way shape as `text_edit`, for a field whose value is an epic id.",
+      "members": [
+        {
+          "name": "epic_assignment",
+          "type": "epic_assignment()",
+          "doc": "Leave the grouping alone. This is what a default-constructed `epic_assignment` does."
+        },
+        {
+          "name": "ungroup",
+          "type": "static epic_assignment ungroup()",
+          "doc": "Detach the issue from its epic, leaving it ungrouped."
+        },
+        {
+          "name": "set",
+          "type": "static epic_assignment set(std::string epic_id)",
+          "doc": "Group the issue under an epic, by its id."
+        }
+      ]
+    },
+    {
+      "name": "epic_created",
+      "declaration": "struct epic_created { std::string id; board_usage board; }",
+      "doc": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+      "members": [
+        {
+          "name": "id",
+          "type": "std::string",
+          "doc": "The epic's id — the prefix you gave, upper-cased (`auth` becomes `AUTH`). Group issues under it with this, and its issues are numbered from it (`AUTH-1`)."
+        },
+        {
+          "name": "board",
+          "type": "board_usage",
+          "doc": "How much of the board budget is used."
+        }
+      ]
+    },
+    {
+      "name": "file_read",
+      "declaration": "using file_read = std::variant<text_file, image_file>",
+      "doc": "What `fs::read_file` returned: a text file's window, or a picture's description.\n\nA picture is a different kind of thing from text, so it is a different alternative rather than a string that happens to be binary — a program that treats an image as text is caught by the `std::get_if` instead of silently writing an empty string somewhere. Image *bytes* never enter the program: gg attaches the picture to the turn so you can look at it directly, which is worth far more than base64 in a variable.\n\nIt is a `std::variant`, which is what C++ has for a value that is exactly one of two things, so narrow it the way you narrow any other:\n\n```cpp\nconst auto read = fs::read_file(\"logo.png\");\nif (const auto* text = std::get_if<text_file>(&read)) {\n  view::open_text(\"logo\", text->contents);\n} else {\n  view::open_text(\"logo\", std::get<image_file>(read).label);\n}\n```",
+      "members": []
+    },
+    {
+      "name": "function_summary",
+      "declaration": "struct function_summary { std::string name; std::string summary; }",
+      "doc": "One function in an API object's directory, as `list` returns it.\n\nThe summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `view::open_docs_view`.",
+      "members": [
+        {
+          "name": "name",
+          "type": "std::string",
+          "doc": "The function name on its object — `read_file` in `fs::read_file`."
+        },
+        {
+          "name": "summary",
+          "type": "std::string",
+          "doc": "One line saying what it does: the first sentence of its documentation."
+        }
+      ]
+    },
+    {
+      "name": "image_file",
+      "declaration": "struct image_file { std::string media_type; std::string label; std::uint64_t bytes; bool shown; std::optional<std::string> not_shown_reason; }",
+      "doc": "A picture's description, as the `image_file` alternative of a read carries it.",
+      "members": [
+        {
+          "name": "media_type",
+          "type": "std::string",
+          "doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+        },
+        {
+          "name": "label",
+          "type": "std::string",
+          "doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+        },
+        {
+          "name": "bytes",
+          "type": "std::uint64_t",
+          "doc": "The file's size in bytes."
+        },
+        {
+          "name": "shown",
+          "type": "bool",
+          "doc": "Whether the picture is being attached to this turn for you to look at."
+        },
+        {
+          "name": "not_shown_reason",
+          "type": "std::optional<std::string>",
+          "doc": "Why it is not being shown; empty when `shown` is true."
+        }
+      ]
+    },
+    {
+      "name": "issue_created",
+      "declaration": "struct issue_created { std::string id; board_usage board; }",
+      "doc": "An issue that was just created: the id the board assigned it, and the board budget.",
+      "members": [
+        {
+          "name": "id",
+          "type": "std::string",
+          "doc": "The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on this one, or to wait for it."
+        },
+        {
+          "name": "board",
+          "type": "board_usage",
+          "doc": "How much of the board budget is used."
+        }
+      ]
+    },
+    {
+      "name": "issue_options",
+      "declaration": "struct issue_options { std::optional<std::string> description; std::vector<std::string> blocked_by; std::optional<std::string> epic_id; std::vector<std::string> reviewers; }",
+      "doc": "The parts of a new issue you may leave out. `{}` creates an ungrouped issue with no description, no blockers and no reviewers.",
+      "members": [
+        {
+          "name": "description",
+          "type": "std::optional<std::string>",
+          "doc": "What the work is. Written for a child agent with no other context."
+        },
+        {
+          "name": "blocked_by",
+          "type": "std::vector<std::string>",
+          "doc": "The ids of every issue that must be done before this one."
+        },
+        {
+          "name": "epic_id",
+          "type": "std::optional<std::string>",
+          "doc": "The id of an existing epic to group it under. Leave it out to leave the issue ungrouped and numbered under `ISSUE`."
+        },
+        {
+          "name": "reviewers",
+          "type": "std::vector<std::string>",
+          "doc": "The agents that must approve the work, from the set you may spawn. Required when this run's reviewers feature is on."
+        }
+      ]
+    },
+    {
+      "name": "issue_patch",
+      "declaration": "struct issue_patch { std::optional<std::string> title; text_edit description; std::optional<std::string> in_scope; std::optional<std::string> out_of_scope; std::optional<std::string> completion_criteria; std::optional<issue_status> status; epic_assignment epic; }",
+      "doc": "The fields an issue revision may change. `{}` changes nothing, which the call refuses — supply at least one.",
+      "members": [
+        {
+          "name": "title",
+          "type": "std::optional<std::string>",
+          "doc": "The title to replace the old one with."
+        },
+        {
+          "name": "description",
+          "type": "text_edit",
+          "doc": "A three-way edit of the description: leave it default to keep it, `text_edit::clear()` to empty it, `text_edit::set(…)` to replace it."
+        },
+        {
+          "name": "in_scope",
+          "type": "std::optional<std::string>",
+          "doc": "The scope statement to replace the old one with."
+        },
+        {
+          "name": "out_of_scope",
+          "type": "std::optional<std::string>",
+          "doc": "The non-scope statement to replace the old one with."
+        },
+        {
+          "name": "completion_criteria",
+          "type": "std::optional<std::string>",
+          "doc": "The completion criteria to replace the old ones with."
+        },
+        {
+          "name": "status",
+          "type": "std::optional<issue_status>",
+          "doc": "Where the issue now stands."
+        },
+        {
+          "name": "epic",
+          "type": "epic_assignment",
+          "doc": "A three-way change of epic grouping: leave it default to keep it, `epic_assignment::ungroup()` to detach the issue, `epic_assignment::set(…)` to regroup it."
+        }
+      ]
+    },
+    {
+      "name": "issue_status",
+      "declaration": "enum class issue_status { open, in_progress, done }",
+      "doc": "Where an issue stands.",
+      "members": [
+        {
+          "name": "open",
+          "type": null,
+          "doc": "Not started, and dispatchable once its blockers are done."
+        },
+        {
+          "name": "in_progress",
+          "type": null,
+          "doc": "Dispatched, with its assigned agent working on it."
+        },
+        {
+          "name": "done",
+          "type": null,
+          "doc": "Finished and, where this run requires reviewers, approved."
+        }
+      ]
+    },
+    {
+      "name": "memory_hit",
+      "declaration": "struct memory_hit { std::string name; std::string description; std::uint32_t matched; std::uint32_t occurrences; std::string excerpt; }",
+      "doc": "One memory `memory::search_memories` matched, and the numbers it was ranked by.",
+      "members": [
+        {
+          "name": "name",
+          "type": "std::string",
+          "doc": "The memory's slug — what `memory::read_memory` takes."
+        },
+        {
+          "name": "description",
+          "type": "std::string",
+          "doc": "Its description, or `\"\"` when it was created without one."
+        },
+        {
+          "name": "matched",
+          "type": "std::uint32_t",
+          "doc": "How many of your distinct keywords it matched — the primary ranking."
+        },
+        {
+          "name": "occurrences",
+          "type": "std::uint32_t",
+          "doc": "How many times those keywords occur in it — the tiebreak."
+        },
+        {
+          "name": "excerpt",
+          "type": "std::string",
+          "doc": "A short window of the memory around its first match."
+        }
+      ]
+    },
+    {
+      "name": "memory_options",
+      "declaration": "struct memory_options { std::optional<std::string> code; std::optional<std::string> on_use; }",
+      "doc": "The two code halves every write of a memory accepts, and may leave out. `{}` records a memory that is only prose.\n\nNeither is context: they cost you no window, are never shown back to you, and count against no body limit.",
+      "members": [
+        {
+          "name": "code",
+          "type": "std::optional<std::string>",
+          "doc": "A C++ translation unit whose declarations are bound at `lib::<name>` in every later program you write, so a helper you get right once you never write again."
+        },
+        {
+          "name": "on_use",
+          "type": "std::optional<std::string>",
+          "doc": "A program gg runs the first time the memory comes into use, whose views reach you on your next turn."
+        }
+      ]
+    },
+    {
+      "name": "memory_usage",
+      "declaration": "struct memory_usage { std::uint32_t count; std::optional<std::uint32_t> max_count; std::uint32_t total_chars; std::optional<std::uint32_t> max_total_chars; std::optional<std::uint32_t> index_chars; std::optional<std::uint32_t> max_index_chars; }",
+      "doc": "How much of the run's durable-memory budget is used, after the call that returned it.\n\nEvery maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so an empty one means nothing bounds that axis — check before subtracting.",
+      "members": [
+        {
+          "name": "count",
+          "type": "std::uint32_t",
+          "doc": "Memories currently held."
+        },
+        {
+          "name": "max_count",
+          "type": "std::optional<std::uint32_t>",
+          "doc": "The most memories this run allows, if it limits the count."
+        },
+        {
+          "name": "total_chars",
+          "type": "std::uint32_t",
+          "doc": "Characters of body currently held, across all memories."
+        },
+        {
+          "name": "max_total_chars",
+          "type": "std::optional<std::uint32_t>",
+          "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+        },
+        {
+          "name": "index_chars",
+          "type": "std::optional<std::uint32_t>",
+          "doc": "Characters the memory index occupies, under a run that keeps one."
+        },
+        {
+          "name": "max_index_chars",
+          "type": "std::optional<std::uint32_t>",
+          "doc": "The most characters the index may occupy, if it is limited."
+        }
+      ]
+    },
+    {
+      "name": "message_role",
+      "declaration": "enum class message_role { system, user, assistant, tool }",
+      "doc": "Who said an archived message.",
+      "members": [
+        {
+          "name": "system",
+          "type": null,
+          "doc": "The system prompt."
+        },
+        {
+          "name": "user",
+          "type": null,
+          "doc": "A turn's input to you — a result, a view, or an operator's instruction."
+        },
+        {
+          "name": "assistant",
+          "type": null,
+          "doc": "Something you said."
+        },
+        {
+          "name": "tool",
+          "type": null,
+          "doc": "A tool result, on a session that made tool calls rather than writing programs."
+        }
+      ]
+    },
+    {
+      "name": "open_view",
+      "declaration": "struct open_view { view_kind kind; std::string selector; std::uint64_t tokens; std::optional<view_region> region; }",
+      "doc": "One view open in your context window, as `view::current` reports it.",
+      "members": [
+        {
+          "name": "kind",
+          "type": "view_kind",
+          "doc": "Whether it is a file, text, or documentation view."
+        },
+        {
+          "name": "selector",
+          "type": "std::string",
+          "doc": "What `view::close` takes: a file's path, a text view's label, or a docs view's function name."
+        },
+        {
+          "name": "tokens",
+          "type": "std::uint64_t",
+          "doc": "Roughly what holding it costs you, in tokens."
+        },
+        {
+          "name": "region",
+          "type": "std::optional<view_region>",
+          "doc": "The line window a paged file view covers; empty for a whole-file view and for text views."
+        }
+      ]
+    },
+    {
+      "name": "program_summary",
+      "declaration": "struct program_summary { std::uint32_t turn; std::uint32_t lines; std::uint32_t chars; bool ok; std::optional<std::string> error; }",
+      "doc": "One program you have already run, as `programs::history` lists it.\n\nIt describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in front of you, which is the one thing the library exists to avoid. Fetch the source you actually want with `programs::get`.",
+      "members": [
+        {
+          "name": "turn",
+          "type": "std::uint32_t",
+          "doc": "The turn it ran on — what `programs::get` takes."
+        },
+        {
+          "name": "lines",
+          "type": "std::uint32_t",
+          "doc": "How many lines of source it was."
+        },
+        {
+          "name": "chars",
+          "type": "std::uint32_t",
+          "doc": "How many characters of source it was."
+        },
+        {
+          "name": "ok",
+          "type": "bool",
+          "doc": "Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it."
+        },
+        {
+          "name": "error",
+          "type": "std::optional<std::string>",
+          "doc": "The error it ended with, when it did not run to its end."
+        }
+      ]
+    },
+    {
+      "name": "read_window",
+      "declaration": "struct read_window { std::optional<std::uint32_t> offset; std::optional<std::uint32_t> limit; }",
+      "doc": "The window of lines a read covers. Leave it out — or write `{}` — to read the whole file.\n\nBoth fields are honoured only under a **capped** read policy; under the unlimited policy the whole file comes back and both are ignored. The system prompt says which policy this run uses.",
+      "members": [
+        {
+          "name": "offset",
+          "type": "std::optional<std::uint32_t>",
+          "doc": "The 1-based line to start at. Leave it out to start at the first line."
+        },
+        {
+          "name": "limit",
+          "type": "std::optional<std::uint32_t>",
+          "doc": "How many lines to return from `offset`. Leave it out to read to the end."
+        }
+      ]
+    },
+    {
+      "name": "reclaim_report",
+      "declaration": "struct reclaim_report { std::uint32_t items; std::uint32_t reclaimed_tokens; std::vector<std::string> paths; std::string detail; }",
+      "doc": "What a context reclaim actually freed from the live context window.",
+      "members": [
+        {
+          "name": "items",
+          "type": "std::uint32_t",
+          "doc": "Context items dropped from the live window."
+        },
+        {
+          "name": "reclaimed_tokens",
+          "type": "std::uint32_t",
+          "doc": "Approximately how many tokens that freed."
+        },
+        {
+          "name": "paths",
+          "type": "std::vector<std::string>",
+          "doc": "The workspace paths whose views were evicted. Empty for an archive."
+        },
+        {
+          "name": "detail",
+          "type": "std::string",
+          "doc": "The prose summary of what was reclaimed."
+        }
+      ]
+    },
+    {
+      "name": "shell_output",
+      "declaration": "struct shell_output { std::optional<std::int32_t> exit_code; std::string output; bool truncated; }",
+      "doc": "What a command `system::shell` ran reported when it finished.",
+      "members": [
+        {
+          "name": "exit_code",
+          "type": "std::optional<std::int32_t>",
+          "doc": "The process's exit status; empty when a signal killed it. Zero means success."
+        },
+        {
+          "name": "output",
+          "type": "std::string",
+          "doc": "Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output, at the configured line/character ceiling, with a note naming the files holding the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
+        },
+        {
+          "name": "truncated",
+          "type": "bool",
+          "doc": "Whether the cap cut `output`, dropping the head and keeping the tail."
+        }
+      ]
+    },
+    {
+      "name": "subagent_handle",
+      "declaration": "struct subagent_handle { std::string id; std::string slot; std::string model_id; }",
+      "doc": "A child agent that was spawned and is now running in parallel.",
+      "members": [
+        {
+          "name": "id",
+          "type": "std::string",
+          "doc": "The child's id — pass it to `agents::wait_for_subagents` or `agents::send_message`."
+        },
+        {
+          "name": "slot",
+          "type": "std::string",
+          "doc": "The agent profile it runs as."
+        },
+        {
+          "name": "model_id",
+          "type": "std::string",
+          "doc": "The model actually bound to that agent."
+        }
+      ]
+    },
+    {
+      "name": "subagent_result",
+      "declaration": "struct subagent_result { std::string id; std::optional<agent_status> status; std::string summary; }",
+      "doc": "One child agent's collected result.",
+      "members": [
+        {
+          "name": "id",
+          "type": "std::string",
+          "doc": "The child's id."
+        },
+        {
+          "name": "status",
+          "type": "std::optional<agent_status>",
+          "doc": "How it finished; empty when it produced no return value at all."
+        },
+        {
+          "name": "summary",
+          "type": "std::string",
+          "doc": "Its final message."
+        }
+      ]
+    },
+    {
+      "name": "task_options",
+      "declaration": "struct task_options { std::optional<std::string> description; std::vector<std::string> blocked_by; }",
+      "doc": "The parts of a new task you may leave out. `{}` adds a task with no description and no blockers.",
+      "members": [
+        {
+          "name": "description",
+          "type": "std::optional<std::string>",
+          "doc": "What the work is, at whatever length is useful."
+        },
+        {
+          "name": "blocked_by",
+          "type": "std::vector<std::string>",
+          "doc": "The ids of the tasks that must be done before this one."
+        }
+      ]
+    },
+    {
+      "name": "task_patch",
+      "declaration": "struct task_patch { std::optional<std::string> title; text_edit description; std::optional<task_status> status; }",
+      "doc": "The fields a task revision may change. `{}` changes nothing, which the call refuses — supply at least one.",
+      "members": [
+        {
+          "name": "title",
+          "type": "std::optional<std::string>",
+          "doc": "The title to replace the old one with."
+        },
+        {
+          "name": "description",
+          "type": "text_edit",
+          "doc": "A three-way edit of the description: leave it default to keep it, `text_edit::clear()` to empty it, `text_edit::set(…)` to replace it."
+        },
+        {
+          "name": "status",
+          "type": "std::optional<task_status>",
+          "doc": "Where the task now stands."
+        }
+      ]
+    },
+    {
+      "name": "task_status",
+      "declaration": "enum class task_status { pending, in_progress, done }",
+      "doc": "Where a task stands.",
+      "members": [
+        {
+          "name": "pending",
+          "type": null,
+          "doc": "Not started. Every task begins here."
+        },
+        {
+          "name": "in_progress",
+          "type": null,
+          "doc": "Being worked on now."
+        },
+        {
+          "name": "done",
+          "type": null,
+          "doc": "Finished. Tasks blocked on it become actionable once all their blockers are done."
+        }
+      ]
+    },
+    {
+      "name": "task_usage",
+      "declaration": "struct task_usage { std::uint32_t count; std::uint32_t max_tasks; }",
+      "doc": "How much of the run's task budget is used, after the call that returned it.",
+      "members": [
+        {
+          "name": "count",
+          "type": "std::uint32_t",
+          "doc": "Tasks currently on the list."
+        },
+        {
+          "name": "max_tasks",
+          "type": "std::uint32_t",
+          "doc": "The most tasks this run allows."
+        }
+      ]
+    },
+    {
+      "name": "text_edit",
+      "declaration": "class text_edit { text_edit(); static text_edit clear(); static text_edit set(std::string text); }",
+      "doc": "A **three-way** edit of an optional text field: leave it, empty it, or replace it.\n\nThe field really has three states, and an `std::optional<std::string>` could only say two of them — which is how gg's older stringly interface ended up treating \"clear it\" and \"set it to the empty string\" as one request. A default-constructed `text_edit` keeps the field, so a patch that says nothing about a description leaves it alone.",
+      "members": [
+        {
+          "name": "text_edit",
+          "type": "text_edit()",
+          "doc": "Leave the field exactly as it is. This is what a default-constructed `text_edit` does, so a patch that omits the field never has to say it."
+        },
+        {
+          "name": "clear",
+          "type": "static text_edit clear()",
+          "doc": "Empty the field."
+        },
+        {
+          "name": "set",
+          "type": "static text_edit set(std::string text)",
+          "doc": "Replace the field with this text."
+        }
+      ]
+    },
+    {
+      "name": "text_file",
+      "declaration": "struct text_file { std::string contents; std::uint32_t first_line; std::uint32_t last_line; std::uint32_t total_lines; bool byte_truncated; }",
+      "doc": "A text file's window, as the `text_file` alternative of a read carries it.",
+      "members": [
+        {
+          "name": "contents",
+          "type": "std::string",
+          "doc": "The file's text, or just the requested window under a capped read policy."
+        },
+        {
+          "name": "first_line",
+          "type": "std::uint32_t",
+          "doc": "The 1-based first line returned."
+        },
+        {
+          "name": "last_line",
+          "type": "std::uint32_t",
+          "doc": "The 1-based last line returned."
+        },
+        {
+          "name": "total_lines",
+          "type": "std::uint32_t",
+          "doc": "The file's total line count, so you know whether to page again."
+        },
+        {
+          "name": "byte_truncated",
+          "type": "bool",
+          "doc": "Whether a 256 KiB byte ceiling cut the returned text."
+        }
+      ]
+    },
+    {
+      "name": "tool_error",
+      "declaration": "class tool_error : public std::runtime_error { tool_error_code code() const; const std::string & tool() const; const std::string & message() const; }",
+      "doc": "A gg call that failed.\n\nEvery function in this SDK throws one of these when the call fails, and nothing here returns a status you might forget to look at. That is what makes `try` the whole of the ceremony: `const auto notes = fs::read_text_file(\"notes.md\");` binds a `std::string`, and a failure leaves your program with gg told exactly which call failed and on which line.\n\nIt derives from `std::runtime_error`, so `catch (const std::exception&)` catches it as a C++ programmer expects of anything a library throws — and `what()` is gg's own sentence about the failure rather than a bare message.\n\nCatch the failures you *expect* and branch on `code()`, which is a value rather than prose:\n\n```cpp\ntry {\n  const auto notes = fs::read_text_file(\"notes.md\");\n  view::open_text(\"notes\", notes);\n} catch (const tool_error& failure) {\n  if (failure.code() != tool_error_code::not_found) throw;\n  fs::write_file(\"notes.md\", \"\");\n}\n```\n\nLet the ones you do not expect out. An exception that escapes `main` is reported to you with its class and its `what()`, so an uncaught failure names the call that failed rather than stopping your program without a word — but it carries **no line**, because C++ cannot ask a caught exception where it was thrown. Catching what you expect is what buys the line back.",
+      "members": [
+        {
+          "name": "code",
+          "type": "tool_error_code code() const",
+          "doc": "The failure class, so a `catch` branches on a value rather than on prose."
+        },
+        {
+          "name": "tool",
+          "type": "const std::string & tool() const",
+          "doc": "The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`)."
+        },
+        {
+          "name": "message",
+          "type": "const std::string & message() const",
+          "doc": "What went wrong, in gg's words. Worth showing yourself; not worth matching on."
+        }
+      ]
+    },
+    {
+      "name": "tool_error_code",
+      "declaration": "enum class tool_error_code { invalid_argument, not_found, conflict, refused, unavailable, limit_exceeded, io_error, other }",
+      "doc": "Why a gg call failed — the `code()` on a `tool_error`, and what a `catch` branches on instead of matching on a message.",
+      "members": [
+        {
+          "name": "invalid_argument",
+          "type": null,
+          "doc": "The arguments were malformed, ill-typed, or out of range — including an agent name this run does not declare, and an empty list where the call requires one."
+        },
+        {
+          "name": "not_found",
+          "type": null,
+          "doc": "The named file, skill, memory, task, epic, issue, subagent, stored program, or documentation entry does not exist."
+        },
+        {
+          "name": "conflict",
+          "type": null,
+          "doc": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle, a duplicate id, a subagent that already returned."
+        },
+        {
+          "name": "refused",
+          "type": null,
+          "doc": "gg refused the call on a rule about your state: a compaction in flight that this call is not the one it asked for, a memory call while your memories are read-only, a second ending or hand-over in a turn that already declared one, or a hook that blocked it. A ceiling you ran into is `limit_exceeded`, not this."
+        },
+        {
+          "name": "unavailable",
+          "type": null,
+          "doc": "The call exists but this run's capability set does not offer it. Every name in this SDK is in scope whatever a run enables, because the SDK is compiled once and a run's capability set is decided per run — so this is what a call gg withheld comes back as."
+        },
+        {
+          "name": "limit_exceeded",
+          "type": null,
+          "doc": "A gg-side ceiling was hit: a shell timeout, a store cap, the delegation depth cap, one of the view caps your program spends, or the run's wall-clock budget."
+        },
+        {
+          "name": "io_error",
+          "type": null,
+          "doc": "The underlying I/O or process failed."
+        },
+        {
+          "name": "other",
+          "type": null,
+          "doc": "The failure was not classified. Reserved for outcomes raised outside a tool implementation; nothing you can call produces it."
+        }
+      ]
+    },
+    {
+      "name": "turn_range",
+      "declaration": "struct turn_range { std::uint32_t from; std::uint32_t to; }",
+      "doc": "An inclusive span of turn numbers, as `context::archive_thread` takes them.\n\nBoth ends are included, so `{.from = 4, .to = 19}` is turns 4 through 19. C++ has no value type for a closed integer range — `std::ranges::iota_view` is a *sequence*, which is not what a span of turn numbers is — so this is an ordinary aggregate, and a list of them is written the way a list of aggregates is: `context::archive_thread({{4, 19}, {30, 36}})`.",
+      "members": [
+        {
+          "name": "from",
+          "type": "std::uint32_t",
+          "doc": "The first turn in the span."
+        },
+        {
+          "name": "to",
+          "type": "std::uint32_t",
+          "doc": "The last turn in the span, included."
+        }
+      ]
+    },
+    {
+      "name": "view_kind",
+      "declaration": "enum class view_kind { file, text, docs }",
+      "doc": "Which of the three kinds a view is.\n\nThe taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
+      "members": [
+        {
+          "name": "file",
+          "type": null,
+          "doc": "A file you opened; its selector is the path."
+        },
+        {
+          "name": "text",
+          "type": null,
+          "doc": "A value you showed yourself; its selector is the label you gave it. A directory listing, a command's output, a child agent's answer and a table you assembled are all this."
+        },
+        {
+          "name": "docs",
+          "type": null,
+          "doc": "A function's documentation; its selector is the function's name."
+        }
+      ]
+    },
+    {
+      "name": "view_region",
+      "declaration": "struct view_region { std::uint32_t offset; std::uint32_t limit; }",
+      "doc": "The window of lines a **paged** file view covers.",
+      "members": [
+        {
+          "name": "offset",
+          "type": "std::uint32_t",
+          "doc": "The 1-based first line the view shows."
+        },
+        {
+          "name": "limit",
+          "type": "std::uint32_t",
+          "doc": "How many lines it shows."
+        }
+      ]
+    }
+  ]
+}

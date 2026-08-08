@@ -3,9 +3,10 @@
 # and commit them under `crates/gg/src/sandbox/checkers/`:
 #
 #   cpp.guest.tar.gz     the compile inputs every turn needs on disk — the generated WIT header,
-#                        the prelude every program is compiled against, gg's shell as both SOURCE
-#                        and a prebuilt wasm object, the compiled bindings object, and the
-#                        component-type object that names the world
+#                        gg's hand-written SDK as headers plus a prebuilt wasm object, the prelude
+#                        every program is compiled against, gg's shell as both SOURCE and a
+#                        prebuilt object, the compiled bindings object, and the component-type
+#                        object that names the world
 #   cpp.adapter.wasm     the pinned `wasi_snapshot_preview1` REACTOR adapter, which turns the
 #                        preview1 core module wasi-sdk emits into a preview 2 component
 #   cpp.toolchain.json   what built the above, and what is in it
@@ -18,11 +19,14 @@
 # separately, so bindings that lived in the image could be a different vintage from the binary
 # reading them: a program compiled against one membrane and run against another.
 #
-# WHY THE SHELL AND THE BINDINGS ARE PREBUILT OBJECTS. Neither is a function of the model's
-# program, and compiling 3,269 lines of generated C on every turn is ~90 ms that buys nothing —
-# which on an arm whose floor is ~85 ms would have doubled it. The shell's SOURCE is committed
-# beside its object all the same, so `cpp.compile.test.rs` can fail by name when the archive's copy
-# is not this checkout's rather than letting every program be compiled against a stale one.
+# WHY THE SHELL, THE SDK AND THE BINDINGS ARE PREBUILT OBJECTS. None of the three is a function of
+# the model's program, and compiling 3,269 lines of generated C plus the SDK's own bodies on every
+# turn is time that buys nothing — which on an arm whose floor is ~85 ms would have several times
+# multiplied it. The SDK's HEADERS go into the archive as source, because they are what the prelude
+# precompiles and what a program is declared against; its BODIES go in as one object. The shell's
+# source is committed beside its object all the same, so `cpp.compile.test.rs` can fail by name
+# when the archive's copy is not this checkout's rather than letting every program be compiled
+# against a stale one.
 #
 # WHAT IS NOT BUILT HERE, deliberately: the **precompiled header**. `Sources/prelude.hpp` is
 # committed as source and the PCH is built **once per machine**, by the first compile, into a
@@ -104,12 +108,35 @@ echo "==> compiling the generated bindings for $GG_CPP_TARGET"
 	"${EH_FLAGS[@]}" -ffile-prefix-map="$HERE"=/gg-sandbox-cpp \
 	-I"$BINDINGS" -c -o "$STAGE/sandbox.o" "$BINDINGS/sandbox.c"
 
+echo "==> compiling gg's SDK for $GG_CPP_TARGET"
+# One object rather than one per source, because `wasm-ld` is told `--gc-sections` and every
+# function is in its own section: an artifact for a program that calls two of the SDK's thirty-eight
+# functions carries two of them, whether they arrived in one object or in three.
+SDK_SOURCES=("$HERE"/Sources/sdk/*.cpp)
+SDK_OBJECTS=()
+for source in "${SDK_SOURCES[@]}"; do
+	object="$STAGE/$(basename "$source" .cpp).part.o"
+	"$CLANGXX" --target="$GG_CPP_TARGET" -std="$GG_CPP_STD" -Os -ffunction-sections \
+		-fdata-sections "${EH_FLAGS[@]}" "${HARDENING_FLAGS[@]}" \
+		-ffile-prefix-map="$HERE"=/gg-sandbox-cpp \
+		-I"$BINDINGS" -I"$HERE/Sources" -c -o "$object" "$source"
+	SDK_OBJECTS+=("$object")
+done
+# Relocatable link, so the archive carries ONE `sdk.o` rather than a member per source file — which
+# keeps the manifest's file list a statement about the arm rather than about how its sources happen
+# to be split today.
+"$SDK_HOME/bin/wasm-ld" --relocatable -o "$STAGE/sdk.o" "${SDK_OBJECTS[@]}"
+rm -f "${SDK_OBJECTS[@]}"
+
 echo "==> compiling gg's shell for $GG_CPP_TARGET"
 "$CLANGXX" --target="$GG_CPP_TARGET" -std="$GG_CPP_STD" -Os -ffunction-sections -fdata-sections \
 	"${EH_FLAGS[@]}" "${HARDENING_FLAGS[@]}" -ffile-prefix-map="$HERE"=/gg-sandbox-cpp \
 	-I"$BINDINGS" -I"$HERE/Sources" -c -o "$STAGE/shell.o" "$HERE/Sources/shell.cpp"
 
 cp "$BINDINGS/sandbox.h" "$STAGE/sandbox.h"
+mkdir -p "$STAGE/sdk/objects"
+cp "$HERE"/Sources/sdk/*.hpp "$STAGE/sdk/"
+cp "$HERE"/Sources/sdk/objects/*.hpp "$STAGE/sdk/objects/"
 cp "$BINDINGS/sandbox_component_type.o" "$STAGE/sandbox_component_type.o"
 cp "$HERE/Sources/prelude.hpp" "$STAGE/prelude.hpp"
 cp "$HERE/Sources/shell.cpp" "$STAGE/shell.cpp"
@@ -151,11 +178,11 @@ echo "==> cpp.toolchain.json"
 	printf '  ],\n'
 	printf '  "files": [\n'
 	first=1
-	for path in "$STAGE"/*; do
+	while IFS= read -r path; do
 		[ $first -eq 1 ] || printf ',\n'
 		first=0
-		printf '    { "name": "%s", "bytes": %s }' "$(basename "$path")" "$(stat -c%s "$path")"
-	done
+		printf '    { "name": "%s", "bytes": %s }' "$path" "$(stat -c%s "$STAGE/$path")"
+	done < <(cd "$STAGE" && find . -type f | sed 's|^\./||' | sort)
 	printf '\n  ]\n}\n'
 } >"$CHECKERS/cpp.toolchain.json"
 

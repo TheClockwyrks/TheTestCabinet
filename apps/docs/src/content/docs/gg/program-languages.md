@@ -2309,8 +2309,8 @@ it that are worth reading before a fourth arm is written:
 #### C++: a compiler with a precompiled prelude
 
 The third arm of this shape, and the one that changes the *cost* argument rather than the
-mechanism. Its execution substrate is built and its SDK and registration are not, so nothing
-below is reachable from a run yet.
+mechanism. Its execution substrate and its [SDK](#what-cs-sdk-looks-like) are built and its
+registration is not, so nothing below is reachable from a run yet.
 
 Everything structural it does, one of the two arms above already did. It is compiled by
 `clang++` from **wasi-sdk 33** into a `wasm32-wasip1` core module and adapted with the same
@@ -2662,6 +2662,132 @@ identifiers and the one term each rule cannot be stated without — never a sent
 punctuation, never emphasis. A prompt is prose and revising it is ordinary work: rewrapping
 a paragraph, rewriting a sentence or changing `**bold**` to `*italic*` must not fail a test,
 or the gate stops being a safety net and becomes a reason not to improve the prompt.
+
+#### What C++'s SDK looks like
+
+An idiomatic C++ SDK is not the Rust one with `::` already in it. It arrives in the same
+precompiled prelude as `<vector>` and `<string>` and is called with `std::string` arguments, so it
+is written to read like the **standard library**: `snake_case` functions, `snake_case` types, and
+nothing a C++ author has to switch conventions for mid-expression.
+
+```cpp
+const auto entries = fs::list_dir("src");
+std::vector<std::string> sources;
+for (const auto &entry : entries) {
+  if (entry.kind == entry_kind::file) sources.push_back(entry.name);
+}
+const auto built = system::shell("cmake --build build", 300.0);
+view::open_text("build", built.output);
+harness::finish(std::format("looked at {} sources", sources.size()));
+```
+
+Every difference below is a spelling rather than an identity, and the
+[agreement gate](#the-agreement-gate) accepts each of them:
+
+- **An API object is a namespace**, so `fs::read_file(…)` is a qualified name and a call. That is
+  the same answer [Rust](#what-rusts-sdk-looks-like) gives, reached with C++'s own construct.
+- **The whole surface lives in `namespace gg`, and the prelude ends with `using namespace gg;`.**
+  That is the one thing on this arm that is *forced* rather than chosen, and by one object's name:
+  `<cstdlib>` declares `int system(const char *)` at global scope, and `namespace system { … }`
+  beside it is *redefinition of 'system' as different kind of symbol*. Qualified lookup for a
+  nested-name-specifier considers only namespaces and types and never functions, so once the
+  surface is in a namespace the C library's `system` cannot shadow the object. The using-directive
+  also gives a program the last word, as Rust's glob `use` does — with one measured exception: a
+  namespace **alias** is *ambiguous* rather than shadowing, so `namespace fs = std::filesystem;`
+  beside `gg::fs` is a compile error naming both candidates at the model's own line. That is why
+  `<filesystem>` is deliberately not in this arm's library set: the alias is a reflex, and an arm
+  that invited it would spend turns on gg's namespace rather than on the work.
+- **A failure is thrown.** `gg::tool_error` derives from `std::runtime_error`, so
+  `catch (const std::exception &)` catches it as a C++ programmer expects of anything a library
+  throws, `what()` is gg's own sentence about the failure, and `code()` is the value a `catch`
+  branches on instead of matching prose. This is the opposite of Rust's `Result`, and for the
+  opposite reason: Rust has `?` and no exceptions, C++ has exceptions and no `?`, and a surface
+  where every call returned `std::expected` would force a branch after every line and make a
+  composed program unwritable.
+- **One optional argument is a default argument; several are an aggregate filled in with
+  designated initialisers.** `fs::read_file("main.cpp", {.limit = 40})` names the one field it sets
+  and says nothing about the rest — which matters because C++ has no keyword arguments and a
+  defaulted parameter cannot be skipped over, so `read_file(path, std::nullopt, 40)` would have
+  made a model count commas. The one call spelled as an **overload pair** instead is
+  `agents::wait_for_subagents`, where "every outstanding child" and "these children" are two calls
+  rather than one with an absent argument.
+- **A read is a `std::variant`**, narrowed with `std::get_if` — what C++ has for a value that is
+  exactly one of two things — and a fixed choice is an `enum class`, never a string.
+- **A three-way patch field is a value with named factories.** Leave `description` default to keep
+  it, `text_edit::clear()` to empty it, `text_edit::set(…)` to replace it; `epic_assignment` is the
+  same shape for an epic id. A child's brief is `brief::prompt(…)` or `brief::issue(…)`, so "both"
+  and "neither" are programs that do not compile.
+- **A span of turns is an ordinary aggregate**: `context::archive_thread({{4, 19}, {30, 35}})`.
+  C++ has no value type for a closed integer range — `std::ranges::iota_view` is a *sequence*,
+  which a span of turn numbers is not — so this is the one place the arm spells with a record what
+  Rust spells with `4..=19`.
+- **`gg::log` is this arm's `console.log`.** `std::printf` reaches the same place, because ambient
+  WASI gives this guest a real standard output, but it is the C library's rather than gg's. The
+  bare name resolves to gg's even beside `<cmath>`'s `log`, because one takes text and the other a
+  number.
+
+Underneath it is one bridge file a model never reads, and its whole job is lifetimes: the canonical
+ABI's strings do not own what they point at, so every call's arguments are held in a scratch that
+frees them in its destructor — and held in a `std::deque` rather than a `std::vector`, because a
+vector would move its elements on growth and invalidate every pointer already handed out, which is
+a use-after-free that appears only once a call takes more than a handful of strings.
+`project::create_issue` takes nine.
+
+##### The catalogue, and the one arm whose compiler reads its own documentation
+
+This arm's catalogue is reflected by **clang's comment AST**, dumped as JSON by the same `clang++`
+that compiles every program. clang carries a real documentation parser — the one `-Wdocumentation`
+diagnoses against and the one `libclang`'s comment API and `clang-doc` are built on — and it does
+the two things that matter: it decides which comment belongs to which declaration, and it parses
+the Doxygen commands inside one into structure. So `\param path`'s prose arrives attached to the
+parameter called `path`, `\returns` and `\throws` arrive as their own nodes, and `\copydoc`
+arrives as a reference the reflector resolves.
+
+That makes C++ **one of the few arms whose per-parameter documentation slot is the language's own**
+rather than a convention standing in for one. [Rust](#what-rusts-sdk-looks-like) needs a
+`# Arguments` heading and [PureScript](#the-catalogue-and-the-two-things-purescript-does-not-have)
+needs the same, because neither language has anywhere to write a comment on a parameter; here the
+compiler polices it, and the reflection is compiled with `-Werror=documentation` so a `\param`
+naming an argument the function does not take fails the reflection rather than reaching a model.
+
+Three mechanics of it are worth recording, because each was a decision:
+
+| | |
+| --- | --- |
+| **The AST is filtered** | A translation unit that includes this SDK also includes half the standard library, and dumping the whole of one is ~300 MB for `<string>` alone. `-ast-dump-filter=gg` keeps the declarations whose name matches — which for this SDK is all of them, because the surface lives in one namespace for the collision above. 3 MB and half a second. |
+| **`///` means model-facing and `//` does not** | A public member the bridge needs — `text_edit::tag()`, `brief::is_issue()` — carries `//` and is left out of the declaration a model is shown. There is no other marker, and a public member with no documentation at all is omitted rather than emitted blank. |
+| **`list` is written once and declared twelve times** | C++ has no protocol extension, and a comment inside a macro body is gone before the macro is ever expanded — so the twelve `list()` declarations cannot share one written paragraph the way [Swift](#what-swifts-sdk-looks-like)'s protocol default or Rust's `macro_rules!` do. They share `gg::detail::api_object_list` instead, by a one-line `\copydoc` the reflector resolves, and the reflector asserts all twelve declare the same shape. |
+
+Two smaller things the reflector has to do that no other arm's does. clang's comment lexer splits a
+line wherever it thinks it sees markup, so `std::get_if<text_file>` arrives as four fragments —
+they are put back together by their **source offsets**, since two fragments that abut are one line
+and a gap between them is the `///` that separated them. And a default argument is quoted out of
+the header by **byte** offset rather than printed back from the expression tree, because printing
+it would be the reflector inventing a spelling and this SDK's prose is full of em dashes.
+
+##### The library set is the standard library, and that is an argument rather than a shortfall
+
+Declared header by header in `Sources/prelude.hpp` under `// == Heading ==` groups, which is one
+declaration with **three** readers: the compile, the committed manifest, and the catalogue's
+`libraries` section — so what a model is told it may include and what the compile allows cannot
+drift.
+
+This is the one arm that ships no third-party library at all, where [Rust](#what-rusts-sdk-looks-like)
+ships five crates and [Swift](#what-swifts-sdk-looks-like) vendors three packages, and the argument
+is that it is not a thinner set. The seam's rule is that commonly used libraries are available by
+default, and what a C++ author reaches for first *is* the standard library — at a breadth
+(`<ranges>`, `<format>`, `<expected>`, `<regex>`, `<chrono>`, `<random>`, the whole container set)
+that no other arm's standard library matches. There is no ambient C++ package manager to reach one
+through, so anything beyond it would be a vendored tree in this repository, and vendoring one badly
+— unpinned, unlicensed, untested against wasm — is worse than the argument above. A curated header
+set on the include path is the shape it would take if it is ever taken, and it would cost a
+program nothing when unused, because the prelude is what is precompiled and an `-I` is not.
+
+Three absences inside the standard set are decisions rather than gaps: `<thread>`, `<future>` and
+`<atomic>`, because this sandbox has no concurrency and a header a model is told it has and cannot
+use is worse than one it was never offered; `<iostream>`, because a program's stdout is not a
+channel a turn is read from and including it drags its static initialisation into every artifact;
+and `<filesystem>`, for the namespace collision above.
 
 ### The catalogue
 

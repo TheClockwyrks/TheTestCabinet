@@ -1,9 +1,10 @@
-# `gg-sandbox-cpp` — gg's C++ prelude, shell and compile inputs
+# `gg-sandbox-cpp` — gg's C++ SDK, prelude, shell and compile inputs
 
-The **C++** arm of gg's [responses as code] capability: the prelude every model program is compiled
-against, the shell it is linked with, and the build that commits both into gg's binary.
+The **C++** arm of gg's [responses as code] capability: the hand-written SDK a model's program is
+written against, the prelude it is compiled against, the shell it is linked with, and the build
+that commits all three into gg's binary.
 
-It is not an npm package and not a Cargo crate. It is a directory of two sources and three scripts,
+It is not an npm package and not a Cargo crate. It is a directory of C++ sources and four scripts,
 because what it produces is not a library anybody links from this repository — it is compile
 *inputs* that ride inside `gg` and are unpacked next to a model's program once per machine.
 
@@ -47,11 +48,15 @@ three-element vector reads whatever is there. gg compiles every translation unit
 
 | | |
 | --- | --- |
+| `Sources/sdk/` | **gg's surface, hand-written and idiomatic**: twelve API objects as C++ namespaces, the types they hand back, the options aggregates their optional arguments are written into, and `tool_error`. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the committed catalogue out of them — and its `//` comments are not. `sdk/wire.*` is the bridge onto the canonical ABI, which a model never reads. |
 | `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the generated WIT surface as C, the declaration of the model's own entry point, and the standard-library set. One declaration, two readers — the compile, and the `headers` list in the committed manifest. |
 | `Sources/shell.cpp` | gg's shell — the two exports the sandbox world declares, the call into the model's own `main`, and the `catch` that turns an uncaught exception from `thrown Wasm exception` into the exception's own class and `what()`. Compiled **once**, at build time. |
 | `cpp-version.sh` | Every pin — the wasi-sdk release, the target triple, the C++ standard, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-wasi-sdk.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
-| `build.sh` | Compiles those bindings and the shell for wasm, cuts the committed archive, fetches the adapter, and writes the manifest. |
+| `build.sh` | Compiles those bindings, the SDK and the shell for wasm, cuts the committed archive, fetches the adapter, and writes the manifest. |
+| `signatures.sh` | Dumps the SDK's comment AST with `clang++ -ast-dump=json` and writes `crates/gg/src/sandbox/guests/cpp.signatures.json`. Run by `scripts/ci/contract-drift.sh` on every CI run; writes exactly one file. |
+| `tools/catalogue.py` | The **identity** half of the catalogue — which function is which gg tool, on which object, gated by what. No prose. |
+| `tools/signatures.py` | The reflector: clang's comment AST in, the committed catalogue out. |
 
 ## What a C++ program looks like
 
@@ -60,31 +65,104 @@ prelude is already in front of it — though writing the includes anyway costs n
 point of compiling the reply verbatim:
 
 ```cpp
-#include <format>
-#include <ranges>
-#include <vector>
-
 int main() {
-  std::vector<int> values{3, 1, 2};
-  std::ranges::sort(values);
-  // … and gg's own surface, which this arm's SDK step has still to put in front of a model.
+  const auto entries = fs::list_dir("src");
+  std::vector<std::string> sources;
+  for (const auto &entry : entries) {
+    if (entry.kind == entry_kind::file) sources.push_back(entry.name);
+  }
+  std::ranges::sort(sources);
+
+  const auto built = system::shell("cmake --build build", 300.0);
+  view::open_text("build", built.output);
+  harness::finish(std::format("looked at {} sources", sources.size()));
   return 0;
 }
 ```
 
+## What the SDK looks like, and the two decisions behind it
+
+**Everything lives in `namespace gg`, and the prelude ends with `using namespace gg;`.** That is
+forced rather than stylistic: one API object is called `system`, `<cstdlib>` declares
+`int system(const char *)` at global scope, and `namespace system { … }` beside it is
+*redefinition of 'system' as different kind of symbol*. Qualified lookup for `system::shell`
+considers only namespaces and types and never functions, so once the surface is in a namespace the
+C library's `system` cannot shadow the object. A name a program declares itself wins over one the
+using-directive made visible — with one measured exception: a namespace **alias**
+(`namespace fs = std::filesystem;`) is *ambiguous* rather than shadowing, which is why
+`<filesystem>` is deliberately not in the prelude.
+
+**It reads like the standard library**, because it arrives in the same prelude as `<vector>` and is
+called with `std::string` arguments: `snake_case` functions, `snake_case` types, `enum class` for a
+fixed choice, aggregates with public members for a record, `std::variant` for a value that is one of
+two things, **default arguments** for one optional part and a **designated initialiser** for
+several, and a thrown `gg::tool_error` — a `std::runtime_error` — for a call that failed.
+
+```cpp
+fs::read_file("src/main.cpp", {.limit = 40});
+tasks::update_task("t1", {.description = text_edit::clear(), .status = task_status::done});
+try {
+  view::open_text("notes", fs::read_text_file("notes.md"));
+} catch (const tool_error &failure) {
+  if (failure.code() != tool_error_code::not_found) throw;
+}
+```
+
+## The catalogue, and why clang is the documentation tool
+
+`crates/gg/src/sandbox/guests/cpp.signatures.json` is reflected out of the SDK's own `///` comments
+by **clang's comment AST**, dumped as JSON. clang carries a real documentation parser — the one
+`-Wdocumentation` diagnoses against and the one `libclang`'s comment API and `clang-doc` are built
+on — and it does the two things that matter: it decides which comment belongs to which declaration,
+and it parses the Doxygen commands inside one into structure. So `\param path`'s prose arrives
+attached to the parameter called `path`, `\returns` and `\throws` arrive as their own nodes, and
+`\copydoc` arrives as a reference the reflector resolves.
+
+That makes C++ one of the few arms here with a **real per-parameter documentation slot** rather than
+a convention standing in for one — Rust and PureScript both need a `# Arguments` list, because
+neither language has anywhere to write a comment on a parameter. `signatures.sh` compiles the
+reflection unit with `-Werror=documentation`, so a `\param` naming an argument the function does
+not take is a failed reflection rather than a sentence a model reads about an argument that does not
+exist.
+
+Two conventions the reflector enforces, both worth knowing before editing a header:
+
+- **`///` means model-facing and `//` does not.** A public member the bridge needs —
+  `text_edit::tag()`, `brief::is_issue()` — carries `//` and is left out of the declaration a model
+  is shown. There is no other marker.
+- **`list()` is written once.** C++ has no protocol extension, and a comment inside a macro body is
+  gone before the macro is expanded, so the twelve `list()` declarations cannot share one written
+  paragraph the way Swift's protocol default or Rust's `macro_rules!` do. They share
+  `gg::detail::api_object_list` instead, by a one-line `\copydoc`, and the reflector asserts all
+  twelve declare the same shape.
+
 ## The library set
 
 The **C++ standard library**, as libc++ 22 implements it for this target, declared header by header
-in `Sources/prelude.hpp` and reflected into the committed manifest from that same file. Ranges,
-`std::format`, `std::expected`, the containers, `<regex>`, `<chrono>` and `<random>` are all there
-and all exercised by this arm's tests.
+in `Sources/prelude.hpp` under `// == Heading ==` groups. That one declaration has **three** readers
+— the compile, the committed manifest's `headers` list, and the catalogue's `libraries` section,
+which is what a model is told it may include — so what a model reads and what the compile allows
+cannot drift. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<chrono>` and
+`<random>` are all there and all exercised by this arm's tests.
 
-Three things are deliberately absent. `<thread>`, `<future>` and `<atomic>`, because this sandbox
-has no concurrency at all and a header a model is told it has and cannot use is worse than one it
-was never offered. `<iostream>`, because a program's stdout is not a channel a turn is read from and
-including it drags its static initialisation into every artifact. And any third-party library:
-what a C++ author reaches for first *is* the standard library, and a curated set beyond it is a
-decision for the SDK step, which is what would have to tell a model the set exists.
+Four things are deliberately absent, and each is a decision rather than an oversight.
+
+- `<thread>`, `<future>` and `<atomic>`, because this sandbox has no concurrency at all and a header
+  a model is told it has and cannot use is worse than one it was never offered.
+- `<iostream>`, because a program's stdout is not a channel a turn is read from — `gg::log` is — and
+  including it drags its static initialisation into every artifact.
+- `<filesystem>`, for the collision above: `namespace fs = std::filesystem;` is a reflex, and beside
+  `gg::fs` it is a compile error rather than a shadow. The workspace is reached through `fs`,
+  `system::shell` and `view::open_file`, which is what gg mediates anyway.
+- **Any third-party library.** This is the one place this arm ships a thinner set than the Rust and
+  Swift arms, and the argument is that it is not thinner: the seam's rule is that commonly used
+  libraries are available by default, and what a C++ author reaches for first *is* the standard
+  library — at a breadth (`<ranges>`, `<format>`, `<expected>`, `<regex>`, `<chrono>`, `<random>`,
+  the whole container set) that no other arm's standard library matches. There is no ambient C++
+  package manager to reach one through, so anything else would be a vendored tree in this
+  repository, and vendoring one badly — unpinned, unlicensed, untested against wasm — is worse than
+  the argument above. A curated header set on the include path is the shape it would take if it is
+  ever taken; nothing about this arm is in the way.
 
 ## What it commits, and why those and not the compiler
 
@@ -124,7 +202,14 @@ does not reach a model as a program compiled against the old one.
 
 ## What is not built
 
-The **SDK** — the curated, idiomatic C++ surface a model's program calls, and the catalogue that
-describes it — and the **registration** that makes `language: "cpp"` a value an operator can
-configure. `crates/gg/src/sandbox/language/cpp.rs` says what registering needs, and what the open
-question is for `lib.<key>` on a language whose modules are linked.
+The **registration** that makes `language: "cpp"` a value an operator can configure: the enum
+variant, the registry arm, the healing dialect, the two prompt templates and the console rows.
+`crates/gg/src/sandbox/language/cpp.rs` says what registering needs, and what the open question is
+for `lib::<key>` on a language whose modules are **linked** rather than evaluated.
+
+That question is now the SDK's to answer and it has not been answered here. A module wrapped in
+`namespace lib::csv_tools { … }` in place would preserve every line and every default argument — but
+a module author writes `#include <vector>` at the top of their file, and a `#include` inside a
+namespace puts the whole of `std` inside it. The prelude makes an include unnecessary, which is what
+turns this into a rule a model has to be **told** rather than a rewrite of the author's file; saying
+it is a prompt decision, and the prompt is part of registration.

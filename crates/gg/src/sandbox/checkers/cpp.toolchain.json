@@ -61,11 +61,30 @@
     "version"
   ],
   "files": [
-    { "name": "prelude.hpp", "bytes": 5627 },
+    { "name": "prelude.hpp", "bytes": 6817 },
     { "name": "sandbox.h", "bytes": 73545 },
     { "name": "sandbox.o", "bytes": 29530 },
     { "name": "sandbox_component_type.o", "bytes": 5419 },
-    { "name": "shell.cpp", "bytes": 8862 },
-    { "name": "shell.o", "bytes": 5869 }
+    { "name": "sdk.o", "bytes": 198236 },
+    { "name": "sdk/api.hpp", "bytes": 2806 },
+    { "name": "sdk/error.hpp", "bytes": 5203 },
+    { "name": "sdk/gg.hpp", "bytes": 1692 },
+    { "name": "sdk/objects/agents.hpp", "bytes": 6633 },
+    { "name": "sdk/objects/context.hpp", "bytes": 3400 },
+    { "name": "sdk/objects/fs.hpp", "bytes": 4859 },
+    { "name": "sdk/objects/harness.hpp", "bytes": 1218 },
+    { "name": "sdk/objects/memory.hpp", "bytes": 6729 },
+    { "name": "sdk/objects/programs.hpp", "bytes": 3290 },
+    { "name": "sdk/objects/project.hpp", "bytes": 5750 },
+    { "name": "sdk/objects/review.hpp", "bytes": 1682 },
+    { "name": "sdk/objects/skills.hpp", "bytes": 1379 },
+    { "name": "sdk/objects/system.hpp", "bytes": 2283 },
+    { "name": "sdk/objects/tasks.hpp", "bytes": 2874 },
+    { "name": "sdk/objects/view.hpp", "bytes": 5988 },
+    { "name": "sdk/options.hpp", "bytes": 7309 },
+    { "name": "sdk/types.hpp", "bytes": 16764 },
+    { "name": "sdk/wire.hpp", "bytes": 7902 },
+    { "name": "shell.cpp", "bytes": 11795 },
+    { "name": "shell.o", "bytes": 7429 }
   ]
 }

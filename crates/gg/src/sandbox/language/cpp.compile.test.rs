@@ -71,7 +71,10 @@ fn what_gg_compiles_every_program_against_is_what_this_checkout_committed() {
     // edit is caught too.
     //
     // The shell is in the archive as SOURCE as well as as an object precisely for this: the object
-    // is what links, and the source is the only thing a comparison like this can read.
+    // is what links, and the source is the only thing a comparison like this can read. The SDK's
+    // HEADERS are in it for a stronger reason than comparison — they are what the prelude
+    // precompiles and what a program is declared against, so a stale copy is a model compiled
+    // against a surface it was not shown.
     let guest = guest().expect("the committed C++ guest unpacks");
     let prelude = std::fs::read_to_string(guest.file("prelude.hpp")).expect("the prelude unpacks");
     assert_eq!(
@@ -86,7 +89,109 @@ fn what_gg_compiles_every_program_against_is_what_this_checkout_committed() {
         include_str!("../../../../../packages/gg-sandbox-cpp/Sources/shell.cpp"),
         "the committed shell object was built from a different source than this checkout's"
     );
+
+    // Every SDK header, compared the same way — and the LIST compared too, so a header added to the
+    // SDK and left out of a rebuild is caught rather than silently absent from the tree the prelude
+    // is precompiled out of.
+    let mut shipped: Vec<&str> = guest_files()
+        .filter(|name| name.starts_with("sdk/"))
+        .collect();
+    shipped.sort_unstable();
+    let mut written: Vec<&str> = SDK_HEADERS.iter().map(|(name, _)| *name).collect();
+    written.sort_unstable();
+    assert_eq!(
+        shipped, written,
+        "the committed archive's SDK headers and this checkout's are not the same set — run          packages/gg-sandbox-cpp/build.sh and commit it"
+    );
+    for (name, source) in SDK_HEADERS {
+        let committed = std::fs::read_to_string(guest.file(name))
+            .unwrap_or_else(|error| panic!("{name} unpacks: {error}"));
+        assert_eq!(
+            &committed, source,
+            "the archive's copy of {name} is not this checkout's, so every program would be              compiled against a surface the catalogue does not describe"
+        );
+    }
 }
+
+/// This checkout's SDK headers, beside the names they ride in the archive under.
+///
+/// Written out rather than globbed, because a macro that walked the directory would go green on a
+/// header nobody committed — and the point of the comparison is that the set is the same on both
+/// sides.
+const SDK_HEADERS: &[(&str, &str)] = &[
+    (
+        "sdk/api.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/api.hpp"),
+    ),
+    (
+        "sdk/error.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/error.hpp"),
+    ),
+    (
+        "sdk/gg.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg.hpp"),
+    ),
+    (
+        "sdk/options.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/options.hpp"),
+    ),
+    (
+        "sdk/types.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/types.hpp"),
+    ),
+    (
+        "sdk/wire.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/wire.hpp"),
+    ),
+    (
+        "sdk/objects/agents.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/agents.hpp"),
+    ),
+    (
+        "sdk/objects/context.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/context.hpp"),
+    ),
+    (
+        "sdk/objects/fs.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/fs.hpp"),
+    ),
+    (
+        "sdk/objects/harness.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/harness.hpp"),
+    ),
+    (
+        "sdk/objects/memory.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/memory.hpp"),
+    ),
+    (
+        "sdk/objects/programs.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/programs.hpp"),
+    ),
+    (
+        "sdk/objects/project.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/project.hpp"),
+    ),
+    (
+        "sdk/objects/review.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/review.hpp"),
+    ),
+    (
+        "sdk/objects/skills.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/skills.hpp"),
+    ),
+    (
+        "sdk/objects/system.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/system.hpp"),
+    ),
+    (
+        "sdk/objects/tasks.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/tasks.hpp"),
+    ),
+    (
+        "sdk/objects/view.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/view.hpp"),
+    ),
+];
 
 #[test]
 fn every_header_the_manifest_claims_is_one_the_prelude_really_includes() {
@@ -199,15 +304,15 @@ fn a_diagnostic_in_ggs_own_guest_is_ggs_failure_and_not_the_models() {
     // The model's file is named relatively and gg's inputs absolutely, and gg's own inputs are the
     // only files besides the model's that a compile reads. A model handed a diagnostic about a file
     // it never wrote would be a model asked to fix gg.
-    let stderr = "/tmp/gg-toolchain-cpp/guest/prelude.hpp:37:10: error: 'sandbox.h' file not \
-                  found\n";
+    let stderr = "/tmp/gg-toolchain-cpp/guest/sdk/objects/fs.hpp:57:1: error: unknown type name \
+                  'file_read'\n";
     match classify(&report(false, stderr)) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(
                 message.contains("gg's own guest"),
                 "the failure did not say whose it was: {message}"
             );
-            assert!(message.contains("prelude.hpp"), "{message}");
+            assert!(message.contains("fs.hpp"), "{message}");
         }
         other => panic!("a diagnostic in gg's own prelude is not the model's failure: {other:?}"),
     }
