@@ -14,9 +14,19 @@ import {
   pathGeom,
   placeCovering,
   spawnAt,
+  clipBudget,
   TICK,
   MAP,
 } from "../_helpers.mjs";
+
+const MAX_VOLLEY_TICKS = 120; // 2 s — the sweep's own cap
+// How long each branch is left firing after its first volley is counted. The COUNT is read
+// on the tick the volley launches and cannot be relaxed — a tick later the shots have begun
+// to land and the reading is wrong — but the clip has no such constraint, and cutting on
+// that tick gave the reviewer a frame of three projectiles they could not compare against
+// anything. Held for three seconds each, the fan of a Spread volley and the single bolt of
+// a Charged one are plainly different things.
+const VOLLEY_ON_TICKS = 180;
 
 /** Pose a tier-III Emitter of `branch` over three in-range atoms; `begin` opens the run. */
 async function poseVolley(api, begin, branch) {
@@ -33,14 +43,24 @@ async function poseVolley(api, begin, branch) {
 
 /** Run on to the first volley and count the shots it put in the air. */
 async function actVolleyCount(api) {
-  // 120 ticks = the old 2 s cap. The old poll of 0.02 s is 1.2 ticks, which the contract
-  // refuses; it meant "sample as finely as possible", and the count must be read on the
-  // tick the volley launches — a tick later and the shots have begun to land.
+  // NO LEAD-IN BEFORE THE COUNT. A tier-III Emitter reloads about twice a second and deals
+  // 2 damage, so two seconds of establishing shot is four volleys — enough to neutralize all
+  // three 6-electron atoms before the volley under test is ever fired. Framed that way the
+  // Spread branch counted ZERO shots, because by then it had nothing left to shoot at. The
+  // tower's own reload supplies a short lead-in for free; the run-on below is where the
+  // window the review asked for actually comes from.
+  //
+  // The old poll of 0.02 s is 1.2 ticks, which the contract refuses; it meant "sample as
+  // finely as possible", and the count must be read on the tick the volley launches — a
+  // tick later and the shots have begun to land.
   const r = await api.until((s) => s.projectiles.length > 0, {
-    max: 120,
+    max: MAX_VOLLEY_TICKS,
     poll: TICK,
   });
-  return r.snap.projectiles.length;
+  const count = r.snap.projectiles.length;
+  // ...and the tower going on firing that same shape of volley.
+  await api.advance(VOLLEY_ON_TICKS);
+  return count;
 }
 
 export default function item() {
@@ -49,6 +69,8 @@ export default function item() {
 
   return {
     id: "upgrades.branch-a-vs-b",
+
+    clipMs: clipBudget(2 * (MAX_VOLLEY_TICKS + VOLLEY_ON_TICKS)),
 
     async arrange(api) {
       await poseVolley(api, startScenario, "B"); // SPREAD: up to 3 targets

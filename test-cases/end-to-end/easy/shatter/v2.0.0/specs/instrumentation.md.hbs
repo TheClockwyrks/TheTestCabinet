@@ -96,7 +96,11 @@ places bodies or sets a value, then `step()` runs the real simulation forward an
 `snapshot()` reads what happened.
 
 - `startGame()` starts a new game, exactly as choosing `PLAY` from the title would.
-  It enters the in-game state and spawns the first wave.
+  It enters the in-game state and begins wave 1 — which, per `specs/gameplay.md`, a
+  build may open either by spawning the rocks at once or by running the `WAVE 1`
+  banner first and spawning as it ends. So the call guarantees a game that has
+  STARTED, not one with rocks already on the field: read `snapshot().waveBanner` and
+  `snapshot().rocks` to see which opening this build chose.
 - `setScore(n)` sets the score directly, as a precondition. The extra-life and
   game-over rules still resolve through real play, so drive a real event to trigger
   them.
@@ -168,7 +172,7 @@ inside `keyDown` or to latch the request there and launch it on the next fixed s
 whichever suits its loop; what it must not do is depend on the key still being held
 once that step arrives.
 
-Holding the fire key goes on firing at the 0.18-second rate `specs/ship.md` sets —
+Holding the fire key goes on firing at the 22-tick rate `specs/ship.md` sets —
 that is the held path, and it is separate from, not a replacement for, the shot the
 press itself takes.
 

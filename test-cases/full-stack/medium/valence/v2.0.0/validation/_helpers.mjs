@@ -105,6 +105,54 @@ export const STYLE = {
   straight: "straight",
 };
 
+// ---- Clip framing -------------------------------------------------------------
+//
+// The record pass films `act` from its very first frame and stops when the clip budget
+// runs out (`DEFAULT_CLIP_MS` in packages/browser-driver/validation.mjs, overridable per
+// item with a `clipMs` property). So what a reviewer actually sees is decided entirely by
+// how an item spends time in `act` — and an item whose `act` is `await api.until(<the
+// event>)` and nothing else hands back a clip that OPENS on the event and CUTS the frame
+// it lands. That reads as a single frame of nothing in particular: there is no "before" to
+// compare against, and no "after" to show the change stuck. Most of this case's items were
+// written that way, and the review of them said so — repeatedly, and about a different item
+// each time.
+//
+// So a timed item FRAMES its evidence, in three parts:
+//
+//   async act(api) {
+//     await api.advance(LEAD_TICKS);        // the posed situation, before anything happens
+//     r = await api.until(<the event>);     // the behavior the item is about
+//     await api.advance(TAIL_TICKS);        // what it left behind
+//   }
+//
+// The lead-in is real simulation time, not a pause: an event that fires during it is filmed
+// like any other, and `until` then returns on its first sample having already seen it. So
+// the framing never decides a verdict, it only decides what the clip contains.
+//
+// Where the approach to the event is long — a unit walking most of a lane, a wave playing
+// itself out — `arrange` closes with `api.skipUntil(...)`, which runs the same real
+// simulation INSTANTLY and films nothing. Skip the journey, film the arrival: that is what
+// keeps a two-second lead-in showing the moment before the event rather than the minute
+// before it.
+export const LEAD_TICKS = 120; // 2 s of the situation as posed, before the event
+export const TAIL_TICKS = 120; // 2 s of the state the event left behind
+
+/** Milliseconds of film one tick of `advance` costs the record pass. */
+export const TICK_MS = 1000 / TICK_HZ;
+
+/**
+ * The `clipMs` an item needs in order to film `ticks` of `advance`/`until`, plus headroom
+ * for the paint settles and driver round trips between them.
+ *
+ * An item that films more than the runtime's default 8 s budget must say so, or the record
+ * pass simply stops mid-scene — which is how an item that poses five scenes came to hand
+ * back a clip of the first one and a half. Deriving the budget from the tick counts the
+ * item actually spends keeps the two from drifting apart when one of them is tuned.
+ */
+export function clipBudget(ticks) {
+  return Math.ceil(ticks * TICK_MS) + 2500;
+}
+
 // Generous preconditions for scenarios that must simply afford towers or never lose.
 export const HUGE_ENERGY = 100000;
 export const HUGE_INTEGRITY = 1e9;
@@ -497,24 +545,83 @@ export async function placeCovering(
   kind,
   pathGeomObj,
   s,
-  { offsets = [40, 48, 58, 34, 70, 84], sides = [-1, 1] } = {},
+  {
+    offsets = [40, 48, 58, 34, 70, 84],
+    sides = [-1, 1],
+    along = [0, 40, -40, 80, -80],
+  } = {},
 ) {
-  const p = pathGeomObj.pointAt(s);
-  const nx = -Math.sin(p.ang);
-  const ny = Math.cos(p.ang);
-  for (const off of offsets) {
-    for (const side of sides) {
-      const x = p.x + nx * off * side;
-      const y = p.y + ny * off * side;
-      const r = await api.call("placeTower", kind, x, y);
-      if (r && r.ok) return { id: r.id, x, y, p, s };
+  // Tried in order: the exact arc length first, at each perpendicular offset and on both
+  // sides, and only then a short nudge ALONG the path.
+  //
+  // The nudge matters because a map is the model's own. A tower has a real footprint and has
+  // to sit clear of the path, of the board's edge and of its neighbours (specs/board.md), so
+  // a spot that is legal on one build's conduit can have nothing beside it on another's — and
+  // when that happens the item does not fail, it becomes INCONCLUSIVE, which produces no
+  // media at all. Three of the builds under review lost whole items that way, including the
+  // one whose reviewer asked why it "didn't produce anything". Eighty pixels of slack along
+  // the lane costs an item nothing (every caller wants a tower covering roughly here, and
+  // those that need more resolve their own geometry from the tower afterwards) and turns a
+  // silent inconclusive into a real verdict.
+  for (const da of along) {
+    const at = s + da;
+    if (at < 0 || at > pathGeomObj.length) continue;
+    const p = pathGeomObj.pointAt(at);
+    const nx = -Math.sin(p.ang);
+    const ny = Math.cos(p.ang);
+    for (const off of offsets) {
+      for (const side of sides) {
+        const x = p.x + nx * off * side;
+        const y = p.y + ny * off * side;
+        const r = await api.call("placeTower", kind, x, y);
+        if (r && r.ok) return { id: r.id, x, y, p, s: at };
+      }
     }
   }
-  // The map is the model's own: a conformant build can legitimately have no legal
-  // spot for this tower near this arc length, which decides nothing about its debug
-  // API. Mark it inconclusive rather than failing the run.
+  // The map is the model's own: a conformant build can legitimately have no legal spot for
+  // this tower anywhere near this arc length, which decides nothing about its debug API.
+  // Mark it inconclusive rather than failing the run.
   throw preconditionUnmet(
     `placeCovering(${kind}) found no legal spot near s=${s}`,
+  );
+}
+
+/**
+ * Place a real tower of `kind` covering somewhere NEAR arc length `s` — trying `s` itself
+ * first and then points progressively further either side of it, and returning the first
+ * that the real placement path accepts.
+ *
+ * `placeCovering` asks for one exact spot and throws an unmet precondition if that spot has
+ * no legal position beside it. That is the right behaviour when the arc length is chosen by
+ * the item; it is the wrong one when the arc length is chosen by the SIMULATION — "wherever
+ * the unit has got to by now" — because a unit that happens to have stopped beside a bend, a
+ * collector run-in, or another tower makes the whole item inconclusive, and an inconclusive
+ * item produces NO MEDIA AT ALL. `detection.inert-modifier` places a detector ahead of a
+ * Dimer wherever the Dimer has reached, and that is exactly how it came to hand back an
+ * empty output on some builds rather than a verdict.
+ *
+ * Control ops only — callable from either phase.
+ */
+export async function placeCoveringNear(
+  api,
+  kind,
+  pathGeomObj,
+  s,
+  { spread = [0, 60, -60, 120, -120, 180, -180, 240] } = {},
+) {
+  for (const d of spread) {
+    const at = s + d;
+    if (at < 0 || at > pathGeomObj.length) continue;
+    try {
+      return await placeCovering(api, kind, pathGeomObj, at);
+    } catch (err) {
+      // Only an unmet precondition means "not here, try elsewhere"; anything else is a
+      // real failure and must not be swallowed.
+      if (!err?.ttcPreconditionUnmet) throw err;
+    }
+  }
+  throw preconditionUnmet(
+    `placeCoveringNear(${kind}) found no legal spot within reach of s=${Math.round(s)}`,
   );
 }
 
@@ -531,7 +638,13 @@ export async function battery(api, kind, pathGeomObj, from, to, n) {
   const placed = [];
   for (let i = 0; i < n; i += 1) {
     const s = from + ((to - from) * i) / Math.max(1, n - 1);
-    placed.push(await placeCovering(api, kind, pathGeomObj, s));
+    // `placeCoveringNear`, not `placeCovering`: the arc lengths here are an even division of
+    // a stretch, not spots an item chose, and a map is the model's own. One of them landing
+    // beside a bend, a collector run-in, or a neighbour already placed makes the WHOLE item
+    // inconclusive — and an inconclusive item produces no media at all. On the builds under
+    // review that is what emptied `hitpoints.pays-total-shells` and
+    // `placement.covers-both-lanes`: "placeCovering(cleaver) found no legal spot near s=1...".
+    placed.push(await placeCoveringNear(api, kind, pathGeomObj, s));
   }
   return placed;
 }
@@ -588,7 +701,7 @@ async function buildCoverAndSpawn(
   const snap = await begin(api, mapId, { round });
   const g = pathGeom(snap.paths[0]);
   const s = frac * g.length;
-  const tower = await placeCovering(api, kind, g, s);
+  const tower = await placeCoveringNear(api, kind, g, s);
   const unitId = await spawnAt(api, { type, electrons, pathId: 0, s });
   const snap0 = await api.snapshot();
   return { g, s, towerId: tower.id, tower, unitId, snap0 };
@@ -619,14 +732,15 @@ async function buildCoverAndPassThrough(
     electrons,
     mapId = MAP.single,
     towerFrac = 0.5,
+    approachPx = 0,
     seed = 1,
   },
 ) {
   const snap = await begin(api, mapId, { seed });
   const g = pathGeom(snap.paths[0]);
-  const tower = await placeCovering(api, kind, g, towerFrac * g.length);
+  const tower = await placeCoveringNear(api, kind, g, towerFrac * g.length);
   const towerSnap = towerById(await api.snapshot(), tower.id);
-  const s = firstInRange(g, towerSnap);
+  const s = Math.max(0, firstInRange(g, towerSnap) - approachPx);
   const unitId = await spawnAt(api, { type, electrons, pathId: 0, s });
   return { g, tower, towerId: tower.id, unitId, snap0: await api.snapshot() };
 }
@@ -638,6 +752,16 @@ async function buildCoverAndPassThrough(
  * to be fully neutralized by a single tower. Everything routes through the real systems;
  * the item's `act` then runs the sim and reads the outcome. Returns
  * `{ g, tower, towerId, unitId, snap0 }`.
+ *
+ * `approachPx` poses the unit that many pixels FURTHER upstream, outside the radius, so it
+ * spends the opening of the clip walking in. Use it whenever an item frames its evidence
+ * with a lead-in (see LEAD_TICKS): a single tower's coverage window is shorter than it
+ * sounds — about 2.7 s for a 6-electron atom under a 100-range Emitter, since the path's
+ * curve cuts a chord through the radius rather than a diameter — so a two-second lead-in
+ * spent INSIDE the window leaves almost none of it for the thing under test. Two items
+ * learned that the hard way: `tower-art.projectiles-travel` reported "no shot is fired" and
+ * `fx.neutralize` reported no kill, both against a build doing neither wrong. Spending the
+ * lead-in on the approach instead leaves the whole window intact.
  */
 export async function coverAndPassThrough(api, opts = {}) {
   return buildCoverAndPassThrough(api, startScenario, opts);
@@ -712,13 +836,456 @@ export async function poseNoTowerRound(
  * Pair with `arrangeNoTowerRound` (or `poseNoTowerRound`). Returns the snapshot, which is
  * what the old `runNoTowerRound` returned.
  */
-export async function actNoTowerRound(api, { max = 19200, poll = 120 } = {}) {
+export async function actNoTowerRound(
+  api,
+  { max = 19200, poll = 120, nearlyClear = NEARLY_CLEAR_UNITS } = {},
+) {
+  // THE WAVE IS SKIPPED; THE RESOLUTION IS FILMED.
+  //
+  // A no-tower round is one to five minutes of game time — round 20 alone is 102 atoms —
+  // and every one of these items is about what happens at the END of it: the clear bonus
+  // landing, the interest paid on the bank, the countdown that follows. Run in real time
+  // the record pass filmed the wave POURING OUT of the inlet and then ran out of budget, so
+  // what a reviewer got was units entering and no payout at all — "it only shows the units
+  // at the start".
+  //
+  // So the body of the round is stepped instantly and the recording picks up when the board
+  // is nearly clear: the last few units walking into the collector, the round resolving, and
+  // the bank changing. That is the same simulation either way — `skipUntil` runs the real
+  // systems, it just does not film them.
+  //
+  // `peaked` is what makes "nearly clear" mean the tail of the wave rather than the moment
+  // before it starts: a round opens with an EMPTY board, which satisfies any small-count
+  // test on its first sample. The skip only starts looking for the tail once the wave has
+  // actually filled the lane.
+  let peaked = false;
+  await api.skipUntil(
+    (s) => {
+      if (s.matter.length > nearlyClear) peaked = true;
+      if (s.phase === "build" || s.screen !== "playing") return true;
+      return peaked && s.matter.length <= nearlyClear;
+    },
+    { max, poll: Math.min(poll, 30) },
+  );
+
   // 19200 ticks = the old 320s cap; poll 120 = the old 2s chunk.
   const r = await api.until(
     (s) => s.phase === "build" || s.screen !== "playing",
-    { max, poll },
+    { max: RESOLVE_MAX_TICKS, poll: 6 },
   );
+  // Held on the resolution, so the bonus and the interest are legibly on the recording
+  // rather than the frame the round happened to end on.
+  await api.advance(TAIL_TICKS);
   return r.snap;
+}
+
+/** How few units left on the lane counts as the tail of a wave. */
+const NEARLY_CLEAR_UNITS = 4;
+/**
+ * Game ticks allowed for those last units and the round's resolution.
+ *
+ * Generous, because it decides the VERDICT: the "nearly clear" test above is a heuristic
+ * about where a wave's tail is, and a wave that dips to a few units mid-release leaves this
+ * sweep more of the round to finish than a tight cap would allow. How much of it reaches
+ * the recording is capped separately, by each item's `clipMs`, and the validate pass has no
+ * filming budget at all — so a long allowance here costs a reviewer nothing.
+ */
+const RESOLVE_MAX_TICKS = 3600;
+
+// ---- Aura crossings -----------------------------------------------------------
+//
+// The two support towers are auras: they "continuously affect every valid unit in range"
+// (specs/towers.md), and what they do to a unit — a slow factor, an excite bonus, a reveal —
+// is a FIELD on that unit that a check can simply read.
+//
+// Reading it is easy, and every one of these items used to do only that: pose the unit
+// inside the aura, advance three ticks, read the field. Two things are wrong with it. The
+// clip is 1/20th of a second of a unit that was already affected, so a reviewer sees no
+// effect at all — a slow especially, since "moving at 0.55x" is not a thing you can see
+// without the 1.0x to compare it against. And the reading itself is weaker than it looks: a
+// value read on a unit posed inside the field is satisfied just as well by a build that
+// applies the effect to everything everywhere and has no aura at all.
+//
+// So these helpers walk the unit ACROSS the boundary. The unit is posed outside the radius,
+// the effect is read there, the sim runs until it is genuinely inside, and the effect is
+// read again. The difference between the two readings is the aura, and the crossing is the
+// clip.
+//
+// IN-FIELD IS DECIDED BY GEOMETRY, not by the effect. Keying the wait on "the slow changed"
+// would hang forever on the one unit whose correct behavior is that nothing changes — the
+// boss, which specs/towers.md makes immune — and that item needs to prove the boss was
+// inside the field and unaffected, which is precisely a geometric claim.
+
+/** How far outside an aura's radius a crossing is posed, in logical pixels. */
+const AURA_APPROACH_PX = 90;
+/** Cap for the walk-in sweep: generous for the slowest matter over AURA_APPROACH_PX. */
+const AURA_CROSS_MAX_TICKS = 420;
+/** Ticks to let the aura apply once the unit is geometrically inside it. */
+const AURA_APPLY_TICKS = 6;
+
+/**
+ * ARRANGE-only. Place an aura tower of `kind` beside path 0 and pose a unit of `type`
+ * upstream of its radius, so running time walks the unit into the field.
+ *
+ * Returns `{ unitId, towerId, outside }` — the ids, and the unit's snapshot as posed
+ * (outside the field), which is the "before" every caller asserts against.
+ */
+export async function arrangeAuraApproach(
+  api,
+  { kind, type = "atom", electrons, mapId = MAP.single, frac = 0.32 } = {},
+) {
+  const snap = await startScenario(api, mapId);
+  const g = pathGeom(snap.paths[0]);
+  const s0 = g.length * frac;
+  // Near, not exact: a Moderator has no legal spot beside this arc length on every map, and
+  // an exact request there made all three `slow.*` items inconclusive on one of the builds
+  // under review — no verdict and no media.
+  const t = await placeCoveringNear(api, kind, g, s0);
+
+  // Read the radius off the tower the build actually built, not off the number in the
+  // spec: a conformant build may field this aura at any tier, and what has to be cleared
+  // is whatever this tower reports.
+  const tower = towerById(await api.snapshot(), t.id);
+  const startAt = s0 - (tower.range + AURA_APPROACH_PX);
+  if (startAt < 0) {
+    throw preconditionUnmet(
+      `the lane has no room upstream of the ${kind} to pose an approach from outside its ` +
+        `field (needs ${Math.round(tower.range + AURA_APPROACH_PX)}px before s=${Math.round(s0)})`,
+    );
+  }
+
+  const unitId = await spawnAt(api, {
+    type,
+    electrons,
+    pathId: 0,
+    s: startAt,
+  });
+  return {
+    unitId,
+    towerId: t.id,
+    outside: unitById(await api.snapshot(), unitId),
+  };
+}
+
+/**
+ * ACT half of an aura crossing: film the unit approaching outside the field, run on until
+ * it is geometrically inside, then hold there.
+ *
+ * Returns `{ entered, inside }` — whether the unit reached the field, and its snapshot
+ * taken at the first sample in which it was inside.
+ */
+export async function actAuraCrossing(
+  api,
+  ctx,
+  { lead = LEAD_TICKS, hold = TAIL_TICKS } = {},
+) {
+  // Outside the field, unaffected: the state everything below is a change from.
+  await api.advance(lead);
+
+  const r = await api.until(
+    (s) => {
+      const t = towerById(s, ctx.towerId);
+      const u = unitById(s, ctx.unitId);
+      if (!t || !u) return false;
+      return Math.hypot(u.x - t.x, u.y - t.y) <= t.range;
+    },
+    { max: AURA_CROSS_MAX_TICKS, poll: TICK },
+  );
+
+  // A few ticks for the aura to APPLY before the effect is read.
+  //
+  // Crossing the radius and being affected by the field are one tick apart, not the same
+  // instant: the aura system runs on the tick after the unit is inside it. Reading on the
+  // first in-range sample caught `slow.heavy-resists` mid-crossing and reported a factor of
+  // 1 for a heavy the Moderator went on to slow correctly a frame later — a conformant
+  // build failed on a race, which is the exact failure mode the old fixed `advance(3)` was
+  // there to avoid before the wait was made geometric.
+  await api.advance(AURA_APPLY_TICKS);
+  const inside = unitById(await api.snapshot(), ctx.unitId);
+
+  // Held inside, so the affected state is on screen for as long as the unaffected one was.
+  await api.advance(hold);
+
+  return { entered: r.hit && inside != null, inside };
+}
+
+/** The clip budget an aura crossing needs, worst case. */
+export function auraClipMs() {
+  return clipBudget(LEAD_TICKS + AURA_CROSS_MAX_TICKS + TAIL_TICKS);
+}
+
+// ---- Targeting scenes ---------------------------------------------------------
+//
+// The six targeting priorities (specs/towers.md) are one item each, not one item with six
+// assertions in it. A single `targeting.modes` item posed all six scenes back to back and
+// read each choice off `targetId` one tick in, which failed the review on both counts: a
+// six-scene clip is under three seconds of scenes flashing past, and one red line on a
+// six-way item says "targeting is broken" when what is broken is `weakest`.
+//
+// So this is the shared scene, and each priority names its own expected unit in its own
+// file. `targeting.first-default` grades the DEFAULT (specs/towers.md: "Every tower defaults
+// to `first`") and so is posed without arming anything; the other five arm their priority.
+//
+// THE SCENE. One Beam — 200 range, the longest in the game (specs/towers.md), so all three
+// units sit inside it at once — covering arc length `s0`, and three atoms:
+//
+//   A  at s0 − 150,  6 electrons — least progress, most hit points
+//   B  at s0,        1 electron  — middle progress, fewest hit points
+//   C  at s0 + 110,  3 electrons — most progress
+//
+// Progress and hit points are therefore independent, which is what makes each priority
+// resolve to a DIFFERENT unit: confusing `weakest` with `first` picks C instead of B, and
+// confusing `strongest` with `last` is the one collision the scene cannot break (A is both),
+// so `targeting.last` and `targeting.strongest` state that overlap rather than hide it.
+//
+// HIT POINTS ARE VISIBLE HERE, which is why no debug operation to set them is needed. An
+// atom's electrons ARE its shells (specs/matter.md) and it "sheds an electron each time it
+// is stripped" onto two drawn rings, so a 6-electron atom and a 1-electron atom are plainly
+// different objects on screen. (Where a case's units carry a fraction-of-max health BAR
+// instead, two units at full health draw the same full bar however far apart their totals
+// are, and posing the difference needs an explicit wound — that is a different problem from
+// this one.)
+//
+// DISTANCE IS MEASURED, NOT ASSUMED. `nearest` and `farthest` are straight-line distances
+// from the tower's placed position, and a map's geometry is the model's own: a serpentine
+// legitimately folds an arc length 150 upstream back alongside the tower. So the scene reads
+// the three real distances out of the snapshot and hands back the ids ordered by them, and
+// the two items that care assert the margin they got rather than trusting the layout.
+const SCENE_FRAC = 0.22; // where along path 0 the Beam covers
+// Candidate (behind, ahead) offsets for A and C. The scene needs the three atoms to be
+// clearly DIFFERENT distances from the tower, and how far apart a given pair of arc lengths
+// lands in world space is decided by the map's own curvature: on one build's conduit the
+// first pair put the two most distant atoms 22px apart, under the margin `nearest` and
+// `farthest` need, and `targeting.farthest` reported "precondition not satisfiable" —
+// producing no media at all. So the pair is CHOSEN, by measuring each candidate against this
+// build's own geometry and taking the one that separates them best.
+const SCENE_OFFSETS = [
+  [150, 110],
+  [190, 140],
+  [120, 170],
+  [230, 90],
+  [90, 210],
+  [130, 90],
+  [170, 70],
+  [70, 150],
+  [110, 130],
+  [200, 60],
+];
+/** How much of the tower's radius a posed atom may sit at; the rest is drift allowance. */
+const IN_RANGE_FRACTION = 0.85;
+const SCENE_ELECTRONS = { A: 6, B: 1, C: 3 };
+// How much clear water the distance ordering needs before `nearest`/`farthest` will rest a
+// verdict on it. Below this the three units are effectively equidistant and the priority has
+// no well-posed answer, which is a fact about the posed board, not about the build.
+export const DISTANCE_MARGIN_PX = 25;
+
+/**
+ * Pose the three-atom scene and arm `priority` (pass `null` to leave the tower on its
+ * default, which is what `targeting.first-default` grades). `begin` opens the run —
+ * `startScenario` from `arrange`, `poseScenario` from `act`.
+ *
+ * The priority is armed LAST, after every unit is on the board, so every shot the item goes
+ * on to see was aimed under the priority under test.
+ *
+ * Returns `{ towerId, A, B, C, dist, byDistance }` — the three ids, each one's distance from
+ * the tower as posed, and the ids ordered nearest-first.
+ */
+export async function poseTargetingScene(api, begin, priority) {
+  const snap = await begin(api, MAP.single);
+  const g = pathGeom(snap.paths[0]);
+  const s0 = g.length * SCENE_FRAC;
+  const t = await placeCoveringNear(api, "beam", g, s0);
+
+  // Pick the offsets that separate the three atoms best on THIS map, measured from where the
+  // tower actually ended up. Every atom must also stay inside the Beam's radius, or the
+  // priority is not choosing among three.
+  const towerNow = towerById(await api.snapshot(), t.id);
+  const spreadOf = ([back, ahead]) => {
+    const pts = [s0 - back, s0, s0 + ahead];
+    if (pts.some((p) => p < 0 || p > g.length)) return -1;
+    const ds = pts.map((p) => {
+      const q = g.pointAt(p);
+      return Math.hypot(q.x - towerNow.x, q.y - towerNow.y);
+    });
+    // Comfortably inside the radius, not merely inside it. The atoms keep travelling while
+    // the tower reloads (a Beam is 1.2 s), so a candidate that puts one of them within a
+    // few pixels of the edge has it OUTSIDE by the time the shot lands — which is how an
+    // earlier version of this picker chose a pose whose front atom was at 193 of a 200
+    // radius and 211 a moment later.
+    if (ds.some((d) => d > towerNow.range * IN_RANGE_FRACTION)) return -1;
+    const sorted = [...ds].sort((a, b) => a - b);
+    // The tightest gap between neighbouring distances is what decides whether `nearest` and
+    // `farthest` have an answerable question.
+    return Math.min(sorted[1] - sorted[0], sorted[2] - sorted[1]);
+  };
+  let best = SCENE_OFFSETS[0];
+  let bestSpread = -Infinity;
+  for (const cand of SCENE_OFFSETS) {
+    const v = spreadOf(cand);
+    if (v > bestSpread) {
+      bestSpread = v;
+      best = cand;
+    }
+  }
+  const [SCENE_BACK, SCENE_FRONT] = best;
+
+  const A = await spawnAt(api, {
+    type: "atom",
+    electrons: SCENE_ELECTRONS.A,
+    pathId: 0,
+    s: s0 - SCENE_BACK,
+  });
+  const B = await spawnAt(api, {
+    type: "atom",
+    electrons: SCENE_ELECTRONS.B,
+    pathId: 0,
+    s: s0,
+  });
+  const C = await spawnAt(api, {
+    type: "atom",
+    electrons: SCENE_ELECTRONS.C,
+    pathId: 0,
+    s: s0 + SCENE_FRONT,
+  });
+
+  if (priority != null) await api.call("setTargeting", t.id, priority);
+
+  const posed = await api.snapshot();
+  const tower = towerById(posed, t.id);
+  const dist = {};
+  for (const id of [A, B, C]) {
+    const u = unitById(posed, id);
+    dist[id] = u ? Math.hypot(u.x - tower.x, u.y - tower.y) : Infinity;
+  }
+  const byDistance = [A, B, C].sort((p, q) => dist[p] - dist[q]);
+
+  return { towerId: t.id, A, B, C, dist, byDistance };
+}
+
+/**
+ * ACT half of a targeting scene: grade the tower's first shot by WHICH UNIT IT DAMAGES, then
+ * keep filming the consequence.
+ *
+ * THE GRADED SIGNAL IS DAMAGE, NOT A PROJECTILE, AND NOT `targetId`. All three are ways of
+ * asking "which unit did it fire at", and the other two are each unreliable on a different
+ * conformant build:
+ *
+ *   * `targetId` is what a tower REPORTS it is aiming at, and specs/towers.md does not say
+ *     when a build must refresh it. A build that re-picks only when it actually fires goes on
+ *     reporting its previous choice for the whole of a reload — which is the reason
+ *     `targeting.inert-priority` stopped reading it.
+ *   * A PROJECTILE only appears in the snapshot if the shot is still in the air when the
+ *     sweep samples. One of the builds under review resolves a short-range Beam shot inside
+ *     the same tick, so `projectiles` reads empty at every tick boundary; waiting for "a new
+ *     projectile" there silently skipped the first shot and graded the SECOND — by which time
+ *     the 1-electron atom the priority had correctly chosen was already gone, and the item
+ *     failed a build that had picked exactly right. Two different builds failed
+ *     `targeting.nearest` and `targeting.weakest` that way.
+ *
+ * Damage has neither problem: a shot that lands is a unit whose hp fell (or that is gone),
+ * and every build must show that, whatever it does with projectiles. The clip does not suffer
+ * either — a Beam reloads at 0.85/s, so up to 1.2 s of the scene as posed plays before its
+ * first shot lands, and the tail below then films the consequence.
+ *
+ * Returns `{ first, hit, ambiguous, inRange, snap }`: the id the first shot damaged, whether
+ * a shot landed at all, whether more than one unit was hit at once (a splash or pierce, which
+ * this single-target scene should never produce), whether all three units were inside the
+ * radius on the sample BEFORE that shot landed, and that same snapshot — which is what every
+ * per-priority premise is read from, so the premises are read while all three are still on
+ * the board.
+ */
+export async function actTargetingPick(
+  api,
+  scene,
+  { tail = 210, max = 300 } = {},
+) {
+  const ids = [scene.A, scene.B, scene.C];
+
+  const start = await api.snapshot();
+  const hp0 = {};
+  for (const id of ids) hp0[id] = unitById(start, id)?.hp ?? null;
+
+  // The last sample in which NOTHING had been hit yet: all three alive, standing where the
+  // priority had to choose between them.
+  let before = start;
+  let picked = null;
+  let ambiguous = false;
+
+  const r = await api.until(
+    (s) => {
+      const struck = ids.filter((id) => {
+        const u = unitById(s, id);
+        if (hp0[id] == null) return false;
+        return u == null || u.hp < hp0[id];
+      });
+      if (struck.length > 0) {
+        picked = struck.length === 1 ? struck[0] : null;
+        ambiguous = struck.length > 1;
+        return true;
+      }
+      before = s;
+      return false;
+    },
+    { max, poll: TICK },
+  );
+
+  // THE PREMISE IS ABOUT THE POSE, not about the instant the shot landed.
+  //
+  // A tower chooses its target and then reloads before the shot arrives — 1.2 s for a Beam —
+  // and the atoms travel throughout. Asking "were all three in range when the damage landed"
+  // therefore fails a perfectly good scene whenever the furthest atom has drifted past the
+  // radius in the meantime, which says nothing about the priority. What the premise needs to
+  // establish is that the tower had three reachable units to choose BETWEEN at the moment it
+  // was choosing, and that is the posed board.
+  const inRangeAt = (snapshot, id) => {
+    const t = towerById(snapshot, scene.towerId);
+    const u = unitById(snapshot, id);
+    return (
+      t != null && u != null && Math.hypot(u.x - t.x, u.y - t.y) <= t.range
+    );
+  };
+  const inRange = ids.every((id) => inRangeAt(start, id));
+  // ...and the unit it actually struck was reachable when it struck it, which is the part
+  // that would expose a build shooting something it should not be able to reach.
+  const pickReachable = picked == null ? false : inRangeAt(before, picked);
+
+  await api.advance(tail);
+
+  return {
+    first: picked,
+    hit: r.hit,
+    ambiguous,
+    inRange,
+    pickReachable,
+    snap: before,
+  };
+}
+
+/**
+ * The assertions every per-priority item shares: the tower actually fired, the scene really
+ * did pose a choice, and the shot went to the expected unit. `label` names the priority in
+ * the report and `pick` is the id it should resolve to.
+ *
+ * There is deliberately no "and it kept choosing it" tally. Every unit here is one or two
+ * shots from being neutralized, so a second shot is a shot at a DIFFERENT board — and a
+ * build that picked correctly and then moved on because its pick had been destroyed would
+ * fail such a tally for doing exactly the right thing.
+ */
+export function checkTargetingPick(check, { label, result, pick }) {
+  check.expectOk("the tower took a shot to grade", result.hit);
+  check.expectOk(
+    "...and it struck exactly one unit, so the choice is unambiguous",
+    result.ambiguous === false,
+  );
+  check.expectOk(
+    "all three units were posed in the tower's range together, so the priority had a choice",
+    result.inRange,
+  );
+  check.expectEq(`${label} fires at the expected unit`, result.first, pick);
+  check.expectOk(
+    "...and that unit was inside the tower's range when the shot landed",
+    result.pickReachable,
+  );
 }
 
 // ---- Menu input ---------------------------------------------------------------
@@ -846,6 +1413,8 @@ export function colorDistance(a, b) {
 const ARM_SETTLE_MS = 300;
 const ARM_QUIET_STEP_MS = 120;
 const ARM_QUIET_MAX_MS = 2400;
+// Extra real time after the log goes quiet, for the remaining clips to fetch and decode.
+const ARM_DECODE_MS = 1200;
 
 export async function armAudio(api) {
   await api.userKey("KeyZ");
@@ -866,6 +1435,20 @@ export async function armAudio(api) {
     await api.settle(ARM_QUIET_STEP_MS);
     count = await audioCount(api);
   }
+
+  // A WARM-UP once the log has gone quiet, for the clips that have not finished decoding.
+  //
+  // Going quiet only means nothing NEW has started — which happens as soon as the music bed
+  // is playing. The event cues are separate clips still being fetched and decoded, and a cue
+  // driven before its own clip lands is dropped in silence: every build here guards its play
+  // path on the buffer existing (`if (!buffers[name]) return`), with no queue and no retry,
+  // so the sound is simply lost. It is lost permanently, because the simulation has moved on.
+  //
+  // That is not a defect a reviewer would ever see — a player takes seconds to place their
+  // first tower — but a check arms audio and drives its event milliseconds later. One build
+  // reported no leak alarm and no neutralize cue that way while calling `play()` for both,
+  // unthrottled, from code that plainly works in game.
+  await api.settle(ARM_DECODE_MS);
 }
 
 /** The number of Web Audio sources the build has started so far. */
@@ -883,10 +1466,25 @@ export async function audioCount(api) {
  * Settling on BOTH sides of a measurement is what makes the delta mean "the cues this span
  * played", rather than racing whichever frames happened to land between driver round trips.
  */
-async function settledAudioCount(api) {
-  await api.settle(80);
+export async function settledAudioCount(api) {
+  await api.settle(PAINT_SETTLE_MS);
   return audioCount(api);
 }
+
+// How long to let the build PAINT before a cue count is read.
+//
+// A build queues its cues from the simulation and plays them on its next animation frame
+// (the reference's `main.ts` drains `sndQueue` there), so a cue driven during instant
+// stepping has not reached Web Audio when the step returns. 80 ms was about five frames on
+// an idle machine and none at all on a loaded one, and every audio item in this case passes
+// its reference by a margin of exactly ONE source — so a single missed frame is the
+// difference between "the cue plays" and "the build is silent". That is the shape the review
+// ran into: items that fail validation for builds whose sound is plainly working in game.
+//
+// This is real time in both passes and is spent twice per measurement, so it is not free;
+// 200 ms buys roughly a dozen frames of headroom, which is enough for a queue drained on the
+// next frame and for one deferred a frame or two behind it.
+const PAINT_SETTLE_MS = 200;
 
 /**
  * Wait — in REAL time, bounded — until the build has started more Web Audio sources than
@@ -922,25 +1520,34 @@ export async function audioCountAbove(
  * Measure the Web Audio sources a build starts across ONE IMPACT on `unitId` — the impact
  * that fires `event` — and report the count it gained.
  *
- * Why not simply compare the log before and after a window that contains the event: a
- * damage tower plays a cue every time it FIRES (specs/assets.md, "the shot cue when a
- * damage tower fires"), so any window long enough to contain a bond snap, a decay, or a kill
- * also contains several shot cues, and the log grows whether or not the event has its own
- * cue at all. That is not a check of the event's cue — it passes on the shots alone, and
- * did: `audio.bond-snap` recorded "a bond-snap cue plays on the snap" as satisfied on a run
- * where the bond never snapped.
+ * WHY NOT SIMPLY A WINDOW ROUND THE EVENT. A damage tower plays a cue every time it FIRES
+ * (specs/assets.md, "the shot cue when a damage tower fires"), so any window long enough to
+ * contain a bond snap, a decay or a kill also contains several shot cues, and the log grows
+ * whether or not the event has a cue of its own. That is not a check of the event's cue — it
+ * passes on the shots alone, and did: `audio.bond-snap` once recorded "a bond-snap cue plays
+ * on the snap" as satisfied on a run where the bond never snapped.
  *
- * So this walks the fire on the unit impact by impact. For each, it skips (instantly, in
- * both passes) to the brink — a NEW shot already in the air at the unit, so that shot's own
- * launch cue is behind the baseline — takes the baseline, and then watches only until the
- * event fires or that shot is spent. The gain across that span is what the event itself
- * played. `window` stays well inside a damage tower's reload (the slowest is the Reactor's
- * 0.6/s, 100 ticks), so no further shot can be launched inside a measured span.
+ * So this walks the fire shot by shot, skips INSTANTLY to the brink of the impact — a shot
+ * already launched and on its way, so that shot's own launch cue is behind the baseline —
+ * and then measures only until the event fires or the shot is spent.
  *
- * `event(snapshot)` is evaluated exactly ONCE per sample and its verdict is remembered, so a
- * caller may keep state in it (the id set an "a fragment was emitted" predicate needs, say)
- * without the bookkeeping being run twice on the sample that matters most — the same
- * guarantee `api.until` gives.
+ * WHY THE MEASURED WINDOW RUNS IN REAL TIME. The skipping above is instant, and that is the
+ * point; but the WINDOW cannot be. A build is entitled to queue its cues from the simulation
+ * and play them when it next paints, and to throttle a repeated cue by the wall clock — both
+ * are ordinary, and one of the builds under review does both. Under instant stepping the
+ * whole window passes in a millisecond or two of real time, so a queue that drains on the
+ * next animation frame has not drained and a throttle keyed to `AudioContext.currentTime`
+ * has not expired: the cue is real, a player hears it, and the probe sees nothing. That
+ * build's `audio.bond-snap` failed exactly that way, while running the same scenario on the
+ * game's own clock showed its cue count climbing steadily as each bond gave way.
+ *
+ * So the window hands the clock back (`setAutoStep`), spends a REAL interval shorter than
+ * the tower's reload — long enough for the shot in flight to land and its cue to be played,
+ * too short for the next shot to be launched inside the measurement — and takes the clock
+ * again. The event is confirmed to have happened inside that window before the gain is
+ * attributed to it.
+ *
+ * `event(snapshot)` is evaluated at most once per sample and its verdict remembered.
  *
  * Consumes time, so `act` only. Returns `{ hit, gained, shots, snap }`.
  */
@@ -948,8 +1555,18 @@ export async function cueOnImpact(
   api,
   unitId,
   event,
-  { shots = 8, approach = 900, window = 45 } = {},
+  { shots = 8, approach = 900 } = {},
 ) {
+  // The window is derived from the firing tower's own reload rather than fixed: it has to
+  // stay strictly inside one reload, or a second shot is launched inside the measurement and
+  // its own launch cue is counted as the event's. An Emitter reloads in 33 ticks (1.8/s,
+  // specs/towers.md), well under the 45 this used to assume.
+  const towers = (await api.snapshot()).towers.filter((t) => t.fireRate > 0);
+  const reloadTicks = towers.length
+    ? Math.min(...towers.map((t) => TICK_HZ / t.fireRate))
+    : 45;
+  const windowMs = Math.max(200, Math.floor(reloadTicks * TICK_MS * 0.6));
+
   const inFlight = new Set();
   for (let i = 1; i <= shots; i += 1) {
     const armed = await api.skipUntil(
@@ -961,17 +1578,27 @@ export async function cueOnImpact(
     for (const p of armed.snap.projectiles) {
       if (p.targetId === unitId) inFlight.add(p.id);
     }
+
     const before = await settledAudioCount(api);
+
+    // The window, on the game's own clock.
+    await api.call("setAutoStep", true);
     let fired = false;
-    const r = await api.until(
-      (s) => {
-        if (event(s)) fired = true;
-        return fired || !s.projectiles.some((p) => inFlight.has(p.id));
-      },
-      { max: window, poll: TICK },
-    );
+    for (let waited = 0; waited < windowMs; waited += LIVE_STEP_MS) {
+      await api.settle(LIVE_STEP_MS);
+      if (event(await api.snapshot())) {
+        fired = true;
+        break;
+      }
+    }
+    await api.call("setAutoStep", false);
+
     const gained = (await settledAudioCount(api)) - before;
-    if (fired) return { hit: true, gained, shots: i, snap: r.snap };
+    if (fired)
+      return { hit: true, gained, shots: i, snap: await api.snapshot() };
   }
   return { hit: false, gained: 0, shots: 0, snap: await api.snapshot() };
 }
+
+/** How finely the live window above is sampled, in real milliseconds. */
+const LIVE_STEP_MS = 60;

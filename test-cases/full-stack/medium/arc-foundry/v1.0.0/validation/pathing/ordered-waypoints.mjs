@@ -34,7 +34,11 @@ export default function item() {
   let chainNodes;
   let integ0;
   let u;
-  let monotonic = true;
+  // The first time the chain node the unit is heading for went BACKWARDS, recorded as the
+  // transition that did it. A bare "it was not monotonic" says nothing a reviewer can act on —
+  // this reports the reading that failed, so the difference between an off-by-one numbering and a
+  // build that re-derives the node from position each tick is visible in the verdict itself.
+  let firstDrop = null;
   let maxWp = 0;
   let prev = 0;
   let integEnd;
@@ -45,7 +49,9 @@ export default function item() {
   const sample = (s) => {
     const live = unitById(s, u.id);
     if (!live) return true; // it grounded out (leaked) at the Collector
-    if (live.waypointIndex < prev) monotonic = false;
+    if (live.waypointIndex < prev && firstDrop === null) {
+      firstDrop = `went back from node ${prev} to node ${live.waypointIndex}`;
+    }
     prev = live.waypointIndex;
     if (prev > maxWp) maxWp = prev;
     return false;
@@ -82,7 +88,11 @@ export default function item() {
 
     async assert(api, check) {
       check.expectOk("a unit was released at the Entry", !!u);
-      check.expectOk("the unit visited its waypoints in non-decreasing order (never skipping or reordering)", monotonic);
+      check.expectEq(
+        "the unit visited its waypoints in non-decreasing order (never skipping or reordering)",
+        firstDrop ?? "never went backwards",
+        "never went backwards",
+      );
       check.expectGe(
         `the unit headed for every node of the chain, ending on the Collector (node ${chainNodes})`,
         maxWp,

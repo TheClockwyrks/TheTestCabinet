@@ -56,15 +56,53 @@ const EDGE_SLACK = (4 * FORAGER_SPEED) / TICK_HZ; // 4 steps ≈ 4.3 px
 // maze). A conforming wrap maps a position to the same point on the far side, so every
 // tick of the crossing covers the same `128 px/s` step as any other tick of swimming.
 //
-// The band around that step is deliberately lopsided. Below it there is nothing to
-// forgive: a tick that covers less than half a step is a stall at the edge, which is
-// what the spec forbids. Above it, one tick may legitimately carry a little extra — a
-// build is free to choose WHERE the two mouths meet (at the frame border, at the tile
-// centers, when the sprite has fully left), and a seam placed differently shows up as a
-// single tick that gains up to half a tile once. Gaining a WHOLE tile is not a seam
-// offset: it means the forager never swam the mouth tiles at all but was snapped from
-// one center to the other, which is the discontinuity this item is about.
+// A tick that covers less than half a step is a STALLED tick.
 const STEP_STALL_FRACTION = 0.5;
+
+// AND WHY IT IS JUDGED AGAINST THE BUILD'S OWN SWIMMING, NOT AN ABSOLUTE FLOOR. This
+// used to fail if ANY tick between the start of the approach and the far side fell under
+// half a step. That made the item a general movement check wearing the tunnel's name: the
+// approach is ordinary corridor, and a build that hitches for a single tick as it passes
+// each tile CENTER — everywhere in the maze, nowhere near the tunnel — was failed under
+// "nothing stops at the edge" for something the edge had no part in. A run did exactly
+// that: its wrap was textbook (the folded crossing step was one clean `128 px/s` step, on
+// the same row, inside the frame) and the item still went red, over two stalled ticks in
+// the approach at tile centers the forager had to pass either way.
+//
+// So the seam is compared with the SAME BUILD's ordinary travel a moment earlier. A hitch
+// it shows everywhere is not the edge stopping it; a hitch it shows only at the edge is.
+// Both halves of the spec's sentence are asked this way: the stall the seam introduces
+// (movement is continuous) and the pace it holds across it (speed is continuous).
+//
+// A single stalled tick is never a stop, however the approach reads. One tick is `1/120 s`
+// — under a hundredth of a second, and less ground than the forager's own sprite is wide.
+// Requiring the seam to be no worse than an approach that happened to cross no tile center
+// at all would fail a build for one frame of hesitation, which is not what "stops at the
+// edge" means to anyone watching it.
+const SEAM_STALL_GRACE = 1;
+
+// How much slower the crossing may run than the ordinary swimming it is compared against.
+// The two windows cover different numbers of tile centers (the approach is as long as the
+// maze offered, the seam is the two mouth tiles), so a build with a per-center hitch has a
+// slightly different mean in each; this is room for that, not for a build that drags
+// through the wrap. Anything that genuinely labors at the seam loses far more.
+const SEAM_PACE_FRACTION = 0.85;
+
+/**
+ * The longest run of consecutive stalled ticks in `steps`, and the mean ground covered
+ * per tick — the two readings the seam and the ordinary approach are compared on.
+ */
+function pace(steps, stall) {
+  let worstRun = 0;
+  let run = 0;
+  let total = 0;
+  for (const step of steps) {
+    total += step;
+    run = step < stall ? run + 1 : 0;
+    worstRun = Math.max(worstRun, run);
+  }
+  return { stallRun: worstRun, mean: steps.length ? total / steps.length : 0 };
+}
 
 export default function item() {
   let wr;
@@ -73,8 +111,11 @@ export default function item() {
   let wrapped = false;
   let after;
   let strayed = 0;
-  let minStep = Infinity;
   let maxStep = 0;
+  // Every tick's folded step, split by where the forager was standing when it covered
+  // it: ordinary corridor on the way in, or one of the two mouth tiles the wrap joins.
+  const approachSteps = [];
+  const seamSteps = [];
 
   return {
     id: "maze-movement.wrap-tunnel",
@@ -100,9 +141,11 @@ export default function item() {
       await api.call("setForager", { tx: approach, ty: wr, dir: "left" });
       // Ticks to cross the approach tiles and the seam, with a tile of slack: far more
       // than the distance between the two mouths, whichever side of the border a build
-      // hands over on.
+      // hands over on — plus one more tile, because the crossing is not over when the far
+      // mouth is reached. The forager still has to swim that tile, and how it does is as
+      // much a part of "continuous through the wrap" as the handover itself.
       const perTile = Math.ceil((grid.tile / FORAGER_SPEED) * TICK_HZ);
-      budget = (approach + 2) * perTile;
+      budget = (approach + 3) * perTile;
     },
 
     async act(api) {
@@ -125,17 +168,23 @@ export default function item() {
         // heading on the tick after the key lands has not stalled at anything, it simply
         // has not started yet.
         if (step > 0) underway = true;
+        // A tick belongs to the seam if the forager was on either mouth tile at either
+        // end of it — which covers the handover itself, since the tick that leaves the
+        // left mouth is the tick that arrives at the right one.
+        const atMouth = (t) => t.tx === 0 || t.tx === grid.cols - 1;
         if (underway) {
-          minStep = Math.min(minStep, step);
           maxStep = Math.max(maxStep, step);
+          (atMouth(prev) || atMouth(f) ? seamSteps : approachSteps).push(step);
         }
         prev = f;
         strayed = Math.max(strayed, left - f.x, f.x - right);
-        if (f.tx > grid.cols - 3) {
+        if (!wrapped && f.tx > grid.cols - 3) {
           wrapped = true;
-          after = f;
-          break;
+          after = f; // the state it came out in, not wherever the sweep ends
         }
+        // Clear of the far mouth: the wrap is behind it and this is ordinary corridor
+        // again, so there is nothing left for this item to read.
+        if (wrapped && f.tx < grid.cols - 1) break;
       }
       await api.call("keyUp", "ArrowLeft");
       await api.advance(96); // 96 ticks of the key still held, for the clip
@@ -151,10 +200,18 @@ export default function item() {
       if (!wrapped) return;
       check.expectEq("it comes out on the same row", after.ty, wr);
       const step = FORAGER_SPEED / TICK_HZ; // px of travel in one tick
+      const stall = step * STEP_STALL_FRACTION;
+      const seam = pace(seamSteps, stall);
+      const ordinary = pace(approachSteps, stall);
+      check.expectLe(
+        "nothing stops at the edge that does not stop everywhere",
+        seam.stallRun,
+        Math.max(ordinary.stallRun, SEAM_STALL_GRACE),
+      );
       check.expectGe(
-        "nothing stops at the edge",
-        minStep,
-        step * STEP_STALL_FRACTION,
+        "it crosses the seam at the pace it swims the corridor",
+        seam.mean,
+        ordinary.mean * SEAM_PACE_FRACTION,
       );
       check.expectLe(
         "it swims through the seam rather than skipping across it",

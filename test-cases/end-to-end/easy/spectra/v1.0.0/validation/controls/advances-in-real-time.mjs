@@ -35,6 +35,20 @@
 // so the defect would read as inconclusive rather than failed. `spawnDrone` is a control op: it
 // lands a drone instantly, on a frozen build as readily as on a live one, so the field is never
 // empty and the only question left is whether anything on it then moves.
+//
+// WHY THE DIVE IS STARTED WITH `forceDive` RATHER THAN POSED. The drone used to be posed straight
+// into `phase: "diving"`, which asks a build to invent a dive for a drone that never launched
+// one. `specs/instrumentation.md` gives `forceDive` for exactly this — it "sends the drone from
+// its slot into a real dive now, routing through the same dive-launch code the assault uses" —
+// and a build that reasonably treats a hand-posed `diving` drone as having no path yet left it
+// sitting still, so this item reported a frozen game for a build whose wave was visibly flying.
+// Posed into its slot and then given a real dive, the witness moves on any build that is running.
+//
+// AND THE WITNESS IS THE WHOLE FIELD, NOT ONE DRONE. The travel read is the FURTHEST any drone
+// moved, matched by id across the window — the posed diver plus whatever the build's own wave is
+// already flying. The claim is "the game advances itself", so any drone moving proves it, and
+// resting the verdict on one drone made the item fragile to that drone in particular. A stopped
+// build still reports zero: nothing on its field moves at all.
 
 // Two seconds of real time, which carries an approaching drone a clear distance down the field.
 const SETTLE_MS = 2000;
@@ -72,29 +86,32 @@ export default function item() {
       // stage's live wave directly (`specs/instrumentation.md`), and the posed drone guarantees
       // the field is occupied whatever the wave's own cadence has managed by now.
       await api.call("startGame");
-      // Posed DIVING, and with explicit coordinates. Measured against the reference over this
-      // window, a drone holding formation drifts 11 px on the swarm's sway while a diving one
-      // crosses 414 px — so a dive is the phase that tells a running game from a stopped one with
-      // room to spare, and the drift is much too close to the floor to rest a verdict on. Leaving
-      // the coordinates out gets whatever the build defaults to, which on the reference was no
-      // position at all (a non-numeric x/y, and a NaN displacement); 640,160 is mid-field, inside
-      // the play area's 64..656 band.
+      // Posed into a formation slot with explicit coordinates, then sent into a REAL dive.
+      // Measured against the reference over this window, a drone holding formation drifts 11 px
+      // on the swarm's sway while a diving one crosses 414 px — so a dive is what tells a running
+      // game from a stopped one with room to spare, and the drift is much too close to the floor
+      // to rest a verdict on. Leaving the coordinates out gets whatever the build defaults to,
+      // which on the reference was no position at all (a non-numeric x/y, and a NaN
+      // displacement); 640,160 is mid-field, inside the play area's 64..656 band.
       const diveId = await api.call("spawnDrone", {
         kind: "shard",
         band: "cyan",
         x: 640,
         y: 160,
-        phase: "diving",
+        slotX: 640,
+        slotY: 160,
+        phase: "formation",
       });
+      await api.call("forceDive", diveId);
 
       const before = await api.snapshot();
-      const dive0 = (before.drones || []).find((d) => d.id === diveId);
-      if (!dive0) {
+      if (!(before.drones || []).some((d) => d.id === diveId)) {
         throw unmetPrecondition(
           `the posed drone is not on the field after starting the run (screen ${before.screen}, ` +
             `${(before.drones || []).length} drone(s)), so there is nothing flying to observe`,
         );
       }
+      const was = new Map((before.drones || []).map((d) => [d.id, d]));
       await api.screenshot("before");
 
       // The measurement: real wall-clock time, with nothing driving the build but its own loop.
@@ -102,16 +119,22 @@ export default function item() {
 
       const after = await api.snapshot();
       advanced = after.simTime - before.simTime;
-      const dive1 = (after.drones || []).find((d) => d.id === diveId);
-      // A dive that carried the drone off the field (or into the ship) takes it out of the list,
-      // which is itself proof the simulation ran: a stopped game cannot remove a drone any more
-      // than it can move one. The reference keeps it alive for the whole window, so this is the
-      // rare path, not the usual one.
-      if (!dive1) {
+
+      // The furthest ANY drone travelled, matched by id. A drone that left the field (flew off,
+      // or reached the ship) is gone from the list, which is itself proof the simulation ran: a
+      // stopped game can no more remove a drone than move one.
+      const survivors = new Set((after.drones || []).map((d) => d.id));
+      if ([...was.keys()].some((id) => !survivors.has(id))) {
         travelled = Infinity;
       } else {
-        const moved = Math.hypot(dive1.x - dive0.x, dive1.y - dive0.y);
-        travelled = Number.isFinite(moved) ? moved : 0; // unusable coordinates read as no motion
+        travelled = 0;
+        for (const d of after.drones || []) {
+          const d0 = was.get(d.id);
+          if (!d0) continue; // spawned during the window: no start point to measure from
+          const moved = Math.hypot(d.x - d0.x, d.y - d0.y);
+          // Unusable coordinates read as no motion rather than poisoning the max.
+          if (Number.isFinite(moved)) travelled = Math.max(travelled, moved);
+        }
       }
       await api.screenshot("after");
     },

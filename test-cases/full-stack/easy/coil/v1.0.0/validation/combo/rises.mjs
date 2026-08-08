@@ -12,14 +12,23 @@
 
 import {
   actEatSequence,
+  actLeadIn,
   actPlayOn,
   arrangeEatLane,
   beginRound,
+  PARK_PELLET,
 } from "../_helpers.mjs";
 
+// A second of run-in before the first eat, so the clip opens on a snake crossing an
+// empty lane and the rally reads as something that starts rather than as the state the
+// recording happens to begin in. It costs the climb nothing: the combo starts at x1
+// with its window shut, and plain ticks neither open a window nor raise a multiplier,
+// so the first eat below is still the one that opens it.
+const LEAD_TICKS = 8;
+
 // The four eats take four ticks (0.5 s). Play on for a beat so the run reads as a
-// rally rather than a flicker; after four eats the head is at col 7 with the snake 7
-// cells long, so 10 more ticks stay well clear of the right wall.
+// rally rather than a flicker; after the run-in and four eats the head is at col 15
+// with the snake 7 cells long, so 10 more ticks stay well clear of the right wall.
 const HOLD_TICKS = 10;
 
 export default function item() {
@@ -32,9 +41,15 @@ export default function item() {
     async arrange(api) {
       await beginRound(api);
       await arrangeEatLane(api); // the old opening setSnake(hLane(3, 8, 3), "right")
+      // The round's own first pellet is placed wherever the build's spawn put it,
+      // which may be anywhere in the lane. Park it: the run-in below crosses that lane,
+      // and a stray eat on the way would open the combo window before the sequence
+      // starts, so `combos[0]` would read x2 for a perfectly correct build.
+      await api.call("setPellet", PARK_PELLET);
     },
 
     async act(api) {
+      await actLeadIn(api, LEAD_TICKS);
       ({ combos } = await actEatSequence(api, { count: 4 }));
       await actPlayOn(api, HOLD_TICKS);
     },

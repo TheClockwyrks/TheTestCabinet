@@ -7,9 +7,10 @@
 
 import {
   startClean,
+  holdDrones,
   spawnDrone,
   spawnBystander,
-  shootUntil,
+  shootFromLane,
   readsAs,
   findDrone,
   LEAD_IN_TICKS,
@@ -42,8 +43,17 @@ export default function item() {
     // freeze the recording), so instead the Prism is already on the field and keeps
     // the wave alive through the Shard's death. The meter is zeroed between kills
     // with `setResonance`, exactly as before, so each contribution is isolated.
+    //
+    // The swarm is HELD for the whole scenario (`holdDrones`), which is what makes
+    // each reading attributable. Left live, the posed Prism is peeled into a dive
+    // about two seconds in — and a diving Prism fires a two-band burst, one bullet
+    // of which matches the ship's band and is absorbed by the shield for `+6`. That
+    // `+6` lands inside the window this item is measuring a `+4` kill in, and the
+    // meter reads 10 for a build whose kill payout is exactly right. Held, the only
+    // thing that can move the meter is the kill under test.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       await api.call("setResonance", 0);
       await spawnBystander(api);
       shardId = await spawnDrone(api, {
@@ -69,36 +79,33 @@ export default function item() {
     // three resolved within a handful of ticks of each other and the clip showed
     // nothing but the aftermath (see `LEAD_IN_TICKS`).
     //
-    // `shootUntil` rather than a single shot: three kills with beats between them
-    // runs past the two seconds a posed formation drone can be relied on to sit
-    // still (`FORMATION_WINDOW_TICKS`), so a later shot may be fired at a drone the
-    // assault has already peeled into a dive. Retrying re-aims; the rule under test
-    // is the resonance a kill pays, not marksmanship.
+    // ONE lane shot per event, not `shootUntil`'s retry ladder: with the swarm held
+    // the targets stand in their own columns, so a shot up the column connects and
+    // a retry would only mean the rule failed to apply.
+    //
+    // The meter is zeroed immediately before EACH of the three readings, so every
+    // one of them is a gain measured from nothing rather than a running total. The
+    // old script zeroed before the shell break but not before the core kill, so the
+    // core reading carried whatever the shell break (and anything else) had left
+    // behind.
     async act(api) {
       // A beat on the posed field, so the clip opens on the scene.
       await api.advance(LEAD_IN_TICKS);
 
-      // A Shard kill feeds resonance.
-      const a = await shootUntil(
-        api,
-        shardId,
-        (s) => readsAs(s, shardId),
-        (s) => findDrone(s, shardId) === null,
-        { max: RESOLVE_MAX_TICKS },
-      );
+      // A Shard kill feeds resonance. Aimed by what the target currently reads as
+      // rather than a hardcoded band (see `readsAs`).
+      await api.call("setResonance", 0);
+      await shootFromLane(api, shardId, readsAs(await api.snapshot(), shardId));
+      const a = await api.until((s) => findDrone(s, shardId) === null, {
+        max: RESOLVE_MAX_TICKS,
+      });
       afterShardKill = a.snap.resonance;
       await api.advance(BETWEEN_TICKS);
 
-      // A Prism's shell break feeds NO resonance; its core kill does. Re-zero the
-      // meter so the shell break is measured from nothing.
+      // A Prism's shell break feeds NO resonance; its core kill does.
       await api.call("setResonance", 0);
-      // Each shot is aimed by what its target currently reads as rather than a
-      // hardcoded band: a Prism that dives to the bottom triggers a spectral
-      // inversion, which swaps the band every drone answers to (see `readsAs`).
-      await shootUntil(
-        api,
-        prismId,
-        (s) => readsAs(s, prismId), // matches the exposed layer -> breaks it
+      await shootFromLane(api, prismId, readsAs(await api.snapshot(), prismId));
+      await api.until(
         (s) => {
           const d = findDrone(s, prismId);
           return d !== null && d.shellAlive === false;
@@ -108,13 +115,12 @@ export default function item() {
       afterShellBreak = (await api.snapshot()).resonance;
       await api.advance(BETWEEN_TICKS);
 
-      const c = await shootUntil(
-        api,
-        prismId,
-        (s) => readsAs(s, prismId), // matches the exposed core -> kills it
-        (s) => findDrone(s, prismId) === null,
-        { max: RESOLVE_MAX_TICKS },
-      );
+      // The exposed core now reads as the opposite band; aim by what it reads as.
+      await api.call("setResonance", 0);
+      await shootFromLane(api, prismId, readsAs(await api.snapshot(), prismId));
+      const c = await api.until((s) => findDrone(s, prismId) === null, {
+        max: RESOLVE_MAX_TICKS,
+      });
       afterCoreKill = c.snap.resonance;
 
       // Hold on the filled meter so the clip ends on the gain rather than the kill.

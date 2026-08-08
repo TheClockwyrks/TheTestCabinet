@@ -12,7 +12,7 @@ import {
   EXTRA_LIFE_STEP,
   FIELD_H,
   FIELD_W,
-  FIRE_INTERVAL,
+  FIRE_INTERVAL_TICKS,
   INVULN_TIME,
   MAX_BULLETS,
   MUZZLE_SPEED,
@@ -42,7 +42,7 @@ import {
   STAR_X,
   STAR_Y,
   START_LIVES,
-  TRAIL_TIME,
+  TRAIL_TICKS,
   WAVE_BANNER_TIME,
   WAVE_BASE_ROCKS,
   WAVE_MIN_SHIP_DIST,
@@ -79,13 +79,13 @@ import {
 import type { AppState, Bullet, EnemyBullet, Rock, Saucer, Vec } from "./types";
 
 // Append a position to a bullet's motion-trail history, capping it to a fixed
-// slice of recent travel time (TRAIL_TIME). dt is the fixed sim step, so the cap
-// is a constant sample count; because the window is a slice of *time*, the
-// trail's on-screen length scales with the bullet's current speed.
-function recordTrail(trail: Vec[], x: number, y: number, dt: number): void {
+// slice of recent travel (TRAIL_TICKS). This runs once per fixed step, so the
+// window is a whole number of ticks and the cap is that many samples plus the
+// current one; because the window is a slice of *time*, the trail's on-screen
+// length scales with the bullet's current speed.
+function recordTrail(trail: Vec[], x: number, y: number): void {
   trail.push({ x, y });
-  const max = Math.max(2, Math.round(TRAIL_TIME / dt) + 1);
-  while (trail.length > max) trail.shift();
+  while (trail.length > TRAIL_TICKS + 1) trail.shift();
 }
 
 export const TITLE_ITEMS = ["PLAY", "HOW TO PLAY"];
@@ -293,7 +293,7 @@ export class Game {
 
   private stepPlaying(dt: number): void {
     this.updateShip(dt);
-    this.updateFire(dt);
+    this.updateFire();
     this.updateBullets(dt);
     this.updateRocks(dt);
     this.updateSaucer(dt);
@@ -367,8 +367,12 @@ export class Game {
     }
   }
 
-  private updateFire(dt: number): void {
-    this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+  // The cooldown is counted in whole ticks, not seconds: the gate is 22 ticks
+  // (specs/ship.md) and this runs once per fixed step, so decrementing by one
+  // lands on the boundary exactly rather than drifting into it through the
+  // accumulated error of repeated `- dt`.
+  private updateFire(): void {
+    this.fireCooldown = Math.max(0, this.fireCooldown - 1);
     // Continuous fire while the key is held (rate-limited).
     if (KEY.fire(this.input)) this.tryFire();
   }
@@ -390,7 +394,7 @@ export class Game {
       life: BULLET_LIFE,
       trail: [{ x: nose.x, y: nose.y }],
     });
-    this.fireCooldown = FIRE_INTERVAL;
+    this.fireCooldown = FIRE_INTERVAL_TICKS;
     this.audio.fire();
   }
 
@@ -405,7 +409,7 @@ export class Game {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       wrapBody(b);
-      recordTrail(b.trail, b.x, b.y, dt);
+      recordTrail(b.trail, b.x, b.y);
       b.life -= dt;
       if (b.life > 0) keep.push(b);
     }
