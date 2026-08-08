@@ -130,14 +130,14 @@ patches:
         value: grafana.staging.tcab.testcabinet.ai
 
 # Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
-# e27acecd75b723471871accb0dfa8872d288e1d3 (the v0.6.1-rc4.1 build — the latest `staging`
+# e376e0fa9e228b62d60e60a60cdfbd27549d686b (the v0.6.1-rc5 build — the latest `staging`
 # commit at which `build-service-images` published, all eight images on both arches; prod
 # is on the older v0.6.0-rc2 build 518e7ae4, so staging stays ahead). Bumped from the
-# v0.6.1-rc4 pin ba3ab20d.
+# v0.6.1-rc4.1 pin e27acecd.
 #
-# This pin STAYS ON the `staging` branch tip, as the last one did. rc4.1 was the only build
-# in between and it touched code (the dispatcher/driver sandbox-pod cleanup and the
-# coverage-plan progress fix), so nothing was skipped and tip and pin still agree. Expect
+# This pin STAYS ON the `staging` branch tip, as the last one did. rc5 was the only build
+# in between and it touched code (the run-record/contract-codegen and core validation
+# changes, plus the UI package), so nothing was skipped and tip and pin still agree. Expect
 # them to diverge again the next time a catalog-only commit lands; that content reaches
 # staging through the ingest sidecar, which tracks the branch tip separately
 # (patch-backend-ingest.yaml).
@@ -145,33 +145,33 @@ patches:
 # The run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
 # patch-dispatcher-driver-image.yaml (a different cadence) — nothing since v0.6.0-beta4 has
 # run `build-containers` on `staging`, so the run-container tag stays pinned at beta4
-# (e6afbee6) while the service images move ahead to v0.6.1-rc4.1, widening the
+# (e6afbee6) while the service images move ahead to v0.6.1-rc5, widening the
 # service-vs-run-container divergence. It stays benign: nothing under containers/ has changed
 # on `staging` since e6afbee6, so the beta4 run images are still content-current.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
   # Referenced as an env VALUE (TCAB_PUBLISHER_IMAGE), not a container image: field,
   # so this rewrites nothing today; kept so the registry/tag set stays complete.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: e27acecd75b723471871accb0dfa8872d288e1d3
+    newTag: e376e0fa9e228b62d60e60a60cdfbd27549d686b
