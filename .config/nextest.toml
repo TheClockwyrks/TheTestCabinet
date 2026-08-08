@@ -99,9 +99,33 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # a saving from Swift; it is the spread these readings have, and it is why the ceiling is set from
 # the worst of them rather than the latest. What the reading does say is that the arm this override
 # was raised for did not need raising again.
+#
+# A **tenth** arm — C++ — was measured four times on this machine within the hour, and the four
+# readings are why the ceiling moves rather than what it moves to:
+#
+#   nine arms, this test run alone                            96.1 s
+#   ten arms,  this test run alone                           256.1 s
+#   ten arms,  this test run alone (again)                   212.9 s
+#   ten arms,  under `cargo nextest run --workspace`          92.0 s
+#
+# The last one is the surprising half and it is reported rather than discarded: this gate is *faster*
+# inside a full workspace run than on an idle machine, twice, by more than a factor of two. Nothing
+# here explains that, and the arm's own numbers say it should not have moved much at all — C++'s 32
+# builds are the **cheapest** of any compiled arm's at ~85 ms of `clang++` apiece once the
+# precompiled prelude is warm, and this arm's own hand-pointed copy of this gate ran its 16-way
+# program half in 2.7 s standalone before it was deleted in favour of this one.
+#
+# So what these readings establish is not a cost for C++. It is that this gate's wall time is
+# dominated by something other than the work it does — it spawns 340 compilers under deliberate
+# 16-way concurrency and spends most of its wall clock waiting rather than computing (`user` time on
+# the 212.9 s reading was 1m46) — and that a single reading of it, in either direction, is worth
+# very little. The ceiling therefore comes from the **worst** of them with room over: 256 s against
+# 300 s is the coin flip this override exists to prevent, and a CI runner with a quarter of the cores
+# has no chance at all, so it moves to 600 s. An eleventh arm should take several readings rather
+# than one, and should not assume this arm's cost was the reason for any of them.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
-slow-timeout = { period = "300s", terminate-after = 3 }
+slow-timeout = { period = "600s", terminate-after = 3 }
 
 # The seam's two other per-language sweeps, which the eighth arm pushed past the default's *warning*
 # line and within sight of its kill. Neither drives sixteen-way concurrency; each simply prepares one
@@ -210,14 +234,18 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # This arm is the CHEAPEST of the three compiled ones per program — ~85 ms for `clang++` and ~19 ms
 # for `Component::new` on a small artifact, against `swiftc`'s ~0.3 s and 1.3 s — and it is bounded
 # here all the same, because the first compile in each process additionally builds the ~26 MB
-# precompiled prelude the rest of them read, and because its own isolation gate pays that plus
-# sixteen concurrent compiles.
+# precompiled prelude the rest of them read.
 #
 # Measured on this repository's dev container, this group run on its own: 6.8 s for all thirty-four
-# tests with the isolation gate at 2.2 s and the largest program at 1.5 s. Three minutes is far more
-# headroom than that needs and is deliberately the same number the other compiled arms carry: what it
-# is sized for is a CI runner with a quarter of the cores compiling a template-heavy program, not the
-# figures above.
+# tests with the arm's own copy of the isolation gate at 2.2 s and the largest program at 1.5 s.
+# That copy is gone as of registration, deleted in favour of the seam's exactly as the Rust and Swift
+# arms' were — so its sixteen concurrent compiles are paid in the sweep above instead, which is where
+# the ceiling for them now has to be, and what is left in this group is the claim that gate rests on:
+# that two preparations of one C++ program produce byte-identical components.
+#
+# Three minutes is far more headroom than the rest of it needs and is deliberately the same number
+# the other compiled arms carry: what it is sized for is a CI runner with a quarter of the cores
+# compiling a template-heavy program, not the figures above.
 #
 # The `surface` half is in the same group because it costs the same thing for the same reason: every
 # one of its programs is a real `clang++` and a real `Component::new`, and the one that calls all

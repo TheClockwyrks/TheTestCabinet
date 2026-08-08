@@ -223,6 +223,33 @@ first and nothing is left to run it — a clean turn over a program that did not
 lines above it are kept, and the token it deletes is `await`, which Swift writes in **front** of the
 expression rather than after it.
 
+[C++](/gg/program-languages/#what-its-dialect-says-and-the-one-question-only-this-arm-has-to-answer)
+is the arm where **`#` is two different things and case is what tells them apart**. No other dialect
+has to answer it: every other one keeps `#` off its prose test and loses nothing, while here
+`#include` and `#define` open the file and `# Heading` opens the reply. So `#` is not read as code
+punctuation — a Markdown heading stays deletable — and a line whose `#` is followed by one of the
+fourteen directive words **spelled lower-case** is code to both predicates, which makes
+`# Include the manifest` prose and `#include` not. Its **redeclaration proof is the strongest of any
+registered arm's and it comes from the shape of the language**: a C++ program must define `main` or
+gg refuses it, so a reply that is one program pasted after an identical copy of itself always
+carries two definitions of it. The reading is wider than that so a doubled *fragment* is caught too,
+and the one shape it must not get wrong — a **reopened `namespace`**, which is ordinary C++ — is
+excluded by name. **Nothing is done about an `#include`** here either, for the third time and again
+because the line *works*: the standard library and gg's surface are in front of the program already,
+so a redundant include is de-duplicated against a precompiled header for nothing and a header the
+prelude does not carry is a located diagnostic naming it. And it is the **one arm with no
+concurrency wrapper at all**, which is two facts rather than an omission: a reply's top level is a
+translation unit rather than a statement list, so a program that is nothing but a wrapper does not
+exist in this grammar, and every header that would express one is off the library set, so a program
+that reached for concurrency is a located diagnostic on the turn that wrote it — the opposite of
+Rust's `std::thread::spawn`, which compiles and then does nothing. Its lexer reads a **raw string's
+author-chosen fence** (`R"gg(…)gg"`) rather than looking for a quote, tells `1'000'000`'s digit
+separator from a character literal by the rule that a literal cannot open where a value has just
+ended, and ends a block comment at the **first** `*/`, C++ comments being the ones that do not nest.
+It is also the one lexer here with two readers: healing gets a mask only when the scan ended
+cleanly, and the reader that asks whether a reply defines `main` takes the best reading whatever
+happened, because its errors are safe in the accepting direction.
+
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
 no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply

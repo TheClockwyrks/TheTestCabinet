@@ -35,12 +35,13 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
 fn this_arm_commits_no_component_and_compiles_one_instead() {
     assert!(rust().guest_component().is_none());
     assert!(rust().compiles_component());
-    // Every arm but the two of this shape commits one. Swift is the second, and it is named here
-    // rather than derived so that a third arriving is a failing test with a sentence in it.
+    // Every arm but the three of this shape commits one. Swift and C++ are the others, and they are
+    // named here rather than derived so that a fourth arriving is a failing test with a sentence in
+    // it.
     for language in crate::sandbox::all_languages() {
         if matches!(
             language.id(),
-            GgProgramLanguage::Rust | GgProgramLanguage::Swift
+            GgProgramLanguage::Rust | GgProgramLanguage::Swift | GgProgramLanguage::Cpp
         ) {
             continue;
         }
@@ -52,14 +53,18 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
     }
 }
 
-/// **This is the one arm that joins an object to a function with `::`**, because here an object is
-/// a module.
+/// **This is one of the two arms that join an object to a function with `::`**, because here an
+/// object is a module.
 ///
 /// Everything else about a call's spelling comes out of the catalogue; the punctuation between the
 /// two halves appears in no declaration, so the seam has to be told. gg quotes qualified calls in
 /// its own notices and in every line of every prompt template, and `view.open_text` on this arm is
 /// `E0423: expected value, found module` — so a model would be taught, in every sentence gg writes
 /// about a call, a spelling that cannot compile.
+///
+/// [C++](super::super::cpp) is the other, and for the same reason reached through a different
+/// construct: there an object is a **namespace**. Both are named here rather than derived, so a
+/// third arm answering `::` is a failing test with a sentence in it.
 #[test]
 fn this_is_the_arm_whose_objects_are_modules() {
     assert_eq!(rust().member_separator(), "::");
@@ -68,15 +73,20 @@ fn this_is_the_arm_whose_objects_are_modules() {
         "view::open_text"
     );
     for language in crate::sandbox::all_languages() {
-        if language.id() != GgProgramLanguage::Rust {
-            assert_eq!(
-                language.member_separator(),
-                ".",
-                "{} is a second arm whose objects are not values, which this test would have to \
-                 be rewritten for",
-                language.display_name()
-            );
-        }
+        let qualified = matches!(
+            language.id(),
+            GgProgramLanguage::Rust | GgProgramLanguage::Cpp
+        );
+        assert_eq!(
+            language.member_separator(),
+            match qualified {
+                true => "::",
+                false => ".",
+            },
+            "{} joins an object to a function with something this test would have to be rewritten \
+             for",
+            language.display_name()
+        );
     }
 }
 

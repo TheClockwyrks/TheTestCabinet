@@ -11,7 +11,7 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Nine are registered, and between them they separate four things that used to be one. TypeScript
+Ten are registered, and between them they separate four things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
@@ -29,9 +29,13 @@ that same road from bytecode onwards, which makes the pair the closest thing thi
 surfaces written the way each language is really written; and
 **[Rust](#rust-the-program-is-the-artifact)** is the fourth thing: the first arm that ships **no
 guest at all**, because its compiler produces the program rather than something that later reads
-one; and **[Swift](#swift-the-reply-is-the-artifact-verbatim)** is that same shape reached down a
-different road, and the only arm that compiles a model's reply **byte for byte** while still
-admitting `extension`, `protocol` and `import` in it. This page is the
+one; **[Swift](#swift-the-reply-is-the-artifact-verbatim)** is that same shape reached down a
+different road, compiling a model's reply **byte for byte** while still admitting `extension`,
+`protocol` and `import` in it; and **[C++](#c-the-prelude-is-precompiled-and-the-exceptions-work)**
+is the third of that shape and the cheapest of the three per turn, because the whole of what a
+program is compiled against is precompiled once per machine — it is also the only arm whose guest
+has a working **exception** mechanism, and the only one where a failure the language caused can be
+hard to tell in the run record from a model that reasoned badly. This page is the
 design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
@@ -1826,6 +1830,130 @@ there is, a clean turn over a program that did nothing. The `import` lines above
 for the same reason nothing is done about an import anywhere on this arm. `await` comes off as a
 **prefix**, which is where Swift puts suspension, and is counted.
 
+## C++: the prelude is precompiled, and the exceptions work
+
+The tenth arm: `language: "cpp"` is a value an operator configures, and it is
+[Swift](#swift-the-reply-is-the-artifact-verbatim)'s **shape** — a reply compiled byte for byte
+into the component that evaluates it — reached at a fraction of the cost.
+
+**A C++ program is compiled by `clang++` into the wasm component that turn is evaluated by**, and
+there is no guest to commit. What its SDK looks like is [above](#what-cs-sdk-looks-like); what the
+shape is, what the precompiled header buys, what enabling exceptions cost the workspace and what
+the three failure bands are, is under
+[an arm whose artifact is the program](#c-a-compiler-with-a-precompiled-prelude); the rest of this
+section is what a model and an operator see.
+
+Measured in this repository's dev container, aarch64: `clang++` is **~85 ms** for a small program
+and **~0.95 s** for one leaning on ranges, `std::format` and a map; the in-process component encode
+is **~2 ms**; the artifact is **~800 KB**; and wasmtime's `Component::new` on it is **~19 ms**.
+That makes this the **cheapest arm per turn of the three that compile their own artifact** — but
+only because the prelude is precompiled once per machine. Without that, the same small program is
+883–1110 ms. wasi-sdk is **~200 MB** pruned and lives in the
+[gg toolchain image](#where-a-compiler-lives-and-what-it-must-never-share); the compile inputs gg
+carries are 36 KB inside its binary, and there is no third-party library set at all.
+
+### What a model has to know that it does not on any other arm
+
+Two things, and both are consequences of C++ having nowhere to put a statement except a function
+body.
+
+**The reply must define `main`.** It is compiled as `main.cpp`, unaltered — nothing prepended,
+nothing appended, no line moved, so a diagnostic at line 7 is line 7 — and gg's shell calls the
+model's own entry point. A reply that defines none is refused by name *at prepare time*, with a
+sentence saying what to write, because the linker will not object: wasi-libc references `main`
+weakly, so a program with nothing to run links cleanly and traps having done nothing.
+
+It is the exact inverse of the [Rust](#rust-the-program-is-the-artifact) arm's one refusal, which
+is a program that *does* define `main` — and the two are the same rule read in two grammars. On
+that arm a `main` is a function nothing calls; on this one its absence is a program with nothing
+in it. Both are the failure a model cannot recover from: a clean turn over work that never ran.
+
+**Nothing has to be included.** The precompiled prelude puts gg's whole surface *and* the C++
+standard library in front of the model's first line, so `fs::read_file`, `std::vector` and
+`std::format` are names a program may write on line 1. Writing the includes anyway costs nothing —
+clang de-duplicates them against the precompiled header — which is the point of compiling the reply
+verbatim rather than editing it.
+
+### What a C++ code module is
+
+**A header, with the author's declarations opened inside `namespace lib::<key>` where they stand.**
+gg writes two lines above the author's first and one below their last, and the module is put in
+front of the model's program with `clang++ -include` — which is what a header is for, and the one
+way to add declarations to a translation unit whose first line has to stay the model's own.
+
+```cpp
+namespace lib::csv_tools {                                             // gg's line
+#line 1 "module_csv_tools.hpp"                                         // gg's line
+std::vector<row> parse(std::string_view text, char delimiter = ',') {  // as authored
+```
+
+It is the plainest module shape of the three compiled arms, and two things about C++ are why.
+It has a **real nested namespace**, so nothing is moved, re-synthesized or declared twice — every
+default argument, template parameter, overload and `struct` survives because the author's own text
+is what the compiler reads, where the Swift arm had to reach for an `extension` of a caseless
+`enum` to keep the same properties. And it is the one language here with a **line-control
+directive**, so gg *says* what the author's first line is instead of subtracting two from every
+diagnostic afterwards: no line number moves at all.
+
+Two modules may declare the same name — `lib::a::row` and `lib::b::row` are different types —
+which is a thing the Swift arm cannot say, because its `protocol` and `extension` declarations stay
+at file scope.
+
+**A `#include` at a module's top level is refused by name**, and it is this half's one refusal.
+`#include` is textual, so one inside a namespace pulls the whole header into `lib::<key>` — and
+when the header is one the prelude already read, its include guard is already defined and it
+expands to *nothing at all*, which is worse: the module would compile, and the same line would
+detonate the day somebody wrote a header the prelude does not carry. Hoisting it out would be gg
+editing the author's file, which is the one thing this arm has never done to anybody's text. The
+refusal says to delete the line and write nothing in its place, because the prelude is in front of
+a module exactly as it is in front of a program.
+
+That is an asymmetry with a **program**, whose `#include` is left exactly as written, and it is the
+language's rather than gg's: a program is not compiled inside a namespace.
+
+### What its dialect says, and the one question only this arm has to answer
+
+Its [healing dialect](/gg/response-healing/) is `crates/gg/src/sandbox/language/cpp.healing.rs`.
+
+**`#` is both Markdown's heading and C++'s preprocessor, and case is what tells them apart.** No
+other arm has to answer this: every other dialect keeps `#` off its prose test and loses nothing,
+while here `#include` and `#define` open the file and `# Heading` opens the reply. So `#` is not
+read as code punctuation — a heading stays deletable — and a line whose `#` is followed by one of
+the fourteen directive words **spelled lower-case** is code to both predicates. `# Include the
+manifest` is capital-I and is prose; `#include` is not.
+
+**The redeclaration proof is the strongest of any registered arm's, and this arm gets it from the
+shape of the language.** Every other arm's version of it asks whether the repeated tail happens to
+declare something the compiler refuses twice. A C++ program *must* define `main`, so a reply that
+is one program pasted after an identical copy of itself always carries two definitions of it —
+`redefinition of 'main'`, before a statement runs. The reading is wider than that, so a doubled
+*fragment* is caught too; the one shape it must not get wrong is a **reopened `namespace`**, which
+is ordinary C++ and is excluded by name.
+
+**Nothing is done about an `#include`, and this is the third arm where that is because the line
+works.** A redundant include is de-duplicated against the precompiled header for nothing, and a
+header the prelude does not carry is a located `file not found` on the turn that wrote it — which
+is a better answer than a silent deletion.
+
+**There is no concurrency wrapper to unwrap**, and that is two independent facts rather than an
+omission. A reply's top level is a translation unit rather than a statement list, so the shape the
+strategy looks for — a whole program that is one wrapper and nothing else — does not exist in this
+grammar; the model's work is inside `main` either way. And `<thread>`, `<future>` and `<atomic>`
+are deliberately off the library set, so a program that reached for concurrency is `no type named
+'thread' in namespace 'std'` at the model's own line. That is the opposite of the
+[Rust](#rust-the-program-is-the-artifact) arm, whose `std::thread::spawn` **compiles** and then
+does nothing at run time — which is why that arm deletes the wrapper and this one has nothing to
+delete.
+
+Its lexer asks three things no other arm's does. A **raw string's fence is chosen by its author**
+(`R"gg(…)gg"`), so it has to be read rather than looked for; `'` is a **digit separator** as often
+as it is a quote, and the rule that tells them apart is that a literal cannot open where a value
+has just ended; and **block comments do not nest**, which is the opposite of Swift's and Kotlin's.
+It is also the one lexer here with two readers: healing gets a mask **only when the scan ended
+cleanly**, because a strategy that deletes text must not act on a reading known to be wrong, while
+the reader that asks whether a reply defines `main` takes the best reading whatever happened,
+because its errors are safe in the accepting direction.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -2283,11 +2411,10 @@ The first arm of this shape is **[Rust](#rust-the-program-is-the-artifact)**
 (`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`). The second is
 **[Swift](#swift-the-reply-is-the-artifact-verbatim)**
 (`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`). The third is
-**[C++](#c-a-compiler-with-a-precompiled-prelude)**
-(`crates/gg/src/sandbox/language/cpp.rs`, `packages/gg-sandbox-cpp/`), whose execution
-substrate is built and whose SDK and registration are not, so it is not yet a `language`
-value an operator can configure. Swift inherits the shape unchanged and adds three things to
-it that are worth reading before a fourth arm is written:
+**[C++](#c-the-prelude-is-precompiled-and-the-exceptions-work)**
+(`crates/gg/src/sandbox/language/cpp.rs`, `packages/gg-sandbox-cpp/`). Swift inherits the
+shape unchanged and adds three things to it that are worth reading before a fourth arm is
+written:
 
 - **its compiler's output is a preview1 core module, not a component.** The Swift SDK
   publishes one target triple and it is `wasm32-unknown-wasip1`, so the encode gg already
@@ -2309,8 +2436,7 @@ it that are worth reading before a fourth arm is written:
 #### C++: a compiler with a precompiled prelude
 
 The third arm of this shape, and the one that changes the *cost* argument rather than the
-mechanism. Its execution substrate and its [SDK](#what-cs-sdk-looks-like) are built and its
-registration is not, so nothing below is reachable from a run yet.
+mechanism.
 
 Everything structural it does, one of the two arms above already did. It is compiled by
 `clang++` from **wasi-sdk 33** into a `wasm32-wasip1` core module and adapted with the same
@@ -2392,14 +2518,16 @@ nothing* on one arm of a study about capability.
 So the modules travel with the source, every interpreted arm ignores the parameter, and each
 compiled one writes each module beside its entry file — Rust as a `mod`, Swift as
 [a file of the program's own module](#what-a-swift-code-module-is), because Swift has no
-nested module and its namespace is a caseless `enum` instead. Two consequences are visible
-from outside:
+nested module and its namespace is a caseless `enum` instead, and C++ as
+[a header opened inside a namespace](#what-a-c-code-module-is), which is the plainest of the
+three because it is the one language with a nested namespace and a line-control directive.
+Two consequences are visible from outside:
 
 - **the binding is resolved by the compiler, not looked up on a value.**
-  `lib::csv_tools::parse(…)` on the Rust arm is a path and `lib.csvTools.parse(…)` on the
-  Swift arm is a member of a nested type, so on both a key or a function that does not exist
-  is a diagnostic on the turn that wrote it, where an interpreted arm finds out when the call
-  is reached;
+  `lib::csv_tools::parse(…)` on the Rust and C++ arms is a qualified name and
+  `lib.csvTools.parse(…)` on the Swift arm is a member of a nested type, so on all three a
+  key or a function that does not exist is a diagnostic on the turn that wrote it, where an
+  interpreted arm finds out when the call is reached;
 - **a module is compiled twice** — once alone when it is read, only to be checked, and again
   as part of every program that uses it. The first compile is what buys the *location*:
   without it a module that does not build would take down every program the agent wrote from

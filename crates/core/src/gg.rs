@@ -4465,6 +4465,33 @@ pub enum GgProgramLanguage {
     /// patch, a `ClosedRange` for a span of turns, and `throws` for the error arm so `try` is the
     /// whole of the ceremony.
     Swift,
+    /// C++: **compiled by `clang++` into the wasm component that turn is evaluated by**, against a
+    /// prelude gg precompiles once per machine — and the only arm with a working **exception**
+    /// mechanism in the guest.
+    ///
+    /// It is [`Rust`](Self::Rust)'s and [`Swift`](Self::Swift)'s shape — no committed component,
+    /// one artifact per turn — and, like Swift's, the reply is compiled **byte for byte**. A
+    /// program here is an ordinary translation unit that defines `main`, because C++ refuses a
+    /// `template`, a `namespace` and a usable `#include` inside a function body; the price is this
+    /// arm's one refusal, which is a reply that defines no entry point. It is refused by name at
+    /// prepare time, because wasi-libc references `main` weakly and would otherwise link a program
+    /// that traps having run nothing.
+    ///
+    /// It is the **cheapest compile of the three compiled arms** — ~85 ms against `swiftc`'s ~0.3 s
+    /// — and only because the prelude, gg's whole surface plus the standard library, is
+    /// precompiled: without that the same program costs about a second. Its SDK is hand-written and
+    /// reads like the standard library it arrives beside: `snake_case` functions *and* types, an
+    /// API object as a **namespace** so a call is a qualified name, `enum class` for a fixed
+    /// choice, aggregates for records, `std::variant` narrowed with `std::get_if` for a read, a
+    /// default argument for one optional part and a **designated initialiser** (`{.limit = 40}`)
+    /// for several — because C++ has no keyword arguments and a defaulted parameter cannot be
+    /// skipped over — and a thrown `gg::tool_error` for the error arm.
+    ///
+    /// It also carries a **comparability risk no other arm has**, stated rather than hidden: an
+    /// uncaught `throw` and a failed libc++ hardening check both arrive with words, but undefined
+    /// behaviour arrives as a bare trap, so a failure caused by the language can be hard to tell in
+    /// the run record from a model that reasoned badly.
+    Cpp,
 }
 
 impl GgProgramLanguage {
@@ -4487,6 +4514,7 @@ impl GgProgramLanguage {
         Self::Kotlin,
         Self::Rust,
         Self::Swift,
+        Self::Cpp,
     ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
@@ -4511,6 +4539,7 @@ impl GgProgramLanguage {
             Self::Kotlin => const { Self::listed_at(6, Self::Kotlin) },
             Self::Rust => const { Self::listed_at(7, Self::Rust) },
             Self::Swift => const { Self::listed_at(8, Self::Swift) },
+            Self::Cpp => const { Self::listed_at(9, Self::Cpp) },
         }
     }
 
@@ -4545,6 +4574,7 @@ impl GgProgramLanguage {
             Self::Kotlin => "kotlin",
             Self::Rust => "rust",
             Self::Swift => "swift",
+            Self::Cpp => "cpp",
         }
     }
 
@@ -4572,6 +4602,7 @@ impl GgProgramLanguage {
             Self::Kotlin => "Kotlin",
             Self::Rust => "Rust",
             Self::Swift => "Swift",
+            Self::Cpp => "C++",
         }
     }
 }

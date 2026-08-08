@@ -224,7 +224,7 @@ fn a_compiler_that_said_nothing_is_never_reported_as_the_models_failure() {
     // The band the study needs kept apart: a crash, a timeout and a precompiled header the compiler
     // could not read all exit non-zero, and reporting any of them as "your program did not compile"
     // sends a model rewriting a program that was never wrong.
-    match classify(&report(false, "")) {
+    match classify(&report(false, ""), &authored()) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(
                 message.contains(compiler_version()),
@@ -245,7 +245,7 @@ fn a_compiler_that_said_nothing_is_never_reported_as_the_models_failure() {
         stdout: String::new(),
         stderr: String::new(),
     };
-    match classify(&killed) {
+    match classify(&killed, &authored()) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(message.contains("was killed by signal 11"), "{message}");
         }
@@ -264,7 +264,7 @@ fn a_template_error_reported_inside_libcpp_is_still_the_models_program() {
                   \x20 170 |   static_assert(__formattable, \"the type must be formattable\");\n\
                   main.cpp:7:19: note: in instantiation of function template specialization \
                   'std::format<Widget>' requested here\n";
-    match classify(&report(false, stderr)) {
+    match classify(&report(false, stderr), &authored()) {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
             assert!(rendered.contains("static assertion failed"), "{rendered}");
             assert!(
@@ -284,7 +284,7 @@ fn an_undefined_symbol_is_the_models_program_even_though_the_linker_names_no_fil
     let stderr = "wasm-ld: error: /tmp/main-1f2e3d.o: undefined symbol: helper()\n\
                   clang++: error: linker command failed with exit code 1 (use -v to see \
                   invocation)\n";
-    match classify(&report(false, stderr)) {
+    match classify(&report(false, stderr), &authored()) {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
             assert!(
                 rendered.contains("undefined symbol: helper()"),
@@ -299,6 +299,12 @@ fn an_undefined_symbol_is_the_models_program_even_though_the_linker_names_no_fil
     }
 }
 
+/// The files a diagnostic may be located in that somebody a model can be told about wrote, for a
+/// turn that loaded no code skill: the model's own program, and nothing else.
+fn authored() -> Vec<String> {
+    vec![PROGRAM_FILE.to_string()]
+}
+
 #[test]
 fn a_diagnostic_in_ggs_own_guest_is_ggs_failure_and_not_the_models() {
     // The model's file is named relatively and gg's inputs absolutely, and gg's own inputs are the
@@ -306,7 +312,7 @@ fn a_diagnostic_in_ggs_own_guest_is_ggs_failure_and_not_the_models() {
     // it never wrote would be a model asked to fix gg.
     let stderr = "/tmp/gg-toolchain-cpp/guest/sdk/objects/fs.hpp:57:1: error: unknown type name \
                   'file_read'\n";
-    match classify(&report(false, stderr)) {
+    match classify(&report(false, stderr), &authored()) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(
                 message.contains("gg's own guest"),
@@ -329,7 +335,7 @@ fn a_rejected_program_keeps_the_compilers_errors_and_drops_its_warnings() {
                   main.cpp:5:11: error: use of undeclared identifier 'missing'\n\
                   \x20   5 |   auto x = missing;\n\
                   \x20     |           ^\n";
-    match classify(&report(false, stderr)) {
+    match classify(&report(false, stderr), &authored()) {
         Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
             assert!(
                 rendered.contains("use of undeclared identifier 'missing'"),
@@ -350,7 +356,7 @@ fn a_rejected_program_keeps_the_compilers_errors_and_drops_its_warnings() {
 
 #[test]
 fn a_compile_that_said_nothing_at_all_is_a_success() {
-    assert!(classify(&report(true, "")).is_ok());
+    assert!(classify(&report(true, ""), &authored()).is_ok());
 }
 
 #[test]

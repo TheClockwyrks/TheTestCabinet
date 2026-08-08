@@ -164,6 +164,39 @@ Four things are deliberately absent, and each is a decision rather than an overs
   the argument above. A curated header set on the include path is the shape it would take if it is
   ever taken; nothing about this arm is in the way.
 
+## Code modules
+
+A code skill's or memory's code is bound at **`lib::<key>`**, and on this arm that binding is a
+**link**: the module is compiled into the same artifact as the program that uses it. gg writes two
+lines above the author's first and one below their last, and hands the file to `clang++` with
+`-include`:
+
+```cpp
+namespace lib::csv_tools {                                             // gg's line
+#line 1 "module_csv_tools.hpp"                                         // gg's line
+std::vector<row> parse(std::string_view text, char delimiter = ',') {  // as authored
+```
+
+Two things about C++ make this the plainest module shape of the three compiled arms. It has a real
+**nested namespace**, so nothing is moved or re-synthesized and every default argument, template
+parameter, overload and `struct` survives; and it is the one language here with a **line-control
+directive**, so no line number moves at all. `-include` is what keeps the *program*'s numbering
+intact too — it leaves the primary file alone.
+
+**A `#include` at a module's top level is refused by name**, and that is this half's one refusal.
+`#include` is textual, so one inside a namespace pulls the header into `lib::<key>` — and when the
+header is one the prelude already read, its include guard is already defined and it expands to
+nothing at all, which is worse: the module compiles, and the same line detonates the day somebody
+writes a header the prelude does not carry. Hoisting it out would be gg editing the author's file,
+which this arm has never done to anybody's text. It does not need to: the prelude is in front of a
+module exactly as it is in front of a program, so the refusal says to delete the line and write
+nothing in its place. A *program*'s `#include` is left exactly as written, because a program is not
+compiled inside a namespace.
+
+A code skill or memory spells its code **`skill.hpp`** / `memory.hpp` — one spelling, because
+nothing else in the registry compiles C++ and a language whose modules nothing else can evaluate
+names one extension and no more.
+
 ## What it commits, and why those and not the compiler
 
 ```
@@ -199,17 +232,3 @@ packages/gg-sandbox-cpp/build.sh      # after editing Sources/, or after crates/
 Commit the artifacts with the change that needed them. `cpp.compile.test.rs` fails by name if the
 archive's copy of the prelude or the shell is not this checkout's, so an edit here without a rebuild
 does not reach a model as a program compiled against the old one.
-
-## What is not built
-
-The **registration** that makes `language: "cpp"` a value an operator can configure: the enum
-variant, the registry arm, the healing dialect, the two prompt templates and the console rows.
-`crates/gg/src/sandbox/language/cpp.rs` says what registering needs, and what the open question is
-for `lib::<key>` on a language whose modules are **linked** rather than evaluated.
-
-That question is now the SDK's to answer and it has not been answered here. A module wrapped in
-`namespace lib::csv_tools { … }` in place would preserve every line and every default argument — but
-a module author writes `#include <vector>` at the top of their file, and a `#include` inside a
-namespace puts the whole of `std` inside it. The prelude makes an include unnecessary, which is what
-turns this into a rule a model has to be **told** rather than a rewrite of the author's file; saying
-it is a prompt decision, and the prompt is part of registration.

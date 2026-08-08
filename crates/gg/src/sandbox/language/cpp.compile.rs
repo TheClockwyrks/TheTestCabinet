@@ -119,6 +119,22 @@
 //! CPU** against programs that use milliseconds — so the trade is latency a model waits for against
 //! headroom nothing uses.
 //!
+//! # A code module is a further **header**, put in front of the model's file
+//!
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at
+//! `lib::<key>`, and on a compiled arm that binding is a **link** — so the modules in scope are
+//! inputs to the program's own compile. Each is written into the preparation's workspace with its
+//! declarations [opened inside `namespace lib::<key>`](super::source::namespaced) and named on the
+//! command line with **`-include`**, which is the one way to add declarations to a translation unit
+//! whose first line has to stay the model's own: `-include` leaves the primary file's line numbering
+//! alone, so a diagnostic at line 7 is line 7 with three skills loaded. They are named in binding
+//! order, so one module may reach another's namespace.
+//!
+//! A module is also compiled **alone** when it is read — [`compile_module`], one `-fsyntax-only`
+//! over the namespaced file as its own translation unit — which is what buys its author a
+//! diagnostic in their own coordinates rather than a program that stops compiling a turn later for
+//! reasons in somebody else's file.
+//!
 //! # Isolation
 //!
 //! This arm satisfies the [contract](super::compile) the way the Rust and Swift arms do, with one
@@ -154,8 +170,8 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::sandbox::{
-    CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedProgram, Workspace,
-    place_tree, shared_toolchain_dir,
+    CodeModule, CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
+    PreparedProgram, Workspace, place_tree, shared_toolchain_dir,
 };
 
 /// Everything a compile needs on disk that is not the model's own file: the generated WIT header,
@@ -326,6 +342,10 @@ struct Manifest {
     /// Every standard-library header the [prelude](self::GUEST_TAR_GZ) puts in front of a program,
     /// read out of the prelude that actually ships rather than restated — the same rule every other
     /// arm's library manifest follows.
+    ///
+    /// Read only by [`prelude_headers`], which is a gate rather than a runtime need: nothing on the
+    /// turn path asks what is in the prelude, because the precompiled header already answers it.
+    #[cfg_attr(not(test), allow(dead_code))]
     headers: Vec<String>,
     /// Every file in the guest archive.
     files: Vec<GuestFile>,
@@ -378,6 +398,11 @@ pub(super) fn guest_files() -> impl Iterator<Item = &'static str> {
 }
 
 /// Every standard-library header a program of this language is compiled with already included.
+///
+/// `#[cfg(test)]` because it is a gate rather than a runtime need — the two readers of the list are
+/// the [surface](super::surface) gate, which compiles a program using every group in it, and the
+/// [compile](self::tests) one, which holds the manifest to the prelude that actually ships.
+#[cfg(test)]
 pub(super) fn prelude_headers() -> impl Iterator<Item = &'static str> {
     manifest().headers.iter().map(String::as_str)
 }
@@ -408,12 +433,81 @@ pub(super) fn warm() {
 /// nothing left for a guest to evaluate, because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
         unreachable: None,
-        component: Some(compile(source, context)?),
+        component: Some(compile(source, modules, context)?),
+    })
+}
+
+/// Prepare a **code module** — the code half of a skill or a memory — by compiling it the way a
+/// program will, and read the names its namespace offers.
+///
+/// What comes back is **source**, which is what a linked language's module has to be: it is an input
+/// to the [program compile](compile_program) that binds it, not something a guest could load on its
+/// own. It is the author's own bytes rather than the namespaced form, because the namespace is
+/// written under the key the *program* knows and a module's own preparation is handed none.
+///
+/// The check is `-fsyntax-only` over the namespaced module **as its own translation unit**, which is
+/// the whole of what this step can decide and about half of what a full build costs: there is
+/// nothing to instantiate templates for, nothing to optimise and nothing to link for a file that is
+/// going to be compiled again as part of a program. A module needs no entry point to be checked this
+/// way, which is why this arm's one refusal — [a program with no `main`](self::NO_MAIN) — has no
+/// counterpart here.
+///
+/// Compiling it now is what buys the author a diagnostic **at the read**, in their own coordinates,
+/// rather than a program that stops compiling a turn later for reasons in somebody else's file.
+pub(super) fn compile_module(
+    source: &str,
+    context: &PrepareContext,
+) -> Result<PreparedModule, PrepareFailure> {
+    let guest = guest().map_err(PrepareFailure::Toolchain)?;
+    let home = wasi_sdk_home().map_err(PrepareFailure::Toolchain)?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+    let prelude = precompiled_prelude(&home, guest, context).map_err(PrepareFailure::Toolchain)?;
+
+    let file = super::source::module_file(super::source::CHECK_KEY);
+    workspace
+        .write(
+            &file,
+            &super::source::namespaced(source, super::source::CHECK_KEY)?,
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let mut command = context
+        .compiler(clang(&home))
+        .map_err(|error| PrepareFailure::Toolchain(format!("{}{error}", spawn_prefix(&home))))?;
+    command
+        .args(shared_flags(&home))
+        .arg("-include-pch")
+        .arg(&prelude)
+        .arg("-I")
+        .arg(guest.tree())
+        .arg(format!(
+            "-ffile-prefix-map={}={PREPARATION_PREFIX}",
+            workspace.root().display()
+        ))
+        .arg("-fsyntax-only")
+        // A `.hpp` would otherwise be compiled as a header, which is how the prelude is built and
+        // not what this is: the module is being read as an ordinary translation unit.
+        .arg("-x")
+        .arg("c++")
+        .arg(&file);
+    let report =
+        command
+            .run(COMPILE_TIMEOUT)
+            .map_err(|error| match error.starts_with("could not run") {
+                true => PrepareFailure::Toolchain(format!("{}{error}", spawn_prefix(&home))),
+                false => PrepareFailure::Toolchain(error),
+            })?;
+    classify_module(&report, &file)?;
+
+    Ok(PreparedModule {
+        source: source.to_string(),
+        exports: super::source::exports(source),
     })
 }
 
@@ -427,8 +521,13 @@ const NO_MAIN: &str = "this program defines no `main`, so there is nothing for t
                        main() { … }` and write everything else — includes, namespaces, templates, \
                        classes — around it as you normally would.";
 
-/// Compile one model program into the component that evaluates it — or say why it could not be.
-fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFailure> {
+/// Compile one model program, and the code modules in its scope, into the component that evaluates
+/// it — or say why it could not be.
+fn compile(
+    program: &str,
+    modules: &[CodeModule],
+    context: &PrepareContext,
+) -> Result<Vec<u8>, PrepareFailure> {
     if !super::source::defines_main(program) {
         return Err(PrepareFailure::Program(PrepareError::Unsupported(
             NO_MAIN.to_string(),
@@ -445,11 +544,24 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
     workspace
         .write(PROGRAM_FILE, program)
         .map_err(PrepareFailure::Toolchain)?;
+    let mut included = Vec::with_capacity(modules.len());
+    for module in modules {
+        let file = super::source::module_file(&module.name);
+        workspace
+            .write(
+                &file,
+                &super::source::namespaced(&module.source, &module.name)?,
+            )
+            .map_err(PrepareFailure::Toolchain)?;
+        included.push(workspace.work().join(file));
+    }
 
     let artifact = workspace.output().join(ARTIFACT_FILE);
-    let report = invoke_clang(&artifact, &prelude, guest, &home, workspace, context)
-        .map_err(PrepareFailure::Toolchain)?;
-    classify(&report)?;
+    let report = invoke_clang(
+        &artifact, &prelude, &included, guest, &home, workspace, context,
+    )
+    .map_err(PrepareFailure::Toolchain)?;
+    classify(&report, &authored_files(modules))?;
 
     let module = std::fs::read(&artifact).map_err(|error| {
         PrepareFailure::Toolchain(format!(
@@ -477,6 +589,7 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
 fn invoke_clang(
     artifact: &Path,
     prelude: &Path,
+    modules: &[PathBuf],
     guest: &Guest,
     home: &Path,
     workspace: &Workspace,
@@ -509,7 +622,16 @@ fn invoke_clang(
         .arg(format!(
             "-ffile-prefix-map={}={PREPARATION_PREFIX}",
             workspace.root().display()
-        ))
+        ));
+    // The code modules in scope, each put in front of the model's file the way a header is — which
+    // is the one way to add declarations to a translation unit whose first line must stay the
+    // model's own. `-include` leaves the primary file's line numbering alone, so a diagnostic at
+    // line 7 is still line 7 with three skills loaded, and the modules arrive in binding order so
+    // one may reach another's namespace.
+    for module in modules {
+        command.arg("-include").arg(module);
+    }
+    command
 
         // A **reactor**, not a command: a component's exports are called after `_initialize`, and
         // the default execution model would insist on a `_start` this guest does not have — and
@@ -537,6 +659,22 @@ fn invoke_clang(
             true => format!("{}{error}", spawn_prefix(home)),
             false => error,
         })
+}
+
+/// The files a diagnostic may be located in that somebody a model can be told about **wrote**: the
+/// model's own program, and the code modules in its scope, which a skill's author wrote.
+///
+/// Named rather than pattern-matched, because the direction the classification may be wrong in is
+/// only one: a diagnostic located in gg's own prelude or shell reported to a model as "your program
+/// did not compile" would send it rewriting a program that was never wrong.
+fn authored_files(modules: &[CodeModule]) -> Vec<String> {
+    let mut files = vec![PROGRAM_FILE.to_string()];
+    files.extend(
+        modules
+            .iter()
+            .map(|module| super::source::module_file(&module.name)),
+    );
+    files
 }
 
 /// The compiler binary inside a wasi-sdk tree. `clang++` rather than `clang`, because the name is
@@ -567,8 +705,10 @@ fn spawn_prefix(home: &Path) -> String {
 /// failed overload resolution are both an `error:` from one invocation — so everything it rejects is
 /// [`PrepareError::Compile`], exactly as everything `rustc` and `swiftc` reject is.
 ///
-/// **What decides whose failure it is, is whether `main.cpp` is named anywhere in the output**, and
-/// that rule is C++-shaped rather than borrowed. A template error in this language is reported
+/// **What decides whose failure it is, is whether one of the files somebody authored is named
+/// anywhere in the output** — the model's `main.cpp`, or one of the code modules in its scope, which
+/// a skill's author wrote and a model is entitled to be told about. That rule is C++-shaped rather
+/// than borrowed. A template error in this language is reported
 /// *inside the library* — `format:1834: error: static assertion failed` — with a `note: in
 /// instantiation of … requested here` at the model's own line. Reading only the `error:` line's path
 /// would file the most ordinary C++ mistake there is under "gg's own toolchain broke", which is the
@@ -584,7 +724,7 @@ fn spawn_prefix(home: &Path) -> String {
 ///   [toolchain failure](PrepareFailure::Toolchain) — which is the safe direction, because a model
 ///   told to fix a program that was never wrong is the one misattribution this codebase spends the
 ///   most effort not making.
-fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
+fn classify(report: &CompilerReport, authored: &[String]) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
@@ -600,11 +740,46 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
             report.stderr_tail(),
         )));
     }
-    if rendered.contains(&format!("{PROGRAM_FILE}:")) || rendered.contains(UNDEFINED_SYMBOL) {
+    if authored
+        .iter()
+        .any(|file| rendered.contains(&format!("{file}:")))
+        || rendered.contains(UNDEFINED_SYMBOL)
+    {
         return Err(PrepareFailure::Program(PrepareError::Compile(rendered)));
     }
     Err(PrepareFailure::Toolchain(format!(
         "clang {} rejected gg's own guest rather than the model's program: {}",
+        compiler_version(),
+        report.stderr_tail(),
+    )))
+}
+
+/// Decide what a finished `clang++ -fsyntax-only` over one **code module** means.
+///
+/// The same three answers [`classify`] gives and one narrower test of whose failure it is: a
+/// module's own file is the only source in this translation unit, so a diagnostic located anywhere
+/// else is located in gg's prelude and is gg's. There is no linker here and therefore no
+/// [undefined symbol](self::UNDEFINED_SYMBOL) row — a module that declares something and never
+/// defines it is a module the program linking it will report, which is the right place for it
+/// because the program is where the call is.
+fn classify_module(report: &CompilerReport, file: &str) -> Result<(), PrepareFailure> {
+    if report.ok {
+        return Ok(());
+    }
+    let rendered = rendered(&report.stderr);
+    if rendered.is_empty() {
+        return Err(PrepareFailure::Toolchain(format!(
+            "clang {} {}{}",
+            compiler_version(),
+            report.status,
+            report.stderr_tail(),
+        )));
+    }
+    if rendered.contains(&format!("{file}:")) {
+        return Err(PrepareFailure::Program(PrepareError::Compile(rendered)));
+    }
+    Err(PrepareFailure::Toolchain(format!(
+        "clang {} rejected gg's own prelude rather than the module: {}",
         compiler_version(),
         report.stderr_tail(),
     )))

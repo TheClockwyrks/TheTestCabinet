@@ -27,7 +27,7 @@ the capability exists to measure.
 
 Which **language** that program is written in is a second axis of the same kind, and it is
 [first-class](#the-program-language): gg registers a *set* of program languages and a run
-picks one per agent. Nine are registered: TypeScript, which is the default;
+picks one per agent. Ten are registered: TypeScript, which is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked), which is the same
 arm with the [type check](#stripped-and-checked) removed and nothing else changed;
 [Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter), whose
@@ -44,7 +44,10 @@ bytecode onwards, so the pair is the seam's closest thing to a controlled experi
 itself; [Rust](/gg/program-languages/#rust-the-program-is-the-artifact), which ships **no guest at
 all**, because `rustc` compiles each turn's program into the component that evaluates it; and
 [Swift](/gg/program-languages/#swift-the-reply-is-the-artifact-verbatim), which is that same shape
-and the only arm that compiles a model's reply **byte for byte**.
+and compiles a model's reply **byte for byte**; and
+[C++](/gg/program-languages/#c-the-prelude-is-precompiled-and-the-exceptions-work), the third of
+that shape and the cheapest of the three per turn, because everything its programs are compiled
+against is precompiled once per machine.
 Every example on this page is TypeScript — and where a passage below quotes a
 spelling, a type-strip or a fence tag, it is TypeScript's answer to a question **every**
 language answers. [Program languages](/gg/program-languages/) is the design of that seam.
@@ -594,8 +597,9 @@ language's own convention — `csv-tools` becomes `lib.csvTools` here and `lib::
 module and a binding is a path the compiler resolves; on
 [Swift](/gg/program-languages/#what-a-swift-code-module-is) it is `lib.csvTools` again and
 also compiler-resolved, the namespace being a nested `enum` the module's declarations are
-moved into — deduplicated with a numeric suffix if
-two things spell alike. The reply to the read that loaded it **states the key it really got,
+moved into; on [C++](/gg/program-languages/#what-a-c-code-module-is) it is `lib::csv_tools`,
+a real nested namespace opened around the author's own file — deduplicated with a numeric
+suffix if two things spell alike. The reply to the read that loaded it **states the key it really got,
 in that agent's own syntax, and lists what it exports**, so a binding path is never guessed:
 
 ```ts
@@ -1577,7 +1581,7 @@ axis**: gg holds a set of program languages, each of which answers the same ques
 how to prepare a model's reply into something its guest evaluates, which committed guest
 and signature catalogue are its own, what its guest needs from the host linker, which
 [healing](/gg/response-healing/) questions have language-shaped answers, and which system
-prompt teaches it. Nine are registered. TypeScript is the default;
+prompt teaches it. Ten are registered. TypeScript is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is the same surface,
 the same guest and the same signatures with the `tsc` pass taken out, so an A/B across that
 pair measures what checking a program before it runs is worth;
@@ -1604,9 +1608,12 @@ a different language — it ships no guest at all, because `rustc` produces the 
 something that later reads one, so its component is compiled per turn and its code modules are
 linked into it; and
 [Swift](/gg/program-languages/#swift-the-reply-is-the-artifact-verbatim) is that shape reached down
-another road, and the arm whose reply is compiled **verbatim** — no wrapper, no prologue, no line
-offset — because Swift refuses `extension`, `protocol` and `import` inside a function body and an
-arm that forbade the first of those would forbid what the language is built around. This
+another road, and the first arm whose reply is compiled **verbatim** — no wrapper, no prologue, no
+line offset — because Swift refuses `extension`, `protocol` and `import` inside a function body and
+an arm that forbade the first of those would forbid what the language is built around; and
+[C++](/gg/program-languages/#c-the-prelude-is-precompiled-and-the-exceptions-work) is compiled
+verbatim for a stronger version of that reason and is the cheapest of the three per turn, its
+programs being compiled against a prelude precompiled once per machine. This
 section is the capability's view of that seam; the design of it — the rules every
 language's surface obeys, why each SDK is hand-written, and what adding one costs — is
 [its own page](/gg/program-languages/).

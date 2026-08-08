@@ -112,15 +112,6 @@ mod rust;
 #[path = "language/swift.rs"]
 mod swift;
 
-/// The **C++** arm's execution substrate, ahead of its SDK and its registration.
-///
-/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
-/// run can configure reaches it and every gate that iterates the registered set passes it by. What
-/// is here is the compile — the third that produces the *component* rather than a source for one,
-/// the second that compiles the model's reply byte for byte, and the first with a working
-/// **exception** mechanism — and the proof that its output runs through the real membrane; the
-/// module's own documentation says what is still missing, and why registering it before that would
-/// leave a capability silently absent on one arm.
 #[path = "language/cpp.rs"]
 mod cpp;
 
@@ -844,6 +835,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
         GgProgramLanguage::Kotlin => &kotlin::KOTLIN,
         GgProgramLanguage::Rust => &rust::RUST,
         GgProgramLanguage::Swift => &swift::SWIFT,
+        GgProgramLanguage::Cpp => &cpp::CPP,
     }
 }
 
@@ -1089,6 +1081,7 @@ pub struct ResolvedProgramLanguage {
 /// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled as a script by the Kotlin compiler and TeaVM in a warm JVM, then evaluated |
 /// | `"rust"` | [`Rust`](GgProgramLanguage::Rust) — compiled by `rustc` into the wasm component the turn is evaluated by |
 /// | `"swift"` | [`Swift`](GgProgramLanguage::Swift) — compiled by `swiftc`, byte for byte, into the wasm component the turn is evaluated by |
+/// | `"cpp"` | [`Cpp`](GgProgramLanguage::Cpp) — compiled by `clang++`, byte for byte, into the wasm component the turn is evaluated by |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason

@@ -1,19 +1,18 @@
 //! **C++** — the third arm whose component is compiled **per turn**, and the second whose program
 //! is compiled *verbatim*.
 //!
-//! What exists here today is this arm's **execution substrate** and its **model-facing surface**:
-//! the compile that turns a model's C++ into a wasm component, the hand-written SDK that program is
-//! written against, and the catalogue reflected out of that SDK's own documentation. The
-//! [registration](super::ProgramLanguage) lands later — a language arm cannot be half-registered,
-//! because the registry's `match` is exhaustive and every gate that iterates the registered set
-//! would immediately demand two Handlebars templates and a healing dialect. Nothing here is
-//! reachable from a run: there is no `language` value that resolves to it.
+//! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`compile`](self::compile) — the host-side `clang++`, the precompiled prelude that makes it
 //!   affordable, the in-process component encode with the preview1 adapter, what they cost, what
 //!   they share, and the two failures they tell apart;
 //! * [`source`](self::source) — the one thing gg reads out of a reply, which is whether it defines
-//!   `main`, and the lexer that reads it;
+//!   `main`, and the one thing it writes, which is the namespace a **code module**'s declarations
+//!   are opened inside;
+//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
+//!   lexical questions of, whose lexer is also the one [`source`] reads a reply with;
+//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
+//!   in C++'s syntax;
 //! * `packages/gg-sandbox-cpp/Sources/sdk/` — the SDK, hand-written and idiomatic, whose `///`
 //!   comments are the model-facing documentation and whose `//` comments are not;
 //! * `packages/gg-sandbox-cpp/signatures.sh` — the reflection, out of clang's own comment AST;
@@ -99,60 +98,384 @@
 //! to know that — and hardening is what keeps the most common shape of it, an out-of-bounds
 //! container access, out of that band and in the one above.
 //!
-//! # What is not built yet, and what it blocks
+//! # And a code module is **linked**, which is why the seam hands a program its modules
 //!
-//! **Code modules.** A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
-//! bound at `lib::<key>` for every program the agent writes afterwards, and on a compiled arm that
-//! binding is a **link**: the module has to be built into the same artifact as the program that uses
-//! it. The seam already hands a program's preparation the modules in its scope — the Rust arm's
-//! registration made that change — so nothing structural is missing.
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib::<key>`
+//! for every program the agent writes afterwards. On every interpreted arm that binding is made at
+//! *run time*: the guest is handed each module's prepared source beside the program and evaluates it
+//! first. C++ has no such moment — a module is C++, C++ links, and the only artifact a module can
+//! end up in is the artifact of a program that was compiled against it.
 //!
-//! What is missing is a decision that looks easier here than it was on Swift and is not. C++ has a
-//! real nested namespace, so `namespace lib::csv_tools { … }` wrapped around a module's declarations
-//! *where they stand* would preserve every line number and every default argument — the shape the
-//! Swift arm had to reach for an `extension` of a caseless `enum` to get. The problem is the same
-//! one that decided the program shape: a module author will write `#include <vector>` at the top of
-//! their file, and a `#include` inside a namespace puts the whole of `std` inside `lib::csv_tools`.
-//! Hoisting the includes out is a rewrite of the author's file, which is the one thing this arm has
-//! so far never done — and the alternative is to rely on the precompiled prelude, which already puts
-//! the standard library and gg's whole surface in front of a module as it does in front of a
-//! program, so a module *needs* no include at all.
+//! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
+//! scope, and each becomes a header put in front of the model's file, with its declarations opened
+//! inside `namespace lib::<key>` **where they stand**. It is the plainest shape of the three
+//! compiled arms — C++ has a real nested namespace, so nothing has to be moved, re-synthesized or
+//! declared twice — and the one thing that had to be decided is what happens to a `#include` at a
+//! module's top level, which is refused by name. See [`source`](self::source) for the shape, the
+//! refusal and the argument.
 //!
-//! The SDK is what makes that alternative real rather than merely available: a module author writing
-//! against this arm has `std::vector` and `fs::read_file` in scope before they type anything. What
-//! is left is telling them so, which is a sentence in the two prompt templates — and the templates
-//! are part of registration.
+//! What a model can see of the difference is that `lib::csv_tools::parse` is a **name the compiler
+//! resolves** rather than a property looked up on a value: a key that does not exist is a diagnostic
+//! on the turn that wrote it, where an interpreted arm finds out when the call is reached.
 //!
-//! Until it is made, [`compile_program`](self::compile::compile_program) takes no modules and this
-//! arm must not be registered: a C++ agent that read a code skill would otherwise get no `lib`
-//! binding at all, which is a capability silently absent on one arm of a study about capability.
+//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
+//! it is read, only to be checked, and once as part of every program that uses it. Without the first
+//! compile, a module that does not build would take down every program the agent wrote from then on,
+//! with the diagnostic landing against the turn's own program in a file the model never saw. See
+//! [`compile::compile_module`].
+
+use std::sync::OnceLock;
+
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use crate::sandbox::signatures::SignatureCatalogue;
+
+use super::{
+    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+};
 
 /// The `clang++` build and the in-process component encode: the host-side step that turns a model's
 /// C++ into the component that evaluates it.
-///
-/// `#[allow(dead_code)]` until the trait implementation calls it, exactly as [Ruby](super::ruby)'s,
-/// [PureScript](super::purescript)'s, [Java](super::java)'s, [Rust](super::rust)'s and
-/// [Swift](super::swift)'s were between their own substrate and their registration: nothing on the
-/// turn path can reach a language the registry has no arm for, so every entry point here is reached
-/// only by this arm's own tests.
-#[allow(dead_code)]
 #[path = "cpp.compile.rs"]
 pub(super) mod compile;
 
-/// What gg reads out of a model's C++ — whether it defines `main` — and the lexer that reads it.
-#[allow(dead_code)]
+/// What gg reads out of a model's C++ — whether it defines `main` — and the namespace a code
+/// module's declarations are opened inside.
 #[path = "cpp.source.rs"]
 pub(super) mod source;
+
+/// The lexical reading of a reply — C++'s answers to healing's questions, and the one lexer
+/// [`source`] shares.
+#[path = "cpp.healing.rs"]
+pub(super) mod healing;
+
+/// The committed catalogue, reflected out of the SDK's own documentation comments by
+/// `packages/gg-sandbox-cpp/signatures.sh` — `clang++ -ast-dump=json`, which is clang's own comment
+/// parser and the machinery `-Wdocumentation` and `clang-doc` are built on.
+const SIGNATURES: &str = include_str!("../guests/cpp.signatures.json");
+
+/// The parsed catalogue, parsed once per process.
+static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
+
+/// Everything gg *says* about a C++ program that is written in C++'s own syntax.
+///
+/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
+/// Individual function spellings are **not** here and not in the templates either: every name and
+/// signature they quote is resolved from this language's committed catalogue when the template
+/// renders.
+static PROMPT: PromptDialect = PromptDialect {
+    system_template: include_str!("../../../templates/system-code.cpp.hbs"),
+    system_template_name: "system-code.cpp",
+    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.cpp.hbs"),
+    nothing_shown_template_name: "code-nothing-shown.cpp",
+};
+
+/// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
+/// straight to `&'static dyn ProgramLanguage`.
+pub(super) static CPP: Cpp = Cpp;
+
+/// C++: compiled by `clang++` into the wasm component that evaluates it, per turn.
+pub(super) struct Cpp;
+
+impl ProgramLanguage for Cpp {
+    fn id(&self) -> GgProgramLanguage {
+        GgProgramLanguage::Cpp
+    }
+
+    fn display_name(&self) -> &'static str {
+        GgProgramLanguage::Cpp.display_name()
+    }
+
+    /// **`::`** — the second arm that does not write `.`, because here an API object is a
+    /// **namespace** and reaching a function on one is a qualified name rather than a member
+    /// access.
+    ///
+    /// It is the difference between a prompt full of `view::open_text` and a prompt full of
+    /// `view.open_text`, which on this arm is *no member named 'open_text' in the global namespace*
+    /// — so a model would be taught, in every sentence gg writes about a call, a spelling that
+    /// cannot compile.
+    fn member_separator(&self) -> &'static str {
+        "::"
+    }
+
+    /// One `clang++` over the model's file and the code modules in scope, then an in-process
+    /// component encode — see [`compile`] for what it costs, what it shares, and how it tells a
+    /// program `clang++` refused from a `clang++` that could not run.
+    fn prepare_program(
+        &self,
+        source: &str,
+        modules: &[CodeModule],
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
+        compile::compile_program(source, modules, context)
+    }
+
+    /// `clang++`, which is what a C++ programmer calls the compiler and what the binary gg spawns is
+    /// called.
+    ///
+    /// Not `wit-component`, which encodes the module `clang++` linked into a component and judges
+    /// nothing about the program: the same reason the [Rust](super::rust) and [Swift](super::swift)
+    /// arms name their front ends and the JVM arms name theirs rather than TeaVM. Naming a checker
+    /// is also what has this arm's compile [recorded](crate::sandbox::SandboxOutcome::compile) on
+    /// every turn, the failing path included — which matters here because this arm's compile is the
+    /// cheapest of the three that produce their own artifact, and an arm that looks free and is not
+    /// is exactly what the seam requires a language to declare rather than leave to be inferred.
+    fn checker(&self) -> Option<&'static str> {
+        Some("clang++")
+    }
+
+    /// Unpack the committed guest archive now, so the first code turn does not.
+    ///
+    /// The whole of this arm's warm-up that can be done without a compiler: 32 KB decompressed, once
+    /// per machine. The **precompiled prelude** is deliberately not built here — building one means
+    /// running `clang++`, and a compiler is spawned through a [`PrepareContext`] a warm-up does not
+    /// have — so the first program of a process pays about a second more than the rest and every
+    /// process after that on the same machine pays nothing. Idempotent and best effort: a failure
+    /// here is the failure the first compile makes, and there it is classified, counted and reported
+    /// as a [toolchain failure](PrepareFailure::Toolchain).
+    fn warm_prepare(&self) {
+        compile::warm();
+    }
+
+    /// The module's own `clang++`, asked to check the syntax rather than to build — and the names
+    /// its namespace offers, read from the author's own source.
+    ///
+    /// What comes back is **source**, which is what a linked language's module has to be: it is an
+    /// input to the [program compile](compile::compile_program) that binds it, not something a guest
+    /// could load on its own.
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
+        compile::compile_module(source, context)
+    }
+
+    /// **`.hpp`, and nothing else.**
+    ///
+    /// A code module here is compiled as a **header** — it is put in front of the model's file with
+    /// `clang++ -include`, which is what a header is for — so a header's extension is what it is
+    /// spelled with, and `.hpp` is the one C++ uses when it means C++ rather than C.
+    ///
+    /// One rather than the several a C++ author might reach for (`.h`, `.hh`, `.hxx`), because the
+    /// seam's reason for the list being a list does not apply here: it is for two languages that
+    /// share a module runtime, where withholding a skill from one of them would be a difference
+    /// between the arms larger than the one a study of the pair is measuring. Nothing else in the
+    /// registry compiles C++, so there is no such pair and no such loss — and one spelling is one
+    /// answer to "what does a skill's C++ file have to be called".
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["hpp"]
+    }
+
+    /// [snake_case](self::binding_name) — what this SDK spells every function and every type in, and
+    /// what the standard library it arrives beside spells everything in.
+    fn binding_name(&self, name: &str) -> String {
+        binding_name(name)
+    }
+
+    /// **None.** This arm commits no component, because the component *is* the program: see this
+    /// module's own documentation, and [`PreparedProgram::component`].
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        None
+    }
+
+    /// The committed catalogue, parsed once and checked to be **this** language's.
+    ///
+    /// Every registered language commits one of these under its own stem, and each carries the
+    /// language it was generated for; checking it here is what stops a catalogue filed — or
+    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
+    /// sandbox nobody has.
+    fn catalogue(&self) -> &'static SignatureCatalogue {
+        CATALOGUE.get_or_init(|| {
+            let catalogue = SignatureCatalogue::parse(SIGNATURES)
+                .expect("the committed signature catalogue is valid JSON of the expected shape");
+            assert_eq!(
+                catalogue.language,
+                GgProgramLanguage::Cpp,
+                "`guests/cpp.signatures.json` was generated for another program language",
+            );
+            catalogue
+        })
+    }
+
+    fn healing(&self) -> &'static dyn crate::healing::Dialect {
+        &healing::CPP_DIALECT
+    }
+
+    fn prompt(&self) -> &'static PromptDialect {
+        &PROMPT
+    }
+
+    /// [`view::open_file("src/main.cpp");`](self::open_file_statement) — with the window as the
+    /// call's own optional second argument, written as a designated initialiser.
+    fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+    }
+
+    /// [An array of names and a range `for` over it](self::open_docs_views_statement), each
+    /// iteration opening one documentation view — inside the `int main` this language has nowhere
+    /// else to put a statement than.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+    }
+
+    /// One function returning `name` — because a C++ code module is a file of **declarations** and a
+    /// C++ program is a translation unit that must define `main`.
+    ///
+    /// The seam's default subject is this language's generated documentation program, and that
+    /// program *would* compile as a module: a `main` inside `namespace lib::<key>` is an ordinary
+    /// function rather than an entry point. It is still the wrong subject, because it would be
+    /// asserting isolation over a shape no code skill anyone writes has. So this arm answers for
+    /// itself, as [Rust](super::rust), [Swift](super::swift) and the [JVM](super::jvm) arms do, and
+    /// the `name` rides in as a returned **string literal** — which is where the module's one export
+    /// hands it back.
+    #[cfg(test)]
+    fn isolation_module(&self, name: &str) -> String {
+        format!(
+            "std::string marker() {{\n  return {};\n}}\n",
+            serde_json::Value::String(name.to_string())
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The syntax this arm writes
+// ---------------------------------------------------------------------------------------------
+
+/// `csv-tools` → `csv_tools`, `my_helpers.v2` → `my_helpers_v2`, `9lives` → `_9lives`.
+///
+/// snake_case because that is what this SDK spells every function and every type in, and what the
+/// standard library it arrives beside spells everything in — so a program reaching
+/// `lib::csv_tools::parse(…)` reads like the rest of its own scope.
+///
+/// Any separator — `-`, `.`, or anything a name should not have had — becomes `_`, a run of them
+/// becomes one, an upper-case letter is lowered, a name that is nothing but separators becomes
+/// `module`, and a leading digit is prefixed.
+///
+/// It has to be a valid C++ **identifier** for the same reason the [Rust](super::rust) arm's does:
+/// on this arm the key is a namespace the compiler resolves (`lib::<key>`) rather than a string
+/// looked up at run time, so a key C++ could not parse would be a program that does not compile.
+///
+/// Deliberately ASCII-only, though C++ identifiers may carry other Unicode letters, for the reason
+/// every other arm gives: a name a model has to reproduce exactly is one that should have no
+/// characters it could get wrong.
+pub(super) fn binding_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut separated = false;
+    for character in name.chars() {
+        if character.is_ascii_alphanumeric() {
+            if separated && !out.is_empty() {
+                out.push('_');
+            }
+            separated = false;
+            out.extend(character.to_lowercase());
+        } else {
+            separated = true;
+        }
+    }
+    if out.is_empty() {
+        return "module".to_string();
+    }
+    if out.starts_with(|character: char| character.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// `view::open_file("src/main.cpp");`, or the same call with `{.offset = 400, .limit = 200}` for a
+/// window — with `view::open_file` already spelled by the language that asked.
+///
+/// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
+/// into the agent's own transcript and read by the model as an example of its own output, so
+/// anything clever in it is a style the run did not intend to teach.
+///
+/// The window is a **designated initialiser** for the call's own optional argument, which is what
+/// this SDK offers instead of keyword arguments and what a C++23 author writes. The whole-file form
+/// passes nothing at all, because the argument has a default and a C++ author does not write `{}`
+/// where the default is what they wanted.
+///
+/// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
+/// statement that would not parse: C++'s ordinary string literals accept exactly the escapes JSON's
+/// do.
+pub(super) fn open_file_statement(
+    open_file: &str,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let path = serde_json::Value::String(path.to_string());
+    match window {
+        Some(window) => format!(
+            "{open_file}({path}, {{.offset = {}, .limit = {}}});",
+            window.offset, window.limit
+        ),
+        None => format!("{open_file}({path});"),
+    }
+}
+
+/// A whole translation unit: an array of names and a range `for` over it, each iteration opening one
+/// documentation view.
+///
+/// It is a **whole program** rather than a statement list, and this arm is the one where that is
+/// forced by the grammar rather than chosen: C++ has nowhere for a statement to live except a
+/// function body, and gg [refuses](self::source::defines_main) a reply that defines no `main`. So
+/// what this generates is what it has to be, and what the seam asks for anyway — the on-use script
+/// of every [built-in family skill](crate::skills) is a program.
+///
+/// An array and a loop rather than one call per name because the list is as long as the family —
+/// eleven calls written out would be a program a model reads as a style to copy — and a
+/// `std::array` deduced from its initialiser rather than a `std::vector`, because it is a fixed list
+/// of string literals and allocating for one is what a C++ author would not do. The loop is a range
+/// `for` over `const auto &`, which is the same author's default.
+///
+/// The empty case is spelled with an explicit element type and length, because an empty braced
+/// initialiser gives `std::array` nothing to deduce from — *no viable constructor or deduction
+/// guide* — and the `(void)` cast keeps a program that declares an array it never reads from being
+/// a warning about one.
+pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    let entries: Vec<String> = names
+        .iter()
+        .map(|name| format!("      {}", serde_json::Value::String((*name).to_string())))
+        .collect();
+    let listed = match entries.is_empty() {
+        true => {
+            "  const std::array<std::string_view, 0> functions{};\n  (void)functions;\n".to_string()
+        }
+        false => format!(
+            "  const std::array functions{{\n{},\n  }};\n",
+            entries.join(",\n")
+        ),
+    };
+    format!(
+        "int main() {{\n{listed}  for (const auto &name : functions) {{\n    \
+         {open_docs_view}(name);\n  }}\n  return 0;\n}}\n"
+    )
+}
+
+#[cfg(test)]
+#[path = "cpp.test.rs"]
+mod tests;
 
 /// **The C++ arm's execution substrate**, driven end to end through gg's real compiler, linker,
 /// membrane and store.
 ///
 /// A separate test file from any unit tests, because these are a different kind of test: each one
 /// runs a real `clang++` and compiles a wasm component, which is tens or hundreds of milliseconds
-/// rather than microseconds, and the isolation gate in it runs sixteen of them at once.
+/// rather than microseconds.
 #[cfg(test)]
 #[path = "cpp.substrate.test.rs"]
 mod substrate;
+
+/// **Every C++ example a model is shown, put through `clang++`** — the prompt's, the notice's and
+/// the catalogue's.
+///
+/// A separate file from [`surface`] because it asks a question no other kind of gate can: not
+/// whether the call gg quotes exists, which [`crate::prompts`] already gates in every language, but
+/// whether the code around it builds. On a compiled arm an example that does not is a whole turn
+/// spent on gg's own prose.
+#[cfg(test)]
+#[path = "cpp.examples.test.rs"]
+mod examples;
 
 /// **The C++ arm's model-facing surface**: the hand-written SDK, the catalogue reflected out of its
 /// own documentation, and the library set it says a program may include.

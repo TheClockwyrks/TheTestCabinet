@@ -83,12 +83,15 @@ Reading a code skill binds its exports at **`lib.<key>`** in every program the a
 from then on. The key is the skill's name in that language's own convention (`csv-tools` →
 `lib.csvTools`, or `lib::csv_tools` on
 [Rust](/gg/program-languages/#rust-the-program-is-the-artifact), where an API object is a
-module), deduplicated with a numeric suffix if something else already claimed it. On the two
-compiled arms the binding is **linked** rather than looked up, so a key or a name that does
-not exist is a diagnostic on the turn that wrote it: Rust declares each module as a `mod`,
-and [Swift](/gg/program-languages/#what-a-swift-code-module-is) moves each of its top-level
-declarations into a nested `enum` where they stand, which is what keeps the author's
-argument labels and default values at the call site. And **the
+module), deduplicated with a numeric suffix if something else already claimed it. On the
+three compiled arms the binding is **linked** rather than looked up, so a key or a name that
+does not exist is a diagnostic on the turn that wrote it: Rust declares each module as a
+`mod`, [Swift](/gg/program-languages/#what-a-swift-code-module-is) moves each of its
+top-level declarations into a nested `enum` where they stand, which is what keeps the
+author's argument labels and default values at the call site, and
+[C++](/gg/program-languages/#what-a-c-code-module-is) opens a real nested namespace around
+the author's whole file, which keeps every default argument and template for the same
+reason. And **the
 reply to the read states the key it really got, in the reader's own syntax, and what it
 exports**, because a binding path a model has to guess is a binding path it will guess
 wrong:
