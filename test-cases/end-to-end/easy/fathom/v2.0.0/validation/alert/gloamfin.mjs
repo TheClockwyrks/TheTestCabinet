@@ -3,10 +3,11 @@
 // The pair is posed instantly in `arrange`; the acquisition needs the real sim to run,
 // so the watch for the alert is `act` and is what the clip depicts.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -19,16 +20,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 2); // inside close hearing
       await denAllExcept(api, ["gloamfin"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
     },
 
     async act(api) {

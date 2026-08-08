@@ -1,60 +1,56 @@
 // Automated validation for the Targeting sub-item `first-default`.
 //
-// By default a damage tower fires at the FIRST target — the valid in-range unit furthest
-// along its path. The check poses three real atoms at increasing progress in a Beam's
-// range and, after one real tick, reads which one the tower acquired: the furthest along.
+// specs/towers.md: "Every tower defaults to `first`", and `first` is "the valid unit furthest
+// along the conduit (closest to the collector)". So this item is the one member of the
+// targeting family that arms NOTHING — the default is the thing under test, and a tower that
+// has had `setTargeting` called on it can no longer demonstrate it.
+//
+// It shares the three-atom scene with the five explicit priorities (`poseTargetingScene` in
+// `_helpers.mjs`), which is what makes the family comparable: the same board, the same three
+// atoms, a different one singled out each time. Here it is C, posed 110 arc length ahead of
+// the Beam's covering point.
 
 import {
-  startRun,
-  pathGeom,
-  placeCovering,
-  spawnAt,
-  towerById,
-  TICK,
-  MAP,
+  startScenario,
+  poseTargetingScene,
+  actTargetingPick,
+  checkTargetingPick,
+  unitById,
 } from "../_helpers.mjs";
 
 export default function item() {
-  let t;
-  let front;
-  let targetId;
+  let scene;
+  let result;
+  let premise;
 
   return {
     id: "targeting.first-default",
 
+    // No `setTargeting` call: the tower is left exactly as `placeTower` built it.
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
-      const g = pathGeom(snap.paths[0]);
-      const s0 = g.length * 0.2;
-      t = await placeCovering(api, "beam", g, s0);
-      await spawnAt(api, {
-        type: "atom",
-        electrons: 4,
-        pathId: 0,
-        s: s0 - 120,
-      });
-      await spawnAt(api, { type: "atom", electrons: 4, pathId: 0, s: s0 });
-      front = await spawnAt(api, {
-        type: "atom",
-        electrons: 4,
-        pathId: 0,
-        s: s0 + 120,
-      });
+      scene = await poseTargetingScene(api, startScenario, null);
     },
 
-    // One tick is all the acquisition needs, and the clip then shows the Beam holding on
-    // the leading atom while the two behind it go unattended.
     async act(api) {
-      await api.advance(TICK);
-      targetId = towerById(await api.snapshot(), t.id).targetId;
+      result = await actTargetingPick(api, scene);
+
+      const snap = result.snap;
+      premise = [scene.A, scene.B, scene.C].map(
+        (id) => unitById(snap, id)?.progress ?? null,
+      );
     },
 
     async assert(api, check) {
-      check.expectEq(
-        "the default target is the unit furthest along the path",
-        targetId,
-        front,
+      const [a, b, c] = premise;
+      check.expectOk(
+        "the front atom really was the furthest along when the shot was taken",
+        a != null && b != null && c != null && c > b && c > a,
       );
+      checkTargetingPick(check, {
+        label: "the default priority",
+        result,
+        pick: scene.C,
+      });
     },
   };
 }

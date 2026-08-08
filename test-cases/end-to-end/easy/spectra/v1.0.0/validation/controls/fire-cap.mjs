@@ -6,6 +6,8 @@
 
 import {
   startClean,
+  holdDrones,
+  spawnBystander,
   friendlyBullets,
   actHoldSample,
   PBULLET_CAP,
@@ -27,10 +29,23 @@ export default function item() {
   return {
     id: "controls.fire-cap",
 
-    // A clean wave with the ship centered: nothing on the field can absorb a bullet
-    // and make the live count read low for a reason other than the cap.
+    // A clean wave with ONE held bystander drone parked well off to the side, and
+    // the ship centered under an empty column.
+    //
+    // The bystander keeps the wave alive: `startClean` empties the field, and an
+    // empty field is a CLEARED WAVE the game may act on at once (see
+    // `spawnBystander`), which takes the build out of `inWave` — where a held fire
+    // key does nothing. Without one, this item read a peak of a single live bullet
+    // on a build that ends the wave promptly and failed a cap that was in fact
+    // correct.
+    //
+    // Held still (`holdDrones`) at x 180 while the ship fires up the column at
+    // x 640, so it can neither drift into that column nor absorb a bullet and make
+    // the live count read low for a reason other than the cap.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
+      await spawnBystander(api);
       await api.call("setShipX", 640);
     },
 

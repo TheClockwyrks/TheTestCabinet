@@ -4,6 +4,7 @@
 // handleInput() (edge events) each frame, then fixedStep() at a fixed timestep,
 // then updatePointer() before render.
 
+import { Audio } from "./audio";
 import { heatColor } from "./colors";
 import {
   BASE_K,
@@ -95,6 +96,7 @@ const HOTKEYS: Record<string, number> = {
 
 export class Game {
   readonly input: Input;
+  readonly audio = new Audio();
 
   state: AppState = "title";
   phase: Phase = "build";
@@ -167,6 +169,7 @@ export class Game {
 
   constructor(input: Input) {
     this.input = input;
+    this.input.onFirstPress(() => this.audio.resume());
     this.fieldRight = this.grid.distanceField(this.grid.rightExhaust.tiles);
     this.fieldBottom = this.grid.distanceField(this.grid.bottomExhaust.tiles);
     this.toTitle();
@@ -284,14 +287,17 @@ export class Game {
     this.score += 100 * this.waveNumber;
     if (this.waveNumber >= this.cfg.totalWaves) {
       this.score += 250 * this.lives;
+      this.audio.victory();
       this.state = "victory";
       this.menuIndex = 0;
       return;
     }
+    this.audio.waveClear();
     this.enterBuildPhase(this.waveNumber + 1, true);
   }
 
   private gameOver(): void {
+    this.audio.gameOver();
     this.state = "gameover";
     this.menuIndex = 0;
     this.armed = null;
@@ -489,6 +495,7 @@ export class Game {
         t.heat = REDLINE;
         t.tripped = true;
         t.tripTimer = TRIP_TIME;
+        this.audio.trip();
       }
     }
   }
@@ -557,6 +564,7 @@ export class Game {
       color: t.isRime ? "#79e0ff" : heatColor(t.heat),
       life: 0.07,
     });
+    this.audio.fire();
   }
 
   private moveSurge(dt: number): void {
@@ -578,6 +586,7 @@ export class Game {
         this.money += u.def.bounty;
         this.score += u.def.bounty;
         this.kills++;
+        this.audio.death();
       } else {
         survivors.push(u);
       }
@@ -591,6 +600,7 @@ export class Game {
       if (u.leaked) {
         this.lives -= u.def.leak;
         this.leakCount++;
+        this.audio.leak();
       } else {
         survivors.push(u);
       }
@@ -671,6 +681,7 @@ export class Game {
     t.placedWave = this.waveNumber;
     for (const tile of this.grid.footprintTiles(col, row, t.size)) this.grid.blocked[tile] = 1;
     this.towers.push(t);
+    this.audio.place();
     this.money -= TOWER_DEFS[type].cost;
     this.recomputePaths();
     // Placement stays armed so the tower remains "held" by the cursor and the
@@ -803,6 +814,7 @@ export class Game {
         // read-only debug overlay toggle (specs/instrumentation.md).
         if (ev.code === "KeyM") {
           this.muted = !this.muted;
+          this.audio.setMuted(this.muted);
         } else if (ev.code === "Backquote") {
           this.debugOverlay = !this.debugOverlay;
         } else {
@@ -1112,9 +1124,37 @@ export class Game {
 
   // Move the held preview so its footprint top-left sits at (col, row); the
   // valid/invalid state updates through the real placement check.
+  //
+  // This moves the POINTER and then recomputes the preview from it, rather than writing
+  // a preview into the game state directly. Both give the same answer to the very next
+  // `snapshot()`, and only one of them survives to be drawn: `update()` rebuilds
+  // `this.preview` from `input.mouseX/mouseY` on every frame while a tower is armed, so a
+  // directly-written preview is gone by the time the next frame paints. That was
+  // invisible to a check reading `snapshot().build` and glaring in a SCREENSHOT — every
+  // still meant to show a footprint hovering somewhere (a sealing placement being
+  // refused, a build-zone boundary, a tower held against the casing) instead showed the
+  // preview parked wherever the real cursor happened to sit, which under an automated
+  // driver is the top-left corner of the stage.
+  //
+  // Driving the pointer is also what `specs/instrumentation.md` actually asks for —
+  // "moves the held preview ... exactly as moving the mouse over the floor does" — and it
+  // brings the debug path under the same keep-it-on-the-grid clamp `snapTopLeft` applies
+  // to the mouse, so an off-grid request behaves the same either way.
   debugMovePreview(col: number, row: number): void {
     if (!this.armed) return;
-    this.preview = { col, row, valid: this.canPlaceAt(this.armed, col, row) };
+    const size = TOWER_DEFS[this.armed].size;
+    // The pointer sits at the footprint's centre, which is the point `snapTopLeft`
+    // centres that footprint on.
+    this.input.setMouse(
+      FLOOR_X0 + (col + size / 2) * TILE,
+      FLOOR_Y0 + (row + size / 2) * TILE,
+    );
+    const snapped = this.snapTopLeft(this.input.mouseX, this.input.mouseY, size);
+    this.preview = {
+      col: snapped.col,
+      row: snapped.row,
+      valid: this.canPlaceAt(this.armed, snapped.col, snapped.row),
+    };
   }
 
   // Rotate the held preview 90 degrees, turning its radiator faces.
@@ -1142,7 +1182,8 @@ export class Game {
     if (this.state !== "playing") return;
     this.armed = type;
     this.armedRot = rot;
-    this.preview = { col, row, valid: this.canPlaceAt(type, col, row) };
+    // Through the pointer, exactly as `debugMovePreview` does and for the same reason.
+    this.debugMovePreview(col, row);
     this.placeTower(type, col, row, rot);
   }
 
@@ -1282,7 +1323,12 @@ export class Game {
       money: this.money,
       lives: this.lives,
       score: this.score,
-      wave: inMatch ? (this.openingPhase ? 0 : this.waveNumber) : 0,
+      // A build phase belongs to the wave it is preparing for, so the opening phase
+      // reports Wave 1 and a cleared wave `n` advances to `n + 1` as its build phase
+      // begins (specs/gameplay.md). `waveNumber` already tracks exactly that — the
+      // opening phase is `enterBuildPhase(1)` and `clearWave` enters `n + 1` — so
+      // there is nothing to adjust here beyond having no run at all outside a match.
+      wave: inMatch ? this.waveNumber : 0,
       waveCount: this.cfg.totalWaves,
       buildTimer,
       wavePreview,

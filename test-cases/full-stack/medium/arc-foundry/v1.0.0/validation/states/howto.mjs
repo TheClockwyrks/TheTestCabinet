@@ -1,17 +1,27 @@
 // Automated validation for states.howto: the how-to-play state is reachable from the title.
 //
-// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the menu
-// move and the confirm are the act.
+// HOW TO PLAY is clicked on the main menu, on the entry's own reported rectangle
+// (`menuButtons()`), so the click lands wherever this build drew it.
+//
+// WHY THE MOUSE AND NOT `ArrowDown` + `Enter`. This used to move the highlight down and confirm.
+// `specs/controls.md` makes the pointer the primary path and the keyboard "an alternative", so a
+// build that binds no menu keys is conformant — and one failed this item, reporting the screen as
+// unreachable when a player reaches it in one click. The keyboard route was also the more fragile
+// of the two here: it depended on HOW TO PLAY being the SECOND entry and on the moved highlight
+// having painted before the confirm, neither of which the spec fixes beyond the entry order. A
+// click asks for the entry by name. See `clickMenu` in `_helpers.mjs`.
+//
+// Only the reset is arranged; NAVIGATING to the state is the behavior under test, so the click is
+// the act.
 
-import { snap } from "../_helpers.mjs";
+import { clickMenu, snap } from "../_helpers.mjs";
 
-// The old script waited 80 ms after the reset for the title to come up. At 60 Hz that is 4.8
-// ticks; the tick contract rejects a fraction rather than rounding it, so round UP to 5 — a
-// settle must never come out shorter than it was.
-const SETTLE_TICKS = 5;
+// A real pause so the arrived-at screen has painted before the still is taken.
+const PAINT_MS = 300;
 
 export default function item() {
-  // The screen the navigation landed on, read by `assert`.
+  // The entry that was clicked and the screen it landed on, both read by `assert`.
+  let entry;
   let screen;
 
   return {
@@ -22,16 +32,15 @@ export default function item() {
     },
 
     async act(api) {
-      await api.advance(SETTLE_TICKS);
-      await api.call("press", "ArrowDown"); // move to HOW TO PLAY
-      await api.call("press", "Enter");
+      entry = await clickMenu(api, "howto");
       screen = (await snap(api)).screen;
 
-      await api.advance(SETTLE_TICKS); // let the screen paint before the still
+      await api.settle(PAINT_MS); // let the screen paint before the still
       await api.screenshot("howto");
     },
 
     async assert(api, check) {
+      check.expectOk("the title menu offers HOW TO PLAY as a clickable choice", Boolean(entry));
       check.expectEq("the how-to-play screen is reachable", screen, "howto");
     },
   };

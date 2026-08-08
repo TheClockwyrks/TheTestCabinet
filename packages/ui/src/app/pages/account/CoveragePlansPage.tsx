@@ -10,6 +10,29 @@ import { AccountTabs } from "./AccountTabs";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
+/** One plan card's progress: run-level counts and the bar's filled fraction. */
+export interface PlanProgress {
+  runsDone: number;
+  runsTotal: number;
+  donePct: number;
+}
+
+// A plan's progress measured in *runs*, not satisfied cells. A cell only counts as
+// satisfied once it has hit the target, so a cells-based bar collapses to empty the
+// moment the target is raised (2 → 3 runs/cell on an already-covered plan) even
+// though two thirds of the wanted runs exist. `runsMissing` is the sum of the
+// per-cell shortfalls (each floored at zero), so the runs already accounted for —
+// completed plus in-flight, capped at the target — are the total minus that.
+export function planProgress(plan: CoveragePlanSummary): PlanProgress {
+  const runsTotal = plan.cellsTotal * plan.runsPerCell;
+  const runsDone = runsTotal - plan.runsMissing;
+  return {
+    runsDone,
+    runsTotal,
+    donePct: runsTotal > 0 ? (runsDone / runsTotal) * 100 : 0,
+  };
+}
+
 // The Coverage tab (`/account/coverage`): the signed-in reviewer's coverage plans,
 // each a card with its roll-up (cells covered / runs missing) linking to its own
 // dashboard, plus create / edit / delete. Splitting the model space across several
@@ -122,10 +145,7 @@ export function CoveragePlansPage() {
       ) : (
         <div className={styles.list}>
           {plans.map((plan) => {
-            const donePct =
-              plan.cellsTotal > 0
-                ? (plan.cellsSatisfied / plan.cellsTotal) * 100
-                : 0;
+            const { runsDone, runsTotal, donePct } = planProgress(plan);
             return (
               <div key={plan.id} className={styles.rowCard}>
                 <div className={styles.rowMain}>
@@ -142,7 +162,7 @@ export function CoveragePlansPage() {
                 <div className={styles.rowRight}>
                   <span
                     className={styles.rowProgress}
-                    title={`${plan.cellsSatisfied} of ${plan.cellsTotal} cells covered`}
+                    title={`${runsDone} of ${runsTotal} runs · ${plan.cellsSatisfied} of ${plan.cellsTotal} cells covered`}
                   >
                     <span className={styles.groupBar} aria-hidden>
                       <span

@@ -9,8 +9,22 @@
 //
 // The sweep stays a loop because it tracks the fastest speed seen across the whole burn, which
 // a single long advance would step straight over. 50 samples x 0.1 s = 5 s, i.e. 50 x 12 ticks.
+//
+// The plateau is checked as a BAND rather than as 680 on the nose. `specs/ship.md` fixes the
+// cap ("applied after thrust each step") and the drag ("each step multiply the ship's velocity
+// by 0.5 ^ (dt / 3.0)") but never says which of the two a step ends on. Clamp-then-drag ends a
+// step at 678.69; drag-then-clamp ends it at 680. Both clamp after thrust, both reach the cap,
+// and neither ever passes it, so both are conformant and the difference is not something the
+// case gets to decide. The band is exactly one step of drag wide (`SHIP_MAX_PLATEAU`), which
+// admits both and still rejects a build that plateaus anywhere genuinely short of the ceiling.
 
-import { newGame, poseShip, speedOf, SHIP_MAX } from "../_helpers.mjs";
+import {
+  newGame,
+  poseShip,
+  speedOf,
+  SHIP_MAX,
+  SHIP_MAX_PLATEAU,
+} from "../_helpers.mjs";
 
 export default function item() {
   // The fastest speed seen across the burn, and the ship it ended on, read by `assert`.
@@ -43,11 +57,15 @@ export default function item() {
         maxSpeed,
         SHIP_MAX + 0.5,
       );
-      check.expectClose(
+      check.expectGe(
         "thrusting flat out, the ship plateaus at the cap",
         speedOf(final),
-        SHIP_MAX,
-        1,
+        SHIP_MAX_PLATEAU - 0.5,
+      );
+      check.expectLe(
+        "and does not sit above it",
+        speedOf(final),
+        SHIP_MAX + 0.5,
       );
     },
   };

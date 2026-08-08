@@ -9,7 +9,7 @@
 // the single previewed type. Across the run the waves must not all be the same type —
 // the roster cycles, so each wave presses a different answer.
 
-import { newGame } from "../_helpers.mjs";
+import { newGame, actTail } from "../_helpers.mjs";
 
 // A spread across the run: the opening waves, the ones where the roster is still being
 // introduced, and a couple past the midpoint. All are non-milestone waves (the
@@ -32,6 +32,13 @@ async function preview(api, wave) {
 // cover the same 840 ticks. Sampling in slices (rather than one long advance) is the
 // point — a mixed wave could field its second type at any moment in the window, and
 // only a repeated read would catch it.
+//
+// The slices are SKIPPED rather than advanced. The sampling has to cover the whole
+// window to be sound, but a reviewer does not have to sit through two of them: at
+// real time this was half a minute of clip, most of it an empty floor between spawns,
+// and it crowded out the one thing worth seeing. The verdict is unchanged — a skipped
+// slice steps the same real simulation and reads the same snapshot — and `act` films
+// a beat of the last released wave in flight instead.
 const SLICE_TICKS = 30;
 const SLICES = 28;
 
@@ -52,7 +59,7 @@ async function spawnedTypes(api, wave) {
   await api.call("startWave");
   const seen = new Set();
   for (let i = 0; i < SLICES; i += 1) {
-    await api.advance(SLICE_TICKS);
+    await api.skip(SLICE_TICKS);
     for (const u of (await api.snapshot()).surge) {
       if (!carriedOver.has(u.id)) seen.add(u.type);
     }
@@ -67,6 +74,9 @@ export default function item() {
 
   return {
     id: "surge.single-type-waves",
+
+    // The sampling is skipped; what is filmed is a beat of each released wave.
+    clipMs: 9000,
 
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
@@ -83,11 +93,28 @@ export default function item() {
         if (types.length === 1) previewed.push(types[0]);
       }
 
-      // Spot-check that what actually spawns is the single previewed type.
+      // Spot-check that what actually spawns is the single previewed type — and film a
+      // beat of EACH of them.
+      //
+      // The sampling itself is skipped (it is half a minute of mostly-empty floor
+      // between spawns), so without a beat per wave the only filmed part was a tail on
+      // the LAST wave sampled: one wave, one type, and no way to see that the next wave
+      // fields a different one. Since half of what this item claims is that the waves
+      // are not all the same — "the roster cycles, so each wave presses a different
+      // answer" — a clip of one wave cannot carry it. A beat after each release shows
+      // both waves in the same clip, each uniform in itself and plainly different from
+      // the other.
       for (const w of RELEASED) {
         const want = await preview(api, w);
         const got = await spawnedTypes(api, w);
         released.push({ wave: w, want, got });
+        // Re-release the wave and hold on it, so what was sampled invisibly is also
+        // shown. `spawnedTypes` left the floor at the far end of its own window, so this
+        // poses the wave fresh and films its opening.
+        await api.call("setWave", w);
+        await api.call("startWave");
+        await api.skipUntil((s2) => s2.surge.length > 0, { max: 600, poll: 6 });
+        await actTail(api, 150); // 2.5 s of this wave's single type on the floor
       }
     },
 

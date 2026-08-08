@@ -4,12 +4,13 @@
 // The blind pair is posed instantly (`arrange`); `act` lets the pose settle in the sim,
 // gives the build a frame to paint, and reads the drawn pixel back.
 import {
-  startPlaying,
-  findOccludedPair,
   denAllExcept,
-  pred,
-  sampleColor,
+  findOccludedPair,
   isAmber,
+  pred,
+  quietBoard,
+  sampleColor,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -23,13 +24,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const bp = findOccludedPair(snap); // near enough for the Kindle circle, LOS blocked
       await denAllExcept(api, ["flarefish"]);
-      await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "flarefish", {
         tx: bp.pred.tx,
         ty: bp.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, bp.forager);
     },
 
     async act(api) {

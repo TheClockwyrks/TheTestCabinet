@@ -11,7 +11,18 @@
 // would then fail on a conformant build before this item ever reached the selling it
 // exists to check.
 
-import { newGame, build } from "../_helpers.mjs";
+// AND THE SURGE IS WALKING WHILE IT HAPPENS.
+//
+// The route lengths either side of the sell decide the verdict, and they are two numbers
+// in a snapshot — so the old clip was a wall going up, a pause, the wall coming down, and
+// a pause, with nothing on the floor to show what either did. `mazing.towers-are-walls`
+// already films the other half of this pair by releasing Motes into its wall and letting
+// a reviewer watch them take the long way round; this item is the same wall plus the
+// selling, so it releases the same Motes. What the clip now shows is units grinding
+// through a corridor, the wall vanishing under them, and the route they take straightening
+// out — which is what "selling reopens the footprint and the surge re-paths" means.
+
+import { newGame, build, spawn } from "../_helpers.mjs";
 
 const WALL_A_ROWS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24];
 const WALL_B_ROWS = [10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34];
@@ -21,36 +32,51 @@ export default function item() {
   let walled;
   let after;
   let built = 0;
+  const ids = [];
 
   return {
     id: "refund.reopens",
 
-    // The baseline route length, measured on the empty floor before anything is built.
+    // The wall goes up in `arrange`, so the clip opens on a floor that already has it;
+    // what is filmed is the surge walking it, the sell, and the re-path.
+    clipMs: 12000,
+
+    // The baseline route length, measured on the empty floor before anything is built —
+    // then the wall, and the surge released into it.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
+      await api.call("setLives", 1000000);
       before = (await api.snapshot()).paths.left.length;
-    },
 
-    // Wall the lane and then sell the wall back off. This IS the clip the old script
-    // appended by hand: the route lengthens as the wall goes up and reopens as it
-    // comes down. The two settles are what make that readable — building and selling
-    // are instant control ops, so without a pause the clip would show only the end
-    // state.
-    async act(api) {
-      const ids = [];
       for (const row of WALL_A_ROWS) ids.push(await build(api, "arc", 20, row));
       for (const row of WALL_B_ROWS) ids.push(await build(api, "arc", 24, row));
       // A refused placement comes back as null; the whole wall has to be there for the
       // lengthened reading — and for the sell-back — to mean anything.
       built = ids.filter((id) => id !== null).length;
       walled = (await api.snapshot()).paths.left.length;
-      await api.settle(600);
+
+      for (let i = 0; i < 3; i += 1) await spawn(api, "mote", "left");
+      // Bring them up to the wall unfilmed, so the clip opens on units already working
+      // their way through the corridor rather than on a minute of open floor.
+      await api.skipUntil((s) => s.surge.some((u) => u.x > 300), {
+        max: 1800,
+        poll: 12,
+      });
+    },
+
+    // Let the Motes walk the maze, sell the whole wall out from under them, and let them
+    // re-path across the floor it reopened. Selling is an instant control op, so the two
+    // advances either side of it are what make the change legible: without them the clip
+    // is a wall and then no wall, with nothing between to show the surge reacting.
+    async act(api) {
+      await api.advance(150); // 2.5 s of the surge working through the maze
 
       for (const id of ids) {
         if (id !== null) await api.call("sellTower", id);
       }
       after = (await api.snapshot()).paths.left.length;
-      await api.settle(600);
+
+      await api.advance(240); // 4 s of the same units taking the reopened route
     },
 
     async assert(api, check) {

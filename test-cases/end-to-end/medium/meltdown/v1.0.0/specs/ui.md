@@ -65,6 +65,8 @@ type of `specs/overview.md`. The mode and difficulty content lives in `specs/mod
 - Pause menu: Resume, Restart, and Quit to menu, over the frozen floor.
 - Victory screen and Game over screen: the end-of-game results with PLAY AGAIN and
   MENU. PLAY AGAIN replays the same mode and difficulty; MENU returns to the main menu.
+  PLAY AGAIN is the focused entry when either screen opens, so the confirm key
+  (`specs/controls.md`) replays the run.
 
 Every menu is fully operable with the mouse or touch alone, with the keyboard
 accelerators of `specs/controls.md` as an alternative. This specification fixes the
@@ -117,3 +119,10 @@ dying, a unit leaking an exhaust, placing a tower, clearing a wave, and the Vict
 Game-over stings. The game stays fully playable with sound muted and never fails to run
 or load if audio cannot start. Provide a mute toggle (`specs/controls.md`), and do not
 start audio until the player first interacts (browsers block autoplay).
+
+The mute control shows which state it is in. It is a control in the build panel
+(`specs/controls.md`), and it reads on screen as on or off — a struck-through or
+otherwise distinctly drawn icon, a label that changes, a lit/unlit button, whatever fits
+the HUD — so a player who has muted the game can see that they have, and can tell a
+muted game from one whose audio failed to start. The toggle changes that read
+immediately, whether it was operated by the on-screen control or by the mute hotkey.

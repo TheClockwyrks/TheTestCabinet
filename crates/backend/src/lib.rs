@@ -144,7 +144,10 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config.deploy_hook_url.clone(),
         config.artifacts_url.clone(),
         Arc::clone(&auth),
-        config.coalesce,
+        crate::publisher::PublisherTiming {
+            coalesce: config.coalesce,
+            snapshot_retention: config.snapshot_retention,
+        },
     );
     let refresher = publisher.spawn();
 

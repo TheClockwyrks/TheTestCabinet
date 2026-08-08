@@ -1057,10 +1057,14 @@ where
                 detail: None,
             },
             // For a game jam, capture the produced gameplay README so a later run of
-            // the same jam (same harness, same model) can be briefed on what was
-            // already built and asked for something distinct. `None` for every other
-            // type, and for a jam run that shipped no README.
+            // the same jam by this model can be briefed on what was already built and
+            // asked for something distinct. `None` for every other type, and for a jam
+            // run that shipped no README.
             game_jam_readme: read_game_jam_readme(test_case.test_type, &artifacts.repo_path),
+            // …and record the earlier entries this run was itself briefed with —
+            // READMEs and all, since they are inputs the run was given and the Inputs
+            // tab shows them inline like every other seeded file.
+            game_jam_prior_entries: self.prior_game_jam_entries.clone(),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1253,8 +1257,11 @@ fn build_failed_record(
             state,
             detail: Some(detail.into()),
         },
-        // A run that failed before producing a tree has no README to capture.
+        // A run that failed before producing a tree has no README to capture, and a
+        // failure record is built without the engine that knows what it was seeded
+        // with, so it claims no prior entries.
         game_jam_readme: None,
+        game_jam_prior_entries: Vec::new(),
     }
 }
 

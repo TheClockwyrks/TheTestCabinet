@@ -177,6 +177,13 @@ export class Game implements WorldView {
   // frames sneak in between calls (see debug.ts and specs/instrumentation.md).
   autoStep = true;
 
+  // Whether the hunter's pursuit brain is running (specs/instrumentation.md's
+  // setBearAI). When off the bears stop deciding and moving and hold whatever
+  // position they are in; everything the world does TO a bear is untouched — a
+  // sliding hazard still resets it, the water still carries or submerges it, it
+  // still catches a critter that reaches it, and a reset bear still re-emerges.
+  bearAI = true;
+
   constructor(input: Input) {
     this.input = input;
     this.input.onFirstPress(() => this.audio.resume());
@@ -186,6 +193,33 @@ export class Game implements WorldView {
   // ---- WorldView (for the hunter's pathfinding) -------------------------
 
   // Exact coverage — used to actually knock the bear out when caught in traffic.
+  // Did a vehicle's OWN MOTION bring it onto this ice tile during the step just
+  // taken? Lanes are advanced before the hunters each step, so a vehicle's previous
+  // position is its current one less the lane's travel over `dt` — no extra state
+  // needed. A parked lane travels nothing, so a vehicle that was already on the tile
+  // still is, and this reads false.
+  //
+  // This is what separates a vehicle sliding INTO the bear from a bear travelling
+  // onto a vehicle (specs/hunter.md): only the former resets it, exactly as a critter
+  // is refused rather than killed for moving into traffic (specs/hazards.md). In a
+  // head-on meeting both are moving and the vehicle still newly covers the tile, so
+  // luring the bear into traffic works exactly as before.
+  vehicleMovedOnto(col: number, row: number, dt: number): boolean {
+    const lane = this.iceLaneForRow(row);
+    if (!lane) return false;
+    const left = col * TILE;
+    const right = left + TILE;
+    const travel = lane.dir * lane.speed * TILE * dt;
+    for (const v of lane.items) {
+      const coversNow = v.x < right && v.x + v.len * TILE > left;
+      if (!coversNow) continue;
+      const was = v.x - travel;
+      const coveredBefore = was < right && was + v.len * TILE > left;
+      if (!coveredBefore) return true;
+    }
+    return false;
+  }
+
   vehicleCovers(col: number, row: number): boolean {
     const lane = this.iceLaneForRow(row);
     if (!lane) return false;
@@ -671,12 +705,14 @@ export class Game implements WorldView {
       const lane = this.waterLaneForRow(c.row)!;
       const floe = this.floeUnder(lane, c.centerX());
       if (!floe) {
+        this.audio.splash();
         this.die(COLOR.splash);
         return;
       }
       c.x += laneVelocity(lane) * dt; // carried by the floe
       const center = c.centerX();
       if (center < 0 || center > STRAIT_W) {
+        this.audio.splash();
         this.die(COLOR.splash); // swept off the edge
         return;
       }
@@ -684,6 +720,7 @@ export class Game implements WorldView {
       // A vehicle can only end up on the critter's tile by sliding INTO it (the
       // critter can never hop onto an occupied tile), so this is always a crush.
       if (this.vehicleAtTile(c.col(), c.row)) {
+        this.audio.crush();
         this.die("#4a5560");
         return;
       }
@@ -709,12 +746,19 @@ export class Game implements WorldView {
         continue;
       }
       const bear = h.bear;
+      // Locomotion always runs; what the suspended pursuit stops is the DECIDING
+      // below. A bear with nothing to travel toward has its target set to its own
+      // tile and so does not move, which is what makes setBearAI(false) hold it in
+      // place — but a step commanded through moveBear still glides for real. The
+      // hazard, water, and catch handling below runs either way: suspending the
+      // brain must not make the bear immune to the world
+      // (specs/instrumentation.md).
       const arrived = bear.advance(dt);
 
       // Reset if a vehicle has swept into EITHER tile the bear occupies. Moving
       // continuously, it straddles the tile it is leaving and the one it is
       // entering, so a hit on either knocks it out (lure it into traffic).
-      if (this.bearInTraffic(bear)) {
+      if (this.bearInTraffic(bear, dt)) {
         this.splashes.push({
           x: bear.centerX(),
           y: bear.centerY(),
@@ -726,7 +770,7 @@ export class Game implements WorldView {
         continue;
       }
 
-      if (arrived) this.decideBearStep(bear, target);
+      if (arrived && this.bearAI) this.decideBearStep(bear, target);
 
       // Catch: within about half a tile of the critter.
       const cxc = this.critter.rx + TILE / 2;
@@ -744,11 +788,11 @@ export class Game implements WorldView {
 
   // Is a vehicle sitting on either tile the bear currently occupies? While gliding
   // between tiles it straddles both, so a hit on either resets it (specs/hunter.md).
-  private bearInTraffic(bear: Bear): boolean {
+  private bearInTraffic(bear: Bear, dt: number): boolean {
     return (
-      (isIceRow(bear.row) && this.vehicleCovers(bear.col, bear.row)) ||
+      (isIceRow(bear.row) && this.vehicleMovedOnto(bear.col, bear.row, dt)) ||
       (isIceRow(bear.targetRow) &&
-        this.vehicleCovers(bear.targetCol, bear.targetRow))
+        this.vehicleMovedOnto(bear.targetCol, bear.targetRow, dt))
     );
   }
 
@@ -877,11 +921,65 @@ export class Game implements WorldView {
     }
   }
 
+  // Change how a lane is moving without disturbing what is in it: the items keep
+  // their exact positions and travel on the new motion from the next step. A speed
+  // of 0 holds the lane where it stands and a later call releases it. Unlike
+  // debugSetLane this never repopulates the lane (specs/instrumentation.md).
+  debugSetLaneMotion(row: number, spec: { speed?: number; dir?: 1 | -1 }): void {
+    const lane =
+      this.lanes.ice.find((l) => l.row === row) ??
+      this.lanes.water.find((l) => l.row === row);
+    if (!lane) return;
+    if (spec.speed !== undefined) lane.speed = spec.speed;
+    if (spec.dir !== undefined) lane.dir = spec.dir;
+  }
+
+  // Send a bear one tile in a grid direction under the caller's control rather
+  // than the pursuit's (specs/instrumentation.md). It uses the same continuous
+  // glide and the same speed the pursuit would have used, so what is driven is the
+  // real movement rather than a teleport, and it deliberately does NOT consult the
+  // route the pursuit would have chosen — a caller may send a bear somewhere the
+  // pursuit would avoid, and what the world makes of that is the game's own
+  // business. A bear between tiles settles onto the tile it is entering first.
+  debugMoveBear(index: number, direction: string): void {
+    const bear = this.hunters[index]?.bear;
+    if (!bear) return;
+    const delta: Record<string, [number, number]> = {
+      up: [0, -1],
+      down: [0, 1],
+      left: [-1, 0],
+      right: [1, 0],
+    };
+    const d = delta[direction];
+    if (!d) return;
+    const col = clampCol(bear.targetCol + d[0]);
+    const row = Math.max(0, Math.min(ROW_NEAR, bear.targetRow + d[1]));
+    // A tile a vehicle covers is closed to the bear, exactly as it is to the critter
+    // (specs/hunter.md, specs/hazards.md): the step is refused and the bear stays
+    // where it is, unharmed. Only a vehicle whose own motion arrives on a tile the
+    // bear occupies resets it. This is the same predicate the critter's hop is
+    // refused by, so the two actors read the same board.
+    if (this.blockedByVehicle(col, row)) return;
+    const swimming = isWaterRow(row) && !this.hasFloe(col, row);
+    const tilesPerSec =
+      (swimming ? BEAR_SWIM_SPEED : BEAR_ICE_SPEED) *
+      Math.pow(BEAR_SPEED_STEP, this.level - 1);
+    bear.setTarget(col, row, tilesPerSec * TILE, swimming);
+  }
+
+  // Suspend or resume the pursuit brain for every hunter slot.
+  debugSetBearAI(enabled: boolean): void {
+    this.bearAI = enabled;
+  }
+
   // Place or remove a hunter's bear. `state` of `{col,row}` puts that bear on a
   // tile (creating it if it has not emerged); `null` removes it (it re-emerges
   // from the near shore after the usual delay, as when knocked out). Once placed,
   // the real pursuit brain drives it from the next step.
-  debugSetBear(index: number, state: { col: number; row: number } | null): void {
+  debugSetBear(
+    index: number,
+    state: { col?: number; row?: number; x?: number; y?: number } | null,
+  ): void {
     while (this.hunters.length <= index) {
       this.hunters.push({ bear: null, emergeDelay: 0, emergeAdvance: 0 });
     }
@@ -892,17 +990,22 @@ export class Game implements WorldView {
       h.emergeAdvance = BEAR_EMERGE_ADVANCE;
       return;
     }
-    if (h.bear) {
-      h.bear.col = state.col;
-      h.bear.row = state.row;
-      h.bear.targetCol = state.col;
-      h.bear.targetRow = state.row;
-      h.bear.rx = colToX(state.col);
-      h.bear.ry = rowToY(state.row);
-      h.bear.speed = 0;
-    } else {
-      h.bear = new Bear(state.col, state.row);
-    }
+    // Either form is accepted: a tile, or an exact strait-local pixel position for
+    // a bear part-way between tiles (specs/instrumentation.md). The pixel form
+    // still names the tiles it occupies, so hazard collision reads the same either
+    // way.
+    const px = state.x !== undefined ? state.x : colToX(state.col ?? 0);
+    const py = state.y !== undefined ? state.y : rowToY(state.row ?? 0);
+    const col = state.col !== undefined ? state.col : Math.round(px / TILE);
+    const row = state.row !== undefined ? state.row : Math.round(py / TILE);
+    if (!h.bear) h.bear = new Bear(col, row);
+    h.bear.col = col;
+    h.bear.row = row;
+    h.bear.targetCol = col;
+    h.bear.targetRow = row;
+    h.bear.rx = px;
+    h.bear.ry = py;
+    h.bear.speed = 0;
     h.emergeDelay = 0;
     h.emergeAdvance = 0;
   }

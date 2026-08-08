@@ -372,10 +372,20 @@ validation = { script = "validation/controls/pause-p.mjs", outputs = [
 [[review.categories.items]]
 id = "mute"
 title = "M toggles mute"
-description = "Pressing M toggles the game's mute flag."
+description = "Pressing M during a dive toggles the game's mute, and a muted dive plays no cue."
 validation = { script = "validation/controls/mute.mjs", outputs = [
-  { id = "mute", name = "The title after toggling mute", kind = "image" },
+  { id = "mute", name = "A muted dive, mid sonar pulse", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live dive advances — simulation time accumulates and the predators patrol — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+[[review.categories.items]]
+id = "manual-clock"
+title = "The game holds still on the driver's clock"
+description = "The converse of the item above, and the other half of the autoStep contract: reset() re-arms manual stepping, and the control operations leave it that way, so once a driver holds the clock nothing advances between its steps — no simulation time accrues and no predator moves — while step() still advances the game exactly."
+validation = { script = "validation/controls/manual-clock.mjs", outputs = [{ id = "before", name = "The instant the driver takes the clock", kind = "image" }, { id = "after", name = "A second of real time later, with nothing stepping it", kind = "image" }] }
 
 # --- Maze movement ------------------------------------------------------------
 [[review.categories]]
@@ -468,14 +478,14 @@ id = "den-enclosed"
 title = "Fully enclosed den"
 description = "The central predator den chamber is fully enclosed by walls, except for the gate — its interior borders open corridor only through the den gate."
 validation = { script = "validation/maze/den-enclosed.mjs", outputs = [
-  { id = "board", name = "The maze board", kind = "image" },
+  { id = "board", name = "The den chamber, lit from the corridor outside its gate", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "den-one-exit"
 title = "Exactly one exit"
 description = "There is only one exit from the den: a single den gate."
 validation = { script = "validation/maze/den-one-exit.mjs", outputs = [
-  { id = "board", name = "The maze board", kind = "image" },
+  { id = "board", name = "The den chamber, lit from the corridor outside its gate", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "den-reachable"
@@ -513,7 +523,7 @@ validation = { script = "validation/fog/predators-not-remembered.mjs", outputs =
 [[review.categories.items]]
 id = "light-line-of-sight"
 title = "Light is line-of-sight"
-description = "Passive light does not bend around corners: a predator one step around a blind corner is not lit even though it is close."
+description = "Passive light does not bend around corners: a predator behind rock is not lit even though it is well within light range."
 validation = { script = "validation/fog/light-line-of-sight.mjs", outputs = [
   { id = "los", name = "A predator hidden around a blind corner", kind = "image" },
 ] }
@@ -792,6 +802,25 @@ validation = { script = "validation/flarefish/ink-breaks.mjs", outputs = [
   { id = "ink", name = "Ink breaking the Flarefish's fix", kind = "video" },
 ] }
 
+# --- The den and release ------------------------------------------------------
+[[review.categories]]
+id = "den"
+title = "The den and release"
+[[review.categories.items]]
+id = "stagger"
+title = "Predators leave the den 5 s apart, in order"
+description = "The predators leave the den one after another on a staggered schedule — the Lanternjaw immediately, then the Gloamfin, then the Flarefish, each 5 seconds after the one before it."
+validation = { script = "validation/den/stagger.mjs", outputs = [
+  { id = "stagger", name = "The three predators leaving the den in turn", kind = "video" },
+] }
+[[review.categories.items]]
+id = "re-release"
+title = "Losing a life restarts the schedule"
+description = "Losing a life returns every predator to the den, and they re-release on the same staggered schedule, giving you a moment to reorient."
+validation = { script = "validation/den/re-release.mjs", outputs = [
+  { id = "rerelease", name = "The den refilling on a death and emptying again in turn", kind = "video" },
+] }
+
 # --- Detection alert ----------------------------------------------------------
 [[review.categories]]
 id = "alert"
@@ -898,7 +927,7 @@ validation = { script = "validation/scoring/descend-on-clear.mjs", outputs = [
 [[review.categories.items]]
 id = "depth-scaling"
 title = "Depth adds predators and shrinks sonar"
-description = "A deeper maze holds more predators (one more per depth, cycling through the kinds, capped at two of each) and a shorter sonar range; predator speeds do not change with depth."
+description = "A deeper maze holds more predators (one more per depth, cycling through the kinds, capped at two of each) and a shorter sonar range — the range a pulse fired at that depth actually carries; predator speeds do not change with depth."
 validation = { script = "validation/scoring/depth-scaling.mjs", outputs = [
   { id = "scale", name = "Depth scaling the dive", kind = "video" },
 ] }
@@ -961,13 +990,68 @@ validation = { script = "validation/states/gameover.mjs", outputs = [
 ] }
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/progression.md — no audio
+# files), so the validator reads the sources a build starts and confirms a distinct cue
+# fires on each mandated event. The build must not autoplay, so each check arms audio
+# with a real gesture (a key press and a corner click) first; the exact sound is the
+# model's own, only that a cue plays is scored. Each mandated cue is its own review item
+# so a build fails exactly the cue it omits — the spec's "a predator's own pulse or
+# flare" covers two distinct predators (the Gloamfin's periodic ping and the
+# Flarefish's flare), so it is split into its own two items here. The muteable /
+# never-fail-to-load / silent-until-interaction properties are reviewed by a person from
+# play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short cues (Web Audio, no files) play for eating, sonar, ink, a predator's pulse/flare, being caught, and descending."
+id = "eat"
+title = "Eat cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the forager eats a plankton or a bonus drifter."
+validation = { script = "validation/audio/eat.mjs", outputs = [
+  { id = "eat", name = "The eat whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "sonar"
+title = "Sonar cue"
+description = "A distinct cue plays when the forager emits a sonar pulse."
+validation = { script = "validation/audio/sonar.mjs", outputs = [
+  { id = "sonar", name = "The sonar pulse whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "ink"
+title = "Ink cue"
+description = "A distinct cue plays when the forager releases ink."
+validation = { script = "validation/audio/ink.mjs", outputs = [
+  { id = "ink", name = "The ink release whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "pred-pulse"
+title = "Predator pulse cue"
+description = "A distinct cue plays when the Gloamfin emits its own periodic sonar ping."
+validation = { script = "validation/audio/pred-pulse.mjs", outputs = [
+  { id = "pulse", name = "The Gloamfin ping whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "flare"
+title = "Predator flare cue"
+description = "A distinct cue plays when the Flarefish emits its flare."
+validation = { script = "validation/audio/flare.mjs", outputs = [
+  { id = "flare", name = "The Flarefish flare whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "caught"
+title = "Caught cue"
+description = "A distinct cue plays when a predator catches the forager and a life is lost."
+validation = { script = "validation/audio/caught.mjs", outputs = [
+  { id = "caught", name = "The catch whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "descend"
+title = "Descend cue"
+description = "A distinct cue plays when a maze is cleared and the dive descends toward the next depth."
+validation = { script = "validation/audio/descend.mjs", outputs = [
+  { id = "descend", name = "The maze clear whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Plays gracefully and muted"

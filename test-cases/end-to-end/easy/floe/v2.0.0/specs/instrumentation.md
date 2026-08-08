@@ -113,11 +113,43 @@ level logic forward from there.
   keep the lane's own values. Passing an empty `cols` clears the lane (all open water,
   or empty ice). This arranges where the vehicles and floes sit; the real
   `step`-driven motion and collision still decide every outcome.
+- `setLaneMotion(row, spec)` changes how the lane at strait row `row` is moving,
+  without disturbing what is in it. `spec.speed` (tiles/second) and `spec.dir` (`1`
+  rightward, `-1` leftward) each override that lane's value when given and are left
+  alone when omitted. Every item already in the lane keeps its exact position and
+  simply travels on the new motion from the next `step`. A `speed` of `0` holds the
+  lane still where it stands, and a later call sets it moving again — so traffic can be
+  laid out exactly where it is wanted, left parked while the rest of the scene is
+  arranged, and then released. Unlike `setLane` this never repopulates the lane, so
+  positions built up over many steps are not lost to a change of speed.
 - `setBear(index, state)` places a hunter's bear. `index` selects a hunter slot
   (`0`, or `1` for the second bear at level 5 and above). `state` of `{ col, row }`
-  puts that bear on a tile, creating it if it has not yet emerged; a `state` of `null`
-  removes it. Once placed, the real pursuit brain drives it from there on the next
-  `step`.
+  puts that bear on a tile and `{ x, y }` puts it at an exact strait-local pixel
+  position — the bear glides continuously, so it is normally part-way between tiles,
+  and the pixel form places it exactly there. Either form creates the bear if it has
+  not yet emerged; a `state` of `null` removes it. Once placed, the real pursuit brain
+  drives it from there on the next `step`.
+- `setBearAI(enabled)` chooses whether the hunter's pursuit brain is running.
+  `setBearAI(false)` stops the bears deciding and moving: each one holds the position
+  it is in — or the one `setBear` puts it in — however many times the simulation is
+  stepped, so a scene can be built around a bear that stays where it is put. It
+  suspends the pursuit and nothing else: everything the world does to a bear still
+  happens exactly as it would otherwise. A sliding hazard still resets it
+  (`specs/hunter.md`), open water still submerges it and a floe still carries it, it
+  still catches a critter that comes to it, and a bear that has been reset still
+  re-emerges from the near shore on its usual delay. `setBearAI(true)` hands the
+  pursuit back. It applies to every hunter slot, changes no other game state, and is
+  on by default.
+- `moveBear(index, direction)` sends a bear one tile in a grid direction under the
+  caller's control rather than the pursuit's. `direction` is `"up"`, `"down"`,
+  `"left"`, or `"right"`. The bear travels the way it always travels — the same
+  continuous glide at the same speed (`specs/hunter.md`), settling on the next tile —
+  so this drives the real movement rather than teleporting. It is a command rather
+  than a suggestion: it does not consult the route the pursuit would have chosen, so a
+  bear can be sent somewhere the pursuit would have routed around, and whatever the
+  world then makes of that is the game's own business. A bear that is between tiles
+  settles onto the tile it is entering before taking the commanded direction. It is
+  most useful with `setBearAI(false)`, where nothing else is moving the bear.
 - `setAutoStep(enabled)` chooses who advances the clock. `setAutoStep(true)` hands the
   clock back to the animation loop so the game runs itself in real time again (for
   watching a posed scenario play out, or recording a live motion clip);
@@ -203,6 +235,20 @@ auto-repeat hops, reading `snapshot()` to see where the critter ended up.
   simTime: <number>,               // accumulated simulation time, in seconds
 }
 ```
+
+`phase` is the sub-phase of a live game (it is meaningful only while `screen` is
+`"playing"`):
+
+- `"crossing"` — a critter is on the board and under the player's control. This is
+  the phase for all of normal play.
+- `"dying"` — the death pause that follows a lost life (`specs/gameplay.md`), from
+  the moment the life is deducted until the fresh critter appears on the near shore.
+  Every death has one, whatever caused it, so a snapshot taken at any point in that
+  pause reports `"dying"` — and a caller stepping tick by tick across a death sees
+  `"crossing"` become `"dying"` and then `"crossing"` again.
+- `"clearing"` — a completed crossing or a filled level is being resolved. A build
+  that resolves either immediately simply passes through this phase, so unlike
+  `"dying"` it need not be observable between two steps.
 
 `critter.footing` is `"solid"` on the shores, median, and ice band, `"floe"` while
 standing on a floe over the water, and `"water"` while over open water (a state the

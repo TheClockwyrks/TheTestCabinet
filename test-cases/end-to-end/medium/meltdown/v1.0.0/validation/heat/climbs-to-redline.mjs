@@ -5,7 +5,7 @@
 // precondition and the real damage curve's multiplier is read back at each step; it
 // must rise monotonically and reach ~3.5 at the redline. The Arc's redline is 80.
 
-import { newGame, build, tower } from "../_helpers.mjs";
+import { newGame, build, tower, actTail } from "../_helpers.mjs";
 
 const HEATS = [0, 20, 40, 60, 80];
 
@@ -16,9 +16,28 @@ export default function item() {
   return {
     id: "heat.climbs-to-redline",
 
+    // Five held steps of the ramp plus a beat at the redline. See CLIP_HEADROOM_MS
+    // in _helpers.
+    clipMs: 8000,
+
+    // The Arc is SELECTED, so the clip carries the number this item is about.
+    //
+    // The ramp is posed with `setHeat` and nothing is spawned, so on the floor the only
+    // thing that moves across the whole drive is the tower's glow — which is why the
+    // clip reads as a block sitting still while a reviewer waits for something to
+    // happen. The claim is not the glow, though: it is that "the multiplier climbs as
+    // the tower heats ... and then holds flat at that maximum from the redline"
+    // (specs/controls.md), and the selected-tower inspector shows exactly that, as a
+    // live `damage (xN.N heat)` read beside a heat bar with the redline marked on it.
+    // Selected, the clip shows the multiplier stepping 0.35 -> 0.55 -> 1.14 -> 2.12 ->
+    // 3.5 and then holding, which is the assertion list made visible. The shop hover is
+    // cleared because a hovered type's info panel occupies that area "in place of" the
+    // inspector (specs/controls.md), and laying out the floor leaves a placement armed.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       towerId = await build(api, "arc", 6, 20);
+      await api.call("hoverShop", null);
+      await api.call("selectTower", towerId);
     },
 
     // Walk the emitter up the heat range and read the real damage curve's multiplier
@@ -26,11 +45,20 @@ export default function item() {
     // heating under fire); per the contract the clip shows what the assertions drove,
     // which is this sweep — and it reads visually too, as the tower's glow ramping
     // from cold to redline.
+    //
+    // Each stop is held, and there is a beat at the end, because otherwise this item
+    // films NOTHING AT ALL. `setHeat` and a snapshot read are both instant, so the
+    // whole sweep used to resolve inside a single frame and the recording amounted to
+    // the browser's blank page before the build's first paint — a one-second clip of
+    // plain white. The holds are what give the ramp frames to exist in: five steps of
+    // glow, and then a beat on the redlined tower.
     async act(api) {
       for (const h of HEATS) {
         await api.call("setHeat", towerId, h);
         mults.push((await tower(api, towerId)).heatMult);
+        await actTail(api, 36); // 0.6 s on each step of the ramp
       }
+      await actTail(api, 120); // 2 s on the tower at its redline
     },
 
     async assert(api, check) {

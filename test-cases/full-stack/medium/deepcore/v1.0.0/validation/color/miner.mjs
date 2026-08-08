@@ -7,6 +7,7 @@ import {
   newRun,
   minerScreen,
   sampleAt,
+  settleStable,
   colorDistance,
   VIEWPORT_Y,
 } from "../_helpers.mjs";
@@ -22,14 +23,23 @@ export default function item() {
       await newRun(api); // miner idle on the surface, sky behind it
     },
 
-    // Sampling reads the painted canvas, so it runs here behind a real settle.
+    // Sampling reads the painted canvas, so it runs here behind a settle that POLLS until the two
+    // points are actually painted rather than pausing a fixed guess — a guess that comes up short
+    // on a loaded host reads the previous frame, where both points sit on the same flat patch and
+    // a build whose miner is plainly visible is reported as blending into the background.
     async act(api) {
-      await api.settle(150);
       const snap = await api.snapshot();
       const s = minerScreen(snap.miner, snap.camera);
+      const skyPoint = { x: s.x, y: VIEWPORT_Y + 40 }; // a patch of sky above the ground line
+      await settleStable(api, [s, skyPoint]);
 
-      minerColor = await sampleAt(api, s.x, s.y);
-      sky = await sampleAt(api, s.x, VIEWPORT_Y + 40); // a patch of sky above the ground line
+      minerColor = await sampleAt(api, s.x, s.y, "the miner");
+      sky = await sampleAt(
+        api,
+        skyPoint.x,
+        skyPoint.y,
+        "the sky behind the miner",
+      );
       await api.screenshot("miner");
     },
 

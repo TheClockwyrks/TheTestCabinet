@@ -42,6 +42,7 @@ use k8s_openapi::api::core::v1::{
     PodSpec, PodTemplateSpec, ResourceRequirements, SecretEnvSource, SecretVolumeSource, Volume,
     VolumeMount,
 };
+use k8s_openapi::apimachinery::pkg::api::resource::Quantity;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 
 use test_cabinet_core::{ClaimedJob, PublishClaim};
@@ -56,6 +57,18 @@ pub const MANAGED_BY: &str = "tcab-dispatcher";
 /// The label key carrying the backend job id on each driver `Job`, so a listed
 /// `Job` maps back to its job without parsing its generated name.
 pub const JOB_ID_LABEL: &str = "tcab.dev/job-id";
+
+/// The `app.kubernetes.io/managed-by` value the **driver** stamps on the sandbox
+/// pods it creates, as distinct from [`MANAGED_BY`] (which the dispatcher stamps on
+/// its own `Job`s). The dispatcher never creates a sandbox pod, but it does *reap*
+/// orphaned ones after a driver dies, and it must select on this to avoid matching
+/// the driver `Job`'s own pod — which shares the sandbox's [`JOB_ID_LABEL`].
+///
+/// This mirrors the driver's own constant (`driver::kubernetes`); the two crates do
+/// not depend on each other, so the value is duplicated the same way `JOB_ID_LABEL`
+/// already is. Changing one without the other breaks sandbox reaping, so both sides
+/// are covered by tests asserting the literal.
+pub const SANDBOX_MANAGED_BY: &str = "tcab-driver";
 
 /// The name of the single container in each driver `Job`'s pod.
 const DRIVER_CONTAINER: &str = "driver";
@@ -158,9 +171,13 @@ pub fn build_driver_job(claim: &ClaimedJob, config: &Config) -> Result<Job, serd
         env: Some(env),
         env_from,
         volume_mounts,
-        // The driver pod needs no resource requests of its own here; it is a thin
-        // control process. Leaving `resources` unset omits the field.
-        resources: None::<ResourceRequirements>,
+        // The driver is a thin control process, but it must still carry resource
+        // *requests* — not to reserve capacity, but to keep its pod out of the
+        // `BestEffort` QoS class. A `BestEffort` driver is evicted first under node
+        // pressure and scored at the maximum `oom_score_adj`, and a driver killed by
+        // `SIGKILL` runs none of its teardown, orphaning the run's sandbox pod
+        // forever. See `config::DEFAULT_DRIVER_CPU_REQUEST`.
+        resources: driver_resources(config),
         ..Default::default()
     };
 
@@ -315,6 +332,40 @@ pub fn build_publish_job(claim: &PublishClaim, config: &Config) -> Job {
         spec: Some(job_spec),
         status: None,
     }
+}
+
+/// The driver container's `resources`, or `None` when every quantity is absent (so
+/// the field is omitted entirely rather than serialized empty).
+fn driver_resources(config: &Config) -> Option<ResourceRequirements> {
+    let resources = &config.driver_resources;
+    if resources.is_empty() {
+        return None;
+    }
+    Some(ResourceRequirements {
+        requests: quantity_map([
+            ("cpu", resources.cpu_request.as_deref()),
+            ("memory", resources.memory_request.as_deref()),
+        ]),
+        limits: quantity_map([
+            ("cpu", resources.cpu_limit.as_deref()),
+            ("memory", resources.memory_limit.as_deref()),
+        ]),
+        claims: None,
+    })
+}
+
+/// Collect the set quantities into a `BTreeMap`, or `None` when none are set — the
+/// shape `ResourceRequirements` wants for an omitted `requests`/`limits` block.
+fn quantity_map<const N: usize>(
+    entries: [(&str, Option<&str>); N],
+) -> Option<BTreeMap<String, Quantity>> {
+    let map: BTreeMap<String, Quantity> = entries
+        .into_iter()
+        .filter_map(|(key, value)| {
+            value.map(|value| (key.to_string(), Quantity(value.to_string())))
+        })
+        .collect();
+    (!map.is_empty()).then_some(map)
 }
 
 /// The labels every driver `Job` (and its pod template) carries: the ownership

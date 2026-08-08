@@ -1,42 +1,37 @@
 // scoring.plankton: eating a plankton scores 10 and clears it from the maze.
 //
-// Standing the forager on a fresh pellet tile is instant (`arrange`); the eat is the real
-// sim, so it is `act`.
-import {
-  startPlaying,
-  findOpenWithNeighbor,
-  SCORE_PLANKTON,
-} from "../_helpers.mjs";
+// The forager is stood at the head of a corridor with pellets ahead of it in `arrange`;
+// the eat it swims into is the real sim, so it is `act` — the clip shows the forager
+// take the pellet and the score tick over, rather than opening on a score that has
+// already changed. See `arrangeGraze` / `actGrazeOne`.
+import { arrangeGraze, actGrazeOne, SCORE_PLANKTON } from "../_helpers.mjs";
 
 export default function item() {
-  let before;
-  let after;
+  let run;
+  let graze;
 
   return {
     id: "scoring.plankton",
 
     async arrange(api) {
-      const snap = await startPlaying(api);
-      const spot = findOpenWithNeighbor(snap, "right"); // a fresh corridor tile (carries a plankton)
-      await api.call("setForager", { tx: spot.tx, ty: spot.ty });
+      ({ run } = await arrangeGraze(api));
     },
 
     async act(api) {
-      before = await api.snapshot();
-      await api.advance(6); // 6 ticks = the old 0.05 s: the real eat on the forager's tile
-      after = await api.snapshot();
-      await api.advance(84); // 84 ticks = the old 700 ms live tail
+      graze = await actGrazeOne(api, run.dir);
     },
 
     async assert(api, check) {
+      check.expectOk("the forager swam into a plankton", graze.hit);
+      if (!graze.hit) return;
       check.expectEq(
         "eating a plankton scores 10",
-        after.score - before.score,
+        graze.after.score - graze.before.score,
         SCORE_PLANKTON,
       );
       check.expectEq(
         "the plankton is cleared from the maze",
-        before.planktonRemaining - after.planktonRemaining,
+        graze.before.planktonRemaining - graze.after.planktonRemaining,
         1,
       );
     },

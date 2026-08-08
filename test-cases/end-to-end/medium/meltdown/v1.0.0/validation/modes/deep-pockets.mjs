@@ -14,36 +14,43 @@ export default function item() {
   return {
     id: "modes.deep-pockets",
 
-    // The still this item declares is the vault after the payout, and running wave 1
-    // out with nothing built takes tens of seconds of real time — past the 8 s default
-    // record budget, so the record pass would unwind before `screenshot` ever ran and
-    // the declared output would never land. The item declares no video, so this
-    // lengthens only the record pass, not any media it produces.
-    //
-    // Budget the CAP below, not the wave's typical length. How long wave 1 takes to
-    // clear is the build's own business — its unit speeds and spawn spacing — and a
-    // build whose wave runs a few seconds long is not thereby nonconformant. Sized to
-    // the 18 s the wave "usually" takes, this unwound at 36 s against a wave that
-    // cleared at 37.4 s, and a missing declared output fails the item wholesale
-    // (`ran = hardStopped || missing.length === 0` in the driver) with a message about
-    // the debug API — a verdict that would otherwise have passed on every assertion.
-    // So this covers the 2400-tick (40 s) sweep below with room to spare.
-    clipMs: 60000,
-
-    // The opening balance is read first, then the balance is re-posed to a round 500
-    // so the payout at the clear can be read as an exact number.
+    // The opening balance is read here; posing it down to a round 500 and releasing the
+    // wave waits until `act`, so the OPENING still below is a still of the mode's actual
+    // opening state rather than of a balance this script substituted.
     async arrange(api) {
       s = await newGame(api, "deeppockets");
       await api.call("setLives", 1000000);
-      await api.call("setMoney", 500);
-      await api.call("startWave");
     },
 
     // Run wave 1 to its clear with nothing built, so the whole wave leaks past and
     // the only money that lands is the payout. 2400 ticks = the old 40s cap, polled
     // every 12 ticks (the old 0.2s chunk).
+    //
+    // Skipped, because the declared output is a STILL of the vault after the payout
+    // and this item records no video — the wave was being run in real time for nobody.
+    // It also had to carry a `clipMs` sized to the sweep's CAP rather than the wave's
+    // typical length, for a subtle reason worth keeping in mind: how long wave 1 takes
+    // to clear is the build's own business, and an earlier budget sized to the 18 s the
+    // wave "usually" took unwound at 36 s against a build whose wave cleared at 37.4 s.
+    // A missing declared output fails the item wholesale (`ran = hardStopped ||
+    // missing.length === 0` in the driver) with a message about the debug API — a
+    // verdict that would otherwise have passed on every assertion. Skipping removes the
+    // whole hazard: with no wall clock to run out, no conformant build can be failed
+    // for taking longer than another one.
     async act(api) {
-      r = await api.until((t) => t.wave >= 2, { max: 2400, poll: 12 });
+      // The mode's headline number, in the frame. The old single still was taken after
+      // the wave-clear payout and showed 525 — which is the evidence for the NO-INTEREST
+      // half and says nothing at all about the 10,000 opening the mode is named for, so
+      // the reviewer had one of the item's two claims and a balance whose starting point
+      // was off-screen. This is that starting point.
+      await api.settle(120);
+      await api.screenshot("opening");
+
+      // Now pose a round 500 so the payout at the clear reads as an exact number.
+      await api.call("setMoney", 500);
+      await api.call("startWave");
+
+      r = await api.skipUntil((t) => t.wave >= 2, { max: 2400, poll: 12 });
       money = (await api.snapshot()).money;
       await api.settle(80);
       await api.screenshot("deep");

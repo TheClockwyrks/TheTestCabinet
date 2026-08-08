@@ -17,6 +17,21 @@ tableau, run, stock and waste, auto-move, win-detection, and victory-cascade
 behaviors are each checked more finely than before; presentation stays
 reviewer-judged.
 
+Win detection is checked once per gesture that can cause it — `detect-drag` and
+`detect-double-click` in place of the single `detect` — and each drives the last
+card home from both the waste and a tableau column. Completing the foundations is
+one rule, but reaching it is two different input paths, and a build can get one
+right and the other wrong: a drag commits on release, over a target the player
+chose, while a double-click hands the card to the auto-move, which picks the
+foundation itself. Both items run the whole gesture — the drag through the pointer
+operations, the double-click as a real browser double-click rather than the
+`doubleClick` operation — and assert that the cascade is still running once the
+gesture is over. A build that detects the win correctly and then undoes it with the
+rest of that same gesture fails: on the won screen a click deals a fresh game, so a
+build that recognizes the double on the second press and lets that press run on into
+the dismiss deals a new game before the cascade draws a frame, and a player never
+sees the ending the game is named for.
+
 ## The seeded specs are renamed and tightened
 
 `layout.md` became `table.md`, `flow.md` became `states.md`, and `cascade.md`

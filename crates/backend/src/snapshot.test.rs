@@ -65,6 +65,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
                 detail: None,
             },
             game_jam_readme: None,
+            game_jam_prior_entries: Vec::new(),
         },
         reviews: vec![StoredReview {
             reviewer: crate::db::Reviewer {
@@ -789,17 +790,33 @@ async fn case_metadata_exports_reference_baselines_and_names_them_by_key() {
         .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
-    // The PNG bytes are exported under the case prefix with an image content type.
-    let common_key = format!("{prefix}/cases/pong/v1.0.0/references/_common/gameplay.png");
+    // The PNG bytes are exported under the content-stable case-media prefix — NOT
+    // this snapshot's prefix — keyed by a digest of their own bytes, with an image
+    // content type.
+    let common_bytes = b"png:_common/gameplay";
+    let common_key = format!(
+        "media/cases/pong/v1.0.0/references/_common/{}-gameplay.png",
+        content_digest(common_bytes)
+    );
     let common_obj = snapshot
         .objects
         .iter()
         .find(|o| o.key == common_key)
         .expect("common baseline exported");
     assert_eq!(common_obj.content_type, "image/png");
-    assert_eq!(common_obj.bytes, b"png:_common/gameplay");
-    let variant_key = format!("{prefix}/cases/pong/v1.0.0/references/base/title.png");
+    assert_eq!(common_obj.bytes, common_bytes);
+    let variant_key = format!(
+        "media/cases/pong/v1.0.0/references/base/{}-title.png",
+        content_digest(b"png:base/title")
+    );
     assert!(snapshot.objects.iter().any(|o| o.key == variant_key));
+    // Nothing reference-shaped is left under the per-snapshot prefix.
+    assert!(
+        !snapshot.objects.iter().any(|o| o
+            .key
+            .starts_with(&format!("{prefix}/cases/pong/v1.0.0/references/"))),
+        "reference media must not be written under the per-snapshot prefix"
+    );
 
     // The case metadata names both, with the common one carrying a null variant
     // and the variant-scoped one carrying its slug.
@@ -1109,8 +1126,12 @@ async fn case_metadata_exports_validation_baselines_keyed_by_variant_and_file() 
         .unwrap();
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
 
-    // The PNG bytes are exported case-scoped under the version's baseline prefix.
-    let key = format!("{prefix}/cases/pong/v1.0.0/validation-baseline/base/spin__still.png");
+    // The PNG bytes are exported under the content-stable case-media prefix, keyed
+    // by a digest of their own bytes — not under this snapshot's prefix.
+    let key = format!(
+        "media/cases/pong/v1.0.0/validation-baseline/base/{}-spin__still.png",
+        content_digest(b"png:baseline-still")
+    );
     let obj = snapshot
         .objects
         .iter()
@@ -1559,4 +1580,234 @@ async fn a_variant_without_a_reference_sheet_exports_null() {
         .unwrap();
     let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
     assert!(parsed["variants"][0]["referenceSheet"].is_null());
+}
+
+// --- content-stable case media ----------------------------------------------
+
+#[tokio::test]
+async fn case_media_already_in_the_bucket_is_referenced_without_re_uploading() {
+    // The whole point of the content-stable prefix: a refresh over an unchanged
+    // case corpus must upload none of it, while the metadata still names every key.
+    let mut m = manifest();
+    m.variants[0].references = vec![StoredReference {
+        view: "title".to_string(),
+        kind: test_cabinet_core::ReferenceKind::Rendered,
+        extension: "png".to_string(),
+    }];
+
+    let (_tmp, store) = empty_store();
+    for (scope, view) in [("_common", "gameplay"), ("base", "title")] {
+        let path = store.reference_path(&m.slug, &m.version, scope, &format!("{view}.png"));
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, format!("png:{scope}/{view}").into_bytes()).unwrap();
+    }
+    let baseline_dir = store
+        .version_dir(&m.slug, &m.version)
+        .join(test_cabinet_core::VALIDATION_BASELINE_DIR)
+        .join("base");
+    std::fs::create_dir_all(&baseline_dir).unwrap();
+    std::fs::write(baseline_dir.join("spin__still.png"), b"png:baseline-still").unwrap();
+
+    // First refresh: nothing in the bucket, so every object is uploaded.
+    let first = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m.clone()], store.clone())
+        .build(now())
+        .await
+        .unwrap();
+    let case_media: Vec<String> = first
+        .objects
+        .iter()
+        .filter(|o| o.key.starts_with("media/cases/"))
+        .map(|o| o.key.clone())
+        .collect();
+    assert_eq!(
+        case_media.len(),
+        3,
+        "two references + one baseline uploaded"
+    );
+
+    // Second refresh with those keys already present: the metadata is unchanged but
+    // not one byte of case media is re-uploaded.
+    let second = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .with_existing_media(case_media.iter().cloned().collect())
+        .build(now())
+        .await
+        .unwrap();
+    assert!(
+        !second
+            .objects
+            .iter()
+            .any(|o| o.key.starts_with("media/cases/")),
+        "case media already in the bucket must not be re-uploaded"
+    );
+
+    let prefix = format!("snapshots/{}", second.snapshot_id);
+    let case = second
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/cases/pong/v1.0.0.json"))
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_slice(&case.bytes).unwrap();
+    let named: Vec<String> = parsed["references"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(parsed["validationBaselines"].as_array().unwrap())
+        .map(|r| r["key"].as_str().unwrap().to_string())
+        .collect();
+    for key in &case_media {
+        assert!(named.contains(key), "metadata still names {key}");
+    }
+}
+
+#[tokio::test]
+async fn changed_reference_bytes_mint_a_new_content_key() {
+    // A re-render that genuinely changes the bytes must not be masked by the skip:
+    // it produces a different digest, so a different key, so a real upload.
+    let m = manifest();
+    let (_tmp, store) = empty_store();
+    let path = store.reference_path(&m.slug, &m.version, "_common", "gameplay.png");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"png:first-render").unwrap();
+
+    let first = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m.clone()], store.clone())
+        .build(now())
+        .await
+        .unwrap();
+    let first_key = first
+        .objects
+        .iter()
+        .find(|o| o.key.starts_with("media/cases/"))
+        .unwrap()
+        .key
+        .clone();
+
+    // Re-render to different bytes, with the OLD key still in the bucket.
+    std::fs::write(&path, b"png:second-render-different").unwrap();
+    let second = SnapshotBuilder::new(vec![stored_run("r1", "t")], vec![m], store)
+        .with_existing_media(std::iter::once(first_key.clone()).collect())
+        .build(now())
+        .await
+        .unwrap();
+    let second_obj = second
+        .objects
+        .iter()
+        .find(|o| o.key.starts_with("media/cases/"))
+        .expect("changed bytes are uploaded under a new key");
+    assert_ne!(second_obj.key, first_key);
+    assert_eq!(second_obj.bytes, b"png:second-render-different");
+}
+
+// --- pruning superseded generations -----------------------------------------
+
+/// A key inside generation `id`.
+fn gen_key(id: &str, tail: &str) -> String {
+    format!("snapshots/{id}/{tail}")
+}
+
+#[test]
+fn prune_keeps_the_live_generation_however_old_it_is() {
+    // The live snapshot is 30 days old (nothing published in a while). Deleting it
+    // would take the public site down, so age must not reach it.
+    let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
+    let keys = vec![
+        gen_key("2026-07-01T0000Z-aaaaaaaa", "runs.json"),
+        gen_key("2026-07-01T0000Z-aaaaaaaa", "runs/r1.json"),
+    ];
+    let stale = stale_generation_keys(
+        &keys,
+        "2026-07-01T0000Z-aaaaaaaa",
+        now,
+        std::time::Duration::from_secs(24 * 3600),
+    );
+    assert!(stale.is_empty(), "the live generation is never pruned");
+}
+
+#[test]
+fn prune_spares_generations_inside_the_retention_window() {
+    // A generation superseded 10 minutes ago may still be feeding a site build
+    // that already read the old index.json.
+    let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
+    let keys = vec![
+        gen_key("2026-07-31T1150Z-bbbbbbbb", "runs.json"),
+        gen_key("2026-07-29T0000Z-cccccccc", "runs.json"),
+    ];
+    let stale = stale_generation_keys(
+        &keys,
+        "2026-07-31T1200Z-dddddddd",
+        now,
+        std::time::Duration::from_secs(24 * 3600),
+    );
+    assert_eq!(
+        stale,
+        vec![gen_key("2026-07-29T0000Z-cccccccc", "runs.json")]
+    );
+}
+
+#[test]
+fn prune_collects_every_key_of_a_stale_generation() {
+    let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
+    let stale_id = "2026-07-01T0000Z-aaaaaaaa";
+    let keys = vec![
+        gen_key(stale_id, "runs.json"),
+        gen_key(stale_id, "runs/r1.json"),
+        gen_key(stale_id, "cases/pong/v1.0.0.json"),
+        gen_key(stale_id, "models.json"),
+    ];
+    let stale = stale_generation_keys(
+        &keys,
+        "2026-07-31T1200Z-dddddddd",
+        now,
+        std::time::Duration::from_secs(24 * 3600),
+    );
+    assert_eq!(stale.len(), 4);
+}
+
+#[test]
+fn prune_never_touches_media_or_the_index() {
+    // Run media, case media and the pointer live outside `snapshots/` and are not
+    // generation-scoped; the prune must be blind to them.
+    let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
+    let keys = vec![
+        "index.json".to_string(),
+        "media/runs/r1/proof/hunt.mp4".to_string(),
+        "media/cases/pong/v1.0.0/references/_common/abcdef0123456789-gameplay.png".to_string(),
+        "pfp/acct_1".to_string(),
+    ];
+    let stale = stale_generation_keys(
+        &keys,
+        "2026-07-31T1200Z-dddddddd",
+        now,
+        std::time::Duration::from_secs(0),
+    );
+    assert!(stale.is_empty());
+}
+
+#[test]
+fn prune_keeps_a_generation_whose_id_it_cannot_date() {
+    // An id shape this does not recognize is not something to delete on a guess.
+    let now = time::macros::datetime!(2026 - 07 - 31 12:00:00 UTC);
+    let keys = vec![
+        gen_key("not-a-timestamp", "runs.json"),
+        gen_key("2026-07-01T0000Z-nothex!!", "runs.json"),
+        gen_key("2026-13-45T9999Z-aaaaaaaa", "runs.json"),
+    ];
+    let stale = stale_generation_keys(
+        &keys,
+        "2026-07-31T1200Z-dddddddd",
+        now,
+        std::time::Duration::from_secs(0),
+    );
+    assert!(
+        stale.is_empty(),
+        "undatable generations are kept: {stale:?}"
+    );
+}
+
+#[test]
+fn generation_timestamp_round_trips_a_real_snapshot_id() {
+    // The exact id shape `snapshot_id` produces must parse back.
+    assert_eq!(
+        generation_timestamp("2026-07-27T0437Z-6898b393"),
+        Some(time::macros::datetime!(2026 - 07 - 27 04:37:00 UTC))
+    );
 }

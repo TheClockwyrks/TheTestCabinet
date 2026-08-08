@@ -27,11 +27,11 @@ export default function item() {
       const id = await armTower(api, { type: "capacitor", tier: 1 });
       defaultTargeting = towerById(await snap(api), id).targeting;
 
-      ctx = await arrangeHeadTargets(api);
+      ctx = await arrangeHeadTargets(api, "first");
     },
 
     async act(api) {
-      posed = await actHeadTargets(api, ctx, "first");
+      posed = await actHeadTargets(api, ctx);
     },
 
     async assert(api, check) {

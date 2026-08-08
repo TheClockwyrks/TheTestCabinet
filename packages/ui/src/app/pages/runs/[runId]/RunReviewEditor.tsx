@@ -174,6 +174,14 @@ function GradeChoice({
 // publish into one *solo* command, so there the editor offers a single
 // "Publish run" that saves the review and publishes in one step.
 //
+// Publishing is a one-way door: once the run is public the editor drops the
+// Publish action on both paths and keeps only the review controls, so a reviewer
+// revising their own published review is never offered a second publish the
+// backend would refuse. This lifecycle is identical for every test type — a game
+// jam is reviewed and published exactly the way a test run is; only the shape of
+// the review differs (graded categories plus a whole-game overall grade instead
+// of per-domain ratings and pass/fail items).
+//
 // Every mutating action requires a signed-in account; signing in and viewing the
 // account live on their own pages (reached from the top bar's account control),
 // so the editor only links to the sign-in page when signed out. A review is
@@ -190,6 +198,7 @@ function GradeChoice({
 export function RunReviewEditor({
   run,
   reviews,
+  published,
   onChanged,
 }: {
   run: RunRecord;
@@ -197,6 +206,12 @@ export function RunReviewEditor({
    * editor seeds from the current account's prior review and gates Publish on the
    * run carrying at least one. */
   reviews: StoredReview[];
+  /** Whether the run has already been published. A published run is public and
+   * cannot be published again (the backend refuses it), so the editor drops the
+   * Publish action entirely and offers only the review controls — a reviewer can
+   * still revise their own review, which refreshes the public snapshot on its
+   * own. */
+  published: boolean;
   onChanged: () => void;
 }) {
   const runId = run.id;
@@ -243,6 +258,10 @@ export function RunReviewEditor({
   // Reviews this account has submitted this session, so Publish enables without a
   // refetch right after submitting.
   const [submittedThisSession, setSubmittedThisSession] = useState(false);
+  // Whether a publish succeeded this session, so the Publish action retires
+  // immediately rather than waiting for the refreshed record to report the run as
+  // published.
+  const [publishedThisSession, setPublishedThisSession] = useState(false);
   // Whether the review form is open. A reviewer who has not yet reviewed this run
   // sees it open to write their first review; once they carry one it collapses to
   // the summary so the form is not in the way of publishing. Deriving the
@@ -783,6 +802,9 @@ export function RunReviewEditor({
         setMessage(`Publishing… ${progress.message}`);
       });
       setMessage(result.published ? "Published." : "Publish did not complete.");
+      // Only a terminal success retires the action: a publish that did not
+      // complete must stay retryable.
+      if (result.published) setPublishedThisSession(true);
     });
 
   if (!client) {
@@ -799,6 +821,11 @@ export function RunReviewEditor({
   // Whether the run can be published: it carries at least one review (an existing
   // one or one just submitted this session). The backend is the real gate.
   const canPublish = reviews.length > 0 || submittedThisSession || solo;
+  // A run published this session (the enqueued publish reported success) reads as
+  // published straight away, without waiting for the detail record to be refetched
+  // — so the action disappears the moment it succeeds rather than lingering as a
+  // second, doomed Publish.
+  const isPublished = published || publishedThisSession;
 
   // Show the form when re-reviewing (Edit) or when this account has no review yet
   // — so a first-time reviewer always lands on the form, and a reviewer who has
@@ -987,8 +1014,11 @@ export function RunReviewEditor({
               its debug scripts ran (right-aligned) and expands to the per-script
               pass/fail breakdown — so a build where the checks never ran (e.g. a stale
               service image left the scripts ungraded) shows a plain "0 / N checks ran"
-              rather than looking silently unscored. */}
-          {liveScore && !jam && (
+              rather than looking silently unscored. A game jam scores the same way —
+              each graded category is worth `weight × 10` and earns its tier's points
+              — so it gets the same running total; it simply never declares automated
+              validation, so it always takes the plain branch. */}
+          {liveScore && (
             <div className={styles.notice}>
               {debugScripts.length > 0 ? (
                 <>
@@ -1458,7 +1488,25 @@ export function RunReviewEditor({
         // already stored on the backend (the driver pushes it on completion), so
         // neither flow has a separate push step. The reviewer identity is left-aligned;
         // the buttons are pushed to the right of the row.
-        if (solo) {
+        //
+        // An ALREADY-PUBLISHED run offers no Publish action on either path — it is
+        // public, the backend refuses a second publish, and a revised review
+        // refreshes the public snapshot by itself. What remains is the review
+        // control: the solo path, which has no separate submit button, gets the
+        // web flow's "Update review" so a desktop reviewer can still correct a
+        // published review. Every type behaves the same here — a game jam runs the
+        // identical submit -> publish lifecycle a test run does.
+        const submitButton = (
+          <button
+            className={isPublished ? styles.primary : styles.secondary}
+            onClick={onSubmitReview}
+            disabled={busy || needAccount || !reviewReady}
+            title={needAccount ? "Sign in to review" : reviewTitle}
+          >
+            {ownReview ? "Update review" : "Submit review"}
+          </button>
+        );
+        if (solo && !isPublished) {
           return (
             <div className={styles.actions}>
               {reviewingAs}
@@ -1476,34 +1524,32 @@ export function RunReviewEditor({
             </div>
           );
         }
+        const publishButton = isPublished ? null : (
+          <button
+            className={styles.primary}
+            onClick={onPublish}
+            disabled={busy || needAccount || !canPublish}
+            title={
+              needAccount
+                ? "Sign in to publish"
+                : !canPublish
+                  ? "Submit at least one review before publishing"
+                  : undefined
+            }
+          >
+            Publish run
+          </button>
+        );
+        // With the form collapsed on a published run there is nothing left to
+        // offer — no submit, no publish, nothing to cancel — so the row is dropped
+        // rather than left as an empty band of padding.
+        if (!showForm && !publishButton && !cancelButton) return null;
         return (
           <div className={styles.actions}>
             {reviewingAs}
             <div className={styles.actionsEnd}>
-              {showForm && (
-                <button
-                  className={styles.secondary}
-                  onClick={onSubmitReview}
-                  disabled={busy || needAccount || !reviewReady}
-                  title={needAccount ? "Sign in to review" : reviewTitle}
-                >
-                  {ownReview ? "Update review" : "Submit review"}
-                </button>
-              )}
-              <button
-                className={styles.primary}
-                onClick={onPublish}
-                disabled={busy || needAccount || !canPublish}
-                title={
-                  needAccount
-                    ? "Sign in to publish"
-                    : !canPublish
-                      ? "Submit at least one review before publishing"
-                      : undefined
-                }
-              >
-                Publish run
-              </button>
+              {showForm && submitButton}
+              {publishButton}
               {cancelButton}
             </div>
           </div>

@@ -7,7 +7,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { BackChevron } from "../../components/BackChevron";
 import { DownloadIcon } from "../../components/DownloadIcon";
 import { ExternalLinkIcon } from "../../components/ExternalLinkIcon";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { RunDeleteControl } from "../../components/RunDeleteControl";
 import { useGalleryData, type RunDetail } from "../../data/galleryContext";
@@ -15,6 +15,7 @@ import { grafanaTraceUrl } from "../../data/grafanaTraceUrl";
 import { useTestCaseName } from "../../data/useTestCaseName";
 import { useFindModel } from "../../data/useModels";
 import {
+  overallGradeOf,
   type ParsedWriteup,
   parseWriteup,
   worstRating,
@@ -47,14 +48,17 @@ interface RunDetailLayoutProps {
    */
   fill?: boolean;
   /**
-   * The tab body, given the resolved run, its framed review (if any), and the raw
+   * The tab body, given the resolved run, its framed review (if any), the raw
    * per-reviewer breakdown fetched with the record — so the Verdict/review/editor
-   * tabs read reviews from here rather than the console's global reviews map.
+   * tabs read reviews from here rather than the console's global reviews map —
+   * and whether the run is already published (the review editor offers no Publish
+   * action once it is).
    */
   children: (ctx: {
     run: RunRecord;
     review: ParsedWriteup | undefined;
     reviews: StoredReview[];
+    published: boolean;
   }) => ReactNode;
 }
 
@@ -189,6 +193,13 @@ export function RunDetailLayout({
     review && !isResultsScored
       ? worstRating(review.ratings.map((r) => r.rating))
       : null;
+  // A game jam declares no scoring domains, so it has no rating to be worst
+  // across: the reviewer's whole-game overall grade is its headline badge
+  // instead. It rides the aggregate review's checklist under the reserved
+  // `overall` id, and reads as null for every domain-rated run (a pass/fail
+  // verdict is not a grade).
+  const overallGrade =
+    review && !isResultsScored ? overallGradeOf(review.checklist) : null;
 
   // None of an asset-generation run (a static asset), an adversarial run (a match
   // replay), or a performance run (a wasm engine scored on fuel) produces a
@@ -246,7 +257,11 @@ export function RunDetailLayout({
             >
               {testCaseName(subject.testCaseSlug)}
             </Link>
-            {overallRating && <RatingBadge rating={overallRating} />}
+            {overallRating ? (
+              <RatingBadge rating={overallRating} />
+            ) : (
+              overallGrade && <GradeBadge status={overallGrade} />
+            )}
             {isLocal && <UnpublishedTag />}
           </h2>
           <span className={styles.harness}>{subject.harnessSlug}</span>
@@ -375,7 +390,7 @@ export function RunDetailLayout({
         </div>
       </div>
 
-      {children({ run, review, reviews })}
+      {children({ run, review, reviews, published: detail?.published ?? false })}
     </PageLayout>
   );
 }

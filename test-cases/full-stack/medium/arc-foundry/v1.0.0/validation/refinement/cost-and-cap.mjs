@@ -4,11 +4,23 @@
 // Only opening the run with exactly one level's worth of Charge is arranged; the three
 // purchases — one affordable, one refused, one at the cap — are the behavior under test and are
 // the act.
+//
+// ONE STILL PER STATE THE CHECK READS. This used to capture a single frame at the very end, on a
+// press already sitting at its R8 cap with 9999 Charge banked. The claim is that a level COSTS
+// something — R0 to R1 for exactly 20 Charge — and a picture taken after two further Refinement
+// levels and a Charge override cannot show a price being paid: the reviewer sees a maxed press
+// and a Charge total that has nothing to do with the cost the assertion checks.
+//
+// So the states the assertions read are the states that get captured: the press at R0 with the
+// opening reserve and its cost showing, the same press at R1 with that cost spent, and the press
+// at the R8 apex with its control disabled. The three stills are the three readings.
 
 import { startBuild, REFINE_COST, snap } from "../_helpers.mjs";
 
-// A frame for the still, so the capture shows the press at its cap. 100 ms = 6 ticks.
-const SETTLE_TICKS = 6;
+// A real pause so the build's own frame loop paints the scrap-press panel before each still is
+// taken. The panel is PAINTED, and instant stepping paints nothing — the same reason `readPanel`
+// waits rather than steps.
+const PAINT_MS = 250;
 
 export default function item() {
   // The press at each stage, read by `assert`.
@@ -25,8 +37,16 @@ export default function item() {
     },
 
     async act(api) {
+      // The press as it opens: R0, with exactly one level's worth of Charge and the price of the
+      // next rung showing.
+      await api.settle(PAINT_MS);
+      await api.screenshot("cost-r0");
+
       await api.call("upgradeQuality"); // costs REFINE_COST[1] = 20
       s1 = await snap(api);
+      // The same press one rung up, with that Charge spent.
+      await api.settle(PAINT_MS);
+      await api.screenshot("cost-r1");
 
       // Now unaffordable (Charge 0, next cost 50).
       await api.call("upgradeQuality");
@@ -37,9 +57,9 @@ export default function item() {
       await api.call("setCharge", 9999);
       await api.call("upgradeQuality");
       capped = (await snap(api)).refinement;
-
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("cost");
+      // The apex: no rung left to buy, however much Charge is banked.
+      await api.settle(PAINT_MS);
+      await api.screenshot("cost-r8");
     },
 
     async assert(api, check) {

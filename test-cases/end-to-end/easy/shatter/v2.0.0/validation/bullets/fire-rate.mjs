@@ -1,4 +1,4 @@
-// Automated validation for the Bullets item `fire-rate`: fire is rate-limited (~0.18 s
+// Automated validation for the Bullets item `fire-rate`: fire is rate-limited (22 ticks
 // between shots). The ship taps fire, then taps again too soon (which must NOT fire),
 // then taps once more after the interval has elapsed (which must fire).
 //
@@ -6,17 +6,27 @@
 // the waits BETWEEN them are the behavior under test, so they are `act` — and the clip shows
 // the rejected tap and the accepted one in the order the check makes them.
 //
-// The waits are written as tick counts: 0.05 s x 120 Hz = 6 ticks (well under the interval)
-// and 0.15 s x 120 Hz = 18 ticks, which carries the total past the ~0.18 s (21.6-tick) fire
-// interval. FIRE_INTERVAL itself is deliberately not used to drive time — it is 21.6 ticks,
-// not a whole tick count, and the contract rejects a fractional step.
+// Each tap goes through `actTapFire`, which gives the shot one simulation tick before
+// counting it: firing is a simulation event, and a build may launch the round inside `press`
+// or latch the tap and launch it on the next fixed step exactly as a real key tap does.
+// Counting with no time elapsed sees only the first kind and reports a conformant build of
+// the second kind as never firing at all.
+//
+// The gaps are written as tick counts, and both are chosen with room on either side of the
+// interval rather than probing its edge. `specs/ship.md` gates successive shots at 22 ticks
+// — a whole number of them, so a build can hit it exactly, whether it counts ticks or seconds.
+// The rejected tap lands 7 ticks after the first shot, a third of the way into the gate; the
+// accepted one lands 38 ticks after it, most of a gate clear on the far side. Neither verdict
+// turns on which side of a boundary a build's rounding lands, which is the point: this item
+// grades that the limit EXISTS, and `bullets/max-four` relies on the same headroom to fire a
+// full volley.
 
-import { newGame, poseShip } from "../_helpers.mjs";
+import { newGame, poseShip, actTapFire } from "../_helpers.mjs";
 
 export default function item() {
   // The on-screen bullet count after each of the three taps, read by `assert`.
-  let afterFirst;
-  let afterTooSoon;
+  let first;
+  let tooSoon;
   let afterInterval;
 
   return {
@@ -34,26 +44,29 @@ export default function item() {
     },
 
     async act(api) {
-      await api.call("press", "Space"); // first shot
-      afterFirst = (await api.snapshot()).bullets.length;
+      first = await actTapFire(api); // first shot
 
-      await api.advance(6); // 0.05 s — well under the fire interval
-      await api.call("press", "Space"); // too soon — must not fire
-      afterTooSoon = (await api.snapshot()).bullets.length;
+      await api.advance(6); // 6 ticks — a third of the way into the 22-tick gate
+      tooSoon = await actTapFire(api); // too soon — must not fire
 
-      await api.advance(18); // 0.15 s more — now past ~0.18 s since the first shot
-      await api.call("press", "Space"); // allowed again
-      afterInterval = (await api.snapshot()).bullets.length;
+      await api.advance(30); // 30 more ticks — 38 since the shot, well past the gate
+      afterInterval = await actTapFire(api); // allowed again
+
+      await api.advance(72); // 0.6 s tail, so the clip shows both shots in flight
     },
 
     async assert(api, check) {
-      check.expectEq("the first tap fires a bullet", afterFirst, 1);
+      check.expectEq("the first tap fires a bullet", first.after, 1);
       check.expectEq(
         "a second tap within the interval does not fire",
-        afterTooSoon,
+        tooSoon.after,
         1,
       );
-      check.expectEq("a tap after the interval fires again", afterInterval, 2);
+      check.expectEq(
+        "a tap after the interval fires again",
+        afterInterval.after,
+        2,
+      );
     },
   };
 }

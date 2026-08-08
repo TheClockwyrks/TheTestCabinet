@@ -4,10 +4,15 @@
 // corridor ('.') only through the gate, never through open rock. Everything judged is
 // already in the snapshot `arrange` takes, and `act` only holds still long enough to
 // capture the board.
+//
+// The still is framed on the den, for the reason given in `maze/den-one-exit`: in a maze
+// this dark, a picture taken from wherever the forager spawned shows none of the wall the
+// item is about. See `arrangeDenView`.
 import {
   startPlaying,
   denTiles,
   denCorridorBreaches,
+  arrangeDenView,
   unmetPrecondition,
 } from "../_helpers.mjs";
 
@@ -25,6 +30,7 @@ export default function item() {
         throw unmetPrecondition("no den-interior tiles marked in the maze");
       }
       breaches = denCorridorBreaches(snap).length;
+      await arrangeDenView(api, snap);
     },
 
     async act(api) {

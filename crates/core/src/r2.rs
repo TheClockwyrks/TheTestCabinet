@@ -11,11 +11,12 @@
 //!   there is nothing in the backend's git checkout for it to publish — the
 //!   publishing side must upload directly.
 //!
-//! Both only ever need `PutObject` and `ListObjectsV2`, so rather than pull the
-//! full AWS SDK this module signs requests directly with SigV4 over `hmac`/`sha2`
-//! and sends them with the already-vendored `reqwest`. The recipe follows AWS's
-//! Signature Version 4 for a single-chunk, payload-signed request.
+//! Both only ever need `PutObject`, `ListObjectsV2` and `DeleteObjects`, so rather
+//! than pull the full AWS SDK this module signs requests directly with SigV4 over
+//! `hmac`/`sha2` and sends them with the already-vendored `reqwest`. The recipe
+//! follows AWS's Signature Version 4 for a single-chunk, payload-signed request.
 
+use base64::Engine as _;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -92,6 +93,11 @@ const SCOPE_DATE: &[FormatItem<'_>] = format_description!("[year][month][day]");
 
 /// The S3 service name SigV4 scopes against.
 const SERVICE: &str = "s3";
+
+/// The maximum number of keys one `DeleteObjects` request may carry. S3 caps the
+/// batch at 1000 and R2 implements the same limit, so [`R2Client::delete_objects`]
+/// chunks anything larger.
+const DELETE_BATCH: usize = 1000;
 
 /// An R2 client that uploads objects to one bucket.
 pub struct R2Client {
@@ -235,6 +241,124 @@ impl R2Client {
         Ok(keys)
     }
 
+    /// Delete every listed key, chunking into 1000-key
+    /// `POST {endpoint}/{bucket}?delete` requests signed with SigV4 (the batch size
+    /// S3 and R2 cap a single request at). Returns the number of keys deleted.
+    ///
+    /// The backend's snapshot refresh is the only caller: after the atomic
+    /// `index.json` cut-over it prunes the snapshot generations nothing points at
+    /// any more (see `crate::snapshot::stale_generation_keys` in the backend). Left
+    /// unpruned the bucket grows without bound — every refresh writes a fresh
+    /// generation and no earlier one is ever reachable again.
+    ///
+    /// A batch that R2 reports a per-key `<Error>` for fails the whole call: the
+    /// caller treats pruning as best-effort and logs, so a partial delete simply
+    /// leaves the remainder for the next refresh to retry.
+    #[tracing::instrument(
+        name = "r2.delete_objects",
+        skip(self, keys),
+        fields(r2.keys = keys.len()),
+        err,
+    )]
+    pub async fn delete_objects(&self, keys: &[String]) -> Result<usize> {
+        let mut deleted = 0;
+        for chunk in keys.chunks(DELETE_BATCH) {
+            self.delete_batch(chunk).await?;
+            deleted += chunk.len();
+        }
+        Ok(deleted)
+    }
+
+    /// Delete one batch of at most [`DELETE_BATCH`] keys.
+    ///
+    /// Unlike the other verbs this signs a request *body*, and S3 additionally
+    /// authenticates that body with a `Content-MD5` header which must itself be in
+    /// `SignedHeaders` — hence the extra digest and the different canonical-header
+    /// block. `<Quiet>true</Quiet>` suppresses a success element per key, leaving a
+    /// response body that is empty unless something failed.
+    async fn delete_batch(&self, keys: &[String]) -> Result<()> {
+        let mut body =
+            String::from(r#"<?xml version="1.0" encoding="UTF-8"?><Delete><Quiet>true</Quiet>"#);
+        for key in keys {
+            body.push_str("<Object><Key>");
+            body.push_str(&xml_escape(key));
+            body.push_str("</Key></Object>");
+        }
+        body.push_str("</Delete>");
+        let body = body.into_bytes();
+
+        let now = OffsetDateTime::now_utc();
+        let amz_date = now
+            .format(AMZ_DATE)
+            .map_err(|e| Error::R2(format!("formatting amz-date: {e}")))?;
+        let scope_date = now
+            .format(SCOPE_DATE)
+            .map_err(|e| Error::R2(format!("formatting scope-date: {e}")))?;
+
+        let endpoint = url::trim_scheme(&self.config.endpoint);
+        let host = endpoint.host.clone();
+        let canonical_uri = format!("/{}", uri_encode(&self.config.bucket, false));
+        // The subresource takes no value; its canonical form is still `name=`.
+        let canonical_query = "delete=";
+
+        let payload_hash = hex::encode(Sha256::digest(&body));
+        let content_md5 = base64::engine::general_purpose::STANDARD.encode(md5::Md5::digest(&body));
+
+        let signed_headers = "content-md5;host;x-amz-content-sha256;x-amz-date";
+        let canonical_headers = format!(
+            "content-md5:{content_md5}\nhost:{host}\nx-amz-content-sha256:{payload_hash}\nx-amz-date:{amz_date}\n"
+        );
+        let canonical_request = format!(
+            "POST\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\n{payload_hash}"
+        );
+        let canonical_request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
+
+        let credential_scope =
+            format!("{scope_date}/{}/{SERVICE}/aws4_request", self.config.region);
+        let string_to_sign =
+            format!("AWS4-HMAC-SHA256\n{amz_date}\n{credential_scope}\n{canonical_request_hash}");
+        let signature = self.sign(&scope_date, &string_to_sign)?;
+        let authorization = format!(
+            "AWS4-HMAC-SHA256 Credential={}/{credential_scope}, SignedHeaders={signed_headers}, Signature={signature}",
+            self.config.access_key_id
+        );
+
+        let url = format!(
+            "{}{canonical_uri}?{canonical_query}",
+            scheme_prefix(&self.config.endpoint)
+        );
+        let response = self
+            .http
+            .post(&url)
+            .header("Host", host)
+            .header("Content-MD5", content_md5)
+            .header("x-amz-date", amz_date)
+            .header("x-amz-content-sha256", payload_hash)
+            .header("Authorization", authorization)
+            .header("Content-Type", "application/xml")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| Error::R2(format!("R2 DELETE batch failed: {e}")))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let detail = response.text().await.unwrap_or_default();
+            return Err(Error::R2(format!(
+                "R2 DELETE batch returned {status}: {detail}"
+            )));
+        }
+        // A quiet-mode success body carries no elements; anything reported is a
+        // per-key failure the caller must not mistake for a completed prune.
+        let detail = response.text().await.unwrap_or_default();
+        if let Some(failures) = parse_delete_errors(&detail) {
+            return Err(Error::R2(format!(
+                "R2 DELETE batch reported {failures} per-key error(s): {detail}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Fetch one `ListObjectsV2` page for a pre-built canonical query string, signed
     /// with SigV4, returning the XML response body.
     async fn list_page(&self, canonical_query: &str) -> Result<String> {
@@ -335,6 +459,25 @@ fn parse_next_continuation_token(xml: &str) -> Option<String> {
     let close = after.find("</NextContinuationToken>")?;
     let token = xml_unescape(&after[..close]);
     (!token.is_empty()).then_some(token)
+}
+
+/// The number of `<Error>` elements in a `DeleteObjects` response, or `None` when
+/// the batch fully succeeded. In quiet mode a clean delete reports nothing at all,
+/// so any `<Error>` present means some keys survived.
+fn parse_delete_errors(xml: &str) -> Option<usize> {
+    let count = xml.matches("<Error>").count();
+    (count > 0).then_some(count)
+}
+
+/// Escape an object key for inclusion in a `DeleteObjects` request body. `&` is
+/// escaped first so the ampersands introduced by the later replacements are not
+/// double-escaped. The inverse of [`xml_unescape`].
+fn xml_escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 /// Decode the five predefined XML entities in an element's text. `&amp;` is decoded

@@ -288,6 +288,25 @@ description = "What the build looks and sounds like: the tool-produced matter, t
 format = 2
 
 # =============================================================================
+# Debug & Automation API
+# =============================================================================
+# Placed first because it is the gate. Almost every automated item below poses matter
+# and towers on the SCENARIO ROUND that `startScenario` opens (specs/instrumentation.md)
+# and then runs the real simulation over it. A build that does not open one fails this
+# item, by name, and the automated verdicts below it are untested rather than answered —
+# which is the difference between reading a result and investigating one.
+
+# --- The scenario board ------------------------------------------------------
+[[review.categories]]
+id = "instrumentation"
+title = "Debug & Automation API"
+[[review.categories.items]]
+id = "scenario-round"
+title = "The debug API opens a live scenario round"
+description = "`startScenario` opens a live round the wave system leaves empty and that does not end on its own: the run enters the round phase without advancing the round number, no wave is sent into it, matter posed on it flows and is fired on by a tower in range exactly as it would mid-round, and the round does not clear back to the build phase when the board empties."
+validation = { script = "validation/instrumentation/scenario-round.mjs", outputs = [{ id = "scenario", name = "A posed unit flowing and under fire on an empty scenario round", kind = "video" }] }
+
+# =============================================================================
 # Reaction Systems
 # =============================================================================
 
@@ -303,7 +322,7 @@ validation = { script = "validation/maps/single-path.mjs", outputs = [{ id = "fl
 [[review.categories.items]]
 id = "branching-fork"
 title = "Branching-fork map"
-description = "The medium map forks into two lanes that share an inlet trunk and a final run and diverge between them, so both lanes carry traffic and a tower beside a shared stretch covers both."
+description = "The medium map forks into lanes that coincide on a shared stretch — an inlet trunk and/or a final run — and diverge into distinct lanes between them, so both lanes carry traffic and a tower beside a shared stretch covers both."
 validation = { script = "validation/maps/branching-fork.mjs", outputs = [{ id = "fork", name = "The two lanes of the branching fork", kind = "video" }] }
 [[review.categories.items]]
 id = "multiple-separate"
@@ -368,11 +387,37 @@ id = "first-default"
 title = "FIRST is the default priority"
 description = "By default a damage tower fires at the FIRST target — the valid in-range unit furthest along its path toward the collector."
 validation = { script = "validation/targeting/first-default.mjs", outputs = [{ id = "first", name = "A tower defaulting to the furthest-along target", kind = "video" }] }
+# The five explicit priorities are five items, not one. As a single `modes` item they shared
+# one verdict and one clip: a red line said "targeting is broken" when what was broken was
+# `weakest`, and the clip cut five scenes into under three seconds because each was read off
+# `targetId` a single tick after it was posed. Each priority now grades on its own — the same
+# three-atom scene, a different unit singled out each time, the choice read off the shot the
+# tower actually takes, and the clip run on so the head can be seen holding on its pick.
 [[review.categories.items]]
-id = "modes"
-title = "The six targeting priorities pick the right target"
-description = "Setting a tower's targeting to LAST, NEAREST, FARTHEST, STRONGEST, or WEAKEST (alongside the default FIRST) changes which valid in-range unit it fires at accordingly."
-validation = { script = "validation/targeting/modes.mjs", outputs = [{ id = "modes", name = "Each targeting priority selecting its target", kind = "video" }] }
+id = "last"
+title = "LAST targets the least-advanced unit"
+description = "With its targeting set to LAST, a damage tower fires at the valid in-range unit least far along the conduit (nearest the inlet), and keeps favouring it over the units ahead of it."
+validation = { script = "validation/targeting/last.mjs", outputs = [{ id = "last", name = "A tower holding on the rearmost unit under LAST", kind = "video" }] }
+[[review.categories.items]]
+id = "nearest"
+title = "NEAREST targets the closest unit to the tower"
+description = "With its targeting set to NEAREST, a damage tower fires at the valid in-range unit at the shortest straight-line distance from its own placed position, independent of how far along the conduit that unit is."
+validation = { script = "validation/targeting/nearest.mjs", outputs = [{ id = "nearest", name = "A tower holding on the closest unit under NEAREST", kind = "video" }] }
+[[review.categories.items]]
+id = "farthest"
+title = "FARTHEST targets the most distant unit still in range"
+description = "With its targeting set to FARTHEST, a damage tower fires at the valid unit at the greatest straight-line distance from it that is still inside its radius."
+validation = { script = "validation/targeting/farthest.mjs", outputs = [{ id = "farthest", name = "A tower holding on the most distant in-range unit under FARTHEST", kind = "video" }] }
+[[review.categories.items]]
+id = "strongest"
+title = "STRONGEST targets the highest-hit-point unit"
+description = "With its targeting set to STRONGEST, a damage tower fires at the valid in-range unit with the most remaining hit points, and keeps favouring it over the weaker units beside it."
+validation = { script = "validation/targeting/strongest.mjs", outputs = [{ id = "strongest", name = "A tower holding on the toughest unit under STRONGEST", kind = "video" }] }
+[[review.categories.items]]
+id = "weakest"
+title = "WEAKEST targets the lowest-hit-point unit"
+description = "With its targeting set to WEAKEST, a damage tower fires at the valid in-range unit with the fewest remaining hit points — a unit posed neither furthest along the conduit nor least far along it, so the choice cannot be satisfied by FIRST or LAST."
+validation = { script = "validation/targeting/weakest.mjs", outputs = [{ id = "weakest", name = "A tower holding on the frailest unit under WEAKEST", kind = "video" }] }
 [[review.categories.items]]
 id = "inert-priority"
 title = "Inert-priority prefers revealed inert matter only"
@@ -496,8 +541,13 @@ validation = { script = "validation/detection/other-sources.mjs", outputs = [{ i
 [[review.categories.items]]
 id = "inert-modifier"
 title = "Inert is a modifier any type can carry"
-description = "Inert is a modifier rather than a property of three fixed types: a type that is not inert by default — a Dimer — can be released shielded, keeping its own traits and gaining the inert one. While shielded nothing can touch it (a tower never acquires it and its bond pool does not move); revealed by a detector, the same tower chips it. The round table applies the modifier for itself, sending both plain and shielded Dimers."
+description = "Inert is a modifier rather than a property of three fixed types: a type that is not inert by default — a Dimer — can be released shielded, keeping its own traits and gaining the inert one. While shielded nothing can touch it (a tower never acquires it and its bond pool does not move); revealed by a detector, the same tower chips it."
 validation = { script = "validation/detection/inert-modifier.mjs", outputs = [{ id = "shielded", name = "A shielded Dimer untouchable until it is revealed", kind = "video" }] }
+[[review.categories.items]]
+id = "inert-round-table"
+title = "The round table applies the inert modifier"
+description = "The round table uses the modifier for itself rather than leaving it to posed matter: Round 37 fields both plain and shielded Dimers, and the real wave system releases them that way."
+validation = { script = "validation/detection/inert-round-table.mjs", outputs = [{ id = "wave", name = "Round 37 releasing both plain and shielded Dimers", kind = "video" }] }
 [[review.categories.items]]
 id = "catalyst-excite"
 title = "A Catalyst excites matter it reveals"
@@ -532,12 +582,12 @@ title = "Two-Branch Tower Upgrades"
 id = "tier2-bump"
 title = "Tier II is a generic bump"
 description = "Upgrading a tower to tier II applies a generic improvement (more range, faster fire, more damage) with no branch choice."
-validation = { script = "validation/upgrades/tier2-bump.mjs", outputs = [{ id = "tier2", name = "A tower's stats bumped at tier II", kind = "image" }] }
+validation = { script = "validation/upgrades/tier2-bump.mjs", outputs = [{ id = "tier2", name = "A selected tower's stats changing as it is upgraded to tier II", kind = "video" }] }
 [[review.categories.items]]
 id = "tier3-branch"
 title = "Tier III requires a branch choice"
 description = "Reaching tier III requires committing to one of two branches; the chosen branch is recorded, and an attempt to reach tier III without choosing one is refused."
-validation = { script = "validation/upgrades/tier3-branch.mjs", outputs = [{ id = "tier3", name = "A tier-III branch committed", kind = "image" }] }
+validation = { script = "validation/upgrades/tier3-branch.mjs", outputs = [{ id = "tier3", name = "A branchless tier-III upgrade refused, then one accepted with a branch", kind = "video" }] }
 [[review.categories.items]]
 id = "branch-a-vs-b"
 title = "The two branches behave differently"
@@ -577,12 +627,12 @@ validation = { script = "validation/economy/early-send-bonus.mjs", outputs = [{ 
 id = "sell-refund"
 title = "Selling refunds part of the spend"
 description = "Selling a tower after a round has begun refunds a fraction (about 70%) of what was spent on it."
-validation = { script = "validation/economy/sell-refund.mjs", outputs = [{ id = "sell", name = "A partial refund on a sold tower", kind = "image" }] }
+validation = { script = "validation/economy/sell-refund.mjs", outputs = [{ id = "sell", name = "A selected tower being sold mid-round and its refund landing", kind = "video" }] }
 [[review.categories.items]]
 id = "sell-full-opening"
 title = "Selling in the opening phase refunds in full"
 description = "A tower placed and sold during the untimed opening build phase (before round one) refunds its full cost."
-validation = { script = "validation/economy/sell-full-opening.mjs", outputs = [{ id = "sell", name = "A full refund in the opening phase", kind = "image" }] }
+validation = { script = "validation/economy/sell-full-opening.mjs", outputs = [{ id = "sell", name = "A tower sold in the opening build phase, refunded in full", kind = "video" }] }
 [[review.categories.items]]
 id = "leak-costs-integrity"
 title = "A leak costs integrity"
@@ -592,12 +642,12 @@ validation = { script = "validation/economy/leak-costs-integrity.mjs", outputs =
 id = "defeat"
 title = "Zero integrity is defeat"
 description = "Reaching zero integrity loses the game — the containment-failed (defeat) screen appears, even mid-round."
-validation = { script = "validation/economy/defeat.mjs", outputs = [{ id = "defeat", name = "The containment-failed screen", kind = "image" }] }
+validation = { script = "validation/economy/defeat.mjs", outputs = [{ id = "defeat", name = "A leak taking integrity to zero and the containment-failed screen arriving", kind = "video" }] }
 [[review.categories.items]]
 id = "victory"
 title = "Surviving the final round is victory"
 description = "Clearing the final round of the campaign with integrity intact wins the game — the victory screen appears."
-validation = { script = "validation/economy/victory.mjs", outputs = [{ id = "victory", name = "The victory screen after the final round", kind = "image" }] }
+validation = { script = "validation/economy/victory.mjs", outputs = [{ id = "victory", name = "The final round resolving into the victory screen", kind = "video" }] }
 
 # --- Roster & Round Table -----------------------------------------------------
 [[review.categories]]
@@ -652,7 +702,7 @@ validation = { script = "validation/pause/in-place-interactive.mjs", outputs = [
 id = "menu-esc"
 title = "Esc opens the pause menu"
 description = "`Esc` opens the pause menu (Resume / Restart / Quit), which also freezes the game and covers it with the menu."
-validation = { script = "validation/pause/menu-esc.mjs", outputs = [{ id = "menu", name = "The Esc pause menu", kind = "image" }] }
+validation = { script = "validation/pause/menu-esc.mjs", outputs = [{ id = "menu", name = "Esc opening the pause menu over a live round", kind = "video" }] }
 [[review.categories.items]]
 id = "esc-over-inplace"
 title = "Esc opens the menu even when already paused in place"
@@ -746,19 +796,56 @@ description = "A produced particle burst fires when a unit is neutralized."
 validation = { script = "validation/fx/neutralize.mjs", outputs = [{ id = "neutralize", name = "The neutralize burst firing", kind = "video" }] }
 
 # --- Produced Sound & Music ---------------------------------------------------
+# Every sound effect is synthesized/sampled with the audio tools and played through
+# the Web Audio API (specs/assets.md), so the validator reads the sources a build
+# starts and confirms a distinct cue fires on each mandated event. The build must not
+# autoplay, so each check arms audio with a real gesture (a key press and a corner
+# click) first; the exact sound is the model's own, only that a cue plays is scored.
+# Each mandated cue is its own review item so a build fails exactly the cue it omits.
+# The muteable / never-fail-to-load / silent-until-interaction properties are reviewed
+# by a person from play.
 [[review.categories]]
 id = "audio"
 title = "Produced Sound & Music"
 [[review.categories.items]]
-id = "sfx"
-title = "Produced sound effects"
-description = "The board has real sound effects the build produced with the audio tools (shot/strip, bond-snap, nuclear-crack, neutralize, build, and leak-alarm), played via Web Audio — silent when muted, never failing the game if audio cannot start, and silent until the player first interacts."
-proof = "pressure"
+id = "shot-strip"
+title = "Shot / strip cue"
+description = "A distinct cue, synthesized/sampled with the audio tools, plays via Web Audio when a damage tower fires a shot."
+validation = { script = "validation/audio/shot-strip.mjs", outputs = [{ id = "shot", name = "The shot whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "bond-snap"
+title = "Bond-snap cue"
+description = "A distinct cue plays via Web Audio when a bonded cluster's outer bond pool is chipped through and sheds a free atom."
+validation = { script = "validation/audio/bond-snap.mjs", outputs = [{ id = "snap", name = "The bond snap whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "nuclear-crack"
+title = "Nuclear-crack cue"
+description = "A distinct cue plays via Web Audio when a heavy isotope or the boss decays and sheds a fragment."
+validation = { script = "validation/audio/nuclear-crack.mjs", outputs = [{ id = "crack", name = "The decay whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "neutralize"
+title = "Neutralize cue"
+description = "A distinct cue plays via Web Audio when a unit is fully broken down (neutralized)."
+validation = { script = "validation/audio/neutralize.mjs", outputs = [{ id = "neutralize", name = "The kill whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "build"
+title = "Build/place cue"
+description = "A distinct cue plays via Web Audio when a tower is placed."
+validation = { script = "validation/audio/build.mjs", outputs = [{ id = "build", name = "The placement whose cue is checked", kind = "video" }] }
+[[review.categories.items]]
+id = "leak-alarm"
+title = "Leak-alarm cue"
+description = "A distinct cue plays via Web Audio when a unit reaches the collector and leaks."
+validation = { script = "validation/audio/leak-alarm.mjs", outputs = [{ id = "leak", name = "The leak whose cue is checked", kind = "video" }] }
 [[review.categories.items]]
 id = "music"
 title = "A produced reactor music bed"
 description = "A tense reactor music bed the build produced with `music` plays under the board, via Web Audio — not silence, a download, or a hand-oscillated stand-in."
-proof = "pressure"
+validation = { script = "validation/audio/music.mjs", outputs = [{ id = "music", name = "The reactor music bed playing under the board", kind = "video" }] }
+[[review.categories.items]]
+id = "graceful"
+title = "Muteable, never-fail, and silent until interaction"
+description = "Audio stays fully playable muted (a mute toggle is provided), never fails the game if audio cannot start, and does not begin until the player first interacts."
 
 # --- Readable HUD & Build Panel -----------------------------------------------
 [[review.categories]]
@@ -804,6 +891,11 @@ id = "howto"
 title = "How to play"
 description = "The how-to-play state is reachable and correct."
 validation = { script = "validation/states/howto.mjs", outputs = [{ id = "howto", name = "The how-to-play screen", kind = "image" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live round advances — simulation time accumulates and matter flows along its path — without anything stepping it from outside."
+validation = { script = "validation/states/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Window Fit ---------------------------------------------------------------
 [[review.categories]]

@@ -4,7 +4,22 @@
 // large atom under an Emitter and runs on until a "strip" burst appears in the snapshot's
 // live effects list. (Whether the produced burst looks good is reviewed by a person from the clip.)
 
-import { coverAndSpawn, TICK } from "../_helpers.mjs";
+import {
+  coverAndPassThrough,
+  clipBudget,
+  LEAD_TICKS,
+  TICK,
+} from "../_helpers.mjs";
+
+// The clip used to cut on the frame the burst first appeared, which shows a burst starting
+// and never playing. A produced particle system is SIMULATED and varies shot to shot
+// (specs/assets.md), so what a reviewer has to see is it playing out — and, over a second,
+// the atom shedding further electrons under continued fire.
+const TAIL_TICKS = 120;
+// The atom starts outside the tower's reach and walks in, so the lead-in does not eat the
+// coverage window the burst has to happen inside of.
+const APPROACH_PX = 90;
+const MAX_BURST_TICKS = 180;
 
 export default function item() {
   let r;
@@ -12,19 +27,33 @@ export default function item() {
   return {
     id: "fx.strip",
 
+    clipMs: clipBudget(LEAD_TICKS + MAX_BURST_TICKS + TAIL_TICKS),
+
     async arrange(api) {
-      await coverAndSpawn(api, { kind: "emitter", type: "atom", electrons: 6 });
+      await coverAndPassThrough(api, {
+        kind: "emitter",
+        type: "atom",
+        electrons: 6,
+        approachPx: APPROACH_PX,
+      });
     },
 
     // The Emitter stripping shells off the atom, and the spark each strip throws.
     async act(api) {
+      // The unit travelling in, before anything has hit it. Posed at the tower's own
+      // covering point the first shot landed almost on the opening frame, so the burst this
+      // item exists to show had already happened by the time the recording began — "the
+      // event is happening before playback starts". From the upstream edge of the tower's
+      // range there is a run-up to watch first.
+      await api.advance(LEAD_TICKS);
       // 180 ticks = the old 3 s cap. The old poll of 0.02 s is 1.2 ticks, which the
       // contract refuses; it meant "sample as finely as possible", and one TICK is the
       // finest there is — a burst is short-lived and must not be polled past.
       r = await api.until((s) => s.effects.some((e) => e.kind === "strip"), {
-        max: 180,
+        max: MAX_BURST_TICKS,
         poll: TICK,
       });
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

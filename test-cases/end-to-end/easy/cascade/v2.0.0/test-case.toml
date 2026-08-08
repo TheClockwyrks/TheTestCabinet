@@ -483,13 +483,30 @@ validation = { script = "validation/dragdrop/snap-back.mjs", outputs = [
 [[review.categories]]
 id = "winning"
 title = "Winning"
+# The win is checked once per GESTURE that can cause it, and each gesture is checked
+# from both piles the last card can be played from. Completing the foundations is one
+# rule, but reaching it is two different input paths, and a build can get one right
+# and the other wrong: a drag commits on release, over a target the player chose,
+# while a double-click hands the card to the auto-move, which picks the foundation
+# itself. Driving only one of them leaves the other unchecked. Each is driven as the
+# whole gesture — the drag through the pointer ops, the double-click as a real
+# browser double-click — because a build can detect the win correctly and then undo
+# it with the rest of that same gesture; see the note on `actWinByDoubleClick` in
+# `validation/_helpers.mjs`.
 [[review.categories.items]]
-id = "detect"
-title = "All 52 home is a win"
-description = "Completing all four foundations (all 52 cards home) is detected as a win, stops normal play, and begins the victory cascade."
+id = "detect-drag"
+title = "Dragging the last card home wins"
+description = "Dragging the last card onto its foundation — from the waste or from a tableau column — completes all four foundations, which is detected as a win: normal play stops and the victory cascade begins and is still running once the drag is over."
 proof = "win"
-validation = { script = "validation/winning/detect.mjs", outputs = [
-  { id = "win", name = "The win detected and the cascade beginning", kind = "video" },
+validation = { script = "validation/winning/detect-drag.mjs", outputs = [
+  { id = "win-drag", name = "The last card dragged home from the waste and from a column, each starting the cascade", kind = "video" },
+] }
+[[review.categories.items]]
+id = "detect-double-click"
+title = "Double-clicking the last card home wins"
+description = "Double-clicking the last card onto its foundation — from the waste or from a tableau column — completes all four foundations, which is detected as a win: normal play stops and the victory cascade begins and is still running once the double-click is over."
+validation = { script = "validation/winning/detect-double-click.mjs", outputs = [
+  { id = "win-double-click", name = "The last card double-clicked home from the waste and from a column, each starting the cascade", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "no-false-win"
