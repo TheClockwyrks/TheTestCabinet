@@ -104,8 +104,14 @@ slow-timeout = { period = "300s", terminate-after = 3 }
 # gate at 64.6 s, against a default that warns at 60 s and kills at 120 s. Both passed and both are
 # now one bad-tempered CI runner away from being terminated for doing exactly what they say, so both
 # are bounded from the work in the same way every other sweep here is.
+#
+# The documentation-view sweep is the third of them and was left out of that reading rather than
+# found to be under the line: measured since, over two full runs, at 47.7 s and 77.8 s, and the
+# compile-cost gate it sits beside at 53.0 s and 85.0 s. Two readings that far apart on one machine
+# are the whole argument — what the number is depends on what else the scheduler is holding, so the
+# bound has to come from the work rather than from the best reading of it.
 [[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::no_two_preparations_of_a_language_are_handed_the_same_workspace) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost))'
+filter = 'package(test-cabinet-gg) and (test(=sandbox::language::isolation::tests::no_two_preparations_of_a_language_are_handed_the_same_workspace) or test(=sandbox::tests::compile_tests::every_language_reports_what_compiling_its_program_cost) or test(=sandbox::language::tests::every_language_writes_the_program_that_opens_a_documentation_view))'
 slow-timeout = { period = "180s", terminate-after = 3 }
 
 # The Java arm's warm-JVM measurement, for the same reason as the Ruby arm's per-turn reading above
@@ -133,4 +139,36 @@ threads-required = "num-test-threads"
 # for a CI runner with a quarter of the cores.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(/^sandbox::language::kotlin::(substrate|surface)::/)'
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The other compiled arms' compile-driving tests, bounded exactly as the Kotlin arm's are above and
+# for the same reason. That override was written when Kotlin was the only arm measured reaching the
+# default hard kill; an eighth arm's compiles now contend with them all, and a full run of this
+# workspace puts fourteen tests past the default's 60 s warning line with the heaviest at 114.5 s.
+# Grouped by arm rather than named one by one, because what is slow here is not a particular
+# assertion but the shape of the file: each test is its own process, and the first thing it does is
+# start a real compiler.
+#
+# Measured over two full `cargo nextest run --workspace` runs on this dev container — one of them
+# alongside a `cargo doc`, which is what a busy CI runner looks like. Worst reading per group, and
+# how many of that group's tests crossed 60 s in the quieter of the two:
+#
+#   purescript::substrate      114.5 s   5 over the line
+#   purescript::compile::tests 108.4 s   3
+#   java::surface               79.9 s   2
+#   ruby::substrate             78.8 s   1
+#   java::substrate             73.5 s   2
+#
+# 180 s rather than Kotlin's 120 s for the two PureScript groups, because `purs` type-checks against
+# a 1.2 MB library set on every one of them and they are the two slowest groups in the workspace;
+# 120 s for the rest, which is where the JVM arms already sit. Every one of these passed at every
+# reading — this bounds them away from a termination that would name the wrong thing, and it is not
+# licence for one to get slower. Each further arm registered pushes on all of them at once, so the
+# headroom rather than the timeout is the thing to watch.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::purescript::(substrate|compile::tests)::/)'
+slow-timeout = { period = "180s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and (test(/^sandbox::language::java::(substrate|surface)::/) or test(/^sandbox::language::ruby::substrate::/))'
 slow-timeout = { period = "120s", terminate-after = 3 }
