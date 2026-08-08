@@ -48,8 +48,9 @@
 //! (`containers/gg-toolchains/Dockerfile`) and is found on `PATH` at run time. It is by a wide
 //! margin the heaviest toolchain in that image, and that is stated rather than buried.
 //!
-//! The **library set** goes the other way: ~220 KB of `.rlib`, built once by
-//! `packages/gg-sandbox-rust/build.sh` and committed. It could have gone in the image beside the
+//! The **library set** goes the other way: 9.4 MB gzipped of `.rlib` — 4.4 MB of that `regex`'s own
+//! `regex-syntax` and `regex-automata`, which every program is linked against and almost none uses
+//! all of — built once by `packages/gg-sandbox-rust/build.sh` and committed. It could have gone in the image beside the
 //! compiler and deliberately does not, for the reason the PureScript arm's tree does not — gg is
 //! copied as a single file into an ephemeral run container whose image was built separately, so a
 //! set that lived in the image could be a different vintage from the binary reading it. Once this
@@ -190,7 +191,7 @@ pub(super) fn target() -> &'static str {
 
 /// Unpack the library set now, so the first compile does not.
 ///
-/// The whole of this language's warm-up: ~220 KB decompressed into a handful of `.rlib` files, once
+/// The whole of this language's warm-up: 9.4 MB decompressed into ~27.5 MB of `.rlib` files, once
 /// per machine. The result is dropped, because a failure here is the failure the first compile will
 /// make, and there it is classified, counted and reported.
 pub(super) fn warm() {

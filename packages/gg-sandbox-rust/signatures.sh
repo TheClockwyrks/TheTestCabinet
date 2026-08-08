@@ -9,10 +9,17 @@
 # `rustdoc` itself emits — so a doc comment edited without a regeneration is a diff CI fails on
 # rather than a sentence that quietly stopped being true.
 #
-# WHAT IT NEEDS. This checkout's own `cargo` and `rustdoc`, and the `wasm32-unknown-unknown`
-# standard library (`scripts/ci/install-rust-wasm.sh`). It does NOT need the network, the pinned
-# `wit-bindgen`, or a rebuild of the committed library set — but it does need `src/bindings.rs`,
-# which is generated and not committed, so it runs `build.sh` first when that file is missing.
+# WHAT IT NEEDS. This checkout's own `cargo` and `rustdoc`, the `wasm32-unknown-unknown` standard
+# library (`scripts/ci/install-rust-wasm.sh`), and `src/bindings.rs` — which is generated rather than
+# committed, so it runs `bindings.sh` first when that file is missing, fetching the pinned
+# `wit-bindgen` once.
+#
+# WHAT IT MUST NOT DO IS REBUILD THE LIBRARY SET, and that is why the bindings live in their own
+# script rather than inside `build.sh`. This runs inside `scripts/ci/contract-drift.sh`, whose last
+# step is `git diff --exit-code` over `crates/gg/src/sandbox/checkers/` — the directory `build.sh`
+# rewrites. A fresh checkout never has `src/bindings.rs`, so reaching `build.sh` for it would re-cut
+# `rust.libraries.tar.gz` and `rust.toolchain.json` on every CI run, and the gate would then fail on
+# an artifact nobody edited. It writes exactly one file: the catalogue named above.
 #
 # WHY `RUSTC_BOOTSTRAP=1`. `rustdoc`'s JSON output is unstable, and this repository pins a STABLE
 # toolchain — deliberately, because an rlib is compiler-version-private and the arm must be built by
@@ -45,7 +52,7 @@ fi
 
 if [ ! -f "$HERE/src/bindings.rs" ]; then
 	echo "==> generating the WIT bindings (they are not committed)"
-	"$HERE/build.sh" >/dev/null
+	"$HERE/bindings.sh"
 fi
 
 WORK="$(mktemp -d)"

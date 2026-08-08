@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The pins the **Rust** program language's toolchain is built and run against.
 #
-# Sourced by `build.sh`, by `containers/gg-toolchains/Dockerfile` and by
-# `scripts/ci/install-rust-wasm.sh`, so there is one list rather than three.
+# Sourced by `bindings.sh`, `build.sh` and `signatures.sh`, by
+# `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-rust-wasm.sh`, so there is one
+# list rather than five.
 #
 # WHY THE COMPILER VERSION IS NOT PINNED HERE. It is `rust-toolchain.toml`'s, read out of
 # that file below, and that is the whole point: this arm ships **compiled rlibs** inside

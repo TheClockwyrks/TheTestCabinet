@@ -2206,6 +2206,29 @@ one cannot be loaded on another architecture (which is what rules out `serde`'s 
 The whole set weighs 9.4 MB gzipped inside gg's binary, of which `regex` is 4.4 MB; none of it
 reaches an artifact the program did not use it in, because the link dead-strips.
 
+Two things about **how that set is built** are decisions rather than mechanics, and both were paid
+for by a defect.
+
+- **Nothing in CI re-cuts it.** `scripts/ci/contract-drift.sh` regenerates every language's
+  catalogue on every run and then diffs both committed directories, so a step that writes into
+  `crates/gg/src/sandbox/checkers/` on the way past fails the gate on bytes nobody edited. This
+  arm's catalogue needs the generated WIT bindings, which are not committed — so the bindings are
+  their own script, `packages/gg-sandbox-rust/bindings.sh`, called by `signatures.sh` and by
+  `build.sh` alike. Before that split, a fresh checkout with no `src/bindings.rs` sent the signature
+  step through `build.sh`, which re-cut the library set, and the gate could not pass anywhere but on
+  the machine the committed tarball was built on. The rule is now asserted rather than remembered:
+  the drift gate checks that the checkers directory is untouched *after* the signature steps and
+  before the re-cut ones, and says which kind of failure it is.
+- **The same inputs produce the same archive on any machine.** An `.rlib` records the absolute
+  paths of the sources it was compiled from and the directory `rustc` ran in, so before this the
+  set was a function of where the checkout happened to live — measured, `libgg.rlib` came out
+  1,111,590 bytes at one path and 1,116,390 at a longer one. `build.sh` remaps this package and
+  `CARGO_HOME` to fixed logical roots, which cargo deliberately leaves out of the unit hash it
+  derives `-C metadata` from, so the remapping does not itself reintroduce the path. Verified by
+  building at two roots and under two `$HOME`s and comparing every rlib's digest. That is what makes
+  the archive something a reviewer can rebuild and compare, which is the only review a directory of
+  binaries admits.
+
 The prompt is **per language and not one template with branches**, which looks like
 duplication and is not. Its example programs are written in one language's syntax — a list
 literal, a statement terminator, a trailing options object — and its sentences describe that
@@ -2824,7 +2847,10 @@ model reaches by accident rather than by writing a sleep.
    diffing them. The script lists the stems it knows how to regenerate and **fails on one it
    does not**, so a catalogue whose guest is never re-run is an error rather than a silent
    pass. What it must not regenerate is a component: Python's is not byte-reproducible, so a
-   rebuild would fail the diff every time. Python's step also installs `uv`
+   rebuild would fail the diff every time. A **signature step may write its catalogue and
+   nothing else** — the gate asserts that the checkers directory is untouched after them — so
+   whatever a catalogue needs that a build script happens to also produce gets its own script,
+   as [Rust](#what-rusts-sdk-looks-like)'s WIT bindings did. Python's step also installs `uv`
    (`scripts/ci/install-uv.sh`), which is how all three machines that run this — a
    devcontainer with no usable `pip`, an Azure agent and a GitHub runner — reach the same
    pinned `griffe`. [Ruby](#ruby-compiled-to-javascript-before-it-crosses)'s needs no installer

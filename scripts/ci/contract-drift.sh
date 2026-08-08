@@ -175,6 +175,32 @@ log "install the wasm target (the Rust arm's catalogue is reflected for the targ
 log "regenerate the Rust arm's signature catalogue (rustdoc JSON + tools/signatures.py)"
 ./packages/gg-sandbox-rust/signatures.sh
 
+# A SIGNATURE STEP MAY WRITE ITS CATALOGUE AND NOTHING ELSE, and this is where that is enforced
+# rather than assumed. The check at the bottom diffs both committed directories at once, so a
+# signature step that reached its language's build script for something it needed — bindings,
+# say — would re-cut a checker on every run and fail the gate on bytes nobody edited. That failure
+# reads as "a committed artifact is stale", which is the opposite of what happened, and it lands on
+# whoever next opens a pull request rather than on whoever wrote the step. Asserting it here names
+# it instead. (Measured, on the Rust arm: `signatures.sh` called `build.sh` for the generated
+# bindings, which rewrites this arm's library set — and an `.rlib` records the absolute directory it
+# was compiled in, so on any checkout but the author's the rebuilt tarball differed.)
+log "check that no signature step wrote a checker or compiler"
+if ! git diff --exit-code --stat -- crates/gg/src/sandbox/checkers; then
+	cat >&2 <<'EOF'
+
+error: regenerating a signature catalogue also modified
+crates/gg/src/sandbox/checkers/.
+A language's signature step must write exactly one file — its catalogue under
+crates/gg/src/sandbox/guests/ — because the checkers directory holds committed
+compilers and library sets that are re-cut deliberately, by hand, and committed
+with the change that needed them. One rebuilt here would make this gate fail on
+whichever machine the artifact was not built on.
+Give that language's signature step its own path to whatever it reached the build
+script for, as packages/gg-sandbox-rust/bindings.sh does.
+EOF
+	exit 1
+fi
+
 # The same completeness rule the catalogues get, over the other committed directory: a
 # checker or compiler this script never re-cuts would sit in the diff below and be green
 # whatever its pin said. Stems are the first dot-separated component of each file name,
@@ -221,7 +247,12 @@ recut="typescript ruby java kotlin"
 # LIBRARY SET — this arm's SDK and the curated crates a model's program is linked against — and
 # re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
 # `wasm32-unknown-unknown` build, and produces an archive of binaries nobody can review by
-# reading. `rust.toolchain.json` declares what built it and every crate in it, and gg's own tests
+# reading. Nothing above re-cuts it, and that is a property rather than a hope: the WIT bindings
+# that both `build.sh` and `signatures.sh` need are their own script — `bindings.sh` in that same
+# package — so the catalogue step reaches the bindings without reaching the build, and the assertion
+# printed right after the last signature step fails by name if any signature step ever writes into
+# this directory again.
+# `rust.toolchain.json` declares what built it and every crate in it, and gg's own tests
 # compare it four ways: the manifest against the archive's contents; the manifest's compiler
 # against THIS CHECKOUT's `rustc` (an `.rlib` cannot be read by any other release, so a bumped
 # `rust-toolchain.toml` fails there by name); the crates the manifest marks `extern` against the
