@@ -74,14 +74,19 @@
 //! runtime filters by, and every gate against the tool vocabulary. Every one of those holds, and
 //! fails, per language and without a second one to compare against.
 //!
-//! The comparative half runs over the registry for real, and what it compares there has grown
-//! teeth: [JavaScript](super::javascript)'s catalogue and [TypeScript](super::typescript)'s are one
-//! set of declarations reflected twice and could hardly disagree, but [Python](super::python)'s and
-//! [Ruby](super::ruby)'s are hand-written SDKs in different languages, reflected by different tools
-//! (`griffe` and YARD), and they really can. Ruby is the first to bring a shape the others do not
-//! have at all — an entry with **two signatures**, because a long body may be an argument or a
-//! block — which is exactly the kind of legitimate divergence this gate has to accept while
-//! rejecting a missing capability.
+//! The comparative half runs over the registry for real, and what it compares there has grown teeth
+//! with every arm. [JavaScript](super::javascript)'s catalogue and [TypeScript](super::typescript)'s
+//! are one set of declarations reflected twice and could hardly disagree; the other nine are SDKs
+//! written by hand, in nine languages, reflected by nine different documentation tools, and they
+//! really can. Each of them brought at least one shape its predecessors did not have —
+//! [Ruby](super::ruby) an entry with **two signatures**, because a long body may be an argument or a
+//! block; [Java](super::java) fourteen **overload groups** where [Kotlin](super::kotlin), on the
+//! same compiler and the same guest, has none and default arguments instead;
+//! [PureScript](super::purescript) **curried ML notation** with no argument list to look inside at
+//! all; [Rust](super::rust) and [C++](super::cpp) an API object that is a **module** or a
+//! **namespace**, so the step from object to function is not even a `.`. Every one of those is a
+//! legitimate divergence this gate has to accept while still rejecting a missing capability, and
+//! each was the arm that found the dimension the schema was short of.
 //!
 //! It is also exercised against the [fixture language](super::fixture), a second surface built by
 //! re-spelling the first, which is what keeps the comparison meaningful independently of whichever

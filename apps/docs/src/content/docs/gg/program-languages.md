@@ -122,6 +122,18 @@ One consequence worth naming, because it is the first time gg has had it: JavaSc
 registered language whose programs report **no compile time at all**. `compileMs` is absent
 rather than `0`, on exactly the terms the next section describes.
 
+The equalities above say this arm *must* run whatever TypeScript runs; they do not say it
+*was* run, and every other registered language answers that with a test that starts at a
+model's text and ends at a value the host handed back. So this one does too
+(`javascript.substrate.test.rs`): a real JavaScript program, prepared by this arm's own step
+and evaluated by the committed guest through the real membrane. Its third program is the arm's
+whole variable made observable — `view.openText(1, 2)`, which the checked arm refuses before
+anything runs, here reaches the guest and fails at run time as
+`` `openText` failed (invalid-argument): TypeError: expected a string, received [number] `` at
+**line 1, column 6**. What catches it is the hand-written half of the SDK, which is the layer
+that exists to validate the argument shapes the wire cannot; a turn later rather than a turn
+earlier is precisely the cost this arm is registered to price.
+
 ## Python: a guest that carries its own interpreter
 
 The third registered language is the first that is a **different language** rather than a variation
@@ -3582,10 +3594,14 @@ stated defaults, and splits an optional argument into an overload pair** must be
 without complaint, because a gate that rejected that would make an overloading language
 impossible to register — which is a worse failure than any it prevents.
 
-The comparative half runs over the registry for real, and with
-[Python](#python-a-guest-that-carries-its-own-interpreter) in it that is now a comparison
-worth making: two SDKs written by hand, in two languages, sharing no declaration — where the
-TypeScript/JavaScript pair is the easiest possible comparison, its two catalogues being one
+The comparative half runs over the registry for real, and with all eleven arms in it that is
+the comparison this gate was built for rather than a stand-in: nine of the catalogues are SDKs
+written by hand, in nine languages, sharing no declaration and reflected by nine different
+documentation tools, and each arm brought at least one call shape its predecessors did not
+have — Ruby a two-signature entry, Java fourteen overload groups where Kotlin has none on the
+same compiler, PureScript curried ML notation with no argument list to look inside, Rust and
+C++ an API object that is a module or a namespace rather than a value with a `.` on it. Only
+the TypeScript/JavaScript pair is an easy comparison, its two catalogues being one
 set of declarations reflected twice. It is also exercised, on every run, against a
 **fixture language** that exists only
 under `#[cfg(test)]`: a second implementation of the whole seam whose catalogue is

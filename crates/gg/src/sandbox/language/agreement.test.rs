@@ -42,10 +42,17 @@ fn report(found: &[Disagreement]) -> String {
 ///
 /// The headline assertion. Most of what it proves is each language's catalogue against gg's own
 /// vocabularies — the tool bijection, the ending calls, the ending roles, the gates, the spellings
-/// and the type closure — which holds per language and needs no second one. The comparative half
-/// runs over the registry too, though the registered pair is the easiest comparison there is, its
-/// two catalogues being one set of declarations reflected twice; the module documentation says why
-/// the fixture is still what makes that half mean something.
+/// and the type closure — which holds per language and needs no second one.
+///
+/// The comparative half runs over the registry too, and what that is worth has changed with the
+/// registry. It was written when the registry held **one pair** — TypeScript and JavaScript, whose
+/// catalogues are one set of declarations reflected twice and could hardly disagree — and the
+/// [fixture](super::super::fixture) was what made the comparison mean anything at all. Today it
+/// compares **eleven** catalogues written by hand in eleven languages and reflected by nine
+/// different documentation tools, which is the comparison this gate was built for rather than a
+/// stand-in for it. The fixture stays because it is the half that can be made to *fail*: a
+/// registered arm that agrees proves the arms agree, and only a deliberately damaged surface proves
+/// the gate would have said so if they did not.
 #[test]
 fn every_registered_language_describes_one_capability_surface() {
     let found = disagreements(&registered());

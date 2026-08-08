@@ -197,3 +197,11 @@ impl ProgramLanguage for JavaScript {
         typescript::open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
     }
 }
+
+/// **This arm's execution substrate**, in the shape every other registered language carries one.
+///
+/// The equalities above say this arm *must* run whatever TypeScript runs; they do not say it *was*
+/// run. See the module's own documentation for why the difference is worth a component compile.
+#[cfg(test)]
+#[path = "javascript.substrate.test.rs"]
+mod substrate;
