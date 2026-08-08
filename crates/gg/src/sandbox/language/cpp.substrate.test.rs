@@ -709,6 +709,54 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         other => panic!("a template error is the model's program, not {other:?}"),
     }
 
+    // The same shape at the volume a model really meets it, which on this arm is a measurement
+    // rather than a worry. Forgetting to unwrap a `std::optional` inside `std::format` is one
+    // missing `.value()`, and clang says so in 18 KB across 8 errors and 34 notes — almost all of it
+    // libc++'s `__disabled_formatter` and the `semiregular`/`copyable`/`move_constructible` chain,
+    // with the model's own line buried in the middle as a `note:`. Unbounded, that is roughly five
+    // thousand tokens of one turn spent on a fault a sentence describes, which is context taken
+    // straight out of the thing this arm exists to measure.
+    let voluminous = compile_program(
+        "#include <format>\n\
+         #include <optional>\n\
+         #include <string>\n\
+         int main() {\n\
+         \x20 const std::optional<int> code = 3;\n\
+         \x20 const std::string said = std::format(\"exit {}\", code);\n\
+         \x20 return 0;\n\
+         }\n",
+        &[],
+        &PrepareContext::new(),
+    );
+    match voluminous {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            // The budget is stated rather than derived, and it is deliberately loose: what it is
+            // guarding against is the unbounded rendering coming back, not a diagnostic growing by
+            // a line when libc++ is bumped. Measured here today: 5.9 KB capped against 18.6 KB
+            // uncapped, and about a third of what is left is the ninety-character absolute path
+            // libc++'s own headers are reported under — which is the next thing to take off this
+            // number if it is ever worth taking.
+            const BUDGET: usize = 8_000;
+            assert!(
+                rendered.len() < BUDGET,
+                "a `std::format` type mistake is {} bytes, over the {BUDGET} a turn's context can \
+                 afford to spend on one missing `.value()`:\n{rendered}",
+                rendered.len()
+            );
+            assert!(
+                rendered.contains("main.cpp:6"),
+                "capping dropped the note naming the model's own line, which on this arm IS the \
+                 diagnostic: {rendered}"
+            );
+            assert!(
+                rendered.contains("more errors like these")
+                    || rendered.contains("more notes under that error"),
+                "what was dropped must be counted rather than hidden: {rendered}"
+            );
+        }
+        other => panic!("an unformattable argument is the model's program, not {other:?}"),
+    }
+
     // A compiler that is not there at all. Never a diagnostic, because nothing was decided about the
     // program — and the message names what an operator can fix.
     let missing = temp_env(

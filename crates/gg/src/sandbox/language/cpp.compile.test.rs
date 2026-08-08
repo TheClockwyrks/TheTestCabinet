@@ -437,3 +437,132 @@ fn the_adapter_is_a_wasm_module_and_the_archive_is_a_gzip_stream() {
         "checkers/cpp.guest.tar.gz is not a gzip stream"
     );
 }
+
+/// A library-located error with `notes` explanatory notes under it, the last of which names the
+/// model's own line — the shape every C++ template failure really has.
+fn template_failure(errors: usize, notes: usize) -> String {
+    let mut stderr = String::new();
+    for error in 0..errors {
+        stderr.push_str(&format!(
+            "/wasi-sdk/include/c++/v1/__format/format_functions.h:{}:30: error: call to \
+             implicitly-deleted default constructor of 'formatter<std::optional<int>, char>'\n\
+             \x20 99 |   __formatter{{}};\n\
+             \x20    |              ^\n",
+            99 + error
+        ));
+        for note in 0..notes {
+            stderr.push_str(&format!(
+                "/wasi-sdk/include/c++/v1/__concepts/constructible.h:{}:5: note: because \
+                 'std::formatter<std::optional<int>>' does not satisfy 'copy_constructible'\n\
+                 \x20 {} | concept copy_constructible =\n\
+                 \x20    | ^\n",
+                27 + note,
+                27 + note
+            ));
+        }
+        stderr.push_str(
+            "main.cpp:6:31: note: in instantiation of function template specialization \
+             'std::basic_format_string<char, std::optional<int> &>' requested here\n\
+             \x20 6 |   const std::string said = std::format(\"exit {}\", code);\n\
+             \x20   |                               ^\n",
+        );
+    }
+    stderr.push_str(&format!("{errors} errors generated.\n"));
+    stderr
+}
+
+#[test]
+fn a_diagnostic_a_model_reads_is_bounded_and_says_what_it_left_out() {
+    // The volume half of the model-facing band. C++ is the one registered language where an
+    // ordinary mistake can fill a turn's context: a `std::format` type error is 18 KB of libc++
+    // internals for one missing `.value()`. What is capped is only what the model READS —
+    // classification has already decided the band on the whole rendering — so this can never turn a
+    // model's compile error into a toolchain failure.
+    let full = template_failure(8, 7);
+    let rendered = match classify(&report(false, &full), &authored()) {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => rendered,
+        other => panic!("a template error is the model's program, not {other:?}"),
+    };
+
+    assert!(
+        rendered.len() * 3 < full.len(),
+        "the rendering a model reads was not meaningfully bounded: {} of {} bytes",
+        rendered.len(),
+        full.len()
+    );
+    // The note naming the model's own line survives at every depth, because on this arm that note IS
+    // the diagnostic — it is what the model can act on and it sits under seven it cannot.
+    assert_eq!(
+        rendered.matches("main.cpp:6:31: note:").count(),
+        SHOWN_ERRORS,
+        "the note naming the model's own line was dropped from a group it was shown: {rendered}"
+    );
+    assert!(
+        rendered.contains("… and 4 more errors like these."),
+        "the errors that were dropped were not counted: {rendered}"
+    );
+    assert!(
+        rendered.contains("… and 4 more notes under that error."),
+        "the notes that were dropped were not counted: {rendered}"
+    );
+    // clang's own total, kept: it is what makes the counts above checkable rather than gg's word.
+    assert!(
+        rendered.contains("8 errors generated."),
+        "the compiler's own summary was dropped: {rendered}"
+    );
+}
+
+#[test]
+fn an_error_in_the_models_own_file_is_never_capped_away() {
+    // The cap bounds the LIBRARY-located groups, which are the ones that drag a backtrace. A program
+    // with a dozen ordinary mistakes of its own is a dozen three-line diagnostics, and every one of
+    // them is a thing the model can fix — clang has already bounded those for us at its own
+    // `-ferror-limit`.
+    let mut stderr = String::new();
+    for line in 1..=12 {
+        stderr.push_str(&format!(
+            "main.cpp:{line}:7: error: use of undeclared identifier 'missing{line}'\n\
+             \x20 {line} |   missing{line}();\n\
+             \x20   |   ^\n"
+        ));
+    }
+    match classify(&report(false, &stderr), &authored()) {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            for line in 1..=12 {
+                assert!(
+                    rendered.contains(&format!("main.cpp:{line}:7: error:")),
+                    "the model's own error on line {line} was capped away: {rendered}"
+                );
+            }
+            assert!(
+                !rendered.contains("more errors like these"),
+                "nothing was dropped, so nothing should have been counted: {rendered}"
+            );
+        }
+        other => panic!("undeclared identifiers are the model's program, not {other:?}"),
+    }
+}
+
+#[test]
+fn a_rendering_that_does_not_group_is_handed_over_whole() {
+    // A linker failure is a run of `error:` lines with nothing under them, and an `undefined symbol`
+    // is the one thing classification calls the model's without its file being named anywhere. Four
+    // of them fit inside the cap; what this asserts is the shape underneath — that a rendering the
+    // cap cannot group is never trimmed to nothing.
+    let stderr = "wasm-ld: error: /gg/work/main.o: undefined symbol: helper()\n";
+    match classify(&report(false, stderr), &authored()) {
+        Err(PrepareFailure::Program(PrepareError::Compile(rendered))) => {
+            assert_eq!(
+                rendered,
+                "wasm-ld: error: /gg/work/main.o: undefined symbol: helper()"
+            );
+        }
+        other => panic!("an undefined symbol is the model's program, not {other:?}"),
+    }
+    // And one with no `error:` in it at all, which cannot be grouped and must therefore be handed
+    // over exactly as the compiler wrote it.
+    assert_eq!(
+        capped("something clang said\nand a second line", &authored()),
+        "something clang said\nand a second line"
+    );
+}

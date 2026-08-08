@@ -2518,6 +2518,18 @@ nothing anywhere and is located and no more. That last band is a comparability r
 carries and no other does: a failure the language caused can be hard to tell, in the run
 record, from a model that reasoned badly.
 
+The band a model meets most often — a program `clang++` **rejected** — is the one that needed
+bounding rather than deciding. C++ is the only registered language where one ordinary mistake
+fills a turn's context: a `std::optional` handed to `std::format`, one missing `.value()`, is
+**18.6 KB across 8 errors and 34 notes**, nearly all of it libc++'s `__disabled_formatter` and
+the `semiregular`/`copyable`/`move_constructible` chain, with the model's own line buried in
+the middle as a `note:`. So the first few library-located error groups are kept whole and the
+rest is **counted rather than hidden** — 5.9 KB for that program — with one exception that is
+the whole design: a diagnostic naming a file somebody **authored** is never dropped at any
+depth, because on this arm the `note: in instantiation of … requested here` is where the
+model's own line is. Errors located in the model's own program are not capped at all; clang's
+own `-ferror-limit` already bounds those, and they are three lines each.
+
 Two smaller things are worth recording beside the other two arms. Its artifacts are
 **byte-identical across preparations** — clang stamps no per-invocation nonce and
 `-ffile-prefix-map` removes the one path that would differ — so it is the only compiled arm

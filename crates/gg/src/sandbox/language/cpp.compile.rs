@@ -96,6 +96,12 @@
 //! | A libc++ **hardening** check — `v[10]`, `.front()` on an empty container, a bad range | a trap carrying libc++'s own sentence — `libc++ Hardening assertion __n < size() failed: vector[] index out of bounds` — **at the model's own line** | [`HARDENING_FLAG`](self::HARDENING_FLAG), because wasi-sdk ships libc++ configured to `none`, plus [`DEBUG_INFO`](self::DEBUG_INFO) and the engine's symbolication, because the message is a synthetic inlined frame rather than anything printed |
 //! | Integer division by zero, a null dereference, an out-of-bounds raw pointer, any other undefined behaviour | **a trap with no words at all**, located at the model's own line | [`DEBUG_INFO`](self::DEBUG_INFO), and nothing else can be done |
 //!
+//! A fourth band exists on every arm and matters on this one more than on any other: a program
+//! `clang++` **rejected**, which is a [recoverable, model-facing compile error](classify) carrying
+//! the compiler's own diagnostic at the model's own coordinates — [bounded](capped), because C++ is
+//! the one registered language where one ordinary mistake fills a turn's context. A `std::optional`
+//! handed to `std::format` is 18.6 KB of libc++ internals for one missing `.value()`.
+//!
 //! The last row is the comparability risk this arm carries and it cannot be engineered away: silent
 //! undefined behaviour in C++ produces a failure that is, in the run record, hard to tell from a
 //! model that reasoned badly. What the middle row is *for* is making that row as small as possible —
@@ -745,7 +751,11 @@ fn classify(report: &CompilerReport, authored: &[String]) -> Result<(), PrepareF
         .any(|file| rendered.contains(&format!("{file}:")))
         || rendered.contains(UNDEFINED_SYMBOL)
     {
-        return Err(PrepareFailure::Program(PrepareError::Compile(rendered)));
+        // The band is decided on the WHOLE rendering and only what the model reads is capped, so a
+        // note naming the model's own file cannot be dropped and then looked for.
+        return Err(PrepareFailure::Program(PrepareError::Compile(capped(
+            &rendered, authored,
+        ))));
     }
     Err(PrepareFailure::Toolchain(format!(
         "clang {} rejected gg's own guest rather than the model's program: {}",
@@ -776,7 +786,10 @@ fn classify_module(report: &CompilerReport, file: &str) -> Result<(), PrepareFai
         )));
     }
     if rendered.contains(&format!("{file}:")) {
-        return Err(PrepareFailure::Program(PrepareError::Compile(rendered)));
+        return Err(PrepareFailure::Program(PrepareError::Compile(capped(
+            &rendered,
+            &[file.to_string()],
+        ))));
     }
     Err(PrepareFailure::Toolchain(format!(
         "clang {} rejected gg's own prelude rather than the module: {}",
@@ -803,7 +816,7 @@ fn rendered(stderr: &str) -> String {
     let mut kept: Vec<&str> = Vec::new();
     let mut in_warning = false;
     for line in stderr.lines() {
-        if line.contains(": error: ") {
+        if is_error(line) {
             in_warning = false;
         } else if line.contains(": warning: ") {
             in_warning = true;
@@ -814,6 +827,188 @@ fn rendered(stderr: &str) -> String {
         kept.push(line);
     }
     kept.join("\n").trim().to_string()
+}
+
+/// How many `error:` diagnostics located in gg's or the library's own files a model is shown.
+///
+/// Four rather than [Kotlin's](super::kotlin) eight, because a C++ error is not one line: it drags
+/// a source excerpt, a caret and an instantiation backtrace behind it. What a model can act on is
+/// the first, and on this arm the first is almost always the only one — the eight errors a
+/// `std::format` type mistake produces are one mistake, reported once per phase clang got to.
+///
+/// It is **not** a limit on errors located in the model's own program, which are all kept however
+/// many there are. Those are short — a line, an excerpt and a caret — and clang has already bounded
+/// them for us: its own `-ferror-limit` stops at twenty and says so.
+const SHOWN_ERRORS: usize = 4;
+
+/// How many `note:` diagnostics are kept under one error, **beyond** every note that names a file
+/// somebody authored.
+///
+/// The exception is the whole design. On every other arm a `note:` is context; on this one it is
+/// often *the* diagnostic, because a template error is reported inside the library and the model's
+/// own line arrives as `note: in instantiation of … requested here`. So a note naming `main.cpp` or
+/// a code module is never dropped however deep in the backtrace it sits, and the concept-failure
+/// chain around it — `semiregular`, `copyable`, `move_constructible`, `constructible_from`, each
+/// with an excerpt — is what this number is for.
+const SHOWN_NOTES: usize = 3;
+
+/// Whether a line **is** a diagnostic that failed the compile.
+///
+/// Two spellings, and the second is not a nicety: `'boost/asio.hpp' file not found` and
+/// `too many errors emitted, stopping now` are both `fatal error:` rather than `error:`, and the
+/// first of those is the most ordinary refusal this arm hands a model.
+fn is_error(line: &str) -> bool {
+    line.contains(": error: ") || line.contains(": fatal error: ")
+}
+
+/// Whether a line is a diagnostic that **explains** one.
+fn is_note(line: &str) -> bool {
+    line.contains(": note: ")
+}
+
+/// Whether a line is clang's count of what it just reported, rather than part of any one
+/// diagnostic — `8 errors generated.`
+///
+/// Recognised by name because it is the one line that trails the last diagnostic without belonging
+/// to it, and it is worth keeping: it is the honest total, and it is what makes a "… and N more"
+/// line something a reader can check rather than gg's word for it.
+fn is_summary(line: &str) -> bool {
+    line.ends_with("errors generated.") || line.ends_with("error generated.")
+}
+
+/// **The compiler's output, bounded**, which on this arm is a measurement rather than tidiness.
+///
+/// A model reads a diagnostic out of its own context window, and C++ is the one registered language
+/// where a single ordinary mistake can fill it. Measured against this arm's own flags:
+/// `std::format("exit {}", v)` where `v` is a `std::optional<int>` — one missing `.value()` — is
+/// **18 KB across 8 errors and 34 notes**, nearly all of it libc++'s `__disabled_formatter`,
+/// `__compile_time_handle` and the `semiregular`/`copyable`/`move_constructible` chain, with the
+/// model's own line buried in the middle as a `note:`. Roughly five thousand tokens of one turn
+/// spent on a fault a sentence describes. `rustc` has no template instantiation to unwind and
+/// [Kotlin's arm](super::kotlin) already caps for its own reason; this arm needs one more than
+/// either.
+///
+/// So the first [few](SHOWN_ERRORS) errors are kept whole, each with the notes that matter, and
+/// what was dropped is **counted rather than hidden** — a model that needs the rest knows there is
+/// a rest. Three properties this is careful about:
+///
+/// * a diagnostic naming a file somebody **authored** is never dropped, at any depth, whether it is
+///   an error or a note — on this arm that note is where the model's own line is;
+/// * the [band](classify) is decided on the *whole* rendering before this runs, so capping can
+///   never turn a model's compile error into a toolchain failure;
+/// * clang's own trailing summary (`8 errors generated.`) is kept, because it is the honest total
+///   and it is what makes the count above verifiable.
+fn capped(rendered: &str, authored: &[String]) -> String {
+    let (diagnostics, tail) = diagnostics(rendered, authored);
+    let mut kept: Vec<String> = Vec::new();
+    let mut shown_errors = 0usize;
+    let mut dropped_errors = 0usize;
+    let mut showing = false;
+    let mut notes_in_group = 0usize;
+    let mut dropped_notes = 0usize;
+
+    // Flush the "… and N more notes." line that belongs to the group being left.
+    fn close(kept: &mut Vec<String>, dropped: &mut usize) {
+        if *dropped > 0 {
+            kept.push(format!("… and {dropped} more notes under that error."));
+            *dropped = 0;
+        }
+    }
+
+    if !diagnostics.iter().any(|diagnostic| diagnostic.error) {
+        // Nothing here groups, so there is nothing to bound and dropping any of it would be
+        // dropping the whole diagnostic.
+        return rendered.to_string();
+    }
+    for diagnostic in &diagnostics {
+        if diagnostic.error {
+            close(&mut kept, &mut dropped_notes);
+            notes_in_group = 0;
+            shown_errors += 1;
+            showing = shown_errors <= SHOWN_ERRORS || diagnostic.authored;
+            match showing {
+                true => kept.push(diagnostic.text()),
+                false => dropped_errors += 1,
+            }
+            continue;
+        }
+        if !showing {
+            continue;
+        }
+        if diagnostic.authored || notes_in_group < SHOWN_NOTES {
+            notes_in_group += 1;
+            kept.push(diagnostic.text());
+        } else {
+            dropped_notes += 1;
+        }
+    }
+    close(&mut kept, &mut dropped_notes);
+    if dropped_errors > 0 {
+        kept.push(format!("… and {dropped_errors} more errors like these."));
+    }
+    kept.extend(tail.into_iter().map(str::to_string));
+    kept.join("\n").trim().to_string()
+}
+
+/// One diagnostic clang printed, with the source excerpt and caret it printed under it.
+struct Diagnostic<'a> {
+    /// Whether it is an `error:`, which opens a group, rather than a `note:` explaining one.
+    error: bool,
+    /// Whether it names a file somebody a model can be told about wrote — the model's own program,
+    /// or a code module in its scope.
+    authored: bool,
+    /// Its own lines, in the order clang wrote them, including anything printed in front of it.
+    lines: Vec<&'a str>,
+}
+
+impl Diagnostic<'_> {
+    /// This diagnostic as the model reads it.
+    fn text(&self) -> String {
+        self.lines.join("\n")
+    }
+}
+
+/// Cut a rendering into diagnostics, and return whatever trailed the last of them.
+///
+/// Everything that is not itself an `error:` or a `note:` line belongs to the diagnostic it is
+/// printed **around**: a source excerpt and its caret follow one, and `In file included from …`
+/// precedes one. So unattributed lines are held and attached to whichever diagnostic comes next,
+/// and what is left over at the end — clang's `8 errors generated.` — is the tail.
+fn diagnostics<'a>(rendered: &'a str, authored: &[String]) -> (Vec<Diagnostic<'a>>, Vec<&'a str>) {
+    let mut cut: Vec<Diagnostic<'a>> = Vec::new();
+    let mut pending: Vec<&'a str> = Vec::new();
+    for line in rendered.lines() {
+        if is_summary(line) {
+            pending.push(line);
+            continue;
+        }
+        let error = is_error(line);
+        if error || is_note(line) {
+            // Read off the diagnostic's OWN line and not its preamble, which is the difference
+            // between a rule and a rule that matches everything: `In file included from main.cpp:1:`
+            // sits in front of every diagnostic in every header a program included, and counting it
+            // would make the whole of libc++ the model's own file.
+            let located = authored
+                .iter()
+                .any(|file| line.contains(&format!("{file}:")));
+            let mut lines = std::mem::take(&mut pending);
+            lines.push(line);
+            cut.push(Diagnostic {
+                error,
+                authored: located,
+                lines,
+            });
+            continue;
+        }
+        match cut.last_mut() {
+            // A line under a diagnostic, until something says it is in front of the next one.
+            Some(last) if pending.is_empty() && !line.starts_with("In file included from") => {
+                last.lines.push(line);
+            }
+            _ => pending.push(line),
+        }
+    }
+    (cut, pending)
 }
 
 // ---------------------------------------------------------------------------------------------
