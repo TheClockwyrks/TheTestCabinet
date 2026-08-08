@@ -2278,7 +2278,16 @@ fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
         // eleven objects. The **placeholder receiver** is the rule, and it is the whole of the rule:
         // the parentheses this once demanded are spelling, and PureScript — where `list` takes no
         // argument and `fs.list ()` would apply `Unit` to an `Effect` — is the arm that proved it.
-        let list = format!("<object>.{}", crate::docs::LIST_FUNCTION);
+        //
+        // The step between the receiver and the name is the *language's*, for the same reason every
+        // call gg quotes is: on Rust an API object is a module, so `<object>.list` is `E0423`
+        // (expected value, found module) — a placeholder written in a syntax the arm does not have,
+        // in the one sentence establishing how a model reaches its own surface.
+        let list = format!(
+            "<object>{}{}",
+            language.member_separator(),
+            crate::docs::LIST_FUNCTION
+        );
         assert!(
             rendered.contains(&list),
             "{name}: the prompt no longer tells the model how to list any object's functions \

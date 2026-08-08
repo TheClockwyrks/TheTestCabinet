@@ -90,7 +90,7 @@ fn prologue() -> String {
 /// line of it and falsify [`LINE_OFFSET`].
 const EPILOGUE: &str = "\n;\n::core::result::Result::Ok(())\n}\n";
 
-/// How many lines of [`PROLOGUE`] precede the model's first — the number every diagnostic's line is
+/// How many lines of [`prologue`] precede the model's first — the number every diagnostic's line is
 /// moved back by, and the number the guest's panic hook is told.
 pub(super) const LINE_OFFSET: usize = 1;
 

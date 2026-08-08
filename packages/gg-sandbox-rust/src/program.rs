@@ -202,7 +202,11 @@ impl<E: std::error::Error + 'static> From<E> for Failure {
     }
 }
 
-/// A failure that is a sentence rather than an error value: `Err(Failure::message("no rows"))`.
+/// A failure that is a sentence rather than an error value: `Err(gg::program::message("no rows"))`.
+///
+/// It is reached by that path rather than out of [`prelude`](crate::prelude), and the
+/// responses-as-code prompt names it that way: a bare `message` glob-imported into every program
+/// would take a common word out of a model's own namespace for a call it makes once a session.
 ///
 /// A free function rather than `impl From<&str> for Failure`, and not for want of trying. The
 /// blanket conversion above is what makes `?` work, and coherence will not admit a second `From`

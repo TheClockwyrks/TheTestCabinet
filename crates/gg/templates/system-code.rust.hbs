@@ -50,7 +50,9 @@ knowing:
   `Result<(), Failure>` — so `?` composes gg's calls with the standard library's
   own fallible ones in a single chain, and a failure you do not handle ends the
   turn with the failed call named. `ToolError` implements `std::error::Error`,
-  and its `code` is an enum rather than free text;
+  and its `code` is an enum rather than free text. A `Failure` of your own is
+  built from a sentence with `gg::program::message("no rows")`, since a bare
+  `&str` is not an error and will not convert on its own;
 - a **panic** is a bug rather than an interface: there is no unwinder on this
   target, so a panic ends the program then and there. gg still reports it with
   your own line and column, but everything after that line is not run. Prefer a
@@ -85,7 +87,7 @@ more takes an options struct with a `Default`, filled in with functional-update
 syntax. Where a choice is fixed it is an `enum`, so a wrong value is a program
 that does not compile rather than a call that fails.
 
-```
+```rust
 let entries = {{api.fs.list_dir.call}}(Some("src"))?;
 let names: Vec<&str> = entries
     .iter()
@@ -98,7 +100,7 @@ let names: Vec<&str> = entries
 Handle a failure you expect where it happens, and let the rest escape — gg tells
 you which call failed:
 
-```
+```rust
 match {{api.fs.read_text_file.call}}("notes.md", ReadOptions::default()) {
     Ok(notes) => {{api.view.open_text.call}}("notes", &notes)?,
     Err(failure) if failure.code == ToolErrorCode::NotFound => {
@@ -156,11 +158,11 @@ They are in scope already, with no `use` line of your own.
 
 Two calls tell you what an object holds, and they reach you by different routes.
 
-`<object>.{{meta.list.name}}()` — written `fs::{{meta.list.name}}()` — **returns** an object's
+`<object>::{{meta.list.name}}()` — for example `fs::{{meta.list.name}}()` — **returns** an object's
 functions to your program, each as a `FunctionSummary`. It is an ordinary return
-value, so it puts nothing in front of you on its own: to read it yourself you
-must open a view of it, exactly as you would any other value your program
-computed — `{{api.view.open_text.call}}("fs", &format!("{:?}", fs::{{meta.list.name}}()?))?`.
+value, and not a `Result`, so it puts nothing in front of you on its own: to read
+it yourself you must open a view of it, exactly as you would any other value your
+program computed — `{{api.view.open_text.call}}("fs", &format!("{:?}", fs::{{meta.list.name}}()))?`.
 
 `{{api.view.open_docs_view.signature}}` **opens a view**
 directly, of one function's full signature, documentation, and the types it uses.
@@ -182,7 +184,7 @@ hand it back with `{{api.programs.rerun.call}}(&source)` — gg runs what you ha
 this turn's program, so a one-character fix costs one line instead of the whole
 program again:
 
-```
+```rust
 let source = {{api.programs.get.call}}(None)?;
 {{api.programs.rerun.call}}(&source.replace("let totl = 1", "let total = 1"))?;
 ```

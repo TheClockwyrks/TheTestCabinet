@@ -399,6 +399,17 @@ mod tests;
 #[path = "rust.substrate.test.rs"]
 mod substrate;
 
+/// **Every Rust example a model is shown, put through `rustc`** — the prompt's, the notice's and the
+/// catalogue's.
+///
+/// A separate file from [`surface`] because it asks a question no other arm can: not whether the
+/// call gg quotes exists, which [`crate::prompts`] already gates in every language, but whether the
+/// code around it builds. On a compiled arm an example that does not is a whole turn spent on gg's
+/// own prose.
+#[cfg(test)]
+#[path = "rust.examples.test.rs"]
+mod examples;
+
 /// **The Rust arm's model-facing surface** — the hand-written SDK, the catalogue reflected out of
 /// its own rustdoc, and the libraries this arm says a program may reach.
 ///

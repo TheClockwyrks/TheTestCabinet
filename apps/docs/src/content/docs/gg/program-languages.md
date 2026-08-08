@@ -2351,6 +2351,21 @@ Five gates hold the line, and each of them can be shown to catch something:
   before searching instead, so the directory holding every language's implementation — the
   likeliest home for a hand-written spelling — is covered like the rest of the crate.
 
+A sixth gate exists on the **compiled** arms only, because only there is it possible — and only
+there does it matter enough to pay a compiler for. Everything above resolves the call gg *quotes*;
+none of it can tell whether the code around the quote would build. On an interpreted arm an
+example that does not build costs a model a runtime error it can read and work around; on a
+compiled arm the program is refused before it runs, and the diagnostic that comes back is about
+gg's own prose, so the whole turn is spent on it. So on the Rust arm every Rust example a model is
+shown — each ` ```rust ` block in the prompt and the "nothing shown" notice, each inline span that
+reads as a call, and each fenced block in the committed catalogue, which came off a `///` comment
+on the SDK — is gathered into one program and put through the arm's production prepare step: the
+same `rustc`, the same wrapper and the same library set a model's own reply gets. It was written
+because exactly that defect shipped: the prompt taught `fs::list()?`, and `list` returns a `Vec`
+rather than a `Result`, so the `?` a model would have copied is an `E0277`. Placeholder names the
+prose uses without introducing (`path`, `turn`, `source`) are bound in the test's own preamble, so
+an example that gains a new one fails here by name rather than being quietly excused.
+
 One thing a model reads is deliberately outside the rule, and it is worth naming so nobody
 audits it as a miss. A **built-in skill family's description** — the sentence under each of
 the eleven skills gg seeds — is gg's own prose about a *grouping of capabilities*, not about
