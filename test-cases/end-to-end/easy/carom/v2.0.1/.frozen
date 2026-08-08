@@ -1,0 +1,15 @@
+# FROZEN — this directory must not change.
+#
+# Runs have been recorded against this test-case version. Editing anything here
+# would silently invalidate them: the runs stay in the metrics, but the prompt
+# and specs they were produced from would no longer exist. To change the case,
+# add a new version directory instead of editing this one.
+#
+# `digest` is the SHA-256 of this directory's `git ls-files -s` listing with
+# this marker excluded. The commit hook (scripts/hooks/frozen-paths.sh) and CI
+# (scripts/ci/frozen-check.sh) both recompute it and fail on any difference.
+#
+# Deliberately unfreezing means deleting this file in its own reviewable commit.
+digest = "9a9610ecbfdd8ba85b6c214ff5a2b37be0c0ddb2ae0be3694aee3b7231ae45ea"
+frozen_at = "2026-08-08"
+reason = "runs recorded against this version"
