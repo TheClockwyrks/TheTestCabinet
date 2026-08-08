@@ -11,8 +11,8 @@
 # NOT `build-containers`, so the run-container tag stayed pinned at beta2 (8c80dd94) while
 # the driver SERVICE image moved ahead. The v0.6.0-beta4 build ran `build-containers`
 # again, so both RE-CONVERGED onto `e6afbee6`. Every `staging` build since — v0.6.0-rc1,
-# rc2 and v0.6.1-rc1, rc4 and rc4.1 — ran only `build-service-images`, so the driver
-# SERVICE image moves ahead to v0.6.1-rc4.1 (e27acecd) while the run-container tag stays
+# rc2 and v0.6.1-rc1, rc4, rc4.1 and rc5 — ran only `build-service-images`, so the driver
+# SERVICE image moves ahead to v0.6.1-rc5 (e376e0fa) while the run-container tag stays
 # pinned at beta4 (e6afbee6). The widening divergence is benign: nothing under containers/
 # has changed on `staging` since e6afbee6, so the beta4 run images still match what the
 # branch would build today. (`build-containers` did run once on `master`, for the v0.6.0
@@ -30,6 +30,6 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_DRIVER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-driver:e27acecd75b723471871accb0dfa8872d288e1d3"
+              value: "ghcr.io/theclockwyrks/tcab-driver:e376e0fa9e228b62d60e60a60cdfbd27549d686b"
             - name: TCAB_CONTAINER_TAG
               value: "e6afbee63a8093a7c717b5195cd8dcae85d77fdf"
