@@ -49,6 +49,7 @@
 //! exactly as `sandbox.test.rs` does. Add a program to an existing function rather than adding a
 //! function.
 
+use std::path::Path;
 use std::time::Instant;
 
 use test_cabinet_core::gg::GgProgramLanguage;
@@ -859,6 +860,27 @@ fn the_prelude_is_precompiled_once_and_read_only_afterwards() {
             "{} is writable inside a shared toolchain directory",
             prelude.display()
         );
+    }
+
+    // The process cache in front of that directory is keyed on the toolchain, which is what the
+    // directory itself is keyed on. A cache that answered the same path for every `home` would hand
+    // back a PCH built for another wasi-sdk and undo the compiler stamp folded into the key above —
+    // so asking for a second toolchain's prelude must go and try to build one rather than return
+    // the one already warm.
+    let elsewhere = compile::precompiled_prelude(
+        Path::new("/nonexistent/gg-wasi-sdk"),
+        guest,
+        &PrepareContext::new(),
+    );
+    match elsewhere {
+        Err(message) => assert!(
+            message.contains("/nonexistent/gg-wasi-sdk"),
+            "a second toolchain's prelude was not built against that toolchain: {message}"
+        ),
+        Ok(path) => panic!(
+            "the warm prelude was handed back for a toolchain it was not built for: {}",
+            path.display()
+        ),
     }
 
     // And what it buys, which is the arm's whole cost argument: a program that includes NOTHING

@@ -1167,17 +1167,41 @@ fn fingerprint(archive: &[u8]) -> u64 {
 /// fails for reasons that may have — a full disk, a process the machine killed. A run whose first
 /// turn hit one of those would otherwise be a run where every later turn failed with a message
 /// about the first.
+///
+/// **The process cache is keyed on `home`**, which is the same thing the directory it caches is
+/// keyed on. Anything less would undo the care taken over the key below: the compiler stamp is in
+/// there precisely so a reinstalled wasi-sdk cannot leave a stale PCH behind, and a cache in front
+/// of it that answered the same path for every toolchain would hand the second `home` of a process
+/// a PCH built for the first. In production the variable is fixed for a run's lifetime and the
+/// failure direction is safe — clang refuses a foreign PCH, which is a
+/// [toolchain failure](PrepareFailure::Toolchain) rather than anything blamed on a model — so this
+/// is an invariant made *checked* rather than a bug fixed.
+///
+/// The lock is not held across the build, so two preparations that arrive together both build:
+/// `place_tree` is what makes that safe, exactly as it is when two processes race.
 pub(super) fn precompiled_prelude(
     home: &Path,
     guest: &Guest,
     context: &PrepareContext,
 ) -> Result<PathBuf, String> {
-    static PRELUDE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-    if let Some(built) = PRELUDE.get() {
-        return Ok(built.clone());
+    static PRELUDE: std::sync::Mutex<Option<(PathBuf, PathBuf)>> = std::sync::Mutex::new(None);
+    let cached = |built: &Option<(PathBuf, PathBuf)>| match built {
+        Some((keyed, path)) if keyed == home => Some(path.clone()),
+        _ => None,
+    };
+    if let Some(built) = cached(
+        &PRELUDE
+            .lock()
+            .expect("the C++ prelude cache is not poisoned"),
+    ) {
+        return Ok(built);
     }
     let built = build_prelude(home, guest, context)?;
-    Ok(PRELUDE.get_or_init(|| built).clone())
+    *PRELUDE
+        .lock()
+        .expect("the C++ prelude cache is not poisoned") =
+        Some((home.to_path_buf(), built.clone()));
+    Ok(built)
 }
 
 /// Build [`precompiled_prelude`]'s directory, once.
