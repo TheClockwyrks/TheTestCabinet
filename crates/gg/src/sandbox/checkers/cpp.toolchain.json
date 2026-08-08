@@ -84,7 +84,7 @@
     { "name": "sdk/options.hpp", "bytes": 7309 },
     { "name": "sdk/types.hpp", "bytes": 16764 },
     { "name": "sdk/wire.hpp", "bytes": 7902 },
-    { "name": "shell.cpp", "bytes": 11795 },
-    { "name": "shell.o", "bytes": 7429 }
+    { "name": "shell.cpp", "bytes": 12672 },
+    { "name": "shell.o", "bytes": 8036 }
   ]
 }

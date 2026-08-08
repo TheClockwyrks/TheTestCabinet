@@ -225,12 +225,17 @@ names one extension and no more.
 ## What it commits, and why those and not the compiler
 
 ```
-crates/gg/src/sandbox/checkers/cpp.guest.tar.gz     36 KB — the compile inputs: the generated
-                                                            header, the prelude, gg's shell as
+crates/gg/src/sandbox/checkers/cpp.guest.tar.gz    100 KB — the compile inputs: the generated
+                                                            header, the prelude, the SDK's headers
+                                                            and its prebuilt object, gg's shell as
                                                             source and object, the bindings object
 crates/gg/src/sandbox/checkers/cpp.adapter.wasm     52 KB — the preview1 reactor adapter
 crates/gg/src/sandbox/checkers/cpp.toolchain.json         — what built them, and what is in them
 ```
+
+`cpp.toolchain.json` lists every file with its size, so that is the figure to read rather than this
+one; the number above is here to say the order of magnitude, which is ~151 KB carried in total and
+still by far the lightest of the compiled arms.
 
 The split every compiled arm here has. wasi-sdk is ~200 MB even pruned, so it lives in the gg run
 image (`containers/gg-toolchains/Dockerfile`). These go the other way because they are a function of

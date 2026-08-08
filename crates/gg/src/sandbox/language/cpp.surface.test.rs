@@ -738,9 +738,13 @@ fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
          prompt tells a model to expect: {}",
         failure.message
     );
+    // Spelled the way the model would write it. gg's shell demangles the class by hand and drops
+    // libc++'s inline namespace, so this is `std::system_error` and not `std::__2::system_error` —
+    // a name a model asked to catch would have to be told to write back wrongly.
     assert!(
-        failure.message.contains("system_error"),
-        "the run-time failure a model is promised is a `system_error`: {}",
+        failure.message.contains("uncaught std::system_error:"),
+        "the run-time failure a model is promised is a `std::system_error`, spelled the way it \
+         would catch one: {}",
         failure.message
     );
     assert_eq!(

@@ -101,6 +101,12 @@ extern "C" void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
 // substitution or anything else this does not know is handed back **unaltered** rather than guessed
 // at — a wrong name would be worse than a mangled one, because a mangled one is at least obviously
 // a spelling rather than a lie.
+//
+// One component IS dropped, and only one: libc++'s **inline namespace**, which is what the `__2` in
+// `NSt3__212system_errorE` is. Inline means it is not part of the name anybody wrote — a model that
+// caught `std::system_error` wrote `std::system_error` — so reporting `std::__2::system_error`
+// would show a model an implementation detail of the standard library it is standing on and invite
+// it to write the name back. Dropped only directly under `std::`, where it can be nothing else.
 static std::string demangled(const char *mangled) {
   const std::string name(mangled == nullptr ? "" : mangled);
   std::size_t at = 0;
@@ -121,9 +127,15 @@ static std::string demangled(const char *mangled) {
     if (digits == at) return name;  // Not a length: a notation this does not know.
     const std::size_t length = (std::size_t)std::stoul(name.substr(at, digits - at));
     if (digits + length > name.size()) return name;
-    if (!out.empty() && out.compare(out.size() - 2, 2, "::") != 0) out += "::";
-    out += name.substr(digits, length);
+    const std::string component = name.substr(digits, length);
     at = digits + length;
+    // libc++'s inline namespace, directly under `std::` and nowhere else.
+    if (out == "std::" && component.size() > 2 && component.compare(0, 2, "__") == 0 &&
+        component.find_first_not_of("0123456789", 2) == std::string::npos) {
+      continue;
+    }
+    if (!out.empty() && out.compare(out.size() - 2, 2, "::") != 0) out += "::";
+    out += component;
   }
   return out.empty() ? name : out;
 }
@@ -200,10 +212,11 @@ extern "C" void exports_sandbox_run(sandbox_string_t *program,
     report_uncaught("gg::tool_error", failure.what(), &code);
   } catch (const std::exception &failure) {
     // `typeid` rather than a fixed string, so a model reading the report sees the class it actually
-    // threw — its own `struct TooSmall : std::runtime_error` rather than `std::exception`. The name
-    // is the ABI's mangled one; it is left as it is rather than demangled here, because
-    // `__cxa_demangle` pulls the whole demangler into every artifact this arm ever produces to
-    // pretty-print one line of one failing turn.
+    // threw — its own `struct TooSmall : std::runtime_error` rather than `std::exception`. What
+    // `typeid` hands over is the ABI's mangled name, which `demangled()` above decodes BY HAND: the
+    // hand-written part is the point, because `__cxa_demangle` would link libc++abi's whole
+    // demangler into every artifact this arm ever produces to pretty-print one line of one failing
+    // turn.
     report_uncaught(demangled(typeid(failure).name()).c_str(), failure.what(), nullptr);
   } catch (...) {
     // C++ lets a program throw anything at all, and models do — `throw "a string literal"` and
