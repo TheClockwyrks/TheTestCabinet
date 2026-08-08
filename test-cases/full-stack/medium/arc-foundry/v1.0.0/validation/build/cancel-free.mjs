@@ -8,11 +8,18 @@
 // the cursor. The CANCEL is the behavior under test, so it — and the reads either side of it —
 // is the act, and the clip shows the held rock being put back.
 
-import { startBuild, snap } from "../_helpers.mjs";
+// WHY THIS IS A CLIP RATHER THAN A STILL. Cancelling leaves nothing behind — no rock on the
+// cursor, no rock on the board, and the same allowance and Charge as before — so a frame of the
+// aftermath is a frame of an untouched build phase, which shows neither the rock that was held
+// nor the fact that putting it back cost nothing. Both halves have to be on screen: the armed
+// rock on the cursor, and the same HUD once it is gone.
 
-// Let a frame land before the still is taken, so the capture shows the cancelled (empty)
-// cursor rather than the frame that still had a rock on it. 100 ms x 60 Hz = 6 ticks exactly.
-const SETTLE_TICKS = 6;
+import { startBuild, snap, SECOND } from "../_helpers.mjs";
+
+// A beat with the rock held on the cursor before it is put back, and a beat on the board it left
+// unchanged. The allowance and Charge are readable in the HUD across both.
+const HELD_TICKS = 1.5 * SECOND;
+const TAIL_TICKS = 2 * SECOND;
 
 export default function item() {
   // The opening allowance, and the board either side of the cancel, all read by `assert`.
@@ -30,12 +37,12 @@ export default function item() {
 
     async act(api) {
       s1 = await snap(api);
+      await api.advance(HELD_TICKS); // the rock on the cursor, with the allowance still at five
 
       await api.call("press", "Escape"); // cancel the held rock
       s2 = await snap(api);
 
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("cancel");
+      await api.advance(TAIL_TICKS); // the hand empty, and nothing spent for it
     },
 
     async assert(api, check) {

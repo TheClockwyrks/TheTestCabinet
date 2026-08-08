@@ -1,50 +1,48 @@
 // Automated validation for controls.advances-in-real-time: during normal play the game runs
-// itself. The animation loop drives the fixed tick from the wall clock
-// (`specs/instrumentation.md`), so the field drifts — the rocks travel — with nothing stepping it.
+// itself — the animation loop drives the fixed tick from the wall clock
+// (`specs/instrumentation.md`), so the field moves with nothing stepping it.
 //
-// WHY THIS ITEM EXISTS. Every other scripted item advances the simulation itself, through the
-// runtime's `advance`/`until`/`skip`, which all bottom out in the debug API's `step`. That makes
-// them blind to this claim: a build whose own frame loop never runs still answers `step` perfectly
-// and passes them all, while a person who opens it sees a frozen field. The spec puts the manual
-// clock behind an `autoStep` flag that `reset` and `step` turn OFF, so a build that calls its own
-// `reset` on the boot path ships with the flag off and never advances for a player.
+// Every other item advances the simulation through `advance`/`until`/`skip`, which bottom out in
+// the debug API's `step`, so all of them pass a build whose own frame loop never runs. This one
+// must therefore observe the clock the build BOOTS with: everything lives in `arrange`, poses with
+// CONTROL OPS ONLY — no `reset`, `step` or `skip`, each of which hands the clock back — and times
+// the window with `api.settle`, which is real in both passes. Do not rewrite it onto a helper that
+// opens with a reset. The outputs are stills for the same reason: the record pass turns `autoStep`
+// on for `act`, so a filmed `act` animates even for a build that boots frozen.
 //
-// WHY THE MEASUREMENT LIVES IN `arrange`. Catching that means observing the clock the build BOOTS
-// with, and the window is narrow: `api.reset` hands the clock back by forcing `setAutoStep(true)`,
-// `api.skip` does the same, and the runtime sets the flag explicitly between `arrange` and `act`.
-// So everything here is `arrange`, poses with CONTROL OPS ONLY — no reset, no step, no skip — and
-// measures real elapsed time with `api.settle`, which is genuinely wall-clock in both passes. Do
-// not rewrite this onto a helper that opens with a reset; that would mask the defect it hunts.
-//
-// WHY STILLS RATHER THAN A CLIP. The record pass turns `autoStep` ON for `act`, so a filmed `act`
-// animates even for a build that boots frozen — the video would show the very motion the item says
-// is missing. Two stills taken around the settle show it honestly. The record pass opens a fresh
-// page, so its `arrange` sees the boot clock too.
-//
-// THE WITNESS IS A ROCK, NOT THE SHIP. The ship is the player's and holds its heading unless a key
-// is pressed. The rocks drift on their own from the moment the wave spawns, so they are what moves
-// when — and only when — the game is running itself. The whole field is measured rather than one
-// rock, because a rock that wraps the screen edge inside the window would read as an enormous jump
-// and a rock that is destroyed would vanish; the largest displacement across the field is a stable
-// reading either way.
+// `simTime` alone would pass a build whose loop only ticks a counter, so the item also measures
+// distance — the furthest of the coasting ship and the drifting rocks. Either carries the verdict,
+// since a build may legitimately open play on a `WAVE 1` banner with an empty field
+// (`validation/waves/banner.mjs`) or ignore `setShip`'s velocity.
 
-// Two seconds of real time, which carries a drifting rock a clear distance across the field.
+// The measurement window and the floors it must clear. `MIN_ADVANCE` is half the window: the claim
+// is that the game advances ITSELF, not that it keeps perfect time, and a build that clamps its
+// per-frame delta legally loses some. A running build lands near 2.0; a frozen one reports 0.
 const SETTLE_MS = 2000;
-// Half the settle. Deliberately generous: the claim is that the game advances ITSELF, not that it
-// keeps perfect time, and a build that clamps its per-frame delta (ordinary spiral-of-death
-// protection) legally loses time to a stall. A running build lands near 2.0; a frozen one reports 0.
 const MIN_ADVANCE = SETTLE_MS / 1000 / 2;
-// The floor the field must show, in logical px of the furthest-travelled rock. A second,
-// independent witness: it says the SIMULATION ran, not merely that a counter ticked up.
-const MIN_TRAVEL = 20;
-// A beat so the record pass has an `act` to replay; the verdict is already fixed by `arrange`.
+const MIN_TRAVEL = 20; // logical px, whatever moved furthest
+
+// How long to let an opening banner run before measuring anyway; `specs/gameplay.md` puts it at
+// about 1.5 s.
+const WAVE_WAIT_MS = 4000;
+const POLL_MS = 100;
+
+// Parked lower-left heading right: clear of the star's core, and about 320 px of coast once the
+// spec's drag is applied, with no screen edge crossed to muddle the reading.
+const SHIP_POSE = { x: 140, y: 650, vx: 200, vy: 0, angle: 0 };
+
+// The ship's grace is CLEARED so it renders solidly in both stills — builds blink an invulnerable
+// ship, and one may open play with a starting grace running, which leaves the ship missing from
+// the very frames that are the evidence. It costs nothing: a rock may then kill it, but a death
+// needs collisions to have run, so the respawn jump proves what the coast would have.
+const INVULN_S = 0;
+
+// A beat so the record pass has an `act` to replay; the verdict is fixed by `arrange`.
 const TAIL_TICKS = 120;
 
 /**
- * Mark an unmet precondition — the build answered every debug call correctly, but the scenario
- * did not take, so there is nothing to grade. A plain property rather than a shared class because
- * this file is loaded by path and cannot import the runtime's (see `PRECONDITION_UNMET` in
- * `packages/browser-driver/validation.mjs`).
+ * Mark an unmet precondition. A plain property rather than a shared class because this file is
+ * loaded by path (see `PRECONDITION_UNMET` in `packages/browser-driver/validation.mjs`).
  */
 function unmetPrecondition(reason) {
   const err = new Error(reason);
@@ -52,38 +50,67 @@ function unmetPrecondition(reason) {
   return err;
 }
 
-/** The furthest any rock moved between two readings, comparing by position in the field. */
+/** Wait in REAL time for `predicate` — `api.until` in the one shape `arrange` allows. */
+async function settleUntil(api, predicate, { max, poll }) {
+  let snap = await api.snapshot();
+  if (predicate(snap)) return snap;
+  for (let waited = 0; waited < max; waited += poll) {
+    await api.settle(poll);
+    snap = await api.snapshot();
+    if (predicate(snap)) return snap;
+  }
+  return snap;
+}
+
+/** How far a body moved between two readings. */
+function moved(before, after) {
+  if (!before || !after) return 0;
+  return Math.hypot(after.x - before.x, after.y - before.y);
+}
+
+/**
+ * The furthest any rock moved between two readings. The whole field rather than one rock: a rock
+ * that wraps an edge reads as an enormous jump and a destroyed one vanishes, so the largest
+ * displacement is the stable reading either way.
+ */
 function furthestDrift(before, after) {
   let furthest = 0;
   const n = Math.min(before.length, after.length);
   for (let i = 0; i < n; i += 1) {
-    furthest = Math.max(
-      furthest,
-      Math.hypot(after[i].x - before[i].x, after[i].y - before[i].y),
-    );
+    furthest = Math.max(furthest, moved(before[i], after[i]));
   }
   return furthest;
 }
 
 export default function item() {
   let advanced;
-  let drifted;
+  let travelled;
 
   return {
     id: "controls.advances-in-real-time",
 
     async arrange(api) {
-      // Control ops only, and never `api.reset` — see the header.
-      await api.call("startGame"); // enters play and spawns the first wave
+      await api.call("startGame"); // enters play; the wave follows, at once or after a banner
 
-      const before = await api.snapshot();
-      const rocks0 = before.rocks || [];
-      if (before.screen !== "playing" || rocks0.length === 0) {
+      const opened = await api.snapshot();
+      if (opened.screen !== "playing") {
         throw unmetPrecondition(
-          `the field is not live with rocks on it (screen ${before.screen}, ${rocks0.length} ` +
-            `rock(s)), so there is nothing drifting to observe`,
+          `startGame did not enter play (screen ${opened.screen}), so there is no live field to ` +
+            `observe`,
         );
       }
+
+      // Let any opening banner run, so the stills show a field with rocks on it.
+      await settleUntil(api, (s) => (s.rocks || []).length > 0, {
+        max: WAVE_WAIT_MS,
+        poll: POLL_MS,
+      });
+
+      // Posed last, so the coast belongs to the measurement window rather than the wait above.
+      await api.call("setInvuln", INVULN_S);
+      await api.call("setShip", SHIP_POSE);
+
+      const before = await api.snapshot();
       await api.screenshot("before");
 
       // The measurement: real wall-clock time, with nothing driving the build but its own loop.
@@ -91,7 +118,10 @@ export default function item() {
 
       const after = await api.snapshot();
       advanced = after.simTime - before.simTime;
-      drifted = furthestDrift(rocks0, after.rocks || []);
+      travelled = Math.max(
+        moved(before.ship, after.ship),
+        furthestDrift(before.rocks || [], after.rocks || []),
+      );
       await api.screenshot("after");
     },
 
@@ -106,8 +136,9 @@ export default function item() {
         MIN_ADVANCE,
       );
       check.expectGt(
-        "...and the rocks actually drifted, so the simulation ran rather than a counter ticking",
-        drifted,
+        "...and the field actually moved with it — the coasting ship, or a drifting rock, " +
+          "travelled — so the simulation ran rather than a counter ticking",
+        travelled,
         MIN_TRAVEL,
       );
     },

@@ -11,6 +11,7 @@ import {
   towerAt,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
 } from "../_helpers.mjs";
 
@@ -46,7 +47,7 @@ export default function item() {
         climbed,
       );
       check.expectGt(
-        "a combine chime plays on the fold (Web Audio sources started)",
+        audioCueLabel("a combine chime plays on the fold", after),
         after,
         before,
       );

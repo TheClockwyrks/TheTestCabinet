@@ -49,8 +49,17 @@ The game is an endless series of waves of rocks.
   spawn the next wave. The order matters and is not a detail of presentation: the
   banner is a breather, so the field stays clear for the whole of it and the new
   rocks appear only as it ends. A banner captioning five Large rocks that are already
-  on the field and bearing down is not what is being asked for. The ship keeps flying
-  throughout, so the player gets that beat to reposition.
+  on the field and bearing down is not what is being asked for.
+- Starting a game begins wave 1, and either opening is fine: put the rocks up at once,
+  or run the `WAVE 1` banner first and spawn as it ends. What is fixed is the order
+  *within* a banner — wherever one runs, the rocks it announces appear only as it ends
+  — not whether the first wave gets one. `snapshot().waveBanner` reports which opening
+  a build chose (`specs/instrumentation.md`).
+- A breather is not a pause. The field is clear of ROCKS for the banner; everything
+  else carries on as normal. The ship keeps flying throughout, so the player gets that
+  beat to reposition. A saucer already on the field keeps hunting, keeps firing, and
+  can still be shot down — its cadence is its own (`specs/hazards.md`) and owes
+  nothing to wave boundaries, so it is routinely still up when the last rock dies.
 
 ## How rocks take damage and the ship's weapons
 {{#if (eq variant.slug "warhead")}}

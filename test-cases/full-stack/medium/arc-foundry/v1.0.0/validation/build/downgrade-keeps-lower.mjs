@@ -8,6 +8,11 @@
 
 import { startBuild, placeCandidate, towerAt, snap, SECOND } from "../_helpers.mjs";
 
+// A beat on the CHARGED candidate before it is downgraded. The claim is about a change of tier,
+// and a tier is only legible as a change against the tier it came from: the act used to open on
+// the downgrade, so the piece was already a Tuned component before anyone saw it was a Charged
+// candidate.
+const LEAD_TICKS = 1.5 * SECOND;
 // How much of the launched wave to show after the downgrade. Two seconds is enough for the
 // first units to walk in, which is what "it launched the wave" looks like on screen.
 const WAVE_TICKS = 2 * SECOND;
@@ -27,6 +32,8 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the Charged (T3) candidate, before the tier drops
+
       await api.call("downgrade", candId);
       s = await snap(api);
 

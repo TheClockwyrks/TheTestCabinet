@@ -362,6 +362,29 @@ async function main(): Promise<void> {
       clickables
         .filter((c) => c.panel)
         .map((c) => ({ action: c.action, label: c.label ?? "", x: c.x, y: c.y, w: c.w, h: c.h, disabled: Boolean(c.disabled) })),
+    // The status bar's controls from the last rendered frame, each with the value it is currently
+    // reading: `mute` and `pause` report whether they are engaged, `speed` the live multiplier.
+    // The rectangles are the ones the click router hit-tests, so clicking the middle of a reported
+    // control activates it (specs/instrumentation.md). Empty off the board, where there is no bar.
+    statusControls: () => {
+      if (isMenuState(game.state)) return [];
+      const state: Record<string, boolean | number> = {
+        speed: game.speed,
+        pause: game.paused,
+        mute: audio.muted,
+      };
+      return clickables
+        .filter((c) => c.action in state)
+        .map((c) => ({
+          action: c.action,
+          label: c.label ?? "",
+          x: c.x,
+          y: c.y,
+          w: c.w,
+          h: c.h,
+          state: state[c.action]!,
+        }));
+    },
     // The current menu's choices from the last rendered frame, in presentation order, each under
     // the fixed identifier the debug contract names it by. The rectangles are the ones the click
     // router itself hit-tests, so clicking the middle of a reported entry activates that choice.

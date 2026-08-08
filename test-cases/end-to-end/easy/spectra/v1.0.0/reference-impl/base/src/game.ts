@@ -142,6 +142,13 @@ export class Game {
   // it renders every frame but advances only when step() is called. reset() and
   // step() set it false; setAutoStep toggles it.
   autoStep = true;
+  // The swarm's own movement and decision-making (specs/instrumentation.md).
+  // True in ordinary play. While false the drones hold station — the formation
+  // stops swaying and no path advances — no further entrant is released, the
+  // assault launches no dives, and no drone fires. Everything else (the ship,
+  // bullets in flight, collisions, the discharge, scoring, the stage-end check,
+  // and a Flux's band clock) runs exactly as usual. reset() restores it.
+  droneAI = true;
   // When on, render.ts draws the read-only debug overlay. Toggled with backtick;
   // off by default; never affects gameplay.
   debugOverlay = false;
@@ -326,8 +333,9 @@ export class Game {
     if (this.fireCd > 0) this.fireCd = Math.max(0, this.fireCd - dt);
     if (this.inversionTimer > 0) this.inversionTimer = Math.max(0, this.inversionTimer - dt);
 
-    // Release entrants whose time has come.
-    if (this.entrants.length > 0) {
+    // Release entrants whose time has come. Held while the swarm's AI is off:
+    // a frozen field must not grow underneath a posed scenario.
+    if (this.droneAI && this.entrants.length > 0) {
       const still: Entrant[] = [];
       for (const e of this.entrants) {
         if (this.waveTime >= e.releaseAt) this.drones.push(e.drone);
@@ -352,7 +360,7 @@ export class Game {
     this.stepBullets(dt);
     this.stepDischarge(dt);
     this.collisions();
-    this.maybeDive(dt);
+    if (this.droneAI) this.maybeDive(dt);
     this.checkStageEnd();
   }
 
@@ -406,7 +414,12 @@ export class Game {
 
     for (const d of this.drones) {
       if (d.dead) continue;
+      // The Flux's band clock is the drone's own oscillation, not its movement,
+      // so it keeps running while the swarm is held — a frozen Flux still
+      // shimmers and settles on the beat (specs/instrumentation.md).
       this.updateFlux(d, dt);
+      // Held: keep the phase and the position exactly as they stand.
+      if (!this.droneAI) continue;
 
       switch (d.phase) {
         case "entering": {
@@ -879,11 +892,18 @@ export class Game {
     this.autoStep = enabled;
   }
 
+  // Turn the swarm's own movement and decision-making on or off. See the
+  // `droneAI` field, and specs/instrumentation.md for the contract.
+  debugSetDroneAI(enabled: boolean): void {
+    this.droneAI = enabled;
+  }
+
   // Return to the title, reseed all randomness, and re-arm manual stepping.
   debugReset(seed?: number): void {
     this.rng = makeRng(seed ?? DEFAULT_SEED);
     this.nextDroneId = 1;
     this.autoStep = false;
+    this.droneAI = true;
     this.input.releaseAll();
     this.simTime = 0;
     this.score = 0;

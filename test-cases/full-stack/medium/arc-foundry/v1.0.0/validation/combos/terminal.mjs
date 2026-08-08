@@ -24,6 +24,7 @@ export default function item() {
 
     async act(api) {
       c = towerById(await snap(api), comboId);
+      if (!c) return; // no combo assembled; reported by the hard assertion below
 
       // A combine attempt from the combo does nothing (it is not a base structure).
       await api.call("setCombineSet", []);
@@ -35,6 +36,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Hard: every reading below is a property OF the assembled tower, so a board that assembled
+      // none has nothing to grade. Stopping here records a clean failed verdict on the claim that
+      // actually broke, rather than dereferencing a missing tower and reporting the item as a
+      // debug-API contract failure the build did not commit.
+      check.assertOk("a combination tower was assembled", comboId != null && c != null);
       check.expectEq("a combo has no quality tier", c.quality, null);
       check.expectEq("the combo is unchanged by a combine attempt (terminal)", c2.kind, "combo");
       check.expectEq("...still the same combination tower", c2.type, c.type);

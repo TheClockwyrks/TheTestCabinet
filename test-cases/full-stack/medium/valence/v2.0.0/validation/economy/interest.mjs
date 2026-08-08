@@ -12,6 +12,7 @@ import {
   arrangeNoTowerRound,
   actNoTowerRound,
   poseNoTowerRound,
+  clipBudget,
   roundClearBonus,
   INTEREST_CAP,
 } from "../_helpers.mjs";
@@ -22,6 +23,9 @@ export default function item() {
 
   return {
     id: "economy.interest",
+
+    // Two cleared rounds, each filmed from the tail of its wave through the payout.
+    clipMs: clipBudget(2 * 1020),
 
     async arrange(api) {
       await arrangeNoTowerRound(api, { round: 1, energy: 0 });

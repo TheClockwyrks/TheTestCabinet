@@ -17,15 +17,17 @@
 
 import {
   assembleCombo,
-  spawnControlled,
+  releaseSpread,
   skipToApproach,
   towerById,
   snap,
   SECOND,
 } from "../_helpers.mjs";
 
-// A beat at level 0, then the upgrade, then a longer beat at level 1.
-const BEFORE_TICKS = 2 * SECOND;
+// A beat at level 0, then the upgrade, then a longer beat at level 1. The 'before' carries the
+// larger share: the claim is that the upgrade CHANGED something, and a reviewer can only judge
+// that against enough of the tower working at its landing level to read its stats and its rate.
+const BEFORE_TICKS = 3.5 * SECOND;
 const AFTER_TICKS = 3 * SECOND;
 
 export default function item() {
@@ -43,12 +45,15 @@ export default function item() {
       ({ comboId } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 9999 }));
       if (comboId == null) return;
       // Something for it to shoot at while the clip watches, walked up to the edge of its reach.
-      const [u] = await spawnControlled(api, "mote", { count: 3 });
-      await skipToApproach(api, comboId, u.id);
+      // Spaced rather than stacked: `spawnUnit`'s own `count` puts them all on the spawn tile at
+      // once, which reads as a single unit for the whole clip.
+      const ids = await releaseSpread(api, { count: 3 });
+      if (ids.length) await skipToApproach(api, comboId, ids[0]);
     },
 
     async act(api) {
       const c0 = towerById(await snap(api), comboId);
+      if (!c0) return; // no combo assembled; reported by the hard assertion below
       level0 = c0.level;
       dmg0 = c0.damage;
       range0 = c0.range;
@@ -65,6 +70,11 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // Hard: every reading below is a property OF the assembled tower and a comparison across
+      // its upgrade, so a board that assembled none has nothing to grade. Stopping here records a
+      // clean failed verdict on the claim that actually broke, rather than dereferencing a missing
+      // tower and reporting a debug-API contract failure the build did not commit.
+      check.assertOk("a combination tower was assembled to upgrade", comboId != null && c1 != null);
       check.expectEq("the combo starts at its landing level 0", level0, 0);
       check.expectEq("upgrading raised the combo's level", c1.level, level0 + 1);
       check.expectGt("...scaling its damage up", c1.damage, dmg0);

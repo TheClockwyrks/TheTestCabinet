@@ -1788,6 +1788,20 @@ export class Game {
     this.wave = Math.max(0, Math.floor(n));
   }
 
+  // setUnitHp (specs/instrumentation.md): pose a unit that has already taken damage, without
+  // having to arrange for something to damage it. It moves current HP only — maxHp is untouched,
+  // so the unit stays the same type at the same wave scaling and its bar reads the fraction it is
+  // really on, which is what lets two units released alike be posed to differ visibly.
+  //
+  // Clamped to at least 1: this poses a WOUNDED unit, never a dead one. A death has to come
+  // through the real damage path so the kill, its bounty and the wave's bookkeeping all resolve
+  // normally. The invincible Overload Dynamo never takes an HP change at all.
+  debugSetUnitHp(id: number, hp: number): void {
+    const u = this.unitById(id);
+    if (!u || u.invincible) return;
+    u.hp = Math.max(1, Math.min(u.maxHp, Math.floor(hp)));
+  }
+
   // setCombineSet (specs/instrumentation.md): the explicit combine multiset a shift-click
   // selection gathers — the primary plus the extra base structures a combine folds.
   debugSetCombineSet(ids: number[]): void {

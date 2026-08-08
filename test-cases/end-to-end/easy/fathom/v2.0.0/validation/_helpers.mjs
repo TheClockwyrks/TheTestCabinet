@@ -238,6 +238,100 @@ export function findOpenWithNeighbor(snap, dir) {
 }
 
 /**
+ * The tile to test ONE movement key on: open corridor, with somewhere to swim in `dir`,
+ * and a WALL for the forager to face so it is standing still when the key is pressed.
+ * Returns `{ tx, ty, facing }` — the tile, and the direction to pose the forager facing.
+ *
+ * WHY FACING A WALL IS THE WHOLE POINT. `findOpenWithNeighbor` promises one thing: an
+ * open tile in `dir`. It says nothing about the other three sides, and a movement-key
+ * check needs the forager to still BE on that tile when the key lands. Two things move
+ * it off before then, and both were real:
+ *
+ *   * A build whose forager keeps swimming when no key is held — the arcade reading
+ *     `specs/movement.md` allows, and the one `parkForager` exists for — simply leaves,
+ *     travelling in whatever direction `setForager` left it facing.
+ *   * A build that does not put itself on the manual clock until the runtime says so
+ *     (`specs/instrumentation.md`: `reset()` re-arms manual stepping and the control
+ *     operations do not change `autoStep`) keeps running in REAL time for the rest of
+ *     `arrange`, so the world advances by however long the remaining driver round trips
+ *     happen to take.
+ *
+ * Either way the forager drifts off down the corridor, and the tile it drifts to is
+ * almost never one with an opening in `dir` — a one-wide maze offers a turn only at
+ * junctions. The held key then has nowhere to go, the forager keeps its old heading, and
+ * the item reports that the direction does not work on a build whose direction works
+ * perfectly. That is not a hypothetical: it is how a run failed `controls/move-down` and
+ * `controls/wasd-down` while the same build passed every other direction.
+ *
+ * A forager facing rock cannot move under EITHER reading — `specs/movement.md` has it
+ * reach "a wall and stop" — so posing it into a wall pins the scenario no matter how much
+ * time passes before `act`, using nothing but the documented `setForager`. That is the
+ * same trick `parkForager` uses for a bystander; the difference here is that the tile also
+ * has to have an opening in `dir`, which is why this needs its own finder.
+ *
+ * WHICH WALL IT FACES, AND WHY IT IS NOT `dir`'s OPPOSITE BY PREFERENCE. Facing the far
+ * end of the corridor would make the key a REVERSAL, which `specs/movement.md` allows
+ * "at any time, not only at tile centers" — a different rule from the one these items are
+ * about. So a PERPENDICULAR wall is preferred: the forager is stopped against rock across
+ * the corridor, and the held key has to do the ordinary thing the item names — turn at a
+ * tile center into an open tile. Among those, a tile whose `dir`-opposite is also rock
+ * scores highest: the forager is backed into the closed end of the corridor, so the clip
+ * shows something unmistakable — a forager sitting still in a pocket with exactly one way
+ * out, which it then takes. Facing the opposite wall is kept only as a last resort, for a
+ * maze that offers nothing better.
+ *
+ * The forager never starts facing `dir`, whichever wall is chosen, so "the key gave it
+ * this heading" stays a real question rather than one the pose already answered.
+ *
+ * HOW FAR THE CORRIDOR RUNS IN `dir` is the last tie-break, and it is what a caller that
+ * needs the forager to keep going — `audio/eat`, which has to reach the NEXT tile's
+ * plankton — is served by. It is a preference and not a requirement: one open tile is all
+ * a movement key needs to prove itself, and demanding more would throw away the whole item
+ * on a maze of short corridors. `run` reports what the winning tile actually offers, up to
+ * `MOVE_KEY_MAX_RUN`.
+ */
+export const MOVE_KEY_MAX_RUN = 3;
+
+export function findMoveKeyTile(snap, dir) {
+  const { tiles, grid } = snap;
+  const back = OPP[dir];
+  const [dc, dr] = DIRS[dir];
+  let best = null;
+  for (let r = 1; r < grid.rows - 1; r++) {
+    for (let c = 1; c < grid.cols - 1; c++) {
+      if (!isOpen(tiles, c, r)) continue;
+      const open = openNeighborDirs(snap, c, r);
+      if (!open.includes(dir)) continue;
+      // A full crossroads has no rock to face, so nothing can pin a forager there.
+      const walls = ["up", "down", "left", "right"].filter(
+        (d) => !open.includes(d),
+      );
+      const perp = walls.find((d) => d !== back);
+      if (!perp && !walls.includes(back)) continue;
+      let run = 1;
+      while (
+        run < MOVE_KEY_MAX_RUN &&
+        isOpen(tiles, c + dc * (run + 1), r + dr * (run + 1))
+      ) {
+        run += 1;
+      }
+      // Stopped against rock across the corridor outranks everything (it is what makes
+      // the key an ordinary turn rather than a reversal); being backed into the closed
+      // end comes next; open corridor ahead breaks the remaining ties.
+      const score = (perp ? 8 : 0) + (walls.includes(back) ? 4 : 0) + run;
+      if (!best || score > best.score) {
+        best = { tx: c, ty: r, facing: perp ?? back, run, score };
+      }
+    }
+  }
+  if (best) return best;
+  throw unconstructibleOr(
+    snap,
+    `no open tile with an open ${dir} neighbor and a wall to face`,
+  );
+}
+
+/**
  * The most WALLED-IN open tile on the board — the one with the fewest open neighbours,
  * so a bystander parked there has the least corridor to slip away down.
  *
@@ -269,6 +363,103 @@ export function findEnclosedTile(snap) {
   }
   if (!best) throw unmetPrecondition("no open tile to park a bystander on");
   return best;
+}
+
+/**
+ * A spot to read "light reveals the walls it lands on" from: an open tile the forager can
+ * be pinned on, looking down a SHORT straight corridor that ends in rock. Returns
+ * `{ tx, ty, facing, dir, run, wall, behind }` — the tile, the wall to face, the way the
+ * corridor runs, how many open tiles lie along it, the rock that terminates it, and the
+ * tile on that rock's far side.
+ *
+ * WHY AN AXIAL RAY AND NOT WHATEVER THE LIGHT HAPPENS TO TOUCH. `specs/gameplay.md` fixes
+ * lighting as a straight line — "A tile is lit by your passive light only if it is within
+ * `V` of the forager and the straight line from the forager's center to that tile is not
+ * blocked by a wall tile" — but it does not fix how a build TRACES that line, and two
+ * conforming builds honestly disagree about the corner cases (see `wallSpan`). The rock
+ * flanking a corridor a few tiles away sits at a grazing angle whose sight line clips the
+ * corner of the rock between, so whether it is lit is a build's own tie-break; the rock
+ * squarely at the END of a corridor the forager is looking down is not. That line runs
+ * along the corridor's center line through nothing but open tiles, so every tracer agrees,
+ * and it is the case the spec's own words describe: "The rock that bounds a corridor your
+ * light reaches is lit and revealed too".
+ *
+ * The run is capped at `LIT_WALL_MAX_RUN` so the terminating rock sits comfortably inside
+ * `V` at full brightness (`V = 160 px`, five tiles) rather than on its rim, where "within
+ * `V`" is a boundary call a build may round either way.
+ *
+ * The forager is pinned facing rock for the same reason `findMoveKeyTile` pins it: the
+ * scenario has to survive however long `arrange` takes, on a build that keeps swimming
+ * with no key held or that has not yet stopped its own clock. It never faces `dir`, so it
+ * cannot swim down the very corridor whose end this reads.
+ *
+ * Everything the item asserts on is required to be UNREVEALED right now: the forager
+ * spawns somewhere with its light already on, and a probe that overlapped that pocket
+ * would be reading rock the spawn had lit, not rock this light lands on.
+ */
+export const LIT_WALL_MAX_RUN = 3;
+
+export function findLitWallProbe(snap) {
+  const { tiles, grid, visibility } = snap;
+  const dark = (t) =>
+    Boolean(visibility[t.ty]) && visibility[t.ty][t.tx] === "u";
+  const inGrid = (t) =>
+    t.tx >= 0 && t.tx < grid.cols && t.ty >= 0 && t.ty < grid.rows;
+  // A corridor that ends at the maze border is still rock the light lands on, but it has
+  // no far side, so the shadow half cannot be asked there. Such a probe is the fallback,
+  // taken only if the maze offers no interior wall to look at.
+  let borderProbe = null;
+  for (let r = 1; r < grid.rows - 1; r++) {
+    for (let c = 1; c < grid.cols - 1; c++) {
+      if (!isOpen(tiles, c, r)) continue;
+      const open = openNeighborDirs(snap, c, r);
+      const flanks = ["up", "down", "left", "right"].filter(
+        (d) => !open.includes(d),
+      );
+      if (!flanks.length) continue;
+      const flankWalls = flanks.map((d) => {
+        const [fc, fr] = DIRS[d];
+        return { tx: c + fc, ty: r + fr };
+      });
+      for (const dir of open) {
+        // A wall to face that is not the way we are looking, so the forager stands still
+        // without blocking its own view down the corridor.
+        const facing = flanks.find((d) => d !== dir);
+        if (!facing) continue;
+        const [dc, dr] = DIRS[dir];
+        let run = 0;
+        while (
+          run < LIT_WALL_MAX_RUN &&
+          isOpen(tiles, c + dc * (run + 1), r + dr * (run + 1))
+        ) {
+          run += 1;
+        }
+        const wall = { tx: c + dc * (run + 1), ty: r + dr * (run + 1) };
+        if (!isWall(tiles, wall.tx, wall.ty)) continue;
+        const behind = { tx: c + dc * (run + 2), ty: r + dr * (run + 2) };
+        const hasBehind = inGrid(behind);
+        const reads = [wall, ...flankWalls, ...(hasBehind ? [behind] : [])];
+        if (!reads.every(dark)) continue;
+        const probe = {
+          tx: c,
+          ty: r,
+          facing,
+          dir,
+          run,
+          wall,
+          behind: hasBehind ? behind : null,
+          flankWalls,
+        };
+        if (hasBehind) return probe;
+        borderProbe ??= probe;
+      }
+    }
+  }
+  if (borderProbe) return borderProbe;
+  throw unconstructibleOr(
+    snap,
+    `no unlit corridor of ${LIT_WALL_MAX_RUN} tiles or fewer ending in rock, with a wall to stand against`,
+  );
 }
 
 /** An open tile whose neighbor in `dir` is a wall (a mover cannot go that way). */
@@ -685,52 +876,77 @@ export function findFarTile(snap, from, minMan, { minPx = 0 } = {}) {
   );
 }
 
-const clamp01 = (v) => Math.max(0, Math.min(1, v));
-
-/** Distance in px from point (px, py) to the segment (ax, ay)-(bx, by). */
-export function distToSegment(px, py, ax, ay, bx, by) {
-  const vx = bx - ax;
-  const vy = by - ay;
-  const len2 = vx * vx + vy * vy;
-  const t = len2 === 0 ? 0 : clamp01(((px - ax) * vx + (py - ay) * vy) / len2);
-  return Math.hypot(px - (ax + t * vx), py - (ay + t * vy));
-}
-
 /**
- * An open tile to SLIP AWAY to while a predator is pathing to a stale fix: far enough
- * from every point the predator can occupy on its way there that a shrunken detection
- * range cannot re-find the forager, yet still within `maxFromFix` of the fix itself.
+ * The standoff `lanternjaw/dim-shakes` needs: three tiles on ONE straight corridor — where
+ * the hunter waits, where it fixes on the forager, and where the forager slips to when it
+ * goes dark. Returns `{ pred, fix, slip, dir }`.
  *
- * `pred` is where the predator started and `fix` the tile it is pathing to; while it
- * lingers it can be anywhere on that run, so the clearance is measured against the whole
- * segment, not just its endpoints. Keeping the tile inside `maxFromFix` (the range the
- * predator HAD while the forager was bright) is what makes a lost fix attributable to the
- * dimming rather than to the distance alone.
+ * WHY ALL THREE MUST SHARE ONE SIGHT LINE. The item's claim is that DIMMING is what shakes
+ * the fix — that the range shrank under the distance. That only means anything if the
+ * hunter can still SEE the tile the forager slipped to: if the slip goes behind rock, the
+ * fix is broken by line of sight and the range plays no part. The earlier scenario chose
+ * the slip tile by clearance alone (`findSlipTile`, now gone), which in a one-wide maze put
+ * it around a corner nearly every time, and the item quietly stopped testing its own
+ * subject: a build whose detection range never shrank at all traced identically to the
+ * reference, tile for tile, and passed.
+ *
+ * So the geometry pins all three distances on one open line:
+ *
+ *   [pred] --predTiles-- [fix] --------slipTiles-------- [slip]
+ *
+ *   * `pred`→`fix` is short — the hunter senses the bright forager and fixes on it through
+ *     its own sensing code, which is what makes the fix real rather than posed.
+ *   * `fix`→`slip` must exceed the DIM range `R = 128 px`, so a hunter standing on the
+ *     stale fix — where its linger leaves it — cannot re-find the forager once dark.
+ *   * `pred`→`slip` must stay inside the BRIGHT range `R = 320 px`, so a build whose range
+ *     never shrinks DOES re-find it, from the moment of the slip onwards, and fails. This
+ *     is the whole discriminator, and it is why the slip cannot simply be moved further
+ *     away: distance alone must never be enough to explain the loss.
+ *
+ * The wrap row is skipped, as in `findInkStandoff`, so a slip cannot land across the seam
+ * and read as a distance it is not.
+ *
+ * The defaults ask for a `9`-tile run, which is LESS than the `10` the item used to need
+ * for its sight line alone — a scenario that is now easier to construct, not harder.
  */
-export function findSlipTile(snap, { pred, fix, minClear, maxFromFix }) {
-  const a = tileCenter(snap.grid, pred.tx, pred.ty);
-  const b = tileCenter(snap.grid, fix.tx, fix.ty);
-  let best = null;
-  let bestClear = -Infinity;
-  for (const [c, r] of openTiles(snap)) {
-    const p = tileCenter(snap.grid, c, r);
-    if (Math.hypot(p.x - b.x, p.y - b.y) > maxFromFix) continue;
-    const clear = distToSegment(p.x, p.y, a.x, a.y, b.x, b.y);
-    if (clear < minClear) continue;
-    // Prefer the roomiest tile, so a build whose predator overshoots the fix slightly
-    // still cannot stumble back into range.
-    if (clear > bestClear) {
-      bestClear = clear;
-      best = { tx: c, ty: r };
+export function findDimStandoff(snap, { predTiles = 2, slipTiles = 6 } = {}) {
+  const { tiles, grid } = snap;
+  const need = predTiles + 1 + slipTiles;
+  const wrap = wrapRow(snap);
+  const run = (cells, dir) => {
+    let len = 0;
+    for (let i = 0; i < cells.length; i++) {
+      len = isOpen(tiles, cells[i][0], cells[i][1]) ? len + 1 : 0;
+      if (len < need) continue;
+      const start = cells[i - need + 1];
+      const [dc, dr] = DIRS[dir];
+      const at = (n) => ({ tx: start[0] + dc * n, ty: start[1] + dr * n });
+      return {
+        pred: at(0),
+        fix: at(predTiles),
+        slip: at(predTiles + slipTiles),
+        dir,
+      };
     }
+    return null;
+  };
+  for (let r = 1; r < grid.rows - 1; r++) {
+    if (r === wrap) continue;
+    const cells = [];
+    for (let c = 1; c < grid.cols - 1; c++) cells.push([c, r]);
+    const found = run(cells, "right");
+    if (found) return found;
   }
-  if (!best) {
-    throw unmetPrecondition(
-      `no open tile at least ${minClear} px clear of the run to the fix and still ` +
-        `within ${maxFromFix} px of it`,
-    );
+  for (let c = 1; c < grid.cols - 1; c++) {
+    const cells = [];
+    for (let r = 1; r < grid.rows - 1; r++) cells.push([c, r]);
+    const found = run(cells, "down");
+    if (found) return found;
   }
-  return best;
+  throw unmetPrecondition(
+    `no straight corridor run of ${need} tiles to stand a hunter, its fix and a slip ` +
+      `tile ${slipTiles} tiles further along on one sight line`,
+  );
 }
 
 // ---- The den (central predator chamber) --------------------------------------
@@ -1415,17 +1631,19 @@ export function isDark(c) {
 // held movement key, which is exactly what a controls check must confirm.
 
 /**
- * ARRANGE half of a movement-key check: enter live play and place the forager on a
- * tile that has an open corridor neighbor in `dir`, so a held key in that direction
- * has somewhere to go. Returns `{ snap, spot }` — the snapshot the maze geometry was
- * read from, and the tile the forager was placed on.
+ * ARRANGE half of a movement-key check: enter live play and stand the forager STILL on a
+ * tile that has an open corridor neighbor in `dir`, facing rock so it stays there until
+ * the key is pressed. Returns `{ snap, spot }` — the snapshot the maze geometry was read
+ * from, and the tile the forager was placed on (`spot.facing` is the wall it faces).
+ *
+ * See `findMoveKeyTile` for why the facing is what makes this check reliable.
  *
  * Pair with `actMoveKey`.
  */
 export async function arrangeMoveKey(api, dir) {
   const snap = await startPlaying(api);
-  const spot = findOpenWithNeighbor(snap, dir);
-  await api.call("setForager", { tx: spot.tx, ty: spot.ty });
+  const spot = findMoveKeyTile(snap, dir);
+  await api.call("setForager", { tx: spot.tx, ty: spot.ty, dir: spot.facing });
   return { snap, spot };
 }
 
@@ -1541,7 +1759,7 @@ export async function actGrazeOne(api, dir, { tailTicks = 120 } = {}) {
  * window — so this reads "it went that way", and leaves how fast to
  * `maze-movement/constant-speed`. A held key that does nothing still measures 0.
  *
- * No wrap guard is needed: `findOpenWithNeighbor` never places the forager on a border
+ * No wrap guard is needed: `findMoveKeyTile` never places the forager on a border
  * column, so half a tile of travel cannot cross the wrap tunnel's seam.
  */
 export function movedAlong(before, after, dir, grid) {
@@ -1590,6 +1808,91 @@ export const DEN_IMMEDIATE = DEN_RELEASE_GAP / 2;
 
 /** The sweep resolution the den watch runs at, in ticks. */
 export const DEN_POLL = 6;
+
+// ---- Losing a fix ------------------------------------------------------------
+
+/**
+ * The linger a sight-hunter spends on a stale fix before giving up, in seconds
+ * (`specs/predators/lanternjaw.md`, `specs/predators/flarefish.md`).
+ */
+export const LINGER_SECONDS = 2;
+
+/**
+ * Slack on top of the linger and the walk to the stale fix, in seconds.
+ *
+ * It is deliberately loose, and it costs nothing to make it so. What separates a build that
+ * loses its fix from one that ignores the thing that should have broken it is not TIMING —
+ * a build that never loses the fix keeps chasing a forager it can still see, and never
+ * reads `wander` however long the sweep runs. So widening this cannot pass a broken build;
+ * it only stops a conforming one being failed for taking a beat longer than the check
+ * imagined. Keeping the linger itself honest is `flarefish/flare-cadence`'s and the chase
+ * items' business, not this one's.
+ */
+export const LINGER_SLACK_SECONDS = 1;
+
+/**
+ * Wait for `kind` to give up a fix and return to wandering, allowing the linger the spec
+ * grants it. `pathPx` is how far the predator stands from the tile its stale fix is on —
+ * the ground it has to cover before the linger can even start.
+ *
+ * Returns `{ gaveUp, seconds, snap }`.
+ *
+ * WHY THIS IS A SWEEP AND NOT A READ AT ONE INSTANT. Losing a fix is not instantaneous in
+ * this game, and the specs describe it twice, differently, without either being wrong:
+ *
+ *   * `specs/gameplay.md`, on ink: a blinded predator "immediately loses any fix it has on
+ *     you... Blinded, it falls back to wandering."
+ *   * `specs/predators/flarefish.md`: "If the Flarefish loses you (you break its line of
+ *     sight, go dim out of range, or ink it) AND ITS LINGER RUNS OUT, it returns to
+ *     wandering" — where the linger is "paths to your last-known tile and lingers `2 s`
+ *     there before giving up". `specs/predators/lanternjaw.md` says the same for the
+ *     Lanternjaw, and `specs/predators.md` makes pathing to the stale fix the general rule
+ *     for every predator that loses track of you.
+ *
+ * So one conforming build flips to `wander` on the tick the ink lands, and another holds
+ * the chase state while it walks to where it last saw you, waits there, and only then
+ * gives up. These checks used to read the state a fifth of a second after the event and
+ * demand `wander`, which is the first reading only: a run was failed on four items —
+ * `flarefish/ink-breaks`, `flarefish/chase-like-lanternjaw`, `lanternjaw/ink-shakes` and
+ * `lanternjaw/dim-shakes` — for taking the second, and the clips showed it plainly, the
+ * hunter walking to the stale fix and turning back while the reference's, already
+ * wandering, drifted on through the cloud as though nothing had happened.
+ *
+ * The two readings differ on WHEN, never on WHETHER, so waiting long enough to cover both
+ * and asking only that it does give up is the question both specs actually agree on.
+ *
+ * WHY IT WATCHES FOR THE FORAGER BEING CAUGHT. A predator that never lost its fix comes and
+ * takes the life — and a life lost re-dens every predator and releases it again, WANDERING.
+ * So a sweep that waits only for `wander` reads the schedule's own fresh patrol as the
+ * give-up it was looking for, and hands a clean pass to the one build it exists to fail.
+ * (Again, not hypothetical: a mutant with the ink blinding taken out passed exactly that
+ * way.) The sweep therefore ends on whichever comes first, and a caught forager is a
+ * `gaveUp` of `false` with `caught` to say why.
+ */
+export async function untilGivesUp(api, kind, { pathPx = 0 } = {}) {
+  const seconds =
+    LINGER_SECONDS + LINGER_SLACK_SECONDS + pathPx / PREDATOR_SPEED;
+  const start = await api.snapshot();
+  const lost = (s) => s.lives < start.lives || pred(s, kind).state === "den";
+  const r = await api.until(
+    (s) => lost(s) || pred(s, kind).state === "wander",
+    { max: Math.ceil(seconds * TICK_HZ), poll: TICK },
+  );
+  const caught = r.hit && lost(r.snap);
+  return {
+    gaveUp: r.hit && !caught,
+    caught,
+    seconds: r.spent / TICK_HZ,
+    snap: r.snap,
+  };
+}
+
+/** Tile-center distance in px between two tiles, for sizing a linger allowance. */
+export function tileGapPx(grid, a, b) {
+  const p = tileCenter(grid, a.tx, a.ty);
+  const q = tileCenter(grid, b.tx, b.ty);
+  return Math.hypot(p.x - q.x, p.y - q.y);
+}
 
 /**
  * How far BEFORE live play resuming the first release may land: ONE SAMPLE, and nothing

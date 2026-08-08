@@ -18,6 +18,7 @@ import {
   towerAt,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   SECOND,
 } from "../_helpers.mjs";
@@ -62,7 +63,7 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("the unkept candidates hardened into blockers", hardened);
       check.expectGt(
-        "a rock-settle thunk plays as they harden (Web Audio sources started)",
+        audioCueLabel("a rock-settle thunk plays as they harden", after),
         after,
         before,
       );

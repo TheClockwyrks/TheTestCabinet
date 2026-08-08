@@ -23,9 +23,17 @@
 // very different balances. So the clear is run twice, once from the opening reserve and once from
 // a hoard of 1000, and both must pay the same. A build paying even 1% on the hoard pays 10 more.
 //
-// The first clear is the arrange — a wave walking itself out is a minute of Load crossing an
-// undefended yard, and this item declares a STILL of the HUD afterwards, not a clip of it, so it
-// is skipped rather than filmed. The second clear is the act.
+// WHAT IS FILMED. The item's evidence used to be a still of the HUD once everything was over,
+// which is a picture of a Charge total and nothing else: the number a reviewer is looking at is
+// the bonus plus whatever was there before, and the still cannot separate them or show a wave
+// clearing at all. The payment is an EVENT, so the evidence has to be the event.
+//
+// Both waves are still skipped for almost all of their length — a wave walking itself out is a
+// minute of Load crossing an undefended yard, which is the journey to the evidence rather than
+// the evidence. The second one is skipped up to the point where its LAST unit is on the
+// Collector's doorstep, and the act is the few seconds either side of that: the last of the Load
+// grounding out, the floor emptying, and the Charge counter stepping up by the bonus. That is the
+// whole sentence, filmed.
 
 import {
   startBuild,
@@ -33,6 +41,7 @@ import {
   skipClearWave,
   waveClearBonus,
   snap,
+  tileCenter,
   TOWER,
   SECOND,
 } from "../_helpers.mjs";
@@ -40,6 +49,13 @@ import {
 // The hoard the second run banks before clearing the same wave. Two orders of magnitude above the
 // opening reserve, so any interest worth the name is unmissable in the delta.
 const HOARD = 1000;
+// How close to the Collector the last unit must be before filming starts, in px. Far enough that
+// the clip opens on it still walking, close enough that it arrives within a beat.
+const DOORSTEP = 140;
+// How long the act waits for that arrival and the phase flip, and how long it holds on the paid
+// HUD afterwards.
+const CLEAR_TICKS = 6 * SECOND;
+const TAIL_TICKS = 2 * SECOND;
 
 export default function item() {
   // What each clear paid, and the board the second one left behind.
@@ -68,16 +84,38 @@ export default function item() {
       const cleared = await skipClearWave(api, { maxTicks: 300 * SECOND });
       paidFromOpening = cleared.charge - before;
 
-      // Run two: the same wave, cleared from a hoard. Only the clear is left for the act.
+      // Run two: the same wave, cleared from a hoard.
       await armClear(api, HOARD);
+      // Skip the crossing and stop with the wave down to its last unit, on the Collector's
+      // doorstep — so the act opens a beat before the clear rather than a minute before it.
+      //
+      // The wave has to have POPULATED before "one unit left" means the last one: a wave releases
+      // its Load over time, so a floor holding a single unit is also what the opening moments look
+      // like. `seen` is what tells those apart.
+      let seen = false;
+      await api.skipUntil(
+        (s) => {
+          if (s.phase !== "wave") return true; // it cleared already — nothing left to film
+          if (s.units.length >= 1) seen = true;
+          if (!seen || s.units.length !== 1) return false;
+          const last = s.units[0];
+          const sink = tileCenter(s.collector.col, s.collector.row);
+          return Math.hypot(last.x - sink.x, last.y - sink.y) <= DOORSTEP;
+        },
+        { max: 300 * SECOND, poll: 5 },
+      );
     },
 
     async act(api) {
-      end = await skipClearWave(api, { maxTicks: 300 * SECOND });
+      // The last of the Load grounding out, the floor emptying, and the bonus landing.
+      await api.until((s) => s.phase === "build" || s.screen !== "playing", {
+        max: CLEAR_TICKS,
+        poll: 5,
+      });
+      end = await snap(api);
       paidFromHoard = end.charge - HOARD;
 
-      await api.settle(120); // let the HUD paint the new Charge before the still
-      await api.screenshot("hud");
+      await api.advance(TAIL_TICKS); // hold on the paid HUD and the reopened build phase
     },
 
     async assert(api, check) {

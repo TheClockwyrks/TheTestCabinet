@@ -15,6 +15,7 @@ import {
   skipUntilNearCollector,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   TICK,
   SECOND,
@@ -55,7 +56,7 @@ export default function item() {
       check.expectOk("the Slug walked the chain to the Collector", arrived.hit);
       check.expectOk("the Slug reaches the Collector and leaks", leaked);
       check.expectGt(
-        "a leak alarm plays on the leak (Web Audio sources started)",
+        audioCueLabel("a leak alarm plays on the leak", after),
         after,
         before,
       );
