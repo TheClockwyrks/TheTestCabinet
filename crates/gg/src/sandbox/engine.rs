@@ -109,6 +109,19 @@ fn engine() -> &'static Engine {
         // components carry none — and the work is done only where a trap is actually being
         // rendered, never on the path a program takes when it succeeds.
         config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
+        // The wasm **exception-handling** proposal, which is what makes `throw`, `try` and `catch`
+        // work in a [C++](super::language::cpp) program. It is off by default in wasmtime and gg
+        // turns it on for one arm, because the alternative for that arm is `-fno-exceptions` —
+        // under which every `try` a model writes is a compile error, and the arm measures gg's flag
+        // rather than the language.
+        //
+        // It costs the other guests nothing: enabling a proposal widens what a module MAY contain,
+        // and every artifact here is produced by a toolchain gg pins. What it did cost is a build
+        // feature — wasmtime gates this setter behind `gc`, because an exception reference is a
+        // GC-managed value — and that feature is shared with `foray-host` and `lattice-host`, which
+        // turn `gc_support` back off on their own engines rather than inheriting a wider validation
+        // surface from a decision made here. See the root `Cargo.toml`.
+        config.wasm_exceptions(true);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any
         // input, so a failure would be a programming error rather than a runtime condition.
         let engine = Engine::new(&config).expect("the fixed wasmtime Config is valid");

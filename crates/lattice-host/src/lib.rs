@@ -207,9 +207,19 @@ pub fn score_against(expected: &[Snapshot], run: &SubmissionRun) -> Score {
 /// Build a fuel-metered wasmtime engine. Fuel metering must be enabled for the
 /// per-scenario budget and the consumed-fuel reading to work; if this build of
 /// wasmtime cannot enable it, that is a host error, not a submission failure.
+///
+/// GC support is turned back **off**, and that line is here because of a change
+/// this crate did not ask for. The workspace's `wasmtime` is built with the `gc`
+/// feature so that gg's C++ program language can enable the wasm exception
+/// proposal (see the dependency's own note in the root `Cargo.toml`), and cargo
+/// features are additive — so without this, `WasmFeatures::default()` would
+/// silently gain `GC_TYPES` here and this host would begin accepting submissions
+/// carrying GC types it has never accepted. What a submitted module may contain
+/// is this sandbox's own decision, so it is stated rather than inherited.
 fn build_engine() -> Result<wasmtime::Engine, RunError> {
     let mut config = Config::new();
     config.consume_fuel(true);
+    config.gc_support(false);
     wasmtime::Engine::new(&config).map_err(|e| RunError::Engine(e.to_string()))
 }
 

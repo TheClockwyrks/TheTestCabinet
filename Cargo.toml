@@ -255,8 +255,26 @@ reqwest = { version = "0.12", default-features = false, features = [
 # containers where a compile cache buys nothing. Pinned to the major version the
 # host was written against so an automatic minor bump never silently changes the
 # fuel/epoch semantics the sandbox relies on.
+#
+# `gc` and `gc-null` are here for **gg's C++ program language**, and they are the one entry in
+# this file that a language arm asked for. C++ exceptions compile to the wasm exception-handling
+# proposal, and wasmtime gates that proposal behind `Config::wasm_exceptions`, which is
+# `#[cfg(feature = "gc")]` — an exception reference is a GC-managed value, so the runtime will not
+# even build the setter without GC support, and it refuses to build an `Engine` at all when `gc`
+# is on and no collector is. `gc-null` is the cheapest collector there is: it allocates nothing
+# and collects nothing, which is exactly right for a feature whose only user here allocates no GC
+# objects. Without both, a C++ program that so much as links libc++'s `eh` build is refused with
+# *exceptions proposal not enabled* — measured, on this pinned release.
+#
+# Cargo features are additive across a workspace, so this reaches `foray-host` and `lattice-host`
+# too. What it changes for them is that `WasmFeatures::default()` gains `GC_TYPES`, which would
+# widen what a submitted controller may contain; both now turn it back off explicitly on their own
+# `Config`, so the modules they accept are what they were. gg's engine is a third, separate
+# `Engine` — see `crates/gg/src/sandbox/engine.rs` — and it is the only one that opts in.
 wasmtime = { version = "45", default-features = false, features = [
 	"cranelift",
+	"gc",
+	"gc-null",
 	"runtime",
 ] }
 

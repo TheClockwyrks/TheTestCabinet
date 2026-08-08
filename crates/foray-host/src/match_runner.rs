@@ -221,8 +221,18 @@ pub fn run_with_modules(
 
 /// Build the shared wasm engine with fuel metering on. Fuel consumption must be
 /// enabled at engine-construction time for [`Store::set_fuel`] to work each tick.
+///
+/// GC support is turned back **off**, and that line is here because of a change
+/// this crate did not ask for. The workspace's `wasmtime` is built with the `gc`
+/// feature so that gg's C++ program language can enable the wasm exception
+/// proposal (see the dependency's own note in the root `Cargo.toml`), and cargo
+/// features are additive — so without this, `WasmFeatures::default()` would
+/// silently gain `GC_TYPES` here and this host would begin accepting controller
+/// modules carrying GC types it has never accepted. What a submitted module may
+/// contain is this sandbox's own decision, so it is stated rather than inherited.
 fn build_engine() -> Result<Engine, RunError> {
     let mut config = wasmtime::Config::new();
     config.consume_fuel(true);
+    config.gc_support(false);
     Engine::new(&config).map_err(|e| RunError::Engine(e.to_string()))
 }
