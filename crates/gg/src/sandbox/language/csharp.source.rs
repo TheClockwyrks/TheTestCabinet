@@ -412,7 +412,32 @@ pub(super) enum Mask {
     Hole,
 }
 
-/// Classify every byte of a C# source.
+/// What one pass of this arm's lexer found: what every byte is, and whether it ever lost its place.
+///
+/// Two readers, one scan. [`wrap_module`] and its helpers take the best reading whatever happened,
+/// because their errors are safe in the accepting direction — an unlisted export is a call the model
+/// was not told about and the compiler still resolves. [Healing](super::healing) takes a mask **only
+/// when the scan ended cleanly**, because every strategy that consults one is deciding whether to
+/// delete text, and a reading already known to be wrong is the worst possible basis for that. Two
+/// lexers would have been two chances to disagree about what a raw string is.
+pub(super) struct Scan {
+    /// What every byte is.
+    pub(super) mask: Vec<Mask>,
+    /// Whether every literal and comment the scan opened was closed. Four states end it uncleanly:
+    /// an unterminated block comment, a literal still open at the end of the source, and a `"…"` or
+    /// `'…'` still open at a newline — which C# forbids outside a verbatim or raw string.
+    pub(super) clean: bool,
+}
+
+/// Classify every byte of a C# source, discarding whether the reading held together.
+///
+/// The reader for everything that is not [healing](super::healing) — see [`Scan`] for why the two
+/// want different answers to the same pass.
+pub(super) fn mask(source: &str) -> Vec<Mask> {
+    scan(source).mask
+}
+
+/// Classify every byte of a C# source, and say whether the reading held together.
 ///
 /// Handles what a model or a skill author actually writes: `//` and `/* */`, `'c'`, `"…"` with
 /// backslash escapes, `@"…"` with doubled quotes, `"""…"""` raw strings of any quote count, and `$`
@@ -422,7 +447,15 @@ pub(super) enum Mask {
 /// It is a lexer rather than a parser because every question asked of it is lexical. It is *this
 /// arm's* rather than a shared one for the reason every arm's is: what counts as a comment and what
 /// counts as a string are the two things no two languages here agree on.
-pub(super) fn mask(source: &str) -> Vec<Mask> {
+///
+/// # Why it compares bytes rather than slicing the source
+///
+/// Because the scan walks one **byte** at a time and a model's reply is not ASCII. `&source[at..]`
+/// panics unless `at` falls on a character boundary, so an `é` inside a string would take the turn
+/// down with a slice index error. Every delimiter here is ASCII, and an ASCII byte never appears
+/// inside a multi-byte UTF-8 sequence, so a byte comparison finds exactly what a string comparison
+/// would and cannot panic on the way.
+pub(super) fn scan(source: &str) -> Scan {
     /// An open string literal, and how it ends.
     struct Literal {
         /// How many `"` close it — 1 for an ordinary or verbatim string, 3 or more for a raw one.
@@ -449,11 +482,23 @@ pub(super) fn mask(source: &str) -> Vec<Mask> {
     // literal's text.
     let mut holes: Vec<usize> = Vec::new();
     let mut index = 0usize;
+    let mut clean = true;
 
     while index < bytes.len() {
         let in_text = open.last().is_some() && holes.last() == Some(&0);
         if in_text {
             let literal = open.last().expect("a literal is open");
+            // A `"…"` or a `'…'` may not span a line in C#, so a newline reached inside one is a
+            // literal the author left open. It ends here rather than swallowing the rest of the
+            // file: the compiler will report it, and masking everything below would make the
+            // module reader answer about the whole source. It is still not a clean reading, which
+            // is what makes healing decline.
+            if bytes[index] == b'\n' && !literal.verbatim && !literal.raw() {
+                open.pop();
+                holes.pop();
+                clean = false;
+                continue;
+            }
             let run = quote_run(bytes, index);
             if run >= literal.quotes {
                 // A verbatim string escapes a quote by doubling it, so a run of them is that many
@@ -523,21 +568,27 @@ pub(super) fn mask(source: &str) -> Vec<Mask> {
                 out[index] = Mask::Text;
                 out[index + 1] = Mask::Text;
                 index += 2;
+                let mut closed = false;
                 while index < bytes.len() {
                     let end = bytes[index] == b'*' && bytes.get(index + 1) == Some(&b'/');
                     out[index] = Mask::Text;
                     if end {
                         out[index + 1] = Mask::Text;
                         index += 2;
+                        closed = true;
                         break;
                     }
                     index += 1;
                 }
+                // A block comment does **not** nest in C#, so it ends at the first `*/` — and one
+                // the author never closed swallowed the rest of the source.
+                clean &= closed;
             }
             b'\'' => {
                 out[index] = Mask::Text;
                 index += 1;
-                while index < bytes.len() && bytes[index] != b'\'' {
+                let mut closed = false;
+                while index < bytes.len() && bytes[index] != b'\'' && bytes[index] != b'\n' {
                     let escape = bytes[index] == b'\\';
                     out[index] = Mask::Text;
                     index += 1;
@@ -546,10 +597,12 @@ pub(super) fn mask(source: &str) -> Vec<Mask> {
                         index += 1;
                     }
                 }
-                if index < bytes.len() {
+                if index < bytes.len() && bytes[index] == b'\'' {
                     out[index] = Mask::Text;
                     index += 1;
+                    closed = true;
                 }
+                clean &= closed;
             }
             b'"' | b'@' | b'$' => {
                 let (prefix, verbatim, interpolated) = literal_prefix(bytes, index);
@@ -592,7 +645,12 @@ pub(super) fn mask(source: &str) -> Vec<Mask> {
             }
         }
     }
-    out
+    // A literal still open at the end of the source is one the author never closed — a verbatim or
+    // raw string most often, since an ordinary one has already ended at its own newline.
+    Scan {
+        mask: out,
+        clean: clean && open.is_empty(),
+    }
 }
 
 /// How many `"` there are in a row at `index`.

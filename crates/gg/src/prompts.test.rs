@@ -1716,6 +1716,14 @@ const REQUIRED_SECTIONS: &[&str] = &[
 /// them behind. Turning them on here would render nothing, so no gate below can cover them; they
 /// are either sections the templates should regain or fields that should go, and that is a decision
 /// rather than a test fix.
+///
+/// The **ending call it carries is TypeScript's**, and that is only correct for a gate reading the
+/// prompt's prose or its `{{#each}}` rosters. `ending.finish` is a *spelling* that arrives through
+/// the context rather than through the catalogue, so rendering this for another arm puts
+/// `harness.finish` into a document whose SDK may bind `harness.Finish` — which is a call that arm
+/// does not have. A gate that judges the calls a rendered prompt names must use
+/// [`every_code_section_on_for`] instead, which spells the ending the way the language it is
+/// rendered for does.
 pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
     SystemContext {
         responses_as_code: true,
@@ -1790,6 +1798,29 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
         },
         ..SystemContext::default()
     }
+}
+
+/// [`every_code_section_on`] with the **ending call spelled the way `language` spells it** — the
+/// context a gate reading the *calls* a rendered prompt names has to use.
+///
+/// The ending is the one call in a code prompt that reaches the template as data rather than through
+/// the catalogue: the loop resolves it once, from the agent's [role](crate::ending::EndingRole), and
+/// hands the template a string. A fixture that hard-codes TypeScript's spelling of it therefore
+/// writes `harness.finish` into every arm's prompt, and it went unnoticed for ten arms because every
+/// `.`-separated arm before C# also spelled it `finish` — Java, Kotlin, Python, Ruby, PureScript and
+/// Swift all do, and Rust's and C++'s `::` kept them out of the reading entirely. C# is the first
+/// arm that writes `.` **and** `PascalCase`, so it is the first for which the fixture's own string
+/// names a call the language does not bind.
+///
+/// It takes the trait object rather than a [`GgProgramLanguage`] so the seam's
+/// [fixture language](crate::sandbox::fixture_languages) can be handed to it too: that one has no
+/// wire id at all, on purpose.
+pub(super) fn every_code_section_on_for(
+    language: &dyn crate::sandbox::ProgramLanguage,
+) -> SystemContext {
+    let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
+    context.ending.finish = crate::sandbox::spell(language, crate::sandbox::HARNESS_FINISH);
+    context
 }
 
 /// **Every registered language's responses-as-code prompt renders, and carries every section.**
@@ -2097,9 +2128,11 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
     // is told to call `<object>.<function>()` and never told which objects it has.
     ("the API object the run granted", "`harness`"),
     ("the API object's description", "the run itself"),
-    // ### Ending your session — the call, spelled as this execution mode writes it. A prompt that
-    // loses it leaves a session that cannot be ended deliberately.
-    ("the ending call", "harness.finish"),
+    // ### Ending your session — the call is deliberately NOT here. It is the one entry that would
+    // have to be a different literal per language, because it reaches the template as data rather
+    // than through the catalogue, and this table's whole discipline is that every phrase in it is a
+    // value the context carried. It is asserted below instead, spelled by the arm it is rendered
+    // for.
     // ### Messages you receive — the heading vocabulary a plain-text transcript is read through.
     ("the message heading", "`Task`"),
     (
@@ -2140,7 +2173,7 @@ fn every_language_prompt_states_what_the_run_configured() {
         let name = language.display_name();
         let rendered = flat(&render_system_for(
             language,
-            &every_code_section_on(GgProgramLanguage::TypeScript),
+            &every_code_section_on_for(language),
         ));
         for (what, phrase) in REQUIRED_PHRASES {
             assert!(
@@ -2148,6 +2181,13 @@ fn every_language_prompt_states_what_the_run_configured() {
                 "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
             );
         }
+        // The ending, spelled by this arm rather than written down: a session that cannot be ended
+        // deliberately is the failure, and `harness.finish` is only one language's way of saying it.
+        let finish = crate::sandbox::spell(language, crate::sandbox::HARNESS_FINISH);
+        assert!(
+            rendered.contains(&finish),
+            "{name}: the prompt no longer states the ending call (`{finish}`):\n{rendered}"
+        );
     }
 }
 
@@ -2279,15 +2319,16 @@ fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
         // the parentheses this once demanded are spelling, and PureScript — where `list` takes no
         // argument and `fs.list ()` would apply `Unit` to an `Effect` — is the arm that proved it.
         //
-        // The step between the receiver and the name is the *language's*, for the same reason every
-        // call gg quotes is: on Rust an API object is a module, so `<object>.list` is `E0423`
+        // Both halves of the step are the *language's*, for the same reason every call gg quotes
+        // is. The **separator**: on Rust an API object is a module, so `<object>.list` is `E0423`
         // (expected value, found module) — a placeholder written in a syntax the arm does not have,
-        // in the one sentence establishing how a model reaches its own surface.
-        let list = format!(
-            "<object>{}{}",
-            language.member_separator(),
-            crate::docs::LIST_FUNCTION
-        );
+        // in the one sentence establishing how a model reaches its own surface. And the **name**:
+        // `list` is gg's own key rather than any SDK's spelling of it, and C# spells the method it
+        // catalogues under that key `List`, so demanding the key of every arm would be demanding
+        // that one arm quote a method it does not bind. It is resolved out of the language's own
+        // committed catalogue, exactly as every other call in this test is.
+        let spelled = crate::sandbox::meta_spelling(language, crate::docs::LIST_FUNCTION);
+        let list = format!("<object>{}{spelled}", language.member_separator());
         assert!(
             rendered.contains(&list),
             "{name}: the prompt no longer tells the model how to list any object's functions \

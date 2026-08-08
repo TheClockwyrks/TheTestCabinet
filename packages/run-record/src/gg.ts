@@ -1949,7 +1949,8 @@ export type GgProgramLanguage =
   | "kotlin"
   | "rust"
   | "swift"
-  | "cpp";
+  | "cpp"
+  | "csharp";
 
 /**
  * What gg had to do to a model's response before it could run it — the healing record of one

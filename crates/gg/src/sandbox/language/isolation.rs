@@ -89,6 +89,19 @@ pub(super) trait Preparation: Sync {
 
     /// Prepare it, in `context`, and hand back the artifact as text.
     fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String>;
+
+    /// Every way `marker` may be **spelled inside** this preparation's artifact — the forms
+    /// [`breaches`] accepts as the marker being present, and rejects as another input's marker being
+    /// present.
+    ///
+    /// The marker itself for almost everything, because an artifact that carries a string carries
+    /// its bytes: an interpreted arm's is source, and a compiled arm's wasm module keeps a string
+    /// literal in its data section as the bytes the model wrote. The list exists for the one arm
+    /// where that is false — see
+    /// [`isolation_marker_forms`](ProgramLanguage::isolation_marker_forms).
+    fn marker_forms(&self, marker: &str) -> Vec<String> {
+        vec![marker.to_string()]
+    }
 }
 
 /// One way a preparation failed to belong to its own input.
@@ -252,14 +265,22 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
                 continue;
             }
         };
-        if !prepared.contains(marker) {
+        // Asked of the preparation rather than of the marker string, because one arm's artifact does
+        // not spell a string the way the model wrote it: see `Preparation::marker_forms`.
+        let carries = |marker: &str| {
+            preparation
+                .marker_forms(marker)
+                .iter()
+                .any(|form| prepared.contains(form))
+        };
+        if !carries(marker) {
             breaches.push(Breach::Missing {
                 marker: marker.clone(),
                 prepared: excerpt(prepared),
             });
         }
         for foreign in markers.iter().filter(|other| *other != marker) {
-            if prepared.contains(foreign) {
+            if carries(foreign) {
                 breaches.push(Breach::Foreign {
                     marker: marker.clone(),
                     foreign: foreign.clone(),
@@ -423,6 +444,19 @@ impl Preparation for LanguagePreparation {
         }
         .map_err(|failure| failure.to_string())
     }
+
+    /// The language's own answer, and only for the **program** half.
+    ///
+    /// A module's artifact on every arm is either its source or something compiled from it that
+    /// still carries the author's own bytes, so the marker is spelled the way it was written. The
+    /// program half is where an arm's compiler gets to choose — see
+    /// [`isolation_marker_forms`](ProgramLanguage::isolation_marker_forms).
+    fn marker_forms(&self, marker: &str) -> Vec<String> {
+        match self.half {
+            Half::Program => self.language.isolation_marker_forms(marker),
+            Half::Module => vec![marker.to_string()],
+        }
+    }
 }
 
 /// What a prepared program's **artifact** is, as text this gate can compare and search for a marker.
@@ -433,28 +467,32 @@ impl Preparation for LanguagePreparation {
 /// [`source`](super::PreparedProgram::source); a **compiled** arm's is the wasm
 /// [`component`](super::PreparedProgram::component) it produced for this program and nothing else.
 ///
-/// The component's bytes are mapped **one byte to one `char` of the same value** rather than through
+/// Either half's bytes are mapped **one byte to one `char` of the same value** rather than through
 /// [`String::from_utf8_lossy`], and the difference is load-bearing: lossy decoding replaces every
 /// invalid sequence with one replacement character, so two wasm modules that differ only inside such
 /// a sequence would compare *equal* and the stability check would pass over a real breach. This
 /// mapping is lossless, and it still leaves an ASCII marker in the data section findable as an
 /// ordinary substring.
 ///
-/// They go through the language's own
-/// [stable projection](ProgramLanguage::isolation_stable) first, which is identity for every arm
-/// but one and is what lets an arm whose compiler records the *environment* in its artifact be
-/// compared on the part of it that is the program. An interpreted arm's source is not projected at
-/// all: there is no artifact to describe, and a projection of source would be a language editing
-/// the thing under test.
+/// Both go through the language's own
+/// [stable projection](ProgramLanguage::isolation_stable) first, which is identity for every arm but
+/// two and is what lets an arm whose compiler records the *environment* in its artifact be compared
+/// on the part of it that is the program ([Swift](super::swift)), and an arm whose artifact rides
+/// over the wire's `program` string **base64-encoded** be compared on the assembly rather than on
+/// the encoding ([C#](super::csharp)). The projection reaches the source half for the second of
+/// those: C# is neither of the two shapes above, so an artifact that lives in `source` is not
+/// necessarily source, and a gate that assumed it was would look for a marker in text that cannot
+/// carry one.
 fn artifact(language: &'static dyn ProgramLanguage, prepared: super::PreparedProgram) -> String {
-    match prepared.component {
-        Some(component) => language
-            .isolation_stable(component)
-            .into_iter()
-            .map(char::from)
-            .collect(),
-        None => prepared.source,
-    }
+    let bytes = match prepared.component {
+        Some(component) => component,
+        None => prepared.source.into_bytes(),
+    };
+    language
+        .isolation_stable(bytes)
+        .into_iter()
+        .map(char::from)
+        .collect()
 }
 
 /// The rendezvous a deliberately broken preparation in [`tests`] uses to make its bug fire every

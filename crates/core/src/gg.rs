@@ -4492,6 +4492,36 @@ pub enum GgProgramLanguage {
     /// behaviour arrives as a bare trap, so a failure caused by the language can be hard to tell in
     /// the run record from a model that reasoned badly.
     Cpp,
+    /// C#: **compiled by Roslyn into an IL assembly on the host**, which a committed guest holding
+    /// Mono's IL interpreter and the whole .NET class library loads — the one arm that is neither
+    /// of this seam's two shapes.
+    ///
+    /// An interpreted arm sends **source** to a committed runtime; a compiled arm sends a
+    /// **component** and commits nothing. This sends neither: `csc` turns the model's reply into an
+    /// assembly in ~0.3 s, the bytes cross as base64 over the `program` string every arm already
+    /// has, and the committed component registers and loads them in memory. So it has an
+    /// interpreted arm's artifact — one guest, compiled once per process — and a compiled arm's
+    /// failure bands, and it is the reason C# is affordable at all: priced on
+    /// `componentize-dotnet`, which compiles the *program* to native wasm, this arm measured 25–43
+    /// seconds a turn.
+    ///
+    /// A program is the reply **verbatim**, as a compilation unit with an entry point — no wrapper,
+    /// no prologue, no offset to subtract — and all four ways a C# program may begin work, top-level
+    /// statements first. gg's surface reaches it through a `global using` the SDK itself declares,
+    /// so there is no import line for a model to forget. Its SDK is hand-written and reads as C#
+    /// reads: `PascalCase` methods, **optional arguments with defaults, passed by name**, nullable
+    /// reference types, `record`s for results, real `enum`s for fixed choices, and a thrown
+    /// `ToolException` whose `Code` is an enum rather than free text. Nothing returns `Task` and
+    /// nothing is `async`.
+    ///
+    /// It has the **best error surface of any compiled arm here, and gg engineered none of it**:
+    /// `try`/`catch`/`finally` work because they are IL, and an unhandled exception is reported as
+    /// `Exception.ToString()` — the type, the message *and* the managed frames. Two absences are
+    /// stated rather than glossed: `System.Net.Http`'s native handler is not in this guest, so the
+    /// types compile and the transport is gone (the network is `system.Shell`, as on every arm), and
+    /// `System.Security.Cryptography` is Mono's own gap and arrives as a catchable
+    /// `PlatformNotSupportedException`.
+    CSharp,
 }
 
 impl GgProgramLanguage {
@@ -4515,6 +4545,7 @@ impl GgProgramLanguage {
         Self::Rust,
         Self::Swift,
         Self::Cpp,
+        Self::CSharp,
     ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
@@ -4540,6 +4571,7 @@ impl GgProgramLanguage {
             Self::Rust => const { Self::listed_at(7, Self::Rust) },
             Self::Swift => const { Self::listed_at(8, Self::Swift) },
             Self::Cpp => const { Self::listed_at(9, Self::Cpp) },
+            Self::CSharp => const { Self::listed_at(10, Self::CSharp) },
         }
     }
 
@@ -4575,6 +4607,7 @@ impl GgProgramLanguage {
             Self::Rust => "rust",
             Self::Swift => "swift",
             Self::Cpp => "cpp",
+            Self::CSharp => "csharp",
         }
     }
 
@@ -4603,6 +4636,7 @@ impl GgProgramLanguage {
             Self::Rust => "Rust",
             Self::Swift => "Swift",
             Self::Cpp => "C++",
+            Self::CSharp => "C#",
         }
     }
 }

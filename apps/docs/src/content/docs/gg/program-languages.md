@@ -11,7 +11,7 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Ten are registered, and between them they separate four things that used to be one. TypeScript
+Eleven are registered, and between them they separate four things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
@@ -35,7 +35,11 @@ different road, compiling a model's reply **byte for byte** while still admittin
 is the third of that shape and the cheapest of the three per turn, because the whole of what a
 program is compiled against is precompiled once per machine — it is also the only arm whose guest
 has a working **exception** mechanism, and the only one where a failure the language caused can be
-hard to tell in the run record from a model that reasoned badly. This page is the
+hard to tell in the run record from a model that reasoned badly; and
+**[C#](#c-a-compiler-on-the-host-an-interpreter-in-the-guest)** is a fifth thing rather than a
+fourth, and the only arm that is neither shape — Roslyn compiles the reply to an **IL assembly** on
+the host and a committed interpreter loads it, so it is type-checked like a compiled arm and pays no
+per-turn engine cost like an interpreted one. This page is the
 design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
@@ -1979,6 +1983,113 @@ cleanly**, because a strategy that deletes text must not act on a reading known 
 the reader that asks whether a reply defines `main` takes the best reading whatever happened,
 because its errors are safe in the accepting direction.
 
+## C#: a compiler on the host, an interpreter in the guest
+
+The eleventh and last arm: `language: "csharp"` is a value an operator configures, and it is the
+only one that is **neither of the seam's two shapes**. An interpreted arm sends source to a
+committed runtime; a compiled arm sends a component and commits nothing. This sends an **IL
+assembly** to a committed runtime.
+
+**A C# program is compiled by `csc` into an assembly the committed guest loads**, and that guest is
+a 35.3 MB component holding Mono's IL interpreter and the whole .NET class library. What its SDK
+looks like is [above](#the-idiom-and-the-one-place-it-is-not-cs); why the shape is what it is, what
+the guest is built from, what its code modules are and how a typo is told from a misunderstanding,
+is under [a committed interpreter for a compiled language](#c-a-committed-interpreter-for-a-compiled-language);
+the rest of this section is what a model and an operator see.
+
+Measured in this repository's dev container, aarch64: `csc` is **~2.4 s cold** and **~0.27–0.37 s
+warm**, of which ~70 ms is compiling gg's own SDK beside the program; the committed guest is
+**35.3 MB** and wasmtime compiles it **once per process**, as it does every interpreted arm's. The
+toolchain is the **lightest in the gg image** — ~122 MB kept out of a ~770 MB SDK — and the only one
+that is not a wasm toolchain at all, because nothing about a C# *program* is compiled to wasm.
+MSBuild, NuGet, the templating engine, the test host, F#, the AOT cross-compilers, the whole wasm
+workload, `vbc`, thirteen locales of compiler messages and 43 MB of IntelliSense XML all go; the
+launcher, the shared framework, Roslyn and the reference assemblies stay. The reference assemblies
+are the whole reason the pin is hard: they decide what a model's program may call and must be the
+release the class library inside the committed guest was cut from.
+
+That combination is worth reading beside the other arms deliberately, because it is the one place on
+this seam where the two costs come apart. A **compiled** arm pays a compiler *and* a
+`Component::new` on bytes that differ every turn; an **interpreted** arm pays neither, and checks
+nothing. This arm pays a compiler and nothing else — the component is the same bytes on every turn
+of every run, so the engine's own cache answers for it after the first. An A/B against
+[Python](#python-a-guest-that-carries-its-own-interpreter) is therefore close to a clean measurement
+of what type-checking a program is worth, with the artifact cost held at zero on both sides.
+
+### What a model has to know that it does not on any other arm
+
+**Nothing, and that is the finding.** This is the arm where the least has to be explained, because
+the language already has an answer to almost everything the seam asks. Its reply is compiled
+verbatim as a compilation unit, so `using`, `record`, `class` and a local function are all legal
+where it wrote them and no line moves. Its optional arguments are default values passed by name, so
+there is no options record and no overload table to teach. Its failures are exceptions, so `try`,
+`catch`, `when` and `finally` work with no SDK-specific combinator. And `Console.WriteLine` reaches
+the run's operator without a logging function existing at all, because the SDK redirects
+`Console.Out` from a `[ModuleInitializer]`.
+
+What the prompt does spend words on is the three things a C# author would otherwise assume and be
+wrong about, and all three are absences rather than rules:
+
+- **`HttpClient` compiles and cannot transport.** The native handler under it is a set of
+  `[DllImport]`s against an interface gg's world does not declare, so the types are in the bundle and
+  out of the pinvoke scan. The network is `system.Shell`, as on every arm.
+- **`System.Security.Cryptography` throws.** It is Mono's own gap rather than gg's, and it arrives as
+  a named, catchable `PlatformNotSupportedException` rather than a trap.
+- **Nothing in `System.Threading` will get work done.** `Task.Run` compiles, queues onto a thread
+  pool nothing in this guest will pump, and reports success having run nothing — the same position
+  [Rust](#rust-the-program-is-the-artifact)'s `std::thread::spawn` is in. The two namespaces are
+  deliberately out of the default scope for that reason, though a program may still write the
+  `using` itself.
+
+### What its dialect says, and the wrapper it declines to remove
+
+Its [healing dialect](/gg/response-healing/) is `crates/gg/src/sandbox/language/csharp.healing.rs`.
+
+**The redeclaration proof is the language's own, and it is the everyday case rather than the exotic
+one.** A C# program's top-level statements are **one scope**, so `var total = 0;` written twice is
+`CS0128` — *a local variable named 'total' is already defined in this scope* — before a statement
+runs. A reply that is one program pasted after an identical copy of itself is therefore refused by
+the compiler as long as the program declared anything at all, which is nearly every program anyone
+writes; a type declared twice is the same proof by `CS0101`. The two shapes C# really does allow
+twice — a `partial` type and a reopened `namespace` — are excluded by name, because reading one as a
+redeclaration would let `drop-duplicate-program` delete a tail that would have run.
+
+**`#` is both Markdown's heading and C#'s preprocessor**, which is
+[C++](#c-the-prelude-is-precompiled-and-the-exceptions-work)'s problem in a milder form and takes the
+same answer: `#` is not read as code punctuation, so a heading stays deletable, and a line whose `#`
+is followed by one of thirteen directive words **spelled lower-case** is code to both predicates.
+`#nullable enable` is a directive; `# Nullable reference types` is a heading.
+
+**Nothing is done about a `using`, and this is the fourth arm where that is because the line works.**
+gg's surface arrives through a `global using` the SDK declares in its own file, so a model's own
+`using Gg;` is a redundant directive C# accepts in silence, and a namespace the reference set does
+not carry is a located `CS0246` naming it — a better answer than a silent deletion. That is the
+*program*'s answer and not the module's: a module is compiled inside a `static class`, where a
+`using` is a syntax error, so gg hoists the run of them at the top of one out of the class body. The
+asymmetry is the language's rather than gg's.
+
+**There is no concurrency wrapper to unwrap, and here that is a measurement rather than a grammar.**
+C++'s answer was that the shape cannot be written. C#'s is that it *can* be written and it **works**:
+Roslyn lowers an `async Task Main` — and a top-level `await` — into a synthesized synchronous entry
+point that blocks on the result, and that entry point is the one the guest invokes. Both shapes are
+driven through the real compiler and the real committed guest by
+`csharp_runs_a_program_written_the_async_way_a_model_reaches_for`, and both run. Taking a wrapper off
+that works would delete a class declaration and re-indent a body to no purpose, so this dialect
+declines.
+
+Its lexer asks two things no other arm's does. A **raw string's fence is a run of quotes chosen by
+its author** (`"""…"""`), so it has to be read rather than looked for; and an **interpolation hole is
+code that may contain another string** — `$"{items.First(x => $"{x}")}"` is one expression a scanner
+that stopped at the second quote would read as three. It shares C++'s two-reader arrangement for the
+same reason: healing gets a mask **only when the scan ended cleanly**, while the reader that lists a
+module's exports takes the best reading whatever happened, because its errors are safe in the
+accepting direction.
+
+Its `'` needs none of C++'s reasoning, because C# spells a digit separator `_`. What that costs is
+one shape and it costs nothing: a line of English with an apostrophe in it is a literal that never
+closes, so the scan reports itself unclean and healing declines — which is the same answer it gives
+any reply it cannot read, and exactly the state a fenced reply is in before its fences come off.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -2974,10 +3085,9 @@ and `<filesystem>`, for the namespace collision above.
 
 ### C#: a committed interpreter for a compiled language
 
-A **third** shape, and the first arm that is neither of the two above. Everything but its
-registration is built — the compile, the guest, the SDK, the catalogue, its code modules and its
-diagnostic bands — so nothing here is reachable from a run yet only because there is no `language`
-value that resolves to it.
+A **third** shape, and the only arm that is neither of the two above. What a model and an
+operator see of it is [its own section](#c-a-compiler-on-the-host-an-interpreter-in-the-guest);
+what is here is the shape.
 
 The two shapes so far split on *what crosses the membrane*. An interpreted arm sends **source**
 to a committed runtime; a compiled arm sends **a component** and commits nothing. C# sends

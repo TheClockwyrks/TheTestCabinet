@@ -27,7 +27,7 @@ the capability exists to measure.
 
 Which **language** that program is written in is a second axis of the same kind, and it is
 [first-class](#the-program-language): gg registers a *set* of program languages and a run
-picks one per agent. Ten are registered: TypeScript, which is the default;
+picks one per agent. Eleven are registered: TypeScript, which is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked), which is the same
 arm with the [type check](#stripped-and-checked) removed and nothing else changed;
 [Python](/gg/program-languages/#python-a-guest-that-carries-its-own-interpreter), whose
@@ -47,7 +47,10 @@ all**, because `rustc` compiles each turn's program into the component that eval
 and compiles a model's reply **byte for byte**; and
 [C++](/gg/program-languages/#c-the-prelude-is-precompiled-and-the-exceptions-work), the third of
 that shape and the cheapest of the three per turn, because everything its programs are compiled
-against is precompiled once per machine.
+against is precompiled once per machine; and
+[C#](/gg/program-languages/#c-a-compiler-on-the-host-an-interpreter-in-the-guest), which is neither
+shape — Roslyn compiles the reply to an **IL assembly** on the host and a committed Mono interpreter
+loads it, so it is type-checked before it runs and still pays nothing per turn for its guest.
 Every example on this page is TypeScript — and where a passage below quotes a
 spelling, a type-strip or a fence tag, it is TypeScript's answer to a question **every**
 language answers. [Program languages](/gg/program-languages/) is the design of that seam.
@@ -1581,7 +1584,7 @@ axis**: gg holds a set of program languages, each of which answers the same ques
 how to prepare a model's reply into something its guest evaluates, which committed guest
 and signature catalogue are its own, what its guest needs from the host linker, which
 [healing](/gg/response-healing/) questions have language-shaped answers, and which system
-prompt teaches it. Ten are registered. TypeScript is the default;
+prompt teaches it. Eleven are registered. TypeScript is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is the same surface,
 the same guest and the same signatures with the `tsc` pass taken out, so an A/B across that
 pair measures what checking a program before it runs is worth;
@@ -1613,7 +1616,12 @@ line offset — because Swift refuses `extension`, `protocol` and `import` insid
 an arm that forbade the first of those would forbid what the language is built around; and
 [C++](/gg/program-languages/#c-the-prelude-is-precompiled-and-the-exceptions-work) is compiled
 verbatim for a stronger version of that reason and is the cheapest of the three per turn, its
-programs being compiled against a prelude precompiled once per machine. This
+programs being compiled against a prelude precompiled once per machine; and
+[C#](/gg/program-languages/#c-a-compiler-on-the-host-an-interpreter-in-the-guest) is a **third**
+shape rather than a variation on either — Roslyn compiles the reply to an IL assembly on the host,
+the bytes cross as base64, and a committed component holding a Mono IL interpreter and the whole
+.NET class library loads them, so this is the one arm that both checks every program and commits the
+thing that runs it. This
 section is the capability's view of that seam; the design of it — the rules every
 language's surface obeys, why each SDK is hand-written, and what adding one costs — is
 [its own page](/gg/program-languages/).

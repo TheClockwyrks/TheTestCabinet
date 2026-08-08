@@ -752,7 +752,11 @@ directly:
   no shared component at all and the field is present on **every** turn, carrying what that turn's
   own freshly compiled artifact took to instantiate — ~9 ms on the first, ~19 ms on the third, and
   **~1.3 s** on Swift, which is more than that arm spent compiling it and is the widest spread this
-  field has. Beside it is `compileMs`, which is the *other*
+  field has. [C#](/gg/program-languages/#c-a-compiler-on-the-host-an-interpreter-in-the-guest) is
+  the one arm that compiles a program *and* takes this field's ordinary reading: its committed guest
+  is 34.9 MB and the same bytes every turn, so it is compiled once per process like every
+  interpreted arm's and the field is absent on every turn but the one that paid for it.
+  Beside it is `compileMs`, which is the *other*
   compile and belongs to the turn rather than to the process: what this turn's
   [language](/gg/program-languages/) spent compiling for it, including any compiler that
   step shells out to — the program itself, each replacement it handed over to, the code
@@ -777,7 +781,11 @@ directly:
   ~0.3 s produces a component that then costs four times that to instantiate, and
   [C++](/gg/program-languages/#c-the-prelude-is-precompiled-and-the-exceptions-work), whose ~85 ms
   is the smallest figure any arm of that shape carries and is only that because the prelude it
-  compiles against is precompiled once per machine) or only grammar
+  compiles against is precompiled once per machine, and
+  [C#](/gg/program-languages/#c-a-compiler-on-the-host-an-interpreter-in-the-guest), whose
+  ~0.27–0.37 s is the one figure on this seam that is a turn's **whole** cost, since its compiler
+  produces an IL assembly a committed interpreter loads rather than a component the engine has to
+  compile) or only grammar
   ([Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses)),
   **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it

@@ -27,6 +27,7 @@ const PROGRAM_LANGUAGE_NAMES: Record<GgProgramLanguage, string> = {
   rust: "Rust",
   swift: "Swift",
   cpp: "C++",
+  csharp: "C#",
 };
 
 // The Reference surface: the header, the sentence saying where the document came from, the

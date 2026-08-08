@@ -123,6 +123,23 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # 300 s is the coin flip this override exists to prevent, and a CI runner with a quarter of the cores
 # has no chance at all, so it moves to 600 s. An eleventh arm should take several readings rather
 # than one, and should not assume this arm's cost was the reason for any of them.
+#
+# The **eleventh** arm — C# — took four, on the advice above, and they are the tightest four
+# readings this gate has ever produced:
+#
+#   eleven arms, this test run alone                          92.5 s
+#   eleven arms, this test run alone (again)                  92.5 s
+#   eleven arms, this test run alone (a third time)           91.0 s
+#   eleven arms, under `cargo nextest run --workspace`        102.6 s
+#
+# They say three things. The ceiling does not move: the worst of them is nearly 500 s short of it,
+# which is the headroom the note above asks to be watched rather than the timeout. The spread that
+# made the C++ readings unreadable is absent — 11.6 s across four runs against that arm's 164 s
+# across four — and so is the direction that contradicted the rest, since this arm's workspace
+# reading is the *slowest* rather than the fastest, which is what one would expect and what the C++
+# readings did not do. And the arm itself cost almost nothing here, which is consistent with the
+# reading that this gate is dominated by waiting rather than by work: its 32 builds are one `csc`
+# apiece, a one-shot process with nothing warm to be and nothing to contend over.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
 slow-timeout = { period = "600s", terminate-after = 3 }
@@ -266,6 +283,10 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # Bounded from the work rather than from the default, at the same three minutes the other
 # compiled arms carry, and for the same thing: a CI runner with a quarter of the cores
 # compiling that component while seven other arms' compilers contend for the same machine.
+#
+# The `surface` and `modules` halves are in the same group because they cost the same thing for
+# the same reason: every one of their programs is a real `csc` and a real instantiation of that
+# same 34.9 MB component, and the modules group compiles two code modules beside each program.
 [[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and test(/^sandbox::language::csharp::substrate::/)'
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::csharp::(substrate|surface|modules)::/)'
 slow-timeout = { period = "180s", terminate-after = 3 }

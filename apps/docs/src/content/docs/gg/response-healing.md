@@ -250,6 +250,30 @@ It is also the one lexer here with two readers: healing gets a mask only when th
 cleanly, and the reader that asks whether a reply defines `main` takes the best reading whatever
 happened, because its errors are safe in the accepting direction.
 
+[C#](/gg/program-languages/#what-its-dialect-says-and-the-wrapper-it-declines-to-remove) faces the
+`#` question second and answers it the same way, thirteen lower-case directive words rather than
+fourteen. Where it differs from every arm before it is that its **redeclaration proof is the
+everyday case rather than the exotic one, and the language hands it over**: a C# program's top-level
+statements are one scope, so `var total = 0;` written twice is `CS0128` before a statement runs —
+which makes the plainest doubled program there is, one that declares a single local, provably dead
+code. A type declared twice is the same proof by `CS0101`; a `partial` type and a reopened
+`namespace` are the two shapes C# really does allow twice and are excluded by name. **Nothing is
+done about a `using`**, for the fourth time and again because the line *works* — gg's surface arrives
+through a `global using` the SDK declares, so a redundant one is accepted in silence and a namespace
+the reference set does not carry is a located `CS0246`. And it is the **one arm that has a
+whole-program concurrency wrapper and declines to remove it**, which is the opposite of C++'s
+answer and rests on a measurement rather than on a grammar: Roslyn lowers an `async Task Main`, and a
+top-level `await`, into a synthesized **synchronous** entry point that blocks on the result, and that
+is the entry point the guest invokes — so the wrapper a model reaches for here runs, and taking it
+off would delete a class declaration and re-indent a body to no purpose. Its lexer reads a **raw
+string's fence as a run of quotes chosen by its author** (`"""…"""`) and follows an
+**interpolation hole back into code**, including one holding another string
+(`$"{items.First(x => $"{x}")}"`), which C# 11 admits and a scanner that stopped at the second
+quote would read as three literals. It shares C++'s two-reader arrangement, and its `'` needs none of
+C++'s reasoning because C# spells a digit separator `_` — what that costs is one shape and it costs
+nothing, since a line of English with an apostrophe in it is a literal that never closes and healing
+declines every reply it cannot read.
+
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
 no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply

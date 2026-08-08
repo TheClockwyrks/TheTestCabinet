@@ -1,19 +1,17 @@
 //! **C#** — the arm whose compiler emits neither wasm nor source, and the only one that pairs a
 //! real compiler on the turn path with a committed runtime that never changes.
 //!
-//! What exists here today is this arm's **execution substrate and its whole model-facing surface**: the
-//! Roslyn compile that turns a model's C# into an IL assembly, the committed guest that interprets
-//! it, the hand-written SDK a program calls, and the catalogue reflected out of that SDK's own
-//! documentation. Only the [registration](super::ProgramLanguage) is left — a language arm cannot be
-//! half-registered, because the registry's `match` is exhaustive and every gate that iterates the
-//! registered set would immediately demand two Handlebars templates and a healing dialect. Nothing
-//! here is reachable from a run: there is no `language` value that resolves to it yet.
+//! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`compile`](self::compile) — the host-side `csc`, what it costs, what it refuses, and the two
 //!   failures it tells apart;
 //! * [`sdk`](self::sdk) — the SDK's sources, carried in gg's binary and compiled with the program;
 //! * [`source`](self::source) — what gg writes around a **code module**, and the lexer that lets it
 //!   look at C# without parsing it;
+//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
+//!   lexical questions of, whose lexer is [`source`]'s;
+//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
+//!   in C#'s syntax;
 //! * `packages/gg-sandbox-csharp/src/Gg/` — that SDK, and the XML documentation comments every word
 //!   a model reads is reflected out of;
 //! * `packages/gg-sandbox-csharp/Sources/` — the guest's C: the shell, the bridge, the trampolines;
@@ -27,13 +25,14 @@
 //!
 //! **Roslyn on the host, a Mono IL interpreter in the guest.** A model's reply is compiled to an IL
 //! assembly by `csc` in ~0.3 s, base64-encoded into the world's existing `program` string, and
-//! loaded by a committed component that carries the whole .NET runtime. It is the shape the
-//! [Python](super::python) and [Ruby](super::ruby) arms have — one committed runtime, a payload per
-//! turn — rather than the shape [Rust](super::rust), [Swift](super::swift) and [C++](super::cpp)
-//! have, and that is the whole reason C# is affordable. A prior study priced this arm on the only
-//! toolchain it looked at, `componentize-dotnet`, which compiles the *program* to native wasm: 25–43
-//! seconds a turn, and the arm was cut as impractical. What it missed is that Microsoft publishes
-//! the interpreter.
+//! loaded by a committed component that carries the whole .NET runtime. It is **neither of the two
+//! shapes this seam had**: an interpreted arm ([Python](super::python), [Ruby](super::ruby)) sends
+//! source to a committed runtime, and a compiled arm ([Rust](super::rust), [Swift](super::swift),
+//! [C++](super::cpp)) sends a component and commits nothing. This sends an *assembly* to a committed
+//! runtime — an interpreted arm's artifact with a compiled arm's failure bands — and that is the
+//! whole reason C# is affordable. A prior study priced this arm on the only toolchain it looked at,
+//! `componentize-dotnet`, which compiles the *program* to native wasm: 25–43 seconds a turn, and
+//! the arm was cut as impractical. What it missed is that Microsoft publishes the interpreter.
 //!
 //! # The one piece everybody said was unbuilt, and why it is not
 //!
@@ -126,22 +125,30 @@
 //! find, and `#line` keeps every diagnostic in the author's own coordinates. See
 //! [`source`](self::source) for the wrap, the `using` hoist and the two refusals.
 //!
-//! # What is not built yet, and what it blocks
+//! # Why there is nothing to warm
 //!
-//! **The registration**, and only the registration: an enum variant, a registry arm, a healing
-//! dialect, two prompt templates and the console's rows. Everything the trait implementation will
-//! call — [`compile_program`](self::compile::compile_program),
-//! [`compile_module`](self::compile::compile_module), [`binding_name`](self::source::binding_name) —
-//! is written and driven by this arm's own tests against the real toolchain.
+//! This arm is the only registered one whose [prepare step](ProgramLanguage::prepare_program)
+//! compiles and whose [`warm_prepare`](ProgramLanguage::warm_prepare) does nothing, and the reason is
+//! worth stating rather than leaving as an empty method. There is no archive to unpack — the guest is
+//! one committed component the sandbox already compiles at launch — and no prelude to build, because
+//! a C# compilation has no precompiled-header equivalent to hold across preparations. What is left is
+//! the ~2 s the *first* `csc` on a machine spends paging Roslyn in, and gg cannot pay that here: a
+//! compiler is spawned through a [`PrepareContext`](super::PrepareContext) that a warm-up is not
+//! handed, which is the same wall the [C++](super::cpp) arm's prelude ran into. It is a one-off per
+//! process and it lands in the first turn's recorded compile, where it is visible rather than hidden.
+
+use std::sync::OnceLock;
+
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use crate::sandbox::signatures::SignatureCatalogue;
+
+use super::{
+    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+};
 
 /// The Roslyn compile: the host-side step that turns a model's C# into the IL its guest interprets.
-///
-/// `#[allow(dead_code)]` until the trait implementation calls it, exactly as [Ruby](super::ruby)'s,
-/// [PureScript](super::purescript)'s, [Java](super::java)'s, [Rust](super::rust)'s,
-/// [Swift](super::swift)'s and [C++](super::cpp)'s were between their own substrate and their
-/// registration: nothing on the turn path can reach a language the registry has no arm for, so every
-/// entry point here is reached only by this arm's own tests.
-#[allow(dead_code)]
 #[path = "csharp.compile.rs"]
 pub(super) mod compile;
 
@@ -152,12 +159,13 @@ pub(super) mod sdk;
 
 /// **What gg writes around a code module**, and the lexer that lets it look at C# without parsing
 /// it. A model's *program* is not here at all: this arm compiles a reply verbatim.
-///
-/// `#[allow(dead_code)]` until the trait implementation reaches [`binding_name`](self::source) — the
-/// same state every other entry point in this arm is in between its substrate and its registration.
-#[allow(dead_code)]
 #[path = "csharp.source.rs"]
 pub(super) mod source;
+
+/// The lexical reading of a reply — C#'s answers to healing's questions, over the one scan
+/// [`source`] shares with it.
+#[path = "csharp.healing.rs"]
+pub(super) mod healing;
 
 /// **The committed guest** — Mono's IL interpreter, the .NET class libraries and ICU, as one
 /// self-contained wasm component exporting gg's `sandbox` world.
@@ -166,8 +174,290 @@ pub(super) mod source;
 /// here is: gg is copied as a single file into an ephemeral run container and must carry everything
 /// the turn path needs with it. Nothing about a C# *program* is compiled to wasm, so no wasm
 /// toolchain reaches a run container on this arm at all.
-#[allow(dead_code)]
-pub(super) const GUEST_COMPONENT: &[u8] = include_bytes!("../guests/csharp.component.wasm");
+const GUEST_COMPONENT: &[u8] = include_bytes!("../guests/csharp.component.wasm");
+
+/// The committed catalogue, reflected out of the SDK's own XML documentation comments by
+/// `packages/gg-sandbox-csharp/signatures.sh` — a hosted Roslyn driver, which is the compiler's own
+/// documentation parser and the machinery every C# documentation tool is built on.
+const SIGNATURES: &str = include_str!("../guests/csharp.signatures.json");
+
+/// The parsed catalogue, parsed once per process.
+static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
+
+/// Everything gg *says* about a C# program that is written in C#'s own syntax.
+///
+/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
+/// Individual function spellings are **not** here and not in the templates either: every name and
+/// signature they quote is resolved from this language's committed catalogue when the template
+/// renders.
+static PROMPT: PromptDialect = PromptDialect {
+    system_template: include_str!("../../../templates/system-code.csharp.hbs"),
+    system_template_name: "system-code.csharp",
+    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.csharp.hbs"),
+    nothing_shown_template_name: "code-nothing-shown.csharp",
+};
+
+/// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
+/// straight to `&'static dyn ProgramLanguage`.
+pub(super) static CSHARP: CSharp = CSharp;
+
+/// C#: compiled by Roslyn into the IL assembly a committed Mono interpreter loads, per turn.
+pub(super) struct CSharp;
+
+impl ProgramLanguage for CSharp {
+    fn id(&self) -> GgProgramLanguage {
+        GgProgramLanguage::CSharp
+    }
+
+    fn display_name(&self) -> &'static str {
+        GgProgramLanguage::CSharp.display_name()
+    }
+
+    /// One `csc` over the model's file, this arm's SDK and the code modules in scope — see
+    /// [`compile`] for what it costs, what it refuses, and how it tells a program Roslyn rejected
+    /// from a Roslyn that could not run.
+    fn prepare_program(
+        &self,
+        source: &str,
+        modules: &[CodeModule],
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
+        compile::compile_program(source, modules, context)
+    }
+
+    /// `csc`, which is what a C# programmer calls the compiler and what the assembly gg runs under
+    /// `dotnet exec` is called.
+    ///
+    /// Not `dotnet`, which is the launcher, and emphatically not `msbuild`, which never runs here:
+    /// what judges the program is Roslyn's command-line compiler and nothing else. Naming a checker
+    /// is also what has this arm's compile [recorded](crate::sandbox::SandboxOutcome::compile) on
+    /// every turn, the failing path included — which matters here because this arm's per-turn cost
+    /// is *only* the compile, with no engine work at all behind it, and an arm whose one measurable
+    /// cost went unrecorded would be an arm a study could not price.
+    fn checker(&self) -> Option<&'static str> {
+        Some("csc")
+    }
+
+    /// The module's own `csc`, run over the class body gg wrapped it in — and the names that class
+    /// offers, read from the author's own source.
+    ///
+    /// What comes back is **source**, which is what a compiled arm's module has to be: it is an
+    /// input to the [program compile](compile::compile_program) that binds it, not something the
+    /// committed guest could load on its own — that guest loads exactly one assembly per run.
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
+        compile::compile_module(source, context)
+    }
+
+    /// **`.cs`, and nothing else.**
+    ///
+    /// The extension every C# file has had since the language shipped, and the only one: C# has no
+    /// second spelling the way C++ has `.hpp` beside `.hh`, and nothing else in the registry
+    /// compiles C#. The seam's reason for the list being a list — two languages sharing a module
+    /// runtime, where withholding a skill from one would be a larger difference than the study is
+    /// measuring — has no instance here.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["cs"]
+    }
+
+    /// [PascalCase](self::source::binding_name) — because on this arm the key names a **type**, and
+    /// a class called `csv_tools` is a thing no C# author would write beside `Enumerable`.
+    fn binding_name(&self, name: &str) -> String {
+        source::binding_name(name)
+    }
+
+    /// **The committed guest**, which is where this arm departs from every other one that runs a
+    /// compiler on the turn path.
+    ///
+    /// [Rust](super::rust), [Swift](super::swift) and [C++](super::cpp) answer `None` here because
+    /// their compilers produce the *program* and the program is the component. Roslyn produces
+    /// neither wasm nor source: it produces an **IL assembly**, which is not a component and cannot
+    /// be one, and the thing that runs it is a 34.9 MB interpreter that never changes. So this arm
+    /// commits a component like an interpreted one and compiles like a compiled one, and the two
+    /// halves meet at [`PreparedProgram::source`](super::PreparedProgram::source), which carries the
+    /// assembly base64-encoded over the string every arm already has.
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        Some(GUEST_COMPONENT)
+    }
+
+    /// The committed catalogue, parsed once and checked to be **this** language's.
+    ///
+    /// Every registered language commits one of these under its own stem, and each carries the
+    /// language it was generated for; checking it here is what stops a catalogue filed — or
+    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
+    /// sandbox nobody has.
+    fn catalogue(&self) -> &'static SignatureCatalogue {
+        CATALOGUE.get_or_init(|| {
+            let catalogue = SignatureCatalogue::parse(SIGNATURES)
+                .expect("the committed signature catalogue is valid JSON of the expected shape");
+            assert_eq!(
+                catalogue.language,
+                GgProgramLanguage::CSharp,
+                "`guests/csharp.signatures.json` was generated for another program language",
+            );
+            catalogue
+        })
+    }
+
+    fn healing(&self) -> &'static dyn crate::healing::Dialect {
+        &healing::CSHARP_DIALECT
+    }
+
+    fn prompt(&self) -> &'static PromptDialect {
+        &PROMPT
+    }
+
+    /// [`view.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
+    /// call's own optional arguments, passed by name.
+    fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+    }
+
+    /// [A collection expression and a `foreach` over it](self::open_docs_views_statement), each
+    /// iteration opening one documentation view — as top-level statements, which is what a C#
+    /// program written to do one thing looks like.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+    }
+
+    /// One `public static` method returning `name` — because a C# code module is the **body of a
+    /// `static class`** and a C# program is a compilation unit with an entry point.
+    ///
+    /// The seam's default subject is this language's generated documentation program, and here that
+    /// program is not a module at all: top-level statements inside a class body are a syntax error,
+    /// so the default would fail this gate's baseline over C#'s grammar rather than over anything
+    /// about isolation. So this arm answers for itself, as [Rust](super::rust), [Swift](super::swift),
+    /// [C++](super::cpp) and the [JVM](super::jvm) arms do, and the `name` rides in as a returned
+    /// **string literal** — which is where the module's one export hands it back, and where
+    /// [`wrap_module`](self::source::wrap_module) finds a `public` member to bind.
+    #[cfg(test)]
+    fn isolation_module(&self, name: &str) -> String {
+        format!(
+            "public static string Marker() => {};\n",
+            serde_json::Value::String(name.to_string())
+        )
+    }
+
+    /// **The assembly, with its transport encoding taken back off.**
+    ///
+    /// The only arm that projects the [source](super::PreparedProgram::source) half rather than a
+    /// component, and the reason is that on this arm that field does not hold source. It holds an IL
+    /// assembly, base64-encoded because the wire's `program` is a string — so a gate looking for an
+    /// ASCII marker inside the artifact would be looking at an alphabet the marker cannot survive,
+    /// and would report every well-isolated C# preparation as one whose output does not carry its
+    /// own input.
+    ///
+    /// Decoding sets **nothing** aside: it shows the gate more of the artifact rather than less,
+    /// which is the opposite direction from [Swift](super::swift)'s projection and legitimate for
+    /// the same reason — the rule is that an arm may hide how its artifact was built and never any
+    /// part of what it does. Nothing here is hidden, because there is nothing to hide: Roslyn's
+    /// `-deterministic` stamps a build's MVID from its inputs rather than from the clock, so two
+    /// preparations of one program are byte-identical without help.
+    ///
+    /// An input that is not valid base64 is handed back untouched rather than being silently
+    /// replaced by an empty artifact — a preparation that produced something this could not decode
+    /// is a failure the gate should see whole.
+    #[cfg(test)]
+    fn isolation_stable(&self, artifact: Vec<u8>) -> Vec<u8> {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD
+            .decode(&artifact)
+            .unwrap_or(artifact)
+    }
+
+    /// **The marker as written, and the marker as an assembly stores it** — which is UTF-16.
+    ///
+    /// The only arm that needs a second form, and it is a fact about ECMA-335 rather than about gg:
+    /// a .NET assembly keeps its user strings in the `#US` metadata heap as UTF-16, so
+    /// `gg-isolation-000-marker` is `g\0g\0-\0…` in the bytes `csc` produced. Measured on this
+    /// toolchain rather than assumed — the ASCII bytes are not in the assembly at all.
+    ///
+    /// The ASCII form is kept beside it rather than replaced, because it costs nothing and it is
+    /// what a *module*'s artifact carries: a module on this arm is handed back as the author's own
+    /// source.
+    ///
+    /// Both forms are derived from the marker character by character, so a form belonging to one
+    /// input can never be found in another input's artifact — which is what keeps the gate's
+    /// "carries somebody else's program" half as strong here as it is everywhere else.
+    #[cfg(test)]
+    fn isolation_marker_forms(&self, marker: &str) -> Vec<String> {
+        let wide: String = marker
+            .encode_utf16()
+            .flat_map(|unit| unit.to_le_bytes())
+            .map(char::from)
+            .collect();
+        vec![marker.to_string(), wide]
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The syntax this arm writes
+// ---------------------------------------------------------------------------------------------
+
+/// `view.OpenFile("src/Program.cs");`, or the same call with `offset: 400, limit: 200` for a window
+/// — with `view.OpenFile` already spelled by the language that asked.
+///
+/// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
+/// into the agent's own transcript and read by the model as an example of its own output, so
+/// anything clever in it is a style the run did not intend to teach.
+///
+/// The window is passed as **named arguments**, which is what this SDK offers instead of an options
+/// record and what a C# author writes for a pair of optional parameters that would otherwise be two
+/// bare numbers. The whole-file form passes nothing at all, because both parameters have defaults
+/// and a C# author does not write `null` where the default is what they wanted.
+///
+/// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
+/// statement that would not parse: C#'s ordinary string literals accept every escape JSON's produce.
+pub(super) fn open_file_statement(
+    open_file: &str,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let path = serde_json::Value::String(path.to_string());
+    match window {
+        Some(window) => format!(
+            "{open_file}({path}, offset: {}, limit: {});",
+            window.offset, window.limit
+        ),
+        None => format!("{open_file}({path});"),
+    }
+}
+
+/// A whole program: a `string[]` built with a collection expression, and a `foreach` over it opening
+/// one documentation view per name.
+///
+/// It is a **whole program** rather than a statement list because the seam asks for one — the on-use
+/// script of every [built-in family skill](crate::skills) is a program — and on this arm the two are
+/// the same text anyway: C# top-level statements *are* a compilation unit, so nothing has to be
+/// wrapped around them and no `class` or `Main` is written.
+///
+/// A collection expression (`["a", "b"]`) rather than `new[] { … }`, because it is what a C# author
+/// writing a new file today reaches for and this arm pins the language version high enough to have
+/// it. A `foreach` rather than a call per name because the list is as long as the family — eleven
+/// calls written out would be a program a model reads as a style to copy.
+///
+/// The empty case keeps the loop rather than collapsing to nothing, so that what the model is shown
+/// is one shape with one thing varying in it.
+pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    let listed = match names.is_empty() {
+        true => "string[] functions = [];\n".to_string(),
+        false => {
+            let entries: Vec<String> = names
+                .iter()
+                .map(|name| format!("    {},", serde_json::Value::String((*name).to_string())))
+                .collect();
+            format!("string[] functions =\n[\n{}\n];\n", entries.join("\n"))
+        }
+    };
+    format!("{listed}foreach (var name in functions)\n{{\n    {open_docs_view}(name);\n}}\n")
+}
+
+#[cfg(test)]
+#[path = "csharp.test.rs"]
+mod tests;
 
 /// **The committed guest against what says it built it** — the gate `scripts/ci/contract-drift.sh`
 /// names when it exempts this arm's artifacts from being re-cut on every CI run.
@@ -184,6 +474,17 @@ mod manifest;
 #[cfg(test)]
 #[path = "csharp.substrate.test.rs"]
 mod substrate;
+
+/// **Every C# example a model is shown, put through `csc`** — the prompt's, the notice's and the
+/// catalogue's.
+///
+/// A separate file from [`surface`] because it asks a question no other kind of gate can: not
+/// whether the call gg quotes exists, which [`crate::prompts`] already gates in every language, but
+/// whether the code around it builds. On a compiled arm an example that does not is a whole turn
+/// spent on gg's own prose.
+#[cfg(test)]
+#[path = "csharp.examples.test.rs"]
+mod examples;
 
 /// **The C# arm's model-facing surface** — the SDK a model writes against, the catalogue reflected
 /// out of it, and the libraries this arm says a program may reach, driven through the same real

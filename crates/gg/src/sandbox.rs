@@ -120,7 +120,7 @@ pub use language::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, ResolvedProgramLanguage, Workspace, daemon, place, place_tree,
+    PromptDialect, ResolvedProgramLanguage, Workspace, daemon, meta_spelling, place, place_tree,
     shared_toolchain_dir,
 };
 

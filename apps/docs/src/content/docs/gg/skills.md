@@ -91,7 +91,11 @@ top-level declarations into a nested `enum` where they stand, which is what keep
 author's argument labels and default values at the call site, and
 [C++](/gg/program-languages/#what-a-c-code-module-is) opens a real nested namespace around
 the author's whole file, which keeps every default argument and template for the same
-reason. And **the
+reason, and
+[C#](/gg/program-languages/#a-code-module-is-a-static-class-because-c-has-no-free-functions)
+makes each module the body of a `static class` — because C# has no free functions at all, so
+`lib.<key>` has to name a *type* and its key is spelled `PascalCase` here and nowhere else.
+And **the
 reply to the read states the key it really got, in the reader's own syntax, and what it
 exports**, because a binding path a model has to guess is a binding path it will guess
 wrong:

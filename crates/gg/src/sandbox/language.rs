@@ -115,14 +115,6 @@ mod swift;
 #[path = "language/cpp.rs"]
 mod cpp;
 
-/// The **C#** arm's execution substrate, ahead of its SDK and its registration.
-///
-/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
-/// run can configure reaches it and every gate that iterates the registered set passes it by. What
-/// is here is the compile — the first on this seam whose compiler emits neither wasm nor source a
-/// guest reads, but an **IL assembly** — and the committed guest that interprets it, with the proof
-/// that a real C# program runs through the real membrane; the module's own documentation says what is still
-/// missing, and why registering it before that would leave a capability silently absent on one arm.
 #[path = "language/csharp.rs"]
 mod csharp;
 
@@ -491,21 +483,29 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.open_docs_views_statement(&[name])
     }
 
-    /// The part of a **compiled** artifact that is a function of the program, with whatever is a
-    /// function of the *environment it was compiled in* set aside — the projection the
-    /// [isolation gate](isolation) compares two preparations of one input through.
+    /// This arm's prepared artifact **as the [isolation gate](isolation) should read it**: with
+    /// whatever is a function of the *environment it was compiled in* set aside, and with any
+    /// transport encoding taken back off.
     ///
-    /// Identity by default, and identity is what almost every arm wants: an interpreted arm has no
-    /// artifact here at all, and [Rust](rust)'s `rustc` produces the same bytes for the same input
-    /// wherever it ran.
+    /// Identity by default, and identity is what almost every arm wants: an interpreted arm's
+    /// artifact is the source it hands the guest, and [Rust](rust)'s `rustc` produces the same bytes
+    /// for the same input wherever it ran. It is applied to whichever half a language filled in —
+    /// the [component](PreparedProgram::component) a compiled arm produced, or the
+    /// [source](PreparedProgram::source) every other arm hands over — because the gate's question is
+    /// the same for both and two arms have needed the hook for opposite reasons.
     ///
-    /// It exists because one arm's compiler does not, and refusing to say so would leave that arm
-    /// either failing the gate for keeping the contract or excluded from it. [Swift](swift)'s
-    /// artifact carries **debug information describing the compilation environment** — the paths and
-    /// content hashes of a clang module cache and a precompiled header, computed over an invocation
-    /// naming *this preparation's own private tree*, which the isolation contract is what made
-    /// private — and a 16-byte module hash `swiftc` fills with entropy per invocation. Neither is
-    /// part of any program.
+    /// **Setting aside the environment.** [Swift](swift)'s artifact carries debug information
+    /// describing the compilation environment — the paths and content hashes of a clang module cache
+    /// and a precompiled header, computed over an invocation naming *this preparation's own private
+    /// tree*, which the isolation contract is what made private — and a 16-byte module hash
+    /// `swiftc` fills with entropy per invocation. Neither is part of any program.
+    ///
+    /// **Taking off a transport encoding.** [C#](csharp) is neither of the seam's two shapes: its
+    /// artifact is an IL **assembly**, and it rides over the wire's `program` string as base64
+    /// because that is the only channel the world has for it. Left encoded, the gate could not find
+    /// a marker that really is in the artifact, and would report every C# preparation as one whose
+    /// output does not carry its own input. Decoding shows the gate *more* of the artifact rather
+    /// than less, which is the opposite direction from Swift's and legitimate for the same reason.
     ///
     /// The rule an implementation is held to is that it may set aside a description of **how** the
     /// artifact was built and never any part of what it does. Swift's keeps every standard section
@@ -514,8 +514,32 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// compiling one program twice rather than hard-coding it — so a second source of variation
     /// fails loudly instead of being swept in.
     #[cfg(test)]
-    fn isolation_stable(&self, component: Vec<u8>) -> Vec<u8> {
-        component
+    fn isolation_stable(&self, artifact: Vec<u8>) -> Vec<u8> {
+        artifact
+    }
+
+    /// Every way the [isolation gate](isolation)'s marker may be **spelled inside** this arm's
+    /// prepared program — the forms it accepts as "this artifact carries its own input", and rejects
+    /// as "this artifact carries somebody else's".
+    ///
+    /// The marker itself for almost every arm, and that is not an assumption worth a hook on its
+    /// own: an interpreted arm's artifact *is* source, and the three arms whose compilers emit wasm
+    /// keep a string literal in the module's data section as the bytes the model wrote, so a
+    /// byte-for-byte search finds it.
+    ///
+    /// It exists because [C#](csharp) does not. A .NET assembly keeps its user strings in the `#US`
+    /// metadata heap as **UTF-16**, so the marker a model wrote as `gg-isolation-000-marker` is
+    /// `g\0g\0-\0…` in the artifact — measured, not assumed — and a gate searching for the ASCII
+    /// bytes would report every well-isolated C# preparation as one whose output does not carry its
+    /// own input. That is a fact about how a compiler stores a string, which is exactly the kind of
+    /// thing the seam has each arm declare rather than the gate guess at.
+    ///
+    /// An implementation must return forms that are **derived from the marker**, so that a form
+    /// belonging to one input can never be found in another input's artifact. Returning something
+    /// constant, or something every artifact carries, would turn this gate off.
+    #[cfg(test)]
+    fn isolation_marker_forms(&self, marker: &str) -> Vec<String> {
+        vec![marker.to_string()]
     }
 }
 
@@ -820,6 +844,28 @@ pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
     format!("{}{}{name}", call.object, language.member_separator())
 }
 
+/// How `language` spells the **meta function** `key` — the
+/// [documentation carve-out](crate::docs::LIST_FUNCTION)'s `list`, which hangs off no one object and
+/// so has no [`SurfaceCall`] to resolve through.
+///
+/// Resolved from the language's own committed catalogue for exactly the reason [`spell`] is: `list`
+/// is gg's own key rather than any SDK's spelling of it, and an arm whose convention is `PascalCase`
+/// catalogues it as `List`. A caller that wrote the key out would be quoting a method that arm does
+/// not bind. Falls back to the key on a catalogue that carries no such entry, on the same terms
+/// [`spell`] falls back — degrading one word of a sentence is the right failure where panicking
+/// mid-run is not.
+///
+/// `#[allow(dead_code)]` on the same terms as the re-exports beside it in
+/// [`sandbox`](crate::sandbox): its caller today is the prompt gate, which is `#[cfg(test)]`, and
+/// production reaches the same entry through [`docs`](crate::docs), which wants the whole
+/// [`MetaSignature`](super::MetaSignature) rather than one field of it.
+#[allow(dead_code)]
+pub fn meta_spelling(language: &dyn ProgramLanguage, key: &'static str) -> &'static str {
+    super::signatures::meta_function(language, key)
+        .map(|meta| meta.name.as_str())
+        .unwrap_or(key)
+}
+
 /// The `offset`/`limit` window a synthesized file-view call re-opens — the same pair the model would
 /// have passed itself. `None` at the call sites means the whole file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -847,6 +893,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
         GgProgramLanguage::Rust => &rust::RUST,
         GgProgramLanguage::Swift => &swift::SWIFT,
         GgProgramLanguage::Cpp => &cpp::CPP,
+        GgProgramLanguage::CSharp => &csharp::CSHARP,
     }
 }
 
@@ -1093,6 +1140,7 @@ pub struct ResolvedProgramLanguage {
 /// | `"rust"` | [`Rust`](GgProgramLanguage::Rust) — compiled by `rustc` into the wasm component the turn is evaluated by |
 /// | `"swift"` | [`Swift`](GgProgramLanguage::Swift) — compiled by `swiftc`, byte for byte, into the wasm component the turn is evaluated by |
 /// | `"cpp"` | [`Cpp`](GgProgramLanguage::Cpp) — compiled by `clang++`, byte for byte, into the wasm component the turn is evaluated by |
+/// | `"csharp"` | [`CSharp`](GgProgramLanguage::CSharp) — compiled by `csc`, byte for byte, into the IL assembly a committed Mono interpreter loads |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason

@@ -39,8 +39,6 @@
 //! Together they are what makes "the model reads the code's own words" a property rather than an
 //! intention.
 
-use test_cabinet_core::gg::GgProgramLanguage;
-
 use super::{TEMPLATES, render_code_nothing_shown_for, render_system_for};
 use crate::sandbox::{ProgramLanguage, all_languages, catalogue_functions, catalogue_objects};
 
@@ -296,10 +294,7 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
 
         let rendered = format!(
             "{}\n{}",
-            render_system_for(
-                language,
-                &super::tests::every_code_section_on(GgProgramLanguage::TypeScript)
-            ),
+            render_system_for(language, &super::tests::every_code_section_on_for(language)),
             render_code_nothing_shown_for(language),
         );
         for span in backticked(&rendered) {
@@ -357,10 +352,7 @@ fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
         let bound = catalogue_functions(language);
         let rendered = format!(
             "{}\n{}",
-            render_system_for(
-                language,
-                &super::tests::every_code_section_on(GgProgramLanguage::TypeScript)
-            ),
+            render_system_for(language, &super::tests::every_code_section_on_for(language)),
             render_code_nothing_shown_for(language),
         );
         for span in backticked(&rendered) {
