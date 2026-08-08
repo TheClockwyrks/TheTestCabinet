@@ -4,7 +4,20 @@
 // Arming the component and releasing the flyer are control ops (the arrange); waiting for the
 // shot that connects with an airborne target is the behavior under test and is the act.
 
-import { armTower, spawnControlled, unitById, TICK, SECOND } from "../_helpers.mjs";
+import {
+  armTower,
+  spawnControlled,
+  skipToApproach,
+  unitById,
+  TICK,
+  SECOND,
+} from "../_helpers.mjs";
+
+// Several Capacitor cadences, so a build that opens a component on a full cooldown still
+// resolves inside the budget.
+const FIRE_TICKS = 4 * SECOND;
+// A beat after the hit, so the clip carries the flyer being knocked rather than cutting on it.
+const TAIL_TICKS = 2 * SECOND;
 
 export default function item() {
   // The flyer followed, and whether it was ever hit.
@@ -15,20 +28,23 @@ export default function item() {
     id: "towers.hits-air",
 
     async arrange(api) {
-      await armTower(api, { type: "capacitor", tier: 1 });
+      const towerId = await armTower(api, { type: "capacitor", tier: 1 });
       [f] = await spawnControlled(api, "filament");
+      await skipToApproach(api, towerId, f.id);
     },
 
     async act(api) {
       const hp0 = f.hp;
-      // 0.5 s = 30 ticks, polled a tick at a time: the instant the HP drops is what is read.
+      // Polled a tick at a time: the instant the HP drops is what is read.
       hit = await api.until(
         (s) => {
           const l = unitById(s, f.id);
           return l && l.hp < hp0;
         },
-        { max: 0.5 * SECOND, poll: TICK },
+        { max: FIRE_TICKS, poll: TICK },
       );
+
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

@@ -44,7 +44,10 @@
 //
 // The assertion primitives are NOT here — they are the reporter-side `ttc` kit
 // (`packages/browser-driver/ttc.mjs`), the single source of truth shared by every
-// case. This file holds only what is specific to Cascade.
+// case. This file holds only what is specific to Cascade. A `checkX` helper below
+// is not a primitive but a Cascade-specific COMPOSITE: a set of expectations that
+// more than one item must make identically, spelled out once so the items cannot
+// drift apart on what they demand.
 
 // ---- Field + table geometry (specs/table.md, specs/overview.md) ------------
 export const FIELD_W = 1280;
@@ -180,10 +183,57 @@ export async function winBoard(api, seed = 1) {
     suitRun("diamonds", 1, 13),
     suitRun("clubs", 1, 13),
   ];
-  await api.call("setBoard", { foundations, waste: [card("spades", 13, true)] });
+  await api.call("setBoard", {
+    foundations,
+    waste: [card("spades", 13, true)],
+  });
   await api.call("move", { pile: "waste" }, { pile: "foundation", index: 0 });
   return api.snapshot();
 }
+
+/**
+ * A board one card short of a win, with that last card waiting on `source` —
+ * `"waste"` or `"tableau"` (column 0). Spades is missing only its King and the
+ * other three foundations are complete, so sending that King home completes the
+ * last foundation and wins.
+ *
+ * `winBoard` above finishes the win itself, through the `move` control op, for the
+ * items that only need a cascade to already be running. This one stops one card
+ * short instead, so a check can finish the game with a real GESTURE and see what
+ * that gesture leaves behind.
+ */
+export function nearWinBoard(source) {
+  const foundations = [
+    suitRun("spades", 1, 12), // missing its King
+    suitRun("hearts", 1, 13),
+    suitRun("diamonds", 1, 13),
+    suitRun("clubs", 1, 13),
+  ];
+  const king = card("spades", 13, true);
+  if (source === "waste") return { foundations, waste: [king] };
+  return { foundations, tableau: [[king], [], [], [], [], [], []] };
+}
+
+/**
+ * Pose `nearWinBoard(source)` and return the snapshot, which the caller reads the
+ * waiting card's on-screen position out of with `lastCardPoint`.
+ *
+ * Arrange-only in spirit — every op is instant — but equally callable from `act`,
+ * which is how an item poses its second scenario after the first one has been won.
+ */
+export async function poseNearWin(api, source, seed = 2) {
+  await pose(api, nearWinBoard(source), seed);
+  return api.snapshot();
+}
+
+/** Where the waiting last card sits on screen, from a `poseNearWin` snapshot. */
+export function lastCardPoint(snap, source) {
+  if (source === "waste") return wasteTopCenter(snap);
+  return tableauCardCenter(0, snap.tableau[0], 0);
+}
+
+/** The foundation the last card of `nearWinBoard` completes (spades, index 0). */
+export const LAST_FOUNDATION = 0;
 
 // ---- Cascade act helpers (act) ---------------------------------------------
 //
@@ -215,7 +265,8 @@ export async function actFirstBounce(api, { max = 400 } = {}) {
   for (let i = 0; i < max; i += 1) {
     await api.advance(TICK);
     const cur = (await api.snapshot()).cascade.flyers[0];
-    if (prev && cur && prev.vy > 0 && cur.vy < 0) return { prev, cur, bounced: true };
+    if (prev && cur && prev.vy > 0 && cur.vy < 0)
+      return { prev, cur, bounced: true };
     prev = cur;
   }
   return { prev, cur: prev, bounced: false };
@@ -232,7 +283,10 @@ export async function actFirstBounce(api, { max = 400 } = {}) {
  * than any coarser poll could resolve. Convert a measured span back to seconds with
  * `secondsOf` when the assertion is stated in seconds.
  */
-export async function actLaunchTicks(api, { count = 8, max = 240 * TICK } = {}) {
+export async function actLaunchTicks(
+  api,
+  { count = 8, max = 240 * TICK } = {},
+) {
   const ticks = [];
   let launched = 0;
   let t = 0;
@@ -257,12 +311,159 @@ export async function actLaunchTicks(api, { count = 8, max = 240 * TICK } = {}) 
  * In the record pass this runs past the clip budget and is cut short, which is
  * correct — the opening of the cascade is what depicts it.
  */
-export async function actRunCascadeToDone(api, { max = CASCADE_DONE_MAX } = {}) {
-  const { snap } = await api.until((s) => Boolean(s.cascade && s.cascade.done), {
-    max,
-    poll: SECOND / 10, // 12 ticks
-  });
+export async function actRunCascadeToDone(
+  api,
+  { max = CASCADE_DONE_MAX } = {},
+) {
+  const { snap } = await api.until(
+    (s) => Boolean(s.cascade && s.cascade.done),
+    {
+      max,
+      poll: SECOND / 10, // 12 ticks
+    },
+  );
   return snap;
+}
+
+// ---- Winning by a real gesture (act) ---------------------------------------
+//
+// The two ways a player finishes a game — dragging the last card onto its
+// foundation, and double-clicking it home — driven as INPUT (specs/instrumentation
+// .md) rather than through the `move` / `autoMove` control ops, because what is
+// being checked is not only that the rules detect the win but that the gesture
+// which caused it leaves the won game standing.
+//
+// Each returns `{ afterGesture, afterCascade }`: the state once the gesture is
+// completely over, and again after `ticks` of cascade. Both matter. A build can
+// detect the win correctly and still tear it down an instant later, which the
+// first snapshot alone would not catch.
+
+// A beat between pointer ops, so the recorded clip reads as a gesture rather than a
+// jump cut. Cascade resolves input instantly (the build's `step` is a no-op off a
+// running cascade), so this moves no game state: it is clip pacing only.
+const GESTURE_BEAT = ticksFor(200);
+
+// How much cascade to run after the gesture. Long enough that several cards have
+// launched, so "the cascade is still running" is a real observation and not just
+// the same instant re-read.
+export const WIN_CASCADE_TICKS = ticksFor(1500); // 180 ticks
+
+/**
+ * Finish the game by DRAGGING the last card from `from` onto its foundation, as a
+ * whole gesture: press, two moves so the card visibly travels, then release over
+ * the foundation.
+ */
+export async function actWinByDrag(api, from, ticks = WIN_CASCADE_TICKS) {
+  const home = foundationCenter(LAST_FOUNDATION);
+  await api.call("pointerDown", from.x, from.y);
+  await api.advance(GESTURE_BEAT);
+  await api.call("pointerMove", (from.x + home.x) / 2, (from.y + home.y) / 2);
+  await api.advance(GESTURE_BEAT);
+  await api.call("pointerMove", home.x, home.y);
+  await api.advance(GESTURE_BEAT);
+  await api.call("pointerUp", home.x, home.y);
+
+  const afterGesture = await api.snapshot();
+  await api.advance(ticks);
+  return { afterGesture, afterCascade: await api.snapshot() };
+}
+
+/**
+ * Finish the game by DOUBLE-CLICKING the last card at `at` — the real gesture, sent
+ * by the browser (`api.userDoubleClick`), not the `doubleClick` control op.
+ *
+ * The op is only the recognition. What decides this item is what a build does with
+ * the rest of the gesture: a double-click is two presses and two releases, and a
+ * build may recognize the double on any of the last three of them — the DOM
+ * `dblclick` event (after the second release), the second release, or the second
+ * press. Whichever it picks, the events after that point land on a game that has
+ * ALREADY been won. On the won screen a click deals a fresh game (specs/states.md),
+ * so a build that recognizes the double on the second press and then lets its own
+ * press-handler run on into the won-screen dismiss deals a new game before the
+ * victory cascade draws a frame — while every rules-level check still passes,
+ * because the win itself was detected correctly. The player never sees the ending.
+ *
+ * Nothing short of the real gesture reaches that. Injected pointer ops call a
+ * build's handlers directly, so they bypass the DOM listeners its double detection
+ * lives in and are never seen as a double at all. `doubleClick` + a hand-written
+ * `pointerUp` is worse than useless: that release is unpaired, with no press before
+ * it, so no player can produce it — and since the specs let a build commit its
+ * won-screen click on either the press or the release, it fails every build that
+ * chose the release, on a distinction the specs do not draw. (It did exactly that
+ * here, passing a build that deals a new game mid-gesture while failing two that
+ * play the gesture correctly.)
+ *
+ * `at` is a logical point (specs/overview.md's 1280 x 720 space); the primitive
+ * takes fractions of the canvas, as `sampleColor` does.
+ */
+export async function actWinByDoubleClick(api, at, ticks = WIN_CASCADE_TICKS) {
+  await api.userDoubleClick(at.x / FIELD_W, at.y / FIELD_H);
+
+  const afterGesture = await api.snapshot();
+  await api.advance(ticks);
+  return { afterGesture, afterCascade: await api.snapshot() };
+}
+
+/**
+ * The facts a win must show, whichever gesture and whichever pile produced it.
+ *
+ * Shared by the two win-detection items rather than written out in each, so the
+ * demand cannot drift between them: the point of having both is that the SAME win
+ * fires either way, which only holds if both check the same thing. `where` names
+ * the scenario in the assertion labels ("from the waste"), since one item runs this
+ * twice.
+ */
+export function checkWinFires(
+  check,
+  where,
+  before,
+  { afterGesture, afterCascade },
+) {
+  check.expectEq(
+    `play is live before the gesture (${where})`,
+    before.screen,
+    "playing",
+  );
+  check.expectEq(
+    `not yet won before the gesture (${where})`,
+    before.won,
+    false,
+  );
+
+  const home = afterGesture.foundations.reduce((n, f) => n + f.length, 0);
+  check.expectEq(`the last card went home (${where})`, home, TOTAL_CARDS);
+  check.expectEq(
+    `all 52 home is detected as a win (${where})`,
+    afterGesture.won,
+    true,
+  );
+  check.expectEq(
+    `normal play stops, the won screen (${where})`,
+    afterGesture.screen,
+    "won",
+  );
+  check.expectNe(
+    `the victory cascade has begun (${where})`,
+    afterGesture.cascade,
+    null,
+  );
+
+  // The gesture is over by now; these are what a build that undoes its own win fails.
+  check.expectEq(
+    `the won screen survives the gesture (${where})`,
+    afterCascade.screen,
+    "won",
+  );
+  check.expectNe(
+    `the cascade is still running (${where})`,
+    afterCascade.cascade,
+    null,
+  );
+  check.expectGt(
+    `the cascade advanced — cards launched (${where})`,
+    afterCascade.cascade ? afterCascade.cascade.launched : 0,
+    0,
+  );
 }
 
 /**

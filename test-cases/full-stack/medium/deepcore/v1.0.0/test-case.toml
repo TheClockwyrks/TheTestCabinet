@@ -322,6 +322,11 @@ title = "Drills straight down, sinking smoothly"
 description = "Holding down over solid rock drills the tile below, the miner sinks into it as it cuts (never teleport-snapping a whole tile at once), and the tile becomes open tunnel when it breaks."
 validation = { script = "validation/movement/drill-down.mjs", outputs = [{ id = "shaft", name = "Drilling a shaft straight down", kind = "video" }] }
 [[review.categories.items]]
+id = "climb-after-drill"
+title = "A drilled shaft can be flown back up"
+description = "Drilling down really removes the rock — the cut tiles become open tunnel — and the miner can then jetpack straight back UP the shaft it just made, returning to the row it set out from. A build whose drill animates without breaking the terrain, or that strands the miner at the bottom of its own hole, fails here."
+validation = { script = "validation/movement/climb-after-drill.mjs", outputs = [{ id = "round-trip", name = "Drilling a shaft, then flying back up it", kind = "video" }] }
+[[review.categories.items]]
 id = "drill-side"
 title = "A side cut begins at the tile edge, not on keypress"
 description = "Pressing sideways in mid-tile WALKS the miner to the tile edge first and only then begins a left/right cut — so lateral movement inside a wider tunnel is possible before committing to a dig."
@@ -356,6 +361,11 @@ id = "sky-open"
 title = "Open sky above the surface — no ceiling"
 description = "Thrusting up off the surface carries the miner into the open, unbounded sky above the camp: there is no invisible lid, so it keeps climbing as long as it has fuel, rising far above the ground before falling back. A hard cap at the surface (unable to overshoot the ground) is a failed build."
 validation = { script = "validation/movement/sky-open.mjs", outputs = [{ id = "climb", name = "Thrusting up into the open sky above the camp", kind = "video" }] }
+[[review.categories.items]]
+id = "spawn-on-surface"
+title = "A new expedition starts on the surface"
+description = "Starting an expedition puts the miner on the surface camp, standing on solid ground at depth 0 with the mine below it unmined — never already inside a shaft, cavern, or other opening under the surface, and never sinking into one the moment play begins."
+validation = { script = "validation/movement/spawn-on-surface.mjs", outputs = [{ id = "start", name = "Where a fresh expedition starts", kind = "video" }] }
 
 # --- Fuel & the Round Trip ----------------------------------------------------
 [[review.categories]]
@@ -444,8 +454,13 @@ validation = { script = "validation/economy/value-rises-depth.mjs", outputs = [{
 [[review.categories.items]]
 id = "buy-upgrade"
 title = "Buying an upgrade deducts Credits and raises the tier"
-description = "Buying the next tier on a track deducts its pinned price, raises the tier, and grants the new capacity (a bigger fuel tank raises max fuel)."
+description = "Buying the next tier on a track deducts its pinned price, raises the tier, and grants the new capacity as usable fuel right then (a bigger tank raises max fuel AND fills in the capacity it added), without being a free top-up to full."
 validation = { script = "validation/economy/buy-upgrade.mjs", outputs = [{ id = "upgrade", name = "Buying a fuel-tank tier", kind = "video" }] }
+[[review.categories.items]]
+id = "grant-applies-tiers"
+title = "Setting a tier applies the real upgrade path"
+description = "Upgrade tiers set from the debug API go through the real upgrade path: the maxima rise to those tiers' values AND at least the added capacity arrives as usable fuel/hull immediately, rather than the ceiling moving and the miner being left with a bigger, still-empty tank."
+validation = { script = "validation/economy/grant-applies-tiers.mjs", outputs = [{ id = "granted", name = "Granting tiers raises and fills the gauges", kind = "video" }] }
 
 # --- Exotic Materials & Scanner -----------------------------------------------
 [[review.categories]]
@@ -542,6 +557,11 @@ title = "A long plunge deals impact damage"
 description = "A long free-fall lands hard enough to damage the hull, scaled to the excess landing speed — feathering the descent is rewarded."
 validation = { script = "validation/hazards/fall-impact.mjs", outputs = [{ id = "slam", name = "A hard landing after a long plunge", kind = "video" }] }
 [[review.categories.items]]
+id = "hull-death"
+title = "An emptied hull is a death"
+description = "A hull standing at 0 kills the miner on its own: the empty hull is what is fatal, not the particular blow that emptied it, so the run ends at Game Over with a hull-destroyed cause the moment the hull is empty, whatever brought it there."
+validation = { script = "validation/hazards/hull-death.mjs", outputs = [{ id = "destroyed", name = "An emptied hull ends the run", kind = "video" }] }
+[[review.categories.items]]
 id = "first-tip"
 title = "First-hazard explanation cards"
 description = "The first gas detonation and the first lava burn each raise a one-time, dismissible, non-blocking card explaining the 'random' hull loss — appearing a short beat AFTER the hit (not on top of the blast) and placed clear of the miner rather than over the centre of the action."
@@ -631,6 +651,11 @@ title = "Save at the pad, continue from the menu"
 description = "Saving at the surface Save Pad writes the single slot, and the main menu's Continue resumes the saved expedition exactly."
 validation = { script = "validation/modes/save-continue.mjs", outputs = [{ id = "continue", name = "Saving then continuing", kind = "video" }] }
 [[review.categories.items]]
+id = "save-discipline"
+title = "The pad is the only way to save — no autosave"
+description = "Saving is explicit: beginning an expedition writes no save of its own, only the Save Pad does, and starting a new expedition abandons whatever was saved before."
+validation = { script = "validation/modes/save-discipline.mjs", outputs = [{ id = "discipline", name = "No save until the pad is used", kind = "video" }] }
+[[review.categories.items]]
 id = "credits-survive"
 title = "Banked Credits survive death"
 description = "Credits already banked survive a death, so a failed run does not wipe out earned Credits."
@@ -680,7 +705,7 @@ title = "Color"
 id = "bands"
 title = "The four bands render in distinct colors"
 description = "The four band rocks (topsoil, rockbed, deepstone, coreshell) each render in a distinct, visible color, so the band a player is in reads from the world."
-validation = { script = "validation/color/bands.mjs", outputs = [{ id = "bands", name = "The four band rock colors", kind = "image" }] }
+validation = { script = "validation/color/bands.mjs", outputs = [{ id = "bands", name = "A tour of the four band rock colors", kind = "video" }] }
 [[review.categories.items]]
 id = "lava"
 title = "Lava is plainly visible"
@@ -773,6 +798,11 @@ id = "game-over"
 title = "Game Over screen"
 description = "The Game Over screen on death (run summary, and Continue From Save or Play Again, plus Menu) is reachable and correct."
 validation = { script = "validation/states/game-over.mjs", outputs = [{ id = "game-over", name = "The Game Over screen", kind = "image" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live expedition advances — simulation time accumulates and the build reports the clock as its own — without anything stepping it from outside."
+validation = { script = "validation/states/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- HUD Readouts -------------------------------------------------------------
 [[review.categories]]
@@ -802,15 +832,76 @@ title = "Audio & Mute"
 id = "mute-toggle"
 title = "The mute key toggles mute"
 description = "The mute control toggles the audio mute state on and off."
-validation = { script = "validation/audio/mute-toggle.mjs", outputs = [{ id = "muted", name = "The title after toggling mute", kind = "image" }] }
+validation = { script = "validation/audio/mute-toggle.mjs", outputs = [{ id = "muted", name = "The status bar after toggling mute", kind = "image" }] }
 [[review.categories.items]]
-id = "sfx"
-title = "Produced sound effects"
-description = "Distinct produced cues play on their events — the drill and thrust loops, ore/material pickups, explosions, the lava sizzle, the impact thud, purchase/fabricate confirms, the launch roar, the death cue, and the low-fuel and core-timer alarms — all synthesized/sampled with the audio tools, playing fine fully muted and staying silent until the first interaction."
+id = "drill-loop"
+title = "The drill loop plays while cutting"
+description = "A drill loop (grinding while digging) plays via Web Audio while the miner cuts into a tile."
+validation = { script = "validation/audio/drill-loop.mjs", outputs = [{ id = "drill", name = "The drill loop under a cut", kind = "video" }] }
+[[review.categories.items]]
+id = "thrust-loop"
+title = "The jetpack thrust loop plays while climbing"
+description = "A jetpack thrust loop (a burner while thrusting) plays via Web Audio while the jetpack lifts the miner."
+validation = { script = "validation/audio/thrust-loop.mjs", outputs = [{ id = "thrust", name = "The thrust loop under a climb", kind = "video" }] }
+[[review.categories.items]]
+id = "ore-pickup"
+title = "The ore pickup blip plays on collection"
+description = "An ore pickup blip plays via Web Audio when a drilled vein banks a unit into cargo."
+validation = { script = "validation/audio/ore-pickup.mjs", outputs = [{ id = "pickup", name = "The ore pickup blip", kind = "video" }] }
+[[review.categories.items]]
+id = "material-chime"
+title = "The material chime plays on a find"
+description = "A richer material chime plays via Web Audio when a Resonite or Cryenite node is collected."
+validation = { script = "validation/audio/material-chime.mjs", outputs = [{ id = "chime", name = "The material chime on a find", kind = "video" }] }
+[[review.categories.items]]
+id = "gas-explosion"
+title = "The gas explosion cue plays on detonation"
+description = "A gas explosion cue plays via Web Audio the instant a drilled gas pocket detonates."
+validation = { script = "validation/audio/gas-explosion.mjs", outputs = [{ id = "blast", name = "The gas explosion cue", kind = "video" }] }
+[[review.categories.items]]
+id = "lava-sizzle"
+title = "The lava sizzle plays on contact"
+description = "A lava sizzle cue plays via Web Audio while the miner is in contact with lava."
+validation = { script = "validation/audio/lava-sizzle.mjs", outputs = [{ id = "sizzle", name = "The lava sizzle on contact", kind = "video" }] }
+[[review.categories.items]]
+id = "impact-thud"
+title = "The impact thud plays on an impact event"
+description = "An impact thud plays via Web Audio on a hard landing, a jettison, or dropping ore."
+validation = { script = "validation/audio/impact-thud.mjs", outputs = [{ id = "thud", name = "The impact thud", kind = "video" }] }
+[[review.categories.items]]
+id = "confirm"
+title = "The purchase/fabricate confirm plays"
+description = "A confirm cue plays via Web Audio when an upgrade, fuel, repair, or rocket-part purchase lands."
+validation = { script = "validation/audio/confirm.mjs", outputs = [{ id = "confirm", name = "The purchase/fabricate confirm", kind = "video" }] }
+[[review.categories.items]]
+id = "launch-roar"
+title = "The launch roar plays on launch"
+description = "A launch roar plays via Web Audio the instant the rocket launches."
+validation = { script = "validation/audio/launch-roar.mjs", outputs = [{ id = "launch", name = "The launch roar", kind = "video" }] }
+[[review.categories.items]]
+id = "death-cue"
+title = "The death cue plays on death"
+description = "A death cue plays via Web Audio the instant the miner dies."
+validation = { script = "validation/audio/death-cue.mjs", outputs = [{ id = "death", name = "The death cue", kind = "video" }] }
+[[review.categories.items]]
+id = "alarm-fuel"
+title = "The low-fuel alarm loops under 20%"
+description = "A low-fuel alarm loops via Web Audio while fuel is under 20% of the tank underground."
+validation = { script = "validation/audio/alarm-fuel.mjs", outputs = [{ id = "alarm", name = "The low-fuel alarm looping", kind = "video" }] }
+[[review.categories.items]]
+id = "alarm-core"
+title = "The core-timer alarm loops while the Sample is live"
+description = "An escalating core-timer countdown alarm loops via Web Audio while the Core Sample's destabilization timer is running."
+validation = { script = "validation/audio/alarm-core.mjs", outputs = [{ id = "alarm", name = "The core-timer alarm looping", kind = "video" }] }
 [[review.categories.items]]
 id = "music"
 title = "Produced descent music bed"
-description = "A produced, lonely industrial descent music bed loops under the dig, and audio does not autostart before the player first interacts."
+description = "A produced, lonely industrial descent music bed starts on the player's first interaction and loops under the dig; audio does not autostart before then."
+validation = { script = "validation/audio/music.mjs", outputs = [{ id = "music", name = "The music bed starting on the first interaction", kind = "video" }] }
+[[review.categories.items]]
+id = "muted-safe"
+title = "Audio behaves correctly when fully muted"
+description = "The game continues to run correctly — no errors, no stuck state — while fully muted, and every cue above is synthesized/sampled with the audio tools rather than a stock or bundled sound."
 
 # --- Produced Assets (human-judged) -------------------------------------------
 [[review.categories]]

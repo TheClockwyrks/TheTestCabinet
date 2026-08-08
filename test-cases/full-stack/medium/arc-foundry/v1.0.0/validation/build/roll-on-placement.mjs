@@ -8,13 +8,22 @@
 // does not assume adjacent seeds decorrelate (a seedable-but-unhashed generator is
 // spec-compliant, and its within-run draws are still uniform).
 //
-// The placements consume no game time, so they belong to `arrange` (the first four stamps). The
-// act then performs one more real roll on camera: a rock landing and revealing its type IS the
-// checked behavior, so that is what the clip depicts.
+// WHAT IS FILMED. Four of the five stamps used to be spent in `arrange`, which is instant in both
+// passes, so the recording opened on a board that already held four rolled candidates and only
+// the fifth landed on camera. The claim is about the SPREAD across repeated drops — that each one
+// rolls its own component as it lands — and a clip showing one drop onto a board of finished rolls
+// cannot depict a spread at all.
+//
+// So all five are dropped in the act, a beat apart. A placement consumes no game time, which is
+// why they could live in `arrange`; a beat between them is what makes the sequence legible as
+// five separate rolls rather than one frame in which a board appears. The clip is then the press
+// being pulled five times and handing out five different components.
 
 import { startBuild, towerAt, snap, spawnControlled, SPOTS, SECOND } from "../_helpers.mjs";
 
-// Long enough after the drop for the landed candidate to read clearly, with a released Spark
+// A beat between drops, so each roll lands and reads before the next one does.
+const BEAT_TICKS = 0.9 * SECOND;
+// Long enough after the last drop for the landed candidate to read clearly, with a released Spark
 // walking to show the board is live rather than a still.
 const CLIP_TICKS = 2 * SECOND;
 
@@ -26,26 +35,20 @@ export default function item() {
     id: "build.roll-on-placement",
 
     async arrange(api) {
-      // One seeded run, the real press: place the first four of the five-stamp allowance and
-      // read each drop. A per-drop roll yields a spread from one stream; a fixed / at-press roll
-      // would not.
       await startBuild(api, { seed: 1 });
-      await api.call("setNextRoll", null); // clear the arming: roll the real seeded press
-      for (let i = 0; i < 4; i += 1) {
-        const spot = SPOTS[i];
-        await api.call("placeRock", spot.col, spot.row);
-        const t = towerAt(await snap(api), spot.col, spot.row);
-        if (t && t.kind === "candidate") types.add(t.type);
-      }
     },
 
     async act(api) {
-      // The fifth stamp, landed on camera: the type is drawn at the drop.
-      const spot = SPOTS[4];
-      await api.call("setNextRoll", null);
-      await api.call("placeRock", spot.col, spot.row);
-      const t = towerAt(await snap(api), spot.col, spot.row);
-      if (t && t.kind === "candidate") types.add(t.type);
+      // One seeded run, the real press: spend the whole five-stamp allowance a beat at a time and
+      // read each drop. A per-drop roll yields a spread from one stream; a fixed / at-press roll
+      // would not.
+      for (const spot of SPOTS) {
+        await api.call("setNextRoll", null); // clear the arming: roll the real seeded press
+        await api.call("placeRock", spot.col, spot.row);
+        const t = towerAt(await snap(api), spot.col, spot.row);
+        if (t && t.kind === "candidate") types.add(t.type);
+        await api.advance(BEAT_TICKS);
+      }
 
       await spawnControlled(api, "spark");
       await api.advance(CLIP_TICKS);

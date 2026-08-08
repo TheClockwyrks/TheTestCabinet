@@ -550,6 +550,7 @@ fn review_item_out(item: &crate::store::StoredReviewItem) -> ReviewItemOut {
         reference: item.reference.clone(),
         proof: item.proof.clone(),
         weight: item.weight,
+        graded: item.graded,
         domain: item.domain.clone(),
         sub_items: item
             .sub_items
@@ -990,6 +991,11 @@ struct ReviewItemOut {
     reference: Option<String>,
     proof: Option<String>,
     weight: u32,
+    /// Whether the item is graded on the five-level scale (a game-jam category)
+    /// rather than pass/fail. False for every other test type. The reviewer UI keys
+    /// its editor control (emoji grade scale vs. pass/fail) off this flag.
+    #[serde(default)]
+    graded: bool,
     domain: Option<String>,
     /// Name-only sub-items the reviewer grades this item by, each an
     /// independently scored pass/fail point. Empty for an item graded as a whole.

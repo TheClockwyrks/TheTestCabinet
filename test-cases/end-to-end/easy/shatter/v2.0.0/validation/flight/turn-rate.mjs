@@ -10,8 +10,16 @@
 //
 // 0.5 s x 120 Hz = 60 ticks. The `* 0.5` in the expected angle stays in SECONDS: SHIP_TURN is
 // a rate in rad/s, so the expected swing is rate x half a second.
+//
+// The swing is measured with `angleDelta`, not by subtracting the two facings. A facing
+// names a direction, and the case fixes no range for it — `specs/ship.md` even writes the
+// spawn facing as "270 degrees" where the snapshot reports radians — so a build may keep its
+// angle in [0, 2pi), in (-pi, pi], or unbounded. Subtracting across the seam turns a correct
+// 150-degree turn one way into a 210-degree turn the other, failing a build that turned
+// exactly as far and exactly the right way. 150 degrees is under half a circle, so the
+// shortest-arc reading is unambiguous.
 
-import { newGame, poseShip, SHIP_TURN } from "../_helpers.mjs";
+import { newGame, poseShip, SHIP_TURN, angleDelta } from "../_helpers.mjs";
 
 export default function item() {
   // The ship before and after the turn, plus its velocity heading going in.
@@ -40,7 +48,7 @@ export default function item() {
     async assert(api, check) {
       check.expectClose(
         "the facing turns CCW by ~150 deg in half a second (300 deg/s)",
-        after.angle - before.angle,
+        angleDelta(before.angle, after.angle),
         -SHIP_TURN * 0.5,
         0.02,
       );

@@ -5,7 +5,21 @@
 // starts a live round, presses Space, and confirms nothing advances while paused, then
 // resumes and confirms matter moves again.
 
-import { startRun, pathGeom, spawnAt, unitById, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  pathGeom,
+  spawnAt,
+  unitById,
+  clipBudget,
+  LEAD_TICKS,
+  TAIL_TICKS,
+  MAP,
+} from "../_helpers.mjs";
+
+// A freeze is only visible against motion. The clip used to open ON the pause keypress, so
+// its first frame was already a still board and there was nothing to tell a frozen game
+// apart from a slow one. Running first is what makes the pause read as a pause.
+const FROZEN_TICKS = 90;
 
 export default function item() {
   let id;
@@ -17,6 +31,8 @@ export default function item() {
 
   return {
     id: "pause.in-place-freezes",
+
+    clipMs: clipBudget(LEAD_TICKS + FROZEN_TICKS + TAIL_TICKS),
 
     async arrange(api) {
       const snap = await startRun(api, MAP.single, {
@@ -37,20 +53,22 @@ export default function item() {
     // The pause, the stillness under it, and the resume — the whole of the behavior, and
     // a clip that reads as a board holding and then moving again.
     async act(api) {
+      // The board running: matter travelling, the round live.
+      await api.advance(LEAD_TICKS);
+
       await api.call("press", "Space");
       paused = await api.snapshot();
       p0 = unitById(paused, id).progress;
       e0 = paused.energy;
 
-      // 90 ticks = the old 1.5 s. Time does not advance the sim while it is paused —
-      // that is exactly what is being checked.
-      await api.advance(90);
+      // Time does not advance the sim while it is paused — that is exactly what is being
+      // checked, and what the reviewer watches for the length of this window.
+      await api.advance(FROZEN_TICKS);
       frozen = await api.snapshot();
 
-      // Resume: matter advances again.
+      // Resume: matter advances again, and is seen to.
       await api.call("press", "Space");
-      // 30 ticks = the old 0.5 s.
-      await api.advance(30);
+      await api.advance(TAIL_TICKS);
       resumedProgress = unitById(await api.snapshot(), id).progress;
     },
 

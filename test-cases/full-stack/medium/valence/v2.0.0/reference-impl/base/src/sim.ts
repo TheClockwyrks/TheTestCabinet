@@ -888,6 +888,30 @@ export class Game {
     for (const t of this.towers) t.refundable = false;
   }
 
+  // Open a SCENARIO ROUND (specs/instrumentation.md's `startScenario`): a live round with
+  // no wave that does not end on its own — the board a scripted scenario is posed on.
+  //
+  // It is `beginRound` with three things left out. It does not advance `round` and pays no
+  // early-send bonus, because it is not the campaign's next round. And it leaves `wave`
+  // null, which is what makes it both empty and endless without a flag: `spawnDue` returns
+  // at once with nothing to send, and `checkRoundEnd` — which ends a round when its wave is
+  // spent AND the board is clear — has no wave to call spent, so an empty board never ends
+  // it. Everything else is an ordinary round: the phase is `round`, so every entity system
+  // runs, and losing still resolves through the real containment check in `fixedStep`.
+  startScenario(): boolean {
+    if (this.state !== "playing" || this.phase !== "build") return false;
+    this.phase = "round";
+    this.paused = false; // as launching a round does
+    this.wave = null;
+    this.spawnCursor = 0;
+    this.spawned = 0;
+    this.waveClock = 0;
+    this.buildTimed = false;
+    this.buildTimer = 0;
+    for (const t of this.towers) t.refundable = false;
+    return true;
+  }
+
   // ---- Dev/proof helpers (also the balance-harness control surface) -----------
   devGrant(energy: number, integrity: number): void {
     this.energy = energy;

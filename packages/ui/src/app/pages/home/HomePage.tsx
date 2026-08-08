@@ -5,12 +5,18 @@ import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
 import { ReviewerWidgets } from "./ReviewerWidgets";
 import { useAuth } from "../../../client/auth";
-import { RatingBadge, canonicalModelId } from "@test-cabinet/ui";
+import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import { LoadingState } from "../../components/LoadingState";
 import { RunLog, useRunTable } from "../../components/RunLog";
 import { UnpublishedTag } from "../../components/UnpublishedTag";
 import { useFindModel } from "../../data/useModels";
-import { type Rating, worstRating } from "../../data/ratings";
+import {
+  asGrade,
+  overallGradeOf,
+  type GradeStatus,
+  type Rating,
+  worstRating,
+} from "../../data/ratings";
 import { useGalleryData } from "../../data/galleryContext";
 import { useFindReview } from "../../data/writeups";
 import { useTestCaseName } from "../../data/useTestCaseName";
@@ -94,11 +100,20 @@ export function HomePage() {
   // A local, unpublished writeup wins the featured rating (an in-progress edit
   // must show before it is published); absent one, the summary's own aggregate
   // rating stands in.
+  const featuredReview = featured
+    ? findReview(featured.id, localWriteups)
+    : undefined;
   const featuredRating = featured
-    ? (worstRating(
-        findReview(featured.id, localWriteups)?.ratings.map((r) => r.rating) ??
-          [],
-      ) ?? featured.rating)
+    ? (worstRating(featuredReview?.ratings.map((r) => r.rating) ?? []) ??
+      featured.rating)
+    : null;
+  // A game jam carries no per-domain rating: its badge is the reviewer's
+  // whole-game overall grade, resolved the same way (a local, in-progress review
+  // first, then the summary card's aggregate) so the hero shows a jam's verdict
+  // rather than a bare dash.
+  const featuredGrade = featured
+    ? ((featuredReview && overallGradeOf(featuredReview.checklist)) ??
+      asGrade(featured.score?.overallGrade))
     : null;
 
   return (
@@ -129,6 +144,7 @@ export function HomePage() {
                 run={featured}
                 local={localIds.has(featured.id)}
                 rating={featuredRating}
+                grade={featuredGrade}
               />
             )}
             {rest.length > 0 && (
@@ -158,10 +174,14 @@ function FeaturedRun({
   run,
   local,
   rating,
+  grade,
 }: {
   run: RunSummary;
   local: boolean;
   rating: Rating | null;
+  /** A game jam's whole-game overall grade, shown in place of the rating a jam
+   * does not carry. Null for every domain-rated run. */
+  grade: GradeStatus | null;
 }) {
   const { subject, metrics } = run;
   const model = useFindModel()(subject.modelId, subject.harnessSlug);
@@ -205,6 +225,8 @@ function FeaturedRun({
           value={
             rating ? (
               <RatingBadge rating={rating} />
+            ) : grade ? (
+              <GradeBadge status={grade} />
             ) : (
               <span className={styles.noRating}>—</span>
             )

@@ -8,10 +8,22 @@
 import {
   TICK,
   actFireAndResolve,
+  actWormToColumn,
   freshBoard,
   setWorm,
   tileCX,
 } from "../_helpers.mjs";
+
+// Row 17 keeps the bolt's flight (about 0.04 s from the muzzle) well inside the
+// 0.14 s between worm tile steps, so the single segment is still in the column when
+// the bolt arrives.
+const R = 17;
+// The worm winds in and the shot is taken the instant it lands on the cursor's
+// column. Posed on the firing mark it was shot on the clip's first frame, so the
+// reviewer saw the banner without ever seeing the worm that was cleared to earn it
+// (see `actWormToColumn`).
+const FIRE_AT_C = 20;
+const START_C = FIRE_AT_C - 6;
 
 export default function item() {
   let startLevel;
@@ -22,14 +34,16 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      await setWorm(api, [{ c: 20, r: 15 }], 1, 1); // a single-segment worm on the active run
-      await api.call("setCursor", tileCX(20), 688);
+      await setWorm(api, [{ c: START_C, r: R }], 1, 1); // a single-segment worm on the active run
+      await api.call("setCursor", tileCX(FIRE_AT_C), 688);
     },
 
-    // The shot that clears the worm and the advance it triggers are one scenario,
-    // and this is the clip: the reviewer watches the level roll over.
+    // The approach, the shot that clears the worm, and the advance it triggers are
+    // one scenario, and this is the clip: the reviewer watches the last segment wind
+    // over the cursor, die, and the level roll over behind it.
     async act(api) {
       startLevel = (await api.snapshot()).level;
+      await actWormToColumn(api, FIRE_AT_C); // ~0.84s of visible approach
       await actFireAndResolve(api);
       // The advance is a CONSEQUENCE of the shot, not part of resolving it: the worm
       // is cleared when the bolt lands, but the level rolls over on a later tick,

@@ -5,7 +5,23 @@
 // the burn to light and then watching it eat HP with no further shot is the behavior under
 // test, so it is the act and is what the clip shows.
 
-import { armTower, spawnControlled, unitById, snap, TICK, SECOND } from "../_helpers.mjs";
+import {
+  armTower,
+  spawnControlled,
+  skipToApproach,
+  unitById,
+  snap,
+  TICK,
+  SECOND,
+} from "../_helpers.mjs";
+
+// Several Rectifier cadences (1.1 shots/s), so a build that opens on a full cooldown still
+// lands its first hit inside the budget.
+const LIGHT_TICKS = 4 * SECOND;
+// A T1 Rectifier's burn runs 2 s. The measurement only needs to see HP fall with no further
+// shot, but a reviewer can only SEE a burn by watching it eat away at the unit, so the clip
+// carries the whole of it.
+const WATCH_TICKS = 2.5 * SECOND;
 
 export default function item() {
   // The unit `act` follows, whether a burn was ever lit, the state at that instant, and the HP
@@ -25,25 +41,27 @@ export default function item() {
       await api.call("setTargeting", towerId, "strongest");
       const [u] = await spawnControlled(api, "slug");
       unitId = u.id;
+      await skipToApproach(api, towerId, unitId);
     },
 
     async act(api) {
-      // 0.6 s = 36 ticks, polled a tick at a time: the instant the burn lights is what is read.
+      // Polled a tick at a time: the instant the burn lights is what is read.
       lit = await api.until(
         (st) => {
           const live = unitById(st, unitId);
           return live && live.burnDps > 0;
         },
-        { max: 0.6 * SECOND, poll: TICK },
+        { max: LIGHT_TICKS, poll: TICK },
       );
 
       s = await snap(api);
       l = unitById(s, unitId);
       hpAfterHit = l.hp;
 
-      // Another 0.6 s (36 ticks): the burn alone must keep eating HP after the shot landed.
-      await api.advance(0.6 * SECOND);
-      hpLater = unitById(await snap(api), unitId).hp;
+      // The burn alone must keep eating HP after the shot landed — and running the whole burn
+      // duration, rather than a fraction of it, is what makes the clip legible.
+      await api.advance(WATCH_TICKS);
+      hpLater = unitById(await snap(api), unitId)?.hp ?? hpAfterHit;
     },
 
     async assert(api, check) {

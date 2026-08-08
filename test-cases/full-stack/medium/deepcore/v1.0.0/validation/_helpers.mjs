@@ -181,26 +181,60 @@ export async function actHoldFor(api, code, ticks, { release = true } = {}) {
 // ---- Death (arrange + act pair) -------------------------------------------
 
 /**
- * ARRANGE half of a hull death underground: stand the miner on a solid floor at (col, row) and
- * empty its hull. Nothing is faked — the death itself is produced by the REAL death path (hull
- * <= 0 in live play -> triggerDeath) when time runs forward.
+ * ARRANGE half of a hull death underground: stand the miner on a solid floor at (col, row) over a
+ * gas pocket, with the hull set to a sliver so the pocket's detonation finishes it.
+ *
+ * Why a hazard and not `setHull(0)`. This used to pose the death outright by emptying the hull and
+ * then wait for the screen to turn over. That reads as arranging a precondition, but it is not one:
+ * it asks the build to treat a DEBUG WRITE as the death event itself. `specs/instrumentation.md`
+ * says the opposite about every control op — they "set up a specific situation ... arranging the
+ * world rather than faking outcomes; the outcome is then produced by running the real simulation
+ * forward" — and the one hull example it gives is posing "a near-death hull", not a destroyed one.
+ * A build is therefore free to run its death check where damage is DEALT (the only place hull
+ * reaches 0 in real play) rather than polling the field every tick, and such a build never dies
+ * from the poke: it sits underground at 0 hull, and every item that only wanted "a death to have
+ * happened" fails on `screen === "game-over"` for a reason that has nothing to do with what it
+ * claims to check. Two independent builds did exactly that.
+ *
+ * So the death is produced the way the game produces it: a real hit. The pocket is a gas pocket
+ * because a detonation is the case's most unambiguous single lethal hit (`specs/hazards.md` puts
+ * the raw rockbed hit at `~60` hull), and the hull is set to a sliver first, which IS the posed
+ * near-death precondition the spec sanctions — so the item does not depend on how hard a given
+ * build's gas hits, only on its dealing damage at all. The resulting death is a hull death
+ * (`deathCause: "hull-destroyed"`), the same one the old pose intended.
  *
  * Pair with `actKillByHull`.
  */
 export async function arrangeKillByHull(api, col, row) {
   await standAt(api, col, row);
-  await api.call("setHull", 0);
+  await api.call("setTile", col, row + 1, { kind: "gas" });
+  await api.call("setTile", col, row + 2, { kind: "rock" });
+  await teleportInto(api, col, row);
+  // A sliver, so ANY damage the detonation deals is lethal — the item under test is what survives
+  // the death, never how hard this build's gas hits.
+  await api.call("setHull", 1);
 }
 
 /**
- * ACT half of a hull death: run the real simulation until the Game Over screen resolves and
- * return the end snapshot. Polls coarsely — nothing read here changes before the death lands.
+ * ACT half of a hull death: drill into the posed pocket, let the real detonation kill the miner,
+ * and hold on the Game Over screen for a beat before returning its snapshot.
+ *
+ * `max` is deliberately generous (600 ticks = 10 s). The cut has to break a band tile before the
+ * pocket goes off, and `specs/character.md` fixes neither a drill duration nor a death-animation
+ * length, so a tighter cap would pin a build to the reference's own pace rather than to the rule.
+ * The validate pass is instant regardless of the cap; only a build that never dies pays the wait.
+ *
+ * The closing beat is what a reviewer needs: without it the clip cuts on the very frame the screen
+ * turns over, so the Game Over screen — and the run summary that is the actual evidence for
+ * several of these items — is never on screen long enough to read.
  *
  * Pair with `arrangeKillByHull`. Returns the snapshot (what the old `killByHull` returned).
  */
-export async function actKillByHull(api, { max = 180, poll = 6 } = {}) {
-  // 180 ticks = the old 3s cap; poll 6 = the old 0.1s chunk.
+export async function actKillByHull(api, { max = 600, poll = 6 } = {}) {
+  await api.call("keyDown", K.down); // cut into the pocket
   const r = await api.until((s) => s.screen === "game-over", { max, poll });
+  await api.call("keyUp", K.down);
+  await api.advance(90); // 90 ticks = 1.5 s resting on the Game Over screen
   return r.snap;
 }
 
@@ -269,9 +303,111 @@ export function minerScreen(m, cam) {
   };
 }
 
+/**
+ * Throw unless a logical-stage point is actually ON the 1280x720 stage.
+ *
+ * `api.pixel(u, v)` CLAMPS its normalized coordinate into range (driver.mjs), so sampling a
+ * point that is off the stage does not fail — it quietly returns whatever pixel sits on the
+ * nearest EDGE. Two different off-stage points therefore read the SAME edge pixel and compare
+ * as identical, which a color check reads as "the build painted these two things the same
+ * color" when in truth neither was ever sampled. That turns a mis-framed camera into a
+ * confident, wrong verdict — and, worse, silently PASSES a check that asserts two things look
+ * alike. Failing loudly here says what actually went wrong.
+ *
+ * A conformant build never trips this: `teleport` recenters the camera on the miner
+ * (specs/instrumentation.md), so a cell a couple of tiles from the miner is always in view.
+ */
+export function assertOnStage(x, y, what) {
+  if (x >= 0 && x <= STAGE_W && y >= 0 && y <= STAGE_H) return;
+  throw new Error(
+    `${what} is off the ${STAGE_W}x${STAGE_H} stage at (${x.toFixed(1)}, ${y.toFixed(1)}) — ` +
+      `the camera is not framing it, so its rendered color cannot be read. ` +
+      `teleport(col, row) must recenter the camera on the miner (specs/instrumentation.md).`,
+  );
+}
+
+/** Whether two lists of sampled pixels are identical. */
+function samePixels(a, b) {
+  return a.every((c, i) => c.r === b[i].r && c.g === b[i].g && c.b === b[i].b);
+}
+
+/**
+ * Wait until what the build has PAINTED at `points` (logical stage coords) stops changing, so a
+ * color read is of the scene the item posed rather than of a frame from before it.
+ *
+ * This replaces the fixed `api.settle(120)` the color items used to open with. A fixed pause is a
+ * race: it is a wall-clock guess at how long this host takes to repaint, and when the guess comes
+ * up short `api.pixel` reads the PREVIOUS frame. That stale frame is usually a uniform patch of
+ * sky or of the surface camp, so every point sampled from it returns the same color and the
+ * comparison collapses to a distance of 0 — which fails a build that painted correctly, and (for
+ * a check like hazards.gas-hidden, which asserts two tiles look ALIKE) passes one that painted
+ * nothing at all. Neither is a verdict worth recording.
+ *
+ * So poll instead of guessing: settle a slice at a time and watch what is painted.
+ *
+ * Note what the early exit requires. "The reading held still for two slices" is NOT on its own
+ * evidence that the posed scene is up: a STALE frame holds perfectly still too — it is a frame,
+ * it is not being redrawn, and every read of it agrees. Stability alone therefore cannot tell a
+ * settled scene from one that has not arrived, which is exactly the case this needs to catch. So
+ * the early exit also requires having SEEN the reading change at least once: an item settles right
+ * after posing a scene somewhere new, so a repaint that lands during the wait necessarily moves
+ * these points off whatever they showed before. Having watched them move and then come to rest is
+ * evidence of the new frame; stillness from the first read is not.
+ *
+ * When the points genuinely never change — the scene was already painted before the first read —
+ * no early exit fires and the wait simply runs to `max`, which is the correct reading taken a
+ * little later than strictly necessary. That is the price of the guarantee, and it is small: a
+ * fraction of a second per sampling item, in a pass that is otherwise instant.
+ *
+ * `max` also bounds a scene that never settles: animated lava cycles through its frames forever,
+ * and reading it at the cap is right — that reading was always going to be of one arbitrary frame.
+ */
+export async function settleStable(
+  api,
+  points,
+  { slice = 60, max = 1200 } = {},
+) {
+  const read = async () => {
+    const out = [];
+    for (const p of points)
+      out.push(await api.pixel(p.x / STAGE_W, p.y / STAGE_H));
+    return out;
+  };
+  let prev = await read();
+  let stable = 0;
+  let changed = false;
+  for (let spent = 0; spent < max; spent += slice) {
+    await api.settle(slice);
+    const now = await read();
+    if (samePixels(prev, now)) {
+      stable += 1;
+    } else {
+      changed = true;
+      stable = 0;
+    }
+    prev = now;
+    if (changed && stable >= 2) return;
+  }
+}
+
+/**
+ * ACT: hold until the build has painted the given cells, then leave them ready to sample.
+ * `cells` is a list of `[col, row]`. Each cell is checked to be on stage first, so a camera that
+ * is not framing the scene fails with that as the reason instead of returning edge pixels.
+ */
+export async function settleTiles(api, cells, opts) {
+  const cam = (await api.snapshot()).camera;
+  const points = cells.map(([col, row]) => tileScreen(col, row, cam));
+  points.forEach((p, i) =>
+    assertOnStage(p.x, p.y, `tile (${cells[i][0]}, ${cells[i][1]})`),
+  );
+  await settleStable(api, points, opts);
+}
+
 /** Average the rendered color over a small 5-point cluster around a logical stage point, so a
  *  stray antialiased edge pixel cannot swing the reading. Returns { r, g, b } (0–255). */
-export async function sampleAt(api, x, y) {
+export async function sampleAt(api, x, y, what = "the sampled point") {
+  assertOnStage(x, y, what);
   const offsets = [
     [0, 0],
     [7, 0],
@@ -302,7 +438,7 @@ export function colorDistance(a, b) {
 export async function sampleTile(api, col, row) {
   const cam = (await api.snapshot()).camera;
   const s = tileScreen(col, row, cam);
-  return sampleAt(api, s.x, s.y);
+  return sampleAt(api, s.x, s.y, `tile (${col}, ${row})`);
 }
 
 /** The greatest color distance from `ref` found across a 3x3 grid of points inside a tile — so
@@ -315,10 +451,85 @@ export async function tileMaxDistFrom(api, col, row, ref) {
     for (const fy of [0.28, 0.5, 0.72]) {
       const x = col * TILE - cam.x + fx * TILE;
       const y = VIEWPORT_Y + row * TILE - cam.y + fy * TILE;
-      const c = await sampleAt(api, x, y);
+      const c = await sampleAt(api, x, y, `tile (${col}, ${row})`);
       const d = colorDistance(c, ref);
       if (d > max) max = d;
     }
   }
   return max;
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Deepcore's cues are produced `.wav` files (specs/assets.md) decoded and played through
+// the Web Audio API (src/audio.ts), so the driver reports every source the build starts
+// (see `api.audio`). The game must not autoplay: `Audio.resume()` builds the graph and
+// starts decoding only on the first real user interaction (main.ts's `gesture()`), so
+// before driving an event whose cue is checked, arm audio with a GENUINE browser gesture.
+// A build may feed the debug API through a purely logical input path and unlock audio only
+// from a real DOM event (a keydown OR a pointer), so arming uses both `api.userKey` and a
+// corner `api.userClick` rather than a debug `press`/`keyDown` — those would leave a
+// conformant build's AudioContext uncreated, so no cue would ever be scheduled though it
+// plays fine for a real player. `KeyZ` has no game binding (src/input.ts) and (4, 4) sits in
+// the top-left corner of the status bar — above `VIEWPORT_Y` so it is never part of the mine
+// view, and left of every status-bar readout/button (the gauges start at x=16, the BAG/PAUSE/
+// MUTE buttons at x>=1058) and every menu's centered buttons/panels — so arming never lands on
+// a clickable and never disturbs game state, in the mine or on any menu.
+//
+// Unlike a synth cue scheduled inline, Deepcore's audio is QUEUED: play() calls land in
+// `game.sndQueue`/`game.activeLoops` (the deterministic sim, which a validate-pass `step`
+// advances instantly with no painted frame), and only the real, wall-clock-driven animation
+// frame loop in main.ts drains that queue into actual `AudioBufferSourceNode`s. A settle after
+// arming (letting the decode of the produced clips finish) and a short settle after driving a
+// cue's event (letting one real frame drain the queue) are both real pauses — never simulation
+// time — so they belong here rather than in `api.advance`.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  // Let the first-gesture decode of the produced clips (Audio.resume(), an async
+  // fetch + decodeAudioData per cue) finish before any cue is driven, so the very first
+  // cue after arming is never dropped for landing before its buffer was ready.
+  await api.settle(250);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
+
+/**
+ * A real pause (never simulation time) long enough for one animation frame to drain a
+ * just-queued cue (`game.sndQueue` / `game.activeLoops`) into an actual Web Audio source
+ * (main.ts's per-frame `audio.play()` / `setLoop()` / `syncLoops()`). Call this in `act`,
+ * after driving the event and before reading `audioCount` again.
+ */
+export async function drainAudioQueue(api) {
+  await api.settle(60);
+}
+
+/**
+ * ACT: wait for the build to start at least one NEW Web Audio source beyond `before`, polling in
+ * real time up to `max` ms, and return the count actually reached (so an item can assert on it
+ * exactly as it did on a single read).
+ *
+ * Use this rather than `drainAudioQueue` + one read for any cue that is not scheduled on the very
+ * frame its trigger lands. A single 60 ms drain silently assumes every cue is ONE source started
+ * immediately — true of a continuous looping buffer, but not of the two alarms. `specs/assets.md`
+ * specifies the core-timer alarm as an "escalating countdown BEEP", i.e. a repeating one-shot
+ * whose period shrinks as the timer runs down; a build that implements it that way — exactly as
+ * specified — starts its next source somewhere inside that period, over a second away, and a
+ * 60 ms read simply never sees it. The check then fails a conformant build for a sound that plays
+ * perfectly well. Polling to a real deadline accepts BOTH shapes: a continuous loop is caught on
+ * the first slice, a repeating beep within its period.
+ *
+ * The wait is real time in both passes, so the record pass films the alarm sounding rather than
+ * cutting away before it does.
+ */
+export async function awaitCue(api, before, { max = 3000, slice = 60 } = {}) {
+  let count = await audioCount(api);
+  for (let spent = 0; spent < max && count <= before; spent += slice) {
+    await api.settle(slice);
+    count = await audioCount(api);
+  }
+  return count;
 }

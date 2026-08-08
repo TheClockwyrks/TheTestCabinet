@@ -44,11 +44,24 @@ export {
 } from "@test-cabinet/ui";
 
 import {
+  isGrade,
   isRating,
   isVerdictStatus,
   type DomainRating,
+  type GradeStatus,
   type ReviewVerdict,
 } from "@test-cabinet/ui";
+
+/**
+ * Narrow a summary card's overall-grade field — a `VerdictStatus`, which also
+ * covers the binary pass/fail — to one of the five graded tiers, or null. A
+ * non-jam run carries none. Shared by every surface that reads a run's grade off
+ * its summary card (the home hero, the run tables, the leaderboards) so they all
+ * narrow it the same way.
+ */
+export function asGrade(status: string | null | undefined): GradeStatus | null {
+  return status && isGrade(status) ? status : null;
+}
 
 /** A writeup split into its per-domain ratings, its checklist verdicts, and its prose body. */
 export interface ParsedWriteup {

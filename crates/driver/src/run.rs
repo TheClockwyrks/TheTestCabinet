@@ -141,15 +141,17 @@ pub async fn drive(
         ))
     })?;
 
-    // For a game jam, fetch the gameplay READMEs of earlier runs of this jam built
-    // with the same harness and model, so the engine can seed them (git-ignored) and
-    // ask this run to build something distinct. Best-effort: a lookup failure (or a
-    // backend without the route) just proceeds with no prior entries rather than
-    // failing the run over context that is only a nudge.
+    // For a game jam, fetch the gameplay READMEs of earlier runs of this jam by this
+    // model — under any harness, since a model retells its own ideas whichever tool
+    // drives it — so the engine can seed them (git-ignored) and ask this run to build
+    // something distinct. The queue holds a model's jam runs to one at a time, so an
+    // earlier entry has finished (and stored its README) before this lookup. Best-
+    // effort: a lookup failure (or a backend without the route) just proceeds with no
+    // prior entries rather than failing the run over context that is only a nudge.
     let prior_game_jam_entries: Vec<PriorGameJamEntry> = if test_case.test_type == TestType::GameJam
     {
         match client
-            .game_jam_prior_readmes(&request.test_case_slug, request.harness, &request.model_id)
+            .game_jam_prior_readmes(&request.test_case_slug, &request.model_id)
             .await
         {
             Ok(entries) => entries,

@@ -174,9 +174,23 @@ spec:
             name: tcab-lgtm-config
   volumeClaimTemplates:
     # NOTE: volumeClaimTemplates are IMMUTABLE on an existing StatefulSet — adding or
-    # resizing an entry here cannot be rolled out with `kubectl apply` alone. The
-    # StatefulSet must be deleted with `--cascade=orphan` (which leaves the running
-    # pod up) and recreated. Existing PVCs are matched by name and survive that.
+    # resizing an entry here cannot be rolled out with `kubectl apply` alone (the API
+    # server rejects the whole object with "updates to statefulset spec for fields
+    # other than 'replicas', 'ordinals', 'template', ... are forbidden", which also
+    # aborts `kubectl diff -k` for the entire overlay at exit 2). The StatefulSet must
+    # be deleted with `--cascade=orphan` (which leaves the running pod up) and
+    # recreated. Existing PVCs are matched by name and survive that.
+    #
+    # The recreated StatefulSet then ADOPTS the orphaned pod but leaves it on its old
+    # controller-revision-hash — `updatedReplicas` stays 0 and the pod keeps the old
+    # spec (old volumes, old image) while the StatefulSet reports 1/1 ready. Adoption
+    # is not a rollout: delete the pod explicitly to have it recreated from the new
+    # template. That restart is what actually provisions the added PVCs, since the
+    # default StorageClass binds WaitForFirstConsumer.
+    #
+    # Check the node's disk headroom first: each entry here is one attached Azure
+    # disk, and `kubectl get csinode -o yaml` reports disk.csi.azure.com's allocatable
+    # count per node (8 on the D2ps_v6 pool these run on).
     - metadata:
         name: grafana
       spec:

@@ -14,24 +14,34 @@ export default function item() {
   return {
     id: "modes.save-continue",
 
-    // Bank a recognisable balance, save it, and come back to the title. The reset is posing (it is
-    // how the title is reached) and consumes no time, so it belongs here — `act` may not reset.
+    // Bank a recognisable balance on a fresh expedition. The save and the return to the title used
+    // to happen here too, which meant the clip opened at the title with the save already written:
+    // the item is named "Save at the pad, continue from the menu" and its first half was never
+    // filmed, so whatever a build shows to confirm a save went through was not in the evidence.
+    // Only the balance is posed here now; everything the item claims happens in `act`.
     async arrange(api) {
       await newRun(api);
       await api.call("grantCredits", 777);
+    },
+
+    // Both halves are the behavior under test, so both are filmed: the save landing at the pad,
+    // then the title, then Continue bringing the expedition back with its balance intact.
+    //
+    // `reset` is legal here — the runtime hands the build's own clock straight back afterwards, so
+    // it means the same thing in both passes and does not freeze the recording.
+    async act(api) {
+      await api.advance(45); // 45 ticks = 0.75 s at the surface with the balance banked
       await api.call("save");
       saved = (await api.snapshot()).hasSave;
+      await api.advance(75); // 75 ticks = 1.25 s for whatever the build shows on a save
 
       await api.reset(); // back to the title; the save persists
       title = await api.snapshot();
-    },
+      await api.advance(60); // 60 ticks = 1 s on the title, where CONTINUE is now offered
 
-    // Taking Continue IS the behavior under test, so the press happens here and the clip shows the
-    // saved expedition coming back up.
-    async act(api) {
       await press(api, "Enter"); // CONTINUE is the first menu entry when a save exists
       resumed = await api.snapshot();
-      await api.advance(30); // 30 ticks = 0.5 s, the old 500 ms clip tail
+      await api.advance(90); // 90 ticks = 1.5 s on the resumed expedition and its restored balance
     },
 
     async assert(api, check) {

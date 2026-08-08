@@ -4,11 +4,18 @@
 //
 // Only opening the run is arranged; walking the press across each gate and reading the odds
 // either side is the behavior under test, so it is the act.
+//
+// ONE STILL PER GATE. This used to capture a single frame at the end of the sweep, on the press at
+// R8 — so the Primed gate, which is the whole of the first half of the claim, had no evidence at
+// all. The two stills are the two rungs the gates OPEN at: R4, where Primed first carries weight
+// and Tesla-Prime still carries none, and R8, where Tesla-Prime finally does. Between them a
+// reviewer can see both gates in the odds the press itself reports.
 
 import { startBuild, snap } from "../_helpers.mjs";
 
-// A frame for the still. 100 ms x 60 Hz = 6 ticks exactly.
-const SETTLE_TICKS = 6;
+// A real pause so the build's own frame loop paints the new odds before each still is taken. The
+// scrap-press panel is PAINTED, and instant stepping paints nothing.
+const PAINT_MS = 250;
 
 async function odds(api, r) {
   await api.call("setRefinement", r);
@@ -32,11 +39,15 @@ export default function item() {
     async act(api) {
       belowPrimed = await odds(api, 3);
       atPrimed = await odds(api, 4);
+      // R4: Primed has just started to roll, and Tesla-Prime still cannot.
+      await api.settle(PAINT_MS);
+      await api.screenshot("gated-r4");
+
       belowTesla = await odds(api, 7);
       atTesla = await odds(api, 8);
-
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("gated");
+      // R8: the apex, where Tesla-Prime finally carries weight.
+      await api.settle(PAINT_MS);
+      await api.screenshot("gated-r8");
     },
 
     async assert(api, check) {

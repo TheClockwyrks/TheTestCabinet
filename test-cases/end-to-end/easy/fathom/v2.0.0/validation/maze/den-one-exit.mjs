@@ -3,10 +3,18 @@
 // A structural read of the generated maze: the den ('d') region opens to the corridors
 // through exactly one gate tile ('g'). Everything judged is already in the snapshot
 // `arrange` takes, and `act` only holds still long enough to capture the board.
+//
+// The still is framed on the den. The verdict does not depend on it — the count comes
+// off `snapshot.tiles` — but a picture of a forager standing wherever it happens to
+// spawn shows a reviewer nothing about the den's exits: the maze is dark, and only what
+// the forager's light reaches is drawn at all. So the forager is walked to the corridor
+// tile outside the gate and lit up, which puts the chamber and its one entrance in the
+// frame. See `arrangeDenView`.
 import {
   startPlaying,
   denTiles,
   gateTiles,
+  arrangeDenView,
   unmetPrecondition,
 } from "../_helpers.mjs";
 
@@ -25,6 +33,7 @@ export default function item() {
         throw unmetPrecondition("no den or gate tiles marked in the maze");
       }
       gates = gateTiles(snap).length;
+      await arrangeDenView(api, snap);
     },
 
     async act(api) {

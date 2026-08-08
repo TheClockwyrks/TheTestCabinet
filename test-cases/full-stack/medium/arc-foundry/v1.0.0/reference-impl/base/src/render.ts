@@ -1290,7 +1290,9 @@ function ctrl(ctx: CanvasRenderingContext2D, clicks: Clickable[], x: number, lab
   ctx.lineWidth = 1;
   ctx.stroke();
   text(ctx, label, x + w / 2, y + h / 2 + 1, 14, color, "center", "600");
-  clicks.push({ x, y, w, h, action });
+  // `label` travels with the rectangle so `statusControls()` can report the control as drawn
+  // (specs/instrumentation.md).
+  clicks.push({ x, y, w, h, action, label });
 }
 
 // ---- right build panel --------------------------------------------------------

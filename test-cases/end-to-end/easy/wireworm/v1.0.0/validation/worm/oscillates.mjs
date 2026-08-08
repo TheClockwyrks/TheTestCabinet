@@ -7,11 +7,19 @@
 
 import {
   actWormStep,
+  actWormToColumn,
+  COLS,
   freshBoard,
   head,
   setWorm,
   straightWorm,
 } from "../_helpers.mjs";
+
+// Each extreme is approached across six tiles of empty board, so the clip shows the
+// worm running at the wall before it turns rather than opening on the turn itself
+// (see `actWormToColumn`).
+const FLOOR_START_C = COLS - 7; // 33, heading right at the right edge
+const CEIL_START_C = 6; // heading left at the left edge
 
 export default function item() {
   let floor;
@@ -27,11 +35,12 @@ export default function item() {
     async arrange(api) {
       // Floor: at the bottom row heading down, the next drop flips dv to up.
       await freshBoard(api);
-      await setWorm(api, straightWorm(39, 19, 3, 1), 1, 1); // right edge, bottom row, heading down
-      await api.call("setCursor", 100, 700); // clear of the worm's column
+      await setWorm(api, straightWorm(FLOOR_START_C, 19, 3, 1), 1, 1); // bottom row, heading down
+      await api.call("setCursor", 100, 700); // clear of the worm's run
     },
 
     async act(api) {
+      await actWormToColumn(api, COLS - 1); // ~0.84s of run at the right edge
       floor = await actWormStep(api);
 
       // Ceiling: at the top row heading up, the next drop flips dv to down. Re-posed
@@ -41,7 +50,8 @@ export default function item() {
       // there should be none. No foe is ever spawned here, which is what makes the
       // pair safe to run back to back without a reset between them.
       await api.call("clearField");
-      await setWorm(api, straightWorm(0, 0, 3, -1), -1, -1); // left edge, top row, heading up
+      await setWorm(api, straightWorm(CEIL_START_C, 0, 3, -1), -1, -1); // top row, heading up
+      await actWormToColumn(api, 0); // ~0.84s of run at the left edge
       ceil = await actWormStep(api);
 
       // Both snapshots are captured; the sim runs on only so the clip ends on the

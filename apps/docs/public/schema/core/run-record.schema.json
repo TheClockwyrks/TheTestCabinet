@@ -1184,6 +1184,25 @@
       "required": ["tick", "checksum"],
       "type": "object"
     },
+    "PriorGameJamEntry": {
+      "description": "One earlier game-jam run's gameplay README, as served back to a new run of the\nsame jam by the same model (under any harness) so the new run can build something\ndistinct from what came before.\n\nOne type serves both ends of that trip: it is what the backend returns from\n`GET /game-jams/{slug}/prior-readmes` and the driver threads into seeding and the\nprompt, *and* what the new run records in\n[`RunRecord::game_jam_prior_entries`](RunRecord::game_jam_prior_entries) as the\ninputs it was given. The `readme` is the prior run's captured\n[`RunRecord::game_jam_readme`].",
+      "properties": {
+        "finishedAt": {
+          "description": "RFC 3339 timestamp of when the prior run finished, used to order and label\nthe entries (oldest first) when they are seeded.",
+          "type": "string"
+        },
+        "readme": {
+          "description": "The gameplay README the prior run produced.",
+          "type": "string"
+        },
+        "runId": {
+          "description": "The prior run's id, carried so an entry can be traced back to its run.",
+          "type": "string"
+        }
+      },
+      "required": ["runId", "finishedAt", "readme"],
+      "type": "object"
+    },
     "ProofResult": {
       "description": "The presence result for a single declared proof-of-implementation artifact.\n\nA test case can ask the agent to write evidence (a screenshot or short clip)\nto a known path; validation records whether each declared proof turned up in\nthe produced tree. This is **informational** — a missing proof never gates the\nrun's status; it is surfaced so a reviewer sees the gap.",
       "properties": {
@@ -1785,8 +1804,15 @@
       "description": "RFC 3339 timestamp for when the run finished.",
       "type": "string"
     },
+    "gameJamPriorEntries": {
+      "description": "The earlier entries this **game-jam** run was seeded with and briefed to build\nsomething distinct from: every prior run of the same jam by the same model whose\ngameplay README was written into the run's `previous-entries/` folder, oldest\nfirst — README body included, exactly as this run was shown it.\n\nEmpty for a jam's first run by a model (and for every other test type). Unlike\n[`game_jam_readme`](Self::game_jam_readme) these *are* meant to be shown: they\nare inputs to the run, the only ones not shared with every other run of the jam,\nand the Inputs tab renders each README inline beside the jam's prompt and specs.\nThe bodies are carried here rather than looked up from the runs that produced\nthem, because that is what makes them readable as inputs — a prior run may never\nbe published, and a record has to stand on its own. Defaulted and omitted when\nempty so records written before the field existed still deserialize.",
+      "items": {
+        "$ref": "#/$defs/PriorGameJamEntry"
+      },
+      "type": "array"
+    },
     "gameJamReadme": {
-      "description": "The gameplay `README.md` a **game-jam** run produced, captured verbatim from\nthe produced tree at run finish (trimmed to a sane cap). `None` for every\nother test type, and for a game-jam run that shipped no README.\n\nThis is what makes a later jam run aware of what earlier runs already built:\nthe backend serves the prior runs' READMEs (matched on the same jam, harness,\nand model) back to a new run, which seeds them and is asked to build something\ndistinct. Kept out of a run's other surfaces — it exists to brief the *next*\nrun, not to be displayed. Defaulted and omitted when absent so records written\nbefore the field existed still deserialize and non-jam records stay slim.",
+      "description": "The gameplay `README.md` a **game-jam** run produced, captured verbatim from\nthe produced tree at run finish (trimmed to a sane cap). `None` for every\nother test type, and for a game-jam run that shipped no README.\n\nThis is what makes a later jam run aware of what earlier runs already built:\nthe backend serves the prior runs' READMEs (matched on the same jam and model,\nacross harnesses) back to a new run, which seeds them and is asked to build\nsomething distinct. Kept out of a run's other surfaces — it exists to brief the\n*next* run, not to be displayed. Defaulted and omitted when absent so records\nwritten before the field existed still deserialize and non-jam records stay\nslim.",
       "type": ["string", "null"]
     },
     "id": {

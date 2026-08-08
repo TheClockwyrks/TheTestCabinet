@@ -5,18 +5,44 @@
 // the fish appears (read its bay), the critter climbs that bay's column, and the
 // score delta of the real bay-filling hop includes the +200 bonus:
 // 10 (row) + 50 (bay) + 2*floor(T) (time) + 200 (catch). See validation/_helpers.mjs.
+//
+// THE WAIT FOR THE FISH IS SKIPPED RATHER THAN FILMED. The fish is on the build's own
+// timer (specs/gameplay.md: one appears about every 8 s), and waiting for it in `act`
+// spent the whole clip budget before the crossing had even started — the recording
+// was a critter standing still on the near shore for eight seconds, and then it ran
+// out, so the catch it exists to show never got filmed at all. `api.skipUntil` runs
+// exactly the same simulation to exactly the same state, instantly, in both passes
+// (see packages/browser-driver/validation.mjs), so the verdict is unchanged and the
+// clip opens with the fish already sitting in its bay and the critter about to climb
+// for it.
 
 import {
   startCrossing,
   poseClimb,
   actClimbByPress,
-  BAY_LEFT,
+  BAY_COL,
 } from "../_helpers.mjs";
 
+// How long the clip keeps filming after the catch: enough for the score to land and
+// the next crossing to start, so the +200 is visibly the result of the hop.
+const TAIL_TICKS = 180; // 1.5 s
+
+// AND THE RUN HAS TO STILL BE LIVE WHEN THE FISH IS SOUGHT. The wait for the fish is a
+// skip through the build's own simulation, and a build can lose the whole run inside it
+// without any help: one audited against this case emerges a bear onto the fresh
+// critter's spawn tile and catches it there, three lives inside two seconds, so the skip
+// ended on a game-over screen where no fish will ever appear. Read as "no bonus-catch
+// fish appears in an open bay" that is a true sentence about a false subject — the fish
+// timer was never the thing that failed. The run's own state is read alongside it, so a
+// build that ended its run before the fish was due fails on that, and the reviewer is
+// pointed at the defect that actually happened (`hunter.fair-reset-bay`'s, or
+// `progression.gameover`'s) rather than at the fish.
+
 export default function item() {
-  // The sweep that waited for the fish, which bay it landed in, and the score either
+  // The skip that waited for the fish, which bay it landed in, and the score either
   // side of the hop into it.
   let r;
+  let stillPlaying;
   let fishBay;
   let fishBeforeHop;
   let before;
@@ -25,20 +51,25 @@ export default function item() {
   return {
     id: "scoring.bonus-catch",
 
-    // Seed the run so the fish's bay is reproducible. Everything after this depends on
-    // WHICH bay the fish picks, which is only known once time has run — so the corridor
-    // is built inside `act`, with `poseClimb` (control ops only, no reset).
+    // Seed the run so the fish's bay is reproducible, skip forward to the fish
+    // appearing, and build the corridor at whichever bay it chose. All of it is
+    // instant in both passes, so `act` starts with the scenario already standing —
+    // which is what `arrange` is for, and the corridor could not be built any earlier
+    // because WHICH bay to build under is only known once the fish is out.
     async arrange(api) {
       await startCrossing(api, 7); // seeded, so the fish's bay is reproducible
+      r = await api.skipUntil((s) => s.fishBay !== null, {
+        max: 1440,
+        poll: 12,
+      }); // up to 12 s of the build's own fish timer, at a 0.1 s cadence
+      stillPlaying = r.snap.screen === "playing";
+      fishBay = r.snap.fishBay;
+      if (fishBay !== null) await poseClimb(api, BAY_COL[fishBay]);
     },
 
-    // Wait for the fish, then climb its bay's column and complete the crossing into
-    // it — the catch the bonus is for, and the clip.
+    // The crossing itself: the climb up the fish's column and the hop into its bay —
+    // the catch the bonus is for, and the clip.
     async act(api) {
-      r = await api.until((s) => s.fishBay !== null, { max: 1440, poll: 12 }); // 12 s at 0.1 s
-      fishBay = r.snap.fishBay;
-
-      await poseClimb(api, BAY_LEFT[fishBay]); // climb the fish's bay column
       await actClimbByPress(api, "ArrowUp", 2);
       await api.call("setTimer", 10); // seconds — poses the clock, not a tick count
       before = (await api.snapshot()).score;
@@ -46,9 +77,14 @@ export default function item() {
       await api.call("press", "ArrowUp"); // fill the fish's bay
       await api.advance(24); // 0.2 s, long enough for the fill to resolve
       after = await api.snapshot();
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {
+      check.expectOk(
+        "the run is still being played when the fish is due",
+        stillPlaying,
+      );
       check.expectOk("a bonus-catch fish appears in an open bay", r.hit);
       check.expectEq(
         "the fish is still in its bay before the hop",

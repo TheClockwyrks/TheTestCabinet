@@ -5,7 +5,7 @@
 // the real updateFoe corruptor branch. Its horizontal position advances while its
 // vertical position holds at the row.
 
-import { freshBoard, tileCY } from "../_helpers.mjs";
+import { freshBoard } from "../_helpers.mjs";
 
 const ROW = 3;
 
@@ -38,12 +38,15 @@ export default function item() {
         after.x,
         before.x + 100,
       );
-      check.expectClose(
-        "it holds its row (does not descend)",
-        after.y,
-        tileCY(ROW),
-        1,
-      );
+      // "It does not descend" (specs/foes.md) is a statement about the corruptor's
+      // MOTION, so it is read as one: the y it crawls at must be the y it started
+      // at. Comparing against `tileCY(ROW)` instead would fold a second, unrelated
+      // claim into this one — that the build placed the foe on the row's centre
+      // line — and a build that got the placement wrong by a fixed offset while
+      // crawling perfectly level would fail an assertion named for descending.
+      // Where `spawnFoe`'s `row` puts a corruptor is pinned in
+      // specs/instrumentation.md and belongs to the checks that read placement.
+      check.expectClose("it holds its row (does not descend)", after.y, before.y, 1);
     },
   };
 }

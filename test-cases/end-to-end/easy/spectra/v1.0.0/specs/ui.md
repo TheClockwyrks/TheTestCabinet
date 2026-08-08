@@ -46,6 +46,14 @@ clearing a stage. The game stays fully playable with sound muted and never fails
 to run or load if audio cannot start. Provide a mute toggle, and do not start
 audio until the player interacts (browsers block autoplay).
 
+Mute is shown, not just held. Whenever sound is muted the game draws a plain,
+persistent mute indicator in the bottom HUD strip — a struck-through speaker
+glyph, or a short `MUTED` label, in the HUD's muted grey — so a player who has
+muted the game can see that at a glance rather than inferring it from silence. It
+appears the moment mute goes on and disappears the moment it goes off, and it is
+the only thing about the screen that changes: muting alters nothing else about the
+HUD or the field.
+
 ## Out of scope
 
 - Network or online multiplayer.

@@ -2,7 +2,7 @@ use super::*;
 
 use std::collections::HashMap;
 
-use crate::store::{StoredBuild, StoredCase, StoredErratum, StoredVariant};
+use crate::store::{StoredBuild, StoredCase, StoredErratum, StoredReviewItem, StoredVariant};
 
 /// A minimal end-to-end manifest with two variants (`base` and `extra`), enough to
 /// exercise [`version_response`]'s per-variant reference-build fold. The prompt
@@ -253,4 +253,35 @@ fn errata_are_folded_into_the_version_response() {
     assert_eq!(erratum.id, "cue-clips-rail");
     assert!(erratum.affects_scoring);
     assert_eq!(erratum.resolved_in.as_deref(), Some("v1.1.0"));
+}
+
+#[test]
+fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
+    // A game-jam category is graded on the five-level scale, and the reviewer editor
+    // keys its control (emoji grade scale vs. pass/fail) off each item's `graded`
+    // flag. `review_item_out` must copy it, or the live editor renders pass/fail for a
+    // game jam. Exercised through a common review item since that path is shared by
+    // both common and per-variant items.
+    let mut manifest = manifest();
+    manifest.test_type = TestType::GameJam;
+    manifest.common_review_items = vec![StoredReviewItem {
+        id: "fun".to_string(),
+        title: "Fun".to_string(),
+        text: "How fun is it?".to_string(),
+        reference: None,
+        proof: None,
+        sequences: vec![],
+        frames: vec![],
+        weight: 1,
+        graded: true,
+        domain: None,
+        sub_items: vec![],
+        validation: None,
+    }];
+
+    let response = version_response(&manifest, &HashMap::new(), &HashMap::new()).unwrap();
+
+    let item = &response.common_review_items[0];
+    assert_eq!(item.id, "fun");
+    assert!(item.graded);
 }

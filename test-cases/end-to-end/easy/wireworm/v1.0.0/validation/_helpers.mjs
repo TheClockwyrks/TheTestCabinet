@@ -115,6 +115,12 @@ export function segmentAt(snap, c, r) {
  * run, which the spec never promised, and every check that did not happen to call
  * `setWorm` silently measured a frozen title screen.)
  *
+ * It then poses a BYSTANDER worm, because `enterPlay` alone does not leave a state
+ * a level can be played from — see `poseBystander` for why an empty board is a
+ * cleared level and what that does to a scenario. A check that poses its own worm
+ * needs no further thought: `setWorm` REPLACES the worms on the board, so the
+ * bystander is gone the moment the scenario's own worm is laid.
+ *
  * ARRANGE ONLY. This calls `api.reset`, which the runtime rejects inside `act`
  * (reset hands the build back to its manual clock, which would silently freeze the
  * recording). To pose a second scenario mid-`act`, use control ops instead.
@@ -123,6 +129,66 @@ export async function freshBoard(api, seed = 1) {
   await api.reset({ seed });
   await api.call("enterPlay");
   await api.call("clearField");
+  await poseBystander(api);
+}
+
+// The bystander's parking spot: the top row, at the right edge, heading INTO that
+// edge. See `poseBystander` for why each of those three facts matters.
+export const BYSTANDER_C = COLS - 1; // 39
+export const BYSTANDER_R = 0;
+
+/**
+ * Pose a bystander worm — a worm no assertion ever reads — purely so the board is
+ * not empty of worm segments while a scenario runs.
+ *
+ * A board with no worm segments on it is a CLEARED LEVEL. specs/worm.md fixes the
+ * condition as "a level is cleared when every worm segment on the board is gone",
+ * and the build is entitled to evaluate that the moment it sees it — nothing in the
+ * specs says the level must first have HAD a worm. So the worm-less board
+ * `enterPlay` is specified to produce (specs/instrumentation.md: it "leaves the
+ * board clear of worms and foes") reads exactly like the player having shot the
+ * last segment, and the level clears on the very first tick that runs. Three things
+ * follow from that one tick, and all of them bite:
+ *
+ *   * The clock. Clearing advances the level, and a level opens on its banner
+ *     (specs/ui.md). A banner is not live play, so `step` does not advance the
+ *     simulation through it — the scenario is frozen for the whole banner, which is
+ *     most or all of the tick budget an item's `until` sweep is allowed. The item
+ *     then times out having never run the mechanic it poses.
+ *   * The board. Advancing rebuilds the level: the posed foes and bolts are cleared
+ *     and the cursor is re-centred, so a foe an item spawned and then read back is
+ *     simply gone, and a scenario posed around a cursor position is measuring some
+ *     other cursor.
+ *   * The score and level. Clearing banks `100 * level` (specs/progression.md), so
+ *     an item comparing a score delta against a bounty or a node's `+1` reads the
+ *     clear bonus instead, and an item that pins its level reads the next one.
+ *
+ * So a bystander is not only for scenarios that destroy a worm: ANY item that
+ * `freshBoard`s and then spends time without posing a worm of its own needs one, or
+ * the level ends underneath it before its first tile step.
+ *
+ * Parking. The worm is put in the TOP ROW at the RIGHT EDGE, heading into that
+ * edge, and every one of those is load-bearing:
+ *
+ *   * Top row, because a worm only descends when something turns it
+ *     (specs/worm.md) — on an empty board that is the side edge, so it crosses all
+ *     40 columns before dropping a single row. At level 1 (0.14 s per tile step,
+ *     the slowest the game ever runs) that is ~5.6 s per row, so it is still in the
+ *     top rows long after the longest item here has finished, and it can neither
+ *     reach the player band nor disturb a scenario posed on rows 3..19.
+ *   * Right edge, because the scenarios here are posed on columns 5..20 and the
+ *     worm walks AWAY from them: it turns on the edge immediately and winds left,
+ *     so it is ~39 tile steps from column 0 and never near a fired column early on,
+ *     when the bolt checks resolve.
+ *   * One segment, so it is the smallest thing that satisfies "a worm segment on
+ *     the board" and blocks as little of it as possible.
+ *
+ * It is never read by an assertion and never fired at. Note `clearField` does NOT
+ * remove it (that op clears nodes, not worms), but `setWorm` does — an item that
+ * poses its own worm replaces the bystander, which is exactly what it wants.
+ */
+export async function poseBystander(api) {
+  await setWorm(api, [{ c: BYSTANDER_C, r: BYSTANDER_R }], 1, 1);
 }
 
 /** Replace the worms with a single worm laid out by `spec` (segments[0] = head). */
@@ -173,6 +239,90 @@ export async function actWormSteps(api, n, { max = 480 } = {}) {
   return snap;
 }
 
+/**
+ * ACT: run the real simulation until the worm's head reaches column `c`, and
+ * return the snapshot at that instant.
+ *
+ * This is the RUN-UP an item films before the moment it checks. A posed worm one
+ * tile short of the thing it is about to hit turns on the item's very first tile
+ * step — 0.14 s at level 1 — so the clip opens on the aftermath and a reviewer
+ * never sees the approach that produced it. Posing the worm further back and
+ * walking it in with this puts a readable second of ordinary winding in front of
+ * the event, at the cadence the game actually runs, without touching the verdict:
+ * the tiles crossed on the way are empty, so nothing happens during the run-up.
+ *
+ * It is a COLUMN target rather than a tick count on purpose. The item that fires
+ * at the end of a run-up needs the worm at an exact tile (the bolt is aimed at a
+ * column, and the near/far segments a blast is measured against are counted from
+ * the head), and no fixed number of ticks lands there on a build free to pick its
+ * own frame timing. Polling a tick at a time also means the caller resumes on the
+ * very tick the worm arrives, with a full tile-step interval before it moves
+ * again — which is the window a shot has to resolve in.
+ */
+export async function actWormToColumn(api, c, { max = 720 } = {}) {
+  const r = await api.until((s) => head(s)?.c === c, { max, poll: TICK });
+  return r.snap;
+}
+
+// ---- A worm walking the band into the cursor (act) ---------------------------
+//
+// Where the "something reaches the cursor" items stage their hit. The cursor is
+// parked on the CENTRE of a floor tile (not the stage centre, which straddles two
+// tiles) and the worm walks the floor row into it from `HIT_APPROACH` tiles away.
+
+export const HIT_C = 20;
+export const HIT_R = ROWS - 1; // 19, the floor row
+export const HIT_APPROACH = 6; // tiles of visible run-up before the touch
+
+/**
+ * ARRANGE half of a "a worm reaches the cursor costs a life" item: a clean live
+ * board with the cursor parked on a floor tile and a single-segment worm a few
+ * tiles away in the same row, heading into it.
+ *
+ * The worm is posed APART from the cursor and left to walk in, rather than posed
+ * on top of it. A segment posed already overlapping the cursor asks the build to
+ * notice an overlap that never changed, and nothing in the specs says when it must
+ * look: specs/progression.md costs a life when a segment "reaches the cursor", and
+ * a build that tests that where the reaching happens — inside its worm's tile step,
+ * once per 0.14 s cadence — is conformant. The old arrangement gave the touch 6
+ * ticks (0.05 s) to register and failed such a build for a choice the spec left
+ * open. Walking the worm in produces the hit through the same tile step every
+ * other worm item drives, and it is what a reviewer needs to see anyway: the clip
+ * now shows the worm bearing down on the cursor before the life is lost.
+ *
+ * Pair with `actWormReachesCursor`. The caller sets lives first (`setLives`) —
+ * that is what decides whether the touch respawns or ends the run.
+ */
+export async function arrangeWormIntoCursor(api) {
+  await api.call("setCursor", tileCX(HIT_C), BAND_CY);
+  await setWorm(
+    api,
+    [{ c: HIT_C - HIT_APPROACH, r: HIT_R }],
+    1, // heading right, into the cursor's tile
+    1,
+  );
+}
+
+/**
+ * ACT half: let the worm walk the floor row into the cursor and return the
+ * snapshot at the instant the touch is registered — a life lost, or the run ended
+ * outright when that life was the last.
+ *
+ * The stop condition is the OUTCOME, not a tick count, so the item reads the same
+ * state whether a build registers the touch on the tick the segment lands or on
+ * the tile step that carried it there.
+ *
+ * Pair with `arrangeWormIntoCursor`.
+ */
+export async function actWormReachesCursor(api, { max = 480 } = {}) {
+  const before = await api.snapshot();
+  const r = await api.until(
+    (s) => s.lives < before.lives || s.screen === "gameover",
+    { max, poll: TICK },
+  );
+  return r.snap;
+}
+
 // ---- Firing (act) ------------------------------------------------------------
 
 /**
@@ -190,6 +340,49 @@ export async function actFireAndResolve(api, { max = 180 } = {}) {
   // 180 ticks = the old 1.5s cap.
   await api.call("fire");
   const r = await api.until((s) => s.bolts.length === 0, { max, poll: TICK });
+  return r.snap;
+}
+
+/**
+ * How long a killed foe is given to actually leave `snapshot().foes`.
+ *
+ * A sweep is a tick or two, so this is generous for what it waits on — and, just
+ * as importantly, far too short for the foe to have left by DRIFTING instead. The
+ * foes shot at here are posed mid-board (a glitch on row 13, a corruptor on row 3,
+ * a dropper still in the upper half): each is a second or more of travel from any
+ * edge, so nothing can satisfy this window except a kill. The bounty assertions
+ * each item keeps are the independent half of that evidence.
+ */
+export const FOE_SWEEP_TICKS = 30; // 0.25s
+
+/**
+ * ACT: fire a bolt, run the shot to its resolution, and then wait for the foe of
+ * `kind` to actually leave the board. Returns the snapshot once it has — or, if it
+ * never does, the last one seen, so the caller's assertion fails on the foe that is
+ * still standing.
+ *
+ * The wait is the whole point, and it is the difference between testing the RULE
+ * and testing an implementation detail. Destroying a foe and removing it from the
+ * foe list are two different moments: `actFireAndResolve` returns the instant the
+ * bolt is consumed, and a build that marks its casualties dead and sweeps them once
+ * per tick — mark-dead-then-sweep, an ordinary game-loop idiom — has not reached
+ * the second moment yet. Such a build scored the bounty, played its cue and stopped
+ * drawing the foe on exactly the right tick; it simply had not compacted its array
+ * when the old check looked, one tick early, and reported "the bolt did not kill
+ * it" about a kill the recording plainly shows.
+ *
+ * Nothing in specs/foes.md pins when a destroyed foe leaves the array — it says
+ * only that a foe "dies to a single bolt and pays a bounty when killed" — so the
+ * old reading passed the reference for the incidental reason that its `hitFoe`
+ * splices synchronously, and failed a conformant build for the order it happens to
+ * run its update phases in. Waiting for the outcome tests what the spec states.
+ */
+export async function actShootFoeDead(api, kind, { max = 180 } = {}) {
+  await actFireAndResolve(api, { max });
+  const r = await api.until((s) => foesOf(s, kind).length === 0, {
+    max: FOE_SWEEP_TICKS,
+    poll: TICK,
+  });
   return r.snap;
 }
 
@@ -221,14 +414,22 @@ export async function arrangeMoveControl(api, { startX, startY }) {
  * moment before the key is released (they cannot affect the returned deltas, which
  * were already captured).
  *
+ * `leadTicks` films the posed start BEFORE the key goes down. Nothing moves the
+ * cursor without input, so it cannot affect the deltas either — it exists for the
+ * VERTICAL items, where the band is only ~32 px tall and a 430 px/s cursor crosses
+ * it in about 75 ms: without a run-up the clip opens with the cursor already
+ * pinned against the far bound, which reads as a cursor that never moved. A beat
+ * of the start state first makes the slide legible as a change.
+ *
  * Pair with `arrangeMoveControl`. Returns `{ dx, dy, before, after }` — the same
  * shape the old `holdMove` returned.
  */
 export async function actHoldMove(
   api,
   code,
-  { ticks = 60, tailTicks = 78 } = {},
+  { ticks = 60, tailTicks = 78, leadTicks = 0 } = {},
 ) {
+  if (leadTicks) await api.advance(leadTicks);
   const before = (await api.snapshot()).cursor;
   await api.call("keyDown", code);
   await api.advance(ticks); // 60 ticks = the old 0.5s of measured motion
@@ -353,4 +554,68 @@ export function colorDistance(a, b) {
 /** Perceived brightness of an RGB color (0–255). */
 export function brightness(c) {
   return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Wireworm's cues are synthesized with the Web Audio API (specs/ui.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must
+// not autoplay: it creates (or resumes) its AudioContext only on the first real
+// user interaction, so before driving an event whose cue is checked, arm audio
+// with a GENUINE browser gesture. A build may feed the debug API through a purely
+// logical input path and unlock audio only from a real DOM event (a keydown OR a
+// pointer), so arming uses both `api.userKey` and a corner `api.userClick` rather
+// than a debug `press` — a debug press would leave a conformant build's
+// AudioContext uncreated, so no cue would ever be scheduled though it plays fine
+// for a real player. `KeyZ` has no game binding, and Wireworm has no pointer
+// input at all (keyboard only, specs/controls.md), so the click cannot disturb
+// game state at any position — (4, 4) is used for consistency with other cases.
+// From there a cue is confirmed by the audio log growing across the driven event.
+//
+// The genuine keydown only reaches the game's own audio-unlock code (Wireworm
+// resumes its AudioContext from `handleInput`, called once per real animation
+// frame — every mechanic-driven cue below is scheduled from the fixed-step
+// simulation instead, never from `handleInput` itself) once a real frame has run,
+// and every mechanic this file drives (`fire`, a shot, a bump, a touch) is posed
+// through control ops that never wait on one. The trailing `settle` is a genuine
+// wall-clock pause (unlike `advance`, which is instant in the validate pass) that
+// gives the build's own render loop the frame it needs to notice the gesture and
+// unlock audio BEFORE a check drives the event whose cue depends on it.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  await api.settle(50);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+async function audioCount(api) {
+  return (await api.audio()).length;
+}
+
+/**
+ * ACT: the number of Web Audio sources the build has started, read after a real
+ * paint pause.
+ *
+ * The pause is the whole point, and it is not optional. Scheduling a Web Audio
+ * source is not required to happen inside the call that causes the cue: a build may
+ * legitimately QUEUE the sound events its fixed-step simulation emits and play them
+ * from its render loop, which is a frame away. Nothing in specs/ui.md says
+ * otherwise, so a check that reads the probe with no wall clock between the event
+ * and the read is racing that frame — and `advance` cannot settle it, because in the
+ * validate pass `advance` is an instant `step` that produces no frame at all. Only
+ * `settle` is real time in BOTH passes (see `api.settle` in validation.mjs).
+ *
+ * So both the before and after reads go through here: the leading pause also flushes
+ * any cue queued during `arrange` into the BEFORE count, where it cannot be mistaken
+ * for the one the item drives.
+ *
+ * (That race is not hypothetical. The items whose cue follows a bolt across the
+ * board passed on the incidental latency of their `until` sweep's round trips, while
+ * `audio.fire`, `audio.life`, and `audio.game-over` — which drive their event and
+ * read straight back — reported no cue at all from a build that plays all nine
+ * perfectly for a real player.)
+ */
+export async function actAudioCount(api, { settleMs = 120 } = {}) {
+  await api.settle(settleMs);
+  return audioCount(api);
 }

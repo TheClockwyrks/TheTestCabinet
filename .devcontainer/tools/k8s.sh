@@ -17,10 +17,15 @@
 # build time and is safe to re-run by hand after a rebuild.
 set -euo pipefail
 
-# Pin versions deliberately; bump in step with the cluster's Kubernetes minor.
-readonly K3D_VERSION="5.7.4"
-readonly KUBECTL_VERSION="1.30.6"
-readonly KUBELOGIN_VERSION="0.1.4"
+# Pin versions deliberately, and keep KUBECTL_VERSION on the Kubernetes minor the
+# staging/prod AKS clusters run (`az aks list --query "[].kubernetesVersion"` — both
+# are on the `patch` auto-upgrade channel, so they float within the minor). Anything
+# else risks a manifest that renders here but not against the real API server, or the
+# reverse. Bump this in step with `K3S_IMAGE` in deployments/local/Makefile, which
+# pins the local k3d cluster's *server* to the same version.
+readonly K3D_VERSION="5.9.0"
+readonly KUBECTL_VERSION="1.35.6"
+readonly KUBELOGIN_VERSION="0.2.19"
 
 # Map the devcontainer's BUILDARCH to the release artifacts' arch naming.
 if [ "$BUILDARCH" = "amd64" ]; then

@@ -8,6 +8,7 @@ import {
   newRun,
   solid,
   sampleTile,
+  settleTiles,
   colorDistance,
   SPAWN_COL,
   TOPSOIL_ROW,
@@ -29,9 +30,14 @@ export default function item() {
       await solid(api, col + 3, row);
     },
 
-    // Sampling reads the painted canvas, so it runs here behind a real settle.
+    // Sampling reads the painted canvas, so it runs here behind a settle that POLLS until the two
+    // tiles are actually painted — a fixed pause reads the previous frame on a loaded host, where
+    // both points land on the same flat patch and the distance collapses to 0.
     async act(api) {
-      await api.settle(120);
+      await settleTiles(api, [
+        [col + 2, row],
+        [col + 3, row],
+      ]);
       stone = await sampleTile(api, col + 2, row);
       rock = await sampleTile(api, col + 3, row);
       await api.screenshot("stone");

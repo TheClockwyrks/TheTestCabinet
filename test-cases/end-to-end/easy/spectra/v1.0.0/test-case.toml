@@ -422,8 +422,10 @@ validation = { script = "validation/swarm/both-bands.mjs", outputs = [
 id = "sways"
 title = "The formation sways as one body"
 description = "The formation drifts side to side as one rigid body: its drones share the same horizontal sway, swinging about ±20 px between the peak and the trough."
-# Automated validation: read formation drones' x at the sway peak and trough and
-# confirm they move together by ~±20 px. See validation/swarm/sways.mjs.
+# Automated validation: sweep a whole sway period, reading posed formation drones'
+# absolute x, and confirm each swings the full ~40 px peak to trough, that they all
+# move together, and that the extremes sit half a period apart. See
+# validation/swarm/sways.mjs.
 validation = { script = "validation/swarm/sways.mjs", outputs = [
   { id = "sway", name = "The formation swaying side to side", kind = "video" },
 ] }
@@ -431,16 +433,30 @@ validation = { script = "validation/swarm/sways.mjs", outputs = [
 id = "dive-bends-fires"
 title = "A diver bends toward the player and fires"
 description = "A diving drone leaves the formation, bends its path toward the player's x as it descends, and fires while diving."
-# Automated validation: force a real dive and confirm the drone's x trends toward the
-# ship and an enemy bullet spawns during the dive. See validation/swarm/dive-bends-fires.mjs.
+# Automated validation: force a real dive with the ship parked far to one side, then
+# again with it far to the other, and confirm each dive CLOSES at least a third of the
+# px gap to the player — which a fixed track cannot do in both directions at once,
+# since whichever way it sweeps it closes on one player position only by opening away
+# from the other. `specs/drones.md` fixes no distance (it asks for a path that bends
+# toward the player yet "stays dodgeable, sweeping in rather than homing perfectly"),
+# so what is asserted is the bend, not an invented "comes within N px". The check also
+# confirms an enemy bullet of the diver's own band spawns during the dive.
+# See validation/swarm/dive-bends-fires.mjs.
 validation = { script = "validation/swarm/dive-bends-fires.mjs", outputs = [
   { id = "dive", name = "A diver bending toward the player and firing", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "dive-returns"
 title = "A diver returns to its slot"
-description = "A drone that survives its dive returns to its formation slot (phase returning, then formation back at its slot) rather than vanishing."
-# Automated validation: force a real dive and confirm the drone returns to its slot.
+description = "A drone that survives its dive returns to its formation slot (phase returning, then formation back at its slot) rather than vanishing. A dive may end either way the spec allows — looping back up before the bottom, or exiting through the bottom and re-appearing from the top — so a diver that wraps is correct, not a fault. It flies the dive at about 300 px/s, and the round trip is continuous rather than a jump."
+# Automated validation: force a real dive and sample the whole round trip — confirm
+# the drone re-settles in its slot, that the diving leg travels at about the dive
+# speed, and that the path holds at most one discontinuity and only as a
+# bottom-to-top wrap. The wrap's endpoints are read with a tolerance either side of
+# the field's edges, because they come from two samples taken a couple of ticks apart
+# rather than from the instant the build performs the wrap. The sweep stops at the
+# FIRST re-settle, so a build that never reports the `returning` phase fails that
+# assertion alone rather than also being read as never having come home.
 # See validation/swarm/dive-returns.mjs.
 validation = { script = "validation/swarm/dive-returns.mjs", outputs = [
   { id = "return", name = "A diver looping back to its slot", kind = "video" },
@@ -475,7 +491,10 @@ id = "flux-oscillates"
 title = "The Flux oscillates its band"
 description = "A Flux alternates its band on a telegraphed rhythm: a held window on one band, a brief shimmer settled on neither, then the other band."
 # Automated validation: spawn a Flux at a known phase and step it through a cycle,
-# confirming held-cyan → shimmer → held-magenta. See validation/drones/flux-oscillates.mjs.
+# confirming held-cyan → shimmer → held-magenta. The band is read from `effectiveBand`
+# ("what it currently reads and counts as"), since whether a build carries a Flux's
+# oscillation in its stored band or its effective one is its own choice.
+# See validation/drones/flux-oscillates.mjs.
 validation = { script = "validation/drones/flux-oscillates.mjs", outputs = [
   { id = "flux", name = "A Flux cycling through its bands", kind = "video" },
 ] }
@@ -492,8 +511,9 @@ validation = { script = "validation/drones/flux-shimmer-immune.mjs", outputs = [
 id = "prism-shell-then-core"
 title = "The Prism breaks shell then core"
 description = "A Prism is broken in two bands in order: the shell falls only to the shell's band (exposing the core), then the core falls only to the opposite band."
-# Automated validation: a mismatch leaves the shell; the shell's band breaks it; the
-# core's band then destroys the drone. See validation/drones/prism-shell-then-core.mjs.
+# Automated validation: a mismatch leaves the shell; the shell's band breaks it; that
+# same band then fails to break the exposed core; and the core's band destroys the
+# drone. See validation/drones/prism-shell-then-core.mjs.
 validation = { script = "validation/drones/prism-shell-then-core.mjs", outputs = [
   { id = "prism", name = "Breaking a Prism shell then core", kind = "video" },
 ] }
@@ -501,8 +521,13 @@ validation = { script = "validation/drones/prism-shell-then-core.mjs", outputs =
 id = "prism-escort"
 title = "The Prism enters with two Shards"
 description = "A Prism flies in escorted by two Shards, one cyan and one magenta, entering alongside it."
-# Automated validation: start a real stage and confirm the Prism enters with two
-# opposite-band Shards. See validation/drones/prism-escort.mjs.
+# Automated validation: sweep the WHOLE entrance and confirm the Prism enters with two
+# opposite-band Shards flying in ALONGSIDE it — drones that are both in motion and near
+# the Prism at the same instant, rather than merely listed as entering somewhere on the
+# field. Counting entering drones at one chosen instant passed builds that list their
+# whole wave from the first tick (it found every Shard in the formation, none of them
+# near the Prism) and failed builds that stagger their groups by a few tenths of a
+# second. See validation/drones/prism-escort.mjs.
 validation = { script = "validation/drones/prism-escort.mjs", outputs = [
   { id = "escort", name = "The Prism's two-Shard escort flying in", kind = "video" },
 ] }
@@ -552,8 +577,15 @@ validation = { script = "validation/stages/challenge-nonfiring.mjs", outputs = [
 id = "challenge-alternating"
 title = "Challenge groups alternate bands"
 description = "A challenge stage's single-band groups alternate bands, cyan then magenta then cyan, so each group is one band and the bands take turns."
-# Automated validation: sample each group's band as it sweeps in and confirm the
-# alternation. See validation/stages/challenge-alternating.mjs.
+# Automated validation: record each drone's band as it arrives ON THE FIELD — inside it
+# on BOTH axes, since a flyover sweeps across and a build queues its groups off the left
+# or right edge at the y they will fly at, which a y-only test counted as already
+# arrived — then cluster the arrivals in time, confirm no arrival wave mixes the two
+# bands, and merge adjacent same-band waves into the groups a player sees. Merging
+# because how a build releases a group is its own business: one that sweeps each group
+# of 8 in as two waves of 4 is showing exactly what the spec describes, and time
+# clustering alone read that as ten groups that fail to alternate.
+# See validation/stages/challenge-alternating.mjs.
 validation = { script = "validation/stages/challenge-alternating.mjs", outputs = [
   { id = "alternating", name = "Alternating-band challenge groups", kind = "video" },
 ] }
@@ -579,7 +611,12 @@ validation = { script = "validation/stages/wave-persists.mjs", outputs = [
 id = "advance"
 title = "Clearing a wave advances a stage"
 description = "Destroying the whole formation clears the wave and advances to the next stage."
-# Automated validation: clear a real assembled wave and confirm the stage increments.
+# Automated validation: let the REAL stage-1 wave fly in and assemble, rake it down to
+# its last drone instantly, then shoot that drone on camera and confirm the wave clears
+# and the stage increments. The wave under test is the game's own: posing a drone into a
+# `clearField`-emptied wave instead made the verdict rest on an unwritten side effect of
+# `clearField` (whether a debug clear leaves the wave live), and reported that clearing
+# the wave does not clear the wave on a build whose progression is correct in play.
 # See validation/stages/advance.mjs.
 validation = { script = "validation/stages/advance.mjs", outputs = [
   { id = "advance", name = "A cleared wave advancing the stage", kind = "video" },
@@ -599,36 +636,70 @@ title = "An extra life is awarded once at 20000"
 description = "Crossing 20000 points awards one extra life, once; a later crossing awards no further life."
 # Automated validation: set the score just below 20000, cross it with a real kill for
 # +1 life, then confirm a later crossing awards none. See validation/stages/extra-life.mjs.
+# A CLIP rather than a still: the point is the crossing, and one frame of a HUD reading
+# four lives cannot show it. The clip opens on three lives and a score just short of the
+# threshold, films the kill that takes it over and the life appearing, then films a
+# second crossing awarding nothing.
 validation = { script = "validation/stages/extra-life.mjs", outputs = [
-  { id = "extra-life", name = "The extra life awarded at 20000", kind = "image" },
+  { id = "extra-life", name = "The extra life awarded at 20000", kind = "video" },
 ] }
 
 # --- Controls -----------------------------------------------------------------
 # Each control is driven with injected keyboard input through the debug API (see
 # specs/instrumentation.md) and its effect read back.
+#
+# Where `specs/controls.md` binds one control to several keys — move to the arrows
+# OR A/D, fire to Space OR Up OR W, flip to F OR either Shift, pause to Esc OR P —
+# each BINDING is its own item rather than one assertion inside a shared one. That
+# is the same "one observable behavior per item" taxonomy the rest of this
+# checklist follows: a build that wires Left but forgot A fails exactly the binding
+# it missed, and its clip shows exactly that key being held, instead of one broad
+# item averaging two or three keys together. The shared script bodies live in
+# `validation/_helpers.mjs` (`moveItem`, `fireItem`, `flipItem`, `pauseItem`), so
+# each per-binding script is only its id and its key code.
 [[review.categories]]
 id = "controls"
 title = "Controls"
 [[review.categories.items]]
-id = "move-left"
-title = "Move left"
-description = "Holding Left (or A) moves the ship left."
-validation = { script = "validation/controls/move-left.mjs", outputs = [{ id = "move", name = "The ship moving left", kind = "video" }] }
+id = "move-left-arrow"
+title = "Move left (Left arrow)"
+description = "Holding the Left arrow moves the ship left."
+validation = { script = "validation/controls/move-left-arrow.mjs", outputs = [{ id = "move", name = "The ship moving left on the Left arrow", kind = "video" }] }
 [[review.categories.items]]
-id = "move-right"
-title = "Move right"
-description = "Holding Right (or D) moves the ship right."
-validation = { script = "validation/controls/move-right.mjs", outputs = [{ id = "move", name = "The ship moving right", kind = "video" }] }
+id = "move-left-a"
+title = "Move left (A)"
+description = "Holding A moves the ship left."
+validation = { script = "validation/controls/move-left-a.mjs", outputs = [{ id = "move", name = "The ship moving left on A", kind = "video" }] }
+[[review.categories.items]]
+id = "move-right-arrow"
+title = "Move right (Right arrow)"
+description = "Holding the Right arrow moves the ship right."
+validation = { script = "validation/controls/move-right-arrow.mjs", outputs = [{ id = "move", name = "The ship moving right on the Right arrow", kind = "video" }] }
+[[review.categories.items]]
+id = "move-right-d"
+title = "Move right (D)"
+description = "Holding D moves the ship right."
+validation = { script = "validation/controls/move-right-d.mjs", outputs = [{ id = "move", name = "The ship moving right on D", kind = "video" }] }
 [[review.categories.items]]
 id = "move-clamp"
 title = "Movement clamps at the field edges"
 description = "The ship stops at the lane's edges (x 40 and 1240) and does not wrap around."
 validation = { script = "validation/controls/move-clamp.mjs", outputs = [{ id = "clamp", name = "The ship pinned at the field edge", kind = "video" }] }
 [[review.categories.items]]
-id = "fire"
-title = "Fire"
-description = "The fire key (Space, or Up / W) fires a bullet of the ship's current band."
-validation = { script = "validation/controls/fire.mjs", outputs = [{ id = "fire", name = "The ship firing", kind = "video" }] }
+id = "fire-space"
+title = "Fire (Space)"
+description = "Space fires a bullet of the ship's current band."
+validation = { script = "validation/controls/fire-space.mjs", outputs = [{ id = "fire", name = "The ship firing on Space", kind = "video" }] }
+[[review.categories.items]]
+id = "fire-up"
+title = "Fire (Up arrow)"
+description = "The Up arrow fires a bullet of the ship's current band."
+validation = { script = "validation/controls/fire-up.mjs", outputs = [{ id = "fire", name = "The ship firing on the Up arrow", kind = "video" }] }
+[[review.categories.items]]
+id = "fire-w"
+title = "Fire (W)"
+description = "W fires a bullet of the ship's current band."
+validation = { script = "validation/controls/fire-w.mjs", outputs = [{ id = "fire", name = "The ship firing on W", kind = "video" }] }
 [[review.categories.items]]
 id = "fire-cadence"
 title = "Firing has a cadence"
@@ -640,25 +711,50 @@ title = "Player bullets are capped"
 description = "No more than three of your bullets are alive at once, however long fire is held."
 validation = { script = "validation/controls/fire-cap.mjs", outputs = [{ id = "cap", name = "Player bullets capped on the field", kind = "video" }] }
 [[review.categories.items]]
-id = "flip-key"
-title = "Flip band"
-description = "The flip key (F, or either Shift) flips the ship's band."
-validation = { script = "validation/controls/flip-key.mjs", outputs = [{ id = "flip", name = "Flipping band with the key", kind = "video" }] }
+id = "flip-f"
+title = "Flip band (F)"
+description = "F flips the ship's band."
+validation = { script = "validation/controls/flip-f.mjs", outputs = [{ id = "flip", name = "Flipping band with F", kind = "video" }] }
+[[review.categories.items]]
+id = "flip-shift-left"
+title = "Flip band (Left Shift)"
+description = "Left Shift flips the ship's band."
+validation = { script = "validation/controls/flip-shift-left.mjs", outputs = [{ id = "flip", name = "Flipping band with Left Shift", kind = "video" }] }
+[[review.categories.items]]
+id = "flip-shift-right"
+title = "Flip band (Right Shift)"
+description = "Right Shift flips the ship's band."
+validation = { script = "validation/controls/flip-shift-right.mjs", outputs = [{ id = "flip", name = "Flipping band with Right Shift", kind = "video" }] }
 [[review.categories.items]]
 id = "discharge-key"
 title = "Discharge"
 description = "The discharge key (X) fires a discharge when the resonance meter is full."
+# Automated validation: with the meter posed full, press X through injected input and
+# confirm the real discharge wave starts. It deliberately does NOT also assert that the
+# meter was spent — that is `polarity.discharge-spends`, and asserting it here graded one
+# behavior twice, costing a build this CONTROLS point for a meter fault though its X key
+# was wired correctly. See validation/controls/discharge-key.mjs.
 validation = { script = "validation/controls/discharge-key.mjs", outputs = [{ id = "discharge", name = "Firing a discharge with the key", kind = "video" }] }
 [[review.categories.items]]
-id = "pause"
-title = "Pause"
-description = "A pause key (Esc, or P) pauses a live wave."
-validation = { script = "validation/controls/pause.mjs", outputs = [{ id = "pause", name = "Pausing a live wave", kind = "video" }] }
+id = "pause-esc"
+title = "Pause (Esc)"
+description = "Esc pauses a live wave."
+validation = { script = "validation/controls/pause-esc.mjs", outputs = [{ id = "pause", name = "Pausing a live wave with Esc", kind = "video" }] }
+[[review.categories.items]]
+id = "pause-p"
+title = "Pause (P)"
+description = "P pauses a live wave."
+validation = { script = "validation/controls/pause-p.mjs", outputs = [{ id = "pause", name = "Pausing a live wave with P", kind = "video" }] }
 [[review.categories.items]]
 id = "no-autorepeat-flip"
 title = "A held flip acts once"
 description = "Holding the flip key flips the band exactly once, not repeatedly, so a held key does not flap the band back and forth."
 validation = { script = "validation/controls/no-autorepeat-flip.mjs", outputs = [{ id = "flip", name = "A held flip flipping only once", kind = "video" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live wave advances — simulation time accumulates and the drones fly their approach — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Color (sampled from the rendered canvas) ---------------------------------
 # Each point samples the pixels the build actually RENDERS at a known on-field
@@ -694,8 +790,12 @@ title = "The ship reads its current band"
 description = "The ship renders in its current band's color, and that color changes when it flips."
 # Automated validation: sample the ship on each band and confirm the two renders are
 # distinct. See validation/color/ship-band.mjs.
+# ONE CAPTURE PER BAND: the item asserts that two renders differ, so a single still can
+# only ever show one of them and leaves the reviewer nothing to check it against. Each
+# band is captured while it is posed.
 validation = { script = "validation/color/ship-band.mjs", outputs = [
-  { id = "ship", name = "The ship on each band", kind = "image" },
+  { id = "ship-cyan", name = "The ship tuned to cyan", kind = "image" },
+  { id = "ship-magenta", name = "The ship tuned to magenta", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "hud-indicator"
@@ -793,6 +893,10 @@ validation = { script = "validation/ui/state-pause.mjs", outputs = [
 id = "state-stage-cleared"
 title = "Stage cleared"
 description = "The stage-cleared interstitial is reachable and correct."
+# Automated validation: reached by destroying the REAL assembled wave (the same drive as
+# `stages.advance`), not by emptying it with `clearField` and posing one drone — which
+# captured a blank screen on a build whose stage-cleared screen is perfectly reachable in
+# play. See validation/ui/state-stage-cleared.mjs.
 validation = { script = "validation/ui/state-stage-cleared.mjs", outputs = [
   { id = "cleared", name = "The stage-cleared interstitial", kind = "image" },
 ] }
@@ -819,13 +923,72 @@ reference = "title"
 proof = "title"
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real gesture
+# (a key press and a corner click) first; the exact sound is the model's own, only that
+# a cue plays is scored. Each mandated cue is its own review item so a build fails
+# exactly the cue it omits. The muteable / never-fail-to-load / silent-until-interaction
+# properties are reviewed by a person from play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short synthesized cues (Web Audio API, no audio files) play for firing, flipping bands, absorbing a same-band bullet, a matching kill, a discharge, a spectral inversion, getting hit, and clearing a stage."
+id = "fire"
+title = "Fire cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the ship fires."
+validation = { script = "validation/audio/fire.mjs", outputs = [
+  { id = "fire", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "flip"
+title = "Flip cue"
+description = "A distinct cue plays when the ship flips its band."
+validation = { script = "validation/audio/flip.mjs", outputs = [
+  { id = "flip", name = "The flip whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "absorb"
+title = "Absorb cue"
+description = "A distinct cue plays when the ship's shield absorbs a same-band bullet."
+validation = { script = "validation/audio/absorb.mjs", outputs = [
+  { id = "absorb", name = "The absorb whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "kill"
+title = "Matching-kill cue"
+description = "A distinct cue plays when a matching shot destroys a drone."
+validation = { script = "validation/audio/kill.mjs", outputs = [
+  { id = "kill", name = "The kill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "Discharge cue"
+description = "A distinct cue plays when the ship fires a discharge."
+validation = { script = "validation/audio/discharge.mjs", outputs = [
+  { id = "discharge", name = "The discharge whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "inversion"
+title = "Spectral-inversion cue"
+description = "A distinct cue plays when a Prism triggers a spectral inversion."
+validation = { script = "validation/audio/inversion.mjs", outputs = [
+  { id = "inversion", name = "The inversion whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "hit"
+title = "Hit cue"
+description = "A distinct cue plays when an opposite-band bullet costs the ship a life."
+validation = { script = "validation/audio/hit.mjs", outputs = [
+  { id = "hit", name = "The hit whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "clear"
+title = "Stage-clear cue"
+description = "A distinct cue plays when a stage is cleared."
+validation = { script = "validation/audio/clear.mjs", outputs = [
+  { id = "clear", name = "The stage clear whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Audio is graceful and optional"
@@ -833,9 +996,12 @@ description = "The game plays fully muted, never fails to run or load if audio c
 [[review.categories.items]]
 id = "mute-toggle"
 title = "Mute toggle"
-description = "The mute key (M) toggles mute."
-# Automated validation: press the mute key and confirm the muted flag flips.
-# See validation/audio/mute-toggle.mjs.
+description = "The mute key (M) toggles mute, both on and off again."
+# Automated validation: press the mute key during a live wave and confirm the muted
+# flag goes on, then off again on a second press. Silence itself is deliberately not
+# asserted — a build that mutes by riding a gain node to zero still starts its Web
+# Audio sources, so the probe cannot tell it from an unmuted one, and the snapshot's
+# own `muted` flag is the honest signal. See validation/audio/mute-toggle.mjs.
 validation = { script = "validation/audio/mute-toggle.mjs", outputs = [
-  { id = "mute", name = "The title after toggling mute", kind = "image" },
+  { id = "mute", name = "The wave with mute toggled on", kind = "image" },
 ] }

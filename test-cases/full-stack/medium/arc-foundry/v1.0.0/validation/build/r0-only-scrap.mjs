@@ -6,11 +6,20 @@
 //
 // Only the opening of the run is arranged; the five real rolls landing are the behavior under
 // test, and placements are control ops, so they are the act and are what the clip shows.
+//
+// WHY THIS IS A CLIP RATHER THAN A STILL. The five drops used to be fired off back to back and a
+// single frame captured afterwards, which is a picture of five Scrap candidates already standing.
+// The claim is about what the press KEEPS HANDING OUT — that every roll off an unrefined press
+// comes back Scrap — and a board of finished rolls does not show rolling. A beat between the
+// drops makes the sequence legible as five separate pulls of the press, each one landing on the
+// bottom rung.
 
-import { startBuild, SPOTS, towerAt, snap } from "../_helpers.mjs";
+import { startBuild, SPOTS, towerAt, snap, SECOND } from "../_helpers.mjs";
 
-// A frame for the still, so the capture shows all five landed candidates. 100 ms = 6 ticks.
-const SETTLE_TICKS = 6;
+// A beat between drops, so each roll lands and reads as its own before the next one does.
+const BEAT_TICKS = 0.9 * SECOND;
+// A beat on the finished board, with all five tiers of nothing but Scrap standing together.
+const TAIL_TICKS = 1.5 * SECOND;
 
 export default function item() {
   // The opening snapshot and the five rolled qualities, read by `assert`.
@@ -28,15 +37,12 @@ export default function item() {
       for (const spot of SPOTS) {
         await api.call("setNextRoll", null);
         await api.call("placeRock", spot.col, spot.row);
-      }
-      const s = await snap(api);
-      for (const spot of SPOTS) {
-        const t = towerAt(s, spot.col, spot.row);
+        const t = towerAt(await snap(api), spot.col, spot.row);
         if (t && t.kind === "candidate") tiers.push(t.quality);
+        await api.advance(BEAT_TICKS);
       }
 
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("scrap");
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

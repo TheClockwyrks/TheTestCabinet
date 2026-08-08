@@ -57,8 +57,25 @@ struct PublisherInner {
     /// dev/single-box setup with no separate artifact service.
     artifacts_url: Option<String>,
     coalesce: Duration,
+    /// How long a superseded snapshot generation is kept before the post-upload
+    /// prune removes it (see [`prune_stale_snapshots`]).
+    snapshot_retention: Duration,
     /// Pinged when a publish marks the store dirty, waking the debounce loop.
     wake: Notify,
+}
+
+/// The timing knobs a publisher is built with, grouped so the two `Duration`s
+/// cannot be transposed at the call site (they are adjacent, same-typed and mean
+/// very different things) and so adding a third does not widen
+/// [`Publisher::new`] again.
+#[derive(Debug, Clone, Copy)]
+pub struct PublisherTiming {
+    /// The sliding debounce a burst of publishes is coalesced over
+    /// (`TCAB_SNAPSHOT_COALESCE_MS`).
+    pub coalesce: Duration,
+    /// How long a superseded snapshot generation is kept before the post-upload
+    /// prune removes it (`TCAB_SNAPSHOT_RETENTION_HOURS`).
+    pub snapshot_retention: Duration,
 }
 
 impl Publisher {
@@ -72,7 +89,7 @@ impl Publisher {
         deploy_hook_url: Option<String>,
         artifacts_url: Option<String>,
         auth: Arc<test_cabinet_core::AccountsClient>,
-        coalesce: Duration,
+        timing: PublisherTiming,
     ) -> Self {
         // Publishing is enabled (R2 is configured) but no site deploy hook is set:
         // every publish will upload the snapshot to R2 yet never trigger the
@@ -94,7 +111,8 @@ impl Publisher {
                 auth,
                 http: reqwest::Client::new(),
                 artifacts_url,
-                coalesce,
+                coalesce: timing.coalesce,
+                snapshot_retention: timing.snapshot_retention,
                 wake: Notify::new(),
             }),
         }
@@ -232,18 +250,24 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         }
     }
 
-    // A published run's media is immutable and stored under a content-stable key
-    // (`media/runs/<id>/…`) shared across snapshots, so learn which media is already
-    // uploaded and skip re-reading/re-uploading it. Only when R2 is configured — the
-    // dev path has no bucket to list, and re-uploads nothing anyway. A list failure is
-    // not fatal: fall back to an empty set (re-export everything) rather than abort the
-    // whole refresh, so a transient list error degrades to the old behavior.
+    // Media that lives outside any one snapshot's prefix: a published run's proof and
+    // asset files (`media/runs/<id>/…`, immutable per run) and a case version's
+    // rendered/committed baselines (`media/cases/<slug>/<version>/…`, content-addressed).
+    // Learn what is already uploaded so the builder references those objects instead of
+    // re-reading, re-transcoding and re-uploading them. The whole `media/` prefix is
+    // listed in one pass — it also covers the reference sheets `tcab publish-reference`
+    // writes, which are simply never looked up here.
+    //
+    // Only when R2 is configured — the dev path has no bucket to list, and re-uploads
+    // nothing anyway. A list failure is not fatal: fall back to an empty set (re-export
+    // everything) rather than abort the whole refresh, so a transient list error
+    // degrades to the old behavior.
     let existing_media = match &inner.r2 {
-        Some(r2) => match r2.list_keys("media/runs/").await {
+        Some(r2) => match r2.list_keys("media/").await {
             Ok(keys) => keys.into_iter().collect(),
             Err(err) => {
                 tracing::warn!(
-                    "listing existing snapshot media failed ({err}); re-exporting all run media"
+                    "listing existing snapshot media failed ({err}); re-exporting all run and case media"
                 );
                 std::collections::HashSet::new()
             }
@@ -295,13 +319,17 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
 
     let deploy_hook_fired = match &inner.r2 {
         Some(r2) => {
-            crate::snapshot::upload_snapshot(
+            let fired = crate::snapshot::upload_snapshot(
                 &snapshot,
                 r2,
                 inner.deploy_hook_url.as_deref(),
                 &inner.http,
             )
-            .await?
+            .await?;
+            // Only after the atomic `index.json` cut-over: until it lands, the
+            // previous generation is still the live one and must not be touched.
+            prune_stale_snapshots(r2, &snapshot.snapshot_id, inner.snapshot_retention).await;
+            fired
         }
         None => {
             // Dev mode: no R2 credentials. The snapshot was still regenerated
@@ -331,6 +359,54 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         run_count,
         deploy_hook_fired,
     })
+}
+
+/// Delete the snapshot generations nothing points at any more, keeping the one just
+/// uploaded and anything inside the retention window (see
+/// [`crate::snapshot::stale_generation_keys`] for the exact rule).
+///
+/// Every refresh writes a whole new generation, so without this the bucket grows by a
+/// generation per publish and never shrinks — which is precisely how it reached ~7.8 GB
+/// of which 96% was unreachable.
+///
+/// **Best-effort by design.** A prune failure must never fail a refresh: the snapshot
+/// is already uploaded and live at this point, and the only consequence of a skipped
+/// prune is that the next refresh has more to clean up. Every path therefore logs and
+/// returns rather than propagating.
+#[tracing::instrument(
+    name = "snapshot.prune",
+    skip(r2),
+    fields(pruned_keys = tracing::field::Empty),
+)]
+async fn prune_stale_snapshots(r2: &R2Client, live_snapshot_id: &str, retention: Duration) {
+    let keys = match r2.list_keys(crate::snapshot::SNAPSHOT_PREFIX).await {
+        Ok(keys) => keys,
+        Err(err) => {
+            tracing::warn!("listing snapshot generations failed ({err}); skipping the prune");
+            return;
+        }
+    };
+    let stale = crate::snapshot::stale_generation_keys(
+        &keys,
+        live_snapshot_id,
+        OffsetDateTime::now_utc(),
+        retention,
+    );
+    if stale.is_empty() {
+        return;
+    }
+    tracing::Span::current().record("pruned_keys", stale.len());
+    match r2.delete_objects(&stale).await {
+        Ok(deleted) => tracing::info!(
+            deleted,
+            live = %live_snapshot_id,
+            "pruned superseded snapshot generations"
+        ),
+        Err(err) => tracing::warn!(
+            "pruning superseded snapshot generations failed ({err}); \
+             the next refresh will retry"
+        ),
+    }
 }
 
 /// Load every ingested case version's stored manifest, for the snapshot's case

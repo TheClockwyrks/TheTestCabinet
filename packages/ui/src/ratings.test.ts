@@ -84,9 +84,9 @@ describe("scoreChecklist with sub-items", () => {
 describe("graded (game-jam) scoring", () => {
   it("maps each graded tier to its point value", () => {
     expect(gradePoints("broken")).toBe(0);
-    expect(gradePoints("poor")).toBe(1);
-    expect(gradePoints("neutral")).toBe(3);
-    expect(gradePoints("great")).toBe(5);
+    expect(gradePoints("poor")).toBe(2);
+    expect(gradePoints("neutral")).toBe(5);
+    expect(gradePoints("great")).toBe(8);
     expect(gradePoints("incredible")).toBe(10);
     // Binary statuses are not graded.
     expect(gradePoints("pass")).toBeUndefined();
@@ -98,13 +98,13 @@ describe("graded (game-jam) scoring", () => {
       { id: "gfx", weight: 2, graded: true },
       { id: "fun", weight: 1, graded: true },
     ];
-    // gfx: great (5) × 2 = 10 earned of 20 available; fun: incredible (10) × 1 = 10
-    // of 10. Total 30 available, 20 earned.
+    // gfx: great (8) × 2 = 16 earned of 20 available; fun: incredible (10) × 1 = 10
+    // of 10. Total 30 available, 26 earned.
     const score = scoreChecklist(items, [
       grade("gfx", "great"),
       grade("fun", "incredible"),
     ]);
-    expect(score).toEqual({ earned: 20, total: 30 });
+    expect(score).toEqual({ earned: 26, total: 30 });
   });
 
   it("earns nothing for an unjudged graded item but still counts its total", () => {
@@ -119,7 +119,7 @@ describe("graded (game-jam) scoring", () => {
       grade("gfx", "neutral"),
       grade(OVERALL_VERDICT_ID, "incredible"),
     ]);
-    expect(score).toEqual({ earned: 3, total: 10 });
+    expect(score).toEqual({ earned: 5, total: 10 });
   });
 });
 

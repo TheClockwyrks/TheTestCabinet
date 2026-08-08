@@ -249,7 +249,10 @@ only by paying for it at the surface Fuel Depot (`specs/world.md`, `specs/gamepl
   too), and the core run wants both.
 - Hull reaching `0` destroys the miner, a death (`specs/modes.md`), handled exactly as
   running out of fuel is: the run ends at a summary screen; Standard offers a restore
-  from the last save, Hardcore is permadeath.
+  from the last save, Hardcore is permadeath. What kills is the hull STANDING at `0`,
+  not the particular blow that emptied it: an empty hull is checked continuously, as an
+  empty tank underground is, so the miner is destroyed the moment its hull is empty
+  whatever brought it there. An empty hull is never a state the run carries on from.
 - Repair. Hull does not mend on its own. You buy repairs with Credits at the Fuel Depot
   (`specs/world.md`, `specs/gameplay.md`), per point of hull, up to your current maximum.
 

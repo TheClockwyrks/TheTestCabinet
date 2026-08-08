@@ -25,8 +25,17 @@ async function poseBoxed(api, start, sinkEast) {
   return arc;
 }
 
-// 24 ticks = the old 0.4s cooling step, applied identically to both layouts.
-const COOL_TICKS = 24;
+// How long each layout cools for, applied identically to both.
+//
+// 84 ticks is 1.4 s, up from the 0.4 s this used to run. Four tenths of a second was
+// enough to decide the verdict — a Sink pulls 32 per second off an Arc at this heat, so
+// the two layouts separate almost at once — and far too short to WATCH. The clip was
+// under two seconds for both halves together, which is not long enough to read one heat
+// bar falling, let alone to carry its final value across the cut to the second. At 1.4 s
+// each the Sink-cooled Arc visibly slides down its bar while the fully-boxed one sits
+// exactly where it was posed, and the contrast is the clip rather than an inference from
+// it.
+const COOL_TICKS = 84;
 
 export default function item() {
   let aId;

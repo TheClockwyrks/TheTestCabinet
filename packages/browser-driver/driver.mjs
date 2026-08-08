@@ -268,6 +268,75 @@ function makeScriptApi(page, handle, outDir, producedImages) {
     snapshot: () => call("snapshot", []),
     // A generic call into any case-declared control operation.
     call: (method, ...args) => call(method, args),
+    // Deliver a genuine, browser-trusted key tap through Chromium's own input
+    // pipeline — NOT the debug API. Two things separate this from a debug
+    // `press`/`keyDown`: it dispatches a real DOM `keydown`/`keyup` the build's
+    // own listeners catch, and it counts as the user gesture Chromium's autoplay
+    // policy requires. A build is free to feed the debug API through a purely
+    // logical input path (the contract only asks that injected input reach the
+    // same game handling the keyboard does), and to create or resume its
+    // AudioContext lazily from a real DOM interaction rather than from that
+    // logical path — both are conformant. When it does, driving input through
+    // the debug API never unlocks its audio, so no cue is ever scheduled and the
+    // `audio` probe reads nothing though the build plays fine for a real player.
+    // A real tap here arms such a build. `code` is a `KeyboardEvent.code`; pass a
+    // key the game does not bind so arming never disturbs game state.
+    userKey: (code) => page.keyboard.press(String(code)),
+    // The pointer counterpart to `userKey`: a genuine, browser-trusted click at
+    // viewport coordinates `(x, y)` through Chromium's own input pipeline. It
+    // dispatches the real `pointerdown`/`mousedown`/`mouseup`/`click` sequence a
+    // build's listeners catch and counts as the autoplay gesture — for a build
+    // that takes its first interaction (and unlocks audio) from a pointer rather
+    // than a key. The driver cannot know a build's UI layout, so the caller passes
+    // coordinates it expects to be INERT — a field corner, typically — and arming
+    // never triggers a game action (placing a unit, firing, moving a menu).
+    userClick: (x, y) => page.mouse.click(Number(x) || 0, Number(y) || 0),
+    // A genuine, browser-trusted DOUBLE-click on the game surface: the real
+    // `pointerdown`/`pointerup` pair twice, with the second carrying `clickCount:
+    // 2`, so Chromium emits the `dblclick` event too.
+    //
+    // It exists because a double-click is the one gesture nothing else here can
+    // render. A build may recognize the double on the `dblclick` event, on the
+    // second release, or on the second press, and that choice decides which of the
+    // gesture's OWN events land after the action it triggers — which is where a
+    // build that undoes what it just did gives itself away. None of the other
+    // primitives reach that: a debug `doubleClick` op is the recognition alone, not
+    // the events around it; injected pointer ops call a build's handlers directly
+    // and so bypass the DOM listeners its double detection lives in (usually keyed
+    // on wall-clock timing, which injected ops never satisfy); and two `userClick`s
+    // in a row each carry `clickCount: 1`, so a build watching for `dblclick` never
+    // sees one. Composing the missing events by hand only fabricates input no
+    // player produces — an unpaired release, say, which a build is free to read as
+    // a click or ignore, and which then decides a check on a distinction no
+    // specification draws.
+    //
+    // Unlike `userClick`, which takes viewport pixels because it only needs an
+    // inert corner to arm audio with, this takes NORMALIZED coordinates over the
+    // largest canvas — `(u, v)` fractions in `[0, 1]`, exactly as `pixel` does —
+    // because it must land on an exact game element, and a caller knows where that
+    // element is in the field's logical space, not in the viewport.
+    userDoubleClick: async (u, v) => {
+      const point = await page.evaluate(
+        ([fu, fv]) => {
+          const canvases = Array.from(document.querySelectorAll("canvas"));
+          if (canvases.length === 0) {
+            throw new Error("no <canvas> element to double-click");
+          }
+          // The game surface is the largest canvas on the page.
+          let canvas = canvases[0];
+          for (const c of canvases) {
+            if (c.width * c.height > canvas.width * canvas.height) canvas = c;
+          }
+          // Its on-screen rect, so a fraction of the drawing surface maps to the
+          // viewport point Chromium dispatches at however the build sizes, scales
+          // or letterboxes it.
+          const r = canvas.getBoundingClientRect();
+          return { x: r.left + fu * r.width, y: r.top + fv * r.height };
+        },
+        [u, v],
+      );
+      await page.mouse.dblclick(point.x, point.y);
+    },
     // Real wall-clock pause: unlike `step` (which advances the simulation
     // instantly), this lets the build's render loop animate on screen, so a video
     // output captures real motion.
@@ -434,16 +503,24 @@ async function runScript(args) {
         };
         return true;
       };
-      // Prefer the shared base class so every source kind is caught once; only if it
-      // is unavailable fall back to wrapping each concrete source's own `start`.
+      // Wrap the shared base class so any source kind that inherits `start`
+      // unchanged is caught for free, then ALSO wrap every concrete subclass that
+      // redefines its own `start`. This is not redundant: per the Web Audio spec,
+      // `AudioBufferSourceNode.start(when, offset, duration)` takes extra optional
+      // parameters beyond the base `AudioScheduledSourceNode.start(when)`, so
+      // Chromium gives it its OWN `start` on `AudioBufferSourceNode.prototype` that
+      // SHADOWS the base one — wrapping only the base never sees a decoded/sampled
+      // clip play (only a plain oscillator or constant source, which inherit
+      // `start` unchanged and so are already caught by the base wrap). Each `wrap`
+      // call is a no-op when its target has no own `start`, so calling all four
+      // unconditionally is safe and catches every kind regardless of which
+      // prototype a given browser happens to put `start` on.
       const Base = window.AudioScheduledSourceNode;
-      if (!(Base && wrap(Base.prototype))) {
-        if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
-        if (window.AudioBufferSourceNode)
-          wrap(window.AudioBufferSourceNode.prototype);
-        if (window.ConstantSourceNode)
-          wrap(window.ConstantSourceNode.prototype);
-      }
+      if (Base) wrap(Base.prototype);
+      if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
+      if (window.AudioBufferSourceNode)
+        wrap(window.AudioBufferSourceNode.prototype);
+      if (window.ConstantSourceNode) wrap(window.ConstantSourceNode.prototype);
     });
     const page = await context.newPage();
     page.on("console", (msg) => {

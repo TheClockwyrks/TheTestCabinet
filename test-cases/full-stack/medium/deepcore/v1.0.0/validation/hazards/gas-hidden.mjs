@@ -10,6 +10,7 @@ import {
   SPAWN_COL,
   ROCKBED_ROW,
   sampleTile,
+  settleTiles,
   colorDistance,
 } from "../_helpers.mjs";
 
@@ -32,10 +33,20 @@ export default function item() {
       await api.call("setTile", col + 3, row, { kind: "lava" });
     },
 
-    // Sampling reads the painted canvas, so it runs here behind a real settle — the validate pass
-    // advances time instantly and paints no frame of its own.
+    // Sampling reads the painted canvas, so it runs here behind a settle that POLLS until all
+    // three tiles are painted, rather than pausing a fixed guess.
+    //
+    // This item needs that more than any other, because its first assertion is that two things
+    // look ALIKE. On a stale frame every sample lands on the same flat patch, so gas-vs-rock comes
+    // back as 0 and the check PASSES a build that painted nothing at all — the failure mode is a
+    // false pass, not a false failure, and nothing downstream would ever question it. Waiting for
+    // the paint is what makes the "hidden" claim mean anything.
     async act(api) {
-      await api.settle(150);
+      await settleTiles(api, [
+        [col + 1, row],
+        [col + 2, row],
+        [col + 3, row],
+      ]);
       gas = await sampleTile(api, col + 1, row);
       rock = await sampleTile(api, col + 2, row);
       lava = await sampleTile(api, col + 3, row);

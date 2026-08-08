@@ -530,3 +530,52 @@ fn resolved_digest_reads_running_container_image_id() {
         Some("ghcr.io/x/base@sha256:deadbeef".to_string())
     );
 }
+
+#[test]
+fn sandbox_pod_carries_the_active_deadline_backstop() {
+    // The sandbox's keep-alive is `sleep infinity`, so without a deadline a pod
+    // whose driver died by SIGKILL — and that the dispatcher's reaper never got to
+    // either — runs until an operator notices, holding its requests the whole time.
+    let pod = build_run_pod("tcab-run-abc", &spec("img"), &KubernetesConfig::default());
+    let spec = pod.spec.expect("spec");
+
+    assert_eq!(
+        spec.active_deadline_seconds,
+        Some(24 * 60 * 60),
+        "the default backstop must outlast any real run, but still be finite",
+    );
+}
+
+#[test]
+fn sandbox_pod_active_deadline_is_configurable_and_disablable() {
+    let config = KubernetesConfig {
+        pod_active_deadline: Some(std::time::Duration::from_secs(3_600)),
+        ..KubernetesConfig::default()
+    };
+    let pod = build_run_pod("tcab-run-abc", &spec("img"), &config);
+    assert_eq!(pod.spec.expect("spec").active_deadline_seconds, Some(3_600));
+
+    let disabled = KubernetesConfig {
+        pod_active_deadline: None,
+        ..KubernetesConfig::default()
+    };
+    let pod = build_run_pod("tcab-run-abc", &spec("img"), &disabled);
+    assert_eq!(pod.spec.expect("spec").active_deadline_seconds, None);
+}
+
+#[test]
+fn sandbox_pod_managed_by_matches_what_the_dispatcher_reaps_on() {
+    // The dispatcher's sandbox reaper selects on this literal
+    // (`dispatcher::job::SANDBOX_MANAGED_BY`). The two crates do not depend on each
+    // other, so each pins the shared value from its own side; changing one without
+    // the other silently stops orphaned sandboxes from being cleaned up.
+    let pod = build_run_pod("tcab-run-abc", &spec("img"), &KubernetesConfig::default());
+    let labels = pod.metadata.labels.expect("labels");
+
+    assert_eq!(
+        labels
+            .get("app.kubernetes.io/managed-by")
+            .map(String::as_str),
+        Some("tcab-driver"),
+    );
+}

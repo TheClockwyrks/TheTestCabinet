@@ -5,7 +5,11 @@ deterministic, seedable, render-free core behind a `window.__valence` API — co
 operations, a JSON-serializable snapshot, control operations that arrange a scenario
 through the game's real systems, a manual clock, and injected keyboard input — plus
 a read-only overlay toggled with the backtick key. A new mandatory deliverable, hence
-the major bump.
+the major bump. Among its control operations is `startScenario`, which opens a
+**scenario round**: a live round the wave system leaves empty and that does not end on
+its own. It is the board a scripted scenario runs on — the game's real round behavior
+over a board holding only what the scenario posed — because `startRound` always sends
+the round's real wave and a posed unit cannot be measured through it.
 
 ## The economy is rebuilt to pay for damage rather than kills
 
@@ -41,7 +45,10 @@ The checklist now uses the categories grammar (`[review] format = 2`), with ever
 graded point a one-point item and most carrying a validation script that drives the
 build through `window.__valence` and decides its own verdict against a deterministic
 core. Produced art, animation, particle bursts, audio, and how each screen reads
-stay a human judgement.
+stay a human judgement. The checklist opens with the Debug & Automation API category
+and its one item, the scenario round `startScenario` opens: nearly every automated item
+below poses matter on that board, so a build without one fails there by name rather
+than as dozens of unrelated-looking verdicts.
 
 ## Other changes
 
@@ -54,3 +61,9 @@ stay a human judgement.
   the model's judgment.
 - `specs/proof.md` notes the debug API can set up the exact state each capture needs;
   the captures and their fixed paths are unchanged.
+- Every menu must be operable with the mouse alone AND with the keyboard alone, rather
+  than with either one — the keyboard is the half `specs/instrumentation.md` can inject,
+  so a pointer-only menu leaves its screen unreachable from code.
+- The inert modifier splits into two review items: the modifier itself (posed matter)
+  and the round table's use of it (Round 37's real wave), so a broken wave and a broken
+  modifier no longer fail the same point.

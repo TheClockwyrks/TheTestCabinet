@@ -8,9 +8,17 @@
 // the behavior (`act`), so the clip is the ship riding the core surface.
 //
 // The sweep stays a LOOP because it tracks how far INTO the core the ship ever gets, which a
-// single long advance would step straight over. The old drive ran 30 x 0.02 s = 0.6 s; 0.02 s is
-// 2.4 ticks, which is not a whole tick count, so this samples every SINGLE tick instead and runs
-// 72 of them — the same 0.6 s budget at strictly finer resolution, so no penetration is missed.
+// single long advance would step straight over. It samples every SINGLE tick, so no
+// penetration is missed, and runs 150 of them (1.25 s) — long enough that the ship makes the
+// run in from 200 px out under its own momentum and then rides the surface for a beat, which
+// is what the clip has to show. The old 0.6 s budget started the ship 60 px off the core, so
+// the contact was over before the recording had a frame of the approach.
+//
+// The life count is compared against the one read BEFORE the impact, not against a fixed
+// number. "Flying into the core costs no life" is a statement about a difference, and the
+// absolute count is not one the case can assert: `specs/instrumentation.md` calls `lives`
+// "ships in reserve" while `specs/gameplay.md` counts three ships in total, so a fresh game
+// legitimately reports either 2 or 3 (see `_helpers.mjs`).
 
 import {
   newGame,
@@ -22,7 +30,8 @@ import {
 } from "../_helpers.mjs";
 
 export default function item() {
-  // The closest the ship ever got to the star, and the state it came to rest in.
+  // The life count going in, the closest the ship ever got, and the state it rested in.
+  let livesBefore;
   let minD;
   let snap;
 
@@ -36,16 +45,17 @@ export default function item() {
       await api.call("setInvuln", 0); // collisions are live: the core is proven non-lethal on its own
       await poseShip(api, {
         x: 640,
-        y: 420,
+        y: 560,
         vx: 0,
         vy: -300,
         angle: -Math.PI / 2,
       });
+      livesBefore = (await api.snapshot()).lives;
     },
 
     async act(api) {
       minD = distToStar((await api.snapshot()).ship);
-      for (let i = 0; i < 72; i += 1) {
+      for (let i = 0; i < 150; i += 1) {
         await api.advance(TICK);
         minD = Math.min(minD, distToStar((await api.snapshot()).ship));
       }
@@ -64,7 +74,11 @@ export default function item() {
         surface,
         1.5,
       );
-      check.expectEq("flying into the core costs no life", snap.lives, 3);
+      check.expectEq(
+        "flying into the core costs no life",
+        snap.lives,
+        livesBefore,
+      );
       check.expectEq(
         "the game keeps playing (the core is not lethal)",
         snap.screen,

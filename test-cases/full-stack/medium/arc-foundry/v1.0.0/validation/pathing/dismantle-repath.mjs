@@ -1,15 +1,35 @@
 // Automated validation for pathing.dismantle-repath: dismantling a structure frees its
 // footprint and re-paths the floor, shortening the ground route back.
 //
-// A wall is placed across a leg (the route lengthens), then dismantled; the maze length must
-// return to its original value.
+// A wall is placed across a leg (the route lengthens), then dismantled; the maze length must fall,
+// and must land back on its original value.
+//
+// WHY THE LENGTHENING IS A PRECONDITION AND NOT A CHECK. This used to assert "the wall lengthened
+// the route" as its first graded point, which is `pathing/shortest-open-route`'s whole subject — so
+// one build defect failed two review items, and this item's OWN subject (that dismantling
+// re-paths) went unmeasured either way. The lengthening is now the pose: if it did not take, there
+// is no shortening to observe, and the point is left inconclusive for the reviewer rather than
+// failed a second time for a defect the other item already reports.
 //
 // Opening the run and dropping the wall are the arrange; the DISMANTLE and the re-path it
 // forces are the behavior under test and are the act. A Spark is then released so the clip
 // shows the freed route actually being walked.
 
-import { startBuild, placeCandidate, spawnControlled, snap, SECOND } from "../_helpers.mjs";
+import {
+  startBuild,
+  buildMazeWall,
+  spawnControlled,
+  snap,
+  unmetPrecondition,
+  MAZE_WALL,
+  SECOND,
+} from "../_helpers.mjs";
 
+// A beat on the WALLED board before the dismantle. This item's claim is a change — the route
+// shortening back — and a change is only legible against the state it changed from. The act used
+// to open on the dismantle itself, so the wall was gone by the time anyone was watching and the
+// clip showed a board with a hole in it rather than a hole being made.
+const LEAD_TICKS = 1 * SECOND;
 const CLIP_TICKS = 2 * SECOND;
 
 export default function item() {
@@ -26,12 +46,19 @@ export default function item() {
       const s0 = await startBuild(api);
       len0 = s0.mazeLength;
 
-      const cand = await placeCandidate(api, "capacitor", 1, 20, 4);
-      candId = cand.id;
+      candId = await buildMazeWall(api);
       len1 = (await snap(api)).mazeLength;
+      if (!(len1 > len0)) {
+        throw unmetPrecondition(
+          `the wall at (${MAZE_WALL.col},${MAZE_WALL.row}) did not lengthen the route ` +
+            `(${len0} -> ${len1}), so dismantling it has no shortening to show`,
+        );
+      }
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the wall standing, and the route it forced
+
       await api.call("dismantle", candId);
       len2 = (await snap(api)).mazeLength;
 
@@ -40,7 +67,6 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectGt("the wall lengthened the route", len1, len0);
       check.expectLt("dismantling the wall shortened the route back", len2, len1);
       check.expectClose("the route returned to its original length", len2, len0, 0.001);
     },

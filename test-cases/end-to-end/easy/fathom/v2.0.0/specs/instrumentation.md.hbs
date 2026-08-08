@@ -114,9 +114,34 @@ simulation, never announced by the op itself.
   current tile and pursuing). After posing it, the predator's own AI runs when the
   simulation is stepped: it senses, acquires, chases, and searches through the real
   code, so a scenario poses the setup and reads what the AI then does.
+  - `"den"` HOLDS it there: the staggered release schedule (`specs/predators.md`) is
+    suspended for a predator posed this way, and it stays in the den chamber until a
+    later `setPredator` poses it out, however long the scenario runs. This is what
+    lets a caller quiet the board and read one predator's behavior undisturbed. A
+    scenario that needs a predator loose poses it to `"wander"` or `"chase"`
+    directly.
 - `spawnDrifter(state)` adds a bonus drifter. `state` may set `tx` and `ty` (a
   corridor tile it appears on); with no tile it spawns at the den gate as in normal
   play. It then wanders through the real drifter code.
+- `setCreatureAI(enabled)` turns the creatures' own minds on or off, where a creature
+  is every predator and every bonus drifter. It is on by default, and `reset` restores
+  it.
+
+  With it off, each creature holds exactly where it stands, keeping the tile, facing,
+  and state it was posed with: it senses nothing, decides nothing, and does not move,
+  however long the scenario runs. Nothing else changes — the forager still swims under
+  its own controls, its brightness and light still follow what it eats, cooldowns still
+  run down, sonar wavefronts and ink clouds still travel and expire, plankton and
+  drifters are still eaten and still score, and contact with a predator still costs a
+  life. Only the creatures' own initiative is suspended.
+
+  This is what makes a scenario about *interacting with* a creature reproducible. A
+  wandering predator or drifter goes where its own mind takes it, so a caller that poses
+  one and then swims at it is betting on where it happens to have drifted by the time
+  the forager arrives — a bet that turns on the layout of a maze the build invented, and
+  one that is lost outright when the creature wanders down a side corridor. Turning the
+  minds off puts the creature where the caller put it and leaves it there, so what the
+  scenario observes is the interaction it set out to observe.
 - `poseLastPlankton()` removes every plankton except a single one placed on an open
   tile adjacent to the forager, so that the forager eating that one plankton clears
   the maze and descends through the real clear-and-descend path. It arranges the

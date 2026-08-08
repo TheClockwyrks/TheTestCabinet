@@ -53,7 +53,8 @@ Produce and play, at least:
 - a distinct death sound when the snake dies, and
 - a low-key background music bed that loops under the game.
 
-Provide a mute toggle, and do not start audio until the player interacts (browsers
+Provide a mute toggle whose state is visible on the board (see the HUD below), and
+do not start audio until the player interacts (browsers
 block autoplay). The game still loads if audio is unavailable: guard playback so a
 decode or autoplay failure never breaks the game. A finished build ships the
 produced sound and music, not silence and not a hand-oscillated Web Audio
@@ -75,6 +76,13 @@ It reads, in monospace:
   empty.
 - A small, dim label showing the current mode's name (for example `CLASSIC`) sits
   in the HUD.
+- A mute indicator in the HUD, small and dim, at the right of the band. It shows
+  the current sound state unambiguously and at a glance — either a marker present
+  only while muted (`MUTED`, or a crossed-out speaker glyph), or a readout that
+  names both states (`SOUND [M]` / `MUTED [M]`). Whichever form, the muted and
+  unmuted HUDs must be tellable apart from the board alone, and it updates the
+  moment `M` is pressed (`Controls`, above). Muting changes nothing else on
+  screen.
 
 ## Out of scope
 

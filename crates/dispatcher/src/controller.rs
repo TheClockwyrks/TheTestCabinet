@@ -50,6 +50,11 @@ pub struct Dispatcher {
     /// Backend job ids the dispatcher has already reported a death for, so a `Job`
     /// that lingers (until its TTL reaps it) is not reported every tick.
     reported_dead: std::collections::HashSet<String>,
+    /// Backend job ids whose orphaned sandbox pods have already been reaped. Kept
+    /// separate from [`reported_dead`](Self::reported_dead) because the two are
+    /// reached under different conditions: a job can be un-reportable (no retained
+    /// token, already terminal) yet still have a sandbox to clean up.
+    reaped: std::collections::HashSet<String>,
 }
 
 impl Dispatcher {
@@ -57,13 +62,14 @@ impl Dispatcher {
     /// client to the cluster.
     pub async fn connect(config: Config) -> anyhow::Result<Self> {
         let backend = BackendClient::new(&config.backend_url, &config.service_token);
-        let kube = Kube::connect(&config.namespace).await?;
+        let kube = Kube::connect(&config.namespace, &config.sandbox_namespace).await?;
         Ok(Self {
             config,
             backend,
             kube,
             tokens: HashMap::new(),
             reported_dead: std::collections::HashSet::new(),
+            reaped: std::collections::HashSet::new(),
         })
     }
 
@@ -161,11 +167,19 @@ impl Dispatcher {
         Ok(())
     }
 
-    /// For each owned `Job` that failed terminally, report a specific death reason
-    /// to the backend — but only when this process has the job's token and the
-    /// backend job has not already reached a terminal state. A driver that died
-    /// before reporting leaves its job hanging in `dispatched`/`running`; this is
-    /// the safety net that ends it with a real diagnostic.
+    /// For each owned `Job` that failed terminally: reap the sandbox pods its driver
+    /// left behind, then report a specific death reason to the backend — the latter
+    /// only when this process has the job's token and the backend job has not already
+    /// reached a terminal state. A driver that died before reporting leaves its job
+    /// hanging in `dispatched`/`running`; this is the safety net that ends it with a
+    /// real diagnostic.
+    ///
+    /// The two halves are deliberately **independent**. Reporting is best-effort by
+    /// nature — it needs a token this process may no longer hold, and a job the
+    /// backend may already consider terminal — whereas an orphaned sandbox must be
+    /// removed in *every* one of those cases, or it runs forever. So the reap runs
+    /// first, gated only on the `Job` having failed, and none of the reporting
+    /// preconditions can skip past it.
     async fn detect_deaths(&mut self, managed: &[ManagedJob]) {
         for job in managed {
             if job.phase != JobPhase::Failed {
@@ -174,6 +188,7 @@ impl Dispatcher {
             let Some(job_id) = job.job_id.as_deref() else {
                 continue;
             };
+            self.reap_sandbox(job_id).await;
             if self.reported_dead.contains(job_id) {
                 continue;
             }
@@ -212,6 +227,38 @@ impl Dispatcher {
                 Err(err) => {
                     tracing::warn!(job_id, error = %err, "reporting driver-pod death failed; will retry");
                 }
+            }
+        }
+    }
+
+    /// Delete the sandbox pods left behind by a driver that died before its own
+    /// teardown could run, at most once per job id.
+    ///
+    /// A failed `Job` lingers until its TTL reaps it, so it reappears in
+    /// `detect_deaths` on every tick for minutes; [`reaped`](Self::reaped) keeps that
+    /// from re-listing pods each time. A *failed* reap is deliberately not recorded,
+    /// so a transient API error is retried on the next tick — the pod would otherwise
+    /// leak permanently, which is the whole failure this guards against.
+    ///
+    /// Best-effort: an error is logged, never fatal. The sandbox pod's own
+    /// `activeDeadlineSeconds` is the backstop if this never succeeds.
+    async fn reap_sandbox(&mut self, job_id: &str) {
+        if self.reaped.contains(job_id) {
+            return;
+        }
+        match self.kube.delete_sandbox_pods(job_id).await {
+            Ok(count) => {
+                self.reaped.insert(job_id.to_string());
+                if count > 0 {
+                    tracing::warn!(
+                        job_id,
+                        count,
+                        "driver died before tearing down its sandbox; reaped the orphaned pod(s)"
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::warn!(job_id, error = %err, "reaping the dead driver's sandbox pods failed; will retry");
             }
         }
     }

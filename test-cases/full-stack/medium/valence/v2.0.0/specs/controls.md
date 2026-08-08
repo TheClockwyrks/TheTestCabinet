@@ -94,8 +94,11 @@ see range.
 - Mute. `M` (or the status-bar control) toggles audio mute
   (`specs/gameplay.md`).
 - Menus. In the title, map-select, how-to-play, pause, victory, and
-  containment-failed screens, the pointer and/or `Up`/`Down` (or `W`/`S`) move
-  the selection and `Enter`/`Space` confirms (`specs/ui.md`); `Esc` backs
-  out of map-select and how-to-play to the main menu. Every menu must be fully
-  operable with the mouse alone, with these keyboard accelerators as an
-  alternative.
+  containment-failed screens, the pointer moves the selection and a click
+  confirms, and `Up`/`Down` (or `W`/`S`) move the selection and `Enter`/`Space`
+  confirms (`specs/ui.md`); `Esc` backs out of map-select and how-to-play to the
+  main menu. Every menu must be fully operable with the mouse alone AND with the
+  keyboard alone: the two are alternatives offered to the player, not a choice
+  the build makes. The keyboard is also the half of the pair
+  `specs/instrumentation.md` can inject, so a menu that answers only the pointer
+  leaves its screen unreachable from code.

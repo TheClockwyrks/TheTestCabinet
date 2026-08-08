@@ -1,0 +1,94 @@
+# 🚂 Locomotivation
+
+The theme for this game jam is trains as threats. Build a complete game of
+any genre around it. You are responsible for naming the game and you may not
+use "Locomotivation" as the name of your game.
+
+Your game must meet these requirements:
+
+- Trains
+  Your game must incorporate trains in some way.
+- Tension
+  Players should feel pushed to take risks.
+
+At the end of the game jam, your submission will be judged against the other
+contestants' submissions. Judges will be looking at how fun the game is to play,
+playtime and replayability, and overall aesthetics and polish. Your goal is to
+take first place in the jam.
+
+## workspace
+
+Your project root is `{{workspace}}`. Build the game there.
+
+The workspace is a git repository, initialized before you started. Your finished
+implementation is published directly from this repository's commits, and any
+uncommitted work is **not** published.
+
+Create any number of commits as you go. Once the game is complete, verify that
+no unintended untracked files exist and that you have committed a README.md that
+describes your game. Your README.md should be written with a prospective player
+as the target audience.
+
+## Your time budget
+
+You have {{time_limit_hours}} hours of wall-clock time for this run. Running
+`date` in the container reports the current time, so you can see how much of the
+budget remains.
+
+## Your starting point
+
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins Playwright as a dev dependency, with its dependencies already installed.
+`node_modules/` is populated and headless Chromium is downloaded, so you can
+build and verify right away. Build on this project: keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the
+lockfile in sync.
+
+There is no global Playwright on `PATH`. Use the project's own instance by
+importing it (`import { chromium } from "playwright"`) or by running `npx
+playwright`. This environment has no Chromium sandbox, so Chromium has to be
+launched with the `--no-sandbox` argument.
+
+## Producing the game's assets
+
+You must produce the art, animations, effects, and sound for your game. If you
+use placeholder rectangles, stand-ins drawn at runtime, or omit assets, your
+game will be judged extremely poorly when the game jam submissions are judged.
+
+Six asset-generation binaries are on your `PATH` to help. Run each with `--help`
+to learn its operations:
+
+- `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
+- `particle-2d`: 2D particle effects.
+- `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
+- `music`: music tracks.
+
+Use them, or produce assets any other way you prefer. These binaries are only
+available during this run and not when your submission is published. Generate
+any assets once and commit them. Do not define build commands that call into
+the asset generation binaries.
+
+## The fixed build/serve interface
+
+The project stays a Node project built with only Node.js and npm-installed
+dependencies. Extend the provided `package.json` and commit a
+`package-lock.json`, running `npm install` after changing dependencies so the
+lockfile matches. `npm ci` followed by `npm run build`, with no other manual
+step, must produce the static site into one of `dist/`, `build/`, or `out/` at
+the project root, with an `index.html` at the root of that directory. Serving
+that directory as-is must run the game.
+
+The build must also work at **any base path**. It is played back from a per-run
+sub-path, so every URL it constructs at runtime, including every produced asset,
+must be page-relative and never start with `/`. For a bundler, set a relative
+base such as `base: './'`.
+
+You can write your game's core logic in Rust and compile it to WebAssembly if
+you prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown`
+target, and `wasm-bindgen`/`wasm-pack` on `PATH`. As with the asset generation
+tools, these are on `PATH` only while this run is live, so the compiled wasm is
+a build input rather than a build step. Compile it once during the run, commit
+the resulting `.wasm` and any generated JS glue, and have `npm run build` bundle
+the committed output without invoking `cargo` or `wasm-pack`. Plain JavaScript
+or TypeScript is acceptable too; reach for wasm only if it genuinely helps your
+game.

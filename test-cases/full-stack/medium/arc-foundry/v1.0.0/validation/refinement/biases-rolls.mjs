@@ -10,10 +10,24 @@
 // a placement is a control op, so they are the act — which is a far better clip than the old
 // tail, which walked a Spark past a board that had already finished rolling.
 
-import { startBuild, SPOTS, towerAt, snap } from "../_helpers.mjs";
+// WHY THE ROLLS ARE NOW SPACED. The five drops used to be fired off back to back with a tenth of
+// a second on the end, and a placement consumes no game time — so all five landed inside a few
+// tens of milliseconds and the clip opened on a board that already held them. Against every run
+// implementation the recording showed five refined candidates simply present from the first
+// frame, where the reference's happened to land during it: the same script produced two different
+// kinds of evidence depending on how fast the host got through its round trips, and the kind it
+// produced most of the time showed no rolling at all.
+//
+// A beat between the drops makes the sequence what the item claims: the press pulled five times,
+// each pull landing a piece above Scrap. Nothing about the verdict moves — the qualities are read
+// as each one lands, exactly as before.
 
-// A frame for the still, so the capture shows all five refined candidates. 100 ms = 6 ticks.
-const SETTLE_TICKS = 6;
+import { startBuild, SPOTS, towerAt, snap, SECOND } from "../_helpers.mjs";
+
+// A beat between drops, so each refined roll lands and reads as its own before the next one does.
+const BEAT_TICKS = 0.9 * SECOND;
+// A beat on the finished board, with the whole refined spread standing together.
+const TAIL_TICKS = 1.5 * SECOND;
 
 export default function item() {
   // The R0 baseline roll, and the five refined qualities.
@@ -41,9 +55,10 @@ export default function item() {
         await api.call("placeRock", spot.col, spot.row);
         const t = towerAt(await snap(api), spot.col, spot.row);
         if (t && t.kind === "candidate") tiers.push(t.quality);
+        await api.advance(BEAT_TICKS);
       }
 
-      await api.advance(SETTLE_TICKS);
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

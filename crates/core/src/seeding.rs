@@ -256,8 +256,8 @@ impl RepoSeeder for FsRepoSeeder {
             seed_adversarial(test_case, &repo)?;
         }
 
-        // A game jam that has earlier entries (prior runs of the same jam with the
-        // same harness and model) seeds their gameplay READMEs as reference material,
+        // A game jam that has earlier entries (prior runs of the same jam by the same
+        // model, under any harness) seeds their gameplay READMEs as reference material,
         // so the prompt's distinctness section can point the model at them. This is
         // context, not part of the submission, so `init_repo` git-ignores the folder
         // rather than committing it.
@@ -1118,7 +1118,8 @@ fn reference_notice(request: &SeedRequest<'_>) -> String {
     body
 }
 
-/// Seed a game jam's earlier entries into
+/// Seed a game jam's earlier entries — the same model's previous runs of this jam,
+/// under any harness — into
 /// [`GAME_JAM_PRIOR_ENTRIES_DIR`](crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR): one
 /// Markdown file per prior entry (oldest first), plus an index `README.md` that says
 /// what the folder is. The prompt's distinctness section points the model here.
@@ -1134,9 +1135,9 @@ fn seed_prior_game_jam_entries(
 
     let mut index = String::from(
         "# Previous entries\n\n\
-         These are the player-facing READMEs of games you — this model, with this harness — have \
-         already built for THIS game jam in earlier runs. They are reference material ONLY: this \
-         folder is git-ignored and is not part of your submission.\n\n\
+         These are the player-facing READMEs of games you — this model — have already built for \
+         THIS game jam in earlier runs. They are reference material ONLY: this folder is \
+         git-ignored and is not part of your submission.\n\n\
          Read them before you design your game, then build something genuinely distinct — a \
          different game, not a variation on any of these. One file per earlier entry, oldest \
          first:\n\n",

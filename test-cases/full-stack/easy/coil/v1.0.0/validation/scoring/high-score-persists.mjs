@@ -6,6 +6,13 @@
 // spot-check that it also survives a real page reload (the full cross-session
 // persistence a script cannot force in one page).
 //
+// TWO STILLS, IN ORDER: the HUD at the end of the round that earned the BEST, then the
+// title reached from it. The point of this item is that a number CARRIES OVER, and a
+// single shot of a title showing `BEST 60` cannot show that — 60 is just a number on a
+// menu, and a build that hardcoded it, or that had it left over from an earlier round,
+// looks identical. Paired with the in-round shot it came from, the reviewer can read
+// the same value in both places and see it survive the transition.
+//
 // The BEST is established by real play in `act` and the title is reached with
 // `api.reset()`, exactly as before the two-pass migration. The runtime hands the clock
 // back after a reset (see validation.mjs), so returning to the title mid-`act` neither
@@ -26,8 +33,8 @@ import {
 const BEAT_TICKS = 4;
 
 export default function item() {
-  // The BEST real play established, and the state read back at the title.
-  let best0;
+  // The state in the round that earned the BEST, and the state at the title after it.
+  let live;
   let s;
 
   return {
@@ -40,8 +47,11 @@ export default function item() {
 
     async act(api) {
       await actEatSequence(api, { count: 3 });
-      best0 = (await api.snapshot()).best;
       await api.advance(BEAT_TICKS); // let the earned score sit on screen for a moment
+
+      // The first still: the live HUD, showing the BEST this round just set. Taken
+      // before the reset, so it is the round the title's number came from.
+      live = await actSettleShot(api, "live", { settleMs: 120 });
 
       await api.reset(); // return to the title
 
@@ -51,8 +61,15 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectGt("a BEST was established by real play", best0, 0);
-      check.expectEq("BEST survives returning to the title", s.best, best0);
+      check.expectGt("a BEST was established by real play", live.best, 0);
+      // The pairing only means anything if the first still was taken in the round, so
+      // say so rather than leaving a reviewer to infer it from the picture.
+      check.expectEq(
+        "the first still was taken in the live round",
+        live.screen,
+        "playing",
+      );
+      check.expectEq("BEST survives returning to the title", s.best, live.best);
       check.expectEq("the title is showing", s.screen, "title");
     },
   };
