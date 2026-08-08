@@ -36,17 +36,22 @@
 //! doubled *fragment* is worth catching too, but the everyday case is decided by the shape of the
 //! language.
 //!
-//! **There is no concurrency wrapper to unwrap.** Two independent reasons, and the second is the one
-//! that would matter even if the first went away. A reply's top level is a **translation unit**
-//! rather than a statement list, so the shape the strategy looks for — a whole program that is one
-//! wrapper and nothing else — does not exist in this grammar at all; the model's work is inside
-//! `main` either way. And this sandbox's [library set](super::compile) carries no `<thread>`,
-//! `<future>` or `<atomic>`, so a program that reached for one is `no type named 'thread' in
-//! namespace 'std'` at the model's own line, on the turn that wrote it. That is a located
-//! diagnostic naming exactly what is missing, where the [Rust](super::super::rust::healing) arm's
-//! `std::thread::spawn` **compiles** and then panics at run time — which is why that arm deletes the
-//! wrapper and this one has nothing to delete. Measured rather than assumed; see the arm's surface
-//! tests.
+//! **There is no concurrency wrapper to unwrap**, and the reason is the grammar rather than the
+//! library set. A reply's top level is a **translation unit** rather than a statement list, so the
+//! shape the strategy looks for — a whole program that is one wrapper and nothing else — does not
+//! exist in this language at all. The model's work is inside `main` either way, and a thread it
+//! constructed there is a statement among statements rather than something wrapped around
+//! everything.
+//!
+//! What this arm is *not* is one where concurrency cannot be written. `<thread>`, `<future>` and
+//! `<atomic>` are off the [prelude](super::compile), and the prelude is what a program is compiled
+//! *against* rather than an allowlist — the whole of libc++ is on the include path, so a program
+//! that writes `#include <thread>` gets it. Measured against this arm's own flags: it compiles, it
+//! links, and `std::thread`'s constructor throws `system_error: thread constructor failed: Not
+//! supported` at run time. That is the same position the [Rust](super::super::rust::healing) arm is
+//! in — `std::thread::spawn` compiles there too — with a better ending, a recoverable exception
+//! carrying a sentence rather than a thread that silently never runs. What differs is only the
+//! wrapper: Rust's shape exists and has to be deleted, and this one's never existed.
 //!
 //! # What its lexer asks that no other arm's does
 //!
@@ -131,12 +136,15 @@ impl Dialect for CppDialect {
         defines_lexically(text, mask, base).next().is_some()
     }
 
-    /// **`None`, always.** This arm has no whole-program concurrency wrapper to take off, for two
-    /// independent reasons written out in this module's own documentation: a reply's top level is a
-    /// translation unit rather than a statement list, and every header that would express one is
-    /// deliberately absent from the library set — so a program that reached for concurrency is a
-    /// located diagnostic on the turn that wrote it rather than a clean turn over a program that did
-    /// nothing.
+    /// **`None`, always.** This arm has no whole-program concurrency wrapper to take off, and the
+    /// reason is written out in this module's own documentation: a reply's top level is a
+    /// **translation unit** rather than a statement list, so the shape the strategy looks for — a
+    /// whole program that is one wrapper and nothing else — cannot be written in this language. The
+    /// model's work is inside `main` either way.
+    ///
+    /// Not because concurrency is unreachable. A program may `#include <thread>` and it will
+    /// compile; what it will not do is run a thread. That is a run-time ending this arm reports
+    /// rather than a shape healing could remove.
     fn unwrap_async(&self, _text: &str, _mask: &CodeMask) -> Option<Unwrapped> {
         None
     }

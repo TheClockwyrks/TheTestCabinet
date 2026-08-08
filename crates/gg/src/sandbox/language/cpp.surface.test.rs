@@ -674,6 +674,106 @@ fn cpp_reaches_every_library() {
 }
 
 #[test]
+fn cpp_tells_the_truth_about_what_is_off_the_library_set() {
+    // The direction [`cpp_reaches_every_library`] does not close, and the one the prompt gets wrong
+    // if nobody looks: what happens to a header this arm does NOT list. The prelude is what is put
+    // in FRONT of a program, not an allowlist — clang's default include path is the whole of libc++
+    // — so the three sentences `system-code.cpp.hbs` writes about this have to be measured against
+    // the toolchain rather than assumed from the list.
+    //
+    // Each of the three is one statement here, and together they are the whole claim.
+
+    // 1. A standard header off the set **resolves, compiles, links and runs**. `<iostream>` is off
+    //    the set because nothing reads a program's stdout, not because it is unavailable — and a
+    //    prompt that said otherwise would cost a model a turn on a program it was told to avoid.
+    let reached = evaluate(
+        &prepare(
+            "#include <iostream>\n\
+             #include <sstream>\n\
+             int main() {\n\
+             \x20 std::ostringstream built;\n\
+             \x20 built << \"off the set\";\n\
+             \x20 std::cout << built.str() << std::endl;\n\
+             \x20 log(built.str());\n\
+             \x20 return 0;\n\
+             }\n",
+        ),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0;
+    assert_eq!(
+        logs(&reached),
+        ["off the set"],
+        "a standard header off this arm's set must still compile and run, and the prompt says so"
+    );
+
+    // 2. `<thread>` is the one the prompt makes a specific promise about, so the promise is the
+    //    assertion: it compiles, it links, and the failure is at RUN time — a recoverable,
+    //    model-facing `system_error` carrying libc++'s own sentence, not a diagnostic and not
+    //    silence. This is the arm's honest position beside Rust's, whose `std::thread::spawn` also
+    //    compiles and then does nothing at all.
+    let threaded = evaluate(
+        &prepare(
+            "#include <thread>\n\
+             int main() {\n\
+             \x20 log(\"before\");\n\
+             \x20 std::thread worker([] {});\n\
+             \x20 worker.join();\n\
+             \x20 return 0;\n\
+             }\n",
+        ),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0;
+    let failure = super::substrate::program_error(&threaded);
+    assert!(
+        failure.message.contains("thread constructor failed"),
+        "a `std::thread` must fail at run time with libc++'s own sentence, which is what the \
+         prompt tells a model to expect: {}",
+        failure.message
+    );
+    assert!(
+        failure.message.contains("system_error"),
+        "the run-time failure a model is promised is a `system_error`: {}",
+        failure.message
+    );
+    assert_eq!(
+        threaded.logs,
+        ["before"],
+        "the work a threaded program did before it reached the constructor was lost"
+    );
+
+    // 3. And what really is `file not found` is a header that is not the standard library's — which
+    //    is the sentence the prompt may keep, because there is nothing here to fetch one from. A
+    //    model-facing compile error at the model's own line, not a toolchain failure.
+    let refused = super::compile::compile_program(
+        "#include <boost/asio.hpp>\nint main() { return 0; }\n",
+        &[],
+        &crate::sandbox::PrepareContext::new(),
+    );
+    match refused {
+        Err(crate::sandbox::PrepareFailure::Program(crate::sandbox::PrepareError::Compile(
+            rendered,
+        ))) => {
+            assert!(
+                rendered.contains("file not found") && rendered.contains("main.cpp:1"),
+                "a third-party header is the one thing the prompt promises is `file not found`, at \
+                 the model's own line: {rendered}"
+            );
+        }
+        other => {
+            panic!("a third-party header must be the model's compile error, not gg's: {other:?}")
+        }
+    }
+}
+
+#[test]
 fn the_artifact_binds_exactly_the_tools_gg_offers() {
     // The one drift no source-level test can catch, asked of the artifact rather than of a source
     // file. On this arm the artifact cannot be STALE — it was compiled from this checkout's SDK

@@ -26,9 +26,17 @@
 // Commonly used libraries are available by default in every arm, and for C++ that library is the
 // standard one — so the set is "what a C++ author reaches for", read in the order the standard
 // groups them. And nothing that is a JSON document, a network client or a thread is here: this
-// sandbox has no concurrency at all (`<thread>`, `<future>`, `<atomic>` compile against a target
-// with no threads and would be a capability a model is told it has and does not), and neither an
-// argument nor a result on this membrane is a document a program assembles.
+// sandbox has no concurrency at all, and neither an argument nor a result on this membrane is a
+// document a program assembles.
+//
+// WHAT THIS SET IS NOT: AN ALLOWLIST. This file decides what is put IN FRONT of a program, not
+// what a program may reach. The whole of libc++ is on clang's default include path, so a reply
+// that writes `#include <thread>` or `#include <iostream>` gets exactly that header and compiles.
+// Measured, not assumed: a `std::thread` program compiles, links and throws `system_error: thread
+// constructor failed: Not supported` at run time. Making the list an allowlist would mean
+// `-nostdinc++` and an explicit include tree, which buys a refusal in place of a run-time
+// exception a model can read — so what gg does instead is TELL the model the truth, in
+// `crates/gg/templates/system-code.cpp.hbs`, and `cpp.surface.test.rs` holds it to that.
 
 #pragma once
 

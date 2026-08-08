@@ -28,10 +28,12 @@ the run's operator, not to you, and so does anything you print. A value your
 program computes is discarded unless you open a view of it.
 
 All functions are synchronous. There is no scheduler, no event loop and no
-threads, so there is nothing to await and nothing to join — `<thread>`,
-`<future>` and `<atomic>` are not on the list below, and reaching for one is a
-compile error naming what is missing. Write your program as ordinary
-straight-line C++.
+threads, so there is nothing to await and nothing to join. `<thread>`,
+`<future>` and `<atomic>` are not on the list below and there is nothing here
+for them to run on: `std::thread`'s constructor compiles and then throws
+`system_error: Not supported` when your program reaches it, and `std::async`
+has nowhere to schedule anything. Write your program as ordinary straight-line
+C++.
 
 ### Your program is compiled first
 
@@ -57,9 +59,12 @@ through something you cared about. Three consequences worth knowing:
   fault, not a silent read — but the rest is on you. Prefer `.at()`, `std::span`
   and range `for` to pointer arithmetic, and prefer a value to a reference that
   outlives what it points at;
-- the headers below are the whole of what is available. Reaching for anything
-  else is `file not found` on the turn that wrote it, so you find out immediately
-  rather than half way through a program.
+- the headers below are the ones already in front of your first line, and they
+  are the set this sandbox is built and tested around. A standard header outside
+  that list still resolves if you write the `#include` yourself — libc++ is
+  whole here — but it is outside what is supported. A header that is **not** the
+  C++ standard library is `file not found` on the turn that wrote it, because
+  there is nothing to fetch one from.
 
 ### The program you are writing
 
@@ -127,19 +132,28 @@ int main() {
 
 A program here reaches the **C++ standard library**, as libc++ implements it for
 this target, and nothing else — there is no package manager to fetch from and no
-manifest to edit. Anything outside this list is a compile error naming what was
-missing, on the turn that wrote it. This is what is here:
+manifest to edit, so a third-party header is `file not found` on the turn that
+wrote it. This is the part of the standard library that is already in front of
+your first line, and it is the set this sandbox is built and tested around:
 
 {{#each libraries}}
 - {{group}}: {{modules}}
 {{/each}}
 
 Every one of those is included for you already, so you may use it without writing
-anything. Three absences are worth knowing before you spend a turn on one:
-`<thread>`, `<future>` and `<atomic>`, because this sandbox has no concurrency at
-all; `<iostream>`, because nothing reads your standard output; and
-`<filesystem>`, for the name collision above — the workspace and the outside
-world are reached through the `fs` and `system` objects below.
+anything. A standard header that is *not* on the list still resolves if you write
+the `#include` yourself, but it is outside what is supported here — and three of
+them are worth knowing about before you spend a turn on one:
+
+- `<thread>`, `<future>` and `<atomic>`: there is no concurrency here at all.
+  They compile and they link, and then `std::thread`'s constructor throws
+  `system_error: Not supported` when your program reaches it and `std::async`
+  has nowhere to schedule anything.
+- `<iostream>`: nothing reads your standard output. `gg::log` reaches the run's
+  operator and a view reaches you; `<sstream>`, on the list above, is what builds
+  a string.
+- `<filesystem>`: for the name collision above. The workspace and the outside
+  world are reached through the `fs` and `system` objects below.
 {{/if}}
 
 ### Ending your session

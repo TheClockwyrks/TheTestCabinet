@@ -1850,7 +1850,25 @@ That makes this the **cheapest arm per turn of the three that compile their own 
 only because the prelude is precompiled once per machine. Without that, the same small program is
 883–1110 ms. wasi-sdk is **~200 MB** pruned and lives in the
 [gg toolchain image](#where-a-compiler-lives-and-what-it-must-never-share); the compile inputs gg
-carries are 36 KB inside its binary, and there is no third-party library set at all.
+carries are **100 KB** inside its binary, plus a 52 KB preview1 adapter — ~151 KB all told, still by
+far the lightest of the compiled arms, and there is no third-party library set at all.
+
+**That last clause is a deliberate deviation from the seam's eighth rule and a study comparing arms
+should be told so plainly.** Every other arm of this weight vendors a curated slice of its
+ecosystem — Rust `regex`/`serde_json`/`base64`/`itertools`/`indexmap`, Swift
+`swift-collections`/`swift-algorithms`/`swift-numerics`/`Foundation`, Python `yaml`/`tomli_w`,
+PureScript a whole compiled library set — and this arm ships 53 standard headers and nothing else.
+The argument, set out in full with its mapping table in
+`packages/gg-sandbox-cpp/README.md`, is that C++'s standard library already answers nearly all of
+what those vendored sets are there for
+— `<regex>` for `regex`, the containers and `<ranges>` for `swift-collections` and `itertools`,
+`<complex>`/`<numbers>`/`<random>` for `swift-numerics`, `<chrono>`/`<format>`/`<charconv>` for
+`Foundation` — and that the one real gap, a JSON library, is excluded on this membrane by rule five
+regardless. What C++ has no counterpart for is a vendoring *mechanism*: there is no ambient package
+manager, so anything further would be a tree committed here, and one committed unpinned and untested
+against `wasm32-wasip1` would be worse than the argument. **Read the library sets as equivalent in
+coverage and not in kind.** If the deviation is ever closed, the shape is a curated header set on
+`-I` and the prelude's `// == Heading ==` groups carry it into the catalogue with no further work.
 
 ### What a model has to know that it does not on any other arm
 
@@ -1931,19 +1949,26 @@ is one program pasted after an identical copy of itself always carries two defin
 is ordinary C++ and is excluded by name.
 
 **Nothing is done about an `#include`, and this is the third arm where that is because the line
-works.** A redundant include is de-duplicated against the precompiled header for nothing, and a
-header the prelude does not carry is a located `file not found` on the turn that wrote it — which
-is a better answer than a silent deletion.
+works.** A redundant include is de-duplicated against the precompiled header for nothing, a
+standard header the prelude does not carry is read for real off libc++'s own include path, and a
+header that is not the standard library's is a located `file not found` on the turn that wrote it —
+each of which is a better answer than a silent deletion.
 
-**There is no concurrency wrapper to unwrap**, and that is two independent facts rather than an
-omission. A reply's top level is a translation unit rather than a statement list, so the shape the
+**There is no concurrency wrapper to unwrap**, and the reason is the grammar rather than the library
+set. A reply's top level is a translation unit rather than a statement list, so the shape the
 strategy looks for — a whole program that is one wrapper and nothing else — does not exist in this
-grammar; the model's work is inside `main` either way. And `<thread>`, `<future>` and `<atomic>`
-are deliberately off the library set, so a program that reached for concurrency is `no type named
-'thread' in namespace 'std'` at the model's own line. That is the opposite of the
-[Rust](#rust-the-program-is-the-artifact) arm, whose `std::thread::spawn` **compiles** and then
-does nothing at run time — which is why that arm deletes the wrapper and this one has nothing to
-delete.
+language; the model's work is inside `main` either way, and a thread it constructed there is a
+statement among statements.
+
+It is **not** an arm where concurrency cannot be written, and the distinction matters for reading
+this arm beside Rust's. The prelude is what a program is compiled *against*, not an allowlist: the
+whole of libc++ is on the include path, so `#include <thread>` resolves, compiles and links.
+Measured against this arm's own flags, `std::thread`'s constructor then throws
+`system_error: thread constructor failed: Not supported`. That puts this arm in the **same**
+position as the [Rust](#rust-the-program-is-the-artifact) arm, whose `std::thread::spawn` also
+compiles — with a better ending, a recoverable exception carrying a sentence rather than a thread
+that silently never runs. What differs between them is only the wrapper: Rust's shape exists and is
+deleted, and this one's never existed.
 
 Its lexer asks three things no other arm's does. A **raw string's fence is chosen by its author**
 (`R"gg(…)gg"`), so it has to be read rather than looked for; `'` is a **digit separator** as often

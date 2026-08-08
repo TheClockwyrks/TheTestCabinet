@@ -145,24 +145,49 @@ which is what a model is told it may include — so what a model reads and what 
 cannot drift. Ranges, `std::format`, `std::expected`, the containers, `<regex>`, `<chrono>` and
 `<random>` are all there and all exercised by this arm's tests.
 
-Four things are deliberately absent, and each is a decision rather than an oversight.
+**The set is what is put in front of a program, not an allowlist.** clang's default include path is
+the whole of libc++, so a reply that writes `#include <iostream>` or `#include <thread>` gets that
+header and compiles — measured, not assumed. Making the list a real allowlist would mean
+`-nostdinc++` and an explicit include tree, and what it would buy is a refusal in place of a
+run-time exception a model can read. gg tells the model the truth instead, in
+`crates/gg/templates/system-code.cpp.hbs`, and `cpp.surface.test.rs` asserts both directions — that
+every header on the list is reachable, and that one off it is reachable too and behaves the way the
+prompt says it does.
 
-- `<thread>`, `<future>` and `<atomic>`, because this sandbox has no concurrency at all and a header
-  a model is told it has and cannot use is worse than one it was never offered.
+Four things are deliberately off the set, and each is a decision rather than an oversight.
+
+- `<thread>`, `<future>` and `<atomic>`, because this sandbox has no concurrency at all. A program
+  that includes one anyway compiles and links; `std::thread`'s constructor then throws
+  `system_error: thread constructor failed: Not supported`, which is the same position the Rust arm
+  is in with a readable ending instead of a silent one.
 - `<iostream>`, because a program's stdout is not a channel a turn is read from — `gg::log` is — and
   including it drags its static initialisation into every artifact.
 - `<filesystem>`, for the collision above: `namespace fs = std::filesystem;` is a reflex, and beside
   `gg::fs` it is a compile error rather than a shadow. The workspace is reached through `fs`,
   `system::shell` and `view::open_file`, which is what gg mediates anyway.
-- **Any third-party library.** This is the one place this arm ships a thinner set than the Rust and
-  Swift arms, and the argument is that it is not thinner: the seam's rule is that commonly used
-  libraries are available by default, and what a C++ author reaches for first *is* the standard
-  library — at a breadth (`<ranges>`, `<format>`, `<expected>`, `<regex>`, `<chrono>`, `<random>`,
-  the whole container set) that no other arm's standard library matches. There is no ambient C++
-  package manager to reach one through, so anything else would be a vendored tree in this
-  repository, and vendoring one badly — unpinned, unlicensed, untested against wasm — is worse than
-  the argument above. A curated header set on the include path is the shape it would take if it is
-  ever taken; nothing about this arm is in the way.
+- **Any third-party library.** This is the one place this arm ships a set of a different *kind* from
+  the Rust and Swift arms, and it is a deviation from the seam's eighth rule taken deliberately
+  rather than skipped. The rule is that commonly used libraries are available by default, and what a
+  C++ author reaches for first *is* the standard library. Read against what the other arms actually
+  vendor, the gap is narrower than the absence of a `cpp.libraries.tar.gz` suggests:
+
+  | What another arm vendors | What answers it here |
+  | --- | --- |
+  | Rust `regex` | `<regex>` |
+  | Rust `itertools`, `indexmap` | `<ranges>`, `<algorithm>`, `<numeric>`; `<map>`/`<unordered_map>` |
+  | Rust `serde_json`, Python `yaml`/`tomli_w` | nothing, deliberately — no argument or result on this membrane is a document |
+  | Swift `swift-collections`, `swift-algorithms` | the whole container set, `<ranges>`, `<algorithm>` |
+  | Swift `swift-numerics` | `<complex>`, `<numbers>`, `<cmath>`, `<random>`, `<ratio>` |
+  | Swift `Foundation` | `<chrono>`, `<format>`, `<regex>`, `<charconv>` |
+  | PureScript's collections, transformers, lenses | `<optional>`, `<variant>`, `<expected>`, `<functional>`, the containers |
+
+  What has no counterpart is a vendoring *mechanism*: there is no ambient C++ package manager, so
+  anything further would be a tree committed to this repository, and one committed badly —
+  unpinned, unlicensed, untested against `wasm32-wasip1` — is worse than the table above. A curated
+  header set on the include path is the shape it would take if it is ever taken; nothing about this
+  arm is in the way, and the prelude's `// == Heading ==` groups would carry it into the catalogue
+  with no further work. **A cross-language study should read the library sets as equivalent in
+  coverage and not in kind**, and the docs page says so where it compares the arms.
 
 ## Code modules
 
