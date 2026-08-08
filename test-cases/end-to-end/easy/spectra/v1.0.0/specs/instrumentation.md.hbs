@@ -132,6 +132,28 @@ play uses, arranging the world rather than faking outcomes.
 - `clearField()` removes every drone (formed, entering, diving, and pending) and
   every bullet from the wave, so a caller can pose an exact, uncluttered scenario.
   The stage, score, lives, resonance, and ship are untouched.
+- `setDroneAI(enabled)` turns the swarm's own movement and decision-making on or
+  off. It is `true` by default (ordinary play), and `reset()` restores it. While it
+  is `false`:
+  - The drones hold station. The formation stops swaying, and a drone that is
+    entering, diving, or returning stops advancing along its path. Each keeps its
+    phase and its place — nothing is cancelled, completed, or resolved early — so a
+    drone posed anywhere on the field stays exactly where it was put.
+  - The swarm makes no decisions. No further drone is released into the wave, the
+    assault launches no dives, and no drone fires.
+  - Everything else runs exactly as usual: the ship, bullets already in flight,
+    every collision, the discharge, scoring, the stage-end check, and the timed
+    state holds. So does a Flux's band oscillation, which is the drone's own clock
+    rather than its movement — a held Flux still shimmers and settles on the beat.
+
+  Re-enabling it resumes the swarm from wherever it stands. `forceDive(id)` is a
+  caller's control operation rather than the swarm's own decision, so it still
+  starts a real dive while the AI is off; the diver simply holds its position on
+  that dive's path until the AI is turned back on.
+
+  This is an ordinary "pause the enemies and look at them" debugging affordance,
+  the spatial counterpart of the manual step clock: it is what lets a scripted
+  scenario put a drone somewhere exact and still find it there a second later.
 {{#if (eq variant.slug "overload")}}
 - `setDroneCharge(id, charge)` sets the charge counter (`0` to `3`) of the drone
   with `id`, as a precondition, so a scenario can bring a drone to the brink and
@@ -141,7 +163,8 @@ play uses, arranging the world rather than faking outcomes.
 A typical check calls `startGame()`, `clearField()`, then `spawnDrone` and either
 `spawnPlayerBullet` (to test your fire against a drone) or `spawnEnemyBullet` (to
 test the shield), `step()` a few ticks to run the real collision, and
-reads the result from `snapshot()`.
+reads the result from `snapshot()`. Where the drone has to stay put for the
+scenario to mean anything, it calls `setDroneAI(false)` first.
 
 ### Input operations
 

@@ -9,6 +9,7 @@ import {
   placeCandidate,
   armAudio,
   audioCount,
+  audioCueLabel,
   waitForAudio,
   TOWER,
 } from "../_helpers.mjs";
@@ -35,7 +36,7 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("a rock is placed as a candidate", placed != null);
       check.expectGt(
-        "a stamp cue plays when the rock drops (Web Audio sources started)",
+        audioCueLabel("a stamp cue plays when the rock drops", after),
         after,
         before,
       );

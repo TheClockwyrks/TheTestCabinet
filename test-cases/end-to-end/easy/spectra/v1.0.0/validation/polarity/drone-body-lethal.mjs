@@ -10,8 +10,23 @@
 // the clip is then nothing but the READY hold that follows (see `LEAD_IN_TICKS`).
 // Flown into, the contact itself is on screen, which is exactly what the rule
 // says.
+//
+// WHY THE DRONE IS POSED `diving`. The variable this item holds up is BAND — its
+// own title and description say so ("regardless of band — even a drone of the
+// ship's own band, so it is never mistaken for a shield"). The old script posed the
+// drone in `formation`, which quietly smuggled a second variable in: a formation
+// slot sits at `y` 120–320 (`specs/playfield.md`), so a formation drone in the
+// ship's lane at `y = 600` is a state the game's own geometry never produces, and a
+// build that scopes its body collision to drones that have left the formation
+// failed here over a situation no player can reach. Diving is the phase in which a
+// body genuinely arrives at the ship, so posing the contact there tests the rule
+// the item is about — and a build with no body collision at all still fails it.
+//
+// The swarm is held (`holdDrones`) so the posed diver stands still in the lane and
+// is a target the ship can be driven into, rather than flying its dive path out of
+// reach while the ship crosses.
 
-import { startClean, spawnDrone } from "../_helpers.mjs";
+import { startClean, holdDrones, spawnDrone } from "../_helpers.mjs";
 
 // The drone sits this far along the lane from the ship's start. At the specified
 // 360 px/s that is ~0.9 s of travel, so the approach is a readable run-up before
@@ -39,6 +54,7 @@ export default function item() {
     // the contact is something the ship travels into.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       await api.call("setShipBand", "cyan");
       await api.call("setLives", 3);
       await api.call("setShipX", SHIP_START_X);
@@ -47,7 +63,7 @@ export default function item() {
         band: "cyan",
         x: DRONE_X,
         y: 600,
-        phase: "formation",
+        phase: "diving",
       });
     },
 
@@ -71,7 +87,7 @@ export default function item() {
           band: "cyan",
           x: s.ship.x,
           y: 600,
-          phase: "formation",
+          phase: "diving",
         });
         r = await api.until((x) => x.lives < 3, { max: CONTACT_MAX_TICKS });
       }

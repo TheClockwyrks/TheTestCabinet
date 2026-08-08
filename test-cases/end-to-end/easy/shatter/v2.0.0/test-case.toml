@@ -455,7 +455,7 @@ validation = { script = "validation/bullets/max-four.mjs", outputs = [
 [[review.categories.items]]
 id = "fire-rate"
 title = "Fire is rate-limited"
-description = "Fire is rate-limited (~0.18 s between shots): a shot fired too soon after the last does not fire."
+description = "Fire is rate-limited (22 ticks between shots): a shot fired too soon after the last does not fire."
 validation = { script = "validation/bullets/fire-rate.mjs", outputs = [
   { id = "rate", name = "Rate-limited fire", kind = "video" },
 ] }
@@ -517,6 +517,16 @@ title = "A WAVE banner shows"
 description = "A brief WAVE N banner shows at the start of each wave."
 validation = { script = "validation/waves/banner.mjs", outputs = [
   { id = "banner", name = "The WAVE banner at a wave's start", kind = "image" },
+] }
+[[review.categories.items]]
+id = "plays-through-banner"
+title = "The game plays on through the banner"
+description = "The WAVE banner is a breather from rocks, not a pause: the ship keeps flying, a saucer already on the field keeps moving, and shots still connect."
+# Automated validation: clear a wave with a saucer on the field and confirm the
+# world is still running while the banner shows. See
+# validation/waves/plays-through-banner.mjs.
+validation = { script = "validation/waves/plays-through-banner.mjs", outputs = [
+  { id = "banner", name = "The field still playing while the banner shows", kind = "video" },
 ] }
 
 # --- Lives & respawn ----------------------------------------------------------
@@ -681,7 +691,7 @@ validation = { script = "validation/controls/menu-back.mjs", outputs = [{ id = "
 id = "advances-in-real-time"
 title = "The game advances itself in real time"
 description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live field advances — simulation time accumulates and the rocks drift — without anything stepping it from outside."
-validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The field the moment the wave is live", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Color (sampled from the rendered canvas) ---------------------------------
 # Each point samples the pixels the build actually RENDERS at a known on-field

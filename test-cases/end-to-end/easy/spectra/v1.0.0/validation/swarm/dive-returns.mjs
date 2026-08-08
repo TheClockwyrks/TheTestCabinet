@@ -26,12 +26,20 @@
 
 import {
   startClean,
+  protectShip,
   spawnDrone,
   findDrone,
   DIVE_SPEED,
   PLAY_TOP,
   PLAY_BOTTOM,
 } from "../_helpers.mjs";
+
+// The band the diver carries. The ship is tuned to the SAME band, so the shots the
+// diver fires on its way down are absorbed by the shield rather than costing a life
+// (`specs/polarity.md`) — this item is about the round trip, and a diver that kills
+// the driver's ship part-way through it is measuring the wrong thing. Combined with
+// `protectShip`, a hit cannot end the run either. See `protectShip`.
+const DIVER_BAND = "cyan";
 
 const ARM_TICKS = 6; // 6 ticks = the old 0.05 s to arm the dive systems
 
@@ -50,6 +58,22 @@ const TELEPORT_PX = 40;
 // widths of drift rather than demanding the pixel.
 const WRAP_X_TOL = 80;
 
+// How far either side of the play field's edges a wrap's endpoints may be read.
+//
+// The wrap is recognized from two SAMPLES taken `POLL_TICKS` apart, not from the
+// instant the build performs it, so neither endpoint lands exactly on an edge: the
+// last sample before the wrap catches the drone somewhere below the field, and the
+// first one after it catches the drone wherever the build re-entered. Demanding
+// `y > 656` before and `y < 64` after therefore failed conformant builds on a
+// technicality — one re-appeared at `y = 65`, a single pixel inside the play
+// field's top edge, and was read as a teleport.
+//
+// 40 px is loose enough to absorb both the sampling gap and a build's choice of
+// re-entry line, and far too tight to admit what this is actually separating a wrap
+// from: a drone that gives up mid-field and jumps home to its slot, which sits at
+// `y` 120–320 (`specs/playfield.md`) — hundreds of px inside either bound.
+const WRAP_Y_TOL = 40;
+
 // The spec says "about 300 px/s" and fixes no tolerance, so this band is wide on
 // purpose: half speed to half again, which still separates a swooping attack run
 // from a drone that crawls or that drops through the field in a blink.
@@ -58,10 +82,22 @@ const SPEED_TOL = DIVE_SPEED * 0.5;
 /**
  * Sample the drone's whole round trip, every `POLL_TICKS`, until it re-settles into
  * formation (or the budget runs out). Returns the samples in order.
+ *
+ * The sweep stops at the FIRST return to formation after the drone has left it — it
+ * does not wait to have seen the `returning` phase first. Those are two separate
+ * claims, and the assertions below report them separately; tying the stop condition
+ * to one of them made a build that fails it fail the other as collateral. A build
+ * that flies the whole loop reporting `diving` throughout never satisfied
+ * `seenReturning`, so the sweep ran on past the drone re-settling and into its NEXT
+ * dive, and the "re-settles into formation" assertion read `diving` — reporting
+ * that the drone never came home when in fact it had come home and gone out again.
+ * Stopping on the first settle keeps that assertion about the round trip it was
+ * meant to measure, and leaves the missing `returning` phase to be reported on its
+ * own.
  */
 async function sweepTrip(api, id) {
   const path = [];
-  let seenReturning = false;
+  let leftFormation = false;
   for (let spent = 0; spent < TRIP_MAX_TICKS; spent += POLL_TICKS) {
     await api.advance(POLL_TICKS);
     const d = findDrone(await api.snapshot(), id);
@@ -73,8 +109,8 @@ async function sweepTrip(api, id) {
       slotX: d.slotX,
       slotY: d.slotY,
     });
-    if (d.phase === "returning") seenReturning = true;
-    if (seenReturning && d.phase === "formation") break;
+    if (d.phase !== "formation") leftFormation = true;
+    if (leftFormation && d.phase === "formation") break;
   }
   return path;
 }
@@ -91,9 +127,13 @@ export default function item() {
     // and its slot is unambiguous.
     async arrange(api) {
       await startClean(api);
+      await protectShip(api);
+      // Shielded against this diver's own fire, so the round trip is never cut
+      // short by the ship taking a hit (see `DIVER_BAND`).
+      await api.call("setShipBand", DIVER_BAND);
       droneId = await spawnDrone(api, {
         kind: "shard",
-        band: "cyan",
+        band: DIVER_BAND,
         x: 640,
         y: 200,
         phase: "formation",
@@ -163,8 +203,8 @@ export default function item() {
         const { a, b } = jumps[0];
         check.expectOk(
           "the only discontinuity is a bottom-to-top wrap in the same column",
-          a.y > PLAY_BOTTOM &&
-            b.y < PLAY_TOP &&
+          a.y > PLAY_BOTTOM - WRAP_Y_TOL &&
+            b.y < PLAY_TOP + WRAP_Y_TOL &&
             Math.abs(b.x - a.x) <= WRAP_X_TOL,
         );
       }

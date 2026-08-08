@@ -17,8 +17,19 @@ import {
   placeCovering,
   spawnAt,
   unitById,
+  clipBudget,
+  LEAD_TICKS,
+  TAIL_TICKS,
   MAP,
 } from "../_helpers.mjs";
+
+const MAX_CRACK_TICKS = 180; // 3 s — the plain Beam spends all of it proving it cannot
+// How long the Disruptor is left working after its first hit lands. A tier-III Beam reloads
+// at about a shot a second, so four seconds is a handful of shots — enough to watch the
+// heavy's arc actually drain, rather than the single frame the clip used to cut on. The
+// plain-Beam half needs no tail: its whole three seconds ARE the evidence, since what it
+// shows is a tower firing nothing into a heavy it cannot touch.
+const DISRUPTOR_ON_TICKS = 240;
 
 /** Pose a Beam (optionally upgraded to Disruptor) over a heavy; `begin` opens the run. */
 async function poseBeamVsHeavy(api, begin, disruptor) {
@@ -35,15 +46,18 @@ async function poseBeamVsHeavy(api, begin, disruptor) {
 }
 
 /** Run the posed scenario and report whether the heavy was ever worn down. */
-async function actBeamVsHeavy(api, { id, hp0 }) {
-  // 180 ticks = the old 3 s cap; poll 3 = the old 0.05 s chunk.
+async function actBeamVsHeavy(api, { id, hp0 }, { runOn = 0 } = {}) {
+  // The board as posed, before the Beam's first shot: the heavy intact, the tower idle.
+  await api.advance(LEAD_TICKS);
+  // poll 3 = the old 0.05 s chunk.
   const r = await api.until(
     (s) => {
       const u = unitById(s, id);
       return u == null || u.hp < hp0;
     },
-    { max: 180, poll: 3 },
+    { max: MAX_CRACK_TICKS, poll: 3 },
   );
+  if (runOn > 0) await api.advance(runOn);
   return r.hit;
 }
 
@@ -55,6 +69,10 @@ export default function item() {
   return {
     id: "heavies.disruptor-beam",
 
+    clipMs: clipBudget(
+      2 * (LEAD_TICKS + MAX_CRACK_TICKS) + DISRUPTOR_ON_TICKS + TAIL_TICKS,
+    ),
+
     async arrange(api) {
       posedPlain = await poseBeamVsHeavy(api, startScenario, false);
     },
@@ -65,7 +83,9 @@ export default function item() {
       plainCracked = await actBeamVsHeavy(api, posedPlain);
 
       const posedDisruptor = await poseBeamVsHeavy(api, poseScenario, true);
-      disruptorCracked = await actBeamVsHeavy(api, posedDisruptor);
+      disruptorCracked = await actBeamVsHeavy(api, posedDisruptor, {
+        runOn: DISRUPTOR_ON_TICKS,
+      });
     },
 
     async assert(api, check) {

@@ -10,7 +10,20 @@
 // the rest are posed inside `act` with `poseCoverAndSpawn`, the twin that uses control ops
 // alone — `api.reset` throws in `act`.
 
-import { coverAndSpawn, poseCoverAndSpawn, TICK } from "../_helpers.mjs";
+import {
+  coverAndSpawn,
+  poseCoverAndSpawn,
+  clipBudget,
+  TICK,
+} from "../_helpers.mjs";
+
+const MAX_PAYOUT_TICKS = 480; // 8 s cap for the first hit to land
+// How long each of the four pairings is held after its payout is read. The payout must be
+// read on the exact step the first shot lands — a coarser read or a lead-in lets a SECOND
+// shot land inside it and the figure is then about two hits, not one — so the window this
+// item needs for the reviewer has to come after the reading, not before it. Two seconds
+// apiece is long enough to see the energy read settle on what that one hit paid.
+const HOLD_TICKS = 120;
 
 /**
  * Pose a covered unit with an empty bank. Energy starts at 0 so the delta is unambiguous,
@@ -30,11 +43,14 @@ async function actPayout(api, { unitId, energy0 }) {
   const r = await api.until(
     (s) => s.energy !== energy0 || !s.matter.some((u) => u.id === unitId),
     {
-      max: 480,
+      max: MAX_PAYOUT_TICKS,
       poll: TICK,
     },
   );
-  return { paid: r.snap.energy - energy0, resolved: r.hit };
+  const paid = r.snap.energy - energy0;
+  // Read first, then held: see HOLD_TICKS.
+  await api.advance(HOLD_TICKS);
+  return { paid, resolved: r.hit };
 }
 
 export default function item() {
@@ -46,6 +62,8 @@ export default function item() {
 
   return {
     id: "economy.damage-pays",
+
+    clipMs: clipBudget(4 * (MAX_PAYOUT_TICKS / 4 + HOLD_TICKS)),
 
     // An Emitter strips one shell a shot; a Cleaver strips two. The first pairing is the
     // run this item arranges.

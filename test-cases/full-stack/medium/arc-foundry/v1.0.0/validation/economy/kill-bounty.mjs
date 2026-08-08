@@ -17,6 +17,20 @@
 // the item is about. The trailing Mote also keeps the clip honest — the shot that pays is visibly
 // one kill out of the traffic, not the last event before the board empties.
 //
+// WHY THE TRAILING MOTE IS SCALED UP THE WAVE RAMP. Fixing the MEASUREMENT was not enough to fix
+// the EVIDENCE. The tail the clip runs on after the kill is real game time, and a Tuned Capacitor
+// that one-shots the leader one-shots the trailing Mote a beat later too — so the floor emptied
+// inside the recording, the wave cleared on camera, and Charge jumped by the bounty and then by
+// the wave-clear bonus. A reviewer watching an item titled "a kill pays its bounty" saw the
+// counter go up by 11 on a kill, and had no way to tell the 1 the check read from the 10 that
+// followed it. The verdict was right and the clip contradicted it.
+//
+// So the trailing Mote is scaled well up the ramp (`spawnUnit`'s `options.wave`,
+// `specs/instrumentation.md`): tough enough to be shot at for the whole tail and live, which
+// holds the wave open past the end of the clip. Only its HP scales — bounty and leak are roster
+// constants that do not move wave to wave (`specs/enemies.md`) — so nothing about the payout the
+// item measures changes, and the leader is still an ordinary Wave-1 Mote paying an ordinary 1.
+//
 // Releasing the Motes is a control op (the arrange); waiting for the kill is the behavior under
 // test, so it is the act, and the clip shows the pair walk in, the leader take the shot, and pop.
 
@@ -35,6 +49,11 @@ import {
 // enough that the tower's `first` priority (the default) unambiguously prefers the leader, close
 // enough that both are on screen together for the whole clip.
 const TRAIL_TICKS = 0.5 * SECOND;
+// How far up the wave ramp the trailing Mote is scaled, so it survives the tower's attention for
+// the whole tail and the wave cannot clear inside the clip. At Wave 30 a Mote carries a few
+// hundred HP against a Tuned Capacitor's 54 a shot — several times more than the tail's handful
+// of cadences can take off it.
+const TRAIL_WAVE = 30;
 // Several Capacitor cadences, so a build that opens a component on a full cooldown still gets
 // its shot away inside the budget.
 const KILL_TICKS = 4 * SECOND;
@@ -49,6 +68,7 @@ export default function item() {
   let c1;
   let killed;
   let floorHeld;
+  let phaseAfterTail;
 
   return {
     id: "economy.kill-bounty",
@@ -58,7 +78,7 @@ export default function item() {
       const [lead] = await spawnControlled(api, "mote");
       leadId = lead.id;
       await api.skip(TRAIL_TICKS); // the leader walks ahead
-      const [trail] = await spawnControlled(api, "mote");
+      const [trail] = await spawnControlled(api, "mote", { wave: TRAIL_WAVE });
       if (!trail) {
         throw unmetPrecondition(
           "only one Mote could be released, so the floor would empty on the kill and the " +
@@ -85,12 +105,18 @@ export default function item() {
       floorHeld = Boolean(unitById(s, trailId));
 
       await api.advance(TAIL_TICKS);
+      phaseAfterTail = (await snap(api)).phase;
     },
 
     async assert(api, check) {
       check.expectOk("the tower destroyed the unit", killed);
       check.expectOk("...with the wave still live, so no clear bonus is in the delta", floorHeld);
       check.expectEq("the kill paid the Mote's bounty (1 Charge)", c1 - c0, 1);
+      // The clip runs on past the measurement, and it must not show the wave clearing: a
+      // wave-clear bonus landing on screen a beat after the bounty makes the recording read as a
+      // kill paying 11 (`specs/gameplay.md`: 8 + 2*wave). This is what keeps the evidence saying
+      // the same thing as the verdict.
+      check.expectEq("the wave is still live at the end of the clip", phaseAfterTail, "wave");
     },
   };
 }

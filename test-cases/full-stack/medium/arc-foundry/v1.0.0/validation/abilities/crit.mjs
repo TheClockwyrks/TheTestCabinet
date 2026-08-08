@@ -38,10 +38,20 @@ import {
   SECOND,
 } from "../_helpers.mjs";
 
+// What a crit multiplies a shot by (`specs/towers.md`: the Slag Driver carries crit(0.25, 2.0)),
+// and the share of it a hit must clear to be one. A crit is x2 and a normal hit x1, so 1.5x
+// separates them with room on either side for rounding.
+const CRIT_MULT = 2.0;
+const CRIT_THRESHOLD = 1.5;
+
 // The filmed round, then how many more may be searched instantly, and how long each watches.
 const WATCHED_TICKS = 6 * SECOND;
 const SKIPPED_ROUNDS = 14;
 const ROUND_TICKS = 5 * SECOND;
+// A beat after the crit is detected, so the clip carries the bolt landing and the damage it does
+// rather than cutting on the tick the HP moved. The old act ended on the detection itself, which
+// put the impact on or past the closing frame.
+const TAIL_TICKS = 2 * SECOND;
 
 export default function item() {
   // The assembled combo, its base per-shot damage, and the biggest single hit seen.
@@ -90,10 +100,13 @@ export default function item() {
 
     async act(api) {
       if (comboId == null) return;
-      const thresh = baseDmg * 1.5; // a crit is x2, so > 1.5x base cleanly separates it
+      const thresh = baseDmg * CRIT_THRESHOLD;
 
       // The filmed round: heavy bolts crossing the gap and landing, at the pace they run.
-      await api.until(watch(thresh), { max: WATCHED_TICKS, poll: TICK });
+      const seen = await api.until(watch(thresh), { max: WATCHED_TICKS, poll: TICK });
+
+      // Carry the impact and its aftermath, rather than cutting on the tick the HP moved.
+      if (seen.hit) await api.advance(TAIL_TICKS);
 
       // Any further search the verdict needs costs the recording nothing.
       for (let round = 0; round < SKIPPED_ROUNDS && maxHit <= thresh; round += 1) {
@@ -103,13 +116,21 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("a Slag Driver was assembled", comboId != null);
-      check.expectGt("the combination tower has a per-shot damage to compare against", baseDmg, 0);
-      check.expectOk(
-        "a combination tower landed a critical hit (a shot dealt more than a normal shot)",
-        maxHit > baseDmg * 1.5,
+      // Hard: every reading below is a comparison AGAINST the tower's own per-shot damage, so a
+      // board that assembled no Slag Driver leaves both sides of the comparison at zero and the
+      // remaining assertions read as "0 is not more than 0" — which says nothing about crits and
+      // reads, wrongly, as a crit that failed to land.
+      check.assertOk("a Slag Driver was assembled", comboId != null);
+      check.assertGt("...with a per-shot damage to compare a crit against", baseDmg, 0);
+
+      // Reported as the actual figures rather than as a bare boolean, so a reviewer can see what
+      // a crit was worth on this build and how close the biggest hit came to it.
+      check.expectGt(
+        `a shot dealt more than a normal hit (x${CRIT_MULT} crit on a ${baseDmg} base means a ` +
+          `crit lands ${baseDmg * CRIT_MULT}; anything over ${baseDmg * CRIT_THRESHOLD} is one)`,
+        maxHit,
+        baseDmg * CRIT_THRESHOLD,
       );
-      check.expectGt("the crit shot's damage exceeds the base per-shot damage", maxHit, baseDmg);
     },
   };
 }

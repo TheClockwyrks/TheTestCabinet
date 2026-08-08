@@ -128,10 +128,12 @@ the same game, each run is briefed on what earlier runs already built:
   distinctness section telling the model to read `previous-entries/` and build a
   genuinely different game — a different core idea, genre, or mechanic — rather than a
   reskin or variation.
-- **Record.** The entries a run was briefed with are recorded on it
-  (`RunRecord.gameJamPriorEntries`, the id and finish time of each) and listed on the
-  run's **Inputs** tab, so what a run was actually shown is visible rather than
-  inferred from the games.
+- **Record.** The entries a run was briefed with are recorded on it as the inputs they
+  are (`RunRecord.gameJamPriorEntries` — each earlier run's id, finish time, and the
+  README body itself), and the run's **Inputs** tab renders each README inline at the
+  `previous-entries/entry-NN.md` path the model read it at, alongside the jam's prompt.
+  So what a run was actually shown is readable on the run rather than inferred from the
+  games.
 
 The match is on `(jam, model)` and deliberately spans harnesses: what repeats a game
 is the model, not the tool driving it, so an entry the same model built under another

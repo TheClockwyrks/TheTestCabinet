@@ -11,11 +11,12 @@
 
 import {
   startClean,
+  holdDrones,
   spawnDrone,
   spawnBystander,
   findDrone,
   readsAs,
-  shootUntil,
+  shootFromLane,
   LEAD_IN_TICKS,
 } from "../_helpers.mjs";
 
@@ -24,12 +25,10 @@ import {
 const RESOLVE_MAX_TICKS = 150;
 
 // A beat between the two breaks, so each pop is a distinct event on screen rather
-// than the two overlapping into one flash. Kept short deliberately: the whole
-// sequence has to fit inside the roughly two seconds a posed formation drone can be
-// relied on to sit still (`FORMATION_WINDOW_TICKS`) — past that the assault peels it
-// into a dive, and a Prism that dives to the bottom triggers a spectral inversion,
-// which swaps the band its core answers to.
-const BETWEEN_TICKS = 48;
+// than the two overlapping into one flash. The swarm is held for this item, so the
+// beat can be as long as it needs to be to read: it no longer has to fit inside the
+// window a live assault leaves a posed drone standing in its slot.
+const BETWEEN_TICKS = 72;
 
 export default function item() {
   // The Prism under test, and the live burst count at each point that matters.
@@ -43,10 +42,14 @@ export default function item() {
   return {
     id: "assets.burst-prism-twice",
 
-    // A clean stage-1 wave holding exactly one Prism, shell and core both intact.
-    // The burst count is read here, instantly, before anything can have popped.
+    // A clean stage-1 wave holding exactly one Prism, shell and core both intact,
+    // with the swarm held (`holdDrones`) so the Prism stands still to be broken
+    // twice — it neither flies around under the two shots nor dives to the bottom
+    // and inverts the field between them. The burst count is read here, instantly,
+    // before anything can have popped.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       await spawnBystander(api);
       prismId = await spawnDrone(api, {
         kind: "prism",
@@ -75,13 +78,10 @@ export default function item() {
 
       // Break the shell (its band): the first pop.
       beforeShell = (await api.snapshot()).bursts.length;
-      // Aimed by what the Prism currently reads as, not a hardcoded band: a Prism
-      // that dives to the bottom triggers a spectral inversion, which swaps the band
-      // each layer answers to (see `readsAs`).
-      const shell = await shootUntil(
-        api,
-        prismId,
-        (s) => readsAs(s, prismId),
+      // Aimed by what the Prism currently reads as, not a hardcoded band (see
+      // `readsAs`).
+      await shootFromLane(api, prismId, readsAs(await api.snapshot(), prismId));
+      const shell = await api.until(
         (s) => {
           beforeShell = Math.min(beforeShell, s.bursts.length);
           const d = findDrone(s, prismId);
@@ -97,11 +97,9 @@ export default function item() {
 
       // Break the core (the opposite band): the second pop.
       beforeCore = (await api.snapshot()).bursts.length;
+      await shootFromLane(api, prismId, readsAs(await api.snapshot(), prismId));
       snap = (
-        await shootUntil(
-          api,
-          prismId,
-          (s) => readsAs(s, prismId),
+        await api.until(
           (s) => {
             beforeCore = Math.min(beforeCore, s.bursts.length);
             return findDrone(s, prismId) === null;

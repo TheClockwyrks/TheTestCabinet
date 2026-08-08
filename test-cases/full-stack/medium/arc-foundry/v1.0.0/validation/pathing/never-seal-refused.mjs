@@ -19,22 +19,34 @@
 // That third rock covers no waypoint-platform tile, no fixed housing, no Entry or Collector
 // tile, and overlaps no existing footprint. Every other reason to refuse a placement is off the
 // table, so a build that accepts it has no never-seal rule, and one that refuses it is refusing
-// for the reason this item is about. It is also legible as a still: two rocks bracketing the
-// vent and a third bouncing off the gap between them.
+// for the reason this item is about.
 //
-// Only opening the run is arranged; the two accepted bracket rocks, the refused seal, and the
-// legal placement that follows it are all the behavior under test, so they are the act.
+// WHAT THE STILL SHOWS. The capture used to be taken after the whole sequence had run, on the
+// board the last (legal) placement left behind. But a refused placement leaves the board exactly
+// as it was, so nothing in that picture is the refusal: a reviewer saw two rocks by the vent and
+// a third rock somewhere else entirely, which is a picture of a placement being ACCEPTED, and
+// read as a tower sitting in a valid spot with a gap left open beside it. The one thing the item
+// exists to demonstrate — the game saying no — was not in its evidence.
+//
+// So the press is pulled and the rock held over the sealing tile BEFORE the still is taken, with
+// its footprint cue reading illegal (`#ff4d4d`, `specs/controls.md`), and the ghost's own
+// position and legality are asserted alongside the refusal. The still is then the game visibly
+// refusing the placement, over the exact tile the rule is about, with the two bracket rocks that
+// made it the last way out on either side of it.
+//
+// Opening the run, the two accepted bracket rocks, and the held rock the still is taken over are
+// the arrange; the REFUSED seal and the legal placement that follows it are the behavior under
+// test and are the act.
 
-import { startBuild, snap, SECOND } from "../_helpers.mjs";
+import { startBuild, hoverHeldRock, heldCovers, snap } from "../_helpers.mjs";
 
-// A beat between drops so the clip reads as a sequence rather than a jump cut, and a moment on
-// the final board for the still.
-const BEAT_TICKS = 0.5 * SECOND;
-const SETTLE_TICKS = 1 * SECOND;
-
-// The two bracket rocks, the sealing rock they set up, and a legal drop in the open yard.
-const BRACKET_A = { col: 0, row: 3 }; // walls (0,4) and (1,4), just above the Entry
-const BRACKET_B = { col: 0, row: 7 }; // walls (0,6) and (1,6), just below it
+// The two bracket rocks, the sealing rock they set up, and a legal drop in the open yard. Each
+// anchor is the top-left of a 2x2 (`specs/board.md`), so BRACKET_A walls (0,3)..(1,4) above the
+// Entry and BRACKET_B walls (0,7)..(1,8) below it. That leaves the Entry at (0,5) reaching only
+// (1,5) and (0,6), and the SEAL rock covers (1,5)..(2,6) — after which (0,6) is a pocket with no
+// way out and the E->WP1 segment has no open route.
+const BRACKET_A = { col: 0, row: 3 };
+const BRACKET_B = { col: 0, row: 7 };
 const SEAL = { col: 1, row: 5 }; // closes the last mouth: the Entry is then walled in
 const LEGAL = { col: 12, row: 10 }; // open yard, nowhere near the chain
 
@@ -43,6 +55,7 @@ export default function item() {
   let before;
   let stamps0;
   let sBracket;
+  let heldOverSeal;
   let sSeal;
   let sLegal;
 
@@ -53,21 +66,35 @@ export default function item() {
       const s0 = await startBuild(api);
       before = s0.towers.length;
       stamps0 = s0.stampsLeft;
-    },
 
-    async act(api) {
-      // Two legal rocks that narrow the Entry's mouth without closing it.
+      // Two legal rocks that narrow the Entry's mouth without closing it. Placements are control
+      // ops and consume no game time, and this item declares a still rather than a clip, so they
+      // pose the board rather than being played out.
       for (const spot of [BRACKET_A, BRACKET_B]) {
         await api.call("setNextRoll", "capacitor", 1);
         await api.call("placeRock", spot.col, spot.row);
-        await api.advance(BEAT_TICKS);
       }
       sBracket = await snap(api);
 
-      // The rock that would close the last way out of the Entry: the never-seal rule refuses it.
+      // Hold a rock over the tile that would close the last way out of the Entry, and capture it
+      // there, so the still shows the game refusing the placement rather than a board on which
+      // nothing happened.
+      //
+      // The hover and the capture are in `arrange` deliberately: a held ghost is drawn from the
+      // game's pointer, and a build may let the REAL mouse own that pointer while it runs on its
+      // own clock — which is what the record pass hands it for `act`. The reference does exactly
+      // that, so a hover posed in `act` is overwritten before the next frame paints and the ghost
+      // is drawn nowhere. `arrange` runs before the clock changes hands, so the debug pointer
+      // holds in both passes. See `pathing/map-c-housings` for the same reasoning.
+      heldOverSeal = await hoverHeldRock(api, SEAL.col, SEAL.row);
+      await api.screenshot("refused");
+    },
+
+    async act(api) {
+      // The drop the still was taken over: the never-seal rule refuses it and the board is
+      // unchanged.
       await api.call("setNextRoll", "capacitor", 1);
       await api.call("placeRock", SEAL.col, SEAL.row);
-      await api.advance(BEAT_TICKS);
       sSeal = await snap(api);
 
       // The same rock IS accepted in the open yard, so the refusal is about the seal and not
@@ -75,14 +102,20 @@ export default function item() {
       await api.call("setNextRoll", "capacitor", 1);
       await api.call("placeRock", LEGAL.col, LEGAL.row);
       sLegal = await snap(api);
-
-      await api.advance(SETTLE_TICKS);
-      await api.screenshot("refused");
     },
 
     async assert(api, check) {
       check.expectEq("the two bracket rocks are accepted", sBracket.towers.length, before + 2);
       check.expectEq("...spending a stamp each", sBracket.stampsLeft, stamps0 - 2);
+
+      check.expectOk(
+        "a rock is held over the tile that would seal the segment",
+        heldCovers(heldOverSeal, SEAL.col, SEAL.row),
+      );
+      check.expectOk(
+        "...and its footprint cue reads illegal there",
+        Boolean(heldOverSeal) && heldOverSeal.legal === false,
+      );
 
       check.expectEq("a placement that would seal the segment lands no candidate", sSeal.towers.length, before + 2);
       check.expectEq("...and consumes no stamp", sSeal.stampsLeft, stamps0 - 2);

@@ -7,10 +7,31 @@
 
 import {
   startClean,
+  holdDrones,
   spawnDrone,
   findDrone,
   enemyBullets,
 } from "../_helpers.mjs";
+
+// A full second on the posed field before the discharge is fired.
+//
+// This item's whole claim is a DISTINCTION — the divers and the bullets go, the
+// formation drone stays — and the old clip opened on the discharge already
+// expanding, so a reviewer never saw which drone was which before they started
+// disappearing. A second of the arranged field first makes the three roles legible
+// (one drone holding its slot up top, two divers out in the field, bullets of both
+// bands in flight), so the aftermath means something.
+//
+// The swarm is held through it, so the posed divers are still where they were put
+// when the wave reaches them, rather than a second further down their paths — and
+// so the formation drone that must survive has not been peeled into a dive by the
+// assault, which would make it a legitimate target and fail a correct build.
+const LEAD_IN_TICKS = 120; // 1 s
+
+// The posed enemy bullets hang still for the same reason: at 320 px/s they would
+// otherwise leave the field during the lead-in, and "all enemy bullets are cleared"
+// would be true because they had flown away rather than because the wave took them.
+const STILL = { vx: 0, vy: 0 };
 
 export default function item() {
   // The formation drone that must survive, and the field once the wave has passed.
@@ -25,6 +46,7 @@ export default function item() {
     // that must be CLEARED (the wave is band-blind, so both bands are posed).
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       formId = await spawnDrone(api, {
         kind: "shard",
         band: "cyan",
@@ -46,8 +68,18 @@ export default function item() {
         y: 300,
         phase: "diving",
       });
-      await api.call("spawnEnemyBullet", { x: 640, y: 400, band: "cyan" });
-      await api.call("spawnEnemyBullet", { x: 520, y: 320, band: "magenta" });
+      await api.call("spawnEnemyBullet", {
+        x: 640,
+        y: 400,
+        band: "cyan",
+        ...STILL,
+      });
+      await api.call("spawnEnemyBullet", {
+        x: 520,
+        y: 320,
+        band: "magenta",
+        ...STILL,
+      });
       await api.call("setResonance", 100);
     },
 
@@ -57,6 +89,10 @@ export default function item() {
     // has the formation drone still standing in it afterwards, which is the half of
     // the behavior the old clip did not show at all.
     async act(api) {
+      // A beat on the arranged field, so the reviewer can tell the formation drone
+      // from the two divers before the wave reaches any of them.
+      await api.advance(LEAD_IN_TICKS);
+
       await api.call("discharge");
       await api.advance(60); // 60 ticks = the old 0.5 s: the wave expands across the field
       snap = await api.snapshot();

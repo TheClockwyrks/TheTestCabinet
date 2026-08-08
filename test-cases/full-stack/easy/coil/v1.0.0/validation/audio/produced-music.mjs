@@ -26,6 +26,30 @@
 // `api.settle` (unlike `api.advance`) is a genuine real-time pause in BOTH passes (see
 // `packages/browser-driver/validation.mjs`), so it is what the wait is built from
 // rather than the tick-based `api.advance` this case's other items use.
+//
+// THE GATE IS "DID THE KEYPRESS REACH A ROUND", AND IT IS SAMPLED THROUGHOUT THE WAIT
+// rather than read off the state at the end of it. Both ends of that matter, and an
+// earlier revision got the second one wrong by reading the screen once, after the full
+// wait, and requiring it to still be `playing`:
+//
+//   * A build may not reach the round in the same turn as the keypress — a title
+//     transition, or a round that starts once the audio decode lands — so a single
+//     read taken immediately would fail a conformant build for being a frame late.
+//   * A build may not still BE in the round by the end. Nothing here steers, and the
+//     snake starts at col 15 heading right, so it has about 1.75 s before it runs out
+//     of board — inside a wait deliberately set to 3 s. Whether it gets that far
+//     depends on whether the build's own clock is running during the wait, which
+//     `api.reset` leaves off (the debug API's manual clock) but which a build that
+//     re-arms it on the round-start path turns back on. That is a genuine defect — the
+//     spec has only `reset`, `step` and `setAutoStep` touch that flag — but it is
+//     `controls.advances-in-real-time`'s defect to report, and it is not evidence
+//     about music. Reading the screen at the end let it land here instead, failing a
+//     build whose bed played perfectly and telling the reviewer, wrongly, that Enter
+//     had not started a round.
+//
+// Sampling across the wait answers the question the gate is actually asking — was
+// there a round for the bed to play under — and answers it the same way whichever
+// clock the build is running.
 
 import { actPlayOn, audioCount } from "../_helpers.mjs";
 
@@ -46,7 +70,7 @@ const HOLD_TICKS = 8;
 export default function item() {
   let before;
   let after;
-  let screen;
+  let reachedRound;
 
   return {
     id: "audio.produced-music",
@@ -62,17 +86,21 @@ export default function item() {
       // The one real gesture: confirm the title's play entry. This is the first
       // interaction AND the round start, in that order, in the build's own handler.
       await api.userKey("Enter");
+      reachedRound = (await api.snapshot()).screen === "playing";
 
       // Give the bed every chance to start — including on a retry once the decode
       // lands — but stop as soon as it does, so the clip is not padded with silence
-      // after the evidence.
+      // after the evidence. The screen is sampled on the way past: a round seen live at
+      // ANY point in the wait is a round the bed had to play under, whether the build
+      // entered it a beat after the keypress or had already run out of board by the
+      // end of the wait.
       after = before;
       for (let waited = 0; waited < BED_WAIT_MS; waited += BED_POLL_MS) {
         await api.settle(BED_POLL_MS);
+        if ((await api.snapshot()).screen === "playing") reachedRound = true;
         after = await audioCount(api);
         if (after > before) break;
       }
-      screen = (await api.snapshot()).screen;
 
       await actPlayOn(api, HOLD_TICKS);
     },
@@ -83,8 +111,8 @@ export default function item() {
       // start.
       check.expectEq(
         "pressing Enter on the title starts a round",
-        screen,
-        "playing",
+        reachedRound,
+        true,
       );
       check.expectGt(
         "a Web Audio source starts under the round the keypress began (the music bed)",

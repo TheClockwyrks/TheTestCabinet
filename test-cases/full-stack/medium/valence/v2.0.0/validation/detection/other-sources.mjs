@@ -16,8 +16,18 @@ import {
   placeCovering,
   spawnAt,
   unitById,
+  clipBudget,
+  LEAD_TICKS,
+  TAIL_TICKS,
   MAP,
 } from "../_helpers.mjs";
+
+const MAX_HIT_TICKS = 180; // 3 s — the sweep's own cap, mirrored into the clip budget
+// Each detector gets its own framed scene. Two scenes that each cut on the frame the
+// noble's hp first moved gave the reviewer two glimpses of a number twitching; there was no
+// "it is sealed and nothing is happening to it" to compare against, which is the state the
+// whole item is a change from.
+const SCENE_TICKS = LEAD_TICKS + MAX_HIT_TICKS + TAIL_TICKS;
 
 /** Pose an Ionizer upgraded to its ARRAY branch over an undetected Noble. */
 async function poseArray(api, begin) {
@@ -27,7 +37,14 @@ async function poseArray(api, begin) {
   const t = await placeCovering(api, "ionizer", g, s0);
   await api.call("upgradeTower", t.id); // -> tier II
   await api.call("upgradeTower", t.id, "A"); // -> tier III ARRAY (detection)
-  const id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
+  // Six electrons, so the noble is still there to be watched at the end of the scene
+  // rather than neutralized by the second shot.
+  const id = await spawnAt(api, {
+    type: "noble",
+    electrons: 6,
+    pathId: 0,
+    s: s0,
+  });
   return { id, hp0: unitById(await api.snapshot(), id).hp };
 }
 
@@ -37,20 +54,31 @@ async function poseBeam(api, begin) {
   const g = pathGeom(snap.paths[0]);
   const s0 = g.length * 0.18;
   await placeCovering(api, "beam", g, s0);
-  const id = await spawnAt(api, { type: "noble", pathId: 0, s: s0 });
+  // Six electrons, so the noble is still there to be watched at the end of the scene
+  // rather than neutralized by the second shot.
+  const id = await spawnAt(api, {
+    type: "noble",
+    electrons: 6,
+    pathId: 0,
+    s: s0,
+  });
   return { id, hp0: unitById(await api.snapshot(), id).hp };
 }
 
-/** Run until the posed tower damages (or neutralizes) the noble. */
+/** Run until the posed tower damages (or neutralizes) the noble, framed on both sides. */
 async function seesInert(api, { id, hp0 }) {
-  // 180 ticks = the old 3 s cap; poll 3 = the old 0.05 s chunk.
+  // The board as posed: a sealed noble and a tower that has not fired yet.
+  await api.advance(LEAD_TICKS);
+  // poll 3 = the old 0.05 s chunk.
   const r = await api.until(
     (s) => {
       const u = unitById(s, id);
       return u == null || u.hp < hp0;
     },
-    { max: 180, poll: 3 },
+    { max: MAX_HIT_TICKS, poll: 3 },
   );
+  // ...and the detector going on working on a unit nothing else could touch.
+  await api.advance(TAIL_TICKS);
   return r.hit;
 }
 
@@ -61,6 +89,8 @@ export default function item() {
 
   return {
     id: "detection.other-sources",
+
+    clipMs: clipBudget(2 * SCENE_TICKS),
 
     async arrange(api) {
       posedArray = await poseArray(api, startScenario);

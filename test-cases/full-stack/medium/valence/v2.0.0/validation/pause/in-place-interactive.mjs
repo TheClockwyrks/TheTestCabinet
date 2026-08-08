@@ -4,7 +4,15 @@
 // the still board. The check starts a live round, pauses in place, and places a tower,
 // confirming it succeeds while the paused flag stays set.
 
-import { startRun, pathGeom, placeCovering, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  pathGeom,
+  placeCovering,
+  clipBudget,
+  LEAD_TICKS,
+  TAIL_TICKS,
+  MAP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let g;
@@ -15,6 +23,8 @@ export default function item() {
   return {
     id: "pause.in-place-interactive",
 
+    clipMs: clipBudget(2 * LEAD_TICKS + TAIL_TICKS),
+
     async arrange(api) {
       const snap = await startRun(api, MAP.single, {
         round: 1,
@@ -22,18 +32,33 @@ export default function item() {
         energy: 100000,
       });
       await api.call("startRound");
-      await api.call("press", "Space"); // pause in place
-      paused = await api.snapshot();
-      before = paused.towers.length;
       g = pathGeom(snap.paths[0]);
     },
 
-    // The placement on the still board — the behavior under test. Placing is a control
-    // op, so it is legal here and consumes no simulation time.
+    // The pause and the building that follows it — the behavior under test, and now the
+    // whole of the clip. The pause was previously applied in `arrange`, so the recording
+    // opened on a board that was already still and the reviewer never saw it stop.
     async act(api) {
-      await placeCovering(api, "emitter", g, g.length * 0.35);
+      // The round running.
+      await api.advance(LEAD_TICKS);
+
+      await api.call("press", "Space"); // pause in place
+      paused = await api.snapshot();
+      before = paused.towers.length;
+      // Held on the frozen board, so what happens next plainly happens while it is frozen.
+      await api.advance(LEAD_TICKS);
+
+      const t = await placeCovering(api, "emitter", g, g.length * 0.35);
       after = await api.snapshot();
+
+      // ...and SELECTED, which is the other half of "the board stays fully interactive"
+      // (specs/controls.md: "you can keep placing, upgrading, selling, and inspecting
+      // towers on the still board"). Selecting draws its range ring and fills the
+      // inspector, so the clip shows a tower being built AND inspected under the pause
+      // rather than one appearing on a still picture.
+      await api.call("selectTower", t.id);
       await api.settle(150);
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

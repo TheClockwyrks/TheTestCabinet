@@ -4,8 +4,26 @@
 // placement path at points chosen to trip each rule: exactly ON a path (reason
 // `path`), out of bounds (`bounds`), over an existing tower (`overlap`), and — with the
 // bank emptied — unaffordable (`cost`). Each refusal must name its own reason.
+//
+// The verdict comes from those four reason codes. The STILL comes from somewhere else —
+// a held tower whose ghost is sitting on an illegal spot — because a refused `placeTower`
+// changes nothing on screen and a picture of an unchanged board is not evidence of a
+// refusal. See the note in `act`.
 
-import { startRun, pathGeom, MAP, HUGE_ENERGY } from "../_helpers.mjs";
+import {
+  startRun,
+  pathGeom,
+  MAP,
+  HUGE_ENERGY,
+  STAGE_W,
+  STAGE_H,
+} from "../_helpers.mjs";
+
+// The shop hotkey that holds an Emitter for placement. specs/controls.md binds "`1`–`7`
+// for the seven towers in shop order" and specs/towers.md lists that order — the five
+// damage towers, Emitter first, then the two support auras — so `Digit1` is the Emitter
+// this item has been refusing all along.
+const EMITTER_HOTKEY = "Digit1";
 
 export default function item() {
   let onPath;
@@ -54,7 +72,38 @@ export default function item() {
         onPath.y - ny * 64,
       );
 
-      await api.settle(150);
+      // ---- The evidence -------------------------------------------------------
+      //
+      // Everything above is control ops, which draw nothing: a refused `placeTower` leaves
+      // the board exactly as it found it. So a still taken here used to show one legal
+      // tower sitting on an ordinary board — a picture of a placement that WORKED, backing
+      // an item about placements that do not.
+      //
+      // What a player actually sees when a spot is illegal is the held tower's ghost:
+      // specs/board.md — "While a tower is held for placement, its ghost follows the
+      // pointer, its range is previewed as a ring, and an illegal spot ... is clearly
+      // refused" — and specs/controls.md, "the cursor then shows the held tower following
+      // the pointer and its range ring, cued for whether the spot under the pointer is
+      // legal". That cue is a POINTER state, so it is reached by holding a tower and
+      // putting the pointer somewhere illegal, not by any control op.
+      //
+      // The bank is refilled first, so the spot under the pointer is refused for being ON
+      // THE PATH — the rule this still is meant to illustrate — rather than for costing
+      // more than the 0 the affordability probe left behind.
+      await api.call("setEnergy", HUGE_ENERGY);
+      await api.call("press", EMITTER_HOTKEY);
+
+      // `userDoubleClick` is the only pointer primitive that lands on an exact board
+      // point (it takes fractions of the game canvas, as `pixel` does; `userClick` takes
+      // viewport pixels and is for arming audio in a corner). Its two presses are two more
+      // attempts on the same illegal spot, both refused for the same reason as `rPath`
+      // above, and specs/controls.md keeps build mode active through them — "Build mode
+      // stays active so you can place several of a type in a row". What it leaves behind
+      // is the pointer parked on the path with the tower still held: the refusal cue, on
+      // screen, which is the picture this item wanted.
+      await api.userDoubleClick(onPath.x / STAGE_W, onPath.y / STAGE_H);
+
+      await api.settle(250);
       await api.screenshot("board");
     },
 

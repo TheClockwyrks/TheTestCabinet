@@ -48,6 +48,11 @@ const PARTNER = SPOTS[1]; // Rectifier @ Scrap — the quality-combine's other h
 const REG = SPOTS[2]; // Regulator @ Scrap — Fuse Cluster ingredient
 const NODE = SPOTS[3]; // Arc-Node  @ Scrap — Fuse Cluster ingredient
 
+// A beat on the CONTESTED BOARD before the fold. This item is about a choice between two folds
+// that the same four pieces afford, so the four pieces have to be on screen as four pieces before
+// one of the folds happens: the act used to open on the combine, and a reviewer watching it saw
+// pieces appear and resolve in the same instant with nothing to compare against.
+const LEAD_TICKS = 2 * SECOND;
 // Long enough to carry the piece the fold produced and the wave the harvest launched, rather than
 // cutting on the combine flash.
 const TAIL_TICKS = 4 * SECOND;
@@ -103,10 +108,21 @@ export default function item() {
       await api.call("combine", first.init.id);
       const posed = towerAt(await snap(api), INIT.col, INIT.row);
       if (!posed || posed.kind !== "combo") {
+        // Say what the build folded instead, not just that it was not a combo. The two ways this
+        // fails mean very different things and the reviewer has to be able to tell them apart:
+        // a build that cannot assemble recipes at all leaves a candidate or nothing there, while
+        // a build that assembles them fine but ignores an explicit set of more than two pieces
+        // falls back to auto-resolving the matching pair and leaves a `rectifier` one tier up —
+        // which is `combine` not folding exactly the named set (`specs/instrumentation.md`).
+        const held = posed
+          ? `${posed.kind}${posed.type ? ` (${posed.type}` : ""}${
+              posed.type && posed.quality ? ` T${posed.quality}` : ""
+            }${posed.type ? ")" : ""}`
+          : "nothing";
         throw unmetPrecondition(
-          `the Fuse Cluster recipe did not assemble from the contested board (the initiator's ` +
-            `footprint holds ${posed ? posed.kind : "nothing"}), so the board affords only one ` +
-            `fold and there is no choice for an explicit selection to decide`,
+          `the Fuse Cluster recipe did not assemble from the contested board — the initiator's ` +
+            `footprint holds ${held} instead of a combination tower, so the board affords only ` +
+            `one fold and there is no choice for an explicit selection to decide`,
         );
       }
 
@@ -119,6 +135,8 @@ export default function item() {
     },
 
     async act(api) {
+      await api.advance(LEAD_TICKS); // the four pieces standing, with both folds still available
+
       await api.call("combine", initId);
       s = await snap(api);
 

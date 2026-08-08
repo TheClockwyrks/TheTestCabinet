@@ -2,13 +2,21 @@
 // of base (type, quality) ingredients into one combination tower at the initiating piece's
 // footprint, and every consumed ingredient footprint hardens into a blocker.
 //
-// Assembling the recipe is all control ops (the arrange). The act reads the board the fold
-// produced and then holds on it: a fresh-consuming recipe is the level's harvest, so Wave 1 is
-// already running and the clip shows the assembled combo standing among its hardened
-// ingredients, which is exactly what the assertions describe.
+// WHAT IS FILMED. The fold used to happen entirely in `arrange`, which is instant in both passes,
+// so the recording opened on a board where the combination tower already stood and the one event
+// this item is about — a multiset of base parts BECOMING one tower — had happened before the
+// first frame. All a reviewer could see was a combo standing among some blockers, which is the
+// aftermath and not the claim.
+//
+// So the ingredients are posed in `arrange` and the fold is committed in `act`, after a beat on
+// the board that affords it. The clip is then the sentence the item states: four base pieces
+// standing, the fold, and the tower that replaces them with every consumed footprint hardened.
 
-import { assembleCombo, towerAt, towerById, snap, SECOND } from "../_helpers.mjs";
+import { arrangeComboBoard, commitCombo, towerAt, towerById, snap, SECOND } from "../_helpers.mjs";
 
+// A beat on the ingredient board before the fold, so the pieces the recipe consumes are on screen
+// as pieces first.
+const LEAD_TICKS = 2 * SECOND;
 // Long enough to watch the assembled combo stand among its hardened ingredients AND take its
 // first shots at the wave the fold launched. Two seconds cut away before the Load arrived.
 const CLIP_TICKS = 4 * SECOND;
@@ -29,18 +37,27 @@ export default function item() {
   // The fold's outputs and the board it left behind, all read by `assert`.
   let comboId;
   let ingredients;
+  let initiatorId;
   let s;
 
   return {
     id: "combos.recipe-assembles",
 
     async arrange(api) {
-      ({ comboId, ingredients } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400, clear: false }));
-      await skipToFirstContact(api, comboId);
+      ({ ingredients, initiatorId } = await arrangeComboBoard(api, "fusecluster", { seed: 1 }));
     },
 
     async act(api) {
+      // The board that affords the recipe, before anything folds it.
+      await api.advance(LEAD_TICKS);
+
+      comboId = await commitCombo(api, initiatorId);
       s = await snap(api);
+
+      // A fresh-consuming recipe is the level's harvest, so Wave 1 is now running. Skip the walk
+      // up the corridor (instant in both passes) so the clip carries the new tower actually
+      // working rather than an empty yard.
+      await skipToFirstContact(api, comboId);
       await api.advance(CLIP_TICKS);
     },
 

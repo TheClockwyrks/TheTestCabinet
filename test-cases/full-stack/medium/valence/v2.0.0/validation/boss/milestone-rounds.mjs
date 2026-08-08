@@ -11,7 +11,34 @@
 // alone — `api.reset` throws in `act`, because it would take the clock back and freeze
 // the recording.
 
-import { startRun, poseRun, TOTAL_ROUNDS, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  poseRun,
+  clipBudget,
+  TOTAL_ROUNDS,
+  MAP,
+} from "../_helpers.mjs";
+
+// HOW THE FIVE ROUNDS ARE PACED.
+//
+// The verdict sweeps each round's WHOLE release span — that is the only way to say "no boss
+// was folded in anywhere" — but five spans of up to 90 s of game time is nowhere near a
+// recording. Filmed straight through, the record pass spent its entire budget inside round
+// 40 and the four ordinary rounds never appeared, so the clip showed the boss and nothing
+// to contrast it against.
+//
+// So each round is filmed briefly and swept instantly. Round 40 gets the longer window,
+// because the boss arriving is the thing the item is named for; the ordinary rounds get a
+// shorter one at 3x game speed, which is enough to see ordinary matter streaming out of the
+// inlet and no Macromass among it.
+//
+// The SPEED is safe to pose here only because it cannot reach the verdict: `setSpeed`
+// scales how much game time a real-time `advance` covers in the record pass and does
+// nothing at all in the validate pass (see the note in `_helpers.mjs`), and every id this
+// item counts is gathered by the instant sweep that follows, which is identical in both.
+const BOSS_SHOW_TICKS = 240;
+const ORDINARY_SHOW_TICKS = 150;
+const ORDINARY_SPEED = 3;
 
 const ORDINARY_ROUNDS = [9, 10, 20, 30];
 // Generous: every round's release span is under 30 s of game time (specs/matter.md), and
@@ -26,20 +53,22 @@ async function poseRelease(api, begin, round) {
 
 // Run through a started round's release, returning whether a Macromass was ever released
 // and how many distinct units the round put on the board.
-async function actRelease(api) {
+async function actRelease(api, { show }) {
   const ids = new Set();
   let sawBoss = false;
-  await api.until(
-    (s) => {
-      for (const u of s.matter) {
-        ids.add(u.id);
-        if (u.type === "macromass") sawBoss = true;
-      }
-      return false; // sweep the whole span; the boss group is released last
-    },
-    // poll 30 = the old 0.5 s chunk.
-    { max: MAX_WAVE_TICKS, poll: 30 },
-  );
+  const collect = (s) => {
+    for (const u of s.matter) {
+      ids.add(u.id);
+      if (u.type === "macromass") sawBoss = true;
+    }
+    return false; // never stop early; the boss group would be released last
+  };
+
+  // The filmed sample — real time, and collecting as it goes.
+  await api.until(collect, { max: show, poll: 6 });
+  // The rest of the span, swept instantly. poll 30 = the old 0.5 s chunk.
+  await api.skipUntil(collect, { max: MAX_WAVE_TICKS, poll: 30 });
+
   return { sawBoss, units: ids.size };
 }
 
@@ -50,6 +79,10 @@ export default function item() {
   return {
     id: "boss.milestone-rounds",
 
+    clipMs: clipBudget(
+      BOSS_SHOW_TICKS + ORDINARY_ROUNDS.length * ORDINARY_SHOW_TICKS,
+    ),
+
     // Round 40 — the boss round — is the run this item arranges.
     async arrange(api) {
       await poseRelease(api, startRun, TOTAL_ROUNDS);
@@ -59,12 +92,18 @@ export default function item() {
     // The boss round's release first (the thing the item is named for, and so the part of
     // the clip worth seeing), then each ordinary round in turn.
     async act(api) {
-      final = await actRelease(api);
+      final = await actRelease(api, { show: BOSS_SHOW_TICKS });
 
+      // The ordinary rounds, fast-forwarded: same sweep, less of the reviewer's time.
+      await api.call("setSpeed", ORDINARY_SPEED);
       for (const round of ORDINARY_ROUNDS) {
         await poseRelease(api, poseRun, round);
-        ordinary.set(round, await actRelease(api));
+        ordinary.set(
+          round,
+          await actRelease(api, { show: ORDINARY_SHOW_TICKS }),
+        );
       }
+      await api.call("setSpeed", 1);
     },
 
     async assert(api, check) {
