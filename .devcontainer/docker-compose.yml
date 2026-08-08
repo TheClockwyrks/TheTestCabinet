@@ -58,11 +58,3 @@ volumes:
   # Cargo build artifacts, kept off the host-mounted workspace; survives
   # container restarts and rebuilds.
   cargo-target:
-  # The Grafana LGTM stack no longer lives here. It now runs IN THE CLUSTER as the
-  # local k3d overlay's `components/observability` (deployments/k8s/components/
-  # observability/), the same way it runs in staging/prod — so local development
-  # observes telemetry through the exact stack a deployment uses. Bring the cluster
-  # up with `make -C deployments/local local-up` and reach Grafana (and the OTLP
-  # collector, for binaries run here in the devcontainer) with
-  # `make -C deployments/local local-grafana`. See .devcontainer/README.md and
-  # development/observability.md.
