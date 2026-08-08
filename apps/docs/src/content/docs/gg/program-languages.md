@@ -2974,14 +2974,14 @@ and `<filesystem>`, for the namespace collision above.
 
 ### C#: a committed interpreter for a compiled language
 
-A **third** shape, and the first arm that is neither of the two above. Its execution
-substrate is built and its SDK and registration are not, so nothing here is reachable from a
-run yet: there is no `language` value that resolves to it.
+A **third** shape, and the first arm that is neither of the two above. Its execution substrate and
+its whole model-facing surface are built; only its registration is not, so nothing here is reachable
+from a run yet: there is no `language` value that resolves to it.
 
 The two shapes so far split on *what crosses the membrane*. An interpreted arm sends **source**
 to a committed runtime; a compiled arm sends **a component** and commits nothing. C# sends
 neither. Roslyn compiles the model's reply to **IL** on the host — the compiler every C#
-build already runs, in **~0.27–0.37 s** warm — and the assembly crosses as base64 in the
+build already runs, in **~0.28 s** warm — and the assembly crosses as base64 in the
 world's existing `program` string, to a committed component holding a **Mono IL interpreter**
 and the whole .NET class library. So it has an interpreted arm's *artifact* and a compiled
 arm's *failure bands*: a program the compiler read whole and rejected is
@@ -3001,9 +3001,9 @@ to be attempted only as research after two fallbacks. No relink research was nee
 neither fallback was taken. The question answers itself once it is asked of the right layer:
 **the component gg instantiates is C, not managed code.** Microsoft ships Mono's wasm build as
 static archives *plus the C that links them*, precisely so the runtime can be relinked with an
-embedder's own natives, so gg's guest is that runtime pack's own supported build with one extra
-translation unit — `wit-bindgen`'s C bindings for gg's world and
-`packages/gg-sandbox-csharp/Sources/shell.c`. The managed half never binds a WIT world at all:
+embedder's own natives, so gg's guest is that runtime pack's own supported build with three extra
+translation units — `wit-bindgen`'s C bindings for gg's world and the three files in
+`packages/gg-sandbox-csharp/Sources/`. The managed half never binds a WIT world at all:
 it reaches gg through `mono_add_internal_call`, Mono's embedding API for exactly this, which is
 older than wasm and needs no build-time code generation.
 
@@ -3012,22 +3012,26 @@ as in-memory resources, so the runtime boots with zero preopens and reads nothin
 pack's default is a `managed/` directory beside the program, which would have put 17 MB of
 Microsoft's assemblies into a run's own working tree where a model would find them and would
 have made the guest depend on a path the toolchain image happened to install. It costs 22 MB of
-committed artifact — the component is **34.9 MB** — and buys one that behaves the same
+committed artifact — the component is **35.3 MB** — and buys one that behaves the same
 everywhere.
 
 **Its error surface is the best of any compiled arm here, and gg engineered none of it.**
 `try`/`catch`/`finally` work because they are IL, and what an unhandled exception reports is
 `Exception.ToString()`: the type, the message *and* the managed frames. Rust aborts and reaches
 for a panic hook; Swift traps and has no hook at all; C++ has `throw` and `catch` but nothing to
-ask a caught exception where it came from. This arm is handed all three by the runtime.
+ask a caught exception where it came from. This arm is handed all three by the runtime — and the
+frame at the top of that trace is the SDK function that failed, because the one place the SDK
+turns a failed call into a `throw` is marked `MethodImplOptions.NoInlining` so it stays out of it.
 
 Three things are absent, and each is stated rather than glossed:
 
 - **`System.Net.Http`'s native handler.** Its WASI implementation is a set of `[DllImport]`s
   against `wasi:http/outgoing-handler@0.2.0`, an interface gg's world does not declare and gg's
-  linker does not define, and a guest carrying them cannot be encoded as a component at all. The
-  assembly is bundled and its types compile; a program reaches the network the way every other
-  arm does, through `shell`.
+  linker does not define, and a guest whose *pinvoke scan* included them cannot be encoded as a
+  component at all. So the assembly is **in the bundle and out of the scan** — the types exist,
+  load and compile, and the transport under `HttpClient` is gone. A program reaches the network the
+  way every other arm does, through `shell`. It was in neither list until a program that merely
+  named the type failed to load it.
 - **`System.Security.Cryptography`**, which is the *runtime's* gap and not gg's: Mono's wasi
   build ships the types as ones that throw, and nothing gg could do would restore them. Measured
   rather than assumed, and it arrives as a named, catchable `PlatformNotSupportedException`
@@ -3036,9 +3040,88 @@ Three things are absent, and each is stated rather than glossed:
   saying whether the parser produced it, so the [Java](#java-a-warm-jvm-and-two-compilers-per-program)
   arm separates a typo from a program written whole against the wrong surface. Roslyn's command
   line does not, and its own `ErrorFacts` is internal — so every rejection reaches the model as a
-  compile error, and gg does not guess at another compiler's taxonomy. The fix is known and
-  belongs with this arm's SDK step, which wants a hosted Roslyn driver anyway to read XML
-  documentation comments.
+  compile error, and gg does not guess at another compiler's taxonomy. The fix is known and is not
+  free: a hosted Roslyn driver could ask `SyntaxTree.GetDiagnostics()`, and this arm has one
+  already — it is what reflects the catalogue — but it runs on a developer's machine, and putting a
+  resident Roslyn on the *turn path* is a compiler server by another name, which would have to go
+  through the [pool](#where-a-compiler-lives-and-what-it-must-never-share) that exists because
+  `VBCSCompiler` is deleted from the image.
+
+#### The SDK is compiled with the program, which no other arm's is
+
+Every other arm's SDK is a *built* artifact: a jar on a classpath, a header in a precompiled
+prelude, a wasm object linked into the program. C#'s is twenty-two `.cs` files carried in gg's own
+binary, written into the preparation's workspace and handed to `csc` beside `program.cs`. The
+model's program and gg's SDK are **one compilation**, and three things follow:
+
+- **there is no second assembly for the guest to find.** The committed guest loads exactly one
+  assembly per run. An SDK compiled separately would have to be bundled into the 35.3 MB component,
+  so every doc-comment edit would mean rebuilding and re-committing it.
+- **the SDK is reviewable** — what a reviewer reads in the diff is what a model compiles against,
+  with no committed binary in between and no reproducible-build gate to keep green.
+- **it costs ~70 ms** on a ~210 ms compile, measured.
+
+It also buys the answer to a question every arm has to answer differently: **how gg's surface gets
+into a model's scope without touching the model's file.** Here the SDK declares a `global using Gg;`
+*for itself*, which — because it is the same compilation — applies to the model's file too. It is
+the mechanism .NET's own implicit usings use, so there is no prologue, no line-number offset and no
+`using` a model has to remember.
+
+#### What a C# program is, and where its output goes
+
+**The model's reply, unaltered, as a compilation unit with an entry point.** All four ways a C#
+program can begin work — **top-level statements first**, which is what `dotnet new console` has
+emitted since .NET 6 and what a program written to do one thing looks like. Two of the four did not,
+for a reason nothing above the runtime would have found: Roslyn compiles top-level statements to an
+entry point declaring `string[] args`, and Mono asserts *inside itself* when such a method is invoked
+with no `argv[0]` to take the program's path from. What a model would have got is a wasm trap
+carrying a Mono assertion, on a program it had no reason to doubt.
+
+`Console.WriteLine` reaches the **run's operator**. gg's telemetry stream is the host process's
+standard output, so the sandbox builds its guests without one, and every other arm answers this by
+giving a program a named function — `console.log`, `gg::log` — and pointing its prompt at it. This
+arm does not need a name, because C# already has one: the SDK redirects `Console.Out` onto gg's
+feedback channel from a `[ModuleInitializer]`, which runs before `Main`. So it has no logging
+function in its catalogue, and nothing is missing from it. Showing something to **yourself** is
+`view.OpenText`, as everywhere.
+
+#### The idiom, and the one place it is not C#'s
+
+`PascalCase` methods, `record`s for results, real `enum`s for a fixed choice, nullable reference
+types, and a thrown `ToolException` — an ordinary `System.Exception`, so `catch`, `when` and
+`finally` work on it without an SDK-specific combinator. Optional arguments are **default values a
+call names**, which is C#'s own answer to the shape every arm answers differently:
+`project.CreateIssue("I", "s", "o", "c", "worker", reviewers: ["critic"])` skips three optional
+arguments by naming the fourth, so nothing here is an options record. A variadic `params` list is
+what the wire's `list<string>` becomes wherever a call would otherwise write an array literal, and a
+three-way `text-edit` is a `TextEdit` whose `default` is `Keep` — so an update that does not mention
+a description does not touch it, and clearing one is `TextEdit.Clear` rather than a sentinel.
+
+The one place it is not C#'s is the **object names**: `fs`, `system`, `view` are lower-case types,
+which no C# style guide would write. It is not a choice. An object's name is
+[identity](#the-agreement-gate) — shared with every other arm, and what the console groups by and
+what a documentation lookup routes on — so it is the one name this SDK may not spell for itself.
+Everything it may spell, it spells the way C# does.
+
+#### What the bridge under it costs, which is an interpreter's shape rather than a design
+
+The SDK's public surface is typed and idiomatic; the lowering under it is one Mono internal call per
+gg function, each landing on the `wit-bindgen` binding for it. What is worth recording is that
+**Mono's interpreter constrains the shape of those calls**, and both constraints were found by
+running programs rather than by reading:
+
+- **a signature needs a trampoline, and the generated table only has the class library's.** The
+  interpreter calls native code through a per-signature-shape trampoline, generated at build time by
+  reflecting over the assemblies the build is given — which are the BCL, whose `[DllImport]`s are the
+  only native calls a stock .NET-on-wasm build makes. gg's bridge is not in that scan and cannot be,
+  since its declarations live in the model's own per-turn assembly. A shape the BCL happens never to
+  use aborts the whole guest. `system.Shell` was one: nothing in the class library takes a `double`
+  anywhere but the first argument. gg supplies the four shapes it needs itself, chaining to the
+  generated table for everything else.
+- **there is a ceiling on how many arguments an internal call may take**, somewhere between twelve
+  and fourteen, past which the interpreter refuses to build a frame at all. So the two file reads and
+  `createIssue` hand a record's *numbers* back as one array and keep its strings named — an encoding
+  entirely below the SDK, which a model never sees.
 
 ### The catalogue
 

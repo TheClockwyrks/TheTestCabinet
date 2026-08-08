@@ -126,7 +126,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby purescript java kotlin rust swift cpp"
+regenerated="typescript javascript python ruby purescript java kotlin rust swift cpp csharp"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -193,6 +193,12 @@ log "install the pinned wasi-sdk (the C++ arm's catalogue is reflected with its 
 
 log "regenerate the C++ arm's signature catalogue (clang's comment AST + tools/signatures.py)"
 ./packages/gg-sandbox-cpp/signatures.sh
+
+log "install the pinned .NET toolchain (the C# arm's catalogue is reflected with its own Roslyn)"
+./scripts/ci/install-dotnet.sh
+
+log "regenerate the C# arm's signature catalogue (Roslyn's XML doc comments + tools/Signatures.cs)"
+./packages/gg-sandbox-csharp/signatures.sh
 
 # A SIGNATURE STEP MAY WRITE ITS CATALOGUE AND NOTHING ELSE, and this is where that is enforced
 # rather than assumed. The check at the bottom diffs both committed directories at once, so a
@@ -395,7 +401,8 @@ TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`; for Python,
 `packages/gg-sandbox-kotlin/signatures.sh`; for Rust,
 `packages/gg-sandbox-rust/signatures.sh`; for Swift,
 `packages/gg-sandbox-swift/signatures.sh`; for C++,
-`packages/gg-sandbox-cpp/signatures.sh`.
+`packages/gg-sandbox-cpp/signatures.sh`; for C#,
+`packages/gg-sandbox-csharp/signatures.sh`.
 
 If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
 language's committed component is stale too: rebuild it with its own build script

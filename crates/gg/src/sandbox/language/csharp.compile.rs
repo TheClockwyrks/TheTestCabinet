@@ -8,6 +8,11 @@
 //! artifact gg ships is a runtime rather than a program, and the per-turn cost is one `csc` and
 //! nothing else.
 //!
+//! What `csc` is given is the model's program **and the SDK's own sources** — twenty-two `.cs` files
+//! written into the preparation's workspace beside it, so that gg's surface is in the program's own
+//! assembly and the committed guest has nothing extra to carry. See [`sdk`](super::sdk) for why, and
+//! below for what it costs.
+//!
 //! That shape is what a prior feasibility study missed. Priced on `componentize-dotnet` —
 //! NativeAOT-LLVM, which compiles the *program* to native wasm — this arm measured **25–43 seconds a
 //! turn** and was cut as impractical. Compiling to IL instead is three orders of magnitude cheaper,
@@ -21,13 +26,14 @@
 //! | | |
 //! | --- | --- |
 //! | The first compile in a fresh process tree (JIT, page cache cold) | ~2.4 s |
-//! | Every compile after that | **~0.27–0.37 s** |
+//! | Every compile after that | **~0.28 s** |
+//! | Of which the SDK's own 2,500 lines | ~70 ms, against ~210 ms for a program alone |
 //!
 //! Which puts it **second among the compiled arms**, behind [C++](super::super::cpp)'s ~85 ms — and
 //! that arm is only there because it precompiles a header once per machine — and comfortably ahead
 //! of `swiftc`, both JVM arms and `purs`. What it costs *beyond* the compiler is where this arm
 //! differs from those: none of them instantiates a committed guest, and this one instantiates the
-//! largest in the repository, so the honest per-turn figure is `csc` plus a share of one 34.9 MB
+//! largest in the repository, so the honest per-turn figure is `csc` plus a share of one 35.3 MB
 //! `Component::new` paid once per process. It is
 //! [recorded](crate::sandbox::SandboxOutcome::compile) on the failing path as well as the succeeding
 //! one, because an arm that looks free and is not is exactly what the seam requires a language to
@@ -70,17 +76,33 @@
 //! is internal. gg could hand-maintain a table of which `CSxxxx` codes the parser emits; it would be
 //! gg guessing at another compiler's taxonomy, and a wrong guess reports a typo as a surface
 //! misunderstanding, which is the exact distinction the two bands exist to keep. The fix is known
-//! and is the SDK step's to make: a hosted Roslyn driver (which that step wants anyway, to read XML
-//! documentation comments) can ask `SyntaxTree.GetDiagnostics()` and get the authoritative answer.
+//! and is not free: a hosted Roslyn driver can ask `SyntaxTree.GetDiagnostics()` and get the
+//! authoritative answer, and this arm now has one — `packages/gg-sandbox-csharp/tools/Signatures.cs`
+//! reflects the catalogue through `Microsoft.CodeAnalysis.CSharp` — but it runs on a developer's
+//! machine rather than on the turn path, and putting a resident Roslyn *there* is a compiler server
+//! by another name. It would have to go through [`CompilerPool`](super::super::compile), which is
+//! the whole reason `VBCSCompiler` is deleted from the image, and that is a decision to make with
+//! the numbers in front of it rather than in passing.
+//!
+//! # And a third, which is gg's own
+//!
+//! [`classify`] separates a third case out of the compile band, and it is one only this arm has:
+//! the SDK is in the **same invocation** as the program, so a diagnostic can be located in gg's own
+//! sources. Those arrive as a [toolchain failure](PrepareFailure::Toolchain) naming gg rather than
+//! as a compile error a model would read as its own — unless `csc` also complained about
+//! `program.cs`, in which case the model's own diagnostics are what it is shown and gg's are
+//! dropped. That order is deliberate: a program declaring a type the SDK already declares produces
+//! diagnostics at both, and it is the model's to fix.
 //!
 //! # What is deliberately absent from this arm's class library
 //!
-//! `System.Net.Http`'s **native handler**. The assembly is bundled and its types compile, but its
-//! WASI implementation is a set of `[DllImport]`s against `wasi:http/outgoing-handler@0.2.0` — an
-//! interface gg's world does not declare and gg's linker does not define — and a guest carrying them
-//! cannot be encoded as a component at all. `packages/gg-sandbox-csharp/build.sh` excludes it from
-//! the scan for that reason. A program reaches the network the way every other arm does, through the
-//! `shell` tool.
+//! `System.Net.Http`'s **native handler**. The assembly is bundled — so the types exist, load and
+//! compile — but its WASI implementation is a set of `[DllImport]`s against
+//! `wasi:http/outgoing-handler@0.2.0`, an interface gg's world does not declare and gg's linker does
+//! not define, and a guest whose *pinvoke scan* included them could not be encoded as a component at
+//! all. `packages/gg-sandbox-csharp/build.sh` therefore keeps that one assembly in the bundle and
+//! out of the scan. A program reaches the network the way every other arm does, through the `shell`
+//! tool.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -88,6 +110,7 @@ use std::time::Duration;
 use base64::Engine as _;
 
 use crate::sandbox::language::compile::CompilerReport;
+use crate::sandbox::language::csharp::sdk::{SDK_DIRECTORY, SDK_SOURCES};
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
 
 /// The environment variable an operator points at this arm's .NET toolchain when it is not where gg
@@ -206,9 +229,20 @@ pub(super) fn compile(source: &str, context: &PrepareContext) -> Result<Vec<u8>,
     let program = workspace
         .write(PROGRAM_FILE, source)
         .map_err(PrepareFailure::Toolchain)?;
+    let mut sdk = Vec::with_capacity(SDK_SOURCES.len());
+    for file in SDK_SOURCES {
+        sdk.push(
+            workspace
+                .write(&format!("{SDK_DIRECTORY}/{}", file.name), file.text)
+                .map_err(PrepareFailure::Toolchain)?,
+        );
+    }
     let output = workspace.output().join(PROGRAM_ASSEMBLY);
     let response = workspace
-        .write(RESPONSE_FILE, &response_file(&root, &program, &output)?)
+        .write(
+            RESPONSE_FILE,
+            &response_file(&root, &program, &sdk, &output)?,
+        )
         .map_err(PrepareFailure::Toolchain)?;
 
     let report = invoke(&root, &response, context).map_err(PrepareFailure::Toolchain)?;
@@ -248,7 +282,18 @@ pub(super) fn compile(source: &str, context: &PrepareContext) -> Result<Vec<u8>,
 /// reference assembly pack for the pinned runtime. Sorted so the response file — and therefore the
 /// compile — is a function of the directory's contents rather than of the order a filesystem
 /// happened to list them in.
-fn response_file(root: &Path, program: &Path, output: &Path) -> Result<String, PrepareFailure> {
+///
+/// The **SDK's own sources** are compiled with the program, which is what makes gg's surface
+/// reachable without an assembly the guest would have to carry — see [`sdk`](super::sdk). They are
+/// listed before the program so that a `csc` reading them in order meets `GlobalUsings.cs` first;
+/// nothing about C# requires it, and it makes the response file read the way the compilation is
+/// meant to.
+fn response_file(
+    root: &Path,
+    program: &Path,
+    sdk: &[PathBuf],
+    output: &Path,
+) -> Result<String, PrepareFailure> {
     let mut lines = vec![
         "-nologo".to_string(),
         "-nostdlib+".to_string(),
@@ -262,6 +307,9 @@ fn response_file(root: &Path, program: &Path, output: &Path) -> Result<String, P
     ];
     for reference in references(root)? {
         lines.push(format!("-r:{}", reference.display()));
+    }
+    for file in sdk {
+        lines.push(format!("{}", file.display()));
     }
     lines.push(format!("{}", program.display()));
     lines.push(String::new());
@@ -355,6 +403,12 @@ fn missing_toolchain() -> String {
     )
 }
 
+/// Whether one of `csc`'s diagnostics is located inside gg's **own SDK** rather than in anything the
+/// model wrote — which it can be, because the two are one compilation. See [`classify`].
+fn in_the_sdk(line: &str) -> bool {
+    line.contains(&format!("{SDK_DIRECTORY}/"))
+}
+
 /// Turn a finished invocation into a verdict.
 ///
 /// A rejection is recognised by Roslyn's **own diagnostic format** rather than by the exit code,
@@ -363,25 +417,44 @@ fn missing_toolchain() -> String {
 /// shaped `program.cs(7,9): error CS0117: …`, and gg keeps exactly those lines — a compiler that
 /// fell over without producing one is reported as a toolchain failure and never shown to the model
 /// as its own mistake.
+///
+/// # And a third case, which is gg's own
+///
+/// The SDK is compiled in the **same invocation** as the program, so a diagnostic can be located in
+/// gg's own sources. Those are reported as a [toolchain failure](PrepareFailure::Toolchain) naming
+/// gg, rather than as a compile error a model would read as its own — unless `csc` also complained
+/// about the model's file, in which case the model's own diagnostics are what it is shown and gg's
+/// are dropped. That order is deliberate: a program declaring a type the SDK already declares
+/// produces diagnostics at both, and it is the model's to fix.
 fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
-    let diagnostics: Vec<&str> = report
+    let reported: Vec<&str> = report
         .stdout
         .lines()
         .map(str::trim_end)
         .filter(|line| is_diagnostic(line))
         .collect();
-    if diagnostics.is_empty() {
+    if reported.is_empty() {
         return Err(PrepareFailure::Toolchain(format!(
             "csc {} without reporting a diagnostic{}",
             report.status,
             report.stderr_tail(),
         )));
     }
+    // What the model wrote, which is everything `csc` did not locate inside gg's own SDK.
+    let (mine, ours): (Vec<&str>, Vec<&str>) =
+        reported.into_iter().partition(|line| !in_the_sdk(line));
+    if mine.is_empty() {
+        return Err(PrepareFailure::Toolchain(format!(
+            "gg's own C# SDK did not compile, which is a defect in gg rather than in the \
+             program:\n{}",
+            ours.join("\n"),
+        )));
+    }
     Err(PrepareFailure::Program(PrepareError::Compile(
-        diagnostics.join("\n"),
+        mine.join("\n"),
     )))
 }
 

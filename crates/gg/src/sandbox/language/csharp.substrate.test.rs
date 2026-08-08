@@ -31,9 +31,11 @@
 //! so from the moment `language: "csharp"` resolves, this arm's program step is driven sixteen ways
 //! along with every other registered language's.
 //!
-//! The programs below call `Gg.Native.Log` and `Gg.Native.ReadFile` because that is the whole of
-//! what the substrate binds. They are not the surface — the SDK step adds that, and it is where the
-//! spelling gets driven function by function. What these prove is that the crossing happens.
+//! The programs below call the **SDK**, which is what a model would call: `fs.ReadTextFile`,
+//! `view.OpenText`, `Console.WriteLine`. Every one of them is compiled into the program's own
+//! assembly out of `packages/gg-sandbox-csharp/src/Gg/`, so what these prove is not only that the
+//! crossing happens but that the surface a model is shown is the surface that runs. The SDK's own
+//! spelling, function by function, is driven in `csharp.surface.test.rs`.
 //!
 //! # Why these tests are consolidated
 //!
@@ -60,7 +62,7 @@ use crate::sandbox::{
 use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
-fn prepare(source: &str) -> String {
+pub(super) fn prepare(source: &str) -> String {
     match compile_program(source, &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
@@ -102,9 +104,11 @@ fn component() -> &'static Component {
 /// The [membrane state](MembraneState) is built with TypeScript's arm, because this one has no wire
 /// id yet. Nothing these tests assert depends on it: the language decides how a *refused* call's
 /// name is spelled back at the model, and no program here is refused one.
-fn evaluate(
+pub(super) fn evaluate(
     program: &str,
     enabled: &[String],
+    ending: RunEnding,
+    library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -114,8 +118,8 @@ fn evaluate(
     let scope = ProgramScope {
         enabled,
         modules: &[],
-        ending: RunEnding::None,
-        library: false,
+        ending,
+        library,
     };
     let mut store = bounded_store(
         MembraneState::new(
@@ -135,14 +139,7 @@ fn evaluate(
         ),
     };
     let returned = bound
-        .call_run(
-            &mut store,
-            program,
-            &[],
-            enabled,
-            RunEnding::None.into(),
-            false,
-        )
+        .call_run(&mut store, program, &[], enabled, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -154,39 +151,27 @@ fn evaluate(
 
 /// Compile and run one C# program with no gg tool offered — the shape most cases here want.
 fn run(source: &str) -> SandboxOutcome {
-    evaluate(&prepare(source), &[], canned_outcome).0
+    evaluate(
+        &prepare(source),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0
 }
 
-/// The declarations a program under test writes to reach the substrate's two internal calls.
+/// One program under test: the model's own C#, unaltered.
 ///
-/// They are written by the **program** rather than shipped in an assembly, and that is a property of
-/// the mechanism rather than a shortcut: Mono resolves an internal call by the
-/// `Namespace.Class::Method` string it was registered under, wherever the declaration lives. When
-/// the SDK lands, the same two functions will be reached through an assembly referenced at compile
-/// time; nothing about the binding changes.
-const BRIDGE: &str = r#"
-namespace Gg {
-  internal static class Native {
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.InternalCall)]
-    internal static extern void Log(string line);
-    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.InternalCall)]
-    internal static extern string ReadFile(string path);
-  }
-}
-"#;
-
-/// One program under test: the model's own C#, with the bridge above appended.
-///
-/// **Appended rather than prepended**, and C# decides that rather than taste: a `using` directive
-/// must precede every other element of a compilation unit, so a bridge in front of the program would
-/// make every `using` the program wrote a `CS1529`. The bridge is written with fully qualified
-/// attributes for the same reason — it brings no `using` of its own into a file it does not start.
+/// There is no preamble and no bridge to append, which is the whole point of what landed with the
+/// SDK: gg's surface is compiled into the program's own assembly and reaches its scope through a
+/// `global using`, so what a test writes here is exactly what a model would write.
 fn program(body: &str) -> String {
-    format!("{body}\n{BRIDGE}")
+    body.to_string()
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not fail.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -202,7 +187,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 
 /// The model-facing error a program produced, insisting there was one and that the sandbox itself
 /// did not fail.
-fn program_error(outcome: &SandboxOutcome) -> &crate::sandbox::outcome::ProgramError {
+pub(super) fn program_error(outcome: &SandboxOutcome) -> &crate::sandbox::outcome::ProgramError {
     match &outcome.result {
         Ok(result) => match &result.error {
             Some(error) => error,
@@ -255,14 +240,14 @@ public static class Program {
       .OrderByDescending(row => row.Count)
       .ThenBy(row => row.Word, StringComparer.Ordinal)
       .ToList();
-    Gg.Native.Log($"top {rows[0].Label} ({Inventory.Rank.Describe(rows[0])})");
-    Gg.Native.Log($"distinct {rows.Count} total {Inventory.Rank.Total(rows, r => r.Count)}");
+    Console.WriteLine($"top {rows[0].Label} ({Inventory.Rank.Describe(rows[0])})");
+    Console.WriteLine($"distinct {rows.Count} total {Inventory.Rank.Total(rows, r => r.Count)}");
     var shortest = rows.Where(row => row.Word.Length <= 3)
       .Select(row => row.Word)
       .OrderBy(word => word, StringComparer.Ordinal);
     var joined = string.Join(",", shortest);
-    Gg.Native.Log($"short {joined}");
-    Gg.Native.Log($"ratio {3.0 / 8.0:F3}");
+    Console.WriteLine($"short {joined}");
+    Console.WriteLine($"ratio {3.0 / 8.0:F3}");
   }
 }
 "#,
@@ -293,14 +278,16 @@ using System;
 
 public static class Program {
   public static void Main() {
-    var text = Gg.Native.ReadFile("notes.md");
+    var text = fs.ReadTextFile("notes.md");
     var first = text.Split('\n')[0];
-    Gg.Native.Log($"read {first.ToUpperInvariant()}");
+    Console.WriteLine($"read {first.ToUpperInvariant()}");
   }
 }
 "#,
         )),
         &["read_file".to_string()],
+        RunEnding::None,
+        false,
         canned_outcome,
     );
 
@@ -340,17 +327,17 @@ using System.Text.RegularExpressions;
 public static class Program {
   public static void Main() {
     var words = Regex.Matches("a1 b22 c333", @"[a-z]\d+").Select(match => match.Value);
-    Gg.Native.Log("regex " + string.Join("|", words));
+    Console.WriteLine("regex " + string.Join("|", words));
     var json = JsonSerializer.Serialize(new { Name = "gg", Arms = 10 });
-    Gg.Native.Log("json " + json);
+    Console.WriteLine("json " + json);
     var big = BigInteger.Pow(7, 40);
-    Gg.Native.Log("bigint " + big.ToString(CultureInfo.InvariantCulture));
+    Console.WriteLine("bigint " + big.ToString(CultureInfo.InvariantCulture));
     ImmutableArray<int> frozen = [3, 1, 2];
-    Gg.Native.Log("immutable " + string.Join(",", frozen.Sort()));
+    Console.WriteLine("immutable " + string.Join(",", frozen.Sort()));
     var german = new CultureInfo("de-DE");
-    Gg.Native.Log("culture " + 1234.5.ToString("N2", german));
+    Console.WriteLine("culture " + 1234.5.ToString("N2", german));
     var day = new DateTime(2026, 8, 8).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-    Gg.Native.Log("date " + day);
+    Console.WriteLine("date " + day);
   }
 }
 "#,
@@ -390,9 +377,9 @@ public static class Program {
   public static void Main() {
     try {
       var digest = SHA256.HashData(Encoding.UTF8.GetBytes("test-cabinet"));
-      Gg.Native.Log("sha " + Convert.ToHexString(digest));
+      Console.WriteLine("sha " + Convert.ToHexString(digest));
     } catch (PlatformNotSupportedException failure) {
-      Gg.Native.Log("refused: " + failure.Message);
+      Console.WriteLine("refused: " + failure.Message);
     }
   }
 }
@@ -428,13 +415,13 @@ public static class Program {
   }
   public static void Main() {
     try { Parse("3"); }
-    catch (TooSmall failure) { Gg.Native.Log("caught own " + failure.Message); }
-    finally { Gg.Native.Log("finally ran"); }
+    catch (TooSmall failure) { Console.WriteLine("caught own " + failure.Message); }
+    finally { Console.WriteLine("finally ran"); }
     try { Parse("nope"); }
-    catch (FormatException failure) { Gg.Native.Log("caught bcl " + failure.GetType().Name); }
+    catch (FormatException failure) { Console.WriteLine("caught bcl " + failure.GetType().Name); }
     var pair = new int[2];
-    try { Gg.Native.Log(pair[5].ToString()); }
-    catch (IndexOutOfRangeException) { Gg.Native.Log("caught bounds"); }
+    try { Console.WriteLine(pair[5].ToString()); }
+    catch (IndexOutOfRangeException) { Console.WriteLine("caught bounds"); }
   }
 }
 "#,
@@ -461,7 +448,7 @@ public static class Program {
   static int Depth(int at) =>
     at == 0 ? throw new ArgumentOutOfRangeException("at", "bottomed out") : Depth(at - 1);
   public static void Main() {
-    Gg.Native.Log("before");
+    Console.WriteLine("before");
     Depth(2);
   }
 }
@@ -616,4 +603,29 @@ fn temp_env<T>(key: &str, value: &str, body: impl FnOnce() -> T) -> T {
         None => unsafe { std::env::remove_var(key) },
     }
     outcome
+}
+
+#[test]
+fn every_shape_of_entry_point_c_sharp_offers_is_one_a_model_may_write() {
+    // Four ways to begin a C# program, and a model may reach for any of them — **top-level
+    // statements first**, since that is what a program written to do one thing looks like in this
+    // decade and what every `dotnet new console` since .NET 6 emits.
+    //
+    // It is a test rather than an assumption because two of the four were broken, in a way nothing
+    // else here would have caught: Roslyn compiles top-level statements to an entry point declaring
+    // `string[] args`, and the runtime asserts *inside itself* when such a method is invoked with no
+    // `argv[0]` to take the program's path from. The failure was a wasm trap carrying a Mono
+    // assertion, on a program a model would have had no reason to doubt.
+    for source in [
+        "Console.WriteLine(\"ran\");\n",
+        "public static class Program { public static void Main() { Console.WriteLine(\"ran\"); } }\n",
+        "public static class Program { public static void Main(string[] args) { Console.WriteLine(\"ran\"); } }\n",
+        "public static class Program { public static int Main() { Console.WriteLine(\"ran\"); return 0; } }\n",
+    ] {
+        assert_eq!(
+            logs(&run(source)),
+            ["ran"],
+            "this shape of entry point did not run: {source}"
+        );
+    }
 }

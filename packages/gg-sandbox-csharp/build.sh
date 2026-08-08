@@ -120,13 +120,15 @@ mkdir -p "$STAGE/bundle" "$GUESTS" "$CHECKERS"
 #   bundle/*.o                             the BCL, ICU and that configuration, as wasm objects the
 #                                          runtime registers as bundled resources.
 #
-# `System.Net.Http.dll` is EXCLUDED from the scan, and this is the arm's one deliberate subtraction
-# from the class library. Its WASI handler is a set of `[DllImport]`s against
-# `wasi:http/outgoing-handler@0.2.0`, which is not an interface gg's world declares and not one gg's
-# linker defines — so scanning it produces a component that cannot be encoded at all ("module
-# requires an import interface named `wasi:http/outgoing-handler@0.2.0`"). The assembly is still
-# bundled, so the types exist and a program compiles against them; what is absent is the native
-# handler underneath `HttpClient`. A program has `shell` for the network, like every other arm.
+# `System.Net.Http.dll` is EXCLUDED FROM THE SCAN AND KEPT IN THE BUNDLE, and the difference between
+# those two lists is this arm's one deliberate subtraction from the class library. Its WASI handler
+# is a set of `[DllImport]`s against `wasi:http/outgoing-handler@0.2.0`, which is not an interface
+# gg's world declares and not one gg's linker defines — so SCANNING it produces a component that
+# cannot be encoded at all ("module requires an import interface named
+# `wasi:http/outgoing-handler@0.2.0`"). BUNDLING it costs nothing and is what makes the assembly
+# loadable, so `Uri`, `HttpMethod` and the rest of the vocabulary work and only the transport under
+# `HttpClient` is gone. The two item groups exist for exactly that: one assembly is in the bundle and
+# not in the scan, and it was in neither until a program that named the type failed to load it.
 echo "==> generating the runtime's link inputs"
 cat >"$STAGE/runtimeconfig.json" <<EOF
 {
@@ -145,15 +147,16 @@ cat >"$STAGE/generate.proj" <<EOF
   <UsingTask TaskName="EmitBundleObjectFiles" AssemblyFile="$MONO_TASKS" TaskFactory="TaskHostFactory" />
   <Target Name="Generate">
     <ItemGroup>
-      <Assembly Include="$MANAGED/*.dll" Exclude="$MANAGED/System.Net.Http.dll" />
+      <Assembly Include="$MANAGED/*.dll" />
       <Assembly Include="$NATIVE/System.Private.CoreLib.dll" />
+      <Scanned Include="@(Assembly)" Exclude="$MANAGED/System.Net.Http.dll" />
       <PInvokeModule Include="libSystem.Native" />
       <PInvokeModule Include="libSystem.IO.Compression.Native" />
       <PInvokeModule Include="libSystem.Globalization.Native" />
       <IcuData Include="$NATIVE/icudt.dat" />
       <ParsedConfig Include="$STAGE/runtimeconfig.bin" />
     </ItemGroup>
-    <ManagedToNativeGenerator Assemblies="@(Assembly)" PInvokeModules="@(PInvokeModule)"
+    <ManagedToNativeGenerator Assemblies="@(Scanned)" PInvokeModules="@(PInvokeModule)"
       PInvokeOutputPath="$STAGE/pinvoke-table.h"
       InterpToNativeOutputPath="$STAGE/wasm_m2n_invoke.g.h"
       CacheFilePath="$STAGE/m2n-cache.json" />
@@ -189,6 +192,8 @@ for source in driver runtime pinvoke stubs synthetic-pthread; do
 done
 "$CLANG" "${CFLAGS[@]}" -c -o "$STAGE/sandbox.o" "$BINDINGS/sandbox.c"
 "$CLANG" "${CFLAGS[@]}" -c -o "$STAGE/shell.o" "$HERE/Sources/shell.c"
+"$CLANG" "${CFLAGS[@]}" -c -o "$STAGE/bridge.o" "$HERE/Sources/bridge.c"
+"$CLANG" "${CFLAGS[@]}" -c -o "$STAGE/m2n.o" "$HERE/Sources/m2n.c"
 
 # --- the link ----------------------------------------------------------------------------------
 #
@@ -212,7 +217,7 @@ echo "==> linking"
 "$CLANG" --target="$GG_CSHARP_TARGET" -O2 -mexec-model=reactor \
 	-o "$STAGE/csharp.component.wasm" \
 	"$STAGE/driver.o" "$STAGE/runtime.o" "$STAGE/pinvoke.o" "$STAGE/stubs.o" \
-	"$STAGE/synthetic-pthread.o" "$STAGE/sandbox.o" "$STAGE/shell.o" \
+	"$STAGE/synthetic-pthread.o" "$STAGE/sandbox.o" "$STAGE/shell.o" "$STAGE/bridge.o" "$STAGE/m2n.o" \
 	"$STAGE"/bundle/*.o "$BINDINGS/sandbox_component_type.o" \
 	"$NATIVE/libmono-component-debugger-stub-static.a" \
 	"$NATIVE/libmono-component-hot_reload-stub-static.a" \
@@ -244,8 +249,10 @@ echo "==> csharp.toolchain.json"
 	printf '  "witBindgen": "%s",\n' "$GG_WIT_BINDGEN_VERSION"
 	printf '  "componentBytes": %s,\n' "$(stat -c%s "$GUESTS/csharp.component.wasm")"
 	printf '  "shellSha256": "%s",\n' "$(sha256sum "$HERE/Sources/shell.c" | cut -d' ' -f1)"
-	printf '  "excludedAssemblies": ["System.Net.Http.dll"],\n'
-	printf '  "bundledAssemblies": %s\n' "$(find "$MANAGED" -name '*.dll' ! -name 'System.Net.Http.dll' | wc -l | tr -d ' ')"
+	printf '  "bridgeSha256": "%s",\n' "$(sha256sum "$HERE/Sources/bridge.c" | cut -d' ' -f1)"
+	printf '  "trampolinesSha256": "%s",\n' "$(sha256sum "$HERE/Sources/m2n.c" | cut -d' ' -f1)"
+	printf '  "unscannedAssemblies": ["System.Net.Http.dll"],\n'
+	printf '  "bundledAssemblies": %s\n' "$(find "$MANAGED" -name '*.dll' | wc -l | tr -d ' ')"
 	printf '}\n'
 } >"$CHECKERS/csharp.toolchain.json"
 

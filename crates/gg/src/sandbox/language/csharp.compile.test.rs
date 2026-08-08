@@ -167,7 +167,11 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     // A file that is not an assembly, which a reference pack really does carry.
     std::fs::write(references.join("System.Linq.xml"), "").expect("a documentation file");
 
-    let rendered = response_file(path, &path.join("program.cs"), &path.join("out.dll"))
+    let sdk = [
+        path.join("sdk/Objects/fs.cs"),
+        path.join("sdk/ToolException.cs"),
+    ];
+    let rendered = response_file(path, &path.join("program.cs"), &sdk, &path.join("out.dll"))
         .expect("the response file renders");
     let lines: Vec<&str> = rendered.lines().collect();
 
@@ -204,6 +208,28 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     assert_eq!(
         named, sorted,
         "the reference set is not sorted, so a compile depends on directory order"
+    );
+
+    // The SDK's sources are compiled with the program, and BEFORE it: they are what makes gg's
+    // surface reachable without an assembly the guest would have to carry. A compile that lost
+    // them would fail on the model's first `fs.ReadFile` with a diagnostic about the model.
+    let sources: Vec<&&str> = lines.iter().filter(|line| line.ends_with(".cs")).collect();
+    assert_eq!(
+        sources,
+        [
+            &path
+                .join("sdk/Objects/fs.cs")
+                .display()
+                .to_string()
+                .as_str(),
+            &path
+                .join("sdk/ToolException.cs")
+                .display()
+                .to_string()
+                .as_str(),
+            &path.join("program.cs").display().to_string().as_str(),
+        ],
+        "the SDK is not compiled with the program, in front of it"
     );
 }
 

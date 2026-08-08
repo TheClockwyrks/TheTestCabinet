@@ -11,8 +11,10 @@
 //!
 //! * **the manifest against the component**, so a manifest regenerated without the component (or the
 //!   reverse) fails by name;
-//! * **the manifest against the shell's source in this checkout**, so a `Sources/shell.c` edited
-//!   without a rebuild fails here rather than leaving every C# program running last month's shell;
+//! * **the manifest against every C source in this checkout**, so a `Sources/*.c` edited without a
+//!   rebuild fails here rather than leaving every C# program running last month's guest — and there
+//!   are three of them, because the guest is the shell that starts the runtime, the bridge that is
+//!   gg's whole surface, and the interpreter trampolines that surface needs;
 //! * **the manifest against the pins**, so a version bumped in `csharp-version.sh` without a rebuild
 //!   fails rather than describing a guest built by something else.
 
@@ -23,9 +25,22 @@ use super::GUEST_COMPONENT;
 /// What `packages/gg-sandbox-csharp/build.sh` wrote beside the guest it produced.
 const MANIFEST: &str = include_str!("../checkers/csharp.toolchain.json");
 
-/// The shell in **this checkout** — the source the committed component was supposed to be built
-/// from.
-const SHELL: &str = include_str!("../../../../../packages/gg-sandbox-csharp/Sources/shell.c");
+/// The guest's C in **this checkout** — the sources the committed component was supposed to be
+/// built from, each beside the manifest field that records its digest.
+const SOURCES: [(&str, &str); 3] = [
+    (
+        "shellSha256",
+        include_str!("../../../../../packages/gg-sandbox-csharp/Sources/shell.c"),
+    ),
+    (
+        "bridgeSha256",
+        include_str!("../../../../../packages/gg-sandbox-csharp/Sources/bridge.c"),
+    ),
+    (
+        "trampolinesSha256",
+        include_str!("../../../../../packages/gg-sandbox-csharp/Sources/m2n.c"),
+    ),
+];
 
 /// The pins in **this checkout**, read as text for the same reason the Kotlin arm's test reads its
 /// own: a shell script is not a data format gg can parse, and the two or three values that matter
@@ -72,17 +87,23 @@ fn the_manifest_describes_the_component_that_is_actually_committed() {
 }
 
 #[test]
-fn the_committed_guest_was_built_from_this_checkouts_shell() {
-    // The failure this exists for is silent and expensive: a shell edited without a rebuild leaves
-    // every C# program in the run being evaluated by the shell that was committed, with the source
-    // in front of a reader saying something else.
-    let digest = Sha256::digest(SHELL.as_bytes());
-    assert_eq!(
-        manifest()["shellSha256"].as_str().unwrap_or_default(),
-        format!("{digest:x}"),
-        "packages/gg-sandbox-csharp/Sources/shell.c has changed since the committed guest was \
-         built — re-run packages/gg-sandbox-csharp/build.sh and commit the component with it"
-    );
+fn the_committed_guest_was_built_from_this_checkouts_sources() {
+    // The failure this exists for is silent and expensive: a source edited without a rebuild leaves
+    // every C# program in the run being evaluated by the guest that was committed, with the source
+    // in front of a reader saying something else. The **bridge** is the one that would cost the
+    // most — it is gg's whole model-facing surface, so a function added there and never rebuilt is
+    // one the SDK compiles a call to and the guest has never heard of.
+    let manifest = manifest();
+    for (field, source) in SOURCES {
+        let digest = Sha256::digest(source.as_bytes());
+        assert_eq!(
+            manifest[field].as_str().unwrap_or_default(),
+            format!("{digest:x}"),
+            "a source under packages/gg-sandbox-csharp/Sources/ has changed since the committed \
+             guest was built ({field}) — re-run packages/gg-sandbox-csharp/build.sh and commit the \
+             component with it"
+        );
+    }
 }
 
 #[test]

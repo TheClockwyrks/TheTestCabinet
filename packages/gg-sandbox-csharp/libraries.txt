@@ -1,0 +1,90 @@
+# The libraries a C# program may reach, and the whole of what the model is told it has.
+#
+# WHAT DECIDES THE SET. Two artifacts have to agree, and both of them are this arm's:
+#
+#   * the REFERENCE ASSEMBLIES a program is compiled against — the .NET reference pack
+#     `scripts/ci/install-dotnet.sh` installs, which is what decides whether a `using` compiles; and
+#   * the ASSEMBLIES BUNDLED INTO THE GUEST — the 170 the Mono runtime pack ships, which is what
+#     decides whether it runs.
+#
+# So this file is a claim about both, and it is held to both:
+# `csharp_reaches_every_library` in `crates/gg/src/sandbox/language/csharp.substrate.test.rs` drives
+# a real class from every group below through the real `csc` and the real committed guest, and
+# requires each of them to compile AND to run. A namespace listed here that either artifact does not
+# carry fails that test rather than reaching a model.
+#
+# THE `# --- heading ---` LINES ARE MACHINE-READABLE. `tools/Signatures.cs` reads this file and emits
+# the catalogue's `libraries` section out of it, group by group, which is what the system prompt
+# shows. A namespace under no heading is an error rather than an ungrouped entry.
+#
+# WHAT IS NOT HERE, AND WHY THERE IS NO CURATED THIRD-PARTY SET. Nothing off nuget. The argument is
+# the one the C++ arm makes about its own standard library, and it is stronger here: what a C#
+# author reaches for first IS the BCL, at a breadth no other arm's standard library matches — JSON,
+# regular expressions, LINQ, immutable collections, arbitrary-precision arithmetic, XML, compression
+# and globalisation are all below, and all of them are Microsoft's. There is no package manager
+# inside the guest to reach anything else through, a nuget package would have to be pinned, bundled
+# into the committed component and re-verified against the interpreter on every pin move, and a
+# vendored tree added without that is worse than saying so.
+#
+# The six namespaces in `src/Gg/GlobalUsings.cs` are already in scope and need no `using` line. The
+# rest do.
+
+# --- The everyday ---
+System
+System.Collections
+System.Collections.Generic
+System.Collections.Immutable
+System.Collections.Concurrent
+System.Linq
+System.Linq.Expressions
+
+# --- Text, formatting and parsing ---
+System.Text
+System.Text.RegularExpressions
+System.Text.Json
+System.Text.Json.Nodes
+System.Text.Json.Serialization
+System.Text.Encodings.Web
+System.Globalization
+System.Buffers
+
+# --- Files, paths and streams ---
+System.IO
+System.IO.Compression
+System.IO.Enumeration
+System.IO.MemoryMappedFiles
+
+# --- Numbers and time ---
+System.Numerics
+System.Diagnostics
+System.Diagnostics.CodeAnalysis
+
+# --- Structured data ---
+System.Xml
+System.Xml.Linq
+System.Xml.XPath
+System.Xml.Schema
+
+# --- Reflection and runtime services ---
+System.Reflection
+System.Reflection.Emit
+System.Runtime
+System.Runtime.CompilerServices
+System.Runtime.InteropServices
+System.ComponentModel
+
+# --- Networking types ---
+# The TYPES, and this arm is precise about what that means: `System.Net.Http`'s native handler is not
+# in this guest, so `HttpClient` compiles and does not transport. `Uri` parsing, `IPAddress` and the
+# rest of the vocabulary are here and work. Reaching the network is `system.Shell`, as on every arm.
+System.Net
+System.Net.Http
+System.Net.Sockets
+
+# --- Threading types ---
+# Present because they compile and because a `lock` is ordinary C#, NOT because concurrency is a
+# shape to reach for: every call on gg's surface is synchronous, there is no event loop for an
+# `await` to yield to, and work a program defers is work that reports success and never runs. They
+# are deliberately out of the default scope for that reason — see `src/Gg/GlobalUsings.cs`.
+System.Threading
+System.Threading.Tasks

@@ -272,10 +272,20 @@ impl Workspace {
 
     /// Write `contents` to `name` inside [`work`](Self::work) and hand back the path.
     ///
+    /// `name` may carry directories (`sdk/Objects/fs.cs`), which are created — an arm whose compile
+    /// takes a whole source tree beside the program, as [C#](super::csharp)'s does, wants the tree
+    /// laid out the way its own diagnostics will name it rather than flattened into one directory.
+    ///
     /// The path is named in any failure, so an operator staring at a toolchain error is not left
     /// guessing which of a compile's files could not be written.
     pub fn write(&self, name: &str, contents: &str) -> Result<PathBuf, String> {
         let path = self.work.join(name);
+        if let Some(parent) = path.parent()
+            && parent != self.work
+        {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| format!("could not create {}: {error}", parent.display()))?;
+        }
         std::fs::write(&path, contents)
             .map_err(|error| format!("could not write {}: {error}", path.display()))?;
         Ok(path)

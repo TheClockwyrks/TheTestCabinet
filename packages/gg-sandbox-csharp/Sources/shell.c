@@ -6,9 +6,9 @@
 // an **IL assembly**, base64-encoded into the world's `program` parameter, which this file decodes,
 // registers with the runtime as a bundled resource and loads by name.
 //
-// It is not the SDK. Nothing here is model-facing and nothing here is in a signature catalogue; a
-// program written by a model will call the curated surface this arm's SDK step adds, which will be
-// a managed assembly whose methods land on the internal calls registered below.
+// It is not the SDK. Nothing here is model-facing and nothing here is in a signature catalogue: a
+// program written by a model calls the curated surface in `src/Gg/`, whose methods land on the
+// internal calls `Sources/bridge.c` registers.
 //
 // # Why a C shell, and why that is the whole answer to this arm's one open question
 //
@@ -43,6 +43,7 @@
 
 #include <driver.h>
 
+#include "bridge.h"
 #include "sandbox.h"
 
 // The runtime pack's own entry points, declared here for the same reason its `main.c` declares
@@ -112,75 +113,23 @@ static uint8_t *base64_decode(const char *text, size_t length, size_t *decoded_l
 }
 
 // ---------------------------------------------------------------------------------------------
-// The bridge a managed program reaches gg through
-// ---------------------------------------------------------------------------------------------
-//
-// Two functions, and they are the substrate's proof rather than the surface: one that says
-// something and one that asks something, so both directions of the membrane are driven by a real
-// C# program. The SDK step replaces this with the whole surface, generated the same way — an
-// internal call per gg function, each landing on the `wit-bindgen` binding for it.
-//
-// The managed declarations these answer to are `Gg.Native::Log` and `Gg.Native::ReadFile`. Mono
-// resolves an internal call by that `Namespace.Class::Method` string against the method's
-// `MethodImplOptions.InternalCall` declaration, wherever the declaration lives — which is why a
-// substrate test can declare them inside the program under test and needs no assembly gg shipped.
-
-/// `gg.log` — a line the model reads back in its own transcript.
-static void gg_log(MonoString *line) {
-  char *utf8 = mono_string_to_utf8(line);
-  sandbox_string_t owned;
-  sandbox_string_set(&owned, utf8);
-  test_cabinet_gg_feedback_log(&owned);
-  mono_free(utf8);
-}
-
-/// `read_file` — the shortest round trip this arm has that is not a bare string.
-///
-/// A failure is raised as a managed `IOException` rather than returned, because an exception is what
-/// C# does with a call that failed and because it is what the SDK will do with every gg error code.
-/// A picture comes back as the empty string: the substrate has no type to hand a model for one, and
-/// the SDK's `read_file` will return the union the wire declares.
-static MonoString *gg_read_file(MonoString *path) {
-  char *utf8 = mono_string_to_utf8(path);
-  sandbox_string_t owned;
-  sandbox_string_set(&owned, utf8);
-  test_cabinet_gg_files_file_read_t read;
-  test_cabinet_gg_files_tool_error_t failure;
-  const bool ok = test_cabinet_gg_files_read_file(&owned, NULL, NULL, &read, &failure);
-  mono_free(utf8);
-  if (!ok) {
-    char message[512];
-    snprintf(message, sizeof message, "%.*s", (int)failure.message.len,
-             (const char *)failure.message.ptr);
-    mono_raise_exception(mono_get_exception_io(message));
-    return NULL;
-  }
-  if (read.tag != TEST_CABINET_GG_FILES_FILE_READ_TEXT) {
-    return mono_string_new(mono_domain_get(), "");
-  }
-  char *contents = (char *)malloc(read.val.text.contents.len + 1);
-  memcpy(contents, read.val.text.contents.ptr, read.val.text.contents.len);
-  contents[read.val.text.contents.len] = '\0';
-  MonoString *result = mono_string_new(mono_domain_get(), contents);
-  free(contents);
-  return result;
-}
-
-// ---------------------------------------------------------------------------------------------
 // The world's exports
 // ---------------------------------------------------------------------------------------------
 
 /// **The gg tool names this component can bind** — what `bound-tools` answers.
 ///
-/// **Empty, and it is an honest empty rather than a stub.** This arm has no SDK yet: nothing in a
-/// program's scope dispatches a gg tool by name, so there is no name to report. The drift gate that
-/// compares a registered arm's answer with gg's own `ALL_TOOL_NAMES` does not run against this arm,
-/// because this arm is not registered — and when the SDK lands, this becomes a concatenation of the
-/// SDK's own per-object tables, so that what the artifact reports and what the SDK declares are one
-/// statement rather than two that can disagree.
+/// Read straight off `Sources/bridge.c`'s registration table, so what the artifact reports and what
+/// it actually binds are one statement rather than two that can disagree. gg's drift gate compares
+/// the answer with its own `ALL_TOOL_NAMES`.
 void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
-  ret->ptr = NULL;
-  ret->len = 0;
+  const char *const *names = NULL;
+  size_t count = 0;
+  gg_bridge_tool_names(&names, &count);
+  ret->len = count;
+  ret->ptr = (sandbox_string_t *)malloc(count * sizeof(sandbox_string_t));
+  for (size_t index = 0; index < count; index++) {
+    sandbox_string_dup(&ret->ptr[index], names[index]);
+  }
 }
 
 /// Report something that went wrong *inside* the guest as a model-facing program error.
@@ -198,13 +147,35 @@ static void report(const char *message) {
 /// state between two.
 static bool started = false;
 
+/// Flush whatever the program wrote with `Console.Write` and never terminated with a newline.
+///
+/// The SDK redirects `Console.Out` onto gg's feedback channel a line at a time (see
+/// `src/Gg/Internal/OperatorConsole.cs`), so a trailing partial line would otherwise be dropped. It
+/// is invoked here rather than from a finaliser because the runtime is about to be thrown away with
+/// the instance and nothing would run one.
+///
+/// A program that does not carry the SDK simply has no such class, which is not an error: the
+/// substrate's own tests compile programs against nothing at all.
+static void flush_operator_console(MonoImage *image) {
+  MonoClass *klass = mono_class_from_name(image, "Gg.Internal", "OperatorConsole");
+  if (klass == NULL) return;
+  MonoMethod *flush = mono_class_get_method_from_name(klass, "FlushPending", 0);
+  if (flush == NULL) return;
+  MonoObject *thrown = NULL;
+  mono_runtime_invoke(flush, NULL, NULL, &thrown);
+}
+
 /// **Evaluate one program** — the sandbox world's `run`.
 ///
-/// `program` is the model's compiled assembly, base64-encoded. `modules`, `tools`, `ending` and
-/// `library` are ignored here and will not be once the SDK lands: on this arm what a program may
-/// *call* is decided at compile time by which SDK assembly the host referenced, with the host
-/// checking every call regardless — the same shape every compiled arm has — and code modules are
-/// assemblies referenced at that compile rather than sources evaluated here.
+/// `program` is the model's compiled assembly, base64-encoded. `modules` is ignored and will not be
+/// once code modules land on this arm: a module is C# compiled into the same assembly, so it arrives
+/// already inside `program` rather than as a source the guest evaluates.
+///
+/// `tools`, `ending` and `library` are ignored **on purpose and permanently**. A compiled arm links
+/// its SDK as a library, so there is no scope to leave a name out of: every function is there
+/// whatever a run offers, and what withholds one is the host — which refuses anything outside the
+/// run's enabled set, the agent's ending role and its program-library flag `unavailable`. That is
+/// the seam's own rule for a language of this shape, not a gap here.
 ///
 /// An unhandled managed exception is caught by `mono_runtime_run_main` and reported by its own type
 /// and message, which is what a C# programmer would have seen printed. It is a recoverable
@@ -219,8 +190,7 @@ void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *
 
   if (!started) {
     mono_wasm_load_runtime(0);
-    mono_add_internal_call("Gg.Native::Log", (const void *)gg_log);
-    mono_add_internal_call("Gg.Native::ReadFile", (const void *)gg_read_file);
+    gg_bridge_register();
     started = true;
   }
 
@@ -248,9 +218,19 @@ void exports_sandbox_run(sandbox_string_t *program, sandbox_list_code_module_t *
     return;
   }
 
+  // `argc` is 1 and `argv[0]` is the program's own name, which is the convention
+  // `mono_runtime_run_main` reads: it takes `argv[1..]` as the managed `string[] args`, so this is
+  // an entry point invoked with no arguments.
+  //
+  // It is 1 rather than 0 because an entry point that DECLARES `string[] args` — which is what
+  // Roslyn generates for **top-level statements**, the shape a model reaches for first — asserts
+  // inside the runtime when told there is no `argv[0]` to take the program's path from. With 0 the
+  // arm accepted only an explicit `Main()`, and a model writing the modern idiom got a trap rather
+  // than a program.
   MonoObject *thrown = NULL;
   char *argv[1] = {(char *)"program"};
-  mono_runtime_run_main(entry, 0, argv, &thrown);
+  mono_runtime_run_main(entry, 1, argv, &thrown);
+  flush_operator_console(mono_assembly_get_image(assembly));
   if (thrown == NULL) return;
 
   // `ToString()` on an exception is what .NET itself prints for an unhandled one: the full type
