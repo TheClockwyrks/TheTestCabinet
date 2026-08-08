@@ -417,8 +417,10 @@ function drawHud(ctx: CanvasRenderingContext2D, game: Game): void {
   spaced(ctx, stageLabel, FIELD_W - 40, 42, 6, "right");
   ctx.restore();
 
-  // Bottom strip: lives (left), resonance (center), polarity (right).
+  // Bottom strip: lives (left), the mute tell, resonance (center), polarity
+  // (right).
   drawLives(ctx, game);
+  drawMuted(ctx, game);
   drawResonance(ctx, game);
   drawPolarity(ctx, game);
   ctx.restore();
@@ -433,6 +435,40 @@ function drawLives(ctx: CanvasRenderingContext2D, game: Game): void {
     const x = 48 + i * 30;
     drawSprite(ctx, a.fighter[game.shipBand], x, 688, 26, bandColor(game.shipBand));
   }
+  ctx.restore();
+}
+
+// The mute tell (specs/ui.md): while sound is muted the bottom strip carries a
+// plain, persistent MUTED label in the HUD's muted grey, so a muted game is
+// visible rather than only audible. It sits between the lives and the centred
+// resonance meter, and it is the ONLY thing muting changes on screen.
+function drawMuted(ctx: CanvasRenderingContext2D, game: Game): void {
+  if (!game.audio.muted) return;
+  ctx.save();
+  ctx.font = `13px ${MONO}`;
+  ctx.fillStyle = COLOR.textDim;
+  spaced(ctx, "MUTED", 470, 693, 4, "right");
+  // A struck-through speaker glyph reads at a glance where the word may not.
+  const gx = 388;
+  const gy = 688;
+  ctx.strokeStyle = COLOR.textDim;
+  ctx.fillStyle = COLOR.textDim;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(gx - 8, gy - 3);
+  ctx.lineTo(gx - 3, gy - 3);
+  ctx.lineTo(gx + 3, gy - 8);
+  ctx.lineTo(gx + 3, gy + 8);
+  ctx.lineTo(gx - 3, gy + 3);
+  ctx.lineTo(gx - 8, gy + 3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(gx + 7, gy - 6);
+  ctx.lineTo(gx + 15, gy + 6);
+  ctx.moveTo(gx + 15, gy - 6);
+  ctx.lineTo(gx + 7, gy + 6);
+  ctx.stroke();
   ctx.restore();
 }
 

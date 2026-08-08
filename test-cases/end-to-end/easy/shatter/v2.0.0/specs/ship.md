@@ -52,8 +52,8 @@ steers it.
   when it destroys a rock.
 - On-screen limit. At most 4 of the ship's bullets exist at once. While 4 are live,
   firing does nothing until one expires.
-- Fire rate. Successive shots are at least 0.18 seconds apart, so holding or mashing
-  fire cannot exceed roughly 5 to 6 shots per second.
+- Fire rate. Successive shots are gated to one every 22 ticks (22/120 of a second,
+  about 0.183 s), so holding or mashing fire tops out at about 5.5 shots per second.
 - A bullet is pulled by gravity and wraps at the edges, like the other ballistic
   bodies (`specs/simulation.md`).
 
@@ -67,8 +67,8 @@ curvature near the star legible at a glance.
   rather than a row of discrete dots.
 - It tapers from the bullet: widest and brightest where it meets the bullet, then
   narrowing and fading smoothly to nothing at its oldest end.
-- It spans a fixed slice of recent travel time, on the order of 0.12 to 0.18 s of
-  motion, so its length is proportional to the bullet's current speed: it stretches
-  on a fast shot and shortens as a bullet slows.
+- It spans a fixed slice of recent travel time — the last 18 ticks of motion (18/120
+  of a second, 0.15 s) — so its length is proportional to the bullet's current speed:
+  it stretches on a fast shot and shortens as a bullet slows.
 - Across a screen wrap it follows the bullet to the opposite edge rather than
   smearing across the field.

@@ -62,8 +62,8 @@ export const BULLET_R = 3;
 export const MUZZLE_SPEED = 520; // added along the ship's facing, plus ship velocity
 export const BULLET_LIFE = 1.5; // seconds
 export const MAX_BULLETS = 4; // of the ship's bullets on screen at once
-export const FIRE_INTERVAL = 0.18; // minimum seconds between shots
-export const TRAIL_TIME = 0.16; // seconds of recent travel a bullet's motion trail spans
+export const FIRE_INTERVAL_TICKS = 22; // minimum ticks between shots (22/120 s ~ 0.183 s)
+export const TRAIL_TICKS = 18; // ticks of recent travel a bullet motion trail spans (0.15 s)
 
 // ---- Rocks -------------------------------------------------------------
 export type RockSize = "large" | "medium" | "small";

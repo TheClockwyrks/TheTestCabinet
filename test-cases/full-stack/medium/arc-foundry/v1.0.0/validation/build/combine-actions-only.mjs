@@ -19,10 +19,27 @@
 // FOLD pieces together must be a subset of {combine, comborecipe}. A third fold action — the
 // same-type, same-quality fold this item exists to catch — fails it, and nothing else does.
 //
-// A candidate offering a TARGETING control is a separate matter and is asserted separately: a
-// candidate is not a firing component (`specs/build.md`: "only a component fires"), and
-// `specs/controls.md` gives the targeting cycle to "a firing component selected". A piece that
-// cannot shoot has no target to prioritise.
+// A candidate's TARGETING control is a separate matter and is asserted separately: a candidate is
+// not a firing component (`specs/build.md`: "only a component fires"), and a piece that cannot
+// shoot has no target to prioritise.
+//
+// THE SPEC USED TO LEAVE THIS OPEN, AND ALL THREE RUN IMPLEMENTATIONS FELL THROUGH THE GAP.
+// `specs/controls.md` gave the targeting cycle to "a firing component selected", which says a
+// candidate should not have one; but the same file's fixed-slot rule said "every action a
+// selected structure can ever offer is drawn for as long as that structure stays selected" and
+// that an action not usable right now "is drawn disabled in its own slot ... never hidden,
+// removed, or collapsed". A candidate is one KEEP away from firing, so the two rules pulled in
+// opposite directions and every one of the three builds resolved them the other way: they drew
+// the targeting slot on a candidate. All three failed this assertion, which is the signature of a
+// check pinning a choice the specification left open rather than of three builds making the same
+// mistake.
+//
+// The gap is closed in the spec rather than in the check, because there is a right answer and the
+// model was simply not given it. `specs/controls.md` now says outright that a control belongs
+// only to a piece that fires — absent for a candidate and for a Regulator, not merely disabled —
+// and states why that does not contradict the fixed-slot rule: that rule guarantees the panel
+// against changes THE PLAYER DID NOT TRIGGER, and a harvest is one they committed deliberately.
+// So the assertion below stands as it was, and now asks for something the specification states.
 //
 // Standing the first tower up and clearing its wave is the arrange — the clear is a minute of
 // walking that this item is not about, so it is skipped rather than filmed. The matching fresh
@@ -107,9 +124,13 @@ export default function item() {
         actions.filter((a) => FOLD_ACTIONS.includes(a)).length >= 1,
       );
 
-      check.expectOk(
+      // A candidate does not fire, so it has no target to prioritise and no targeting control.
+      // Reported as what the panel actually held, so a failure names the offending control rather
+      // than only saying one was there.
+      check.expectEq(
         "a candidate offers no targeting control (only a firing component picks targets)",
-        !actions.includes("targeting"),
+        actions.includes("targeting") ? "the panel offers a targeting control" : "none offered",
+        "none offered",
       );
 
       const combineButton = buttons.find((b) => b.action === "combine");

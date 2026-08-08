@@ -17,23 +17,33 @@ import {
   DIR_KEY,
   denAllExcept,
   findInkStandoff,
+  parkForager,
   pred,
   startPlaying,
+  tileGapPx,
+  untilGivesUp,
 } from "../_helpers.mjs";
 
 export default function item() {
   let line;
+  let gap;
   let fixed;
-  let afterInk;
+  let broke;
 
   return {
     id: "lanternjaw.ink-shakes",
+    // Room to film the ink, the walk to the stale fix and the turn away: the wait itself
+    // can run to the linger plus the ground the hunter covers reaching it.
+    clipMs: 12000,
 
     async arrange(api) {
       const snap = await startPlaying(api);
       // gap 2: the Lanternjaw stands inside the 80 px cloud the forager is about to drop,
       // which is the least ambiguous form of "blinded by ink" the spec describes.
       line = findInkStandoff(snap, { gap: 2 });
+      // The ground between the hunter and the tile its fix will go stale on, which is what
+      // it has to cover before its linger can even start running.
+      gap = tileGapPx(snap.grid, line.pred, line.ink);
       await denAllExcept(api, ["lanternjaw"]);
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,
@@ -57,13 +67,16 @@ export default function item() {
       fixed = pred(await api.snapshot(), "lanternjaw").state;
       await api.call("clearCooldowns");
       await api.call("press", "ShiftLeft"); // drop ink at the forager
-      await api.advance(24); // 24 ticks = the old 0.2 s
-      afterInk = pred(await api.snapshot(), "lanternjaw").state;
       // Break away: 100 ticks at 128 px/s is three tiles, which is what it takes to get
-      // clear of an 80 px cloud centered where the forager stood.
+      // clear of an 80 px cloud centered where the forager stood — and no further, then
+      // parked against rock. See `flarefish/ink-breaks` for why the retreat is bounded and
+      // pinned: a forager that keeps swimming outruns the sight range a hunter that IGNORED
+      // the ink would otherwise have to lose it by.
       await api.call("keyDown", DIR_KEY[line.flee]);
       await api.advance(100);
       await api.call("keyUp", DIR_KEY[line.flee]);
+      await parkForager(api);
+      broke = await untilGivesUp(api, "lanternjaw", { pathPx: gap });
       await api.advance(40); // a beat with the cloud between them, for the clip
     },
 
@@ -73,10 +86,9 @@ export default function item() {
         fixed,
         "chase",
       );
-      check.expectEq(
-        "ink between them breaks the Lanternjaw's fix",
-        afterInk,
-        "wander",
+      check.expectOk(
+        "ink between them breaks the Lanternjaw's fix — it stops hunting and wanders",
+        broke.gaveUp,
       );
     },
   };

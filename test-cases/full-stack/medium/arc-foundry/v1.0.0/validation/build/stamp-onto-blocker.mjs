@@ -5,15 +5,27 @@
 // wave is cleared to reopen the build phase, and a rock is stamped onto the blocker: its tile
 // becomes a fresh candidate carrying the new roll.
 //
-// Standing up the keeper and the doomed rock is all control ops (the arrange). Clearing the
-// wave consumes time, so it and the stamp that follows it are the act — which is right, because
-// the stamp is the behavior under test and can only happen once the build phase reopens.
+// WHAT IS FILMED, AND WHY THE WAVE IS NO LONGER PART OF IT. The wave clear used to run inside the
+// act on `actClearWave`, which advances in REAL time in the record pass. A wave walking itself
+// out takes most of a minute, and the recording budget is eight seconds — so the clip was eight
+// seconds of Wave 1 and the stamp, the only thing this item is about, happened after the camera
+// had stopped or in the last instant before it did. Against the run implementations the reroll
+// landed right at the edge of the clip, which is why a build that never rerolled at all looked
+// the same on camera as one that did.
+//
+// The clear is the journey to the evidence rather than the evidence, so it moves to `arrange` on
+// `skipClearWave`: the same simulation, the same reopened build phase, instant in both passes and
+// filming nothing. The act is then the whole clip — the blocker sitting there, the rock coming
+// down on it, and the fresh candidate it turns into.
 
-import { startBuild, placeCandidate, towerAt, snap, actClearWave, spawnControlled, SECOND } from "../_helpers.mjs";
+import { startBuild, placeCandidate, towerAt, snap, skipClearWave, spawnControlled, SECOND } from "../_helpers.mjs";
 
+// A beat on the hardened blocker before the stamp, so the tile a reviewer is asked to watch is on
+// screen as a blocker first. Without it the reroll is the opening frame and there is no "before".
+const LEAD_TICKS = 1.5 * SECOND;
 // A moment after the stamp so the clip shows the rerolled tile, with a Spark walking to make
 // clear the board is live.
-const CLIP_TICKS = 2 * SECOND;
+const CLIP_TICKS = 2.5 * SECOND;
 
 export default function item() {
   // The board when the build phase reopened, and again after the stamp.
@@ -29,11 +41,12 @@ export default function item() {
       const keeper = await placeCandidate(api, "capacitor", 3, 2, 7); // near entry: clears the wave fast
       await placeCandidate(api, "capacitor", 1, 10, 7); // this un-kept rock will harden into a blocker
       await api.call("keep", keeper.id); // launches Wave 1; the (10,7) rock hardens
+      await skipClearWave(api, { maxTicks: 200 * SECOND }); // reopen the build phase, filming nothing
+      reopened = await snap(api);
     },
 
     async act(api) {
-      await actClearWave(api, { maxTicks: 200 * SECOND }); // reopen the build phase
-      reopened = await snap(api);
+      await api.advance(LEAD_TICKS); // the blocker standing inert on the tile about to be stamped
 
       await api.call("setNextRoll", "coil", 2);
       await api.call("placeRock", 10, 7); // stamp onto the blocker

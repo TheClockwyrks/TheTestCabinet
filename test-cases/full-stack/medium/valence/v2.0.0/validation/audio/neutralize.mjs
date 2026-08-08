@@ -10,7 +10,20 @@
 // tower fires"), so comparing the log across the whole window instead would grow on the shot
 // alone and pass a build with no neutralize cue at all.
 
-import { coverAndSpawn, armAudio, cueOnImpact } from "../_helpers.mjs";
+import {
+  coverAndPassThrough,
+  armAudio,
+  cueOnImpact,
+  unitById,
+} from "../_helpers.mjs";
+
+// A 4-electron atom posed at the UPSTREAM edge of the tower's range, not a 1-electron one
+// dropped on top of it. A 1-electron atom is the fastest there is (112 px/s, specs/matter.md)
+// and an Emitter reaches only 100px and reloads every 0.55 s, so it can cross the whole
+// coverage window between two shots and leave alive — which is how this item came to report
+// "the atom is neutralized" as FAILED against a build that neutralizes it perfectly well
+// given a fair pass. Four shells at 44-ish px/s is comfortably four shots inside the window.
+const ATOM_ELECTRONS = 4;
 
 const TAIL_TICKS = 60; // 60 ticks = 1 s, so the clip shows the kill and its burst
 
@@ -22,18 +35,20 @@ export default function item() {
     id: "audio.neutralize",
 
     async arrange(api) {
-      ({ unitId } = await coverAndSpawn(api, {
+      ({ unitId } = await coverAndPassThrough(api, {
         kind: "emitter",
         type: "atom",
-        electrons: 1,
+        electrons: ATOM_ELECTRONS,
       }));
       await armAudio(api);
     },
 
     async act(api) {
-      cue = await cueOnImpact(api, unitId, (s) =>
-        s.effects.some((e) => e.kind === "neutralize"),
-      );
+      // The event is the unit BEING GONE, not the one-frame `neutralize` burst. A burst can
+      // come and go inside a single frame, so a real-time window can sample straight over it
+      // and report no kill on a build that killed the unit exactly as asked; a removed unit
+      // stays removed and cannot be missed.
+      cue = await cueOnImpact(api, unitId, (s) => unitById(s, unitId) == null);
       await api.advance(TAIL_TICKS);
     },
 

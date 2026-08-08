@@ -530,3 +530,7 @@ counterline
 crossguard
 coprime
 bitfield
+
+# Fathom v2.0.0 changelog prose. Ordinary English the locked
+# @cspell/dict-en_us (4.4.35) does not carry.
+misattributed

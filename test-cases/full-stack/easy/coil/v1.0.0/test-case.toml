@@ -376,8 +376,11 @@ title = "A respawned pellet is always valid"
 description = "After every eat exactly one new pellet spawns at an interior cell that is never on the snake (and, in Maze, never on an obstacle) — so there is always exactly one valid pellet on the board."
 # Automated validation: force many eats and, after each auto-spawn, confirm the pellet
 # is interior and clear of the snake and obstacles. See validation/growth/pellet-respawn-valid.mjs.
+# Recorded rather than captured: the claim is about EVERY respawn, and one still shows
+# one pellet in one legal spot — which is what a build that spawns badly most of the
+# time also shows. The clip carries all eight spawns the assertions scored.
 validation = { script = "validation/growth/pellet-respawn-valid.mjs", outputs = [
-  { id = "pellet", name = "A validly respawned pellet", kind = "image" },
+  { id = "pellet", name = "Pellets respawning validly across a run of eats", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "first-pellet-valid"
@@ -509,9 +512,12 @@ title = "BEST persists (localStorage)"
 description = "The BEST score persists across sessions via localStorage with no backend — it survives returning to the title and is restored on reload. Nothing else persists between sessions."
 # Automated validation: establish a BEST and confirm it survives a reset within the
 # session; the reviewer spot-checks that it survives a real page reload too. See
-# validation/scoring/high-score-persists.mjs.
+# validation/scoring/high-score-persists.mjs. Two stills, in order: the round that
+# earned the BEST and the title reached from it, so the reviewer reads the same number
+# in both places rather than taking a lone menu figure on trust.
 validation = { script = "validation/scoring/high-score-persists.mjs", outputs = [
-  { id = "persist", name = "BEST surviving a reset", kind = "image" },
+  { id = "live", name = "The BEST earned in play", kind = "image" },
+  { id = "persist", name = "The same BEST carried over to the title", kind = "image" },
 ] }
 
 # --- Game States --------------------------------------------------------------
@@ -651,11 +657,15 @@ validation = { script = "validation/controls/pause-key.mjs", outputs = [
 [[review.categories.items]]
 id = "mute-key"
 title = "M toggles mute"
-description = "Pressing M toggles the mute state."
-# Automated validation: from the title (mute off) confirm one M press toggles mute on,
-# and capture the title. See validation/controls/mute-key.mjs.
+description = "Pressing M toggles the mute state, and the HUD's mute indicator (specs/ui.md) shows it — the muted and unmuted board are tellable apart at a glance."
+# Automated validation: in a live round (mute off) confirm one M press toggles mute on,
+# capturing the board either side of the press. See validation/controls/mute-key.mjs.
+# The pair is shot in play, not on the title, because that is where the spec puts the
+# indicator — two title screens would be identical whatever the build drew, so the
+# reviewer would have been comparing nothing.
 validation = { script = "validation/controls/mute-key.mjs", outputs = [
-  { id = "mute", name = "The title after toggling mute", kind = "image" },
+  { id = "unmuted", name = "The board with sound on", kind = "image" },
+  { id = "muted", name = "The same board after pressing M", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "advances-in-real-time"

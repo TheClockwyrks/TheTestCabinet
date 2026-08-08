@@ -15,14 +15,27 @@
 
 import {
   startClean,
+  holdDrones,
   spawnDrone,
   spawnBystander,
   findDrone,
+  friendlyBullets,
   readsAs,
-  shootDrone,
+  shootFromLane,
   shootUntil,
-  LEAD_IN_TICKS,
+  TICK,
 } from "../_helpers.mjs";
+
+// How far below the Flux the shimmer shot starts.
+//
+// At the specified 760 px/s player-bullet speed, 120 px is 0.16 s of flight — long
+// enough for the reviewer to see a shot cross and strike, and comfortably inside
+// the 0.4 s shimmer even on a build whose bullets run at half the specified speed.
+const SHIMMER_SHOT_GAP = 120;
+
+// The flight above, with generous room for a slower build; the sweep polls every
+// tick because the exact instant of contact is what the shimmer read is checked at.
+const SHIMMER_CONTACT_MAX_TICKS = 48;
 
 // The old script stepped 0.02 s to let `updateFlux` register the posed clock. At
 // 120 Hz that is 2.4 ticks, which the tick contract refuses rather than rounds.
@@ -36,9 +49,6 @@ const REGISTER_TICKS = 3;
 // itself is the clip's lead-in. (Stage 1 holds for 1.6 s, then shimmers for 0.4 s.)
 const SHIMMER_START_CLOCK = 0.35;
 const TO_SHIMMER_TICKS = 162; // 1.35 s -> fluxClock 1.70
-
-// Long enough for the posed shot to reach the drone and the collision to resolve.
-const RESOLVE_TICKS = 24; // 24 ticks = the old 0.2 s
 
 // Long enough for a shot fired from the ship's lane to cross the ~280 px up to the
 // drone (0.37 s at the specified bullet speed), with room for a slower build.
@@ -54,6 +64,8 @@ export default function item() {
   // passes cannot see each other's state.
   let shimmerId;
   let shimmerState;
+  let shotLanded;
+  let shimmerAtContact;
   let shimmerSurvivor;
   let heldState;
   let heldAfter;
@@ -63,8 +75,15 @@ export default function item() {
 
     // The first scenario: one Flux posed early in its held window, which `act` walks
     // forward into the shimmer telegraph before firing at it.
+    //
+    // The swarm is held (`holdDrones`) so the Flux stands still under the shot — a
+    // 0.4 s window is far too narrow to lead a swaying target into. Its BAND clock
+    // is untouched by the hold (`specs/instrumentation.md`: a held Flux still
+    // shimmers and settles on the beat), which is precisely what this item walks
+    // forward and reads.
     async arrange(api) {
       await startClean(api);
+      await holdDrones(api);
       await spawnBystander(api);
       shimmerId = await spawnDrone(api, {
         kind: "flux",
@@ -91,8 +110,30 @@ export default function item() {
       // bullets travel slower than specified it would arrive after the Flux had
       // settled and destroy it, failing a correct build. The immunity window is too
       // narrow to film a travelled shot into safely, so precision wins here.
-      await shootDrone(api, shimmerId, "cyan"); // its held band, but it is mid-shimmer
-      await api.advance(RESOLVE_TICKS);
+      //
+      // WHAT THE OLD CLIP DID NOT SHOW. A bullet posed on the drone and consumed on
+      // the next tick or two is, on film, no bullet at all: the recording showed a
+      // Flux shimmering and changing band and never showed a shot being taken at it,
+      // which is the entire point of the item. So the shot is now posed a short
+      // distance BELOW the drone and arrives under its own motion — far enough to be
+      // seen leaving and crossing, near enough that its whole flight fits inside the
+      // 0.4 s telegraph on any build.
+      //
+      // The shimmer state is confirmed at the moment of CONTACT, not only at the
+      // moment of firing, so a pass cannot rest on a shot that in fact landed after
+      // the Flux had settled — which would be a shot the rule says should kill it.
+      await shootFromLane(api, shimmerId, "cyan", {
+        fromY: shimmerState.y + SHIMMER_SHOT_GAP,
+      }); // its held band, but it is mid-shimmer
+      const contact = await api.until(
+        (s) => {
+          const d = findDrone(s, shimmerId);
+          if (d) shimmerAtContact = d.shimmer;
+          return friendlyBullets(s).length === 0 || d === null;
+        },
+        { max: SHIMMER_CONTACT_MAX_TICKS, poll: TICK },
+      );
+      shotLanded = contact.hit;
       shimmerSurvivor = findDrone(await api.snapshot(), shimmerId);
 
       // Hold on the survivor before moving on, so the two scenarios read as two
@@ -134,6 +175,16 @@ export default function item() {
 
     async assert(api, check) {
       check.expectOk("the Flux is shimmering", shimmerState.shimmer === true);
+      // The shot has to have actually reached the drone, and the drone has to have
+      // still been shimmering when it did. Without these two, "the Flux survived"
+      // is equally consistent with a shot that never arrived, or one that arrived
+      // after the shimmer ended and was simply a mismatch — neither of which is the
+      // immunity this item claims.
+      check.expectOk("the shot reaches the Flux", shotLanded === true);
+      check.expectOk(
+        "the Flux is still shimmering when the shot lands",
+        shimmerAtContact === true,
+      );
       check.expectOk(
         "a matching shot does not kill a shimmering Flux",
         shimmerSurvivor !== null,

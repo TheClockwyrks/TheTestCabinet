@@ -121,28 +121,38 @@ repos:
         files: '\.rs$'
         pass_filenames: false
 
+      # The two spec-lint gates below run the npm workspace's own locked
+      # markdownlint-cli2/cspell (via scripts/hooks/) rather than copies declared
+      # with `additional_dependencies`. pre-commit installs those into an isolated
+      # node env that resolves each tool's transitive dependencies fresh at
+      # hook-install time, ignoring package-lock.json — so the versions here drift
+      # from the ones `npm ci` gives CI. That drift is not theoretical: a
+      # @cspell/dict-en_us one patch newer than the locked 4.4.35 knows
+      # "misattributed", so this gate passed a commit the pipeline's cspell then
+      # rejected. Deferring to the `spell`/`lint:md` npm scripts makes the local
+      # verdict and the CI verdict the same by construction.
       - id: markdownlint
         name: markdownlint
-        description: Lint staged test-case/game-jam specs' Markdown style (shares .markdownlint-cli2.yaml).
-        entry: markdownlint-cli2
-        language: node
-        additional_dependencies: ["markdownlint-cli2@0.22.1"]
-        # markdownlint-cli2's config (.markdownlint-cli2.yaml) already scopes the
-        # lint to test-cases/**/*.md and game-jams/**/*.md, and any CLI paths are
-        # *added* to that glob rather than replacing it. So mirror `npm run lint:md`
-        # exactly: pass no files and let the config's globs drive. Trigger only when
-        # a spec Markdown file is staged (like rust-fmt keys off staged Rust).
-        files: '^(test-cases|game-jams)/.*\.md$'
+        description: Lint the test-case/game-jam specs' Markdown style (shares .markdownlint-cli2.yaml).
+        entry: scripts/hooks/specs-markdownlint.sh
+        language: script
+        # .markdownlint-cli2.yaml's globs drive the file set (mirroring
+        # `npm run lint:md`), so don't pass paths; trigger whenever a spec
+        # Markdown file is staged, the way rust-fmt keys off staged Rust — or
+        # whenever the rule config itself changes, since that re-judges every
+        # spec, not just the staged ones.
+        files: '^(test-cases|game-jams)/.*\.md$|^\.markdownlint-cli2\.yaml$'
         pass_filenames: false
 
       - id: cspell
         name: cspell
-        description: Spell-check staged test-case/game-jam specs (shares cspell.json + the project dictionary).
-        entry: cspell lint --no-progress --no-must-find-files
-        language: node
-        additional_dependencies: ["cspell@10.0.1"]
-        # CI only spell-checks the authored specs (scripts/ci/specs-lint.sh →
-        # cspell.json's `files`). Explicitly-passed files bypass that glob, so
-        # scope the hook here to the same test-cases and game-jams extensions;
-        # ignorePaths in cspell.json still apply.
-        files: '^(test-cases|game-jams)/.*\.(md|html|css|toml|hbs)$'
+        description: Spell-check the test-case/game-jam specs (shares cspell.json + the project dictionary).
+        entry: scripts/hooks/specs-spell.sh
+        language: script
+        # cspell.json's `files` globs drive the file set (mirroring
+        # `npm run spell`), so don't pass paths; trigger whenever a spec file in
+        # one of those extensions is staged — or whenever the config or the
+        # project dictionary changes, since deleting a word there can unmask a
+        # spelling anywhere in the corpus, not just in what is staged.
+        files: '^(test-cases|game-jams)/.*\.(md|html|css|toml|hbs)$|^cspell\.json$|^\.cspell/'
+        pass_filenames: false
