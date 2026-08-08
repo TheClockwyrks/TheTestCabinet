@@ -154,7 +154,7 @@ containers/
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
 │                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc, a pruned
-│                               #   Swift + its wasm SDK). Not a run image
+│                               #   Swift + its wasm SDK, wasi-sdk). Not a run image
 │                               #   and never published — the `-gg` variants `COPY --from` it
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
@@ -703,6 +703,26 @@ resources for every target. The Dockerfile proves the pruning by compiling both 
 and a Swift file for the wasm target with the pruned copy, because each of those exercises a
 different half of what was deleted. The bindings a program is compiled against are not here,
 for the vintage reason PureScript's library set is not.
+
+**C++** is the third arm of that shape and the **lightest** of the three — ~200 MB, against
+`rustc`'s 376 MB and Swift's 835 MB — because wasi-sdk is one relocatable tree holding a
+clang, a `wasm-ld`, a wasi-libc sysroot and a libc++. It is also the least work to make
+portable, and that is the toolchain rather than the script: `clang` finds its own sysroot
+from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only things
+outside the tree it needs are the two GCC-runtime sonames its Debian build links — so
+[`scripts/ci/install-wasi-sdk.sh`](../scripts/ci/install-wasi-sdk.sh) copies exactly those
+two in beside it, where that rpath finds them and nothing else in the image does. No
+`LD_LIBRARY_PATH`, no closure walk. What is dropped out of ~650 MB is `lldb`, the lint and
+format tools, the object utilities, the other linker drivers, `wasm-component-ld` — and, the
+largest deletion by far, four of the wasi-sysroot's five *targets*, since gg compiles to
+exactly the one its package pins. The Dockerfile proves the pruning by compiling both a C
+file and a C++ one for the wasm target with the pruned copy, because a C++ compile
+additionally needs libc++'s headers, its archives and `libunwind`, and a C compile touches
+none of them. Two things are not here: the bindings a program is compiled against, for the
+vintage reason PureScript's library set is not; and the **precompiled header** of the ~55
+standard-library headers every program is compiled with — that one is built once per
+*machine*, into a content-keyed shared directory, because a PCH is readable only by the clang
+that wrote it.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner

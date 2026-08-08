@@ -334,6 +334,60 @@ RUN set -eux; \
 	test -d /opt/gg/toolchains/swift/sdk/WASI.sdk; \
 	test -f /opt/gg/toolchains/swift/lib/libxml2.so.2
 
+# --- C++ -------------------------------------------------------------------
+# The third toolchain that PRODUCES a component rather than compiling for one, and the
+# LIGHTEST of the three — **~200 MB**, against `rustc`'s ~376 MB and the Swift SDK's ~835 MB.
+# A C++ program is compiled by `clang++` from wasi-sdk against wasi-libc and libc++ into a core
+# wasm module, which gg then encodes as a component in its own process. See
+# `crates/gg/src/sandbox/language/cpp.compile.rs`.
+#
+# Constraint 1 is satisfied about as completely as it can be, and that is a property of the
+# toolchain rather than of this block. wasi-sdk is built for exactly this job: `clang` finds its
+# sysroot and its resource directory from its own path (`bin/clang.cfg` names
+# `<CFGDIR>/../share/wasi-sysroot`), every binary carries an `RPATH` of `$ORIGIN/../lib`, and the
+# tree relocates whole. The one thing it does depend on is the distribution it was published for
+# — its `clang` links Debian's `libstdc++.so.6` and `libgcc_s.so.1` — so the installer vendors
+# exactly those two under `<home>/lib`, where that `RPATH` finds them and nothing else in the
+# image does. No `LD_LIBRARY_PATH` and no ELF closure walk, which is the Swift block's price.
+#
+# Constraint 2 is satisfied outright. `clang++` is a plain one-shot process with an explicit
+# `-o`, it has no daemon, and it only ever READS what gg carries. It writes its intermediates
+# under `TMPDIR` and its module cache under the directory it derives from `HOME`, both of which
+# the calling side has already redirected into the preparation's own tree.
+#
+# One thing this arm produces per MACHINE rather than per invocation is worth naming here,
+# because it is the only toolchain input in this image's history that gg *builds*: a
+# **precompiled header** of the ~55 standard-library headers every program is compiled against.
+# Parsing them costs ~850 ms of every compile and reading the PCH back costs ~40 ms, which is
+# the difference between an ~85 ms floor and a second. It cannot be committed — a PCH is
+# readable only by the clang that wrote it and records the absolute path of every header in it —
+# so it is built into a content-keyed shared toolchain directory, placed by rename and sealed
+# read-only, exactly as the seam's contract requires of anything shared.
+#
+# WHAT IS PRUNED, and why each is safe: `lldb` (117 MB), `clang-tidy`, `clang-format`,
+# `clang-scan-deps`, the PE/Mach-O/ELF linker drivers, the `llvm-*` object utilities and
+# `wasm-component-ld` — nothing on the turn path is a debugger, a linter, a formatter or a
+# second componentizer — and, the largest single deletion, four of the wasi-sysroot's five
+# TARGETS, since this arm compiles to exactly the one `cpp-version.sh` pins. The installer names
+# each with its reason and ends by compiling both a C file and a C++ file with the pruned copy,
+# because every deletion is a thing that could have broken exactly one of them.
+#
+# The versions are the ones `packages/gg-sandbox-cpp/cpp-version.sh` pins, and the script is run
+# here so there is one list rather than two.
+COPY packages/gg-sandbox-cpp/cpp-version.sh \
+	/tmp/gg-cpp/packages/gg-sandbox-cpp/cpp-version.sh
+COPY scripts/ci/install-wasi-sdk.sh /tmp/gg-cpp/scripts/ci/install-wasi-sdk.sh
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+	apt-get update && apt-get install -y --no-install-recommends libstdc++6
+RUN set -eux; \
+	WASI_SDK_INSTALL_DIR=/opt/gg/toolchains/wasi-sdk \
+	bash /tmp/gg-cpp/scripts/ci/install-wasi-sdk.sh; \
+	rm -rf /tmp/gg-cpp; \
+	test -x /opt/gg/toolchains/wasi-sdk/bin/clang++; \
+	test -f /opt/gg/toolchains/wasi-sdk/lib/libstdc++.so.6; \
+	test -d /opt/gg/toolchains/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1/eh
+
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
 # `COPY --from` source, and keeping it to the toolchain tree alone means the gg run images

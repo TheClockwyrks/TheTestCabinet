@@ -64,6 +64,15 @@ log "install the wasm32 target (gg's rust arm compiles a model's program to it)"
 log "install the Swift toolchain (gg's swift arm compiles with it)"
 ./scripts/ci/install-swift.sh
 
+# gg's C++ arm compiles a model's program with a real `clang++` from wasi-sdk against a real libc++,
+# and its tests drive the whole thing. It is the lightest of the four compiled arms' installs — ~200
+# MB kept out of a ~650 MB tarball, pruned by the script itself, which needs no vendoring because
+# wasi-sdk is built relocatable and self-contained.
+# Pinned in packages/gg-sandbox-cpp/cpp-version.sh; idempotent, so an agent that already has it pays
+# nothing. `crates/gg` looks under $HOME for it by name, so nothing has to be exported.
+log "install wasi-sdk (gg's c++ arm compiles with it)"
+./scripts/ci/install-wasi-sdk.sh
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 

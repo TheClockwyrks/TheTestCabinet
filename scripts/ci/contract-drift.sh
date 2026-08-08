@@ -293,7 +293,28 @@ recut="typescript ruby java kotlin"
 # may import, which is the drift a stale archive beside a fresh catalogue would otherwise be; and —
 # the check no diff could make — a real Swift program, compiled against both archives by the
 # production prepare step and run through the real membrane, that imports every one of them.
-declared="purescript jvm rust swift"
+#
+# `cpp` is exempted on the same terms and is the cheapest of the three to argue. Its three committed
+# artifacts are not a compiler either. `cpp.guest.tar.gz` is 36 KB of compile INPUTS — the C bindings
+# generated from crates/gg/wit and compiled to a wasm object, the component-type object naming the
+# world, the prelude every program is precompiled against, and gg's own shell as both source and a
+# prebuilt object — and re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
+# ~200 MB wasi-sdk. `cpp.adapter.wasm` is a 52 KB binary downloaded from a wasmtime release. Neither
+# is reviewable by reading. Nothing above re-cuts them, and — as with Rust and Swift — that is a
+# property rather than a hope: the bindings both build steps need are their own script,
+# packages/gg-sandbox-cpp/bindings.sh.
+# Unlike Swift's, this set IS byte-reproducible — clang stamps no per-invocation nonce and
+# `-ffile-prefix-map` removes the checkout path — so a re-cut here would produce an empty diff rather
+# than a failing one. It stays out anyway, because the only thing that would buy is a ~200 MB
+# toolchain download on every CI run to confirm bytes a manifest already describes.
+# `cpp.toolchain.json` declares what built them, every file in the archive and every standard-library
+# header the prelude puts in front of a program, and gg's own tests compare it four ways: the manifest
+# against the archive's contents, file by file and byte count by byte count; the archive's copy of the
+# prelude and the shell against THIS CHECKOUT's sources, so an edit without a rebuild fails by name
+# rather than compiling every program against the old one; the headers the manifest claims against the
+# ones the prelude really includes; and — the check no diff could make — a real C++ program, compiled
+# against the archive by the production prepare step and run through the real membrane.
+declared="purescript jvm rust swift cpp"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

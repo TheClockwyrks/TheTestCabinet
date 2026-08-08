@@ -91,6 +91,13 @@
 # script a developer's machine does.
 !/packages/gg-sandbox-swift/swift-version.sh
 !/scripts/ci/install-swift.sh
+# The C++ arm does the same. Its installer prunes a ~650 MB wasi-sdk to the ~200 MB a wasm
+# cross-compile actually runs and vendors the two GCC-runtime sonames the published binaries
+# link, so the tree works on both the Debian-derived run images and `blender-gg`'s Ubuntu.
+# That knowledge must live in one place, so the image runs the same script a developer's
+# machine does.
+!/packages/gg-sandbox-cpp/cpp-version.sh
+!/scripts/ci/install-wasi-sdk.sh
 
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's

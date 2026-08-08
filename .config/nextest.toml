@@ -203,3 +203,21 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(/^sandbox::language::swift::(substrate|surface)::/)'
 slow-timeout = { period = "180s", terminate-after = 3 }
+
+# The C++ arm's compile-driving tests, bounded exactly as the other compiled arms' are above and for
+# the same reason: each is its own process, and the first thing it does is start a real compiler.
+#
+# This arm is the CHEAPEST of the three compiled ones per program — ~85 ms for `clang++` and ~19 ms
+# for `Component::new` on a small artifact, against `swiftc`'s ~0.3 s and 1.3 s — and it is bounded
+# here all the same, because the first compile in each process additionally builds the ~26 MB
+# precompiled prelude the rest of them read, and because its own isolation gate pays that plus
+# sixteen concurrent compiles.
+#
+# Measured on this repository's dev container, this group run on its own: 6.8 s for all thirty-four
+# tests with the isolation gate at 2.2 s and the largest program at 1.5 s. Three minutes is far more
+# headroom than that needs and is deliberately the same number the other compiled arms carry: what it
+# is sized for is a CI runner with a quarter of the cores compiling a template-heavy program, not the
+# figures above.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::cpp::substrate::/)'
+slow-timeout = { period = "180s", terminate-after = 3 }

@@ -1958,9 +1958,10 @@ toolchains?" has one answer.
 
 What the tree carries today, and what each weighs: `purs` and `esbuild` (~110 MB), a
 Temurin JDK with TeaVM's jars (~154 MB), the Kotlin compiler on top of it (~67 MB), a
-pruned `rustc` with the `wasm32-unknown-unknown` standard library (~376 MB), and a pruned
+pruned `rustc` with the `wasm32-unknown-unknown` standard library (~376 MB), a pruned
 Swift toolchain with the Swift SDK for WebAssembly (**~835 MB**, the largest by a wide
-margin). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
+margin), and a pruned **wasi-sdk** — clang, `wasm-ld`, wasi-libc and libc++ — for the C++
+arm (~200 MB, the *smallest* of the three compiled arms'). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
 library and `rust-lld` — `cargo`, `rustdoc`, the lint tools, the standard-library sources
 and the *host* standard library are all removed, none of which a cross-compile of a program
 with no proc macros touches. That toolchain's version is the one place a pin is **not** the
@@ -1982,6 +1983,20 @@ differently: gg carries that arm's SDK as a `.swiftmodule`, which is a
 compiler-version-private format, so the compiler in the image must be the one that built it. That is the "a language's own step vendors what it
 needs" clause of the image's portability constraint, taken literally, and it is the reason
 that block runs an installer rather than two `curl`s.
+
+C++'s is the same clause satisfied at a tenth of the effort, and the difference is the
+toolchain rather than the work: wasi-sdk is built to be relocated, so `clang` finds its own
+sysroot from its own path, every binary carries an `$ORIGIN/../lib` rpath, and the only
+things outside the tree it needs are the two GCC-runtime sonames its Debian build links —
+which the installer copies in beside it, where that rpath finds them and nothing else in the
+image does. No `LD_LIBRARY_PATH` and no closure walk. What is pruned is the debugger, the
+lint and format tools, the object utilities, the other linker drivers, and — the largest
+deletion by far — four of the wasi-sysroot's five *targets*, since the arm compiles to
+exactly one. Its pin is the **softest** of the three, because what gg commits for it is
+objects rather than a compiler-private module format; what is version-private is the
+[precompiled header](#c-a-compiler-with-a-precompiled-prelude) the arm builds per machine,
+and the directory that lives in is keyed on the compiler binary itself so a reinstall writes
+a new key rather than leaving one nothing can read.
 
 ### Per-agent compiler isolation
 
@@ -2267,9 +2282,12 @@ an arm of this shape has.
 The first arm of this shape is **[Rust](#rust-the-program-is-the-artifact)**
 (`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`). The second is
 **[Swift](#swift-the-reply-is-the-artifact-verbatim)**
-(`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`). It inherits the
-shape unchanged and adds three things to it that are worth reading before a third arm is
-written:
+(`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`). The third is
+**[C++](#c-a-compiler-with-a-precompiled-prelude)**
+(`crates/gg/src/sandbox/language/cpp.rs`, `packages/gg-sandbox-cpp/`), whose execution
+substrate is built and whose SDK and registration are not, so it is not yet a `language`
+value an operator can configure. Swift inherits the shape unchanged and adds three things to
+it that are worth reading before a fourth arm is written:
 
 - **its compiler's output is a preview1 core module, not a component.** The Swift SDK
   publishes one target triple and it is `wasm32-unknown-wasip1`, so the encode gg already
@@ -2287,6 +2305,75 @@ written:
   type-checked on every turn, and a program that declares its own `fs` **shadows** gg's
   rather than colliding with it. See [what Swift's SDK looks
   like](#what-swifts-sdk-looks-like).
+
+#### C++: a compiler with a precompiled prelude
+
+The third arm of this shape, and the one that changes the *cost* argument rather than the
+mechanism. Its execution substrate is built and its SDK and registration are not, so nothing
+below is reachable from a run yet.
+
+Everything structural it does, one of the two arms above already did. It is compiled by
+`clang++` from **wasi-sdk 33** into a `wasm32-wasip1` core module and adapted with the same
+pinned preview1 reactor adapter Swift needs; the canonical ABI is generated once with
+`wit-bindgen`'s **C** generator, exactly as Swift's is, because calling C is what `extern "C"`
+is for. What is new is four things, and each is a decision a study should be able to read.
+
+**A model's reply is compiled verbatim, and it must define `main`.** This is Swift's shape
+reached for a stronger reason: C++ refuses a `template` and a `namespace` at block scope
+outright, and a `#include` inside a function body would expand the whole of `<vector>` there.
+So the reply is a translation unit, gg's shell calls its `main`, and a reply that defines
+none is refused by name at prepare time. That refusal has to exist because the *linker* will
+not object: wasi-libc references `main` weakly, so a program with no entry point links
+cleanly and traps having done nothing — which is the one failure a model cannot recover from.
+No linker flag asks the question (`--undefined`, `--unresolved-symbols=report-all` and
+`--export` were each measured and each fails), so gg reads the reply lexically instead, in
+the one direction where being wrong costs nothing.
+
+**A precompiled header is what makes the arm affordable, and it is built per machine.**
+Parsing the ~55 standard-library headers a C++ author reaches for costs **~850 ms of every
+compile**; reading them back precompiled costs ~40 ms. Measured on this repository's dev
+container, a small program is 883–1110 ms without it and **82–95 ms** with it — which makes
+this the cheapest compiled arm per turn rather than the dearest. It cannot be committed the
+way every other compile input here is: a PCH is readable only by the clang that wrote it and
+records the absolute path of every header in it, so one built in a checkout is unreadable by
+the wasi-sdk in a run image. It is built into a content-keyed shared toolchain directory
+instead, by the first compile of a process, placed by rename and sealed read-only — and the
+key folds in the compiler **binary's own stamp**, because a reinstall at the same version
+invalidates a PCH without changing any version anybody wrote down.
+
+**Exceptions work, and turning them on cost the workspace a build feature.** C++ is an
+exception language, and `-fno-exceptions` would make every `try` a model writes a compile
+error — an arm measuring gg's flag rather than the language. Two measurements were needed.
+clang 22 defaults `-fwasm-exceptions` to the *legacy* encoding, which the pinned wasmtime
+refuses outright; `-mllvm -wasm-use-legacy-eh=false` selects the standardised `try_table`
+form, which it accepts. And accepting it needs `Config::wasm_exceptions`, which wasmtime
+gates behind a `gc` build feature and a collector — a dependency this workspace shares with
+the two **other** wasm hosts in the repository. Cargo features are additive, so both now
+build against a wasmtime with GC support, and both turn `gc_support` back **off** on their
+own engines rather than inheriting a wider validation surface from a decision another
+component made. gg's engine is the only one that opts in.
+
+**Its error surface is three bands, and two of them took a decision to get.** An uncaught
+`throw` under wasm exception handling never reaches `std::terminate`: it unwinds out of the
+module and arrives as `thrown Wasm exception` and nothing else. gg's shell catches it and
+reports the exception's own class — demangled by hand, rather than linking libc++abi's
+demangler into every artifact — and its `what()`, as an ordinary recoverable program error
+with **no location**. A libc++ **hardening** failure (`v[10]`, `.front()` on an empty
+container) carries libc++'s own sentence *and* the model's own line, and both halves are
+gg's doing: wasi-sdk ships libc++ configured to check nothing, and the message is a synthetic
+inlined frame in the debug information rather than anything printed — the same mechanism
+Swift's whole error surface rests on. What is left is **undefined behaviour**, which says
+nothing anywhere and is located and no more. That last band is a comparability risk this arm
+carries and no other does: a failure the language caused can be hard to tell, in the run
+record, from a model that reasoned badly.
+
+Two smaller things are worth recording beside the other two arms. Its artifacts are
+**byte-identical across preparations** — clang stamps no per-invocation nonce and
+`-ffile-prefix-map` removes the one path that would differ — so it is the only compiled arm
+that hands the isolation gate whole artifacts rather than a projection with a compiler's
+entropy set aside. And its per-turn figures sit between the other two: `clang++` ~85 ms and
+`Component::new` ~19 ms on an ~800 KB artifact for a small program, against Rust's ~9 ms on
+25 KB and Swift's ~1.3 s on 7 MB.
 
 #### A module a program has to be linked against
 
