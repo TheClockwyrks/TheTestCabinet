@@ -115,6 +115,17 @@ mod swift;
 #[path = "language/cpp.rs"]
 mod cpp;
 
+/// The **C#** arm's execution substrate, ahead of its SDK and its registration.
+///
+/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
+/// run can configure reaches it and every gate that iterates the registered set passes it by. What
+/// is here is the compile — the first on this seam whose compiler emits neither wasm nor source a
+/// guest reads, but an **IL assembly** — and the committed guest that interprets it, with the proof
+/// that a real C# program runs through the real membrane; the module's own documentation says what is still
+/// missing, and why registering it before that would leave a capability silently absent on one arm.
+#[path = "language/csharp.rs"]
+mod csharp;
+
 /// The **cross-language agreement gate**: the assertion that every registered language describes the
 /// same capabilities, and that only their spellings differ.
 ///

@@ -98,6 +98,13 @@
 # machine does.
 !/packages/gg-sandbox-cpp/cpp-version.sh
 !/scripts/ci/install-wasi-sdk.sh
+# The C# arm does the same, and its version file SOURCES the C++ arm's (the two share a
+# wasi-sdk pin and a wit-bindgen pin, deliberately, so that two arms reading one crates/gg/wit
+# cannot describe the wire differently) — so its block needs both. Its installer prunes a
+# ~770 MB .NET SDK to the ~122 MB a Roslyn compile actually runs, and deletes Roslyn's resident
+# compiler server, which is a decision that must live in one place rather than two.
+!/packages/gg-sandbox-csharp/csharp-version.sh
+!/scripts/ci/install-dotnet.sh
 
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's

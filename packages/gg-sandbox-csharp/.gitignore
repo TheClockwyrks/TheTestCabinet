@@ -1,0 +1,3 @@
+# Fetched toolchains, generated bindings and link intermediates. Nothing here is committed; the
+# artifacts this package produces live under crates/gg/src/sandbox/{guests,checkers}/.
+.build/

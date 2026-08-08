@@ -73,6 +73,16 @@ log "install the Swift toolchain (gg's swift arm compiles with it)"
 log "install wasi-sdk (gg's c++ arm compiles with it)"
 ./scripts/ci/install-wasi-sdk.sh
 
+# gg's C# arm compiles a model's program with a real Roslyn, and its tests drive it against the
+# committed Mono IL interpreter. It is the LIGHTEST install here — ~122 MB kept out of a ~770 MB SDK
+# — and the only one that installs no wasm toolchain at all, because nothing about a C# program is
+# compiled to wasm: that half was compiled once by packages/gg-sandbox-csharp/build.sh and
+# committed.
+# Pinned in packages/gg-sandbox-csharp/csharp-version.sh; idempotent, so an agent that already has
+# it pays nothing. `crates/gg` looks under $HOME for it by name, so nothing has to be exported.
+log "install .NET (gg's csharp arm compiles with it)"
+./scripts/ci/install-dotnet.sh
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 

@@ -2113,8 +2113,11 @@ What the tree carries today, and what each weighs: `purs` and `esbuild` (~110 MB
 Temurin JDK with TeaVM's jars (~154 MB), the Kotlin compiler on top of it (~67 MB), a
 pruned `rustc` with the `wasm32-unknown-unknown` standard library (~376 MB), a pruned
 Swift toolchain with the Swift SDK for WebAssembly (**~835 MB**, the largest by a wide
-margin), and a pruned **wasi-sdk** — clang, `wasm-ld`, wasi-libc and libc++ — for the C++
-arm (~200 MB, the *smallest* of the three compiled arms'). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
+margin), a pruned **wasi-sdk** — clang, `wasm-ld`, wasi-libc and libc++ — for the C++
+arm (~200 MB, the *smallest* of the three compiled arms'), and a pruned **.NET** — a
+runtime, Roslyn and the reference assemblies — for the
+[C#](#c-a-committed-interpreter-for-a-compiled-language) arm (**~122 MB**, the smallest
+in the image and the only one here that is not a wasm toolchain at all). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
 library and `rust-lld` — `cargo`, `rustdoc`, the lint tools, the standard-library sources
 and the *host* standard library are all removed, none of which a cross-compile of a program
 with no proc macros touches. That toolchain's version is the one place a pin is **not** the
@@ -2150,6 +2153,21 @@ objects rather than a compiler-private module format; what is version-private is
 [precompiled header](#c-a-compiler-with-a-precompiled-prelude) the arm builds per machine,
 and the directory that lives in is keyed on the compiler binary itself so a reinstall writes
 a new key rather than leaving one nothing can read.
+
+C#'s is the odd one out and it is worth saying why in this section rather than only in that
+arm's own: **it installs no wasm toolchain, because nothing about a C# program is compiled to
+wasm.** Roslyn compiles the model's reply to IL on the host and the wasm half — a Mono IL
+interpreter with the whole class library inside it — was compiled once by a developer's
+command and committed. So what this block installs is a launcher, a shared framework, Roslyn
+and the reference assemblies, and the pruning is everything a .NET developer would expect and
+gg never uses: MSBuild, NuGet, the templating engine, the test host, F#, the AOT
+cross-compilers and the whole wasm workload. One thing is deleted rather than merely unused —
+**`VBCSCompiler`, Roslyn's resident compiler server**, which is exactly the shared-daemon
+shape [per-agent isolation](#per-agent-compiler-isolation) exists to prevent. gg never starts
+it (it runs `csc.dll` under `dotnet exec`, not through the shim that would), and removing it
+means nothing in the image can. Its pin is **hard** for a reason neither Rust's nor Swift's
+gives: the *reference assemblies* decide what a model's program may call, and they have to be
+the release the class library inside the committed guest was cut from.
 
 ### Per-agent compiler isolation
 
@@ -2953,6 +2971,74 @@ Three absences inside the standard set are decisions rather than gaps: `<thread>
 use is worse than one it was never offered; `<iostream>`, because a program's stdout is not a
 channel a turn is read from and including it drags its static initialisation into every artifact;
 and `<filesystem>`, for the namespace collision above.
+
+### C#: a committed interpreter for a compiled language
+
+A **third** shape, and the first arm that is neither of the two above. Its execution
+substrate is built and its SDK and registration are not, so nothing here is reachable from a
+run yet: there is no `language` value that resolves to it.
+
+The two shapes so far split on *what crosses the membrane*. An interpreted arm sends **source**
+to a committed runtime; a compiled arm sends **a component** and commits nothing. C# sends
+neither. Roslyn compiles the model's reply to **IL** on the host — the compiler every C#
+build already runs, in **~0.27–0.37 s** warm — and the assembly crosses as base64 in the
+world's existing `program` string, to a committed component holding a **Mono IL interpreter**
+and the whole .NET class library. So it has an interpreted arm's *artifact* and a compiled
+arm's *failure bands*: a program the compiler read whole and rejected is
+[the model's compile error](#a-compiler-has-two-ways-to-fail), on an arm whose committed guest
+never changes.
+
+That is what makes C# affordable, and it is the whole of what a prior feasibility study got
+wrong about it. Priced on `componentize-dotnet` — NativeAOT-LLVM, which compiles the *program*
+to native wasm — this arm measured **25–43 seconds a turn** and was cut as impractical.
+Compiling to IL instead is three orders of magnitude cheaper and costs nothing a study would
+notice: the interpreter is the same runtime `dotnet` uses on wasm everywhere else.
+
+**The piece everyone said was unbuilt is not needed.** Binding gg's WIT world from .NET is
+what `dotnet/runtime#113868` says has no supported path — opened in 2025, closed unresolved,
+no owner and no PR — and the study scheduled this arm last because of it, with a Mono relink
+to be attempted only as research after two fallbacks. No relink research was needed and
+neither fallback was taken. The question answers itself once it is asked of the right layer:
+**the component gg instantiates is C, not managed code.** Microsoft ships Mono's wasm build as
+static archives *plus the C that links them*, precisely so the runtime can be relinked with an
+embedder's own natives, so gg's guest is that runtime pack's own supported build with one extra
+translation unit — `wit-bindgen`'s C bindings for gg's world and
+`packages/gg-sandbox-csharp/Sources/shell.c`. The managed half never binds a WIT world at all:
+it reaches gg through `mono_add_internal_call`, Mono's embedding API for exactly this, which is
+older than wasm and needs no build-time code generation.
+
+**The guest needs no filesystem.** The class libraries and ICU are bundled into the component
+as in-memory resources, so the runtime boots with zero preopens and reads nothing. The runtime
+pack's default is a `managed/` directory beside the program, which would have put 17 MB of
+Microsoft's assemblies into a run's own working tree where a model would find them and would
+have made the guest depend on a path the toolchain image happened to install. It costs 22 MB of
+committed artifact — the component is **34.9 MB** — and buys one that behaves the same
+everywhere.
+
+**Its error surface is the best of any compiled arm here, and gg engineered none of it.**
+`try`/`catch`/`finally` work because they are IL, and what an unhandled exception reports is
+`Exception.ToString()`: the type, the message *and* the managed frames. Rust aborts and reaches
+for a panic hook; Swift traps and has no hook at all; C++ has `throw` and `catch` but nothing to
+ask a caught exception where it came from. This arm is handed all three by the runtime.
+
+Three things are absent, and each is stated rather than glossed:
+
+- **`System.Net.Http`'s native handler.** Its WASI implementation is a set of `[DllImport]`s
+  against `wasi:http/outgoing-handler@0.2.0`, an interface gg's world does not declare and gg's
+  linker does not define, and a guest carrying them cannot be encoded as a component at all. The
+  assembly is bundled and its types compile; a program reaches the network the way every other
+  arm does, through `shell`.
+- **`System.Security.Cryptography`**, which is the *runtime's* gap and not gg's: Mono's wasi
+  build ships the types as ones that throw, and nothing gg could do would restore them. Measured
+  rather than assumed, and it arrives as a named, catchable `PlatformNotSupportedException`
+  rather than a trap.
+- **A parse-versus-bind distinction in its diagnostics.** javac labels a diagnostic with a key
+  saying whether the parser produced it, so the [Java](#java-a-warm-jvm-and-two-compilers-per-program)
+  arm separates a typo from a program written whole against the wrong surface. Roslyn's command
+  line does not, and its own `ErrorFacts` is internal — so every rejection reaches the model as a
+  compile error, and gg does not guess at another compiler's taxonomy. The fix is known and
+  belongs with this arm's SDK step, which wants a hosted Roslyn driver anyway to read XML
+  documentation comments.
 
 ### The catalogue
 

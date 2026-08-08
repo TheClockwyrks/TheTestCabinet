@@ -388,6 +388,58 @@ RUN set -eux; \
 	test -f /opt/gg/toolchains/wasi-sdk/lib/libstdc++.so.6; \
 	test -d /opt/gg/toolchains/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1/eh
 
+# --- C# ---------------------------------------------------------------------
+# The LIGHTEST toolchain in this image — **~122 MB**, against wasi-sdk's ~200 MB, `rustc`'s
+# ~376 MB and the Swift SDK's ~835 MB — and the only one here that is not a wasm toolchain
+# at all. That is the arm's whole strategy rather than a saving: a C# program is compiled to
+# **IL** by Roslyn on the host, in ~0.3 s, and interpreted by a Mono IL interpreter that was
+# compiled to wasm once by `packages/gg-sandbox-csharp/build.sh` and committed inside gg's
+# binary. Nothing about a C# program is compiled to wasm, so nothing that compiles to wasm
+# has to be here. See `crates/gg/src/sandbox/language/csharp.rs`.
+#
+# Constraint 1 is satisfied by construction: a `dotnet-install.sh` tree is relocatable, the
+# launcher resolves its framework relative to `DOTNET_ROOT` (which gg sets to the tree it
+# found), and the whole of it is managed code plus one small native host. The same tree works
+# on the Debian-derived run images and on `blender-gg`'s Ubuntu.
+#
+# Constraint 2 is satisfied outright, and one thing is deleted to keep it that way. `csc` is a
+# plain one-shot process with an explicit `-out:`, and it only ever READS the reference
+# assemblies. Roslyn does ship a compiler SERVER — `VBCSCompiler`, a resident process an SDK
+# build reuses across compilations, which is precisely the shape of the measured corruption in
+# this header's constraint 2 — and gg never reaches it, because gg runs `csc.dll` under
+# `dotnet exec` rather than through the shim that starts it. The installer removes the server
+# anyway, so nothing in this image can start one.
+#
+# WHAT IS PRUNED, and why each is safe — the published SDK is ~770 MB. Dropped: MSBuild, NuGet,
+# the templating engine, the test host, F#, the AOT cross-compilers, the ASP.NET reference pack
+# and the whole wasm workload (gg never builds a *project*, and the wasm half of this arm is
+# committed); `vbc` and the Visual Basic code-analysis assembly; the compiler server, above;
+# thirteen languages of localised compiler messages, since every diagnostic here is read by a
+# model and every prompt in this repository is English; and 43 MB of IntelliSense XML beside
+# the reference assemblies. Kept: the launcher and its resolver, the shared framework, Roslyn,
+# and the reference assemblies — which are the whole reason this is pinned, because they decide
+# what a model's program may call and must be the release the BCL inside the committed guest
+# was cut from.
+#
+# The versions are the ones `packages/gg-sandbox-csharp/csharp-version.sh` pins, and the script
+# is run here so there is one list rather than two. It ends by compiling a C# file with the
+# pruned copy, because every deletion above is a thing that could have broken it.
+COPY packages/gg-sandbox-cpp/cpp-version.sh \
+	/tmp/gg-csharp/packages/gg-sandbox-cpp/cpp-version.sh
+COPY packages/gg-sandbox-csharp/csharp-version.sh \
+	/tmp/gg-csharp/packages/gg-sandbox-csharp/csharp-version.sh
+COPY scripts/ci/install-dotnet.sh /tmp/gg-csharp/scripts/ci/install-dotnet.sh
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+	apt-get update && apt-get install -y --no-install-recommends libicu72
+RUN set -eux; \
+	DOTNET_INSTALL_DIR=/opt/gg/toolchains/dotnet \
+	bash /tmp/gg-csharp/scripts/ci/install-dotnet.sh; \
+	rm -rf /tmp/gg-csharp; \
+	test -x /opt/gg/toolchains/dotnet/dotnet/dotnet; \
+	test -f /opt/gg/toolchains/dotnet/roslyn/bincore/csc.dll; \
+	test ! -f /opt/gg/toolchains/dotnet/roslyn/bincore/VBCSCompiler.dll
+
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
 # `COPY --from` source, and keeping it to the toolchain tree alone means the gg run images

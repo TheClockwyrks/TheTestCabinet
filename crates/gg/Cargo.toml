@@ -130,5 +130,11 @@ wit-component = { workspace = true }
 # them against a real temporary directory.
 tempfile = { workspace = true }
 
+# The C# arm's committed guest is built by a developer's command and exempted from the
+# contract-drift re-cut, so the gate that a `Sources/shell.c` edit was actually rebuilt is a
+# digest comparison in this crate's own tests. A dev dependency rather than a real one: nothing
+# on the turn path hashes anything.
+sha2 = { workspace = true }
+
 [lints]
 workspace = true

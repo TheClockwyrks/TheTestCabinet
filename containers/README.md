@@ -154,7 +154,7 @@ containers/
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
 │                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc, a pruned
-│                               #   Swift + its wasm SDK, wasi-sdk). Not a run image
+│                               #   Swift + its wasm SDK, wasi-sdk, a pruned .NET). Not a run image
 │                               #   and never published — the `-gg` variants `COPY --from` it
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary

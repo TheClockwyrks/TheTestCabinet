@@ -329,7 +329,24 @@ recut="typescript ruby java kotlin"
 # drift a stale archive beside a fresh catalogue would otherwise be; and — the check no diff could
 # make — real C++ programs, compiled against the archive by the production prepare step and run
 # through the real membrane, that call every function the SDK offers.
-declared="purescript jvm rust swift cpp"
+# `csharp` is exempted on the same terms and is the easiest of the four to argue, because its one
+# committed artifact here is a MANIFEST — `csharp.toolchain.json` is what says which .NET SDK, which
+# Mono runtime pack, which wasi-sdk and which `wit-bindgen` built the guest, and it is a description
+# rather than a compiler. What it describes, `guests/csharp.component.wasm`, is 34.9 MB of Mono's IL
+# interpreter with the whole .NET class library bundled into it, and re-cutting it needs a ~770 MB
+# .NET SDK **and** a ~193 MB full wasi-sdk downloaded on every CI run to confirm bytes the manifest
+# already describes. Nothing above re-cuts it, and — as with Rust, Swift and C++ — that is a property
+# rather than a hope: the bindings the build needs are their own script,
+# packages/gg-sandbox-csharp/bindings.sh.
+# What holds it honest is `crates/gg/src/sandbox/language/csharp.manifest.test.rs`, which compares
+# the manifest three ways: against the committed component's own byte count, so a manifest written
+# without the component (or the reverse) fails by name; against the SHA-256 of THIS CHECKOUT's
+# `Sources/shell.c`, so a shell edited without a rebuild fails here rather than leaving every C#
+# program evaluated by last month's shell; and against every version `csharp-version.sh` pins, so a
+# bumped pin without a rebuild fails rather than describing a guest something else built. Beside
+# those, `csharp.substrate.test.rs` makes the check no diff could make — real C# programs, compiled
+# by the production prepare step and run through the real membrane against that very component.
+declared="purescript jvm rust swift cpp csharp"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

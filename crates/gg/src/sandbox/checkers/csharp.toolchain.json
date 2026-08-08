@@ -1,0 +1,15 @@
+{
+  "dotnetSdk": "10.0.302",
+  "dotnetRuntime": "10.0.10",
+  "targetFramework": "net10.0",
+  "languageVersion": "14.0",
+  "runtimePack": "Microsoft.NETCore.App.Runtime.Mono.wasi-wasm",
+  "wasiSdk": "33.0",
+  "clang": "22.1.0-wasi-sdk",
+  "target": "wasm32-wasip2",
+  "witBindgen": "0.60.0",
+  "componentBytes": 34878574,
+  "shellSha256": "e8724b16b0b5e8d7553290caf9d96443d6876290c64ad02d6a9cbf2ee2aaba70",
+  "excludedAssemblies": ["System.Net.Http.dll"],
+  "bundledAssemblies": 170
+}

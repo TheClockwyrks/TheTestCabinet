@@ -253,3 +253,19 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(/^sandbox::language::cpp::(substrate|surface)::/)'
 slow-timeout = { period = "180s", terminate-after = 3 }
+
+# The C# arm's compile-driving tests. Its compiler is the second cheapest of the compiled arms
+# per program — `csc` is ~0.27-0.37 s warm, behind `clang++`'s ~85 ms and ahead of everything
+# else — but this arm pays for its guest where the three arms that emit wasm do not, and
+# every test in this group is its own process under nextest, and the first thing each does is
+# compile the **34.9 MB** committed guest, which is the largest artifact any arm here
+# instantiates. Measured on this repository's dev container, this group run on its own: 2.5 s
+# for all eight tests, the dearest at 2.46 s — nearly all of which is that one compile, paid
+# once per process.
+#
+# Bounded from the work rather than from the default, at the same three minutes the other
+# compiled arms carry, and for the same thing: a CI runner with a quarter of the cores
+# compiling that component while seven other arms' compilers contend for the same machine.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::csharp::substrate::/)'
+slow-timeout = { period = "180s", terminate-after = 3 }
