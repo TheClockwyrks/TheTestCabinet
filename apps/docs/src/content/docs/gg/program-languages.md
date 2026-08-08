@@ -2974,9 +2974,10 @@ and `<filesystem>`, for the namespace collision above.
 
 ### C#: a committed interpreter for a compiled language
 
-A **third** shape, and the first arm that is neither of the two above. Its execution substrate and
-its whole model-facing surface are built; only its registration is not, so nothing here is reachable
-from a run yet: there is no `language` value that resolves to it.
+A **third** shape, and the first arm that is neither of the two above. Everything but its
+registration is built — the compile, the guest, the SDK, the catalogue, its code modules and its
+diagnostic bands — so nothing here is reachable from a run yet only because there is no `language`
+value that resolves to it.
 
 The two shapes so far split on *what crosses the membrane*. An interpreted arm sends **source**
 to a committed runtime; a compiled arm sends **a component** and commits nothing. C# sends
@@ -3023,7 +3024,7 @@ ask a caught exception where it came from. This arm is handed all three by the r
 frame at the top of that trace is the SDK function that failed, because the one place the SDK
 turns a failed call into a `throw` is marked `MethodImplOptions.NoInlining` so it stays out of it.
 
-Three things are absent, and each is stated rather than glossed:
+Two things are absent, and each is stated rather than glossed:
 
 - **`System.Net.Http`'s native handler.** Its WASI implementation is a set of `[DllImport]`s
   against `wasi:http/outgoing-handler@0.2.0`, an interface gg's world does not declare and gg's
@@ -3036,16 +3037,63 @@ Three things are absent, and each is stated rather than glossed:
   build ships the types as ones that throw, and nothing gg could do would restore them. Measured
   rather than assumed, and it arrives as a named, catchable `PlatformNotSupportedException`
   rather than a trap.
-- **A parse-versus-bind distinction in its diagnostics.** javac labels a diagnostic with a key
-  saying whether the parser produced it, so the [Java](#java-a-warm-jvm-and-two-compilers-per-program)
-  arm separates a typo from a program written whole against the wrong surface. Roslyn's command
-  line does not, and its own `ErrorFacts` is internal — so every rejection reaches the model as a
-  compile error, and gg does not guess at another compiler's taxonomy. The fix is known and is not
-  free: a hosted Roslyn driver could ask `SyntaxTree.GetDiagnostics()`, and this arm has one
-  already — it is what reflects the catalogue — but it runs on a developer's machine, and putting a
-  resident Roslyn on the *turn path* is a compiler server by another name, which would have to go
-  through the [pool](#where-a-compiler-lives-and-what-it-must-never-share) that exists because
-  `VBCSCompiler` is deleted from the image.
+
+#### A typo and a misunderstanding are told apart by asking Roslyn's parser
+
+javac labels a diagnostic with a key saying whether the parser produced it, so the
+[Java](#java-a-warm-jvm-and-two-compilers-per-program) arm gets the seam's syntax/compile split for
+free. **Roslyn's command line does not**, and its own `ErrorFacts` — which knows — is `internal`. A
+hand-maintained table of which `CSxxxx` codes the parser emits would be gg guessing at another
+compiler's taxonomy, and a wrong guess reports a typo as a surface misunderstanding, which is the
+exact distinction the two bands exist to keep.
+
+So gg asks. `packages/gg-sandbox-csharp/tools/Parse.cs` is a parse-only Roslyn driver — it parses the
+one file, prints the parser's own errors and nothing else, and **empty output means it parsed**, so
+the rejection was a binder's. It runs on the **failing path only**, on a turn that was already lost,
+which is why it costs nothing on the turn path.
+
+It is not the compiler server this seam forbids, and the difference is the one the contract is
+written in: it parses one file and exits, holding nothing between invocations, resolving no
+references, binding nothing and writing nothing. What
+[the pool](#where-a-compiler-lives-and-what-it-must-never-share) exists for is a **resident** process
+shared between two agents' programs, which is what `VBCSCompiler` is and why it is deleted from the
+image rather than merely unused. The driver's own build is the one thing this arm shares, on the
+seam's terms: content-keyed on its source and its toolchain, placed by rename, sealed read-only, and
+never written to again.
+
+When it cannot answer — no driver, a driver that would not build, a non-zero exit — the rejection is
+reported as a **compile error**, which is the wider band and what this arm reported before the driver
+existed. A classifier that could not run must not turn a real diagnostic into a toolchain failure,
+and must not claim a program parsed when nobody asked.
+
+#### A code module is a `static class`, because C# has no free functions
+
+Every other arm answers "what is `lib.<key>`?" with whatever its language uses to hold functions: a
+`namespace`, a `mod`, a module object. C# cannot. **A function is a member of a type and a namespace
+holds only types**, so `namespace lib.CsvTools` would be a namespace nothing could be called on, and
+a program would have to write `lib.CsvTools.Helpers.Slugify(…)` with a class name only the skill's
+author knows.
+
+So `lib.<key>` is a **`static class`** in `namespace lib`, and a module is that class's body — the
+shape a C# author already writes when they write a file of helpers, and the answer
+[Java](#java-a-warm-jvm-and-two-compilers-per-program)'s arm reached for the same reason. The key is
+spelled **`PascalCase`** here and in no other arm, because here it names a *type* — and that closes a
+hole nothing else could: every C# keyword is lower-case, so a skill called `class` binds at
+`lib.Class` and compiles, where a lower-cased key would have needed a `@` nobody would think to type.
+
+It compiles in the **same `csc` invocation** as the program and the SDK. Nothing is referenced with
+`-r:` and nothing becomes a second assembly, which the committed guest could not load anyway — it
+loads exactly one per run. A module is *also* compiled alone when it is read, as a library, so its
+author gets a diagnostic on the call that loaded the skill rather than a program that stops compiling
+a turn later for reasons in somebody else's file.
+
+**No line moves, in either direction.** C# has `#line`, which only [C++](#c-the-prelude-is-precompiled-and-the-exceptions-work)
+otherwise does here, so gg *says* what the author's first line is instead of subtracting a header's
+height from every diagnostic afterwards. One thing is moved and two are refused: a `using` at the top
+of a module is **hoisted** out of the class body it would be a syntax error in — Java's arm hoists
+`import`s for the same reason — with a `#line` of its own so it is still reported where it was
+written; a `namespace` declaration and a `global using` are refused, at the author's own line, with
+the sentence that says what to write instead.
 
 #### The SDK is compiled with the program, which no other arm's is
 

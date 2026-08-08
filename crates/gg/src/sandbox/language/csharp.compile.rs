@@ -48,7 +48,13 @@
 //! sentinel, its extraction directories) without being asked, so that redirection is doing real work
 //! here rather than standing by.
 //!
-//! **Nothing is shared, and one thing is refused on purpose.** Roslyn ships a compiler *server* —
+//! **One thing is shared on purpose**, on the seam's own terms: the parse-only driver
+//! [`parser`] builds, which is content-keyed on its own source and the toolchain it is built
+//! against, placed by rename and sealed read-only. Nothing writes to it afterwards, which is the
+//! whole of the discipline — the measured corruption this contract exists to prevent is a *write*
+//! into a shared tree.
+//!
+//! **Nothing else is shared, and one thing is refused on purpose.** Roslyn ships a compiler *server* —
 //! `VBCSCompiler`, a resident process the SDK's build reuses across compilations — which is exactly
 //! the shape of the shared-daemon corruption [`compile`](crate::sandbox::language::compile)
 //! documents. gg never reaches it: the server is started by the `csc` **shim**, and gg runs
@@ -56,7 +62,7 @@
 //! That is a decision rather than an accident of invocation, and it is why this module names the
 //! assembly instead of the launcher beside it.
 //!
-//! # The two failures, and which is the model's
+//! # The failures, and which of them are the model's
 //!
 //! `csc` exits non-zero both when it disagreed with the program and when it could not run, so the
 //! two are told apart by whether it **reported diagnostics in its own format**:
@@ -64,35 +70,41 @@
 //! | | What happened | How it is reported |
 //! | --- | --- | --- |
 //! | exit 0 | compiled | the assembly, base64-encoded |
-//! | non-zero, with `program.cs(line,col): error CSxxxx:` lines | Roslyn read the program and refused it | [`PrepareError::Compile`] — the model's, with Roslyn's own diagnostics at the model's own coordinates |
+//! | non-zero, and the **parser** refused it | a typo | [`PrepareError::Syntax`] — the parser's own diagnostics, at the model's own coordinates |
+//! | non-zero, and only the **binder** refused it | a program written whole against the wrong surface | [`PrepareError::Compile`] — Roslyn's own diagnostics, at the model's own coordinates |
+//! | non-zero, and every diagnostic is in **gg's own SDK** | a defect in gg | [`PrepareFailure::Toolchain`] naming gg — never the model's |
 //! | anything else | the compiler could not finish | [`PrepareFailure::Toolchain`] — **not** the model's, and never shown to it as its own |
 //!
-//! **Every rejection is [`Compile`](PrepareError::Compile) and none is
-//! [`Syntax`](PrepareError::Syntax), and that is a stated limit rather than an oversight.** javac
-//! labels a diagnostic with a key that says whether the *parser* produced it, so the
-//! [Java](super::super::java) arm can separate a typo from a program written whole against the wrong
-//! surface. Roslyn's command line does not: a `CS1002` and a `CS0117` arrive in one format with
-//! nothing distinguishing the stage that raised them, and Roslyn's own `ErrorFacts` — which knows —
-//! is internal. gg could hand-maintain a table of which `CSxxxx` codes the parser emits; it would be
-//! gg guessing at another compiler's taxonomy, and a wrong guess reports a typo as a surface
-//! misunderstanding, which is the exact distinction the two bands exist to keep. The fix is known
-//! and is not free: a hosted Roslyn driver can ask `SyntaxTree.GetDiagnostics()` and get the
-//! authoritative answer, and this arm now has one — `packages/gg-sandbox-csharp/tools/Signatures.cs`
-//! reflects the catalogue through `Microsoft.CodeAnalysis.CSharp` — but it runs on a developer's
-//! machine rather than on the turn path, and putting a resident Roslyn *there* is a compiler server
-//! by another name. It would have to go through [`CompilerPool`](super::super::compile), which is
-//! the whole reason `VBCSCompiler` is deleted from the image, and that is a decision to make with
-//! the numbers in front of it rather than in passing.
+//! **The first two are told apart by asking Roslyn's parser, not by guessing.** javac labels a
+//! diagnostic with a key that says whether the *parser* produced it, so the
+//! [Java](super::super::java) arm gets the split for free. Roslyn's command line does not: a `CS1002`
+//! and a `CS0117` arrive in one format with nothing distinguishing the stage that raised them, and
+//! Roslyn's own `ErrorFacts` — which knows — is `internal`. A hand-maintained table of which
+//! `CSxxxx` codes the parser emits would be gg guessing at another compiler's taxonomy, and a wrong
+//! guess reports a typo as a surface misunderstanding, which is the exact distinction the two bands
+//! exist to keep. So on the **failing path only**, gg runs
+//! `packages/gg-sandbox-csharp/tools/Parse.cs` — a parse-only Roslyn driver over the one file — and
+//! reads the answer off whether it printed anything. See [`parse_errors`] for why that is not the
+//! compiler server this seam forbids, and for what happens when it cannot answer.
 //!
-//! # And a third, which is gg's own
+//! The third is one only this arm has, because the SDK is in the **same invocation** as the program.
+//! A diagnostic located in gg's own sources is gg's defect rather than the model's — unless `csc`
+//! also complained about the model's file, in which case the model's own diagnostics are what it is
+//! shown and gg's are dropped. That order is deliberate: a program declaring a type the SDK already
+//! declares produces diagnostics at both, and it is the model's to fix.
 //!
-//! [`classify`] separates a third case out of the compile band, and it is one only this arm has:
-//! the SDK is in the **same invocation** as the program, so a diagnostic can be located in gg's own
-//! sources. Those arrive as a [toolchain failure](PrepareFailure::Toolchain) naming gg rather than
-//! as a compile error a model would read as its own — unless `csc` also complained about
-//! `program.cs`, in which case the model's own diagnostics are what it is shown and gg's are
-//! dropped. That order is deliberate: a program declaring a type the SDK already declares produces
-//! diagnostics at both, and it is the model's to fix.
+//! # A code module is C# in the same invocation
+//!
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s class is bound at `lib.<key>`, and
+//! on an arm that compiles, that binding is the compilation itself: each module in scope is written
+//! into the preparation's workspace as `module_<key>.cs` — [wrapped](super::source::wrap_module) as
+//! `public static class <key>` inside `namespace lib` — and named in the **same `csc` invocation** as
+//! the program and the SDK. Nothing is referenced with `-r:` and nothing becomes a second assembly,
+//! which the committed guest could not load anyway: it loads exactly one per run.
+//!
+//! A module is also compiled **alone** when it is read — [`compile_module`], one `-target:library`
+//! over the wrapped file — which is what buys its author a diagnostic in their own coordinates
+//! rather than a program that stops compiling a turn later for reasons in somebody else's file.
 //!
 //! # What is deliberately absent from this arm's class library
 //!
@@ -109,9 +121,14 @@ use std::time::Duration;
 
 use base64::Engine as _;
 
-use crate::sandbox::language::compile::CompilerReport;
+use crate::sandbox::language::compile::{
+    CompilerReport, Workspace, place_tree, shared_toolchain_dir,
+};
 use crate::sandbox::language::csharp::sdk::{SDK_DIRECTORY, SDK_SOURCES};
-use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, PreparedProgram};
+use crate::sandbox::language::csharp::source;
+use crate::sandbox::language::{
+    CodeModule, PrepareContext, PrepareError, PrepareFailure, PreparedModule, PreparedProgram,
+};
 
 /// The environment variable an operator points at this arm's .NET toolchain when it is not where gg
 /// looks.
@@ -140,6 +157,12 @@ pub(super) const PROGRAM_FILE: &str = "program.cs";
 /// `packages/gg-sandbox-csharp/Sources/shell.c` — because Mono resolves a bundled assembly resource
 /// by that name and by nothing else.
 pub(super) const PROGRAM_ASSEMBLY: &str = "GgProgram.dll";
+
+/// The assembly a **code module's own check** is told to produce, and then thrown away.
+///
+/// A module is not an artifact on this arm — it is source compiled into the program that binds it —
+/// so this exists only because `csc` must be told where to write. Nothing reads it.
+const MODULE_ASSEMBLY: &str = "GgModule.dll";
 
 /// The response file the compiler's arguments are written into.
 ///
@@ -210,10 +233,11 @@ fn usable(root: &Path) -> bool {
 /// three arms whose compiler emits wasm: its per-turn cost is one `csc` and no engine work at all,
 /// where theirs is a compiler *and* a `Component::new` over bytes that differ every turn.
 pub(super) fn compile_program(
-    source: &str,
+    program: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
-    let assembly = compile(source, context)?;
+    let assembly = compile(program, modules, context)?;
     Ok(PreparedProgram {
         source: base64::engine::general_purpose::STANDARD.encode(assembly),
         unreachable: None,
@@ -221,14 +245,109 @@ pub(super) fn compile_program(
     })
 }
 
-/// Compile one C# source into an IL assembly's bytes.
-pub(super) fn compile(source: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFailure> {
+/// Prepare a **code module** — the code half of a skill or a memory — by compiling it the way a
+/// program will, and read the names its class offers.
+///
+/// What comes back is **source**, which is what a compiled arm's module has to be: it is an input to
+/// the [program compile](compile_program) that binds it, not something a guest could load on its
+/// own. The committed guest loads exactly one assembly per run, so a module cannot be a second one —
+/// it is C# handed to the same `csc` as the program, and the class it becomes is in the program's
+/// own assembly. It is the author's own bytes rather than the
+/// [wrapped](super::source::wrap_module) form, because the class is named for the key the *program*
+/// knows and a module's own preparation is handed none.
+///
+/// It is compiled here, at the read, for what that buys its author: a diagnostic in **their own
+/// coordinates**, on the call that loaded the skill, rather than a program that stops compiling a
+/// turn later for reasons in somebody else's file. `-target:library` is the only difference from a
+/// program's compile — a class body has no entry point and needs none.
+pub(super) fn compile_module(
+    module_source: &str,
+    context: &PrepareContext,
+) -> Result<PreparedModule, PrepareFailure> {
+    let module = source::wrap_module(module_source, source::CHECK_KEY)?;
     let root = dotnet_home().ok_or_else(|| PrepareFailure::Toolchain(missing_toolchain()))?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
-    let program = workspace
-        .write(PROGRAM_FILE, source)
+    let sdk = write_sdk(workspace)?;
+    let file = workspace
+        .write(&source::module_file(source::CHECK_KEY), &module.source)
         .map_err(PrepareFailure::Toolchain)?;
+    let output = workspace.output().join(MODULE_ASSEMBLY);
+    let response = workspace
+        .write(
+            RESPONSE_FILE,
+            &response_file(
+                &root,
+                Target::Library,
+                &sdk,
+                std::slice::from_ref(&file),
+                &output,
+            )?,
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let report = invoke(&root, &response, context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, &root, &file, context)?;
+
+    Ok(PreparedModule {
+        source: module_source.to_string(),
+        exports: module.exports,
+    })
+}
+
+/// Compile one model program, and the code modules in its scope, into an IL assembly's bytes.
+///
+/// The modules are **inputs to the program's own compile**, which is what a binding at `lib.<key>`
+/// has to be on an arm that compiles: each is written into the preparation's workspace as its own
+/// file — `namespace lib;` and the author's declarations inside `public static class <key>` — and
+/// named in the same `csc` invocation. They are in binding order, so one module may reach another's
+/// class, and none of them moves a line of the model's own file.
+fn compile(
+    program: &str,
+    modules: &[CodeModule],
+    context: &PrepareContext,
+) -> Result<Vec<u8>, PrepareFailure> {
+    let root = dotnet_home().ok_or_else(|| PrepareFailure::Toolchain(missing_toolchain()))?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+
+    // Verbatim. Nothing is prepended, appended or re-indented, which is what makes every line and
+    // column below the model's own.
+    let entry = workspace
+        .write(PROGRAM_FILE, program)
+        .map_err(PrepareFailure::Toolchain)?;
+    let sdk = write_sdk(workspace)?;
+    let mut sources = Vec::with_capacity(modules.len() + 1);
+    for module in modules {
+        let wrapped = source::wrap_module(&module.source, &module.name)?;
+        sources.push(
+            workspace
+                .write(&source::module_file(&module.name), &wrapped.source)
+                .map_err(PrepareFailure::Toolchain)?,
+        );
+    }
+    sources.push(entry.clone());
+
+    let output = workspace.output().join(PROGRAM_ASSEMBLY);
+    let response = workspace
+        .write(
+            RESPONSE_FILE,
+            &response_file(&root, Target::Exe, &sdk, &sources, &output)?,
+        )
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let report = invoke(&root, &response, context).map_err(PrepareFailure::Toolchain)?;
+    classify(&report, &root, &entry, context)?;
+
+    std::fs::read(&output).map_err(|error| {
+        PrepareFailure::Toolchain(format!(
+            "csc reported success but wrote no assembly to {}: {error}",
+            output.display(),
+        ))
+    })
+}
+
+/// Write gg's own SDK into this preparation's workspace, and hand back the files to compile.
+fn write_sdk(workspace: &Workspace) -> Result<Vec<PathBuf>, PrepareFailure> {
     let mut sdk = Vec::with_capacity(SDK_SOURCES.len());
     for file in SDK_SOURCES {
         sdk.push(
@@ -237,23 +356,27 @@ pub(super) fn compile(source: &str, context: &PrepareContext) -> Result<Vec<u8>,
                 .map_err(PrepareFailure::Toolchain)?,
         );
     }
-    let output = workspace.output().join(PROGRAM_ASSEMBLY);
-    let response = workspace
-        .write(
-            RESPONSE_FILE,
-            &response_file(&root, &program, &sdk, &output)?,
-        )
-        .map_err(PrepareFailure::Toolchain)?;
+    Ok(sdk)
+}
 
-    let report = invoke(&root, &response, context).map_err(PrepareFailure::Toolchain)?;
-    classify(&report)?;
+/// What a compilation is for: a model's program, which the guest calls an entry point on, or a code
+/// module's own check, which has none and needs none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Target {
+    /// A program. `-target:exe`.
+    Exe,
+    /// A code module, compiled alone at the read. `-target:library`.
+    Library,
+}
 
-    std::fs::read(&output).map_err(|error| {
-        PrepareFailure::Toolchain(format!(
-            "csc reported success but wrote no assembly to {}: {error}",
-            output.display(),
-        ))
-    })
+impl Target {
+    /// The `csc` flag it is.
+    fn flag(self) -> &'static str {
+        match self {
+            Self::Exe => "-target:exe",
+            Self::Library => "-target:library",
+        }
+    }
 }
 
 /// Every argument `csc` is given, one per line, as Roslyn's own response-file format.
@@ -287,17 +410,19 @@ pub(super) fn compile(source: &str, context: &PrepareContext) -> Result<Vec<u8>,
 /// reachable without an assembly the guest would have to carry — see [`sdk`](super::sdk). They are
 /// listed before the program so that a `csc` reading them in order meets `GlobalUsings.cs` first;
 /// nothing about C# requires it, and it makes the response file read the way the compilation is
-/// meant to.
+/// meant to. `sources` is everything else, in the order it is to be read: a program's code modules
+/// and then its own file, or a single module on its own check.
 fn response_file(
     root: &Path,
-    program: &Path,
+    target: Target,
     sdk: &[PathBuf],
+    sources: &[PathBuf],
     output: &Path,
 ) -> Result<String, PrepareFailure> {
     let mut lines = vec![
         "-nologo".to_string(),
         "-nostdlib+".to_string(),
-        "-target:exe".to_string(),
+        target.flag().to_string(),
         format!("-langversion:{LANGUAGE_VERSION}"),
         "-nullable:enable".to_string(),
         "-optimize+".to_string(),
@@ -308,10 +433,9 @@ fn response_file(
     for reference in references(root)? {
         lines.push(format!("-r:{}", reference.display()));
     }
-    for file in sdk {
+    for file in sdk.iter().chain(sources) {
         lines.push(format!("{}", file.display()));
     }
-    lines.push(format!("{}", program.display()));
     lines.push(String::new());
     Ok(lines.join("\n"))
 }
@@ -426,7 +550,32 @@ fn in_the_sdk(line: &str) -> bool {
 /// about the model's file, in which case the model's own diagnostics are what it is shown and gg's
 /// are dropped. That order is deliberate: a program declaring a type the SDK already declares
 /// produces diagnostics at both, and it is the model's to fix.
-fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
+fn classify(
+    report: &CompilerReport,
+    root: &Path,
+    written: &Path,
+    context: &PrepareContext,
+) -> Result<(), PrepareFailure> {
+    let failure = match verdict(report) {
+        Ok(()) => return Ok(()),
+        Err(failure) => failure,
+    };
+    // Only a rejection has a band to refine. A toolchain failure decided nothing about the source,
+    // so there is nothing to ask the parser about.
+    if !matches!(failure, PrepareFailure::Program(PrepareError::Compile(_))) {
+        return Err(failure);
+    }
+    match parse_errors(root, written, context) {
+        Some(syntax) if !syntax.is_empty() => Err(PrepareFailure::Program(PrepareError::Syntax(
+            syntax.join("\n"),
+        ))),
+        _ => Err(failure),
+    }
+}
+
+/// What `csc` decided, before the [band](classify) is refined — the pure half, over the invocation's
+/// own output and nothing else.
+fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());
     }
@@ -456,6 +605,203 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
     Err(PrepareFailure::Program(PrepareError::Compile(
         mine.join("\n"),
     )))
+}
+
+/// **Which stage refused it**, asked of Roslyn's parser rather than guessed at — `Some(diagnostics)`
+/// when the parser was consulted, and `None` when it could not be.
+///
+/// # Why there is a second process here at all
+///
+/// The seam keeps a [syntax error](PrepareError::Syntax) and a [compile error](PrepareError::Compile)
+/// apart because they say different things about a model: a syntax error is a typo, and a compile
+/// error is a program written whole and coherently against a surface the model got wrong — which is
+/// the most interesting thing a checked arm can report about the SDK it was handed. `csc` will not
+/// say which it produced. Its diagnostics arrive in one stream with no stage attached, and Roslyn's
+/// own `ErrorFacts.IsParseError` — which knows — is `internal`. A hand-maintained table of which
+/// `CSxxxx` codes the parser emits would be gg guessing at another compiler's taxonomy, and a wrong
+/// guess reports a typo as a surface misunderstanding, which is the exact distinction the two bands
+/// exist to keep.
+///
+/// So gg asks the parser. `packages/gg-sandbox-csharp/tools/Parse.cs` parses the one file and prints
+/// the parser's own errors; **empty output means it parsed**, and the rejection was therefore a
+/// binder's.
+///
+/// # Why this is not the compiler server the isolation contract forbids
+///
+/// It parses one file and exits, holding nothing between invocations, resolving no references,
+/// binding nothing and writing nothing. It is a process spawned through
+/// [`PrepareContext::compiler`] like `csc` is, inside this preparation's own tree. What the contract
+/// forbids is a **resident** process shared between two agents' programs, which is what
+/// `VBCSCompiler` is and why it is deleted from the image rather than merely unused.
+///
+/// # What it costs, and when
+///
+/// **Nothing on the turn path.** A program that compiled has no band to decide, so this runs only
+/// after a rejection — on a turn that was already lost — and costs one `dotnet` start (~0.2 s) plus,
+/// once per machine, the ~2 s `csc` that builds the driver into a
+/// [shared toolchain directory](shared_toolchain_dir).
+///
+/// # What happens when it cannot answer
+///
+/// [`PrepareError::Compile`], which is the wider band and what this arm reported before the driver
+/// existed. A classifier that could not run must not turn a real diagnostic into a toolchain failure
+/// — the model's program really was rejected and the diagnostics really are its — and it must not
+/// claim a program parsed when nobody asked. Reporting the wider band is the one answer that is
+/// wrong in neither direction.
+fn parse_errors(root: &Path, file: &Path, context: &PrepareContext) -> Option<Vec<String>> {
+    let driver = parser(root, context).ok()?;
+    let report = context
+        .compiler(root.join("dotnet/dotnet"))
+        .ok()?
+        .arg("exec")
+        .arg(&driver)
+        .arg(LANGUAGE_VERSION)
+        .arg(file)
+        .env("DOTNET_ROOT", root.join("dotnet"))
+        .env("DOTNET_CLI_TELEMETRY_OPTOUT", "1")
+        .env("DOTNET_NOLOGO", "1")
+        .run(COMPILE_TIMEOUT)
+        .ok()?;
+    // A non-zero exit is the driver saying it could not answer — a usage or I/O failure — and is
+    // never "the program parsed".
+    report.ok.then(|| {
+        report
+            .stdout
+            .lines()
+            .map(str::trim_end)
+            .filter(|line| is_diagnostic(line))
+            .map(str::to_string)
+            .collect()
+    })
+}
+
+/// The parse-only driver's assembly, built once per machine into a shared toolchain directory.
+const PARSER_ASSEMBLY: &str = "GgParse.dll";
+
+/// The driver's source, carried in gg's binary for the reason every guest is: gg is copied as a
+/// single file into an ephemeral run container and must take everything the turn path needs with it.
+const PARSER_SOURCE: &str =
+    include_str!("../../../../../packages/gg-sandbox-csharp/tools/Parse.cs");
+
+/// Build [`parse_errors`]'s driver, once, and hand back where it landed.
+///
+/// # How it satisfies the isolation contract
+///
+/// The directory is [shared on purpose](shared_toolchain_dir) and is content-keyed on everything
+/// that could change its bytes — the driver's own source, the language version it is told to parse
+/// at, and the toolchain it is compiled and run against — placed by
+/// [rename](place_tree) and sealed read-only. Two preparations racing to build it either both win or
+/// one discards an identical copy. **Nothing writes to it afterwards**, which is the whole
+/// discipline: the measured corruption this contract exists to prevent is a *write* into a shared
+/// tree.
+///
+/// A .NET application with no `deps.json` resolves its dependencies out of **its own directory**, so
+/// Roslyn's two assemblies have to be beside the driver. They are **copied** rather than symlinked,
+/// at 31 MB once per machine, and the reason is the sealing: `place_tree` makes every file in the
+/// tree unwritable with `set_permissions`, which **follows a symlink**, so a linked tree would reach
+/// out and change the mode of the toolchain's own installed assemblies. Nothing in a shared
+/// directory may touch anything outside it, and 31 MB written once is the cheaper side of that
+/// bargain. `csc`'s own `runtimeconfig.json` is copied as the driver's, so the parser runs on exactly
+/// the framework Roslyn does rather than on a version gg would otherwise have to pin a second time.
+fn parser(root: &Path, context: &PrepareContext) -> Result<PathBuf, String> {
+    let bincore = root.join("roslyn/bincore");
+    let directory = shared_toolchain_dir(&format!(
+        "csharp-parser-{}-{:016x}-{}",
+        LANGUAGE_VERSION,
+        fingerprint(PARSER_SOURCE.as_bytes()),
+        compiler_stamp(root),
+    ))?;
+    let tree = directory.join("parser");
+    place_tree(&tree, |into| {
+        for assembly in [
+            "Microsoft.CodeAnalysis.dll",
+            "Microsoft.CodeAnalysis.CSharp.dll",
+        ] {
+            std::fs::copy(bincore.join(assembly), into.join(assembly))
+                .map_err(|error| format!("could not copy {assembly}: {error}"))?;
+        }
+        std::fs::copy(
+            bincore.join("csc.runtimeconfig.json"),
+            into.join(format!(
+                "{}.runtimeconfig.json",
+                PARSER_ASSEMBLY.trim_end_matches(".dll")
+            )),
+        )
+        .map_err(|error| format!("could not take Roslyn's own runtime configuration: {error}"))?;
+
+        let source = into.join("Parse.cs");
+        std::fs::write(&source, PARSER_SOURCE)
+            .map_err(|error| format!("could not write {}: {error}", source.display()))?;
+        let response = into.join("parse.rsp");
+        let mut arguments = vec![
+            "-nologo".to_string(),
+            "-nostdlib+".to_string(),
+            "-target:exe".to_string(),
+            format!("-langversion:{LANGUAGE_VERSION}"),
+            "-nullable:enable".to_string(),
+            "-optimize+".to_string(),
+            "-deterministic".to_string(),
+            "-main:Tools.Parse".to_string(),
+            format!("-out:{}", into.join(PARSER_ASSEMBLY).display()),
+            format!(
+                "-r:{}",
+                bincore.join("Microsoft.CodeAnalysis.dll").display()
+            ),
+            format!(
+                "-r:{}",
+                bincore.join("Microsoft.CodeAnalysis.CSharp.dll").display()
+            ),
+        ];
+        for reference in references(root).map_err(|failure| match failure {
+            PrepareFailure::Toolchain(message) => message,
+            other => format!("{other:?}"),
+        })? {
+            arguments.push(format!("-r:{}", reference.display()));
+        }
+        arguments.push(format!("{}", source.display()));
+        arguments.push(String::new());
+        std::fs::write(&response, arguments.join("\n"))
+            .map_err(|error| format!("could not write {}: {error}", response.display()))?;
+
+        let report = invoke(root, &response, context)?;
+        match report.ok {
+            true => Ok(()),
+            false => Err(format!(
+                "csc could not build gg's own C# parse classifier, which is gg's arrangement \
+                 failing rather than any program's: {}\n{}",
+                report.status,
+                report.stdout.trim(),
+            )),
+        }
+    })?;
+    Ok(tree.join(PARSER_ASSEMBLY))
+}
+
+/// A stamp of the toolchain the driver is built and run against — the compiler's size and
+/// modification time — for the [driver](parser)'s content key.
+///
+/// Deliberately not a digest of Roslyn's assemblies, which would be read on every process start for
+/// a key whose only job is to notice that the toolchain moved.
+fn compiler_stamp(root: &Path) -> String {
+    let compiler = root.join("roslyn/bincore/csc.dll");
+    let Ok(metadata) = std::fs::metadata(&compiler) else {
+        return "unknown".to_string();
+    };
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|since| since.as_secs())
+        .unwrap_or_default();
+    format!("{}-{modified}", metadata.len())
+}
+
+/// A cheap, stable digest of some bytes, for a [shared directory](shared_toolchain_dir)'s key.
+fn fingerprint(bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Whether one line of `csc`'s output is a diagnostic about the model's program.

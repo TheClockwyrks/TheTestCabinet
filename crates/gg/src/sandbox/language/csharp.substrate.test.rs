@@ -63,7 +63,7 @@ use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> String {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
                 prepared.component.is_none(),
@@ -481,6 +481,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // carrying Roslyn's own diagnostic at the model's own coordinates.
     let rejected = compile_program(
         "public static class Program {\n  public static void Main() {\n    int total = \"seven\";\n  }\n}\n",
+        &[],
         &PrepareContext::new(),
     )
     .expect_err("a program with a type error does not compile");
@@ -495,21 +496,22 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         other => panic!("a type error is the model's compile error, not {other:?}"),
     }
 
-    // A syntax error reaches the same band, and that is a stated limit rather than an oversight —
-    // see this arm's `compile` module for why gg does not guess at Roslyn's parse-versus-bind
-    // taxonomy. What matters for a model is that it is recoverable and located.
+    // A syntax error reaches its OWN band, which is what gg's parse-only Roslyn driver is for: the
+    // two say different things about a model, and `csc` will not say which it produced.
     let malformed = compile_program(
         "public static class Program {\n  public static void Main() {\n    var x = ;\n  }\n}\n",
+        &[],
         &PrepareContext::new(),
     )
     .expect_err("a program with a syntax error does not compile");
     assert!(
         matches!(
             &malformed,
-            PrepareFailure::Program(PrepareError::Compile(diagnostic))
+            PrepareFailure::Program(PrepareError::Syntax(diagnostic))
                 if diagnostic.contains("program.cs(3,")
         ),
-        "a syntax error is not located in the model's own coordinates: {malformed:?}"
+        "a syntax error is not the parser's own band, located in the model's own coordinates: \
+         {malformed:?}"
     );
 
     // And a toolchain that is not there at all is NOT the model's. It gets its own band, so a
@@ -517,6 +519,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     let absent = temp_env(compile::DOTNET_HOME_ENV, "/nonexistent/gg-dotnet", || {
         compile_program(
             "public static class Program { public static void Main() { } }\n",
+            &[],
             &PrepareContext::new(),
         )
     })

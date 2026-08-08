@@ -20,7 +20,7 @@ Not an npm package. This directory is a set of builds, and what they commit live
 | [`libraries.txt`](libraries.txt) | the namespaces this arm says a program may reach, grouped as the prompt shows them |
 | [`build.sh`](build.sh) | builds and commits the guest |
 | [`signatures.sh`](signatures.sh) | reflects the catalogue out of the SDK, with Roslyn |
-| [`tools/`](tools/) | the reflector `signatures.sh` runs, and the identity table it reads |
+| [`tools/`](tools/) | the reflector `signatures.sh` runs and the identity table it reads, plus [`Parse.cs`](tools/Parse.cs) — the parse-only Roslyn driver gg builds and runs on a rejected program, to tell a typo from a program written against the wrong surface |
 
 ## The strategy, in one paragraph
 

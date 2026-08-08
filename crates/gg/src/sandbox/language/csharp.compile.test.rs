@@ -31,7 +31,7 @@ fn a_compiler_that_succeeded_is_not_a_failure_whatever_it_printed() {
         "",
     );
     assert!(
-        classify(&warned).is_ok(),
+        verdict(&warned).is_ok(),
         "a successful compile with warnings was treated as a failure"
     );
 }
@@ -47,7 +47,7 @@ fn a_rejected_program_is_the_models_and_carries_only_roslyns_own_lines() {
          \n",
         "",
     );
-    match classify(&rejected) {
+    match verdict(&rejected) {
         Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) => {
             assert_eq!(
                 diagnostic,
@@ -74,7 +74,7 @@ fn a_diagnostic_with_no_location_is_still_the_models() {
     );
     assert!(
         matches!(
-            classify(&rejected),
+            verdict(&rejected),
             Err(PrepareFailure::Program(PrepareError::Compile(ref diagnostic)))
                 if diagnostic.starts_with("error CS1729")
         ),
@@ -87,7 +87,7 @@ fn a_compiler_that_said_nothing_is_never_reported_as_the_models_mistake() {
     // The failure this whole split exists for. A segfault, a kill, a missing runtime: the compiler
     // never read the program, so the model has nothing to fix and must not be told it does.
     let crashed = report(false, "was killed by signal 11", "", "Segmentation fault\n");
-    match classify(&crashed) {
+    match verdict(&crashed) {
         Err(PrepareFailure::Toolchain(message)) => {
             assert!(
                 message.contains("was killed by signal 11") && message.contains("Segmentation"),
@@ -106,7 +106,7 @@ fn a_compiler_that_said_nothing_is_never_reported_as_the_models_mistake() {
         "",
     );
     assert!(
-        matches!(classify(&confused), Err(PrepareFailure::Toolchain(_))),
+        matches!(verdict(&confused), Err(PrepareFailure::Toolchain(_))),
         "a launcher that could not find its runtime was reported as the model's mistake"
     );
 }
@@ -171,8 +171,14 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
         path.join("sdk/Objects/fs.cs"),
         path.join("sdk/ToolException.cs"),
     ];
-    let rendered = response_file(path, &path.join("program.cs"), &sdk, &path.join("out.dll"))
-        .expect("the response file renders");
+    let rendered = response_file(
+        path,
+        Target::Exe,
+        &sdk,
+        &[path.join("module_Kit.cs"), path.join("program.cs")],
+        &path.join("out.dll"),
+    )
+    .expect("the response file renders");
     let lines: Vec<&str> = rendered.lines().collect();
 
     for flag in ["-nostdlib+", "-deterministic", "-nullable:enable"] {
@@ -212,24 +218,52 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
 
     // The SDK's sources are compiled with the program, and BEFORE it: they are what makes gg's
     // surface reachable without an assembly the guest would have to carry. A compile that lost
-    // them would fail on the model's first `fs.ReadFile` with a diagnostic about the model.
-    let sources: Vec<&&str> = lines.iter().filter(|line| line.ends_with(".cs")).collect();
+    // them would fail on the model's first `fs.ReadFile` with a diagnostic about the model. The
+    // code modules in scope sit between the two, so one may reach another's class and neither can
+    // move a line of the model's own file.
+    let sources: Vec<String> = lines
+        .iter()
+        .filter(|line| line.ends_with(".cs"))
+        .map(|line| {
+            std::path::Path::new(line)
+                .strip_prefix(path)
+                .expect("every source is inside the workspace")
+                .display()
+                .to_string()
+        })
+        .collect();
     assert_eq!(
         sources,
         [
-            &path
-                .join("sdk/Objects/fs.cs")
-                .display()
-                .to_string()
-                .as_str(),
-            &path
-                .join("sdk/ToolException.cs")
-                .display()
-                .to_string()
-                .as_str(),
-            &path.join("program.cs").display().to_string().as_str(),
+            "sdk/Objects/fs.cs",
+            "sdk/ToolException.cs",
+            "module_Kit.cs",
+            "program.cs",
         ],
-        "the SDK is not compiled with the program, in front of it"
+        "the SDK and the modules are not compiled with the program, in front of it"
+    );
+}
+
+#[test]
+fn a_module_is_compiled_as_a_library_because_a_class_body_has_no_entry_point() {
+    let root = tempfile::tempdir().expect("a temporary directory");
+    let path = root.path();
+    let references = path.join("ref");
+    std::fs::create_dir_all(&references).expect("a reference directory");
+    std::fs::write(references.join("System.Runtime.dll"), "").expect("a reference assembly");
+
+    let rendered = response_file(
+        path,
+        Target::Library,
+        &[path.join("sdk/ToolException.cs")],
+        &[path.join("module_Kit.cs")],
+        &path.join("out.dll"),
+    )
+    .expect("the response file renders");
+    let lines: Vec<&str> = rendered.lines().collect();
+    assert!(
+        lines.contains(&"-target:library") && !lines.contains(&"-target:exe"),
+        "a module's own check demands an entry point it has no reason to have"
     );
 }
 

@@ -12,6 +12,8 @@
 //! * [`compile`](self::compile) — the host-side `csc`, what it costs, what it refuses, and the two
 //!   failures it tells apart;
 //! * [`sdk`](self::sdk) — the SDK's sources, carried in gg's binary and compiled with the program;
+//! * [`source`](self::source) — what gg writes around a **code module**, and the lexer that lets it
+//!   look at C# without parsing it;
 //! * `packages/gg-sandbox-csharp/src/Gg/` — that SDK, and the XML documentation comments every word
 //!   a model reads is reflected out of;
 //! * `packages/gg-sandbox-csharp/Sources/` — the guest's C: the shell, the bridge, the trampolines;
@@ -108,21 +110,29 @@
 //! feedback channel from a `[ModuleInitializer]`. A model writing the first line of C# it would
 //! write anywhere else is understood.
 //!
+//! # What a code module is, and the one decision C# forced
+//!
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib.<key>`,
+//! and every other arm answers "what is `lib.<key>`?" with whatever its language uses to hold
+//! functions — a `namespace`, a `mod`, a module object. **C# has no free functions at all**: a
+//! function is a member of a type, and a namespace may hold only types. So `namespace lib.<key>`
+//! would be a namespace nothing could be called on, and a program would have to write
+//! `lib.CsvTools.Helpers.Slugify(…)` with a class name only the skill's author knows.
+//!
+//! `lib.<key>` is therefore a **`static class`** in `namespace lib`, and a module is that class's
+//! body — which is the shape a C# author already writes when they write a file of helpers, and the
+//! answer [Java](super::java)'s arm reached for the same reason. It compiles in the **same
+//! invocation** as the program and the SDK, so there is no second assembly for the committed guest to
+//! find, and `#line` keeps every diagnostic in the author's own coordinates. See
+//! [`source`](self::source) for the wrap, the `using` hoist and the two refusals.
+//!
 //! # What is not built yet, and what it blocks
 //!
-//! **The registration**: an enum variant, a registry arm, a healing dialect, two prompt templates
-//! and the console's rows.
-//!
-//! **Code modules.** A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
-//! bound at `lib.<key>`, and the shape this substrate wants is clear — a module is C# compiled into
-//! the same compilation the program and the SDK are, which needs no reference and no second assembly
-//! for the guest to find. What is left to decide is **what `lib.<key>` is**, and C# makes that a real
-//! question rather than a formality: a namespace may hold only types, so a namespace called
-//! `lib.<key>` is one nothing could be called on. The seam already hands a program's preparation the
-//! modules in its scope. Until it is written,
-//! [`compile_program`](self::compile::compile_program) takes no modules and this arm must not be
-//! registered: a C# agent that read a code skill would otherwise get no `lib` binding at all, which
-//! is a capability silently absent on one arm of a study about capability.
+//! **The registration**, and only the registration: an enum variant, a registry arm, a healing
+//! dialect, two prompt templates and the console's rows. Everything the trait implementation will
+//! call — [`compile_program`](self::compile::compile_program),
+//! [`compile_module`](self::compile::compile_module), [`binding_name`](self::source::binding_name) —
+//! is written and driven by this arm's own tests against the real toolchain.
 
 /// The Roslyn compile: the host-side step that turns a model's C# into the IL its guest interprets.
 ///
@@ -139,6 +149,15 @@ pub(super) mod compile;
 /// own workspace beside `program.cs`.
 #[path = "csharp.sdk.rs"]
 pub(super) mod sdk;
+
+/// **What gg writes around a code module**, and the lexer that lets it look at C# without parsing
+/// it. A model's *program* is not here at all: this arm compiles a reply verbatim.
+///
+/// `#[allow(dead_code)]` until the trait implementation reaches [`binding_name`](self::source) — the
+/// same state every other entry point in this arm is in between its substrate and its registration.
+#[allow(dead_code)]
+#[path = "csharp.source.rs"]
+pub(super) mod source;
 
 /// **The committed guest** — Mono's IL interpreter, the .NET class libraries and ICU, as one
 /// self-contained wasm component exporting gg's `sandbox` world.
@@ -172,3 +191,9 @@ mod substrate;
 #[cfg(test)]
 #[path = "csharp.surface.test.rs"]
 mod surface;
+
+/// **Code modules**, driven end to end: a code skill's C# compiles on its own, and a program reaches
+/// its declarations at `lib.<key>` through the real compiler and the real committed guest.
+#[cfg(test)]
+#[path = "csharp.modules.test.rs"]
+mod modules;
