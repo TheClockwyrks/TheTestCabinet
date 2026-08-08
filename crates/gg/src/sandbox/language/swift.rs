@@ -1,20 +1,48 @@
 //! **Swift** — the second arm whose component is compiled **per turn**, and the first whose
 //! program is compiled *verbatim*.
 //!
-//! What exists here today is this arm's **execution substrate** and nothing else: the compile that
-//! turns a model's Swift into a wasm component, and the proof that a real Swift program really does
-//! run through gg's own linker, membrane and store. The SDK and the
-//! [registration](super::ProgramLanguage) land later — a language arm cannot be half-registered,
+//! What exists here today is this arm's **execution substrate** and its **model-facing surface**:
+//! the compile that turns a model's Swift into a wasm component, the SDK a model writes against, and
+//! the catalogue reflected out of that SDK's own documentation. The
+//! [registration](super::ProgramLanguage) lands later — a language arm cannot be half-registered,
 //! because the registry's `match` is exhaustive and every gate that iterates the registered set
-//! would immediately demand a catalogue, two Handlebars templates and a healing dialect. Nothing
-//! here is reachable from a run: there is no `language` value that resolves to it.
+//! would immediately demand two Handlebars templates and a healing dialect. Nothing here is
+//! reachable from a run: there is no `language` value that resolves to it.
 //!
 //! * [`compile`](self::compile) — the host-side `swiftc`, the in-process component encode with the
 //!   preview1 adapter, what they cost, what they share, and the two failures they tell apart;
-//! * `packages/gg-sandbox-swift/` — the shell a program is compiled beside, the bridging header it
-//!   is compiled against, and the builds that commit them;
-//! * `checkers/swift.guest.tar.gz`, `checkers/swift.adapter.wasm` and `checkers/swift.toolchain.json`
-//!   — the compile inputs, the adapter, and what built them.
+//! * `packages/gg-sandbox-swift/` — the SDK a program calls, the shell it is compiled beside, the
+//!   curated library set, and the builds that commit them;
+//! * `checkers/swift.guest.tar.gz`, `checkers/swift.libraries.tar.gz`, `checkers/swift.adapter.wasm`
+//!   and `checkers/swift.toolchain.json` — the compile inputs, the library set, the adapter, and
+//!   what built them;
+//! * `guests/swift.signatures.json` — the catalogue, which is the whole of what a model is told
+//!   about this surface.
+//!
+//! # What a Swift program calls, and how it is in scope
+//!
+//! Every API object is a caseless `enum` — Swift's own namespace — so `fs.readFile("src/main.swift")`
+//! is a call on a namespace and nothing is constructed first. Every call **throws**, so `try` is the
+//! whole of the ceremony and a failure is an ordinary Swift `Error` a `catch` branches on. Optional
+//! arguments are **default values**, required ones are positional, and everything whose role the
+//! function's name does not already carry has an **argument label** — `fs.editFile("a", replacing:
+//! "x", with: "y")`, `agents.sendMessage("note", to: id)`.
+//!
+//! It is in scope with **no import line**, and that is what lets the reply stay verbatim. The SDK is
+//! compiled ahead of time into a module called `gg`, and gg's shell — a second file of the model's
+//! own module — writes `@_exported import gg`. A plain `import` is file-scoped and would put nothing
+//! in `main.swift`; a re-export is module-scoped, so the model's file opens with the whole surface
+//! already there. A separate module is also what makes the SDK **shadowable**: a program that
+//! declares its own `fs` or its own `DirEntry` wins, where source compiled into the program's own
+//! module would be a redeclaration error on the model's own line.
+//!
+//! The library set is the Swift standard library, the modules the Swift SDK for WebAssembly ships
+//! (Foundation and its companions, `RegexBuilder`, `Synchronization`, `Observation`, `WASILibc`) and
+//! three vendored packages — swift-collections, swift-algorithms and swift-numerics — compiled into
+//! one static archive. A static archive is why they cost nothing: the linker pulls members, so an
+//! artifact for a program that imports none of them is byte for byte the size of one built without
+//! the archive at all. `packages/gg-sandbox-swift/libraries.txt` is the one declaration, and
+//! [`surface`] compiles a program that imports every module in it.
 //!
 //! # Why this arm has no component to commit
 //!
@@ -65,21 +93,39 @@
 //! [`compile::DEBUG_INFO`](self::compile) for the measurement and for what it costs the seam's
 //! isolation gate.
 //!
+//! One failure is the exception and is worth naming, because it is the opposite of the one above:
+//! an **uncaught throw** arrives with gg's own sentence and *no line at all*. The runtime hands the
+//! error to `swift_errorInMain` from the entry point's synthesized epilogue, so the only frames left
+//! are `/<compiler-generated>` and there is nothing to symbolicate. Catching what you expect is what
+//! buys the line back. Measured in [`surface`].
+//!
 //! # What is not built yet, and what it blocks
 //!
 //! **Code modules.** A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
 //! bound at `lib.<key>` for every program the agent writes afterwards, and on a compiled arm that
 //! binding is a **link**: the module has to be built into the same artifact as the program that
 //! uses it. The seam already hands a program's preparation the modules in its scope — the Rust arm's
-//! registration made that change — so nothing structural is missing. What is missing is the
-//! *namespacing*, and it is a Swift design question rather than a plumbing one: a module's source is
-//! a file of declarations, `lib.<key>` wants a nested type to hang them off, and `import` and
-//! `extension` are illegal inside one. That decision belongs with the SDK, which is what a model
-//! reaches `lib` through.
+//! registration made that change — so nothing structural is missing.
 //!
-//! Until it is made, [`compile_program`](self::compile::compile_program) takes no modules and this
-//! arm must not be registered: a Swift agent that read a code skill would otherwise get no `lib`
-//! binding at all, which is a capability silently absent on one arm of a study about capability.
+//! What was missing was the *namespacing*, and the SDK's own shape is what answers it. `lib.<key>`
+//! needs a **type** to hang a module's declarations off, and a module's source is a file of
+//! top-level declarations that cannot be wrapped in one — `import` and `extension` are illegal
+//! inside a type. But a module can be compiled as its own **Swift module** named for its key, as
+//! this arm's SDK is, and [`prepare_module`](super::ProgramLanguage::prepare_module) already reads
+//! the names it exports. So the program's compile writes one further file of its own module:
+//! `enum lib { enum <key> { } }` plus, per export, a `public static let` bound to the compiled
+//! module's function. `lib.csvTools.parse(…)` is then an ordinary call, resolved at compile time,
+//! and a key that does not exist is a diagnostic on the turn that wrote it.
+//!
+//! Until that is built, [`compile_program`](self::compile::compile_program) takes no modules and
+//! this arm must not be registered: a Swift agent that read a code skill would otherwise get no
+//! `lib` binding at all, which is a capability silently absent on one arm of a study about
+//! capability. Two things about the plan are worth writing down before it is: a module whose export
+//! is **overloaded** cannot be bound this way (`let` needs one function to point at, and the study
+//! is better served by refusing that module by name than by binding one of its overloads), and the
+//! forwarders must be generated from `PreparedModule::exports` rather than from a second reading of
+//! the source, so what a model is told a module offers and what its programs can reach are one
+//! statement.
 
 /// The `swiftc` build and the in-process component encode: the host-side step that turns a model's
 /// Swift into the component that evaluates it.
@@ -102,3 +148,13 @@ pub(super) mod compile;
 #[cfg(test)]
 #[path = "swift.substrate.test.rs"]
 mod substrate;
+
+/// **The Swift arm's model-facing surface** — the hand-written SDK, the catalogue reflected out of
+/// its own symbol graph, and the libraries this arm says a program may reach.
+///
+/// A separate file from [`substrate`] because it is a different claim: that one asks whether Swift
+/// runs here, this one asks whether what a model is *told* it may write is what the sandbox really
+/// has.
+#[cfg(test)]
+#[path = "swift.surface.test.rs"]
+mod surface;

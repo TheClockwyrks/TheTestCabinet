@@ -1843,7 +1843,9 @@ Swift resources all go. It is also the one toolchain here that carries **librari
 own that are not a compiler**: the published build is Debian 12's and its `lld` links
 against that distribution's `libxml2` soname, which the Debian-derived run images have and
 `blender-gg`'s Ubuntu does not — so the closure travels under the tree and gg names it on
-`LD_LIBRARY_PATH` for every compile. That is the "a language's own step vendors what it
+`LD_LIBRARY_PATH` for every compile. Its pin is **hard**, for Rust's reason arrived at
+differently: gg carries that arm's SDK as a `.swiftmodule`, which is a
+compiler-version-private format, so the compiler in the image must be the one that built it. That is the "a language's own step vendors what it
 needs" clause of the image's portability constraint, taken literally, and it is the reason
 that block runs an installer rather than two `curl`s.
 
@@ -2114,8 +2116,8 @@ an arm of this shape has.
 The first arm of this shape is **[Rust](#rust-the-program-is-the-artifact)**
 (`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`). The second is
 **Swift** (`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`), whose
-execution substrate is built and whose SDK and registration are not, so it is not yet a
-`language` value an operator can configure. It inherits the shape unchanged and adds two
+execution substrate and SDK are built and whose registration is not, so it is not yet a
+`language` value an operator can configure. It inherits the shape unchanged and adds three
 things to it that are worth reading before a third arm is written:
 
 - **its compiler's output is a preview1 core module, not a component.** The Swift SDK
@@ -2128,6 +2130,12 @@ things to it that are worth reading before a third arm is written:
   wasm object at build time, and reached from Swift through a bridging header. The
   alternative — hand-writing the lowering — would be a second implementation of a
   specification that drifts from `crates/gg/wit` on its own schedule.
+- **its SDK is a prebuilt module rather than sources compiled beside the program**, and the
+  shell re-exports it. That is the first arm where the SDK is a separate *compilation unit*
+  from the program, and it buys two things a compiled-in SDK cannot: ~2,000 lines are not
+  type-checked on every turn, and a program that declares its own `fs` **shadows** gg's
+  rather than colliding with it. See [what Swift's SDK looks
+  like](#what-swifts-sdk-looks-like).
 
 #### A module a program has to be linked against
 
@@ -2264,6 +2272,116 @@ for by a defect.
   building at two roots and under two `$HOME`s and comparing every rlib's digest. That is what makes
   the archive something a reviewer can rebuild and compare, which is the only review a directory of
   binaries admits.
+
+#### What Swift's SDK looks like
+
+An idiomatic Swift SDK is not the Rust one with `try` in it. Swift's defining feature is the
+**argument label**, and this surface is built on it: a call reads as a sentence, and the label
+is part of the function's name rather than a way of reordering a call.
+
+```swift
+let entries = try fs.listDir("src")
+let sources = entries.filter { $0.kind == .file }
+try fs.editFile("src/main.swift", replacing: "old", with: "new")
+let built = try system.shell("swift build", timeout: 300)
+try view.openText("build", body: built.output)
+try harness.finish("looked at \(sources.count) sources")
+```
+
+Every difference below is a spelling rather than an identity, and the
+[agreement gate](#the-agreement-gate) accepts each of them:
+
+- **An API object is a caseless `enum`**, which is Swift's own namespace, so `fs.readFile(…)` is a
+  call on a namespace and nothing is constructed first. The object's *name* is gg's identity rather
+  than this SDK's spelling — `fs`, `view`, `harness` are on the wire and in the console's grouping —
+  so this is the one place the SDK departs from Swift's UpperCamelCase convention for types, and it
+  is a departure the surface's own rules force.
+- **The surface is in scope with no import line**, and that is what keeps a reply *verbatim*. The
+  SDK is compiled ahead of time into a module called `gg`, and gg's shell — a second file of the
+  model's own module — writes `@_exported import gg`. A plain `import` is **file-scoped** and would
+  put nothing in `main.swift`; a re-export is module-scoped. Both were measured, because the
+  alternative was making a model write `import gg` on line 1 and paying a line offset on every
+  diagnostic and every located trap for the rest of the arm's life.
+- **A program's own declarations shadow gg's.** Because the SDK is a different *module*, a program
+  that writes `struct DirEntry { … }` gets its own — where an SDK compiled into the program's module
+  would have made that a redeclaration error on the model's own line. It is the same property
+  [Rust](#what-rusts-sdk-looks-like) gets from glob-importing its prelude, reached a different way.
+- **A failure is thrown, and `try` is the whole of the ceremony.** Every call is `throws` and
+  `ToolError` is an ordinary Swift `Error`, so a failure a program *expects* is
+  `catch let failure as ToolError where failure.code == .notFound` — an ordinary `catch` with a
+  `where` clause, not an SDK-specific combinator.
+- **Optional arguments are default values**, which is Swift's own idiom and the reason this surface
+  has no options record anywhere in it: `fs.readFile("a.swift", limit: 40)` skips `offset:` because
+  Swift lets it, where [Rust](#what-rusts-sdk-looks-like) has to fill in a struct and
+  [Java](#what-javas-sdk-looks-like) has to declare an overload.
+- **A three-way patch field is an `enum` with `.keep` as its default**: `try tasks.updateTask("t1",
+  description: .clear)` clears the description and leaves the title and the status alone, and the
+  leaving-alone is the argument the call did not name.
+- **A span of turns is a `ClosedRange`**: `try context.archiveThread([4...19, 30...35])`, because
+  that is what an inclusive span of integers is in this language — the same move Rust makes with
+  `RangeInclusive` and Ruby with `Range`, against a wire that carries a record with a `start` and an
+  `end`.
+- **A fixed choice is an `enum` and a choice that carries something is an `enum` with an associated
+  value.** `.done`, `.inProgress`, `.file` — and a child's brief is `.prompt("…")` or
+  `.issue("AUTH-1")`, so "both" and "neither" are programs that do not compile. A read is a real sum
+  type, narrowed with a `switch` that needs no `default`.
+- **`gg.log` is the operator's channel.** `print` works here — this arm's guest has a real WASI
+  stdout, unlike [Rust](#what-rusts-sdk-looks-like)'s — and goes to the same place, but `gg.log` is
+  the name that says where the line goes, and `view.openText` is what reaches the model.
+
+Its catalogue is reflected from a **DocC symbol graph** (`swiftc -emit-symbol-graph`, driven by
+`packages/gg-sandbox-swift/signatures.sh` and regenerated by the [drift gate](#the-catalogue)),
+which is the machinery DocC itself is built on. It carries every doc comment verbatim, every
+parameter's label and internal name, and every type the compiler resolved — with a mangled
+identifier saying which module each came from, which is how the reflector tells a `TextEdit` from a
+`String` without a table of names. Two things about it are decisions:
+
+- **Per-parameter prose is a convention over the doc comment**, not a slot in the syntax: `-
+  Parameter path:` for one argument, or a `- Parameters:` block. So the reflector reads the
+  convention and holds it to being a contract, exactly as
+  [Rust's](#what-rusts-sdk-looks-like) reads `# Arguments` — with one addition Swift forces. An
+  argument is documented under the name a **call site** writes, which for a labelled argument is the
+  **label** (`- Parameter to:`, not `- Parameter blockedBy:`), because the label is what a model has
+  to type and the internal name is one it never sees.
+- **`- Returns:` and `- Throws:` stay in the description** rather than being stripped as metadata,
+  because what a call hands back and which failures to expect are half of what a model needs — the
+  same reading [Rust's](#what-rusts-sdk-looks-like) reflector gives `# Errors`.
+
+The **library set** is the Swift standard library, the modules the Swift SDK for WebAssembly ships
+beside it (Foundation and its companions, `RegexBuilder`, `Synchronization`, `Observation`,
+`WASILibc`) and three vendored packages compiled for this arm's target: **swift-collections**
+(`Deque`, `OrderedDictionary`, `Heap`, `BitSet`, `TreeDictionary`, `Rope`), **swift-algorithms**
+(`chunks`, `windows`, `combinations`, `uniqued`, `adjacentPairs`) and **swift-numerics**, which is
+swift-algorithms' own dependency and a perfectly good library in its own right.
+`packages/gg-sandbox-swift/libraries.txt` is the one declaration, and a test compiles a program
+importing every module in it through the production prepare step — so a name a model is told about
+that the committed archive does not carry fails there rather than reaching a model.
+
+Two properties of that set are worth stating.
+
+- **It costs a program that does not use it nothing.** The vendored modules are compiled into one
+  **static archive**, and `lld` pulls archive members — so an artifact for a program that imports
+  none of them is byte for byte the size of one built without the archive on the command line at
+  all. Measured; passing the objects directly instead added ~2.7 MB to *every* artifact on this arm,
+  used or not, because `--gc-sections` cannot strip what a reflection metadata table names. That is
+  what lets the declared set be this wide.
+- **This is full Swift, not Embedded Swift**, and the choice is deliberate. Embedded Swift would cut
+  this arm's 7 MB artifact — almost all of it the statically linked standard library — by one or two
+  orders of magnitude, and with it the ~1.3 s this arm pays to instantiate a program on every turn.
+  What it drops is Foundation, `Codable`, existentials (`any P`), most of reflection and much of the
+  runtime a model reaches for without thinking. An arm whose `Date()` or `JSONSerialization` is a
+  compile error is an arm writing against a Swift nobody else writes, which is the one confound a
+  cross-language study cannot carry. The size is paid as `compileWaitMs` and
+  [recorded](#a-language-whose-prepare-step-compiles-the-component) rather than hidden.
+
+One thing this arm's SDK cannot do anything about is worth recording beside it, because it is the
+opposite of what the same arm does well. A Swift **runtime failure** — an index out of range, a
+force-unwrapped `nil`, a `fatalError`, an arithmetic overflow — reaches the model with its own
+message *and its own line*, symbolicated out of the artifact's debug information. An **uncaught
+throw** does not: the runtime hands the error to `swift_errorInMain` from the entry point's
+synthesized epilogue, so what a model reads is gg's own sentence about the failed call
+(`` `read_file` failed (not-found): … ``) with no line at all. Catching what you expect is what buys
+the line back, which is why the SDK's own examples are written that way.
 
 The prompt is **per language and not one template with branches**, which looks like
 duplication and is not. Its example programs are written in one language's syntax — a list
@@ -2563,8 +2681,9 @@ notation](#the-catalogue-and-the-two-things-purescript-does-not-have), where the
 kept for the **fields** of a structured argument and dropped for the arguments a type cannot
 name; and no two functions on one object may share a name. Those checks run over the **emitted
 catalogue**, so they are one gate for every language: a language whose compiler enforced its
-doc comments (Swift's `docc`, Java's `-Xdoclint`) and one whose convention did (Rust's and
-PureScript's `# Arguments`) land in the same shape here.
+doc comments (Java's `-Xdoclint`) and one whose only per-argument slot is a **convention** over
+the comment text (Rust's and PureScript's `# Arguments`, Swift's `- Parameters:`) land in the
+same shape here.
 
 An **omission** is caught as well as a blank, which matters because the languages with no
 per-argument doc slot of their own are exactly the ones whose reflector is most likely to

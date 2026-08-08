@@ -49,7 +49,9 @@
 #     KDoc — the reading Dokka would itself be asking for, with one fewer thing pinned, and
 #     the `rustdoc` this checkout's own pinned toolchain already ships, whose JSON output is
 #     read under RUSTC_BOOTSTRAP because that output is unstable and this repository pins a
-#     stable compiler on purpose. The
+#     stable compiler on purpose, and the Swift toolchain scripts/ci/install-swift.sh fetches,
+#     whose `-emit-symbol-graph` is the machinery DocC itself is built on — so that arm needs no
+#     documentation tool beyond the compiler it already compiles every program with. The
 #     committed .wasm files therefore sit in the diffed directory untouched: nothing here regenerates one, so one cannot cause a
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
@@ -119,7 +121,7 @@ fi
 # committed catalogue, so one whose guest this script never re-runs would be green whatever
 # its sources did. That is the failure this list closes: an unregenerated stem is an error
 # rather than a silent pass, and the message says exactly what to add.
-regenerated="typescript javascript python ruby purescript java kotlin rust"
+regenerated="typescript javascript python ruby purescript java kotlin rust swift"
 for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
 	stem="$(basename "$catalogue" .signatures.json)"
 	case " $regenerated " in
@@ -174,6 +176,12 @@ log "install the wasm target (the Rust arm's catalogue is reflected for the targ
 
 log "regenerate the Rust arm's signature catalogue (rustdoc JSON + tools/signatures.py)"
 ./packages/gg-sandbox-rust/signatures.sh
+
+log "install the pinned Swift toolchain (this arm's catalogue is reflected with its own front end)"
+./scripts/ci/install-swift.sh
+
+log "regenerate the Swift arm's signature catalogue (symbol graph + tools/signatures.py)"
+./packages/gg-sandbox-swift/signatures.sh
 
 # A SIGNATURE STEP MAY WRITE ITS CATALOGUE AND NOTHING ELSE, and this is where that is enforced
 # rather than assumed. The check at the bottom diffs both committed directories at once, so a
@@ -262,21 +270,29 @@ recut="typescript ruby java kotlin"
 # real membrane, that calls every one of them. A stale set does not merely differ; it stops
 # linking.
 #
-# `swift` is exempted on the same terms and answered the same way. Its three committed artifacts
-# are not a compiler either. `swift.guest.tar.gz` is 31 KB of compile INPUTS — the C bindings
-# generated from crates/gg/wit and compiled to a wasm object, the component-type object naming the
-# world, the bridging header, and gg's own shell in Swift source — and re-cutting it needs the
-# pinned `wit-bindgen` CLI downloaded from GitHub and a ~1 GB Swift toolchain to compile the C with.
-# `swift.adapter.wasm` is a 52 KB binary downloaded from a wasmtime release. Neither is reviewable
-# by reading. Nothing above re-cuts them, and — as with Rust — that is a property rather than a
-# hope: the bindings both build steps need are their own script, packages/gg-sandbox-swift/
-# bindings.sh, so no signature step can reach the build.
-# `swift.toolchain.json` declares what built them and every file in the archive, and gg's own tests
-# compare it three ways: the manifest against the archive's contents, file by file and byte count by
-# byte count; the archive's copy of the shell and the bridging header against THIS CHECKOUT's
-# sources, so a shell edited without rebuilding fails by name rather than compiling every program
-# against the old one; and — the check no diff could make — a real Swift program, compiled against
-# the archive by the production prepare step and run through the real membrane.
+# `swift` is exempted on the same terms and answered the same way. Its four committed artifacts are
+# not a compiler either. `swift.guest.tar.gz` is 182 KB of compile INPUTS — the C bindings generated
+# from crates/gg/wit and compiled to a wasm object, the component-type object naming the world, the
+# bridging header, gg's own shell in Swift source, and this arm's SDK as a prebuilt `gg.swiftmodule`
+# and object — and re-cutting it needs the pinned `wit-bindgen` CLI downloaded from GitHub and a
+# ~1 GB Swift toolchain. `swift.libraries.tar.gz` is 3.4 MB: the curated library set
+# (swift-collections, swift-algorithms, swift-numerics) fetched from GitHub by tag and compiled for
+# this arm's target into one static archive. `swift.adapter.wasm` is a 52 KB binary downloaded from a
+# wasmtime release. None of the three is reviewable by reading, and this set is not even byte
+# reproducible: `swiftc` stamps every object with a random module hash no flag disables, so a re-cut
+# here would fail the diff on every run over bytes nobody edited. Nothing above re-cuts them, and —
+# as with Rust — that is a property rather than a hope: the bindings both build steps need are their
+# own script, packages/gg-sandbox-swift/bindings.sh, so the signature step above reaches the bindings
+# without reaching the build.
+# `swift.toolchain.json` declares what built them, every file in the guest archive, every module in
+# the library set and the release tag of every vendored package, and gg's own tests compare it four
+# ways: the manifest against the guest archive's contents, file by file and byte count by byte count;
+# the archive's copy of the shell and the bridging header against THIS CHECKOUT's sources, so a shell
+# edited without rebuilding fails by name rather than compiling every program against the old one;
+# the modules the manifest declares against the ones the CATALOGUE regenerated above tells a model it
+# may import, which is the drift a stale archive beside a fresh catalogue would otherwise be; and —
+# the check no diff could make — a real Swift program, compiled against both archives by the
+# production prepare step and run through the real membrane, that imports every one of them.
 declared="purescript jvm rust swift"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"

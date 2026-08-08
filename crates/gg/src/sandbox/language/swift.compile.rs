@@ -64,12 +64,17 @@
 //! into the gg toolchain image (`containers/gg-toolchains/Dockerfile`) and is found under
 //! [`swift_home`].
 //!
-//! What gg carries is **31 KB**: the C bindings generated from `crates/gg/wit` (compiled to a wasm
-//! object once, at build time, because 3,000 lines of generated C that never changes between
-//! programs is ~90 ms a turn that buys nothing), the component-type object that names the world,
-//! the bridging header, and the shell's Swift source. Those are a function of gg's own wire, and gg
-//! is copied as a single file into an ephemeral run container whose image was built separately — so
-//! bindings that lived in the image could be a different vintage from the binary reading them.
+//! What gg carries is **182 KB** of guest and **3.4 MB** of libraries. The guest is the C bindings
+//! generated from `crates/gg/wit` (compiled to a wasm object once, at build time, because 3,000
+//! lines of generated C that never changes between programs is ~90 ms a turn that buys nothing), the
+//! component-type object that names the world, the bridging header, the shell's Swift source, and
+//! **this arm's SDK as a prebuilt module** — `gg.swiftmodule` and `gg.o`, compiled ahead of time for
+//! the same two reasons the library set is: ~2,000 lines type-checked per turn buys nothing, and a
+//! separate module is what lets a program shadow a name gg bound rather than collide with it. The
+//! libraries are the curated set. All of it is a function of gg's own wire and gg's own surface, and
+//! gg is copied as a single file into an ephemeral run container whose image was built separately —
+//! so bindings that lived in the image could be a different vintage from the binary reading them,
+//! and an SDK that did could be a different vintage from the prompt describing it.
 //!
 //! The **adapter** rides inside gg too, and separately: `swift.adapter.wasm` is the pinned
 //! `wasi_snapshot_preview1` reactor adapter, which is what turns the preview1 core module the Swift
@@ -82,10 +87,16 @@
 //!
 //! | | |
 //! | --- | --- |
-//! | `swiftc` — the model's file, the shell, and the link | **~0.3 s** |
+//! | `swiftc` — the model's file, the shell, the prebuilt SDK, and the link | **~0.3 s** |
 //! | The [`wit_component`] encode | **~10 ms** |
 //! | Artifact | **~7.1 MB** |
 //! | wasmtime `Component::new`, at `OptLevel::None`, **per turn** | **~1.3 s** |
+//!
+//! The SDK and the library set cost that table **nothing**, which is why both are prebuilt: the SDK
+//! is a module the compiler reads rather than sources it type-checks, and the libraries are a static
+//! archive whose members are pulled only when something references them — a program that imports
+//! none of them links an artifact byte for byte the size of one built without the archive on the
+//! command line at all.
 //!
 //! The artifact is two orders of magnitude larger than the [Rust](super::rust) arm's ~25 KB, and
 //! the reason is the standard library rather than the program: Swift's is statically linked, its
@@ -100,11 +111,11 @@
 //! This arm satisfies the [contract](super::compile) the way the Rust arm does, and needs a little
 //! more of the machinery.
 //!
-//! Everything gg carries is unpacked into a [shared toolchain directory](shared_toolchain_dir),
-//! content-keyed on the pinned compiler and a digest of the committed archive, placed by rename and
-//! sealed read-only. `swiftc` only ever **reads** it: the header is named on
-//! `-import-objc-header`, the shell and the two objects are inputs, and nothing is generated
-//! beside them.
+//! Everything gg carries is unpacked into a [shared toolchain directory](shared_toolchain_dir) —
+//! two of them, one per committed archive, each content-keyed on the pinned compiler and a digest
+//! of its own bytes, placed by rename and sealed read-only. `swiftc` only ever **reads** them: the
+//! header is named on `-import-objc-header`, the shell and the objects are inputs, the modules are
+//! found by `-I`, the library archive is a link input, and nothing is generated beside any of them.
 //!
 //! Everything a compile writes goes into this preparation's own workspace, and most of it without
 //! this arm having asked. Swift's driver writes its intermediates under `TMPDIR` and its **clang
@@ -147,6 +158,23 @@ use crate::sandbox::{
 /// ephemeral run container and must carry everything it needs with it. Built by
 /// `packages/gg-sandbox-swift/build.sh`.
 const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/swift.guest.tar.gz");
+
+/// The **curated library set**, compiled for this arm's target: one static archive and the
+/// `.swiftmodule` a program's `import` resolves against.
+///
+/// A separate archive from [`GUEST_TAR_GZ`] because the two are different kinds of thing and change
+/// on different schedules — the guest is a function of `crates/gg/wit` and gg's own SDK sources, and
+/// this is a function of three pinned third-party releases — and because this one is twenty times
+/// the size. Unpacked into a [shared directory](shared_toolchain_dir) of its own, keyed on its own
+/// digest.
+///
+/// It is a **static archive** rather than a directory of objects, and that is what makes a library a
+/// program does not import cost it nothing: `lld` pulls archive members, so an artifact for a
+/// program that imports none of them is byte for byte the size of one built without the archive on
+/// the command line at all. Measured; passing the objects directly added ~2.7 MB to every artifact
+/// on this arm, used or not, because `--gc-sections` cannot strip what a reflection metadata table
+/// names.
+const LIBRARIES_TAR_GZ: &[u8] = include_bytes!("../checkers/swift.libraries.tar.gz");
 
 /// The `wasi_snapshot_preview1` **reactor** adapter, which turns the preview1 core module the Swift
 /// SDK emits into the preview 2 component gg's engine instantiates.
@@ -254,7 +282,15 @@ struct Manifest {
     /// The wasmtime release [`ADAPTER`] came from.
     #[allow(dead_code)]
     adapter: String,
-    /// Every file in the archive.
+    /// The third-party packages the [library set](LIBRARIES_TAR_GZ) was vendored from, by release
+    /// tag. Recorded so a reader of the committed archive knows which sources produced it, and so a
+    /// bump is visible in a diff of one line rather than only in three megabytes of binary.
+    #[allow(dead_code)]
+    packages: std::collections::BTreeMap<String, String>,
+    /// Every module a program may `import` out of the library set, which is what
+    /// [`libraries`](self::libraries) unpacks and what `libraries.txt` claims.
+    modules: Vec<String>,
+    /// Every file in the guest archive.
     files: Vec<GuestFile>,
 }
 
@@ -294,13 +330,23 @@ pub(super) fn guest_files() -> impl Iterator<Item = &'static str> {
     manifest().files.iter().map(|file| file.name.as_str())
 }
 
-/// Unpack the committed archive now, so the first compile does not.
+/// Every module a program of this language may `import` out of the committed library set.
 ///
-/// The whole of this language's warm-up: 31 KB decompressed into ~118 KB, once per machine. The
-/// result is dropped, because a failure here is the failure the first compile will make, and there
-/// it is classified, counted and reported.
+/// Read off the manifest the build wrote, so what gg believes it ships and what it really shipped
+/// are one statement. The *model-facing* list is `packages/gg-sandbox-swift/libraries.txt`, and the
+/// surface gate compares the two.
+pub(super) fn library_modules() -> impl Iterator<Item = &'static str> {
+    manifest().modules.iter().map(String::as_str)
+}
+
+/// Unpack both committed archives now, so the first compile does not.
+///
+/// The whole of this language's warm-up: 182 KB and 3.4 MB decompressed, once per machine. The
+/// results are dropped, because a failure here is the failure the first compile will make, and
+/// there it is classified, counted and reported.
 pub(super) fn warm() {
     let _ = guest();
+    let _ = libraries();
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -332,6 +378,7 @@ pub(super) fn compile_program(
 /// Compile one model program into a component, or say why it could not be.
 fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFailure> {
     let guest = guest().map_err(PrepareFailure::Toolchain)?;
+    let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let home = swift_home().map_err(PrepareFailure::Toolchain)?;
     let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
 
@@ -342,7 +389,7 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
         .map_err(PrepareFailure::Toolchain)?;
 
     let artifact = workspace.output().join(ARTIFACT_FILE);
-    let report = invoke_swiftc(&artifact, guest, &home, workspace, context)
+    let report = invoke_swiftc(&artifact, guest, libraries, &home, workspace, context)
         .map_err(PrepareFailure::Toolchain)?;
     classify(&report)?;
 
@@ -372,6 +419,7 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
 fn invoke_swiftc(
     artifact: &Path,
     guest: &Guest,
+    libraries: &Path,
     home: &Path,
     workspace: &Workspace,
     context: &PrepareContext,
@@ -402,10 +450,25 @@ fn invoke_swiftc(
         // arrangement that lets the shell name the program's entry point at all.
         .arg("-wmo")
         .arg(DEBUG_INFO)
-        // The generated WIT surface, reached from Swift as C. This is what makes a reply need no
-        // import line: everything the shell (and later the SDK) needs is already in scope.
+        // The generated WIT surface, reached from Swift as C — what gg's shell calls, and what
+        // declares the model program's own entry point so the shell can call *it*.
         .arg("-import-objc-header")
         .arg(guest.file("gg-shell.h"))
+        // Where `gg.swiftmodule` and the library set's modules are found. This is what makes a
+        // reply need no import line at all: the shell writes `@_exported import gg`, a re-export
+        // is module-scoped where a plain import is file-scoped, and the model's `main.swift` — a
+        // second file of the same module — therefore opens with gg's whole surface already in
+        // scope. A program's own `import Collections` resolves here too.
+        .arg("-I")
+        .arg(guest.tree())
+        .arg("-I")
+        .arg(libraries)
+        // `RealModule` reaches its C shims through a clang module map, which a program importing
+        // it (or `Algorithms`, which depends on it) needs on the include path.
+        .arg("-Xcc")
+        .arg("-I")
+        .arg("-Xcc")
+        .arg(libraries.join("include"))
         // Where the precompiled bridging header goes. Named because the default is a directory
         // called `TemporaryDirectory.XXXXXX` with six random characters in it, and that path is
         // recorded in the artifact's debug information. In this preparation's own output tree, so
@@ -449,8 +512,13 @@ fn invoke_swiftc(
         .arg(artifact)
         .arg(PROGRAM_FILE)
         .arg(guest.file("shell.swift"))
+        .arg(guest.file("gg.o"))
         .arg(guest.file("sandbox.o"))
-        .arg(guest.file("sandbox_component_type.o"));
+        .arg(guest.file("sandbox_component_type.o"))
+        // Last, and an archive rather than a list of objects: the linker resolves what is still
+        // undefined out of its members, so a program that imports none of the curated libraries
+        // links none of them and pays nothing for them.
+        .arg(libraries.join(LIBRARY_ARCHIVE));
     // Applied after the seam's redirection and pointing at a read-only path outside this
     // preparation's tree, which is the escape hatch `compile.rs` documents. The published
     // toolchain's `lld` links against Debian 12's `libxml2` soname; a gg run image derived from
@@ -653,6 +721,11 @@ impl Guest {
     pub(super) fn file(&self, name: &str) -> PathBuf {
         self.tree.join(name)
     }
+
+    /// The directory itself, which is what `swiftc -I` is given so `gg.swiftmodule` resolves.
+    pub(super) fn tree(&self) -> &Path {
+        &self.tree
+    }
 }
 
 /// The unpacked guest, materialised once per process.
@@ -678,7 +751,7 @@ fn materialise() -> Result<Guest, String> {
     let root = shared_toolchain_dir(&format!(
         "swift-{}-{:016x}",
         compiler_version(),
-        fingerprint()
+        fingerprint(GUEST_TAR_GZ)
     ))?;
     let tree = root.join("guest");
     place_tree(&tree, unpack)?;
@@ -705,12 +778,67 @@ fn unpack(into: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// A digest of the committed archive, so the [shared directory](shared_toolchain_dir) a process
-/// reads is keyed on the bytes it would have written.
-fn fingerprint() -> u64 {
+/// A digest of a committed archive, so the [shared directory](shared_toolchain_dir) a process reads
+/// is keyed on the bytes it would have written.
+fn fingerprint(archive: &[u8]) -> u64 {
     let mut hasher = std::hash::DefaultHasher::new();
-    GUEST_TAR_GZ.hash(&mut hasher);
+    archive.hash(&mut hasher);
     hasher.finish()
+}
+
+/// The static archive the [library set](LIBRARIES_TAR_GZ) carries, named on every link.
+const LIBRARY_ARCHIVE: &str = "libgglibs.a";
+
+/// The unpacked library set, materialised once per process.
+pub(super) fn libraries() -> Result<&'static Path, String> {
+    static LIBRARIES: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    LIBRARIES
+        .get_or_init(materialise_libraries)
+        .as_ref()
+        .map(PathBuf::as_path)
+        .map_err(Clone::clone)
+}
+
+/// Unpack the committed library set into a [shared toolchain directory](shared_toolchain_dir) of its
+/// own.
+///
+/// Its own directory rather than the guest's, keyed on its own digest, because the two archives are
+/// rebuilt independently: a gg carrying a new SDK and the same libraries should reuse the 3.4 MB it
+/// already unpacked, and a gg carrying new libraries must not read a tree another build filled.
+///
+/// Sharing it needs no further argument than the guest's does, because `swiftc` only ever **reads**
+/// it: the archive is a link input, the modules are found by `-I`, and every artifact goes to the
+/// preparation's own output directory.
+fn materialise_libraries() -> Result<PathBuf, String> {
+    let root = shared_toolchain_dir(&format!(
+        "swift-libs-{}-{:016x}",
+        compiler_version(),
+        fingerprint(LIBRARIES_TAR_GZ)
+    ))?;
+    let tree = root.join("lib");
+    place_tree(&tree, |into| {
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(LIBRARIES_TAR_GZ));
+        archive.unpack(into).map_err(|error| {
+            format!("could not unpack the committed Swift library set: {error}")
+        })?;
+        if !into.join(LIBRARY_ARCHIVE).is_file() {
+            return Err(format!(
+                "the committed Swift library set is missing {LIBRARY_ARCHIVE}, which every link \
+                 names"
+            ));
+        }
+        for module in library_modules() {
+            let path = into.join(format!("{module}.swiftmodule"));
+            if !path.is_file() {
+                return Err(format!(
+                    "the committed Swift library set is missing {module}.swiftmodule, which its \
+                     manifest declares"
+                ));
+            }
+        }
+        Ok(())
+    })?;
+    Ok(tree)
 }
 
 #[cfg(test)]

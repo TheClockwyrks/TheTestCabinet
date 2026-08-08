@@ -29,9 +29,15 @@
 //! too; the two bands `swiftc` produces between them; and that all of it stays isolated at
 //! sixteen-way concurrency.
 //!
-//! The **SDK** is deliberately not here: a program in this file calls the raw generated C bindings
-//! through the bridging header, which no model will ever be shown, so that what these tests prove
-//! is the substrate rather than the surface built on it.
+//! What is **not** here is the surface: which functions the SDK offers, on which objects, spelled
+//! how, and whether the catalogue a model reads describes them. That is
+//! [`surface`](super::surface)'s question, and it is a different one — this file asks whether Swift
+//! runs here at all.
+//!
+//! The programs below do call the SDK, and that is deliberate rather than incidental: `gg.log` and
+//! `fs.readTextFile` are what a model writes, so a substrate proven with them is a substrate proven
+//! through the prebuilt `gg` module, the `@_exported import` in the shell and the `-I` that resolves
+//! it — every part of the arrangement that puts a surface in a model's scope with no import line.
 //!
 //! # Why these tests are consolidated
 //!
@@ -56,7 +62,7 @@ use crate::sandbox::{
 use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
-fn prepare(source: &str) -> Vec<u8> {
+pub(super) fn prepare(source: &str) -> Vec<u8> {
     match compile_program(source, &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
@@ -82,9 +88,11 @@ fn prepare(source: &str) -> Vec<u8> {
 /// The [membrane state](MembraneState) is built with TypeScript's arm, because this one has no wire
 /// id yet. Nothing these tests assert depends on it: the language decides how a *refused* call's
 /// name is spelled back at the model, and no program here is refused one.
-fn evaluate(
+pub(super) fn evaluate(
     component: &[u8],
     enabled: &[String],
+    ending: RunEnding,
+    library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -96,8 +104,8 @@ fn evaluate(
     let scope = ProgramScope {
         enabled,
         modules: &[],
-        ending: RunEnding::None,
-        library: false,
+        ending,
+        library,
     };
     let mut store = bounded_store(
         MembraneState::new(
@@ -117,7 +125,7 @@ fn evaluate(
         ),
     };
     let returned = bound
-        .call_run(&mut store, "", &[], enabled, RunEnding::None.into(), false)
+        .call_run(&mut store, "", &[], enabled, ending.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     if returned.is_err() {
         store.data_mut().revoke_completion();
@@ -127,13 +135,56 @@ fn evaluate(
     (outcome, log)
 }
 
+/// What a compiled artifact answers `bound-tools` with.
+///
+/// A near-copy of [`component_bound_tools`](crate::sandbox::component_bound_tools) for the one
+/// reason [`evaluate`] is a near-copy of `run_program`: that function takes a **registered**
+/// language, and this arm has no wire id yet. The membrane state is built with TypeScript's arm on
+/// the same terms — a component reports what it *can* bind, which is a fact about the artifact and
+/// not about the store it is instantiated in.
+pub(super) fn artifact_bound_tools(component: &[u8]) -> Vec<String> {
+    let limits = SandboxLimits::default();
+    let log = CallLog::default();
+    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let compiled =
+        engine::compile_bytes(component).expect("a freshly compiled Swift program is a component");
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: false,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(
+            FakeToolApi::new(&log),
+            crate::sandbox::language(GgProgramLanguage::TypeScript),
+            scope,
+            limits,
+            None,
+        ),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, &compiled, &linker)
+        .expect("a compiled Swift program instantiates against the real membrane");
+    bound
+        .call_bound_tools(&mut store)
+        .expect("a compiled Swift program reports the tools its SDK binds")
+}
+
 /// Compile and run one Swift program with no gg tool offered — the shape most cases here want.
 fn run(source: &str) -> SandboxOutcome {
-    evaluate(&prepare(source), &[], canned_outcome).0
+    evaluate(
+        &prepare(source),
+        &[],
+        RunEnding::None,
+        false,
+        canned_outcome,
+    )
+    .0
 }
 
 /// What a program logged, insisting that the sandbox ran it and that it did not fail.
-fn logs(outcome: &SandboxOutcome) -> &[String] {
+pub(super) fn logs(outcome: &SandboxOutcome) -> &[String] {
     match &outcome.result {
         Ok(result) => {
             assert!(
@@ -148,7 +199,7 @@ fn logs(outcome: &SandboxOutcome) -> &[String] {
 }
 
 /// The sandbox failure a program produced, insisting there was one.
-fn sandbox_error(outcome: &SandboxOutcome) -> &SandboxError {
+pub(super) fn sandbox_error(outcome: &SandboxOutcome) -> &SandboxError {
     match &outcome.result {
         Err(error) => error,
         Ok(result) => panic!(
@@ -207,16 +258,16 @@ do {
     let winner = try best(entries)
     let verdict = Verdict.top(winner)
     switch verdict {
-    case .empty: ggLog("nothing")
-    case .top(let entry): ggLog("top \(entry.label)")
+    case .empty: gg.log("nothing")
+    case .top(let entry): gg.log("top \(entry.label)")
     }
 } catch {
-    ggLog("failed: \(error)")
+    gg.log("failed: \(error)")
 }
 
-ggLog("distinct \(entries.count)")
+gg.log("distinct \(entries.count)")
 let short = entries.filter { $0.word.count <= 3 }.map(\.word).sorted()
-ggLog("short \(short.joined(separator: ","))")
+gg.log("short \(short.joined(separator: ","))")
 "#);
 
     assert_eq!(
@@ -228,34 +279,23 @@ ggLog("short \(short.joined(separator: ","))")
 
 #[test]
 fn a_swift_program_dispatches_a_real_call_through_the_membrane() {
-    // The raw generated bindings, not an SDK: `helpers.read-text-file` takes a string and hands one
-    // back, which is the shortest round trip this arm has through the membrane. What it proves is
-    // that a Swift program's arguments are lowered, that gg's host dispatches the tool, and that
-    // what comes back is a value the program can compute with.
-    let program = r#"func ggText(_ value: sandbox_string_t) -> String {
-    guard let bytes = value.ptr else { return "" }
-    return String(decoding: UnsafeBufferPointer(start: bytes, count: value.len), as: UTF8.self)
-}
-
-func ggReadTextFile(_ path: String) -> String? {
-    var out = sandbox_string_t()
-    var failure = test_cabinet_gg_helpers_tool_error_t()
-    let ok = ggWithString(path) { lowered in
-        test_cabinet_gg_helpers_read_text_file(&lowered, nil, nil, &out, &failure)
-    }
-    return ok ? ggText(out) : nil
-}
-
-if let contents = ggReadTextFile("notes.md") {
+    // `fs.readTextFile` takes a string and hands one back, which is the shortest round trip this arm
+    // has through the membrane. What it proves is that a Swift program's arguments are lowered, that
+    // gg's host dispatches the tool, and that what comes back is a value the program can compute
+    // with — through the SDK a model really writes against, with no import line in front of it.
+    let program = r#"do {
+    let contents = try fs.readTextFile("notes.md")
     let firstLine = contents.split(separator: "\n").first.map(String.init) ?? ""
-    ggLog("read \(firstLine.uppercased())")
-} else {
-    ggLog("no file")
+    gg.log("read \(firstLine.uppercased())")
+} catch let failure as ToolError where failure.code == .notFound {
+    gg.log("no file")
 }
 "#;
     let (outcome, calls) = evaluate(
         &prepare(program),
         &["read_file".to_string()],
+        RunEnding::None,
+        false,
         canned_outcome,
     );
 
@@ -285,9 +325,9 @@ fn a_swift_runtime_failure_arrives_with_what_it_was_and_where() {
     // plus a symbolicating engine is the difference between the two lines below and
     // `program.wasm!main`.
     let outcome = run(r#"let numbers = [1, 2, 3]
-ggLog("before")
+gg.log("before")
 let missing = numbers[9]
-ggLog("after \(missing)")
+gg.log("after \(missing)")
 "#);
 
     let failure = sandbox_error(&outcome).to_string();
@@ -314,7 +354,7 @@ ggLog("after \(missing)")
     // which is what compiling the reply verbatim buys, since there is no offset to subtract.
     let unwrapped = run(r#"let text = "not a number"
 let parsed = Int(text)!
-ggLog("\(parsed)")
+gg.log("\(parsed)")
 "#);
     let failure = sandbox_error(&unwrapped).to_string();
     assert!(
@@ -326,7 +366,7 @@ ggLog("\(parsed)")
         "a force-unwrapped nil was not located at the model's line: {failure}"
     );
 
-    let stopped = run("ggLog(\"one\")\nfatalError(\"gg substrate stop\")\n");
+    let stopped = run("gg.log(\"one\")\nfatalError(\"gg substrate stop\")\n");
     let failure = sandbox_error(&stopped).to_string();
     assert!(
         failure.contains("gg substrate stop"),
@@ -339,7 +379,8 @@ ggLog("\(parsed)")
 
     // Arithmetic overflow is the fourth, and the one whose failure is furthest from what the model
     // wrote: `+` on two `Int`s is a trap rather than a wrap.
-    let overflowed = run("var big = Int.max\nggLog(\"counting\")\nbig += 1\nggLog(\"\\(big)\")\n");
+    let overflowed =
+        run("var big = Int.max\ngg.log(\"counting\")\nbig += 1\ngg.log(\"\\(big)\")\n");
     let failure = sandbox_error(&overflowed).to_string();
     assert!(
         failure.contains("arithmetic overflow"),
@@ -361,7 +402,7 @@ fn what_a_program_writes_to_stderr_reaches_the_model() {
     // failures would say.
     let outcome = run(r#"import WASILibc
 
-ggLog("logged")
+gg.log("logged")
 fputs("gg substrate said this on stderr\n", stderr)
 fflush(stderr)
 precondition(false, "and then stopped")
@@ -393,7 +434,10 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // A program `swiftc` rejected. One band, because Swift has no parse-only phase a program passes
     // before meaning is considered: an unclosed brace and a type error are both an `error:` from
     // one invocation.
-    let syntax = compile_program("let x = (1 + 2\nggLog(\"\\(x)\")\n", &PrepareContext::new());
+    let syntax = compile_program(
+        "let x = (1 + 2\ngg.log(\"\\(x)\")\n",
+        &PrepareContext::new(),
+    );
     match syntax {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -424,7 +468,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // A compiler that is not there at all. Never a diagnostic, because nothing was decided about
     // the program — and the message names what an operator can fix.
     let missing = temp_env(compile::SWIFT_HOME_ENV, "/nonexistent/gg-swift", || {
-        compile_program("ggLog(\"hi\")\n", &PrepareContext::new())
+        compile_program("gg.log(\"hi\")\n", &PrepareContext::new())
     });
     match missing {
         Err(PrepareFailure::Toolchain(message)) => {
@@ -473,7 +517,7 @@ extension Greeter {
     func shout() -> String { greet().uppercased() }
 }
 
-ggLog(Greeter().shout())
+gg.log(Greeter().shout())
 "#);
     assert_eq!(logs(&outcome), ["HELLO"]);
 }
@@ -488,7 +532,7 @@ fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
     // Bounds rather than a figure: the reading is a wall clock on a shared machine. What would
     // fail this is a compile that did not happen at all.
     let started = Instant::now();
-    let _ = prepare("ggLog(\"compiled\")\n");
+    let _ = prepare("gg.log(\"compiled\")\n");
     let accepted = started.elapsed();
 
     let started = Instant::now();
@@ -516,7 +560,7 @@ fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
     // mean the link stopped dead-stripping or the debug information stopped being the only thing
     // between 5.5 MB and 7 MB.
     let started = Instant::now();
-    let component = prepare("ggLog(\"weighed\")\n");
+    let component = prepare("gg.log(\"weighed\")\n");
     let compiled = started.elapsed();
 
     assert!(
@@ -538,10 +582,7 @@ fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
         component.len()
     );
 
-    // What the component itself says it can bind. Empty, honestly: this arm has no SDK yet, so it
-    // binds no gg tool — and asking the artifact is exactly how gg's registration-time drift gate
-    // will ask it once it does.
-    let (outcome, _log) = evaluate(&component, &[], canned_outcome);
+    let (outcome, _log) = evaluate(&component, &[], RunEnding::None, false, canned_outcome);
     assert_eq!(logs(&outcome), ["weighed"]);
 }
 
@@ -654,7 +695,7 @@ fn artifact(source: &str, context: &PrepareContext) -> Result<Vec<u8>, String> {
 /// Every marker the gate mints is the same length, so every artifact below has the same layout,
 /// which is what makes [`STAMP`] a single range rather than one per input.
 fn isolation_source(marker: &str) -> String {
-    format!("ggLog(\"{marker}\")\n")
+    format!("gg.log(\"{marker}\")\n")
 }
 
 /// **Where `swiftc` stamps each artifact with a value that is not a function of its input.**

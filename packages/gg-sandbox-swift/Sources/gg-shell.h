@@ -6,7 +6,12 @@
 // into the program's scope with no import line of its own — which is what lets a model's reply
 // be compiled VERBATIM, with no prologue and no line offset.
 //
-// It exists as a file of its own, rather than as `sandbox.h` alone, for one declaration:
+// It exists as a file of its own, rather than as `sandbox.h` alone, for two things `sandbox.h`
+// does not carry. The first is `malloc`/`free`: what an export RETURNS across the canonical ABI
+// is freed by the generated post-return with `free`, so the shell has to allocate with the
+// matching `malloc` rather than with Swift's own allocator. The second is the declaration below.
+
+#include <stdlib.h>
 
 #include "sandbox.h"
 

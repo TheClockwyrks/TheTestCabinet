@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# The pins the **Swift** program language's toolchain is built and run against.
+# The pins the **Swift** program language's toolchain, SDK and library set are built and run
+# against.
 #
 # Sourced by `bindings.sh` and `build.sh`, by `containers/gg-toolchains/Dockerfile` and by
 # `scripts/ci/install-swift.sh`, so there is one list rather than four.
 #
-# WHY THE COMPILER IS PINNED AT ALL. This arm ships no compiled Swift inside gg's binary —
-# what it commits is a wasm object built from the WIT bindings, two headers and one Swift
-# SOURCE file — so nothing here is a compiler-version-private format the way an `.rlib` or a
-# `.swiftmodule` is, and a run image one patch release ahead would still link. The pin is
-# therefore about the SURFACE rather than the format: the shell gg compiles beside every
-# program uses the language's own syntax, the diagnostics a model is handed are this
-# release's, and the study's whole point is that an arm is one measured configuration. A
-# floating compiler would move a variable the experiment is holding still.
+# WHY THE COMPILER IS PINNED, AND WHY THE PIN IS HARD. gg carries a `.swiftmodule` for this
+# arm's SDK, and a `.swiftmodule` is a **compiler-version-private format**: the release that
+# reads one must be the release that wrote it. So the pin is not a preference about which
+# diagnostics a model is shown — it is the one release that can compile a program here at
+# all, and bumping it means re-running `build.sh` in the same commit.
+#
+# Before the SDK landed this arm committed only C objects, two headers and one Swift SOURCE
+# file, and a run image one patch release ahead would still have linked. That is no longer
+# true, and `swift.compile.test.rs` fails by name when the toolchain gg finds and the manifest
+# disagree rather than letting a program fail with a deserialisation error a model cannot act
+# on.
 set -euo pipefail
 
 SWIFT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -66,9 +70,45 @@ GG_WASMTIME_ADAPTER_VERSION="45.0.3"
 # the wire to be described differently.
 GG_WIT_BINDGEN_VERSION="0.60.0"
 
+# The **curated library set** a program may `import`, beyond what the Swift SDK for WebAssembly
+# already ships.
+#
+# Three packages, pinned to a release tag each, vendored by `build.sh` and compiled for this
+# arm's target into one static archive. They are Apple's own, they are pure Swift, and they are
+# what a Swift author reaches for when the standard library's `Array` and `Dictionary` are the
+# wrong shape: `Deque`, `OrderedDictionary`, `Heap`, `BitSet`, `TreeDictionary`, and the eager
+# and lazy sequence algorithms `chunks`, `windows`, `combinations` and `uniqued`.
+#
+# `swift-numerics` is here because `swift-algorithms` depends on it (`RandomSample` uses
+# `RealModule`'s `log`), not because a program was thought likely to want it — but it is a
+# perfectly good library and `libraries.txt` lists it rather than hiding it, since a name that
+# links and is not declared is a capability a model is never told it has.
+#
+# WHY VENDORED AND COMPILED RATHER THAN FETCHED AT RUN TIME. There is no SwiftPM in the run
+# image: the pruned toolchain is a compiler and a linker, and a package manager reaching a
+# network from inside a run container is not something this sandbox is going to grow. So the
+# set is built once, here, and committed as a static archive gg unpacks per machine — the same
+# arrangement the Rust arm's library set has, and for the same reason.
+GG_SWIFT_COLLECTIONS_VERSION="1.2.1"
+GG_SWIFT_ALGORITHMS_VERSION="1.2.1"
+GG_SWIFT_NUMERICS_VERSION="1.0.3"
+
 export GG_SWIFT_VERSION GG_SWIFT_WASM_SDK_VERSION GG_SWIFT_TARGET
 export GG_WASMTIME_ADAPTER_VERSION GG_WIT_BINDGEN_VERSION
+export GG_SWIFT_COLLECTIONS_VERSION GG_SWIFT_ALGORITHMS_VERSION GG_SWIFT_NUMERICS_VERSION
 export SWIFT_ROOT
+
+gg_swift_collections_url() {
+	echo "https://github.com/apple/swift-collections/archive/refs/tags/${GG_SWIFT_COLLECTIONS_VERSION}.tar.gz"
+}
+
+gg_swift_algorithms_url() {
+	echo "https://github.com/apple/swift-algorithms/archive/refs/tags/${GG_SWIFT_ALGORITHMS_VERSION}.tar.gz"
+}
+
+gg_swift_numerics_url() {
+	echo "https://github.com/apple/swift-numerics/archive/refs/tags/${GG_SWIFT_NUMERICS_VERSION}.tar.gz"
+}
 
 # The platform build of the toolchain for this machine, and the asset names the downloads use.
 # Exported as a function rather than resolved here, because the Dockerfile's build stage and a

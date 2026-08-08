@@ -1,4 +1,6 @@
-# The vendored `wit-bindgen` CLI, the C bindings it generates from crates/gg/wit, and the staging
-# tree the archive is cut from. Everything this package COMMITS lands in
-# crates/gg/src/sandbox/checkers/ instead.
+# The vendored `wit-bindgen` CLI, the C bindings it generates from crates/gg/wit, the third-party
+# package sources `build.sh` fetches by tag, the compiled library set, the symbol graph
+# `signatures.sh` reflects from, and the staging tree the archives are cut from. Everything this
+# package COMMITS lands in crates/gg/src/sandbox/checkers/ and
+# crates/gg/src/sandbox/guests/swift.signatures.json instead.
 .build/

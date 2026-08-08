@@ -180,10 +180,15 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # standard library the engine has to compile on every turn — and its isolation gate pays that
 # thirty-two times over.
 #
-# Measured on this repository's dev container, this group run on its own: 22 s for all nine tests
-# with the isolation gate at 17 s, and 74 s for the same nine when the rest of the package was also
-# running. That is the same spread every other group here records, and the same remedy: bounded from
-# the work rather than from the default, with room for a CI runner with a quarter of the cores.
+# Measured on this repository's dev container, this group run on its own: 53 s for all seventeen
+# tests with the isolation gate at 53 s and the library-set gate at 32 s, against 74 s for the nine
+# substrate tests alone when the rest of the package was also running. That is the same spread every
+# other group here records, and the same remedy: bounded from the work rather than from the default,
+# with room for a CI runner with a quarter of the cores.
+#
+# The `surface` half is in the same group because it costs the same thing for the same reason: every
+# one of its programs is a real `swiftc` and a real `Component::new`, and the one that imports the
+# whole curated library set links the largest artifact this arm produces.
 [[profile.default.overrides]]
-filter = 'package(test-cabinet-gg) and test(/^sandbox::language::swift::substrate::/)'
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::swift::(substrate|surface)::/)'
 slow-timeout = { period = "180s", terminate-after = 3 }

@@ -4,10 +4,36 @@
   "target": "wasm32-unknown-wasip1",
   "witBindgen": "0.60.0",
   "adapter": "45.0.3",
+  "packages": {
+    "swift-collections": "1.2.1",
+    "swift-algorithms": "1.2.1",
+    "swift-numerics": "1.0.3"
+  },
+  "modules": [
+    "Algorithms",
+    "BitCollections",
+    "Collections",
+    "ComplexModule",
+    "DequeModule",
+    "HashTreeCollections",
+    "HeapModule",
+    "InternalCollectionsUtilities",
+    "OrderedCollections",
+    "RealModule",
+    "RopeModule"
+  ],
   "files": [
     {
       "name": "gg-shell.h",
-      "bytes": 1581
+      "bytes": 1895
+    },
+    {
+      "name": "gg.o",
+      "bytes": 176391
+    },
+    {
+      "name": "gg.swiftmodule",
+      "bytes": 359640
     },
     {
       "name": "sandbox.h",
@@ -23,7 +49,7 @@
     },
     {
       "name": "shell.swift",
-      "bytes": 4720
+      "bytes": 5779
     }
   ]
 }

@@ -1,5 +1,6 @@
 // The **shell** a model's Swift program runs inside: what the sandbox world's two exports do,
-// and how the program's own top-level code is reached from one of them.
+// how the SDK gets into the program's scope, and how the program's own top-level code is
+// reached.
 //
 // It is compiled as a second file of the SAME module as the model's `main.swift`, once per
 // turn, by `crates/gg/src/sandbox/language/swift.compile.rs`. Being in one module is what buys
@@ -8,46 +9,59 @@
 // model's own coordinates.
 //
 // It is not the SDK. Nothing here is model-facing and nothing here is in the signature
-// catalogue; a program written by a model calls the curated surface, which is a later step.
-// What is here is the plumbing that surface will be built on.
+// catalogue; a program written by a model calls the curated surface in `Sources/SDK/`, which
+// is compiled ahead of time into the `gg` module the line below re-exports.
 
-/// Call `body` with `text` lowered into the canonical ABI's string representation.
+/// **The one line that puts gg's surface in a model's scope**, and the reason a Swift reply
+/// needs no import of its own.
 ///
-/// Scoped rather than returned, because `sandbox_string_set` does not copy: it points a
-/// `sandbox_string_t` at bytes it does not own. Every import below lowers its arguments during
-/// the call, so a pointer that lives exactly as long as the call is correct — and one that
-/// outlived the closure would be a dangling read the first time a host function was slow.
-@inline(__always)
-func ggWithString<T>(_ text: String, _ body: (inout sandbox_string_t) -> T) -> T {
-    text.withCString { bytes in
-        var lowered = sandbox_string_t()
-        sandbox_string_set(&lowered, bytes)
-        return body(&lowered)
-    }
-}
-
-/// Write one line to the run's **operator** log — this arm's `console.log`.
+/// `@_exported` rather than a plain `import`, and the difference is the whole arm. A Swift
+/// `import` is FILE-scoped: written here it would put `fs` in scope in `shell.swift` and
+/// nowhere else, and the model's `main.swift` — a second file of the same module — would
+/// still fail with `cannot find 'fs' in scope`. `@_exported` re-exports the module through
+/// this one, and a re-export is MODULE-scoped, so every file of the program's module sees it.
+/// Measured both ways, because the alternative was making a model write `import gg` on line 1
+/// and paying a line offset on every diagnostic and every located trap for the rest of the
+/// arm's life.
 ///
-/// The `feedback` interface is the shim's private channel back to gg (`crates/gg/wit`), never
-/// part of what a model is shown. It is here because gg's own substrate tests need a way for a
-/// program to say something that crosses the membrane, and because the SDK's `log` will be
-/// built on exactly this call.
-func ggLog(_ line: String) {
-    ggWithString(line) { test_cabinet_gg_feedback_log(&$0) }
-}
+/// It is also what makes the SDK **shadowable**. `gg` is a different module, so a program that
+/// declares its own `fs`, its own `DirEntry` or its own `log` wins over this one rather than
+/// colliding with it — which a single-module SDK compiled beside the reply could not do, since
+/// two declarations of one name in one module is a redeclaration error.
+///
+/// The underscore says the attribute is not part of Swift's stable surface. It is what the
+/// standard library's own overlays are built on, it has behaved this way since Swift 3, and
+/// this arm pins one compiler release — so the risk it carries is bounded by the pin.
+@_exported import gg
 
 /// The gg tool names this component can bind — what `bound-tools` answers.
 ///
-/// **Empty, and that is this step's honest answer.** gg's drift gate asks a registered
-/// language's artifact which tools it binds and compares the answer with gg's own
-/// `ALL_TOOL_NAMES`; the answer has to come from the SDK's own binding table, object by object,
-/// so that it is a second and independent statement of the same fact. This arm has no SDK yet
-/// and therefore no such table, and a hand-written list here would be a *third* statement that
-/// agreed with neither. The list arrives with the surface it is derived from.
+/// It is **derived from the SDK's own binding table**, object by object: each API object states
+/// the tools it dispatches beside the functions that dispatch them, and `gg.boundToolNames()`
+/// concatenates them. gg's drift gate compares the artifact's answer with its own
+/// `ALL_TOOL_NAMES`, so what that gate really checks here is that the SDK's declarations and
+/// gg's vocabulary have not drifted apart — which a hand-written list in this file could not
+/// have told it, because a hand-written list is a third statement that agrees with neither.
+///
+/// Both allocations are `malloc`'s, and that is load-bearing rather than incidental: the
+/// generated post-return frees what this returns with `free`, element by element and then the
+/// array — so Swift's own allocator would be a mismatched pair on the one path that runs after
+/// every single turn.
 @_cdecl("exports_sandbox_bound_tools")
 public func ggBoundTools(_ ret: UnsafeMutablePointer<sandbox_list_string_t>) {
-    ret.pointee.ptr = nil
-    ret.pointee.len = 0
+    let names = gg.boundToolNames()
+    let bytes = MemoryLayout<sandbox_string_t>.stride * max(names.count, 1)
+    guard let items = malloc(bytes)?.bindMemory(to: sandbox_string_t.self, capacity: names.count)
+    else {
+        ret.pointee.ptr = nil
+        ret.pointee.len = 0
+        return
+    }
+    for (index, name) in names.enumerated() {
+        name.withCString { sandbox_string_dup(&items[index], $0) }
+    }
+    ret.pointee.ptr = items
+    ret.pointee.len = names.count
 }
 
 /// **Evaluate one program** — the sandbox world's `run`.
