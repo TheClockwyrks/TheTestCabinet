@@ -204,6 +204,25 @@ threads); the `use` above it is **kept**, which is Java's answer reached from th
 set; and the token it deletes is `.await`, which is Rust's suspension marker in the one place it
 lives — after the expression rather than in front of it.
 
+[Swift](/gg/program-languages/#what-its-dialect-says-and-the-three-answers-worth-reading-beside-another-arms)
+answers the same questions and disagrees with that arm twice. Its **redeclaration proof is the
+widest of any registered arm's** and is the exact inverse of Rust's: Swift does not shadow, so a
+second `let`, `var`, `func`, `struct`, `class`, `enum`, `actor`, `protocol` or `typealias` of one
+name at one scope is *invalid redeclaration of …* before a statement runs — which means the everyday
+doubled program, the one made of nothing but bindings and calls, is provably dead code here where it
+might have run there. `import` is the one declaration excluded, because writing one twice is legal,
+and `extension` because it declares no name of its own. **Nothing is done about an import** here
+either, and this too is because the line *works*: a program is a whole top-level file, Swift admits
+an `import` anywhere in one, and every module of the arm's library set is on the search path.
+Swift's lexer has **no character literal to tell anything from** — the language has none — so an
+apostrophe in prose is ordinary punctuation, and what it asks for instead is an interpolation
+followed through with a **paren** count (`"total: \(rows["n"])"`) and a raw string's `#` fence
+counted rather than looked for. Its wrapper is `Task { … }`, and that is a measured failure of a
+different kind: it compiles, it is scheduled, and the body never runs, because the program returns
+first and nothing is left to run it — a clean turn over a program that did nothing. The `import`
+lines above it are kept, and the token it deletes is `await`, which Swift writes in **front** of the
+expression rather than after it.
+
 A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
 dialect**, in the tests — to hold the split honest. Under it the two strategies that need
 no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply

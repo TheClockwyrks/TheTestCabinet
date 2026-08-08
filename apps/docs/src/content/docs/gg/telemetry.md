@@ -746,9 +746,11 @@ directly:
   that program compiles the component inside its own span. The field is what separates
   "this program was slow" from "this program paid the one shared compile", and it is
   absent on every turn that did not — except on
-  [Rust](/gg/program-languages/#rust-the-program-is-the-artifact), where there is no shared
-  component at all and the field is present on **every** turn, carrying the ~9 ms that turn's own
-  freshly compiled artifact took to instantiate. Beside it is `compileMs`, which is the *other*
+  [Rust](/gg/program-languages/#rust-the-program-is-the-artifact) and
+  [Swift](/gg/program-languages/#swift-the-reply-is-the-artifact-verbatim), where there is no shared
+  component at all and the field is present on **every** turn, carrying what that turn's own freshly
+  compiled artifact took to instantiate — ~9 ms on one and **~1.3 s** on the other, which is more
+  than that arm spent compiling it and is the widest spread this field has. Beside it is `compileMs`, which is the *other*
   compile and belongs to the turn rather than to the process: what this turn's
   [language](/gg/program-languages/) spent compiling for it, including any compiler that
   step shells out to — the program itself, each replacement it handed over to, the code
@@ -769,7 +771,8 @@ directly:
   comparable, since the two spend it on one road, and
   [Rust](/gg/program-languages/#rust-the-program-is-the-artifact), whose ~60 ms per turn is the
   *smallest* of any compiled arm and is also the one whose product is the component the turn is then
-  evaluated by) or only grammar
+  evaluated by, and [Swift](/gg/program-languages/#swift-the-reply-is-the-artifact-verbatim), whose
+  ~0.3 s produces a component that then costs four times that to instantiate) or only grammar
   ([Ruby](/gg/program-languages/#ruby-compiled-to-javascript-before-it-crosses)),
   **including the turn whose
   program the compiler rejected**. That turn is the one the field exists for, because it

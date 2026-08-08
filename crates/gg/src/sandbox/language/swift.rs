@@ -1,16 +1,16 @@
-//! **Swift** — the second arm whose component is compiled **per turn**, and the first whose
+//! **Swift** — the second arm whose component is compiled **per turn**, and the only one whose
 //! program is compiled *verbatim*.
 //!
-//! What exists here today is this arm's **execution substrate** and its **model-facing surface**:
-//! the compile that turns a model's Swift into a wasm component, the SDK a model writes against, and
-//! the catalogue reflected out of that SDK's own documentation. The
-//! [registration](super::ProgramLanguage) lands later — a language arm cannot be half-registered,
-//! because the registry's `match` is exhaustive and every gate that iterates the registered set
-//! would immediately demand two Handlebars templates and a healing dialect. Nothing here is
-//! reachable from a run: there is no `language` value that resolves to it.
+//! Everything this arm owns lives here or in one of this module's siblings:
 //!
 //! * [`compile`](self::compile) — the host-side `swiftc`, the in-process component encode with the
 //!   preview1 adapter, what they cost, what they share, and the two failures they tell apart;
+//! * [`source`](self::source) — the one thing gg writes, which is not a wrapper around a program but
+//!   the namespace a **code module**'s declarations are moved into, in place;
+//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
+//!   lexical questions of, whose lexer is also what reads a code module's top level;
+//! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
+//!   in Swift's syntax;
 //! * `packages/gg-sandbox-swift/` — the SDK a program calls, the shell it is compiled beside, the
 //!   curated library set, and the builds that commit them;
 //! * `checkers/swift.guest.tar.gz`, `checkers/swift.libraries.tar.gz`, `checkers/swift.adapter.wasm`
@@ -99,45 +99,343 @@
 //! are `/<compiler-generated>` and there is nothing to symbolicate. Catching what you expect is what
 //! buys the line back. Measured in [`surface`].
 //!
-//! # What is not built yet, and what it blocks
+//! # And a code module is **linked**, which is why the seam hands a program its modules
 //!
-//! **Code modules.** A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is
-//! bound at `lib.<key>` for every program the agent writes afterwards, and on a compiled arm that
-//! binding is a **link**: the module has to be built into the same artifact as the program that
-//! uses it. The seam already hands a program's preparation the modules in its scope — the Rust arm's
-//! registration made that change — so nothing structural is missing.
+//! A code [skill](crate::skills)'s or [memory](crate::memories)'s namespace is bound at `lib.<key>`
+//! for every program the agent writes afterwards. On every interpreted arm that binding is made at
+//! *run time*: the guest is handed each module's prepared source beside the program and evaluates it
+//! first. Swift has no such moment — a module is Swift, Swift links, and the only artifact a module
+//! can end up in is the artifact of a program that was compiled against it.
 //!
-//! What was missing was the *namespacing*, and the SDK's own shape is what answers it. `lib.<key>`
-//! needs a **type** to hang a module's declarations off, and a module's source is a file of
-//! top-level declarations that cannot be wrapped in one — `import` and `extension` are illegal
-//! inside a type. But a module can be compiled as its own **Swift module** named for its key, as
-//! this arm's SDK is, and [`prepare_module`](super::ProgramLanguage::prepare_module) already reads
-//! the names it exports. So the program's compile writes one further file of its own module:
-//! `enum lib { enum <key> { } }` plus, per export, a `public static let` bound to the compiled
-//! module's function. `lib.csvTools.parse(…)` is then an ordinary call, resolved at compile time,
-//! and a key that does not exist is a diagnostic on the turn that wrote it.
+//! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
+//! scope, and each becomes a further file of the program's **own Swift module**, with its top-level
+//! declarations moved into `lib.<key>` by being wrapped where they stand — see
+//! [`source`](self::source) for the shape, for what it preserves that the two alternatives would
+//! have given up, and for the one construct it refuses. The consequence a model can see is that
+//! `lib.csvTools.parse` is a **name the compiler resolves** rather than a property looked up on a
+//! value: a key that does not exist is a diagnostic on the turn that wrote it, where an interpreted
+//! arm finds out when the call is reached.
 //!
-//! Until that is built, [`compile_program`](self::compile::compile_program) takes no modules and
-//! this arm must not be registered: a Swift agent that read a code skill would otherwise get no
-//! `lib` binding at all, which is a capability silently absent on one arm of a study about
-//! capability. Two things about the plan are worth writing down before it is: a module whose export
-//! is **overloaded** cannot be bound this way (`let` needs one function to point at, and the study
-//! is better served by refusing that module by name than by binding one of its overloads), and the
-//! forwarders must be generated from `PreparedModule::exports` rather than from a second reading of
-//! the source, so what a model is told a module offers and what its programs can reach are one
-//! statement.
+//! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
+//! it is read, only to be checked, and once as part of every program that uses it. Without the first
+//! compile, a module that does not build would take down every program the agent wrote from then on,
+//! with the diagnostic landing against the turn's own program in a file the model never saw. See
+//! [`compile::compile_module`].
+
+use std::sync::OnceLock;
+
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use crate::sandbox::signatures::SignatureCatalogue;
+
+use super::{
+    CodeModule, FileWindow, PrepareContext, PrepareFailure, PreparedModule, PreparedProgram,
+    ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
+};
 
 /// The `swiftc` build and the in-process component encode: the host-side step that turns a model's
 /// Swift into the component that evaluates it.
-///
-/// `#[allow(dead_code)]` until the trait implementation calls it, exactly as
-/// [Ruby](super::ruby)'s, [PureScript](super::purescript)'s, [Java](super::java)'s and
-/// [Rust](super::rust)'s were between their own substrate and their registration: nothing on the
-/// turn path can reach a language the registry has no arm for, so every entry point here is reached
-/// only by this arm's own tests.
-#[allow(dead_code)]
 #[path = "swift.compile.rs"]
 pub(super) mod compile;
+
+/// The namespace a code module's declarations are moved into, and the one file gg generates beside a
+/// program — there being no wrapper around a program at all.
+#[path = "swift.source.rs"]
+pub(super) mod source;
+
+/// The lexical reading of a reply — Swift's answers to healing's questions, and the lexer
+/// [`source`] reads a code module's top level with.
+#[path = "swift.healing.rs"]
+pub(super) mod healing;
+
+/// The committed catalogue, reflected out of the SDK's own documentation comments by
+/// `packages/gg-sandbox-swift/signatures.sh` — `swiftc -emit-symbol-graph`, which is DocC's own
+/// machinery.
+const SIGNATURES: &str = include_str!("../guests/swift.signatures.json");
+
+/// The parsed catalogue, parsed once per process.
+static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
+
+/// Everything gg *says* about a Swift program that is written in Swift's own syntax.
+///
+/// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
+/// Individual function spellings are **not** here and not in the templates either: every name and
+/// signature they quote is resolved from this language's committed catalogue when the template
+/// renders.
+static PROMPT: PromptDialect = PromptDialect {
+    system_template: include_str!("../../../templates/system-code.swift.hbs"),
+    system_template_name: "system-code.swift",
+    nothing_shown_template: include_str!("../../../templates/code-nothing-shown.swift.hbs"),
+    nothing_shown_template_name: "code-nothing-shown.swift",
+};
+
+/// The one instance of this language. A unit struct, so the `static` costs nothing and coerces
+/// straight to `&'static dyn ProgramLanguage`.
+pub(super) static SWIFT: Swift = Swift;
+
+/// Swift: compiled by `swiftc` into the wasm component that evaluates it, per turn.
+pub(super) struct Swift;
+
+impl ProgramLanguage for Swift {
+    fn id(&self) -> GgProgramLanguage {
+        GgProgramLanguage::Swift
+    }
+
+    fn display_name(&self) -> &'static str {
+        GgProgramLanguage::Swift.display_name()
+    }
+
+    /// One `swiftc` over the model's file, the code modules in scope, gg's shell and the committed
+    /// library set, then an in-process component encode — see [`compile`] for what it costs, what it
+    /// shares, and how it tells a program `swiftc` refused from a `swiftc` that could not run.
+    fn prepare_program(
+        &self,
+        source: &str,
+        modules: &[CodeModule],
+        context: &PrepareContext,
+    ) -> Result<PreparedProgram, PrepareFailure> {
+        compile::compile_program(source, modules, context)
+    }
+
+    /// `swiftc`, which is what a Swift programmer calls the compiler and what its own binary is
+    /// called.
+    ///
+    /// Not `wit-component`, which encodes the module `swiftc` emitted into a component and judges
+    /// nothing about the program: the same reason the [Rust](super::rust) arm names its front end
+    /// and the JVM arms name theirs rather than TeaVM. Naming a checker is also what has this arm's
+    /// compile [recorded](crate::sandbox::SandboxOutcome::compile) on every turn, the failing path
+    /// included — which matters more here than anywhere, since this is the arm where the compile
+    /// *is* the artifact and where a turn's own instantiate costs several times what producing it
+    /// did.
+    fn checker(&self) -> Option<&'static str> {
+        Some("swiftc")
+    }
+
+    /// Unpack the committed guest archive and library set now, so the first code turn does not.
+    ///
+    /// The whole of this arm's warm-up: 182 KB and 3.4 MB decompressed, once per machine. There is
+    /// no daemon to start and no compiler to load, because `swiftc` is a one-shot process whose cost
+    /// is the compile rather than the start-up. Idempotent and best effort — a failure here is the
+    /// failure the first compile makes, and there it is classified, counted and reported as a
+    /// [toolchain failure](PrepareFailure::Toolchain).
+    fn warm_prepare(&self) {
+        compile::warm();
+    }
+
+    /// The module's own `swiftc`, asked to type-check rather than to build — and the names its
+    /// namespace offers, read from the author's own source.
+    ///
+    /// What comes back is **source**, which is what a linked language's module has to be: it is an
+    /// input to the [program compile](compile::compile_program) that binds it, not something a guest
+    /// could load on its own.
+    fn prepare_module(
+        &self,
+        source: &str,
+        context: &PrepareContext,
+    ) -> Result<PreparedModule, PrepareFailure> {
+        compile::compile_module(source, context)
+    }
+
+    /// `.swift`, and nothing else. Nothing else in the registry compiles Swift.
+    fn module_file_extensions(&self) -> &'static [&'static str] {
+        &["swift"]
+    }
+
+    /// [camelCase](self::binding_name) — Swift's own convention for a name a program writes, and
+    /// this SDK's for every function it binds.
+    fn binding_name(&self, name: &str) -> String {
+        binding_name(name)
+    }
+
+    /// **None.** This arm commits no component, because the component *is* the program: see this
+    /// module's own documentation, and [`PreparedProgram::component`].
+    fn guest_component(&self) -> Option<&'static [u8]> {
+        None
+    }
+
+    /// The committed catalogue, parsed once and checked to be **this** language's.
+    ///
+    /// Every registered language commits one of these under its own stem, and each carries the
+    /// language it was generated for; checking it here is what stops a catalogue filed — or
+    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
+    /// sandbox nobody has.
+    fn catalogue(&self) -> &'static SignatureCatalogue {
+        CATALOGUE.get_or_init(|| {
+            let catalogue = SignatureCatalogue::parse(SIGNATURES)
+                .expect("the committed signature catalogue is valid JSON of the expected shape");
+            assert_eq!(
+                catalogue.language,
+                GgProgramLanguage::Swift,
+                "`guests/swift.signatures.json` was generated for another program language",
+            );
+            catalogue
+        })
+    }
+
+    fn healing(&self) -> &'static dyn crate::healing::Dialect {
+        &healing::SWIFT_DIALECT
+    }
+
+    fn prompt(&self) -> &'static PromptDialect {
+        &PROMPT
+    }
+
+    /// [`try view.openFile("src/main.swift")`](self::open_file_statement) — with the window as the
+    /// call's own two optional arguments, passed by label.
+    fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
+        open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
+    }
+
+    /// [An array of names and a `for` over it](self::open_docs_views_statement), each iteration
+    /// opening one documentation view.
+    fn open_docs_views_statement(&self, names: &[&str]) -> String {
+        open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
+    }
+
+    /// One `func` returning `name` — because a Swift code module is a file of **declarations** and a
+    /// Swift program is a file that may also carry statements.
+    ///
+    /// The seam's default subject is this language's generated documentation program, which opens
+    /// with a `let` and then loops: legal at the top level of `main.swift`, and *expressions are not
+    /// allowed at the top level* in any other file of a module. So this arm answers for itself, as
+    /// the [JVM](super::jvm) arms and [Rust](super::rust) do, and the `name` rides in as a returned
+    /// **string literal** — which is where the module's one export hands it back.
+    /// **The artifact with its debug sections dropped and the compiler's own stamp zeroed** — the
+    /// one arm that answers this, and the reason the seam asks.
+    ///
+    /// Two things about a Swift artifact are not a function of the program, and both are declared
+    /// here rather than accommodated by weakening the gate.
+    ///
+    /// The **debug sections** record the *compilation environment*: the paths and content hashes of
+    /// the clang module cache and of the precompiled bridging header, computed over an invocation
+    /// naming this preparation's own working directory, `HOME` and `TMPDIR` — which the
+    /// [isolation contract](super::compile) is what made private. Two preparations of one program
+    /// therefore differ across ~1.5 MB of `.debug_*` and are byte-identical everywhere else. Every
+    /// way round it was measured and rejected: `-file-prefix-map` rewrites the paths and not the
+    /// hashes, `-gline-tables-only` still carries them, `-Xcc -Xclang -fdisable-module-hash` still
+    /// leaves the PCH name, and a shared warm module cache still hashes the working directory. So
+    /// the sections are set aside by a **section-framing walk** — every standard section and every
+    /// custom section that is not `.debug_*` is compared whole, the `name` section included, so the
+    /// marker the gate plants and every byte of code, data, import and export are untouched.
+    ///
+    /// And `swiftc` stamps every object with a **random 16-byte module hash** that no flag
+    /// disables. It is masked by an anchor **derived** from compiling one program twice, with
+    /// assertions that fail loudly if a second source of variation ever appears beside it — a
+    /// projection that quietly widened would be one that could hide a real breach.
+    #[cfg(test)]
+    fn isolation_stable(&self, component: Vec<u8>) -> Vec<u8> {
+        substrate::without_stamp(substrate::without_debug_sections(&component))
+    }
+
+    #[cfg(test)]
+    fn isolation_module(&self, name: &str) -> String {
+        format!(
+            "public func marker() -> String {{
+    {}
+}}
+",
+            serde_json::Value::String(name.to_string())
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The syntax this arm writes
+// ---------------------------------------------------------------------------------------------
+
+/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
+///
+/// camelCase because that is what Swift spells a name in and what this SDK spells every bound
+/// function in, so a program reaching `lib.csvTools.parse(…)` reads like the rest of its own scope.
+/// Any separator — `-`, `.`, or anything a name should not have had — capitalises the letter after
+/// it and disappears, a name that is nothing but separators becomes `module`, and a leading digit is
+/// prefixed.
+///
+/// It has to be a valid Swift **identifier** for the same reason the Rust arm's does: on this arm the
+/// key names a nested type the compiler resolves (`lib.<key>`) and the file the module is compiled
+/// under, not a string looked up at run time, so a key Swift could not parse would be a program that
+/// does not compile.
+///
+/// Deliberately ASCII-only, though Swift identifiers may be Unicode — including emoji — for the
+/// reason every other arm gives: a name a model has to reproduce exactly is one that should have no
+/// characters it could get wrong.
+pub(super) fn binding_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut separated = false;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            match separated && !out.is_empty() {
+                true => out.extend(ch.to_uppercase()),
+                false => out.push(ch),
+            }
+            separated = false;
+        } else {
+            separated = true;
+        }
+    }
+    if out.is_empty() {
+        return "module".to_string();
+    }
+    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
+        out.insert(0, '_');
+    }
+    out
+}
+
+/// `try view.openFile("src/main.swift")`, or the same call with `offset:` and `limit:` for a window
+/// — with `view.openFile` already spelled by the language that asked.
+///
+/// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
+/// into the agent's own transcript and read by the model as an example of its own output, so anything
+/// clever in it is a style the run did not intend to teach. The one thing it *does* teach is the
+/// `try`, which is not decoration — every call on this surface throws, and a call written without it
+/// does not compile.
+///
+/// The window is passed as the call's own two optional arguments, **by label**, which is what a Swift
+/// author writes and what this SDK offers instead of an options record. The whole-file form passes
+/// neither, because they have default values and a Swift author does not pass a default.
+///
+/// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
+/// statement that would not parse: Swift's string literals accept exactly the escapes JSON's do.
+pub(super) fn open_file_statement(
+    open_file: &str,
+    path: &str,
+    window: Option<FileWindow>,
+) -> String {
+    let path = serde_json::Value::String(path.to_string());
+    match window {
+        Some(window) => format!(
+            "try {open_file}({path}, offset: {}, limit: {})",
+            window.offset, window.limit
+        ),
+        None => format!("try {open_file}({path})"),
+    }
+}
+
+/// An array of names and a `for` over it, each iteration opening one documentation view.
+///
+/// An array and a loop rather than one statement per name because the list is as long as the family —
+/// eleven calls written out would be a program a model reads as a style to copy — and `let` rather
+/// than `var` because nothing assigns to it, which is the first thing Swift's own compiler would say
+/// about the alternative.
+///
+/// The empty case carries a type annotation, because an empty array literal has no element type to
+/// infer and `[]` alone is *empty collection literal requires an explicit type*.
+pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) -> String {
+    let entries: Vec<String> = names
+        .iter()
+        .map(|name| format!("    {}", serde_json::Value::String((*name).to_string())))
+        .collect();
+    let listed = match entries.is_empty() {
+        true => "let functions: [String] = []\n".to_string(),
+        false => format!("let functions = [\n{},\n]\n", entries.join(",\n")),
+    };
+    format!("{listed}for name in functions {{\n    try {open_docs_view}(name)\n}}\n")
+}
+
+#[cfg(test)]
+#[path = "swift.test.rs"]
+mod tests;
 
 /// **The Swift arm's execution substrate**, driven end to end through gg's real compiler, linker,
 /// membrane and store.
@@ -148,6 +446,17 @@ pub(super) mod compile;
 #[cfg(test)]
 #[path = "swift.substrate.test.rs"]
 mod substrate;
+
+/// **Every Swift example a model is shown, put through `swiftc`** — the prompt's, the notice's and
+/// the catalogue's.
+///
+/// A separate file from [`surface`] because it asks a question no other kind of gate can: not
+/// whether the call gg quotes exists, which [`crate::prompts`] already gates in every language, but
+/// whether the code around it builds. On a compiled arm an example that does not is a whole turn
+/// spent on gg's own prose.
+#[cfg(test)]
+#[path = "swift.examples.test.rs"]
+mod examples;
 
 /// **The Swift arm's model-facing surface** — the hand-written SDK, the catalogue reflected out of
 /// its own symbol graph, and the libraries this arm says a program may reach.

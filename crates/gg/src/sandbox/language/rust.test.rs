@@ -35,14 +35,20 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
 fn this_arm_commits_no_component_and_compiles_one_instead() {
     assert!(rust().guest_component().is_none());
     assert!(rust().compiles_component());
+    // Every arm but the two of this shape commits one. Swift is the second, and it is named here
+    // rather than derived so that a third arriving is a failing test with a sentence in it.
     for language in crate::sandbox::all_languages() {
-        if language.id() != GgProgramLanguage::Rust {
-            assert!(
-                language.guest_component().is_some(),
-                "{} answered None, which is a claim this test would have to be rewritten for",
-                language.display_name()
-            );
+        if matches!(
+            language.id(),
+            GgProgramLanguage::Rust | GgProgramLanguage::Swift
+        ) {
+            continue;
         }
+        assert!(
+            language.guest_component().is_some(),
+            "{} answered None, which is a claim this test would have to be rewritten for",
+            language.display_name()
+        );
     }
 }
 

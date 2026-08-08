@@ -26,8 +26,13 @@
 //! **verbatim**, so every diagnostic and every located trap carries the model's own line; that a
 //! Swift runtime failure — which cannot be caught by anything inside the guest — still reaches the
 //! model with what it was and where; that what a program writes to stderr on purpose reaches it
-//! too; the two bands `swiftc` produces between them; and that all of it stays isolated at
-//! sixteen-way concurrency.
+//! too; that a **code module** compiles into the same artifact and is reached at `lib.<key>` with
+//! its author's argument labels; that a `Task` is scheduled and never run, which is the measurement
+//! this arm's healing dialect rests on; and the two bands `swiftc` produces between them.
+//!
+//! Isolation is **not** here any more. The seam's own gate drives this arm's program and module
+//! steps sixteen ways along with every other language's, and what is left here is the derivation it
+//! leans on: the projection that sets this arm's debug sections and module stamp aside.
 //!
 //! What is **not** here is the surface: which functions the SDK offers, on which objects, spelled
 //! how, and whether the catalogue a model reads describes them. That is
@@ -52,18 +57,17 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::{self, compile_program};
 use crate::sandbox::fake::{CallLog, FakeToolApi, canned_outcome};
-use crate::sandbox::language::isolation::{Preparation, breaches};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
 use crate::sandbox::outcome::{SandboxError, SandboxOutcome};
 use crate::sandbox::{
-    PrepareContext, PrepareFailure, ProgramScope, SandboxLimits, bounded_store, engine,
+    CodeModule, PrepareContext, PrepareFailure, ProgramScope, SandboxLimits, bounded_store, engine,
     keep_reported_error, linker, reclaim,
 };
 use crate::tools::ToolOutcome;
 
 /// Compile `source` with the production prepare step, or panic with what the toolchain said.
 pub(super) fn prepare(source: &str) -> Vec<u8> {
-    match compile_program(source, &PrepareContext::new()) {
+    match compile_program(source, &[], &PrepareContext::new()) {
         Ok(prepared) => {
             assert!(
                 prepared.source.is_empty(),
@@ -85,9 +89,10 @@ pub(super) fn prepare(source: &str) -> Vec<u8> {
 /// itself. Everything else is the production path, including
 /// [`keep_reported_error`](crate::sandbox::keep_reported_error).
 ///
-/// The [membrane state](MembraneState) is built with TypeScript's arm, because this one has no wire
-/// id yet. Nothing these tests assert depends on it: the language decides how a *refused* call's
-/// name is spelled back at the model, and no program here is refused one.
+/// The [membrane state](MembraneState) is built with TypeScript's arm rather than this one's, which
+/// is what makes it a harness for an *artifact* rather than a second copy of the turn path. Nothing
+/// these tests assert depends on which: the language decides how a *refused* call's name is spelled
+/// back at the model, and no program here is refused one.
 pub(super) fn evaluate(
     component: &[u8],
     enabled: &[String],
@@ -133,42 +138,6 @@ pub(super) fn evaluate(
     let returned = keep_reported_error(returned, &store);
     let (outcome, _api) = reclaim(store, returned, None, None, None);
     (outcome, log)
-}
-
-/// What a compiled artifact answers `bound-tools` with.
-///
-/// A near-copy of [`component_bound_tools`](crate::sandbox::component_bound_tools) for the one
-/// reason [`evaluate`] is a near-copy of `run_program`: that function takes a **registered**
-/// language, and this arm has no wire id yet. The membrane state is built with TypeScript's arm on
-/// the same terms — a component reports what it *can* bind, which is a fact about the artifact and
-/// not about the store it is instantiated in.
-pub(super) fn artifact_bound_tools(component: &[u8]) -> Vec<String> {
-    let limits = SandboxLimits::default();
-    let log = CallLog::default();
-    let linker = linker::<FakeToolApi>().expect("the production linker builds");
-    let compiled =
-        engine::compile_bytes(component).expect("a freshly compiled Swift program is a component");
-    let scope = ProgramScope {
-        enabled: &[],
-        modules: &[],
-        ending: RunEnding::None,
-        library: false,
-    };
-    let mut store = bounded_store(
-        MembraneState::new(
-            FakeToolApi::new(&log),
-            crate::sandbox::language(GgProgramLanguage::TypeScript),
-            scope,
-            limits,
-            None,
-        ),
-        limits,
-    );
-    let bound = Sandbox::instantiate(&mut store, &compiled, &linker)
-        .expect("a compiled Swift program instantiates against the real membrane");
-    bound
-        .call_bound_tools(&mut store)
-        .expect("a compiled Swift program reports the tools its SDK binds")
 }
 
 /// Compile and run one Swift program with no gg tool offered — the shape most cases here want.
@@ -436,6 +405,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // one invocation.
     let syntax = compile_program(
         "let x = (1 + 2\ngg.log(\"\\(x)\")\n",
+        &[],
         &PrepareContext::new(),
     );
     match syntax {
@@ -453,7 +423,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
         other => panic!("an unclosed parenthesis is a program failure, not {other:?}"),
     }
 
-    let typed = compile_program("let total: Int = \"twelve\"\n", &PrepareContext::new());
+    let typed = compile_program("let total: Int = \"twelve\"\n", &[], &PrepareContext::new());
     match typed {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
@@ -468,7 +438,7 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
     // A compiler that is not there at all. Never a diagnostic, because nothing was decided about
     // the program — and the message names what an operator can fix.
     let missing = temp_env(compile::SWIFT_HOME_ENV, "/nonexistent/gg-swift", || {
-        compile_program("gg.log(\"hi\")\n", &PrepareContext::new())
+        compile_program("gg.log(\"hi\")\n", &[], &PrepareContext::new())
     });
     match missing {
         Err(PrepareFailure::Toolchain(message)) => {
@@ -492,7 +462,7 @@ fn a_swift_program_is_compiled_verbatim() {
     // out, and gg would have to subtract it everywhere — so this asserts the offset is zero by
     // making the error's line arbitrary rather than first.
     let program = "let a = 1\nlet b = 2\nlet c = 3\nlet d = 4\nlet e: Int = missingName\n";
-    match compile_program(program, &PrepareContext::new()) {
+    match compile_program(program, &[], &PrepareContext::new()) {
         Err(PrepareFailure::Program(error)) => {
             let rendered = error.to_string();
             assert!(
@@ -523,6 +493,82 @@ gg.log(Greeter().shout())
 }
 
 #[test]
+fn a_code_module_is_reachable_at_lib_with_its_argument_labels_intact() {
+    // The claim the module shape was chosen for, put through the real compiler: a skill's code is
+    // reached at `lib.<key>`, and the call site writes the labels its author declared. A shape that
+    // bound each export as a value would compile this program's `parse("a,b", delimiter: ",")` as
+    // an error about an extra argument label, which is exactly the quiet degradation being avoided.
+    let module = CodeModule {
+        name: "csvTools".to_string(),
+        source: "import Foundation
+
+public struct Row {
+    public let cells: [String]
+}
+
+public func parse(_ text: String, delimiter: Character = \",\") -> Row {
+    Row(cells: text.split(separator: delimiter).map(String.init))
+}
+"
+        .to_string(),
+    };
+    let component = match compile_program(
+        "gg.log(lib.csvTools.parse(\"a,b\", delimiter: \",\").cells.joined(separator: \"|\"))\n",
+        std::slice::from_ref(&module),
+        &PrepareContext::new(),
+    ) {
+        Ok(prepared) => prepared
+            .component
+            .expect("a compiled arm hands back the component it built"),
+        Err(failure) => panic!("a program that reads a code module did not compile: {failure}"),
+    };
+    let outcome = evaluate(&component, &[], RunEnding::None, false, canned_outcome).0;
+    assert_eq!(logs(&outcome), ["a|b"]);
+}
+
+#[test]
+fn a_code_module_is_checked_on_its_own_and_reports_its_names() {
+    // The first of a module's two compiles, which is what buys the LOCATION: without it a module
+    // that does not build would take down every program the agent wrote from then on, with the
+    // diagnostic landing against a turn's own program in a file the model never saw.
+    let prepared = compile::compile_module(
+        "public func parse(_ text: String) -> [String] {\n    text.split(separator: \",\").map(String.init)\n}\n\nprivate func unused() {}\n",
+        &PrepareContext::new(),
+    )
+    .expect("that module checks");
+    assert_eq!(prepared.exports, ["parse"]);
+
+    match compile::compile_module(
+        "public func parse() -> Int {\n    \"twelve\"\n}\n",
+        &PrepareContext::new(),
+    ) {
+        Err(PrepareFailure::Program(error)) => {
+            let rendered = error.to_string();
+            assert!(
+                rendered.contains("module_module.swift:2:"),
+                "a module's diagnostic is at the author's own line: {rendered}"
+            );
+        }
+        other => panic!("a module that does not type-check is a program failure, not {other:?}"),
+    }
+}
+
+#[test]
+fn a_task_is_scheduled_and_never_run_which_is_why_the_dialect_unwraps_one() {
+    // The measurement behind this arm's concurrency wrapper. `Task { … }` compiles and the program
+    // is accepted; what does NOT happen is the body. A turn like this is reported as a clean run
+    // over a program that did nothing, which round 1 established is the one failure a model cannot
+    // recover from — so the healing dialect takes the wrapper off, and this is the evidence that it
+    // should.
+    let inside = run("Task {\n    gg.log(\"inside\")\n}\ngg.log(\"after\")\n");
+    assert_eq!(
+        logs(&inside),
+        ["after"],
+        "a Task's body ran, which would make this arm's `unwrap-async` a repair it must not make"
+    );
+}
+
+#[test]
 fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
     // The compile is this arm's dominant per-turn cost and the number a cross-language study is
     // for, so it is measured here rather than assumed — on both paths, because a program the
@@ -536,7 +582,7 @@ fn what_compiling_a_swift_program_cost_is_a_reading_the_seam_can_take() {
     let accepted = started.elapsed();
 
     let started = Instant::now();
-    let rejected = compile_program("let x: Int = \"no\"\n", &PrepareContext::new());
+    let rejected = compile_program("let x: Int = \"no\"\n", &[], &PrepareContext::new());
     let refused = started.elapsed();
 
     assert!(rejected.is_err(), "that program does not type-check");
@@ -616,7 +662,7 @@ fn what_a_compiled_swift_program_weighs_is_the_arms_dominant_per_turn_cost() {
 /// than a nested module, and recursing into one costs nothing: the magic-number check below hands
 /// back anything that is not a module unchanged. The result is not a valid module and does not need
 /// to be — it is a projection, and both sides of every comparison go through it.
-fn without_debug_sections(artifact: &[u8]) -> Vec<u8> {
+pub(super) fn without_debug_sections(artifact: &[u8]) -> Vec<u8> {
     /// The section id a component gives an embedded core module.
     const CORE_MODULE_SECTION: u8 = 1;
     /// The section id of a custom section, in both modules and components.
@@ -677,7 +723,7 @@ fn without_debug_sections(artifact: &[u8]) -> Vec<u8> {
 
 /// Compile `source` and hand back the component's bytes, or what the toolchain said.
 fn artifact(source: &str, context: &PrepareContext) -> Result<Vec<u8>, String> {
-    compile_program(source, context)
+    compile_program(source, &[], context)
         .map_err(|failure| failure.to_string())
         .map(|prepared| {
             prepared
@@ -692,8 +738,9 @@ fn artifact(source: &str, context: &PrepareContext) -> Result<Vec<u8>, String> {
 /// drop it — which on this arm is not a precaution: the link runs `--gc-sections`, and a marker in
 /// an unused constant would vanish from every artifact and make the gate assert nothing.
 ///
-/// Every marker the gate mints is the same length, so every artifact below has the same layout,
-/// which is what makes [`STAMP`] a single range rather than one per input.
+/// It is this arm's own smallest subject, used to *derive* the [stamp](STAMP)'s anchor rather than
+/// to drive the gate — the seam drives that with each language's own generated documentation
+/// program, and the anchor has to hold for both.
 fn isolation_source(marker: &str) -> String {
     format!("gg.log(\"{marker}\")\n")
 }
@@ -719,17 +766,24 @@ fn isolation_source(marker: &str) -> String {
 /// * and if a future compiler moved the stamp, the mask would cover the wrong bytes and the gate
 ///   would report `Unstable` — a false alarm, never a false pass.
 ///
-/// It is recorded as the bytes that come **before** it rather than as an offset, because an offset
-/// is not stable across the gate's own inputs: the layout can shift, and an anchor moves with it
-/// where an offset does not.
+/// It is recorded as the bytes that come **after** it rather than as an offset, and the choice is a
+/// measurement rather than a preference. An offset is not stable across the gate's inputs at all —
+/// the two subjects it drives differ in length, so the stamp sits at a different place in each — and
+/// neither are the bytes *before* it, which are the tail of the data segment the program's own
+/// constants are laid out in. The bytes **after** it are: the stamp is the first of the module
+/// hashes `swiftc` lays out adjacently in one data segment, and the ones behind it belong to
+/// **prebuilt** modules — this arm's SDK, compiled once and committed — so they are the same bytes
+/// in every artifact this arm produces. That is exactly what an anchor has to be, and the mask fails
+/// loudly rather than quietly if it ever stops being one.
 static STAMP: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
 
 /// How many bytes Swift's per-object module hash is.
 const MODULE_HASH_BYTES: usize = 16;
 
-/// How much of what precedes the stamp is kept as its anchor. Long enough to occur exactly once in
-/// a 7 MB artifact, short enough to be a run of bytes rather than a fingerprint of the program.
-const ANCHOR_BYTES: usize = 48;
+/// How much of what follows the stamp is kept as its anchor. Long enough to occur exactly once in a
+/// 7 MB artifact, and short enough to stay inside the run of prebuilt module hashes that makes it
+/// program-independent — two of them, which is what 32 bytes is.
+const ANCHOR_BYTES: usize = 2 * MODULE_HASH_BYTES;
 
 /// Discover [`STAMP`] by compiling one of the gate's own programs twice.
 ///
@@ -780,10 +834,10 @@ fn stamp() -> &'static [u8] {
             MODULE_HASH_BYTES,
         );
         assert!(
-            start >= ANCHOR_BYTES,
-            "the stamp is at offset {start}, with no room for an anchor before it"
+            end + ANCHOR_BYTES <= first.len(),
+            "the stamp ends at {end}, with no room for an anchor behind it"
         );
-        first[start - ANCHOR_BYTES..start].to_vec()
+        first[end..end + ANCHOR_BYTES].to_vec()
     })
 }
 
@@ -792,7 +846,7 @@ fn stamp() -> &'static [u8] {
 /// Panics rather than skipping when the anchor is absent or ambiguous: a mask that silently did
 /// nothing would leave the gate failing over the stamp, and one that masked the wrong place would
 /// leave it failing over whatever it hid. Both are loud, and neither can turn a real breach green.
-fn without_stamp(mut bytes: Vec<u8>) -> Vec<u8> {
+pub(super) fn without_stamp(mut bytes: Vec<u8>) -> Vec<u8> {
     let anchor = stamp();
     let found: Vec<usize> = bytes
         .windows(anchor.len())
@@ -807,73 +861,68 @@ fn without_stamp(mut bytes: Vec<u8>) -> Vec<u8> {
          artifact; it must occur exactly once",
         found.len()
     );
-    let start = found[0] + anchor.len();
+    let start = found[0]
+        .checked_sub(MODULE_HASH_BYTES)
+        .expect("the anchor stands behind the stamp it anchors");
     for byte in bytes.iter_mut().skip(start).take(MODULE_HASH_BYTES) {
         *byte = 0;
     }
     bytes
 }
 
-/// The production prepare step, as the [isolation gate](crate::sandbox::language::isolation) drives
-/// it.
-struct SwiftCompile;
-
-impl Preparation for SwiftCompile {
-    fn describe(&self) -> String {
-        "Swift program".to_string()
-    }
-
-    fn source(&self, marker: &str) -> String {
-        isolation_source(marker)
-    }
-
-    /// The artifact, byte for byte, as text, with the compiler's own [stamp](STAMP) zeroed.
-    ///
-    /// Each byte becomes the `char` of the same value rather than going through
-    /// [`String::from_utf8_lossy`], which would replace every invalid sequence with one replacement
-    /// character and make two different wasm modules compare equal. This mapping is lossless *and*
-    /// leaves an ASCII marker in the data section findable as an ordinary substring.
-    fn prepare(&self, source: &str, context: &PrepareContext) -> Result<String, String> {
-        artifact(source, context).map(|bytes| {
-            without_stamp(without_debug_sections(&bytes))
-                .into_iter()
-                .map(char::from)
-                .collect()
-        })
-    }
-}
-
 #[test]
-fn the_compile_is_isolated_at_sixteen_way_concurrency() {
-    // The gate that holds every language to "what a preparation returns is a function of its input
-    // alone", at the concurrency `limits.maxParallel` really produces. This arm compiles into its
-    // own workspace and only ever READS the shared guest, so it should pass without having done
-    // anything special — which is the property being asserted, not an accident being tolerated.
+fn the_stable_projection_of_an_artifact_is_derived_rather_than_assumed() {
+    // The seam's [isolation gate](crate::sandbox::language::isolation) drives this arm's program and
+    // module steps sixteen ways along with every other language's, and it compares two preparations
+    // of one input through this arm's own
+    // [stable projection](crate::sandbox::ProgramLanguage::isolation_stable). What that projection
+    // sets aside is not assumed: this is where it is *derived*, and where the derivation is held to
+    // finding exactly what it claims.
     //
-    // It is worth naming what would have failed here without the seam. `swiftc` writes its clang
-    // module cache under the directory it derives from `HOME`, and its intermediates under
-    // `TMPDIR`; sixteen preparations sharing either is exactly the shape of the measured `purs`
-    // corruption, and this arm never asked for the redirection that prevents it.
-    //
-    // Two things about this arm's artifacts are not a function of the program, and both are named
-    // rather than assumed away: the debug sections, which record the compilation ENVIRONMENT (see
-    // [`without_debug_sections`]), and [`STAMP`], the compiler's own per-invocation module hash.
-    // Everything else — every byte of code, data, import, export and name — is compared whole.
+    // It is worth naming what would have failed the gate without the seam, rather than without this.
+    // `swiftc` writes its clang module cache under the directory it derives from `HOME`, and its
+    // intermediates under `TMPDIR`; sixteen preparations sharing either is exactly the shape of the
+    // measured `purs` corruption, and this arm never asked for the redirection that prevents it.
     super::compile::warm();
     assert_eq!(
         stamp().len(),
         ANCHOR_BYTES,
-        "the compiler's own stamp was not located, so the gate below would be failing over it"
+        "the compiler's own stamp was not located, so the gate would be failing over it"
     );
-    let breaches = breaches(&SwiftCompile);
+
+    // Two preparations of one program, in two workspaces, exactly as the gate drives them: the raw
+    // artifacts differ, and the projection of them does not. That is the whole claim in two lines,
+    // and the first assertion is what stops the second from being satisfied by a projection that
+    // simply returned a constant.
+    let source = isolation_source("gg-isolation-001-marker");
+    let language = crate::sandbox::language(GgProgramLanguage::Swift);
+    let first = artifact(&source, &PrepareContext::new()).expect("the subject compiles");
+    let second = artifact(&source, &PrepareContext::new()).expect("the subject compiles");
+    assert_ne!(
+        first, second,
+        "two preparations of one Swift program produced byte-identical artifacts, so the \
+         projection below is masking something that is no longer there"
+    );
+    assert_eq!(
+        language.isolation_stable(first.clone()),
+        language.isolation_stable(second),
+        "the projection does not make two preparations of one program comparable"
+    );
+
+    // And what it keeps: the marker the gate plants, and everything that is the program. A
+    // projection that dropped the data section would pass the check above and assert nothing.
+    let projected = language.isolation_stable(first.clone());
+    let marker: &[u8] = b"gg-isolation-001-marker";
     assert!(
-        breaches.is_empty(),
-        "the Swift compile is not isolated per preparation:\n{}",
-        breaches
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
+        projected
+            .windows(marker.len())
+            .any(|window| window == marker),
+        "the projection dropped the marker the gate searches for"
+    );
+    assert!(
+        projected.len() * 2 > first.len(),
+        "the projection dropped more than half the artifact, which is more than its debug \
+         information"
     );
 }
 

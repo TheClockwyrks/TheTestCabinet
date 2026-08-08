@@ -93,6 +93,12 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # moves to 300 s. The headroom, not the timeout, is still the thing to watch — and the arithmetic to
 # watch it with is now measured rather than assumed: an eighth arm nearly trebled the figure a
 # seventh left, because these compiles contend rather than queue.
+#
+# A ninth arm — Swift, whose 32 builds are the dearest here at ~0.3 s of `swiftc` apiece — measured
+# at 86.1 s run on its own, against the eighth arm's 108.3 s for the same shape of run. That is not
+# a saving from Swift; it is the spread these readings have, and it is why the ceiling is set from
+# the worst of them rather than the latest. What the reading does say is that the arm this override
+# was raised for did not need raising again.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
 slow-timeout = { period = "300s", terminate-after = 3 }
@@ -177,14 +183,19 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # for the same reason: each is its own process, and the first thing it does is start a real
 # compiler. This arm is dearer per program than any other — ~0.3 s for `swiftc` and then **~1.3 s**
 # for `Component::new`, because it is the only arm whose artifact is a 7 MB statically linked Swift
-# standard library the engine has to compile on every turn — and its isolation gate pays that
-# thirty-two times over.
+# standard library the engine has to compile on every turn.
 #
-# Measured on this repository's dev container, this group run on its own: 53 s for all seventeen
-# tests with the isolation gate at 53 s and the library-set gate at 32 s, against 74 s for the nine
-# substrate tests alone when the rest of the package was also running. That is the same spread every
-# other group here records, and the same remedy: bounded from the work rather than from the default,
-# with room for a CI runner with a quarter of the cores.
+# Its own hand-pointed copy of the isolation gate is gone, deleted at registration in favour of the
+# seam's exactly as the Rust arm's was — so the thirty-two builds it used to pay for here are paid
+# in the sweep above instead, which is where the ceiling for them now has to be. What is left in
+# this group is the derivation the seam's gate leans on: the projection that sets this arm's debug
+# sections and module stamp aside, which compiles the same program four times to establish itself.
+#
+# Measured on this repository's dev container, run on its own: 32.6 s for the whole of this arm's
+# seventy-two tests, the dearest of them at 32.5 s — against 74 s for the nine substrate tests alone
+# when the rest of the package was also running. That is the same spread every other group here
+# records, and the same remedy: bounded from the work rather than from the default, with room for a
+# CI runner with a quarter of the cores.
 #
 # The `surface` half is in the same group because it costs the same thing for the same reason: every
 # one of its programs is a real `swiftc` and a real `Component::new`, and the one that imports the

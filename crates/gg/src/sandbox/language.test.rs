@@ -615,14 +615,29 @@ fn no_language_serves_another_languages_artifacts() {
     for (index, mine) in registered.iter().enumerate() {
         for theirs in &registered[index + 1..] {
             let why = shared_artifacts(mine.id(), theirs.id());
+            // Two arms that each compile their own component both answer `None` here, and that is
+            // the **absence** of an artifact rather than a shared one: neither has bytes for the
+            // other to be serving, and every program of either is its own component. Rust and Swift
+            // are that pair. Comparing their answers would fail the rule by satisfying its letter.
+            let both_compile = mine.compiles_component() && theirs.compiles_component();
             match why {
-                Some(why) => assert_eq!(
-                    mine.guest_component(),
-                    theirs.guest_component(),
-                    "{} and {} are declared to share a component ({why}), and do not",
-                    mine.id(),
-                    theirs.id(),
-                ),
+                Some(why) => {
+                    assert!(
+                        !both_compile,
+                        "{} and {} are declared to share a component ({why}) and neither commits \
+                         one, so the exemption is covering for something else",
+                        mine.id(),
+                        theirs.id(),
+                    );
+                    assert_eq!(
+                        mine.guest_component(),
+                        theirs.guest_component(),
+                        "{} and {} are declared to share a component ({why}), and do not",
+                        mine.id(),
+                        theirs.id(),
+                    );
+                }
+                None if both_compile => {}
                 None => assert_ne!(
                     mine.guest_component(),
                     theirs.guest_component(),

@@ -415,7 +415,7 @@ impl Preparation for LanguagePreparation {
             Half::Program => self
                 .language
                 .prepare_program(source, &[], context)
-                .map(artifact),
+                .map(|prepared| artifact(self.language, prepared)),
             Half::Module => self
                 .language
                 .prepare_module(source, context)
@@ -439,9 +439,20 @@ impl Preparation for LanguagePreparation {
 /// a sequence would compare *equal* and the stability check would pass over a real breach. This
 /// mapping is lossless, and it still leaves an ASCII marker in the data section findable as an
 /// ordinary substring.
-fn artifact(prepared: super::PreparedProgram) -> String {
+///
+/// They go through the language's own
+/// [stable projection](ProgramLanguage::isolation_stable) first, which is identity for every arm
+/// but one and is what lets an arm whose compiler records the *environment* in its artifact be
+/// compared on the part of it that is the program. An interpreted arm's source is not projected at
+/// all: there is no artifact to describe, and a projection of source would be a language editing
+/// the thing under test.
+fn artifact(language: &'static dyn ProgramLanguage, prepared: super::PreparedProgram) -> String {
     match prepared.component {
-        Some(component) => component.into_iter().map(char::from).collect(),
+        Some(component) => language
+            .isolation_stable(component)
+            .into_iter()
+            .map(char::from)
+            .collect(),
         None => prepared.source,
     }
 }

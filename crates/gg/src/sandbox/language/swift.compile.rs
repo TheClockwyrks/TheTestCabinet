@@ -9,8 +9,12 @@
 //! membrane is not source at all but the artifact gg's engine instantiates.
 //!
 //! It is the second arm of that shape, after [Rust](super::rust), and it inherits the seam Rust
-//! grew: [`PreparedProgram::component`] carries the bytes, `guest_component` will answer `None`,
-//! and `engine::program_component` is where the two shapes meet.
+//! grew: [`PreparedProgram::component`] carries the bytes, `guest_component` answers `None`, and
+//! `engine::program_component` is where the two shapes meet.
+//!
+//! Everything a **code module** adds to that is a further file of the same compile: see
+//! [`source`](super::source) for the namespace its declarations are moved into, and
+//! [`compile_module`] for the `-typecheck` that reads one on its own when it is loaded.
 //!
 //! # What a Swift program is, here: the file itself
 //!
@@ -147,9 +151,11 @@ use std::time::Duration;
 use serde::Deserialize;
 
 use crate::sandbox::{
-    CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedProgram, Workspace,
-    place_tree, shared_toolchain_dir,
+    CodeModule, CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedModule,
+    PreparedProgram, Workspace, place_tree, shared_toolchain_dir,
 };
+
+use super::source::{LIB_FILE, MODULE_FILE_PREFIX};
 
 /// Everything a compile needs on disk that is not the model's own file: the bridging header, the
 /// generated WIT header, the compiled bindings object, the component-type object, and gg's shell.
@@ -366,17 +372,23 @@ pub(super) fn warm() {
 /// nothing left for a guest to evaluate, because the guest *is* what this returned.
 pub(super) fn compile_program(
     source: &str,
+    modules: &[CodeModule],
     context: &PrepareContext,
 ) -> Result<PreparedProgram, PrepareFailure> {
     Ok(PreparedProgram {
         source: String::new(),
         unreachable: None,
-        component: Some(compile(source, context)?),
+        component: Some(compile(source, modules, context)?),
     })
 }
 
-/// Compile one model program into a component, or say why it could not be.
-fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFailure> {
+/// Compile one model program, and the code modules in its scope, into the component that evaluates
+/// it — or say why it could not be.
+fn compile(
+    program: &str,
+    modules: &[CodeModule],
+    context: &PrepareContext,
+) -> Result<Vec<u8>, PrepareFailure> {
     let guest = guest().map_err(PrepareFailure::Toolchain)?;
     let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
     let home = swift_home().map_err(PrepareFailure::Toolchain)?;
@@ -387,9 +399,26 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
     workspace
         .write(PROGRAM_FILE, program)
         .map_err(PrepareFailure::Toolchain)?;
+    let mut sources = vec![PROGRAM_FILE.to_string()];
+    for module in modules {
+        let file = super::source::module_file(&module.name);
+        workspace
+            .write(
+                &file,
+                &super::source::namespaced(&module.source, &module.name)?,
+            )
+            .map_err(PrepareFailure::Toolchain)?;
+        sources.push(file);
+    }
+    let library = library_file(workspace, modules.iter().map(|module| &module.name))?;
 
     let artifact = workspace.output().join(ARTIFACT_FILE);
-    let report = invoke_swiftc(&artifact, guest, libraries, &home, workspace, context)
+    let build = Build {
+        sources: &sources,
+        library: library.as_deref(),
+        artifact: Some(&artifact),
+    };
+    let report = invoke_swiftc(build, guest, libraries, &home, workspace, context)
         .map_err(PrepareFailure::Toolchain)?;
     classify(&report)?;
 
@@ -401,6 +430,90 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
         ))
     })?;
     componentize(&module).map_err(PrepareFailure::Toolchain)
+}
+
+/// Prepare a **code module** — the code half of a skill or a memory — by compiling it the way a
+/// program will, and read the names its namespace offers.
+///
+/// What comes back is **source**, which is what a linked language's module has to be: it is an input
+/// to the [program compile](compile_program) that binds it, not something a guest could load on its
+/// own. It is the author's own bytes rather than the namespaced form, because the namespace is
+/// written under the key the *program* knows and a module's own preparation is handed none.
+///
+/// The check is a `-typecheck`, which is the whole of what this step can decide and about a third of
+/// what a full build costs: there is nothing to optimise and nothing to link for a module that is
+/// going to be compiled again as part of a program. It compiles the module in exactly the arrangement
+/// a program will — gg's shell, the `lib` namespace, and an empty entry file so the shell's call into
+/// the program resolves — so a module that checks here is a module that will not fail for its own
+/// reasons later.
+pub(super) fn compile_module(
+    source: &str,
+    context: &PrepareContext,
+) -> Result<PreparedModule, PrepareFailure> {
+    let guest = guest().map_err(PrepareFailure::Toolchain)?;
+    let libraries = libraries().map_err(PrepareFailure::Toolchain)?;
+    let home = swift_home().map_err(PrepareFailure::Toolchain)?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+
+    let (module, declarations) = super::source::check_files(source)?;
+    let file = super::source::module_file(super::source::CHECK_KEY);
+    workspace
+        .write(PROGRAM_FILE, "")
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write(&file, &module)
+        .map_err(PrepareFailure::Toolchain)?;
+    workspace
+        .write(LIB_FILE, &declarations)
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let sources = vec![PROGRAM_FILE.to_string(), file];
+    let build = Build {
+        sources: &sources,
+        library: Some(&workspace.work().join(LIB_FILE)),
+        artifact: None,
+    };
+    let report = invoke_swiftc(build, guest, libraries, &home, workspace, context)
+        .map_err(PrepareFailure::Toolchain)?;
+    classify(&report)?;
+
+    Ok(PreparedModule {
+        source: source.to_string(),
+        exports: super::source::exports(source),
+    })
+}
+
+/// Write the `lib` namespace declarations beside the program, when there is anything to declare.
+///
+/// `None` for an agent that has loaded nothing, so an ordinary program's command line is exactly what
+/// it was before code modules existed — which is what keeps the artifact of a program with no modules
+/// byte for byte what it was.
+fn library_file(
+    workspace: &Workspace,
+    keys: impl Iterator<Item = impl AsRef<str>>,
+) -> Result<Option<PathBuf>, PrepareFailure> {
+    let declarations = super::source::lib_declarations(keys);
+    if declarations.is_empty() {
+        return Ok(None);
+    }
+    workspace
+        .write(LIB_FILE, &declarations)
+        .map_err(PrepareFailure::Toolchain)?;
+    Ok(Some(workspace.work().join(LIB_FILE)))
+}
+
+/// What one `swiftc` is asked to read and, when it is a program's, to write.
+struct Build<'a> {
+    /// The files named **relatively**, which is what puts a diagnostic in them in the author's own
+    /// coordinates and what tells one from a diagnostic in gg's own inputs: the model's `main.swift`
+    /// and one file per code module in scope.
+    sources: &'a [String],
+    /// gg's generated `lib` namespace, named **absolutely** — because a diagnostic in it is gg's
+    /// arrangement failing rather than anyone's program, and the classification reads exactly that
+    /// distinction off the path.
+    library: Option<&'a Path>,
+    /// Where the linked core module goes, or `None` for a `-typecheck` that produces nothing.
+    artifact: Option<&'a Path>,
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -417,7 +530,7 @@ fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFa
 /// rather than a temporary path nobody should be shown, and a diagnostic in one of gg's own files
 /// is unmistakable because it carries one.
 fn invoke_swiftc(
-    artifact: &Path,
+    build: Build<'_>,
     guest: &Guest,
     libraries: &Path,
     home: &Path,
@@ -442,14 +555,10 @@ fn invoke_swiftc(
         // A component is one self-contained module; there is nothing inside it to dynamically link
         // against, and the SDK's own toolset says so too.
         .arg("-static-stdlib")
-        // Size, because the engine compiles this artifact on every turn and a smaller module is a
-        // cheaper turn. `-Osize` rather than `-O` because the difference in generated code is
-        // immaterial for a program that runs for milliseconds and the difference in bytes is not.
-        .arg("-Osize")
-        // Whole-module, which is what puts the model's file and gg's shell in one module — the
-        // arrangement that lets the shell name the program's entry point at all.
+        // Whole-module, which is what puts the model's file, every code module in scope and gg's
+        // shell in one module — the arrangement that lets the shell name the program's entry point,
+        // and the one that lets a code module's declarations be reached without an import.
         .arg("-wmo")
-        .arg(DEBUG_INFO)
         // The generated WIT surface, reached from Swift as C — what gg's shell calls, and what
         // declares the model program's own entry point so the shell can call *it*.
         .arg("-import-objc-header")
@@ -478,47 +587,65 @@ fn invoke_swiftc(
         // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
         // one. A model that traps is shown the frame, and `/gg/work/main.swift:7:13` is a thing it
         // can read, where `/tmp/gg-prepare/8421-3/work/main.swift:7:13` names a directory that was
-        // deleted before the message reached it.
+        // deleted before the message reached it. It does *not* make the artifact a function of the
+        // program: the paths are rewritten and the module-cache and bridging-header hashes computed
+        // over them are not, which is why this arm declares a stable projection to the seam's
+        // isolation gate rather than claiming byte-stability it does not have.
         .arg("-file-prefix-map")
-        .arg(format!("{}={PREPARATION_PREFIX}", workspace.root().display()))
-        // Where the precompiled bridging header goes. Named because the default is a directory
-        // called `TemporaryDirectory.XXXXXX` with six random characters in it, and that path is
-        // recorded in the artifact's debug information — so without this every compile of one
-        // program produces different bytes for a reason that has nothing to do with the program.
-        // In this preparation's own output tree, so it is private and removed with it.
-        // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
-        // one. Two things want it. A model that traps is shown the frame, and
-        // `/tmp/gg-prepare/8421-3/work/main.swift:7:13` names a directory that no longer exists by
-        // the time it reads it. And a compile whose output carried the workspace path would produce
-        // different bytes for the same program every time — which is not a correctness problem in
-        // itself, but it is indistinguishable from one, and the seam's isolation gate is built to
-        // fail on exactly that.
+        .arg(format!("{}={PREPARATION_PREFIX}", workspace.root().display()));
 
-        // The link is handed to clang, and these three are for it. The SDK's clang resource
-        // directory holds the wasm `compiler-rt`; the host's, which clang would otherwise derive
-        // from its own path, holds only the host's.
-        .arg("-Xclang-linker")
-        .arg("-resource-dir")
-        .arg("-Xclang-linker")
-        .arg(sdk.join("swift.xctoolchain/usr/lib/clang"))
-        // A **reactor**, not a command: a component's exports are called after `_initialize`, and
-        // the default execution model would insist on a `_start` this guest does not have — and
-        // would run the model's program at instantiation rather than when `run` is called.
-        .arg("-Xclang-linker")
-        .arg("-mexec-model=reactor")
-        .arg("-Xlinker")
-        .arg("--gc-sections")
-        .arg("-o")
-        .arg(artifact)
-        .arg(PROGRAM_FILE)
-        .arg(guest.file("shell.swift"))
-        .arg(guest.file("gg.o"))
-        .arg(guest.file("sandbox.o"))
-        .arg(guest.file("sandbox_component_type.o"))
-        // Last, and an archive rather than a list of objects: the linker resolves what is still
-        // undefined out of its members, so a program that imports none of the curated libraries
-        // links none of them and pays nothing for them.
-        .arg(libraries.join(LIBRARY_ARCHIVE));
+    match build.artifact {
+        // A program's build: optimised, carrying its debug information, and linked.
+        Some(artifact) => {
+            command
+                // Size, because the engine compiles this artifact on every turn and a smaller
+                // module is a cheaper turn. `-Osize` rather than `-O` because the difference in
+                // generated code is immaterial for a program that runs for milliseconds and the
+                // difference in bytes is not.
+                .arg("-Osize")
+                .arg(DEBUG_INFO)
+                // The link is handed to clang, and these three are for it. The SDK's clang resource
+                // directory holds the wasm `compiler-rt`; the host's, which clang would otherwise
+                // derive from its own path, holds only the host's.
+                .arg("-Xclang-linker")
+                .arg("-resource-dir")
+                .arg("-Xclang-linker")
+                .arg(sdk.join("swift.xctoolchain/usr/lib/clang"))
+                // A **reactor**, not a command: a component's exports are called after
+                // `_initialize`, and the default execution model would insist on a `_start` this
+                // guest does not have — and would run the model's program at instantiation rather
+                // than when `run` is called.
+                .arg("-Xclang-linker")
+                .arg("-mexec-model=reactor")
+                .arg("-Xlinker")
+                .arg("--gc-sections")
+                .arg("-o")
+                .arg(artifact);
+        }
+        // A code module's own check: read the whole arrangement and decide, then write nothing.
+        // There is nothing to optimise and nothing to link for a module that is going to be
+        // compiled again as part of every program that uses it.
+        None => {
+            command.arg("-typecheck");
+        }
+    }
+    for source in build.sources {
+        command.arg(source);
+    }
+    if let Some(library) = build.library {
+        command.arg(library);
+    }
+    command.arg(guest.file("shell.swift"));
+    if build.artifact.is_some() {
+        command
+            .arg(guest.file("gg.o"))
+            .arg(guest.file("sandbox.o"))
+            .arg(guest.file("sandbox_component_type.o"))
+            // Last, and an archive rather than a list of objects: the linker resolves what is still
+            // undefined out of its members, so a program that imports none of the curated libraries
+            // links none of them and pays nothing for them.
+            .arg(libraries.join(LIBRARY_ARCHIVE));
+    }
     // Applied after the seam's redirection and pointing at a read-only path outside this
     // preparation's tree, which is the escape hatch `compile.rs` documents. The published
     // toolchain's `lld` links against Debian 12's `libxml2` soname; a gg run image derived from
@@ -611,13 +738,21 @@ fn errors(stderr: &str) -> Vec<&str> {
         .collect()
 }
 
-/// Whether a diagnostic line is located in the **model's** file.
+/// Whether a diagnostic line is located in a file the **model's session** owns: its own program, or
+/// one of the code modules its skills and memories put in scope.
 ///
-/// The compiler is run with its working directory inside this preparation's own tree and the
-/// model's file named relatively, so its diagnostics begin `main.swift:`. gg's own inputs are named
-/// absolutely and theirs begin with a `/`.
+/// The compiler is run with its working directory inside this preparation's own tree and those two
+/// kinds of file named relatively, so their diagnostics begin `main.swift:` or `module_<key>.swift:`.
+/// Everything else on the command line — gg's shell, gg's generated `lib` namespace, the bindings —
+/// is named absolutely, and a diagnostic in one of those begins with a `/`.
+///
+/// A module's is the model's rather than gg's, and it is deliberately *not* filed under the
+/// toolchain: it names a file the model can see the effect of and act on, by not calling that skill's
+/// code. The module was already checked on its own when it was read, so a diagnostic here is a
+/// module that has stopped working in the company of something else — which is precisely the thing
+/// the model needs told.
 fn is_program_diagnostic(line: &str) -> bool {
-    line.starts_with(&format!("{PROGRAM_FILE}:"))
+    line.starts_with(&format!("{PROGRAM_FILE}:")) || line.starts_with(MODULE_FILE_PREFIX)
 }
 
 /// Whether a diagnostic line is located in a file that is **not** the model's — which on this arm

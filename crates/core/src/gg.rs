@@ -4444,6 +4444,27 @@ pub enum GgProgramLanguage {
     /// where it has one, real `enum`s for fixed choices, a `RangeInclusive` for a span of turns, and
     /// one glob (`use gg::prelude::*;`) that a program's own `use` may shadow.
     Rust,
+    /// Swift: **compiled by `swiftc` into the wasm component that turn is evaluated by**, and the
+    /// one arm whose reply is compiled **byte for byte** while still admitting declarations.
+    ///
+    /// It is [`Rust`](Self::Rust)'s shape — no committed component, one artifact per turn — reached
+    /// by a different road. A program here is a whole **top-level file** rather than the body of a
+    /// function gg declares, because Swift refuses `extension`, `protocol` and `import` inside one,
+    /// and an arm that forbade `extension` would forbid the construct the language is built around.
+    /// So nothing is prepended, nothing appended and no line moves: a diagnostic at line 7 is line
+    /// 7. gg's shell is a second file of the same module, which is how it names the entry point
+    /// Swift lowers top-level code into and how `@_exported import gg` puts the whole SDK in the
+    /// model's file with no import line.
+    ///
+    /// It is also the arm with the **most expensive instantiate and the cheapest compile of its
+    /// shape**: `swiftc` takes about a third of a second and the ~7 MB component it produces takes
+    /// about four times that to instantiate, which is the reverse of every other language here. Its
+    /// SDK is hand-written and reads as Swift reads: `camelCase`, **argument labels** carrying the
+    /// roles a name does not, default parameter values rather than an options record, optionals for
+    /// what the wire may omit, `enum`s with associated values for a closed set and for a three-way
+    /// patch, a `ClosedRange` for a span of turns, and `throws` for the error arm so `try` is the
+    /// whole of the ceremony.
+    Swift,
 }
 
 impl GgProgramLanguage {
@@ -4465,6 +4486,7 @@ impl GgProgramLanguage {
         Self::Java,
         Self::Kotlin,
         Self::Rust,
+        Self::Swift,
     ];
 
     /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
@@ -4488,6 +4510,7 @@ impl GgProgramLanguage {
             Self::Java => const { Self::listed_at(5, Self::Java) },
             Self::Kotlin => const { Self::listed_at(6, Self::Kotlin) },
             Self::Rust => const { Self::listed_at(7, Self::Rust) },
+            Self::Swift => const { Self::listed_at(8, Self::Swift) },
         }
     }
 
@@ -4521,6 +4544,7 @@ impl GgProgramLanguage {
             Self::Java => "java",
             Self::Kotlin => "kotlin",
             Self::Rust => "rust",
+            Self::Swift => "swift",
         }
     }
 
@@ -4547,6 +4571,7 @@ impl GgProgramLanguage {
             Self::Java => "Java",
             Self::Kotlin => "Kotlin",
             Self::Rust => "Rust",
+            Self::Swift => "Swift",
         }
     }
 }

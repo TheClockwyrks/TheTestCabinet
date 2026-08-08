@@ -25,6 +25,7 @@ const PROGRAM_LANGUAGE_NAMES: Record<GgProgramLanguage, string> = {
   java: "Java",
   kotlin: "Kotlin",
   rust: "Rust",
+  swift: "Swift",
 };
 
 // The Reference surface: the header, the sentence saying where the document came from, the

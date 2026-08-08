@@ -736,12 +736,12 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
     // with the functions beside it, which is the second, independent statement of the same fact that
     // makes asking the artifact worth anything.
     //
-    // Driven here rather than through `component_bound_tools`, which takes a REGISTERED language:
-    // this arm has no wire id yet, so the membrane state is built with TypeScript's exactly as the
-    // substrate's harness builds it, and nothing this asserts depends on which — a component reports
-    // what it can bind, which is a fact about the artifact.
     let component = prepare("");
-    let mut bound = super::substrate::artifact_bound_tools(&component);
+    let mut bound = crate::sandbox::component_bound_tools(
+        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift),
+        Some(component),
+    )
+    .expect("a freshly compiled Swift program reports the tools its SDK binds");
     bound.sort();
     let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
         .into_iter()
@@ -760,18 +760,23 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     assert_eq!(
         text(&catalogue, "language"),
         "swift",
-        "the catalogue must say whose spellings it carries, and this arm's id is what the \
-         registration step will resolve"
+        "the catalogue must say whose spellings it carries, and this arm's id is what a run \
+         resolves it by"
     );
-    // Read as a string rather than parsed through `SignatureCatalogue`, and that is this arm's own
-    // situation rather than a shortcut: the parser reads `language` into `GgProgramLanguage`, which
-    // has no `swift` variant until the registration step adds one. The moment it does, the seam's
-    // own gates parse this file on every run.
+    // Read as a string *and* through `SignatureCatalogue`, which are two different claims: the
+    // string is what this file can say a section exists at all, and the parse is what says the seam
+    // resolves this catalogue to this arm rather than to a stem filed under the wrong name.
+    assert_eq!(
+        crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::Swift)
+            .catalogue()
+            .language,
+        test_cabinet_core::gg::GgProgramLanguage::Swift,
+    );
 
     // Identity: the objects, in the order the surface is presented in, and every gg tool spelled the
-    // way this arm spells it. This is the half the agreement gate will compare against the other
-    // eight the moment this arm is registered; until then it is compared against gg's own vocabulary
-    // here, so the catalogue cannot ship describing a surface nobody has.
+    // way this arm spells it. This is the half the agreement gate compares against the other eight,
+    // and it is compared against gg's own vocabulary here as well, so the catalogue cannot ship
+    // describing a surface nobody has.
     let objects: Vec<&str> = section(&catalogue, "objects")
         .iter()
         .map(|object| text(object, "object"))

@@ -109,14 +109,6 @@ mod kotlin;
 #[path = "language/rust.rs"]
 mod rust;
 
-/// The **Swift** arm's execution substrate, ahead of its SDK and its registration.
-///
-/// Not in [`language`] and not in [`GgProgramLanguage`]: this arm has no wire id yet, so nothing a
-/// run can configure reaches it and every gate that iterates the registered set passes it by. What
-/// is here is the compile — the second that produces the *component* rather than a source for one,
-/// and the first that compiles the model's reply byte for byte — and the proof that its output runs
-/// through the real membrane; the module's own documentation says what is still missing, and why
-/// registering it before that would leave a capability silently absent on one arm.
 #[path = "language/swift.rs"]
 mod swift;
 
@@ -484,6 +476,33 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     fn isolation_module(&self, name: &str) -> String {
         self.open_docs_views_statement(&[name])
     }
+
+    /// The part of a **compiled** artifact that is a function of the program, with whatever is a
+    /// function of the *environment it was compiled in* set aside — the projection the
+    /// [isolation gate](isolation) compares two preparations of one input through.
+    ///
+    /// Identity by default, and identity is what almost every arm wants: an interpreted arm has no
+    /// artifact here at all, and [Rust](rust)'s `rustc` produces the same bytes for the same input
+    /// wherever it ran.
+    ///
+    /// It exists because one arm's compiler does not, and refusing to say so would leave that arm
+    /// either failing the gate for keeping the contract or excluded from it. [Swift](swift)'s
+    /// artifact carries **debug information describing the compilation environment** — the paths and
+    /// content hashes of a clang module cache and a precompiled header, computed over an invocation
+    /// naming *this preparation's own private tree*, which the isolation contract is what made
+    /// private — and a 16-byte module hash `swiftc` fills with entropy per invocation. Neither is
+    /// part of any program.
+    ///
+    /// The rule an implementation is held to is that it may set aside a description of **how** the
+    /// artifact was built and never any part of what it does. Swift's keeps every standard section
+    /// and every custom section that is not `.debug_*`, so the marker checks that catch the two
+    /// measured corruptions directly are untouched, and it derives the stamp's position by
+    /// compiling one program twice rather than hard-coding it — so a second source of variation
+    /// fails loudly instead of being swept in.
+    #[cfg(test)]
+    fn isolation_stable(&self, component: Vec<u8>) -> Vec<u8> {
+        component
+    }
 }
 
 /// The model-facing **prose** that is written in one language's syntax: two Handlebars templates,
@@ -812,6 +831,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
         GgProgramLanguage::Java => &java::JAVA,
         GgProgramLanguage::Kotlin => &kotlin::KOTLIN,
         GgProgramLanguage::Rust => &rust::RUST,
+        GgProgramLanguage::Swift => &swift::SWIFT,
     }
 }
 
@@ -1056,6 +1076,7 @@ pub struct ResolvedProgramLanguage {
 /// | `"java"` | [`Java`](GgProgramLanguage::Java) — compiled by `javac` and TeaVM in a warm JVM, then evaluated |
 /// | `"kotlin"` | [`Kotlin`](GgProgramLanguage::Kotlin) — compiled as a script by the Kotlin compiler and TeaVM in a warm JVM, then evaluated |
 /// | `"rust"` | [`Rust`](GgProgramLanguage::Rust) — compiled by `rustc` into the wasm component the turn is evaluated by |
+/// | `"swift"` | [`Swift`](GgProgramLanguage::Swift) — compiled by `swiftc`, byte for byte, into the wasm component the turn is evaluated by |
 /// | anything else | [`TypeScript`](GgProgramLanguage::TypeScript), and the value is reported |
 ///
 /// Read literally and reported on mismatch for the same reason

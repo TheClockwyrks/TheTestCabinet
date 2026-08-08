@@ -11,7 +11,7 @@ that component needs from the host, how the prompt teaches it, which
 [healing](/gg/response-healing/) questions have language-shaped answers — is asked of
 that language rather than baked in.
 
-Eight are registered, and between them they separate four things that used to be one. TypeScript
+Nine are registered, and between them they separate four things that used to be one. TypeScript
 is the default, and its programs are **type-checked** before they run; **JavaScript** is that
 same arm with the [type check removed](#javascript-the-same-arm-unchecked) and nothing else
 changed; **[Python](#python-a-guest-that-carries-its-own-interpreter)** is the first arm that is a
@@ -29,7 +29,9 @@ that same road from bytecode onwards, which makes the pair the closest thing thi
 surfaces written the way each language is really written; and
 **[Rust](#rust-the-program-is-the-artifact)** is the fourth thing: the first arm that ships **no
 guest at all**, because its compiler produces the program rather than something that later reads
-one. This page is the
+one; and **[Swift](#swift-the-reply-is-the-artifact-verbatim)** is that same shape reached down a
+different road, and the only arm that compiles a model's reply **byte for byte** while still
+admitting `extension`, `protocol` and `import` in it. This page is the
 design of the seam: why the
 language is an axis, what an agent-facing surface has to look like in *any* language, what a
 language must supply to be registered, what stops two languages from quietly describing different
@@ -1692,6 +1694,138 @@ report a clean turn over a program that did nothing, which round 1 established i
 model cannot recover from. It is refused by name, at the line, with a sentence saying what to write
 instead.
 
+## Swift: the reply is the artifact, verbatim
+
+The ninth arm: `language: "swift"` is a value an operator configures, and it is
+[Rust](#rust-the-program-is-the-artifact)'s **shape** reached down a different road.
+
+**A Swift program is compiled by `swiftc` into the wasm component that turn is evaluated by**, and
+there is no guest to commit. What its SDK looks like is [above](#what-swifts-sdk-looks-like); what
+the shape is and what it costs the seam is under
+[an arm whose artifact is the program](#an-arm-whose-artifact-is-the-program); the rest of this
+section is what a model and an operator see.
+
+Measured in this repository's dev container, aarch64: `swiftc` — type-check, optimise and link in
+one invocation — is **~0.3 s**, the in-process component encode is **~10 ms**, the artifact is
+**~7.1 MB**, and wasmtime's `Component::new` on it is **~1.3 s**. **This is the only arm that pays
+more to instantiate a program than to compile it**, and it is a real result rather than an
+accident: Swift's standard library is statically linked and its reflection metadata keeps most of
+itself reachable, so the dead-strip that leaves a Rust program at 25 KB has almost nothing to
+remove here. The compiler and the Swift SDK for WebAssembly are **~835 MB** and live in the
+[gg toolchain image](#where-a-compiler-lives-and-what-it-must-never-share); the curated library set
+is 3.4 MB inside gg's binary.
+
+### The reply is compiled verbatim, and that is what forced the shape
+
+**A model's reply is compiled as `main.swift`, unaltered.** Nothing is prepended, nothing appended,
+nothing re-indented — so a diagnostic at line 7 is line 7, and there is no offset to subtract
+anywhere in this arm. It is the only compiled arm that can say that of a reply carrying
+declarations.
+
+It is forced rather than chosen. Swift refuses `extension`, `protocol` and `import` inside a
+function body, so the wrapper every statement-shaped arm uses would forbid three things a Swift
+author writes without thinking, one of which (`extension`) is what the language is built around. A
+top-level file is the only Swift context that admits declarations and bare statements together, and
+what makes it work is that gg's shell is a second file of the **same module**: Swift lowers a
+top-level file's statements into the target's C entry point, and the shell, sharing the module,
+names that symbol and calls it from the `run` export. The same fact is what puts gg's whole surface
+in the model's file with **no import line** — the shell writes `@_exported import gg`, and a
+re-export is module-scoped where a plain import is file-scoped.
+
+There is no refusal here at all. No program shape is turned away, which is the one thing this arm
+has that [Rust](#what-a-rust-program-is-and-the-one-shape-it-refuses) does not.
+
+### A guest whose failures nothing inside it can catch
+
+[Rust](#the-one-arm-with-no-exception-mechanism-at-all) has no unwinder either, but it has a panic
+*hook* — a function that runs on a live guest before the abort and can complete an ordinary
+`feedback.report-error` first. Swift has no equivalent, and its top-level code is not a `throws`
+context a shell could wrap, so an uncaught error, a `fatalError`, a force-unwrapped `nil`, an index
+out of range and an arithmetic overflow all end as a **trap**.
+
+What keeps those from being opaque is not what anyone would guess, and it was measured rather than
+assumed. Swift at `-Osize` does not *print* its runtime failures: the optimiser replaces the report
+with a bare `unreachable` and encodes the message in the **debug information**, as the name of a
+synthetic inlined frame. So the artifact is compiled with `-g`, gg's engine symbolicates a trap's
+frames, and a model reads
+
+```text
+Swift runtime failure: Index out of range
+  … at /gg/work/main.swift:3:22
+```
+
+— the message and its own line, for a failure it could not have caught. Without the debug
+information the same program says `program.wasm!main` and nothing else.
+
+Two gaps are worth stating rather than glossing. A `precondition`'s *custom* message is dropped by
+the optimiser where a `fatalError`'s is kept. And an **uncaught throw** arrives with gg's own
+sentence and *no line at all*: the runtime hands the error to `swift_errorInMain` from the entry
+point's synthesized epilogue, so the only frames left are `/<compiler-generated>`. Catching what
+you expect is what buys the line back.
+
+### What a Swift code module is
+
+A **file of the program's own Swift module**, with each of its top-level declarations moved into
+`lib.<key>` by being wrapped *where it stands* in an `extension` of a caseless `enum`:
+
+```text
+public func parse(_ text: String, delimiter: Character = ",") -> [Row] {          // as authored
+extension lib.csvTools { public static func parse(_ text: String, …) -> [Row] {   // as compiled
+```
+
+Two things follow, and both are why this shape was chosen over the two alternatives. **Every line
+number is preserved**, because the wrap is a prefix on the declaration's first line and a suffix on
+its last. And **the declaration keeps everything a Swift declaration has** — argument labels,
+default values, generics, `where` clauses, `throws`, overloads — because nothing is re-synthesized.
+The alternative, compiling each module as its own Swift module and binding its exports into `lib`
+through forwarders, was rejected for exactly that: a function bound as a value (`static let parse =
+csvTools.parse`) **loses its argument labels**, which on the arm whose SDK is built around them is
+the one thing that must not be quietly given up, and it cannot bind an overload or a generic at all.
+
+What it costs is stated rather than hidden. A module's `import`, `extension`, `protocol` and
+operator declarations cannot live inside a type, so they stay at file scope — which here is the
+program's own module, so a `protocol` two code modules both declare is a redeclaration the turn's
+compile reports. And a `#if` at a module's top level is **refused by name**: its two halves would
+land in two different scopes, and this sandbox compiles for one target, so one of its branches was
+never going to be taken.
+
+Because a module and the program are one Swift module, a module is checked with a `-typecheck`
+rather than a build when it is read — there is nothing to optimise and nothing to link for
+something that will be compiled again as part of every program that uses it.
+
+### What its dialect says, and the three answers worth reading beside another arm's
+
+Its [healing dialect](/gg/response-healing/) is
+`crates/gg/src/sandbox/language/swift.healing.rs`.
+
+**The redeclaration proof is the widest of any registered arm's**, and it is the exact inverse of
+Rust's. Rust shadows, so its proof had to retreat to items; Swift refuses a second `let`, `var`,
+`func`, `struct`, `class`, `enum`, `actor`, `protocol` or `typealias` of one name at one scope,
+before a statement runs. So the everyday doubled program — the one made of nothing but bindings and
+calls — is provably dead code here where it might have run there. `import` is the one declaration
+excluded, because writing one twice is legal, and `extension` because it declares no name of its
+own.
+
+**Nothing is done about an import, and this is the second arm where that is because the line
+works.** A program here is a whole top-level file, Swift admits an `import` anywhere in one —
+measured, not assumed — and every module of this arm's library set is on the search path the
+program is compiled with. A module that is *not* in the set is a located `no such module` on the
+turn that wrote it, which is a better answer than a silent deletion.
+
+**Its lexer survives text two of the others' do not, and asks two things no other's does.** Swift
+has **no character literal**, so an apostrophe in a stray line of English is ordinary punctuation
+here where the identical byte leaves Kotlin's scan with no mask at all. Interpolation is a **paren**
+count rather than a brace count (`"total: \(rows["n"])"`), and inside a raw string the escape
+carries the fence too (`#"\#(value)"#`). A raw string's `#` fence has to be counted rather than
+looked for, `"""` may span a newline where `"` may not, and block comments nest.
+
+Its concurrency wrapper is `Task { … }`, in both the immediate and the bound-and-awaited shapes,
+and it is a **measured** failure rather than an assumed one: the artifact compiles, the task is
+scheduled, the program returns, and nothing is left to run it — which is the worst failure shape
+there is, a clean turn over a program that did nothing. The `import` lines above it are **kept**,
+for the same reason nothing is done about an import anywhere on this arm. `await` comes off as a
+**prefix**, which is where Swift puts suspension, and is counted.
+
 ## What compiling costs, and where it is recorded
 
 A language is free to spend real time turning a model's reply into something its guest can
@@ -1937,6 +2071,23 @@ Three gates, none of which a language opts into:
    [Python](#python-a-guest-that-carries-its-own-interpreter) is driven sixteen ways like
    every other arm, opens no workspace and spawns no process, and passes because a
    preparation that touches nothing shared trivially satisfies a rule about shared state.
+
+   One thing the "matches what the same input produced alone" check has to be told, and it is
+   told **by the language rather than by weakening the check**: a compiled arm may put things in
+   its artifact that describe *how* it was built rather than what it does, and some of them are a
+   function of the private tree the isolation contract itself created. A language therefore
+   declares a **stable projection** of its own artifact, identity for every arm but one.
+   [Swift](#swift-the-reply-is-the-artifact-verbatim) is the exception twice over: its debug
+   information records the clang module cache and precompiled-header hashes computed over an
+   invocation naming this preparation's own working directory, `HOME` and `TMPDIR` — ~1.5 MB that
+   differ between two preparations of one program and are byte-identical everywhere else — and
+   `swiftc` stamps every object with a 16-byte module hash no flag disables. The projection sets
+   exactly those aside, by a section-framing walk that keeps every standard section and every
+   custom section that is not `.debug_*`, and by an anchor **derived** from compiling one program
+   twice with assertions that fail loudly if a second source of variation appears. The rule a
+   projection is held to is that it may set aside a description of *how* an artifact was built and
+   never any part of what it does — so the marker checks, which are the two that catch the measured
+   corruptions directly, are untouched by it.
 2. **The gate's own teeth.** It is generic over a *preparation*, not over a language, and
    its tests point it at four deliberately broken ones — the two measured bugs written in
    the smallest code that has their shape, plus a memoised compile and a cache keyed on
@@ -2115,10 +2266,10 @@ an arm of this shape has.
 
 The first arm of this shape is **[Rust](#rust-the-program-is-the-artifact)**
 (`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`). The second is
-**Swift** (`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`), whose
-execution substrate and SDK are built and whose registration is not, so it is not yet a
-`language` value an operator can configure. It inherits the shape unchanged and adds three
-things to it that are worth reading before a third arm is written:
+**[Swift](#swift-the-reply-is-the-artifact-verbatim)**
+(`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`). It inherits the
+shape unchanged and adds three things to it that are worth reading before a third arm is
+written:
 
 - **its compiler's output is a preview1 core module, not a component.** The Swift SDK
   publishes one target triple and it is `wasm32-unknown-wasip1`, so the encode gg already
@@ -2151,13 +2302,17 @@ the artifact of a program that was compiled against it — so a seam that withhe
 from the program's preparation would be a seam on which a code skill *silently bound
 nothing* on one arm of a study about capability.
 
-So the modules travel with the source, every interpreted arm ignores the parameter, and the
-compiled one writes each module beside its entry file. Two consequences are visible from
-outside:
+So the modules travel with the source, every interpreted arm ignores the parameter, and each
+compiled one writes each module beside its entry file — Rust as a `mod`, Swift as
+[a file of the program's own module](#what-a-swift-code-module-is), because Swift has no
+nested module and its namespace is a caseless `enum` instead. Two consequences are visible
+from outside:
 
-- **the binding is a path, not a property.** `lib::csv_tools::parse(…)` is resolved by the
-  compiler, so a key or a function that does not exist is a diagnostic on the turn that
-  wrote it, where an interpreted arm finds out when the call is reached;
+- **the binding is resolved by the compiler, not looked up on a value.**
+  `lib::csv_tools::parse(…)` on the Rust arm is a path and `lib.csvTools.parse(…)` on the
+  Swift arm is a member of a nested type, so on both a key or a function that does not exist
+  is a diagnostic on the turn that wrote it, where an interpreted arm finds out when the call
+  is reached;
 - **a module is compiled twice** — once alone when it is read, only to be checked, and again
   as part of every program that uses it. The first compile is what buys the *location*:
   without it a module that does not build would take down every program the agent wrote from
@@ -3021,7 +3176,9 @@ model reaches by accident rather than by writing a sleep.
    discovers `system-code.*.hbs` from the directory and mirrors every one.
 11. **Run the gates.** The [isolation gate](#per-agent-compiler-isolation) drives the new
     language's program and module steps sixteen ways and requires every artifact to belong to
-    its own program; the agreement gate compares the new catalogue against TypeScript's
+    its own program — and if the new arm's compiler writes anything into an artifact that
+    describes the *environment* rather than the program, say so with a **stable projection**
+    rather than by loosening the check; the agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
     capability's call and every rule a program runs under; the
