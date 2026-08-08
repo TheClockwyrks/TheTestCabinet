@@ -1,0 +1,718 @@
+//! **The Swift compile** — how a model's Swift becomes the wasm component that turn is evaluated
+//! by.
+//!
+//! # The strategy, in one sentence
+//!
+//! A Swift program is **compiled on the host, per turn, into a component of its own**: one
+//! `swiftc` over the model's reply and gg's shell against the Swift SDK for WebAssembly, then an
+//! in-process [`wit_component`] encode with the pinned preview1 adapter — and what crosses the
+//! membrane is not source at all but the artifact gg's engine instantiates.
+//!
+//! It is the second arm of that shape, after [Rust](super::rust), and it inherits the seam Rust
+//! grew: [`PreparedProgram::component`] carries the bytes, `guest_component` will answer `None`,
+//! and `engine::program_component` is where the two shapes meet.
+//!
+//! # What a Swift program is, here: the file itself
+//!
+//! **A model's reply is compiled verbatim, as `main.swift`.** No wrapper, no prologue, no import
+//! line, and therefore **no line offset at all** — a diagnostic at line 7 is line 7 of what the
+//! model wrote, and so is a located trap.
+//!
+//! That is not a nicety; it is the only shape in which a model can write ordinary Swift. Swift
+//! forbids `extension`, `protocol` and `import` inside a function body, so the wrapper every other
+//! statement-shaped arm uses — put the reply in a function and call it — would forbid three things
+//! a Swift author writes without thinking, and `extension` is the one Swift is *built* around. A
+//! top-level file admits all of them together with bare statements, which no other Swift context
+//! does.
+//!
+//! What makes it work is that gg's shell is a second file of the **same module**
+//! (`packages/gg-sandbox-swift/Sources/shell.swift`). Swift lowers a top-level file's statements
+//! into the target's C entry point — `__main_argc_argv` on wasm — and the shell, being in the same
+//! module, can name that symbol and call it from the `run` export. The model's file is never
+//! edited, quoted or re-indented.
+//!
+//! ## What it costs, and it is the error surface
+//!
+//! Top-level code is not a `throws` context anything can wrap. Swift's own entry point catches
+//! nothing, and there is no hook: an uncaught `throw`, a `fatalError`, a force-unwrapped `nil`, an
+//! index out of range and an arithmetic overflow all end the same way — the runtime writes its own
+//! message to **stderr** and executes `unreachable`, which traps the store.
+//!
+//! So this arm's failures arrive as traps, and what keeps them from being *opaque* traps is
+//! [`DEBUG_INFO`] — not, as expected, the guest's stderr. At `-Osize` Swift does not print its
+//! runtime failures at all: the optimiser turns them into a bare `unreachable` and puts the message
+//! in the **debug information**, as a synthetic inlined frame. So `-g` plus a symbolicating engine
+//! is what gets `Swift runtime failure: Index out of range` and `/gg/work/main.swift:3:22` to a
+//! model, and without it the same program says `program.wasm!main` and nothing more.
+//!
+//! It is still the weakest error surface of any arm here, and that is a fact about the language
+//! rather than a gap in the implementation: Swift's unrecoverable failures are unrecoverable **by
+//! design**, no guest-side shell can catch one, and what reaches the model is a *report about* a
+//! failure rather than a caught error it could have branched on. The [Rust](super::rust) arm has
+//! the same problem and a way out this one does not — a panic *hook* runs on a live guest before
+//! the abort and completes a real `feedback.report-error` first. Swift has no equivalent.
+//!
+//! The guest's **stderr** is captured too (see
+//! [`MembraneState`](crate::sandbox::membrane::MembraneState)) and is what a program reaches when it
+//! writes to fd 2 on purpose. It is simply not where Swift's own failures go.
+//!
+//! # Why the compiler is not carried, and the bindings are
+//!
+//! The split every compiled arm here has. The Swift toolchain is **~835 MB** even pruned — a
+//! `swift-frontend`, a `clang`, an `lld`, the swift-syntax libraries the front end links, and the
+//! wasm SDK's standard library — so it cannot ride inside a single static `tcab` binary. It goes
+//! into the gg toolchain image (`containers/gg-toolchains/Dockerfile`) and is found under
+//! [`swift_home`].
+//!
+//! What gg carries is **31 KB**: the C bindings generated from `crates/gg/wit` (compiled to a wasm
+//! object once, at build time, because 3,000 lines of generated C that never changes between
+//! programs is ~90 ms a turn that buys nothing), the component-type object that names the world,
+//! the bridging header, and the shell's Swift source. Those are a function of gg's own wire, and gg
+//! is copied as a single file into an ephemeral run container whose image was built separately — so
+//! bindings that lived in the image could be a different vintage from the binary reading them.
+//!
+//! The **adapter** rides inside gg too, and separately: `swift.adapter.wasm` is the pinned
+//! `wasi_snapshot_preview1` reactor adapter, which is what turns the preview1 core module the Swift
+//! SDK emits into a preview 2 component. It is pinned to the wasmtime release gg links because the
+//! two are halves of one ABI.
+//!
+//! # What it costs
+//!
+//! Measured in this repository's dev container, aarch64, 18 cores, on an ordinary program:
+//!
+//! | | |
+//! | --- | --- |
+//! | `swiftc` — the model's file, the shell, and the link | **~0.3 s** |
+//! | The [`wit_component`] encode | **~10 ms** |
+//! | Artifact | **~7.1 MB** |
+//! | wasmtime `Component::new`, at `OptLevel::None`, **per turn** | **~1.3 s** |
+//!
+//! The artifact is two orders of magnitude larger than the [Rust](super::rust) arm's ~25 KB, and
+//! the reason is the standard library rather than the program: Swift's is statically linked, its
+//! `String` and its reflection metadata are reachable from anything, and `--gc-sections` cannot
+//! strip what a metadata table names. That is a real per-turn cost — the engine compiles those
+//! bytes on every turn — the dearest per-turn cost of any arm here by a wide margin, and larger
+//! than the compile that produced them — and it is reported as
+//! [`compile_wait`](crate::sandbox::SandboxOutcome::compile_wait) rather than hidden.
+//!
+//! # Isolation
+//!
+//! This arm satisfies the [contract](super::compile) the way the Rust arm does, and needs a little
+//! more of the machinery.
+//!
+//! Everything gg carries is unpacked into a [shared toolchain directory](shared_toolchain_dir),
+//! content-keyed on the pinned compiler and a digest of the committed archive, placed by rename and
+//! sealed read-only. `swiftc` only ever **reads** it: the header is named on
+//! `-import-objc-header`, the shell and the two objects are inputs, and nothing is generated
+//! beside them.
+//!
+//! Everything a compile writes goes into this preparation's own workspace, and most of it without
+//! this arm having asked. Swift's driver writes its intermediates under `TMPDIR` and its **clang
+//! module cache** under the cache directory it derives from `HOME` — both of which
+//! [`PrepareContext::compiler`](super::compile::PrepareContext::compiler) has already redirected
+//! into the private tree. That is the half of the isolation contract this arm would not have
+//! thought to guard: a module cache shared between two preparations of two different programs is
+//! precisely the shape of the measured `purs` bug.
+//!
+//! The one place it *is* deliberate is the **precompiled bridging header**, which the driver would
+//! otherwise put in a `TemporaryDirectory.XXXXXX` of its own naming — inside the private tree, so
+//! isolated, but with six random characters in the path and that path written into the artifact.
+//! `-pch-output-dir` names it instead.
+//!
+//! Two arguments point outside the tree, and both are the escape hatch [`compile`](super::compile)
+//! documents. [`LD_LIBRARY_PATH`](self::invoke_swiftc) selects which `libxml2` and `libncurses` the
+//! toolchain loads and points at the toolchain's own read-only directory; and `-file-prefix-map`
+//! rewrites this preparation's tree to a fixed name in everything the compiler records, so a model
+//! reading a located trap is not shown a directory that was deleted before the message reached it.
+//! Neither can change a verdict.
+//!
+//! There is no compiler daemon and no pool. `swiftc` is a one-shot process whose cost is the
+//! compile.
+
+use std::hash::{Hash, Hasher};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+
+use serde::Deserialize;
+
+use crate::sandbox::{
+    CompilerReport, PrepareContext, PrepareError, PrepareFailure, PreparedProgram, Workspace,
+    place_tree, shared_toolchain_dir,
+};
+
+/// Everything a compile needs on disk that is not the model's own file: the bridging header, the
+/// generated WIT header, the compiled bindings object, the component-type object, and gg's shell.
+///
+/// Embedded for the reason the guest components are: gg is copied as a single file into an
+/// ephemeral run container and must carry everything it needs with it. Built by
+/// `packages/gg-sandbox-swift/build.sh`.
+const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/swift.guest.tar.gz");
+
+/// The `wasi_snapshot_preview1` **reactor** adapter, which turns the preview1 core module the Swift
+/// SDK emits into the preview 2 component gg's engine instantiates.
+///
+/// In memory rather than in the archive above, because this is the one input the *encoder* needs
+/// and not the compiler: it never touches a filesystem.
+const ADAPTER: &[u8] = include_bytes!("../checkers/swift.adapter.wasm");
+
+/// What the committed archive was built by, and what is in it.
+const MANIFEST_JSON: &str = include_str!("../checkers/swift.toolchain.json");
+
+/// The environment variable an operator points at the Swift toolchain tree when it is not where gg
+/// looks.
+pub(super) const SWIFT_HOME_ENV: &str = "TCAB_GG_SWIFT_HOME";
+
+/// Where `containers/gg-toolchains` installs this arm's toolchain in a gg run image.
+const IMAGE_HOME: &str = "/opt/gg/toolchains/swift";
+
+/// Where `scripts/ci/install-swift.sh` installs it on a developer's or CI machine, relative to
+/// `HOME`.
+///
+/// Looked at after the image path rather than instead of it, so a run container never depends on a
+/// home directory and a developer never has to export anything. A **tree** rather than a binary on
+/// `PATH`, because this arm needs three things that must agree — a compiler, the wasm SDK, and the
+/// shared libraries the compiler's linker was built against — and a `swiftc` on `PATH` says nothing
+/// about where the other two are.
+const USER_HOME_SUFFIX: &str = ".local/share/tcab/gg-swift";
+
+/// How long one `swiftc` may take before it is killed and reported as a
+/// [toolchain failure](PrepareFailure::Toolchain).
+///
+/// A compile here is ~0.3 s and the worst honest case — a program with a great deal of generic
+/// instantiation, or type inference over a large literal — is seconds. Two minutes is
+/// unmistakably a hang, and is longer than the Rust arm's minute because this compiler is doing
+/// considerably more work per invocation: it type-checks, optimises and links, all in one process.
+const COMPILE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// The file a model's reply is compiled as — **verbatim**.
+///
+/// The name is load-bearing rather than conventional: Swift admits top-level statements only in a
+/// file called `main.swift`, so this is what lets a reply be a sequence of statements *and*
+/// contain an `extension`.
+pub(super) const PROGRAM_FILE: &str = "main.swift";
+
+/// What `swiftc` is told to write, in this preparation's own output directory.
+const ARTIFACT_FILE: &str = "program.wasm";
+
+/// Where the precompiled bridging header is persisted, in this preparation's own output directory.
+const PCH_DIR: &str = "pch";
+
+/// What a preparation's own tree is called in anything the compiler records — a diagnostic's path,
+/// a debug-information file entry, a located trap's frame.
+const PREPARATION_PREFIX: &str = "/gg";
+
+/// **`-g`, and it is this arm's whole error surface** rather than a debugging convenience.
+///
+/// The expectation going in was that Swift's runtime *prints* its failures — `Fatal error: Index
+/// out of range` — and that gg would read them off the guest's stderr. It does not, at `-Osize`:
+/// the optimiser replaces the report-and-trap with a bare `unreachable` and **encodes the message
+/// in the debug information**, as the name of a synthetic inlined frame. What comes back from a
+/// trap, with `-g` here and [`wasm_backtrace_details`](crate::sandbox::engine) on the engine, is
+/// this:
+///
+/// ```text
+/// 0: 0x11870 - Swift runtime failure: Index out of range
+///                at /<compiler-generated>
+///            - $sSayxSicigSi_Tg5
+///            - __main_argc_argv
+///                at /gg/work/main.swift:3:22
+/// ```
+///
+/// The message *and* the model's own line and column, for a failure class the guest cannot catch at
+/// all. Without it the same program yields `program.wasm!main` and nothing else — no message, no
+/// line — which would be the worst error surface of any arm here by a wide margin. Both readings
+/// are in `swift.substrate.test.rs`.
+///
+/// It costs ~5.6 KB of a ~7.1 MB artifact, which is nothing, and one real complication: debug
+/// information records the **compilation environment** — the hashes and paths of the clang module
+/// cache and of the precompiled bridging header, computed over an invocation naming this
+/// preparation's own working directory, `HOME` and `TMPDIR` — so two preparations of one program
+/// produce different debug sections. That is a consequence of the
+/// [isolation contract](super::compile) rather than a breach of it, and every way round it was
+/// measured and rejected (`-file-prefix-map` rewrites the paths but not the hashes;
+/// `-gline-tables-only` still carries them; `-Xcc -Xclang -fdisable-module-hash` still leaves the
+/// PCH name; a shared warm module cache still hashes the working directory). So the seam's gate is
+/// told about it explicitly instead: `swift.substrate.test.rs` excludes the debug sections from its
+/// comparison and says exactly what is still compared whole.
+const DEBUG_INFO: &str = "-g";
+
+/// What the committed archive was built by, and what is in it.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Manifest {
+    /// The Swift release the shell is written for and a program is compiled by.
+    swift: String,
+    /// The Swift SDK for WebAssembly a program's standard library comes from. The same release;
+    /// recorded separately because it is a separate download an operator may have to check.
+    #[allow(dead_code)]
+    wasm_sdk: String,
+    /// The target triple a program is compiled to.
+    target: String,
+    /// The `wit-bindgen` release the C bindings in the archive were generated by.
+    #[allow(dead_code)]
+    wit_bindgen: String,
+    /// The wasmtime release [`ADAPTER`] came from.
+    #[allow(dead_code)]
+    adapter: String,
+    /// Every file in the archive.
+    files: Vec<GuestFile>,
+}
+
+/// One file in the committed archive.
+#[derive(Debug, Deserialize)]
+struct GuestFile {
+    /// Its name, which is also its name inside the unpacked tree.
+    name: String,
+    /// How big it is. Recorded so a truncated archive is visible in the manifest rather than only
+    /// in a compile failure.
+    #[allow(dead_code)]
+    bytes: u64,
+}
+
+/// The parsed manifest, read once per process.
+fn manifest() -> &'static Manifest {
+    static MANIFEST: std::sync::OnceLock<Manifest> = std::sync::OnceLock::new();
+    MANIFEST.get_or_init(|| {
+        serde_json::from_str(MANIFEST_JSON)
+            .expect("the committed Swift toolchain manifest is valid JSON of the expected shape")
+    })
+}
+
+/// The Swift release a program is compiled with, for the run's own record and for an operator
+/// reading a diagnostic and wondering whose it is.
+pub(super) fn compiler_version() -> &'static str {
+    &manifest().swift
+}
+
+/// The target triple a program is compiled to.
+pub(super) fn target() -> &'static str {
+    &manifest().target
+}
+
+/// Every file the committed archive holds, in the order the manifest lists them.
+pub(super) fn guest_files() -> impl Iterator<Item = &'static str> {
+    manifest().files.iter().map(|file| file.name.as_str())
+}
+
+/// Unpack the committed archive now, so the first compile does not.
+///
+/// The whole of this language's warm-up: 31 KB decompressed into ~118 KB, once per machine. The
+/// result is dropped, because a failure here is the failure the first compile will make, and there
+/// it is classified, counted and reported.
+pub(super) fn warm() {
+    let _ = guest();
+}
+
+// ---------------------------------------------------------------------------------------------
+// The two compiles
+// ---------------------------------------------------------------------------------------------
+
+/// Compile a **program** — a model's reply — into the component that evaluates it.
+///
+/// [`unreachable`](PreparedProgram::unreachable) is `None`, and that is an absence rather than a
+/// zero: the measurement counts top-level statements written after one that *ends* the program,
+/// which in the ECMAScript arms is a top-level `return`. Swift's top-level code has no such
+/// statement — a `return` at the top level of `main.swift` returns from the entry point, and
+/// everything after it is ordinary dead code the compiler already warns about — so the shape this
+/// field records does not exist on this arm.
+///
+/// [`source`](PreparedProgram::source) is empty for the same reason the Rust arm's is: there is
+/// nothing left for a guest to evaluate, because the guest *is* what this returned.
+pub(super) fn compile_program(
+    source: &str,
+    context: &PrepareContext,
+) -> Result<PreparedProgram, PrepareFailure> {
+    Ok(PreparedProgram {
+        source: String::new(),
+        unreachable: None,
+        component: Some(compile(source, context)?),
+    })
+}
+
+/// Compile one model program into a component, or say why it could not be.
+fn compile(program: &str, context: &PrepareContext) -> Result<Vec<u8>, PrepareFailure> {
+    let guest = guest().map_err(PrepareFailure::Toolchain)?;
+    let home = swift_home().map_err(PrepareFailure::Toolchain)?;
+    let workspace = context.workspace().map_err(PrepareFailure::Toolchain)?;
+
+    // Verbatim. Nothing is prepended, appended or re-indented, which is what makes every line and
+    // column below the model's own.
+    workspace
+        .write(PROGRAM_FILE, program)
+        .map_err(PrepareFailure::Toolchain)?;
+
+    let artifact = workspace.output().join(ARTIFACT_FILE);
+    let report = invoke_swiftc(&artifact, guest, &home, workspace, context)
+        .map_err(PrepareFailure::Toolchain)?;
+    classify(&report)?;
+
+    let module = std::fs::read(&artifact).map_err(|error| {
+        PrepareFailure::Toolchain(format!(
+            "swiftc {} reported success and wrote no module to {}: {error}",
+            compiler_version(),
+            artifact.display(),
+        ))
+    })?;
+    componentize(&module).map_err(PrepareFailure::Toolchain)
+}
+
+// ---------------------------------------------------------------------------------------------
+// The compiler
+// ---------------------------------------------------------------------------------------------
+
+/// Spawn `swiftc` over the model's file, gg's shell and the committed bindings, and link the core
+/// module.
+///
+/// One invocation does the whole job — type-check, optimise, link — because the Swift driver's
+/// notion of a build is a whole module and there is nothing to be gained by splitting it. The
+/// model's file is named **relatively** while everything else is absolute: the command's working
+/// directory is this preparation's own, so a diagnostic in the model's program reads `main.swift:7`
+/// rather than a temporary path nobody should be shown, and a diagnostic in one of gg's own files
+/// is unmistakable because it carries one.
+fn invoke_swiftc(
+    artifact: &Path,
+    guest: &Guest,
+    home: &Path,
+    workspace: &Workspace,
+    context: &PrepareContext,
+) -> Result<CompilerReport, String> {
+    let swiftc = home.join("toolchain/usr/bin/swiftc");
+    let sdk = home.join("sdk");
+    let mut command = context
+        .compiler(&swiftc)
+        .map_err(|error| format!("{}{error}", spawn_prefix(home)))?;
+    command
+        .arg("-target")
+        .arg(target())
+        // The wasm sysroot (libc, its headers) and the wasm standard library, which the SDK calls a
+        // resource directory. Named explicitly rather than through `--swift-sdk`, which resolves an
+        // installed SDK out of a per-user store gg would then have to populate and keep isolated.
+        .arg("-sdk")
+        .arg(sdk.join("WASI.sdk"))
+        .arg("-resource-dir")
+        .arg(sdk.join("swift.xctoolchain/usr/lib/swift_static"))
+        // A component is one self-contained module; there is nothing inside it to dynamically link
+        // against, and the SDK's own toolset says so too.
+        .arg("-static-stdlib")
+        // Size, because the engine compiles this artifact on every turn and a smaller module is a
+        // cheaper turn. `-Osize` rather than `-O` because the difference in generated code is
+        // immaterial for a program that runs for milliseconds and the difference in bytes is not.
+        .arg("-Osize")
+        // Whole-module, which is what puts the model's file and gg's shell in one module — the
+        // arrangement that lets the shell name the program's entry point at all.
+        .arg("-wmo")
+        .arg(DEBUG_INFO)
+        // The generated WIT surface, reached from Swift as C. This is what makes a reply need no
+        // import line: everything the shell (and later the SDK) needs is already in scope.
+        .arg("-import-objc-header")
+        .arg(guest.file("gg-shell.h"))
+        // Where the precompiled bridging header goes. Named because the default is a directory
+        // called `TemporaryDirectory.XXXXXX` with six random characters in it, and that path is
+        // recorded in the artifact's debug information. In this preparation's own output tree, so
+        // it is private and removed with it.
+        .arg("-pch-output-dir")
+        .arg(workspace.output().join(PCH_DIR))
+        // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
+        // one. A model that traps is shown the frame, and `/gg/work/main.swift:7:13` is a thing it
+        // can read, where `/tmp/gg-prepare/8421-3/work/main.swift:7:13` names a directory that was
+        // deleted before the message reached it.
+        .arg("-file-prefix-map")
+        .arg(format!("{}={PREPARATION_PREFIX}", workspace.root().display()))
+        // Where the precompiled bridging header goes. Named because the default is a directory
+        // called `TemporaryDirectory.XXXXXX` with six random characters in it, and that path is
+        // recorded in the artifact's debug information — so without this every compile of one
+        // program produces different bytes for a reason that has nothing to do with the program.
+        // In this preparation's own output tree, so it is private and removed with it.
+        // Every path this preparation's own tree contributes to the artifact, rewritten to a fixed
+        // one. Two things want it. A model that traps is shown the frame, and
+        // `/tmp/gg-prepare/8421-3/work/main.swift:7:13` names a directory that no longer exists by
+        // the time it reads it. And a compile whose output carried the workspace path would produce
+        // different bytes for the same program every time — which is not a correctness problem in
+        // itself, but it is indistinguishable from one, and the seam's isolation gate is built to
+        // fail on exactly that.
+
+        // The link is handed to clang, and these three are for it. The SDK's clang resource
+        // directory holds the wasm `compiler-rt`; the host's, which clang would otherwise derive
+        // from its own path, holds only the host's.
+        .arg("-Xclang-linker")
+        .arg("-resource-dir")
+        .arg("-Xclang-linker")
+        .arg(sdk.join("swift.xctoolchain/usr/lib/clang"))
+        // A **reactor**, not a command: a component's exports are called after `_initialize`, and
+        // the default execution model would insist on a `_start` this guest does not have — and
+        // would run the model's program at instantiation rather than when `run` is called.
+        .arg("-Xclang-linker")
+        .arg("-mexec-model=reactor")
+        .arg("-Xlinker")
+        .arg("--gc-sections")
+        .arg("-o")
+        .arg(artifact)
+        .arg(PROGRAM_FILE)
+        .arg(guest.file("shell.swift"))
+        .arg(guest.file("sandbox.o"))
+        .arg(guest.file("sandbox_component_type.o"));
+    // Applied after the seam's redirection and pointing at a read-only path outside this
+    // preparation's tree, which is the escape hatch `compile.rs` documents. The published
+    // toolchain's `lld` links against Debian 12's `libxml2` soname; a gg run image derived from
+    // Debian bookworm has it, `blender-gg`'s Ubuntu does not, and this same tree is copied to the
+    // same absolute path in both. So the closure travels with the toolchain and is named here. It
+    // selects which shared library the linker loads and can change no verdict.
+    command.env("LD_LIBRARY_PATH", home.join("lib"));
+    command
+        .run(COMPILE_TIMEOUT)
+        .map_err(|error| match error.starts_with("could not run") {
+            true => format!("{}{error}", spawn_prefix(home)),
+            false => error,
+        })
+}
+
+/// What a failure to start the compiler is prefixed with, because it is the one failure here an
+/// operator can actually fix: the toolchain is not where gg looked.
+fn spawn_prefix(home: &Path) -> String {
+    format!(
+        "gg compiles every Swift program with the toolchain in the gg run image and looked for it \
+         in {} (set {SWIFT_HOME_ENV}, or run scripts/ci/install-swift.sh): ",
+        home.display()
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
+// The verdict
+// ---------------------------------------------------------------------------------------------
+
+/// Decide what a finished `swiftc` means: nothing, a program the compiler rejected, or a compiler
+/// that could not finish.
+///
+/// **One band**, and that is a fact about the language rather than a shortcut. `swiftc` has no
+/// parse-only phase a program passes before meaning is considered — an unclosed brace and a type
+/// error are both an `error:` from one invocation, reported together and undistinguished — so
+/// everything it rejects is [`PrepareError::Compile`], exactly as everything `rustc` rejects is.
+///
+/// The one thing this does distinguish is **whose file** the error is in, and it distinguishes it
+/// three ways rather than two. A diagnostic located in `main.swift` is the model's. One located in
+/// another file is in gg's own shell or bindings, which no model wrote and none can fix. And one
+/// with no location at all did not come from reading a program — a link that failed, a driver that
+/// could not find a tool — so it is the toolchain's too, and is reported with the compiler's own
+/// words rather than as "your program did not compile". Both of the latter are a
+/// [toolchain failure](PrepareFailure::Toolchain), which is the safe direction: a model told to fix
+/// a program that was never wrong is the one misattribution this codebase spends the most effort
+/// not making.
+fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
+    if report.ok {
+        return Ok(());
+    }
+    let diagnostics = errors(&report.stderr);
+    if diagnostics.is_empty() {
+        // A compiler that could not finish: it crashed, was killed by its timeout, or fell over on
+        // an expression it could not fold. `swiftc` 6.3.3 is known to abort on some programs, so
+        // this is a real path rather than a defensive one — and it must never reach the model as
+        // "your program did not compile", because nothing was ever decided about the program.
+        return Err(PrepareFailure::Toolchain(format!(
+            "swiftc {} {}{}",
+            compiler_version(),
+            report.status,
+            report.stderr_tail(),
+        )));
+    }
+    if let Some(foreign) = diagnostics.iter().find(|line| located_elsewhere(line)) {
+        return Err(PrepareFailure::Toolchain(format!(
+            "swiftc {} rejected gg's own guest rather than the model's program: {foreign}",
+            compiler_version(),
+        )));
+    }
+    if let Some(unlocated) = diagnostics.iter().find(|line| !is_program_diagnostic(line)) {
+        return Err(PrepareFailure::Toolchain(format!(
+            "swiftc {} failed without reading a program: {unlocated}",
+            compiler_version(),
+        )));
+    }
+    Err(PrepareFailure::Program(PrepareError::Compile(rendered(
+        &report.stderr,
+    ))))
+}
+
+/// Every `error:` line in a `swiftc` run, in order.
+///
+/// Lines rather than a parse tree, because Swift's diagnostics are already one line each with the
+/// location in front of them, and the surrounding source-snippet lines the compiler draws are the
+/// half a model gains most from — so they are kept whole rather than reduced to fields.
+fn errors(stderr: &str) -> Vec<&str> {
+    stderr
+        .lines()
+        .filter(|line| line.contains(": error: "))
+        .collect()
+}
+
+/// Whether a diagnostic line is located in the **model's** file.
+///
+/// The compiler is run with its working directory inside this preparation's own tree and the
+/// model's file named relatively, so its diagnostics begin `main.swift:`. gg's own inputs are named
+/// absolutely and theirs begin with a `/`.
+fn is_program_diagnostic(line: &str) -> bool {
+    line.starts_with(&format!("{PROGRAM_FILE}:"))
+}
+
+/// Whether a diagnostic line is located in a file that is **not** the model's — which on this arm
+/// means one of gg's own inputs, since those are the only other files named on the command line.
+///
+/// Distinct from `!is_program_diagnostic`, because a diagnostic with no location at all is neither:
+/// a driver that could not find a tool and a link that failed both say `error:` with nothing in
+/// front of it.
+fn located_elsewhere(line: &str) -> bool {
+    line.starts_with('/')
+}
+
+/// The compiler's own output, as the model is shown it.
+///
+/// Unaltered but for two things gg owes the reader. The **warnings** are dropped, because a model's
+/// program is not being reviewed and an unused variable that failed a turn would be gg imposing a
+/// lint policy on an experiment about capability — and the match is on `warning:` anywhere rather
+/// than on a *located* `: warning: `, because the driver has one of its own that is located nowhere
+/// (`warning: Unable to locate libSwiftScan`, which the toolchain's pruning deliberately provokes;
+/// see `scripts/ci/install-swift.sh`) and a model must not be shown gg's own toolchain notes. And
+/// the compiler's summary of how it exited is dropped with them, because it is about the process
+/// rather than the program.
+fn rendered(stderr: &str) -> String {
+    let mut kept: Vec<&str> = Vec::new();
+    let mut in_warning = false;
+    for line in stderr.lines() {
+        if line.contains(": error: ") {
+            in_warning = false;
+        } else if line.contains("warning: ") || line.contains(": note: ") {
+            in_warning = true;
+        }
+        if !in_warning {
+            kept.push(line);
+        }
+    }
+    kept.join("\n").trim().to_string()
+}
+
+// ---------------------------------------------------------------------------------------------
+// The component
+// ---------------------------------------------------------------------------------------------
+
+/// Encode the core module `swiftc` linked as the component gg's engine instantiates.
+///
+/// In process, from the bytes the compiler wrote, with no `wasm-tools` binary to install in a run
+/// container — the same encode the Rust arm does, with one addition this arm cannot do without.
+/// The Swift SDK targets `wasm32-unknown-wasip1`, so the module it produces imports the preview1
+/// snapshot; [`ADAPTER`] is what implements those imports in terms of the preview 2 interfaces gg's
+/// linker provides. Without it the component would import a WASI generation the host does not have.
+fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {
+    wit_component::ComponentEncoder::default()
+        .validate(true)
+        .module(module)
+        .and_then(|encoder| encoder.adapter(ADAPTER_NAME, ADAPTER))
+        .and_then(|mut encoder| encoder.encode())
+        .map_err(|error| {
+            format!(
+                "swiftc {} compiled the program and gg could not encode it as a component: \
+                 {error:#}",
+                compiler_version()
+            )
+        })
+}
+
+/// The import namespace the adapter satisfies, which is the preview1 snapshot's own module name.
+const ADAPTER_NAME: &str = "wasi_snapshot_preview1";
+
+// ---------------------------------------------------------------------------------------------
+// The toolchain and the committed guest
+// ---------------------------------------------------------------------------------------------
+
+/// Where this arm's toolchain tree is: what an operator said, then what a gg run image guarantees,
+/// then where `scripts/ci/install-swift.sh` puts it.
+///
+/// Kept in step with `gg_swift_home` in `packages/gg-sandbox-swift/swift-version.sh`, which is what
+/// the installer and the image build resolve.
+pub(super) fn swift_home() -> Result<PathBuf, String> {
+    if let Ok(configured) = std::env::var(SWIFT_HOME_ENV)
+        && !configured.is_empty()
+    {
+        return Ok(PathBuf::from(configured));
+    }
+    let image = PathBuf::from(IMAGE_HOME);
+    if image.join("toolchain/usr/bin/swiftc").is_file() {
+        return Ok(image);
+    }
+    let Some(user) = std::env::var_os("HOME") else {
+        return Ok(image);
+    };
+    Ok(PathBuf::from(user).join(USER_HOME_SUFFIX))
+}
+
+/// Where the committed archive is unpacked, for this process.
+pub(super) struct Guest {
+    /// The directory holding every file the archive carried.
+    tree: PathBuf,
+}
+
+impl Guest {
+    /// One of the archive's files, by the name the manifest gives it.
+    pub(super) fn file(&self, name: &str) -> PathBuf {
+        self.tree.join(name)
+    }
+}
+
+/// The unpacked guest, materialised once per process.
+pub(super) fn guest() -> Result<&'static Guest, String> {
+    static GUEST: std::sync::OnceLock<Result<Guest, String>> = std::sync::OnceLock::new();
+    GUEST
+        .get_or_init(materialise)
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// Unpack the committed archive into a [shared toolchain directory](shared_toolchain_dir).
+///
+/// The seam's one sanctioned share, taken under the seam's discipline: the key folds in the pinned
+/// compiler **and** a digest of the archive itself, so a gg carrying different bindings at the same
+/// Swift version reads a different directory rather than another build's files; the write goes
+/// through [`place_tree`], which fills a staging directory, seals it read-only and renames it in.
+///
+/// Sharing it needs no further argument than that, because `swiftc` only ever **reads** it: the
+/// header is named on `-import-objc-header`, the shell and the two objects are inputs, and every
+/// artifact goes to this preparation's own output directory.
+fn materialise() -> Result<Guest, String> {
+    let root = shared_toolchain_dir(&format!(
+        "swift-{}-{:016x}",
+        compiler_version(),
+        fingerprint()
+    ))?;
+    let tree = root.join("guest");
+    place_tree(&tree, unpack)?;
+    Ok(Guest { tree })
+}
+
+/// Decompress and extract the committed archive into `into`.
+fn unpack(into: &Path) -> Result<(), String> {
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(GUEST_TAR_GZ));
+    // The archive is gg's own build artifact rather than anything a run produced, but the
+    // extraction is still confined to `into`: an archive is a file format, and a file format is the
+    // wrong place to be trusting.
+    archive
+        .unpack(into)
+        .map_err(|error| format!("could not unpack the committed Swift guest: {error}"))?;
+    for name in guest_files() {
+        let path = into.join(name);
+        if !path.is_file() {
+            return Err(format!(
+                "the committed Swift guest is missing {name}, which its manifest declares"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A digest of the committed archive, so the [shared directory](shared_toolchain_dir) a process
+/// reads is keyed on the bytes it would have written.
+fn fingerprint() -> u64 {
+    let mut hasher = std::hash::DefaultHasher::new();
+    GUEST_TAR_GZ.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[cfg(test)]
+#[path = "swift.compile.test.rs"]
+mod tests;

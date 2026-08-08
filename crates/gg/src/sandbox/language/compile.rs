@@ -238,6 +238,19 @@ impl Workspace {
         Ok(workspace)
     }
 
+    /// The private tree's root — the parent of the working directory, the output directory and the
+    /// three redirected roots.
+    ///
+    /// Named by a language whose toolchain **records paths in its output** and offers to rewrite
+    /// them: Swift's `-file-prefix-map` takes this and a fixed replacement, which is what stops a
+    /// preparation's own temporary directory from reaching a model in a located trap, and stops one
+    /// program compiling to different bytes on every attempt for a reason that is not the program.
+    /// Nothing writes here directly — [`work`](Self::work) and [`output`](Self::output) are the
+    /// directories for that, and keeping them separate is the point of having both.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// The directory a compiler runs in, and the one a language writes its inputs into.
     // Named by a language that hands its compiler an explicit path; TypeScript's `tsc` is given
     // relative names and inherits the directory instead.

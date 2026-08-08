@@ -312,6 +312,161 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// sockets. Separate from gg's own state because the two vocabularies never meet: nothing in the
     /// membrane hands a guest a WASI resource, and nothing here reads one.
     wasi_table: ResourceTable,
+    /// Everything the guest wrote to **stderr**, bounded — see [`GuestStderr`].
+    stderr: GuestStderr,
+}
+
+/// A bounded, in-memory copy of everything the guest wrote to **standard error**.
+///
+/// # Why gg keeps it at all
+///
+/// Because a guest that stops has usually said something first, and until now gg threw it away.
+/// Ambient WASI gives every guest a standard error; a language runtime writes its own diagnostics
+/// there, and so does a program that reaches for its language's ordinary "write to fd 2". Those
+/// bytes are the difference between a model being told what went wrong and a model being told "the
+/// sandbox trapped", so the host keeps them and [`classify`](super::engine::classify) puts them in
+/// front of the failure it reports.
+///
+/// It is worth recording what it turned out **not** to cover, because the Swift arm was the reason
+/// this was built and is not the thing it saved. At `-Osize` that compiler does not print its
+/// runtime failures at all: it replaces the report with a bare `unreachable` and encodes the message
+/// in the artifact's debug information instead, which is why gg's engine symbolicates a trap. What
+/// this channel carries on that arm is what a program wrote **on purpose**.
+///
+/// # Why it is not stdout
+///
+/// Stdout stays closed and must: gg's telemetry stream *is* this process's stdout, so a guest write
+/// to fd 1 would corrupt the run's event stream. Stderr has no such conflict — nothing of gg's is on
+/// fd 2 — and the two channels mean different things to every runtime that has them, which is why
+/// opening one is not an argument for opening the other. A program that wants to *say* something
+/// still uses `console.log`; this is where a runtime says something the program did not choose to.
+///
+/// # Why it never fails a write
+///
+/// `MemoryOutputPipe`, the obvious answer, **traps** when a write would exceed its capacity, which
+/// would turn a chatty guest into a failed turn. This keeps the last [`STDERR_CAP`] bytes and drops
+/// what came before, which is the right end to keep: the message that precedes a trap is the last
+/// thing written.
+#[derive(Clone, Default)]
+pub(crate) struct GuestStderr(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+/// How much of a guest's stderr the host keeps — the tail.
+///
+/// A runtime's dying message is a line or two. This is large enough that a stack trace or a
+/// compiler-style diagnostic survives whole, and small enough that a program looping on a write to
+/// fd 2 cannot grow the host's memory.
+const STDERR_CAP: usize = 8 * 1024;
+
+impl GuestStderr {
+    /// Append `bytes`, keeping only the last [`STDERR_CAP`] of everything written so far.
+    fn append(&self, bytes: &[u8]) {
+        let mut buffer = self
+            .0
+            .lock()
+            .expect("the guest stderr buffer is never poisoned");
+        buffer.extend_from_slice(bytes);
+        if buffer.len() > STDERR_CAP {
+            let excess = buffer.len() - STDERR_CAP;
+            buffer.drain(..excess);
+        }
+    }
+
+    /// What the guest wrote, as text, or the empty string when it wrote nothing.
+    ///
+    /// Lossy, because these are a runtime's own bytes and not something gg chose the encoding of —
+    /// and a message a model could have read, dropped because one byte was not UTF-8, would be the
+    /// worst possible trade here.
+    pub(crate) fn tail(&self) -> String {
+        let buffer = self
+            .0
+            .lock()
+            .expect("the guest stderr buffer is never poisoned");
+        String::from_utf8_lossy(&buffer).trim().to_string()
+    }
+}
+
+impl wasmtime_wasi::cli::IsTerminal for GuestStderr {
+    /// Never. A runtime that believed it had a terminal would colour its diagnostics with ANSI
+    /// escapes, and the model would be shown the escapes.
+    fn is_terminal(&self) -> bool {
+        false
+    }
+}
+
+/// The **synchronous** stream a guest's writes land in.
+///
+/// It exists rather than being left to [`StdoutStream`](wasmtime_wasi::cli::StdoutStream)'s default
+/// implementation, and that default is a trap this cost a debugging session to find: it wraps the
+/// `AsyncWrite` below in an `AsyncWriteStream`, which buffers the guest's bytes and flushes them
+/// from a background task. gg's sandbox is driven **synchronously** — `add_to_linker_sync`, a
+/// blocking task, a store read the instant the program stops — so a guest that wrote its dying
+/// message and then trapped had its message still sitting in that buffer when the failure was
+/// rendered. It arrived sometimes and not others, which is the worst way for a diagnostic channel
+/// to behave.
+#[wasmtime_wasi::async_trait]
+impl wasmtime_wasi::p2::OutputStream for GuestStderr {
+    fn write(&mut self, bytes: bytes::Bytes) -> wasmtime_wasi::p2::StreamResult<()> {
+        self.append(&bytes);
+        Ok(())
+    }
+
+    /// Nothing to do: the write above already landed in the buffer.
+    fn flush(&mut self) -> wasmtime_wasi::p2::StreamResult<()> {
+        Ok(())
+    }
+
+    /// Always writable, and never in a quantity that could refuse a write. What bounds this channel
+    /// is [`STDERR_CAP`], which *drops* the oldest bytes rather than denying the newest — a guest
+    /// told its stderr was full is a guest whose runtime may block, retry or trap on gg's
+    /// bookkeeping.
+    fn check_write(&mut self) -> wasmtime_wasi::p2::StreamResult<usize> {
+        Ok(STDERR_CAP)
+    }
+}
+
+#[wasmtime_wasi::async_trait]
+impl wasmtime_wasi::p2::Pollable for GuestStderr {
+    /// Immediately. There is nothing to wait for: a write is a memcpy into a buffer.
+    async fn ready(&mut self) {}
+}
+
+impl tokio::io::AsyncWrite for GuestStderr {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        _context: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        self.append(bytes);
+        std::task::Poll::Ready(Ok(bytes.len()))
+    }
+
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        _context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        _context: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+}
+
+impl wasmtime_wasi::cli::StdoutStream for GuestStderr {
+    /// The synchronous stream above, which is what every guest gg drives actually writes through.
+    fn p2_stream(&self) -> Box<dyn wasmtime_wasi::p2::OutputStream> {
+        Box::new(self.clone())
+    }
+
+    /// Required by the trait and unused by this embedding, which links WASI synchronously. It is a
+    /// real implementation rather than an `unimplemented!()` so that an async embedding of this
+    /// state — a thing gg does not have and might — records the same bytes rather than panicking.
+    fn async_stream(&self) -> Box<dyn tokio::io::AsyncWrite + Send + Sync> {
+        Box::new(self.clone())
+    }
 }
 
 /// The WASI half of a program's store.
@@ -349,12 +504,15 @@ impl<A: ToolApi> WasiView for MembraneState<A> {
 /// which is why [`preopen_root`] is a named function rather than a line here: an ignored failure
 /// that is also an *unobserved* one would leave a whole capability quietly missing, so a test calls
 /// it and asserts it worked.
-fn wasi_context() -> WasiCtx {
+fn wasi_context(stderr: GuestStderr) -> WasiCtx {
     let mut builder = WasiCtxBuilder::new();
     builder
         .inherit_env()
         .inherit_network()
-        .allow_ip_name_lookup(true);
+        .allow_ip_name_lookup(true)
+        // Kept rather than inherited: this process's stderr is an operator's log, and a guest
+        // runtime's dying message belongs in the model's feedback rather than in it.
+        .stderr(stderr);
     // Deliberately ignored; see above.
     let _rooted = preopen_root(&mut builder);
     builder.build()
@@ -439,6 +597,7 @@ impl<A: ToolApi> MembraneState<A> {
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
+        let stderr = GuestStderr::default();
         Self {
             api: GuardedApi::new(api),
             language,
@@ -471,9 +630,19 @@ impl<A: ToolApi> MembraneState<A> {
             program_error: None,
             rerun: None,
             revoked_rerun: false,
-            wasi: wasi_context(),
+            wasi: wasi_context(stderr.clone()),
             wasi_table: ResourceTable::new(),
+            stderr,
         }
+    }
+
+    /// What the guest wrote to **stderr**, or the empty string when it wrote nothing.
+    ///
+    /// Read by [`classify`](super::engine::classify) when a program failed, because on a guest
+    /// without an exception mechanism this is the only account of the failure that exists. See
+    /// [`GuestStderr`].
+    pub(crate) fn stderr_tail(&self) -> String {
+        self.stderr.tail()
     }
 
     /// The memory limiter, for [`Store::limiter`](wasmtime::Store::limiter) to consult before each

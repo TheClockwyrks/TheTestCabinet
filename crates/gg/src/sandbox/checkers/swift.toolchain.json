@@ -1,0 +1,29 @@
+{
+  "swift": "6.3.3",
+  "wasmSdk": "6.3.3",
+  "target": "wasm32-unknown-wasip1",
+  "witBindgen": "0.60.0",
+  "adapter": "45.0.3",
+  "files": [
+    {
+      "name": "gg-shell.h",
+      "bytes": 1581
+    },
+    {
+      "name": "sandbox.h",
+      "bytes": 73545
+    },
+    {
+      "name": "sandbox.o",
+      "bytes": 33351
+    },
+    {
+      "name": "sandbox_component_type.o",
+      "bytes": 5419
+    },
+    {
+      "name": "shell.swift",
+      "bytes": 4720
+    }
+  ]
+}

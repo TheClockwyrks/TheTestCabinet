@@ -65,10 +65,24 @@ async-trait = { workspace = true }
 # an ephemeral container, so a disk cache is written once and discarded, and it would
 # pull `zstd`'s C compile onto the `tcab` release builds. The process-wide
 # compiled-component cache is what delivers the latency.
+# `addr2line` is the third and it is not about speed: it is what lets a trap's frames be
+# symbolicated out of the artifact's own DWARF, including the INLINED ones. On a compiled arm
+# with no exception mechanism a trap is how an ordinary program failure arrives, and the Swift
+# arm encodes what went wrong as an inlined frame's name rather than printing it — so without
+# this a model is told `program.wasm!main` and nothing else. See `Config::wasm_backtrace_details`
+# in `src/sandbox/engine.rs`. `demangle` comes with it so a frame is a name a person can read.
 wasmtime = { workspace = true, features = [
 	"component-model",
 	"parallel-compilation",
+	"addr2line",
+	"demangle",
 ] }
+# The byte buffer WASI's `output-stream` trait speaks in, for the one stream gg implements
+# itself: the guest's stderr (`src/sandbox/membrane.rs`). Naming it adds no fetch — it is
+# already in the graph through wasmtime-wasi, reqwest and tokio — and the alternative was
+# taking `StdoutStream`'s default `AsyncWrite` path, which buffers a guest's dying message
+# into a background task this synchronous embedding never lets flush.
+bytes = { workspace = true }
 # WASI preview 2 for the sandbox's guests (`src/sandbox.rs`). A guest toolchain emits a
 # component that imports `wasi:io`, `wasi:filesystem`, `wasi:clocks`, `wasi:random` and the
 # rest whether or not a program touches them, so a linker that provided none of it could not
@@ -100,11 +114,14 @@ base64 = { workspace = true }
 # `publisher` already use on the run-tree artifact path.
 flate2 = { workspace = true }
 tar = "0.4"
-# Encoding the core wasm module `rustc` emits into the component gg's engine instantiates
-# (`src/sandbox/language/rust.compile.rs`). The Rust arm is the first whose artifact is
-# produced per program rather than committed, so this step runs on the turn path — in
-# process, from the bytes the compiler wrote, with no `wasm-tools` binary to install in a run
-# container. See the workspace pin for why its version tracks wasmtime's wasmparser line.
+# Encoding the core wasm module a compiled arm's compiler emits into the component gg's engine
+# instantiates — `rustc`'s (`src/sandbox/language/rust.compile.rs`) and `swiftc`'s
+# (`src/sandbox/language/swift.compile.rs`). Those arms' artifacts are produced per program
+# rather than committed, so this step runs on the turn path — in process, from the bytes the
+# compiler wrote, with no `wasm-tools` binary to install in a run container. The Swift arm
+# additionally uses its `adapter`, because the Swift SDK targets `wasm32-unknown-wasip1` and the
+# preview1 module it emits has to be adapted to the preview 2 interfaces the host links. See the
+# workspace pin for why its version tracks wasmtime's wasmparser line.
 wit-component = { workspace = true }
 
 [dev-dependencies]

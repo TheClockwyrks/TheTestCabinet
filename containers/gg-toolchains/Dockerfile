@@ -278,6 +278,62 @@ RUN set -eux; \
 	"$dst/bin/rustc" --version; \
 	du -sh "$dst"
 
+# --- Swift ------------------------------------------------------------------
+# The second toolchain that PRODUCES a component rather than compiling for one, and the second
+# heaviest here — **~835 MB** against `rustc`'s ~376 MB. A Swift program is compiled by `swiftc`
+# against the Swift SDK for WebAssembly into a core wasm module, which gg then encodes as a
+# component in its own process. See `crates/gg/src/sandbox/language/swift.compile.rs`.
+#
+# Constraint 1 is the one this block works for, and it is the reason the install is a script rather
+# than a `curl | tar`. The published toolchain is built for Debian 12 and its `lld` links against
+# that distribution's `libxml2` soname; the gg run images derived from Debian bookworm have it, and
+# `blender-gg`'s Ubuntu does not — and this tree is copied to the same absolute path in both. So
+# `scripts/ci/install-swift.sh` vendors that library and its closure under `<home>/lib`, and
+# `swift.compile.rs` names that directory on `LD_LIBRARY_PATH` for every compile. That is the "the
+# language's own step vendors what it needs" clause of constraint 1, taken literally. Nothing else
+# in the tree reads a build-time prefix: `swiftc` and `clang` derive their resource directories from
+# their own paths, and the SDK is named explicitly on every invocation.
+#
+# Constraint 2 is satisfied outright. `swiftc` is a plain one-shot process with an explicit `-o`, it
+# has no daemon and nothing to keep warm (a compile is ~0.3 s), and it only ever READS the committed
+# bindings gg carries inside its own binary. Everything it writes — intermediates, the clang module
+# cache, the precompiled bridging header — lands inside the preparation's own tree, because the
+# calling side redirects `HOME`, `TMPDIR` and the `XDG_*` roots there and this arm additionally names
+# `-pch-output-dir` explicitly.
+#
+# WHAT IS PRUNED, and why each is safe — the published toolchain is 3.3 GB unpacked and the wasm SDK
+# another 286 MB. Kept: `swift-driver` (what `swiftc` is), `swift-frontend` (the compiler), `clang`
+# (which the driver hands the link to), `lld` (which is `wasm-ld`), `swift-autolink-extract` (an
+# ELF-era step the driver refuses to proceed without), the TRANSITIVE CLOSURE of the shared objects
+# those five actually need — walked with `readelf` rather than copied by directory, which is what
+# keeps Foundation's networking half out and with it `libcurl`'s whole system closure — clang's own
+# headers, and the SDK's wasm sysroot and STATIC standard library. Dropped: `sourcekit-lsp`,
+# the 184 MB dependency scanner (the driver falls back to `swift-frontend` and says so, which
+# `swift.compile.rs` filters); `clangd`, `swift-format`, `docc`, `lldb*`,
+# `swift-package*` and the `llvm-*` utilities (nothing on the turn path is an editor service, a
+# debugger, a formatter or a build system) and the libraries they load; the HOST static standard
+# library (this arm cross-compiles); `lib/swift/embedded`, 577 MB of Embedded Swift resources for
+# every target; and the SDK's DYNAMIC standard library, since every compile passes `-static-stdlib`
+# because a component is one self-contained module.
+#
+# The versions are the ones `packages/gg-sandbox-swift/swift-version.sh` pins, and the script is run
+# here so there is one list rather than two. It ends by compiling both a C file and a Swift file for
+# the wasm target with the pruned copy, because every deletion above is a thing that could have
+# broken exactly one of them.
+COPY packages/gg-sandbox-swift/swift-version.sh \
+	/tmp/gg-swift/packages/gg-sandbox-swift/swift-version.sh
+COPY scripts/ci/install-swift.sh /tmp/gg-swift/scripts/ci/install-swift.sh
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+	--mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+	apt-get update && apt-get install -y --no-install-recommends binutils
+RUN set -eux; \
+	SWIFT_INSTALL_DIR=/opt/gg/toolchains/swift \
+	bash /tmp/gg-swift/scripts/ci/install-swift.sh; \
+	rm -rf /tmp/gg-swift; \
+	test -x /opt/gg/toolchains/swift/toolchain/usr/bin/swiftc; \
+	test -d /opt/gg/toolchains/swift/sdk/WASI.sdk; \
+	test -f /opt/gg/toolchains/swift/lib/libxml2.so.2
+
 # --- Export just the tree ---------------------------------------------------
 # `scratch` so this published-nowhere builder carries no base layers: it is only ever a
 # `COPY --from` source, and keeping it to the toolchain tree alone means the gg run images

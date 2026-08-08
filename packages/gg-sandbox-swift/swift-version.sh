@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# The pins the **Swift** program language's toolchain is built and run against.
+#
+# Sourced by `bindings.sh` and `build.sh`, by `containers/gg-toolchains/Dockerfile` and by
+# `scripts/ci/install-swift.sh`, so there is one list rather than four.
+#
+# WHY THE COMPILER IS PINNED AT ALL. This arm ships no compiled Swift inside gg's binary —
+# what it commits is a wasm object built from the WIT bindings, two headers and one Swift
+# SOURCE file — so nothing here is a compiler-version-private format the way an `.rlib` or a
+# `.swiftmodule` is, and a run image one patch release ahead would still link. The pin is
+# therefore about the SURFACE rather than the format: the shell gg compiles beside every
+# program uses the language's own syntax, the diagnostics a model is handed are this
+# release's, and the study's whole point is that an arm is one measured configuration. A
+# floating compiler would move a variable the experiment is holding still.
+set -euo pipefail
+
+SWIFT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# The Swift release a model's program is compiled by, on the host, once per turn.
+GG_SWIFT_VERSION="6.3.3"
+
+# The Swift SDK for WebAssembly, published beside the toolchain under the same release tag.
+# Its version is the release's; it is named separately because it is a separate download with
+# its own checksum, and because the SDK is what actually decides which standard library a
+# program links.
+GG_SWIFT_WASM_SDK_VERSION="$GG_SWIFT_VERSION"
+
+# The target a model's program is compiled to.
+#
+# `wasm32-unknown-wasip1` and deliberately not a component target, because the Swift SDK
+# publishes no other: the artifact bundle declares exactly this triple. The core module the
+# compiler emits is turned into a COMPONENT afterwards, in gg's own process, by
+# `wit_component` with the preview1 adapter below — see
+# `crates/gg/src/sandbox/language/swift.compile.rs`.
+#
+# The consequence worth writing down is that this arm's guest imports the whole WASI preview 2
+# surface whether a program touches it or not, because the target's own start-up does. gg links
+# that surface ambiently for every guest (`sandbox::linker`), so it costs this arm nothing —
+# and it is what gives a Swift program its own `print`, its own clock and its own files.
+GG_SWIFT_TARGET="wasm32-unknown-wasip1"
+
+# The `wasi_snapshot_preview1` REACTOR adapter that turns the preview1 core module the Swift
+# SDK emits into a preview 2 component.
+#
+# Pinned to the wasmtime release gg links, because the adapter and the runtime are two halves
+# of one ABI: an adapter from a newer line may lower an interface the host's `wasmtime-wasi`
+# does not yet define. It is downloaded once by `build.sh` and COMMITTED
+# (`crates/gg/src/sandbox/checkers/swift.adapter.wasm`, 52 KB), for the reason every other
+# arm's committed artifact is: gg is copied as a single file into an ephemeral run container
+# and must carry everything the turn path needs with it.
+#
+# The REACTOR one, not the command one: a component's exports are called after `_initialize`,
+# and the command adapter would insist on running a `_start` this guest does not have.
+GG_WASMTIME_ADAPTER_VERSION="45.0.3"
+
+# The `wit-bindgen` release the guest bindings are generated with, and the generator: **C**.
+#
+# There is no Swift generator in `wit-bindgen`, and this arm does not need one. Swift imports C
+# natively, so the canonical ABI is generated once as C — the same generator the C++ arm would
+# use — compiled to a wasm object, and reached from Swift through a bridging header. Writing
+# the lowering by hand in Swift would have been a second implementation of a specification
+# `wit-bindgen` already implements, drifting from the WIT on its own schedule.
+#
+# The version is the one the Rust arm pins, and deliberately the same one: both read the same
+# `crates/gg/wit`, and two generators of different vintages reading it would be two chances for
+# the wire to be described differently.
+GG_WIT_BINDGEN_VERSION="0.60.0"
+
+export GG_SWIFT_VERSION GG_SWIFT_WASM_SDK_VERSION GG_SWIFT_TARGET
+export GG_WASMTIME_ADAPTER_VERSION GG_WIT_BINDGEN_VERSION
+export SWIFT_ROOT
+
+# The platform build of the toolchain for this machine, and the asset names the downloads use.
+# Exported as a function rather than resolved here, because the Dockerfile's build stage and a
+# developer's machine may be different distributions and only one of them is `uname`-able at
+# the point this file is sourced.
+gg_swift_platform() {
+	case "$(uname -s)-$(uname -m)" in
+	Linux-x86_64) echo "debian12-x86_64" ;;
+	Linux-aarch64 | Linux-arm64) echo "debian12-aarch64" ;;
+	*)
+		echo "error: no pinned Swift build for $(uname -s)-$(uname -m)." >&2
+		return 1
+		;;
+	esac
+}
+
+# The Swift SDK bundle is host-independent — it holds a wasm sysroot and a wasm standard
+# library, and nothing that runs on the machine doing the compiling — so there is one asset.
+gg_swift_toolchain_url() {
+	local platform
+	platform="$(gg_swift_platform)" || return 1
+	echo "https://download.swift.org/swift-${GG_SWIFT_VERSION}-release/${platform}/swift-${GG_SWIFT_VERSION}-RELEASE/swift-${GG_SWIFT_VERSION}-RELEASE-${platform}.tar.gz"
+}
+
+gg_swift_wasm_sdk_url() {
+	echo "https://download.swift.org/swift-${GG_SWIFT_WASM_SDK_VERSION}-release/wasm-sdk/swift-${GG_SWIFT_WASM_SDK_VERSION}-RELEASE/swift-${GG_SWIFT_WASM_SDK_VERSION}-RELEASE_wasm.artifactbundle.tar.gz"
+}
+
+gg_wasmtime_adapter_url() {
+	echo "https://github.com/bytecodealliance/wasmtime/releases/download/v${GG_WASMTIME_ADAPTER_VERSION}/wasi_snapshot_preview1.reactor.wasm"
+}
+
+# Where this arm's toolchain tree is, in the order gg itself looks — see
+# `swift_home` in `crates/gg/src/sandbox/language/swift.compile.rs`, which must agree with this.
+#
+# Three places rather than `PATH`, because what this arm needs is a TREE and not a binary: a
+# pruned compiler, the wasm SDK beside it, and the shared libraries the compiler's own linker
+# was built against. A bare `swiftc` on `PATH` says nothing about where the other two are.
+GG_SWIFT_DEFAULT_HOME="$HOME/.local/share/tcab/gg-swift"
+GG_SWIFT_IMAGE_HOME="/opt/gg/toolchains/swift"
+
+gg_swift_home() {
+	if [ -n "${TCAB_GG_SWIFT_HOME:-}" ]; then
+		echo "$TCAB_GG_SWIFT_HOME"
+		return 0
+	fi
+	if [ -x "$GG_SWIFT_IMAGE_HOME/toolchain/usr/bin/swiftc" ]; then
+		echo "$GG_SWIFT_IMAGE_HOME"
+		return 0
+	fi
+	echo "$GG_SWIFT_DEFAULT_HOME"
+}
+
+export GG_SWIFT_DEFAULT_HOME GG_SWIFT_IMAGE_HOME

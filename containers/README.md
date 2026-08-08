@@ -153,7 +153,8 @@ containers/
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
-│                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc). Not a run image
+│                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc, a pruned
+│                               #   Swift + its wasm SDK). Not a run image
 │                               #   and never published — the `-gg` variants `COPY --from` it
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
@@ -683,6 +684,25 @@ the layer is exported. Its version is not pinned in this image or in its package
 compiler-version-private format and the compiler here must be exactly the one that built
 the library set inside gg's binary — so there is only one Rust release in the repository at
 all. That set is not here, for the vintage reason PureScript's is not.
+
+**Swift** is the second arm of that shape and the second heaviest thing in the tree —
+**~835 MB**, against `rustc`'s 376 MB — because a Swift cross-compile needs a compiler, a
+target SDK holding a wasm sysroot and standard library, *and* a vendored copy of the shared
+libraries the published linker was built against. That last one is the whole reason its
+install is a script rather than two `curl`s: the toolchain is built for Debian 12 and its
+`lld` links against that distribution's `libxml2` soname, which the Debian-derived run images
+have and `blender-gg`'s Ubuntu does not — and this tree is copied to the same absolute path in
+both. So [`scripts/ci/install-swift.sh`](../scripts/ci/install-swift.sh) puts that library and
+its closure under `<home>/lib`, and gg names that directory on `LD_LIBRARY_PATH` for every
+compile. What is kept out of 3.3 GB is the driver, the front end, `clang`, `lld` and the
+transitive closure of the shared objects those actually need — walked rather than copied by
+directory, which is what leaves Foundation's networking half and `libcurl`'s system closure
+behind; what goes with them is the editor services, the debugger, the formatter, the
+documentation tool, the build system, the *host* standard library and 577 MB of Embedded Swift
+resources for every target. The Dockerfile proves the pruning by compiling both a C file
+and a Swift file for the wasm target with the pruned copy, because each of those exercises a
+different half of what was deleted. The bindings a program is compiled against are not here,
+for the vintage reason PureScript's library set is not.
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner

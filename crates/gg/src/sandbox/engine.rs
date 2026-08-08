@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 use test_cabinet_core::gg::GgProgramLanguage;
 use wasmtime::component::Component;
-use wasmtime::{Config, Engine, OptLevel, Store};
+use wasmtime::{Config, Engine, OptLevel, Store, WasmBacktraceDetails};
 
 use super::SandboxError;
 use super::invoker::ToolApi;
@@ -96,6 +96,19 @@ fn engine() -> &'static Engine {
         // timeout replaced fuel, and for what that exclusion costs a language that can block.
         config.epoch_interruption(true);
         config.cranelift_opt_level(OptLevel::None);
+        // Symbolicate a trap's frames out of the artifact's own DWARF rather than reporting them as
+        // addresses. It is off by default in wasmtime, and gg turns it on because on a compiled arm
+        // with no exception mechanism a trap is how an ORDINARY program failure arrives — and for
+        // the [Swift](super::language::swift) arm it is the whole error surface, not a nicety: that
+        // compiler encodes `Swift runtime failure: Index out of range` as the name of a synthetic
+        // inlined frame rather than printing it anywhere, so without this a model is told
+        // `program.wasm!main` and nothing else. Inlined frames are what make that legible, and they
+        // are the same feature.
+        //
+        // It costs nothing for a guest carrying no debug information — the committed interpreter
+        // components carry none — and the work is done only where a trap is actually being
+        // rendered, never on the path a program takes when it succeeds.
+        config.wasm_backtrace_details(WasmBacktraceDetails::Enable);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any
         // input, so a failure would be a programming error rather than a runtime condition.
         let engine = Engine::new(&config).expect("the fixed wasmtime Config is valid");
@@ -313,7 +326,26 @@ pub(crate) fn classify<A: ToolApi>(
             limit: limits.max_memory_bytes,
         };
     }
-    fallback(err.to_string())
+    fallback(with_guest_stderr(
+        err.to_string(),
+        store.data().stderr_tail(),
+    ))
+}
+
+/// What the guest said about itself, in front of the engine's account of what happened to it.
+///
+/// The order is the point. On a guest with an exception mechanism the engine's account is the whole
+/// story, because a throw was caught, reported and never became a trap. On one without — the
+/// [Swift](super::language::swift) arm, where an index out of range, a force-unwrapped `nil` and a
+/// `fatalError` are all unrecoverable by design — the *only* description of the failure is the line
+/// the runtime wrote to stderr on its way down, and burying it under a wasm backtrace would be
+/// showing a model the machinery instead of the fault. See
+/// [`GuestStderr`](MembraneState::stderr_tail).
+fn with_guest_stderr(error: String, said: String) -> String {
+    match said.is_empty() {
+        true => error,
+        false => format!("{said}\n\n{error}"),
+    }
 }
 
 #[cfg(test)]

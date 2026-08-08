@@ -261,7 +261,23 @@ recut="typescript ruby java kotlin"
 # real Rust program, compiled against the set by the production prepare step and run through the
 # real membrane, that calls every one of them. A stale set does not merely differ; it stops
 # linking.
-declared="purescript jvm rust"
+#
+# `swift` is exempted on the same terms and answered the same way. Its three committed artifacts
+# are not a compiler either. `swift.guest.tar.gz` is 31 KB of compile INPUTS — the C bindings
+# generated from crates/gg/wit and compiled to a wasm object, the component-type object naming the
+# world, the bridging header, and gg's own shell in Swift source — and re-cutting it needs the
+# pinned `wit-bindgen` CLI downloaded from GitHub and a ~1 GB Swift toolchain to compile the C with.
+# `swift.adapter.wasm` is a 52 KB binary downloaded from a wasmtime release. Neither is reviewable
+# by reading. Nothing above re-cuts them, and — as with Rust — that is a property rather than a
+# hope: the bindings both build steps need are their own script, packages/gg-sandbox-swift/
+# bindings.sh, so no signature step can reach the build.
+# `swift.toolchain.json` declares what built them and every file in the archive, and gg's own tests
+# compare it three ways: the manifest against the archive's contents, file by file and byte count by
+# byte count; the archive's copy of the shell and the bridging header against THIS CHECKOUT's
+# sources, so a shell edited without rebuilding fails by name rather than compiling every program
+# against the old one; and — the check no diff could make — a real Swift program, compiled against
+# the archive by the production prepare step and run through the real membrane.
+declared="purescript jvm rust swift"
 for artifact in crates/gg/src/sandbox/checkers/*; do
 	stem="$(basename "$artifact")"
 	stem="${stem%%.*}"

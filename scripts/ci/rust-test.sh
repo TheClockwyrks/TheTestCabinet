@@ -54,6 +54,16 @@ log "install the Kotlin toolchain (gg's kotlin arm compiles with it)"
 log "install the wasm32 target (gg's rust arm compiles a model's program to it)"
 ./scripts/ci/install-rust-wasm.sh
 
+# gg's Swift arm compiles a model's program with a real `swiftc` against the Swift SDK for
+# WebAssembly, and its tests drive the whole thing. It is the heaviest install here — ~835 MB kept
+# out of a 3.3 GB toolchain and a 286 MB SDK, pruned by the script itself, which also vendors the
+# shared libraries the published toolchain expects at Debian sonames, so the same tree works on
+# every image it is copied to.
+# Pinned in packages/gg-sandbox-swift/swift-version.sh; idempotent, so an agent that already has it
+# pays nothing. `crates/gg` looks under $HOME for it by name, so nothing has to be exported.
+log "install the Swift toolchain (gg's swift arm compiles with it)"
+./scripts/ci/install-swift.sh
+
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop
 

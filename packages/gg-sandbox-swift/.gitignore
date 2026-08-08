@@ -1,0 +1,4 @@
+# The vendored `wit-bindgen` CLI, the C bindings it generates from crates/gg/wit, and the staging
+# tree the archive is cut from. Everything this package COMMITS lands in
+# crates/gg/src/sandbox/checkers/ instead.
+.build/

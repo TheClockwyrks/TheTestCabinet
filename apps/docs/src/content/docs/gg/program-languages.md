@@ -1823,15 +1823,29 @@ doubled image set and CI matrix; the thing it buys is that "does this image have
 toolchains?" has one answer.
 
 What the tree carries today, and what each weighs: `purs` and `esbuild` (~110 MB), a
-Temurin JDK with TeaVM's jars (~154 MB), the Kotlin compiler on top of it (~67 MB), and a
-pruned `rustc` with the `wasm32-unknown-unknown` standard library (**~376 MB**, the largest
-by a wide margin). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
+Temurin JDK with TeaVM's jars (~154 MB), the Kotlin compiler on top of it (~67 MB), a
+pruned `rustc` with the `wasm32-unknown-unknown` standard library (~376 MB), and a pruned
+Swift toolchain with the Swift SDK for WebAssembly (**~835 MB**, the largest by a wide
+margin). Rust's is pruned to `rustc`, its two shared libraries, the wasm standard
 library and `rust-lld` — `cargo`, `rustdoc`, the lint tools, the standard-library sources
 and the *host* standard library are all removed, none of which a cross-compile of a program
 with no proc macros touches. That toolchain's version is the one place a pin is **not** the
 arm's own: it is `rust-toolchain.toml`'s, because an `.rlib` is a compiler-version-private
 format and the compiler in the image must be exactly the one that built the library set
 inside gg's binary, so there is only one Rust release in the repository at all.
+
+Swift's is pruned from 3.3 GB to the driver, the front end, `clang`, `lld` and the transitive
+closure of the shared objects those need — walked rather than copied by directory, which is
+what leaves Foundation's networking half and `libcurl`'s own system closure behind — plus the
+SDK's wasm sysroot and its *static* standard library; the editor services, the debugger, the formatter, the
+documentation tool, the build system, the host standard library and 577 MB of Embedded
+Swift resources all go. It is also the one toolchain here that carries **libraries of its
+own that are not a compiler**: the published build is Debian 12's and its `lld` links
+against that distribution's `libxml2` soname, which the Debian-derived run images have and
+`blender-gg`'s Ubuntu does not — so the closure travels under the tree and gg names it on
+`LD_LIBRARY_PATH` for every compile. That is the "a language's own step vendors what it
+needs" clause of the image's portability constraint, taken literally, and it is the reason
+that block runs an installer rather than two `curl`s.
 
 ### Per-agent compiler isolation
 
@@ -2078,9 +2092,17 @@ The seam carries both shapes, and the difference is two fields:
 What it costs is one wasmtime `Component::new` per turn instead of one per process, and
 that cost is **reported rather than hidden**: it lands in the same `compileWaitMs` an
 interpreted arm reports on its first turn only, so a cross-language query reads it instead
-of losing it in the response residual. It is small, because a compiled arm's artifacts are
-small — the link dead-strips everything the program did not reach, so an ordinary Rust
-program is tens of kilobytes and instantiates in single-digit milliseconds.
+of losing it in the response residual.
+
+How big that cost is turns out to be the language's, not the shape's, and the two arms of
+this shape sit at opposite ends of it. An ordinary **Rust** program is ~25 KB and compiles
+in ~9 ms, because the link dead-strips everything the program did not reach and almost
+nothing in `std` is reachable from a program that does not name it. A **Swift** program of
+the same size is **~7 MB** and costs **~1.3 s**, because Swift's standard library is
+statically linked and its reflection metadata keeps most of itself reachable — so that arm
+pays more per turn to *instantiate* its program than to compile it. Neither figure is a
+defect; both are what the study is for, and this is why the field exists rather than being
+folded into the turn's response time.
 
 Two things follow that a language author should expect. There is nothing for
 [precompile](/gg/responses-as-code/) to warm, so such an arm's warm-up is entirely its
@@ -2090,8 +2112,22 @@ than the committed case rather than weaker, because a stale artifact is not a fa
 an arm of this shape has.
 
 The first arm of this shape is **[Rust](#rust-the-program-is-the-artifact)**
-(`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`), and the C++ and
-Swift arms are the same shape and inherit it unchanged.
+(`crates/gg/src/sandbox/language/rust.rs`, `packages/gg-sandbox-rust/`). The second is
+**Swift** (`crates/gg/src/sandbox/language/swift.rs`, `packages/gg-sandbox-swift/`), whose
+execution substrate is built and whose SDK and registration are not, so it is not yet a
+`language` value an operator can configure. It inherits the shape unchanged and adds two
+things to it that are worth reading before a third arm is written:
+
+- **its compiler's output is a preview1 core module, not a component.** The Swift SDK
+  publishes one target triple and it is `wasm32-unknown-wasip1`, so the encode gg already
+  ran for Rust additionally adapts the module with the pinned `wasi_snapshot_preview1`
+  reactor adapter, which gg carries beside its bindings. A language whose toolchain emits
+  preview1 is not thereby excluded from this seam; it costs one 52 KB artifact.
+- **there is no `wit-bindgen` generator for it, and it does not need one.** Swift imports C
+  natively, so the canonical ABI is generated once with the **C** generator, compiled to a
+  wasm object at build time, and reached from Swift through a bridging header. The
+  alternative — hand-writing the lowering — would be a second implementation of a
+  specification that drifts from `crates/gg/wit` on its own schedule.
 
 #### A module a program has to be linked against
 

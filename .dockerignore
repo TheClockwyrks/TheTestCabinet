@@ -84,6 +84,13 @@
 # either block to build.
 !/packages/gg-sandbox-kotlin/kotlin-version.sh
 !/scripts/ci/install-kotlin.sh
+# The Swift arm does the same, and its installer does more than fetch: it PRUNES a 3.3 GB
+# toolchain to the ~1 GB a wasm cross-compile actually runs, and vendors the shared libraries
+# the published `lld` links against so the tree works on both the Debian-derived run images and
+# `blender-gg`'s Ubuntu. That knowledge must live in one place, so the image runs the same
+# script a developer's machine does.
+!/packages/gg-sandbox-swift/swift-version.sh
+!/scripts/ci/install-swift.sh
 
 # The performance image bakes the committed training scenarios from the
 # Lattice case's version folder (see containers/performance/Dockerfile's

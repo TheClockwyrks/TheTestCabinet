@@ -172,3 +172,18 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and (test(/^sandbox::language::java::(substrate|surface)::/) or test(/^sandbox::language::ruby::substrate::/))'
 slow-timeout = { period = "120s", terminate-after = 3 }
+
+# The Swift arm's compile-driving tests, bounded exactly as the other compiled arms' are above and
+# for the same reason: each is its own process, and the first thing it does is start a real
+# compiler. This arm is dearer per program than any other — ~0.3 s for `swiftc` and then **~1.3 s**
+# for `Component::new`, because it is the only arm whose artifact is a 7 MB statically linked Swift
+# standard library the engine has to compile on every turn — and its isolation gate pays that
+# thirty-two times over.
+#
+# Measured on this repository's dev container, this group run on its own: 22 s for all nine tests
+# with the isolation gate at 17 s, and 74 s for the same nine when the rest of the package was also
+# running. That is the same spread every other group here records, and the same remedy: bounded from
+# the work rather than from the default, with room for a CI runner with a quarter of the cores.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(/^sandbox::language::swift::substrate::/)'
+slow-timeout = { period = "180s", terminate-after = 3 }
