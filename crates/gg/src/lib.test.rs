@@ -129,11 +129,22 @@ fn no_unordered_map_or_set_survives_in_ggs_own_code() {
 /// substring search. [`without_template_references`] answers that directly, so the directory that
 /// holds every language's implementation, and with it the likeliest home for a hand-written
 /// spelling, is now covered like the rest of the crate.
-const SPELLING_EXEMPT: &[(&str, &str)] = &[(
-    "client.rs",
-    "the mock model's canned programs, which are developer-facing fixtures rather than \
+const SPELLING_EXEMPT: &[(&str, &str)] = &[
+    (
+        "client.rs",
+        "the mock model's canned programs, which are developer-facing fixtures rather than \
          anything gg says to a model",
-)];
+    ),
+    (
+        "sandbox/signatures.fixture.rs",
+        "a catalogue rather than a sentence about one. This rule exists because a spelling gg \
+         writes by hand drifts from the SDK that decides it — and what this file holds is the \
+         artifact a spelling is *read from*, in both schemas, so that the two can be compared. Its \
+         operation ids collide with the rule textually and not in substance: `programs.get` is gg's \
+         id for an operation and, on the arms that spell functions the way Rust spells its methods, \
+         also how one of them writes the call",
+    ),
+];
 
 /// **No sentence gg puts in front of a model spells an SDK call by hand.**
 ///

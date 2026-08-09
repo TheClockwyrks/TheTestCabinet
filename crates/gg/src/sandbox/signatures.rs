@@ -41,22 +41,108 @@
 //! [`ProgramLanguage::catalogue`](super::ProgramLanguage::catalogue). A reader that wants "the
 //! catalogue" therefore has to say whose, which is exactly the question a cross-language study makes
 //! unavoidable.
+//!
+//! # Two schemas at once, on purpose
+//!
+//! A catalogue declares its [`schema`](SignatureCatalogue::schema), and gg parses both the one every
+//! arm commits today ([`V1`](SchemaVersion::V1)) and the one they move to
+//! ([`V2`](SchemaVersion::V2)) — see [`SchemaVersion`] for what each carries and why the second
+//! exists.
+//!
+//! That is not tolerance of drift; it is the mechanism by which the move happens at all. Eleven arms
+//! are reflected by eleven different documentation tools out of ten source trees, and converting
+//! them in one commit would mean eleven toolchains, eleven regenerated artifacts and eleven prose
+//! rewrites landing together, with nothing green in between. Version dispatch makes an arm's
+//! conversion **its own commit**: the ten that have not moved keep parsing and rendering exactly as
+//! they do now, and the one that has is read through the same normalized projection
+//! ([`catalogue_functions`], [`catalogue_modules`]) as the rest, so no consumer has to ask which
+//! schema it is looking at.
+//!
+//! The transition is finished when no `V1` catalogue is left, at which point the v1 sections, the
+//! [transitional brief derivation](Prose::from_paragraph) and this paragraph all go.
+
+use std::borrow::Cow;
 
 use serde::Deserialize;
 use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
 
 use super::language::{ProgramLanguage, SurfaceCall};
+use super::operations::{Binding, operation_by_id};
 
 // The whole vocabulary backs [`sandbox_tool_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
 #[cfg(test)]
 use crate::tools::ALL_TOOL_NAMES;
 
+/// Which shape a committed catalogue is written in — the discriminator every reader dispatches on,
+/// and the thing that lets one arm move to the new model without moving the other ten.
+///
+/// # What each version is
+///
+/// **[`V1`](Self::V1)** is the shape every arm commits today: functions filed into six sections
+/// (`meta`, `session`, `views`, `programs`, `tools`, `helpers`), each entry hanging off an **API
+/// object** (`fs`, `view`) and carrying the gate that binds it (`requires`, `ending`) as a field the
+/// reflector wrote. Documentation is one `doc` paragraph per entry, out of which a one-line summary
+/// was derived.
+///
+/// **[`V2`](Self::V2)** is the normalized doc model: one flat [`functions`](SignatureCatalogue::functions)
+/// array whose entries name a gg [operation](super::operations) rather than a section, live in a
+/// [module](ModuleDoc) rather than on an object, are keyed by a module-qualified
+/// [`fqn`](FunctionSignature::fqn), carry an **authored** [brief and optional detail](Prose) rather
+/// than a derived summary, and record their type references **resolved** rather than as written.
+///
+/// # Why a version rather than "just add the fields"
+///
+/// Because the two disagree about where the truth is, not merely about how much of it there is. A v1
+/// entry asserts its own gate; a v2 entry does not, because gating is gg's
+/// ([`Binding`](super::operations::Binding)). A v1 entry's brief is *computed* from prose that was
+/// not written to have one; a v2 entry's is written. Reading a v1 entry as though it were a v2 one
+/// would take a derived brief and hold it to a rule about authored briefs — which is exactly what
+/// the [register gate](super::language::register) refuses to do, and why it is inert below `V2`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize)]
+#[serde(try_from = "u32")]
+pub enum SchemaVersion {
+    /// Sections, API objects, arm-declared gates, one `doc` paragraph. What every arm commits today.
+    ///
+    /// The default, and deliberately: a catalogue written before the field existed carries no
+    /// `schema` key, and the only honest reading of its absence is the shape that predates it.
+    #[default]
+    V1,
+    /// Modules, operations, fully-qualified names, authored briefs, resolved type references.
+    V2,
+}
+
+impl TryFrom<u32> for SchemaVersion {
+    type Error = String;
+
+    /// The `schema` key as it is written in the JSON — a bare number, so that the artifact reads
+    /// `"schema": 2` rather than `"schema": "v2"`.
+    ///
+    /// An unknown number is an **error** rather than a fallback to the newest shape gg knows: a
+    /// catalogue from a future gg describes a surface this gg cannot render, and rendering it as
+    /// though it were the shape gg happens to understand is how a model is handed a signature
+    /// nobody wrote.
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::V1),
+            2 => Ok(Self::V2),
+            other => Err(format!(
+                "`schema` is {other}, and this gg reads catalogue schemas 1 and 2 — a catalogue \
+                 from a newer gg describes a surface this one cannot render"
+            )),
+        }
+    }
+}
+
 /// The whole catalogue: one entry per bound tool, one per helper, and the type declarations they
 /// reference.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SignatureCatalogue {
+    /// Which [shape](SchemaVersion) this catalogue is written in. Absent means
+    /// [`V1`](SchemaVersion::V1) — see that type for why absence cannot mean anything else.
+    #[serde(default)]
+    pub schema: SchemaVersion,
     /// The [program language](GgProgramLanguage) whose spellings this catalogue carries.
     ///
     /// Every language's guest emits one of these, in this shape, under its own stem in
@@ -93,12 +179,22 @@ pub(crate) struct SignatureCatalogue {
     /// prompt's API list renders in and the sequence the run's agent surface reports. Every object a
     /// catalogued function hangs off appears here exactly once, and nothing else does — an object
     /// with no functions would be an object a model is introduced to and never given.
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue has
+    /// [`modules`](Self::modules) instead and omits this key — an API object is a name a model must
+    /// already know to reach anything, which is what the module vocabulary replaces.
+    #[serde(default)]
     pub objects: Vec<ObjectDoc>,
     /// The model-facing functions that hang off **no** API object, because they hang off all of
     /// them — today just `list`, the directory every object carries.
     ///
     /// Kept out of every other section because each of those carries an `object`, and any object a
     /// meta function named would be a claim about the eleven it is also on. See [`MetaSignature`].
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
+    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
+    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
+    #[serde(default)]
     pub meta: Vec<MetaSignature>,
     /// The model-facing functions that are not gg tools: the calls that end a session, one group per
     /// [role](crate::ending::EndingRole).
@@ -106,6 +202,11 @@ pub(crate) struct SignatureCatalogue {
     /// Kept out of [`tools`](Self::tools) because none of them has a gg tool name, which is what
     /// keeps that array in exact bijection with the gg tool vocabulary the committed component is
     /// checked against.
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
+    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
+    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
+    #[serde(default)]
     pub session: Vec<SessionSignature>,
     /// The model-facing functions that put material into the agent's own context window — the `view`
     /// object.
@@ -113,6 +214,11 @@ pub(crate) struct SignatureCatalogue {
     /// Kept out of [`tools`](Self::tools) on the same rule [`session`](Self::session) is: none of
     /// them has a gg tool name, so folding them in would break the bijection the committed component
     /// is checked against.
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
+    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
+    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
+    #[serde(default)]
     pub views: Vec<ViewSignature>,
     /// The model-facing functions on the [program library](crate::programs) — the `programs`
     /// object.
@@ -122,14 +228,273 @@ pub(crate) struct SignatureCatalogue {
     /// together and what decides that is a *capability* rather than a tool — which the projection
     /// carries as [`CatalogueFunction::capability`], synthesized from this section's membership
     /// rather than read out of the JSON.
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
+    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
+    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
+    #[serde(default)]
     pub programs: Vec<ProgramSignature>,
     /// One entry per gg tool the sandbox binds, in catalogue order.
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
+    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
+    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
+    #[serde(default)]
     pub tools: Vec<ToolSignature>,
     /// The helper functions bound alongside a tool — convenience wrappers that are not gg tools in
     /// their own right and therefore have no name in [`ALL_TOOL_NAMES`].
+    ///
+    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
+    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
+    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
+    #[serde(default)]
     pub helpers: Vec<HelperSignature>,
+    /// The **modules** a [`V2`](SchemaVersion::V2) surface is divided into, in the order it is
+    /// presented in. The successor of [`objects`](Self::objects).
+    ///
+    /// A module differs from an API object in the one way that matters to a model that has not been
+    /// told the vocabulary: it is a *place documentation is filed under*, not an identifier a call
+    /// has to go through. Nothing is unreachable for not knowing a module's name, because search
+    /// finds the function; knowing the name makes the search an exact lookup instead.
+    ///
+    /// Empty on a `V1` catalogue, which has objects instead.
+    #[serde(default)]
+    pub modules: Vec<ModuleDoc>,
+    /// **Every model-facing call**, in one array — the successor of the six sections above, and the
+    /// shape a [`V2`](SchemaVersion::V2) catalogue carries.
+    ///
+    /// One array rather than six because the sections were never a fact about the functions: they
+    /// were where an arm filed a gate it should never have been asserting. With gating stated once
+    /// by gg's [operations table](super::operations), the only thing a section still said is which
+    /// gate field to look in — so there is nothing left for it to say.
+    ///
+    /// Empty on a `V1` catalogue, whose calls arrive in the sections.
+    #[serde(default)]
+    pub functions: Vec<FunctionSignature>,
     /// Every type declaration the signatures reference, in declaration order.
+    ///
+    /// The one section both schemas share. A `V2` declaration carries more — an
+    /// [`fqn`](TypeDeclaration::fqn), the [module](TypeDeclaration::module) it belongs to, an
+    /// authored [brief](TypeDeclaration::brief), and the
+    /// [member functions](TypeDeclaration::member_functions) a value of it offers — and every one of
+    /// those is optional here, so a v1 declaration parses unchanged.
+    #[serde(default)]
     pub types: Vec<TypeDeclaration>,
+}
+
+/// One **module**: gg's cross-arm id for it, this language's own spelling of the path, and how (or
+/// whether) a program brings it into scope.
+///
+/// # Why an id and a path rather than one name
+///
+/// Because they answer to different readers. [`id`](Self::id) is gg's, identical on every arm, and
+/// is what a cross-language readout joins on — `files` is the filesystem module whether the arm
+/// spells it `gg::fs`, `Gg.Files` or `gg/fs`. [`path`](Self::path) is the **arm's**, is what a model
+/// reads and types into a module filter, and is free to be idiomatic in a way an id never can be.
+/// Collapsing the two would mean either a model typing gg's vocabulary at a language that does not
+/// use it, or a study joining eleven arms on eleven different strings.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    dead_code,
+    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
+              register gate and the fully-qualified-name rule — and by the readers that move onto \
+              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
+              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+)]
+pub struct ModuleDoc {
+    /// gg's language-independent module id (`files`, `views`, `docs`) — the cross-arm join key, and
+    /// the same vocabulary an [operation id](super::operations::OperationId) is namespaced on.
+    pub id: String,
+    /// This language's own spelling of the module path (`gg::fs`, `Gg.Files`, `gg/fs`) — what a
+    /// model reads, what a fully-qualified name is prefixed with, and what a module filter accepts.
+    pub path: String,
+    /// The one line the module is introduced by. See [`Prose`].
+    pub brief: String,
+    /// What more there is to say about the module, when there is more. See [`Prose`].
+    pub detail: Option<String>,
+    /// The literal line a program writes to bring the module into scope, or `None` where the SDK is
+    /// in scope already and there is no line to write.
+    ///
+    /// It is `None` on ten of the eleven arms, and that is the honest answer rather than a missing
+    /// one: gg injects the SDK into a program's scope through a prelude, a precompiled header, an
+    /// `@_exported import`, a global using or a scope injection, so a documented "import" would be a
+    /// line the model would be wrong to write. The one arm that writes a real one says so here.
+    pub import: Option<String>,
+}
+
+/// **One model-facing call** in the [`V2`](SchemaVersion::V2) model, whatever kind of thing the arm
+/// declared it as.
+///
+/// It replaces six types that differed only in which gate field they carried
+/// ([`ToolSignature`], [`SessionSignature`], [`ViewSignature`], [`ProgramSignature`],
+/// [`HelperSignature`], [`MetaSignature`]) — and it carries no gate at all, because a gate is a fact
+/// about gg's configuration surface and an arm asserting one is an arm asserting something only gg
+/// can be held to. What it carries instead is the [operation](Self::operation) it binds, which is
+/// the join to the [table](super::operations::OPERATIONS) where gg states the gate once.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    dead_code,
+    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
+              register gate and the fully-qualified-name rule — and by the readers that move onto \
+              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
+              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+)]
+pub struct FunctionSignature {
+    /// The gg [operation](super::operations::OperationId) this call binds, rendered
+    /// `namespace.key` — `files.read_file`. **The cross-arm join key**, and what gg resolves the
+    /// gate through.
+    pub operation: String,
+    /// Set when this entry is a *second* way to reach [`operation`](Self::operation) — a free
+    /// function beside the method on the type it operates on, a block form beside a keyword form.
+    ///
+    /// An alias is documented and gated exactly like the canonical binding and counts toward
+    /// nothing: coverage counts canonical bindings, so an arm that idiomatically offers one
+    /// capability twice is not thereby ahead of an arm that offers it once.
+    pub alias_of: Option<String>,
+    /// The [module](ModuleDoc::id) it is documented under.
+    pub module: String,
+    /// What kind of declaration the arm made of it. See [`EntryKind`].
+    pub kind: EntryKind,
+    /// The declared type this call hangs off, for a [member](EntryKind::Method) kind; `None` for a
+    /// standalone function and for a static method whose owning class *is* the module.
+    pub receiver: Option<String>,
+    /// The name a program calls it by, in this language (`read_file`, `readFile`, `ReadFile`).
+    pub name: String,
+    /// **The model-facing key**: this call's module-qualified fully-qualified name, in the arm's own
+    /// spelling.
+    ///
+    /// Emitted by the reflector and never assembled by gg — see
+    /// [the rule it is held to](super::signatures::fqn) for the four invariants that make eleven
+    /// disagreeing spellings usable as one key.
+    pub fqn: String,
+    /// How the call is **written at a call site**, when that differs from the
+    /// [`fqn`](Self::fqn) — Java's `#`-separated member name and Swift's labelled selector are keys
+    /// rather than syntax, and a model that typed one would not compile.
+    pub call: Option<String>,
+    /// The single line this call is summarized by. **Authored**, never derived. See [`Prose`].
+    pub brief: String,
+    /// What more there is to say, when there is more. See [`Prose`].
+    pub detail: Option<String>,
+    /// How it may be called: one entry per shape this language offers. Unchanged from
+    /// [`V1`](SchemaVersion::V1) — the shape of a call was never the thing that needed normalizing.
+    pub signatures: Vec<SignatureEntry>,
+    /// The SDK types in the **return** position, resolved. See [`TypeReference`].
+    ///
+    /// It is its own field rather than something inferred from the signature text because inference
+    /// is what gg does today and it is an inference by *elimination* — every type the signature
+    /// names that is not named by a documented parameter — which is only as good as the arm's
+    /// parameter list. A return position the reflector states is a return position gg does not have
+    /// to guess, and guessing it wrong shows a model the wrong types beside a function it opened.
+    #[serde(default)]
+    pub returns: Vec<TypeReference>,
+    /// Every SDK type this call's own shapes name, return position and arguments alike, resolved.
+    #[serde(default)]
+    pub types: Vec<TypeReference>,
+}
+
+/// What kind of declaration a [call](FunctionSignature) is, in the arm's own language.
+///
+/// This is **not** a gg concept being imposed on eleven languages; it is the one axis on which the
+/// idiomatic shape of a call genuinely differs, and recording it is what lets the same capability be
+/// a free function on one arm and a method on another without either arm having to pretend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EntryKind {
+    /// A standalone function: `gg::fs::read_file(path)`. The default, and the shape of most arms.
+    #[default]
+    Function,
+    /// A member function on a value: `handle.send(text)`. Its [receiver](FunctionSignature::receiver)
+    /// is the declared type it hangs off.
+    Method,
+    /// A function on a type rather than on a value: C#'s `Gg.Files.ReadFile`, Java's
+    /// `Reference.search`. The shape a language with no standalone functions gives to what every
+    /// other arm spells as one.
+    StaticMethod,
+    /// A constructor: `ReadOptions::new()`, `new Subagent(…)`. Catalogued because on the arms that
+    /// have them, a value a model cannot construct is a capability it cannot reach.
+    Initializer,
+}
+
+/// One reference from a signature to a **declared SDK type**, carrying the resolved name it names.
+///
+/// # Why a reference is not just a string
+///
+/// Because the arms disagree about how much they know. A compiler-backed reflector (rustdoc, clang's
+/// AST, Roslyn, the Swift symbol graph) hands back a name that is already resolved — it read it out
+/// of a type system. A doc-comment-backed one (YARD, JSDoc, griffe) hands back **the spelling as it
+/// was written**, which is what the model reads at the call site and is not necessarily a key
+/// anything can be looked up by. The two forms here are exactly those two situations: an arm that
+/// only has the written spelling says so, and an arm that resolved it has somewhere to put the
+/// resolution *without losing the spelling the model will actually see*.
+///
+/// Both forms answer [`fqn`](Self::fqn) — the key a documentation view is opened by — and
+/// [`spelled`](Self::spelled) — what the signature writes. On the [`Bare`](Self::Bare) form they are
+/// the same string, which is a truthful record of an arm that has not resolved anything rather than
+/// a claim that it has.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum TypeReference {
+    /// One string standing for both the written spelling and the key it resolves to:
+    /// `"gg::fs::FileRead"`, or — on a [`V1`](SchemaVersion::V1) catalogue — the bare `"FileRead"`
+    /// an arm wrote without resolving.
+    Bare(String),
+    /// A written spelling and the resolved name it refers to, recorded separately because they
+    /// differ: `{ "spelled": "FileRead", "fqn": "gg.fs.FileRead" }`.
+    Resolved {
+        /// The spelling the signature writes, and what the model reads.
+        spelled: String,
+        /// The fully-qualified name it resolves to, and what a documentation view is opened by.
+        fqn: String,
+    },
+}
+
+impl TypeReference {
+    /// The **resolved** name — the key a documentation view is opened by, and what a catalogue's own
+    /// [type declarations](TypeDeclaration) are matched against.
+    pub fn fqn(&self) -> &str {
+        match self {
+            Self::Bare(name) => name,
+            Self::Resolved { fqn, .. } => fqn,
+        }
+    }
+
+    /// The name **as the signature writes it** — what a model reads at the call site.
+    pub fn spelled(&self) -> &str {
+        match self {
+            Self::Bare(name) => name,
+            Self::Resolved { spelled, .. } => spelled,
+        }
+    }
+}
+
+/// One **member function** of a [type](TypeDeclaration): a line of it, and the key its own
+/// documentation view is opened by.
+///
+/// A type view carries these rather than the member functions' full documentation, and that is what
+/// makes opening a function's return type useful rather than merely long: the model lands on a menu
+/// of everything it can do with the value it is about to hold, and each entry on the menu is one
+/// call away from being read in full.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[allow(
+    dead_code,
+    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
+              register gate and the fully-qualified-name rule — and by the readers that move onto \
+              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
+              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+)]
+pub struct MemberFunction {
+    /// The gg [operation](super::operations::OperationId) the member binds, rendered
+    /// `namespace.key`.
+    pub operation: String,
+    /// The name a program calls it by.
+    pub name: String,
+    /// The member's own fully-qualified name — what opens its documentation view.
+    pub fqn: String,
+    /// The one line it is listed by. See [`Prose`].
+    pub brief: String,
 }
 
 /// One group of [libraries](SignatureCatalogue::libraries), as the prompt lists them.
@@ -174,7 +539,7 @@ pub struct MetaSignature {
     pub doc: String,
     /// The type names this signature references, folded into a doc lookup's declarations exactly as
     /// a tool's are.
-    pub types: Vec<String>,
+    pub types: Vec<TypeReference>,
 }
 
 /// One bound tool, as the guest exports it and the prompt describes it.
@@ -199,7 +564,7 @@ pub(crate) struct ToolSignature {
     pub doc: String,
     /// The type names this signature references, so the prompt can declare only the types the
     /// run's tools actually use.
-    pub types: Vec<String>,
+    pub types: Vec<TypeReference>,
 }
 
 /// One session-ending function as the guest exports it and the prompt describes it.
@@ -230,7 +595,7 @@ pub(crate) struct SessionSignature {
     /// The type names this signature references, folded into the prompt's declarations exactly as a
     /// tool's are. Empty today — it takes a string and hands nothing back — and read rather than
     /// assumed so a future argument type cannot be shown to a model undeclared.
-    pub types: Vec<String>,
+    pub types: Vec<TypeReference>,
 }
 
 /// One view function as the guest exports it and the prompt describes it.
@@ -259,7 +624,7 @@ pub(crate) struct ViewSignature {
     pub doc: String,
     /// The type names this signature references, folded into the prompt's declarations exactly as a
     /// tool's are.
-    pub types: Vec<String>,
+    pub types: Vec<TypeReference>,
 }
 
 /// One program-library function as the guest exports it and a doc lookup describes it.
@@ -283,7 +648,7 @@ pub(crate) struct ProgramSignature {
     pub doc: String,
     /// The type names this signature references, folded into the prompt's declarations exactly as a
     /// tool's are.
-    pub types: Vec<String>,
+    pub types: Vec<TypeReference>,
 }
 
 /// One helper function, which is bound only when the tool it wraps is enabled.
@@ -304,7 +669,7 @@ pub(crate) struct HelperSignature {
     /// The SDK's own documentation.
     pub doc: String,
     /// The type names this signature references.
-    pub types: Vec<String>,
+    pub types: Vec<TypeReference>,
 }
 
 /// One type declaration a signature refers to.
@@ -319,7 +684,36 @@ pub struct TypeDeclaration {
     ///
     /// A declaration says what fields a record has and nothing about what any of them *means*, which
     /// for a model is the half that decides whether it uses the value correctly.
+    ///
+    /// **[`V1`](SchemaVersion::V1)'s one paragraph.** A [`V2`](SchemaVersion::V2) declaration
+    /// authors [`brief`](Self::brief) and [`detail`](Self::detail) instead and omits this key; read
+    /// either through [`prose`](Self::prose) rather than by reaching for a field.
+    #[serde(default)]
     pub doc: String,
+    /// The type's module-qualified fully-qualified name (`gg::fs::FileRead`) — what a documentation
+    /// view of it is opened by, and what a resolved [type reference](TypeReference) names.
+    ///
+    /// `None` on a [`V1`](SchemaVersion::V1) catalogue, whose types are keyed by bare
+    /// [`name`](Self::name) alone.
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub fqn: Option<String>,
+    /// The [module](ModuleDoc::id) the type belongs to. `None` on a [`V1`](SchemaVersion::V1)
+    /// catalogue, where every type belongs to whichever functions happened to mention it.
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub module: Option<String>,
+    /// The single line the type is summarized by, authored. `None` on a
+    /// [`V1`](SchemaVersion::V1) catalogue. See [`Prose`].
+    pub brief: Option<String>,
+    /// What more there is to say about the type, when there is more. See [`Prose`].
+    pub detail: Option<String>,
     /// One entry per member, each with the documentation written on it.
     ///
     /// Three shapes reach a model through this one field, because all three are things a model has
@@ -327,7 +721,39 @@ pub struct TypeDeclaration {
     /// by the literal itself and carrying no type of its own because the arm *is* the value; and the
     /// properties of every arm of a union of records, in order, so a discriminant appears once per
     /// arm against the literal it is fixed to.
+    #[serde(default)]
     pub members: Vec<TypeMember>,
+    /// The **member functions** a value of this type offers, one line each.
+    ///
+    /// Empty on the arms where a value carries no behaviour — which is most of them, deliberately —
+    /// and empty on every [`V1`](SchemaVersion::V1) catalogue, whose schema has nowhere to put one.
+    /// See [`MemberFunction`] for why a type view lists them rather than documenting them.
+    #[serde(default)]
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub member_functions: Vec<MemberFunction>,
+}
+
+impl TypeDeclaration {
+    /// This type's [brief and detail](Prose), whichever schema the catalogue is written in.
+    pub fn prose(&self) -> Prose<'_> {
+        Prose::of(self.brief.as_deref(), self.detail.as_deref(), &self.doc)
+    }
+
+    /// **The string this declaration is looked up and opened by**: its
+    /// [fully-qualified name](Self::fqn) where the catalogue emits one, and its bare
+    /// [`name`](Self::name) where it does not.
+    ///
+    /// One accessor rather than two branches at each of the three places that key on a type,
+    /// because a type that is *indexed* under one string and *opened* under another is a type a
+    /// search can find and a model cannot read — and that mismatch would appear only on the first
+    /// converted arm, which is exactly when nobody is looking for it.
+    pub fn key(&self) -> &str {
+        self.fqn.as_deref().unwrap_or(&self.name)
+    }
 }
 
 /// One member of a [type declaration](TypeDeclaration).
@@ -341,7 +767,60 @@ pub struct TypeMember {
     /// value rather than a field and so has no type beside itself.
     pub r#type: Option<String>,
     /// The SDK's own documentation for the member.
+    ///
+    /// **[`V1`](SchemaVersion::V1)'s.** A [`V2`](SchemaVersion::V2) member authors
+    /// [`brief`](Self::brief); read either through [`prose`](Self::prose).
+    #[serde(default)]
     pub doc: String,
+    /// Which of the three shapes this member is. `None` on a [`V1`](SchemaVersion::V1) catalogue,
+    /// where it is [derived](Self::kind) from whether the member has a type of its own.
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub kind: Option<MemberKind>,
+    /// The single line the member is documented by, authored. `None` on a
+    /// [`V1`](SchemaVersion::V1) catalogue. See [`Prose`].
+    pub brief: Option<String>,
+    /// What more there is to say about the member, when there is more. See [`Prose`].
+    pub detail: Option<String>,
+}
+
+impl TypeMember {
+    /// This member's [brief and detail](Prose), whichever schema the catalogue is written in.
+    pub fn prose(&self) -> Prose<'_> {
+        Prose::of(self.brief.as_deref(), self.detail.as_deref(), &self.doc)
+    }
+
+    /// Which shape this member is, **stated** where the catalogue states it and **derived** where it
+    /// does not.
+    ///
+    /// The derivation is the same one every renderer already makes by hand: a member with a type of
+    /// its own is a field, and one without is a union arm, because the arm *is* the value. Stating
+    /// it is strictly better — a language with a member that has neither shape has somewhere to say
+    /// so — and deriving it is what keeps a v1 catalogue readable through the same accessor.
+    #[allow(
+        dead_code,
+        reason = "the normalized reading of a member's shape, unread while every registered arm is \
+                  still v1 — the type views that render it arrive with the first converted arm"
+    )]
+    pub fn kind(&self) -> MemberKind {
+        self.kind.unwrap_or(match self.r#type {
+            Some(_) => MemberKind::Field,
+            None => MemberKind::Variant,
+        })
+    }
+}
+
+/// Which shape one [member](TypeMember) of a type is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MemberKind {
+    /// A property of a record, carrying a type of its own.
+    Field,
+    /// One arm of a union — a value in its own right, with no type beside it.
+    Variant,
 }
 
 /// One **API object**'s description: the sentence a model is introduced to it by.
@@ -468,7 +947,13 @@ pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
 /// function's documentation on demand (`view.openDocsView(fs.readFile)`), rather than being shown every
 /// signature up front. The prose is the SDK's own JSDoc, reflected here exactly as the prompt's was.
 pub struct CatalogueFunction {
-    /// The API object it is grouped under (`fs`).
+    /// What it is **grouped under**: the API object on a [`V1`](SchemaVersion::V1) entry (`fs`), and
+    /// the [module path](ModuleDoc::path) on a [`V2`](SchemaVersion::V2) one (`gg::fs`).
+    ///
+    /// One field for the two because every consumer of it wants the same thing — the heading this
+    /// call is listed under, in the arm's own words — and the grouping a converted arm presents *is*
+    /// its module. The cross-arm join is [`operation`](Self::operation) and never this, which is
+    /// what makes it safe for the string to change shape underneath.
     pub object: &'static str,
     /// This function's language-independent identity: a gg tool's own name (`read_file`) when it has
     /// one, and the catalogue entry's `key` (`request_changes`, `open_text`) when it does not.
@@ -503,8 +988,46 @@ pub struct CatalogueFunction {
     /// Today the [program library](crate::programs) is the only one: its whole family is bound or
     /// absent together, from a capability rather than from a tool or a role.
     pub capability: Option<&'static str>,
-    /// The one-line summary `object.list()` shows — the first sentence of the documentation.
-    pub summary: &'static str,
+    /// The gg [operation](super::operations::OperationId) this entry binds, as its catalogue names
+    /// it — `files.read_file`.
+    ///
+    /// `None` on a [`V1`](SchemaVersion::V1) entry, which names no operation and is resolved to one
+    /// through the `(object, key)` pair instead. That fallback is the transitional half of
+    /// [`operation_of`](super::operations::operation_of), and it goes when the last v1 catalogue
+    /// does.
+    pub operation: Option<&'static str>,
+    /// What kind of declaration this is in the arm's own language. See [`EntryKind`].
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub kind: EntryKind,
+    /// The declared type a [member](EntryKind::Method) hangs off; `None` for everything else.
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub receiver: Option<&'static str>,
+    /// The [module](ModuleDoc::id) it is documented under; `None` on a [`V1`](SchemaVersion::V1)
+    /// entry, which has an [object](Self::object) instead.
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub module: Option<&'static str>,
+    /// Its module-qualified fully-qualified name — the key a documentation view is opened by.
+    /// `None` on a [`V1`](SchemaVersion::V1) entry, which is keyed by bare [`name`](Self::name).
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub fqn: Option<&'static str>,
+    /// Its documentation: the authored brief, and the detail when there is one. See [`Prose`].
+    pub prose: Prose<'static>,
     /// How it may be called: one [entry](SignatureEntry) per shape this language offers, each with
     /// its own parameters. Never empty.
     ///
@@ -512,24 +1035,128 @@ pub struct CatalogueFunction {
     /// optional argument as an overload pair carries two here where one expressing it as a default
     /// carries one, and neither is a difference in what the function does.
     pub signatures: &'static [SignatureEntry],
-    /// The SDK's own paragraph of documentation.
-    pub doc: &'static str,
-    /// The type names this function's signature refers to, transitively closed.
-    pub types: &'static [String],
+    /// The SDK types in the **return** position, resolved.
+    ///
+    /// Empty on a [`V1`](SchemaVersion::V1) entry — that schema records no return position at all,
+    /// which is why [`types_to_open`](crate::docs::DocsRuntime::types_to_open) has to sort returns
+    /// from arguments by elimination.
+    #[allow(
+        dead_code,
+        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
+                  hold an arm to it and the readers that render it arrive with the arm"
+    )]
+    pub returns: &'static [TypeReference],
+    /// The types this function's signature refers to.
+    ///
+    /// The two schemas mean subtly different sets here and neither is wrong: a
+    /// [`V1`](SchemaVersion::V1) entry carries the **transitive closure** of every type the surface
+    /// can reach through this one, written as it was spelled; a [`V2`](SchemaVersion::V2) entry
+    /// carries the types **this signature itself names**, resolved. Consumers that want a depth
+    /// rather than a closure narrow it themselves and must go on doing so.
+    pub types: &'static [TypeReference],
 }
 
-/// The first sentence of a documentation paragraph — up to and including the first period that ends
-/// one — for the one-line summary a directory lists. The whole text when it has no sentence break.
-fn first_sentence(doc: &'static str) -> &'static str {
-    let bytes = doc.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'.' && (i + 1 == bytes.len() || bytes[i + 1] == b' ') {
-            return doc[..=i].trim_end();
+/// **A brief and an optional detail** — the shape of every piece of documentation in the model, from
+/// a module's header down to one member of one record.
+///
+/// # Why the split is authored and newline-based
+///
+/// A brief is a *single line* that says what the thing is; a detail is everything else. The split is
+/// on the newline the author wrote, never on a sentence gg found, and that is a correctness
+/// requirement rather than a style one. The derivation this replaces ended a sentence at a period
+/// followed by a space or end-of-string — so a period followed by a **newline** was not a sentence
+/// end, and the "brief" swallowed the whole following paragraph on the eight arms whose docs have
+/// paragraph breaks. On the three whose docs are one flowing paragraph it did the opposite and cut
+/// mid-code-span, leaving an unbalanced backtick in text a model reads.
+///
+/// Neither failure is a tuning problem. A brief is a thing an author decides, and a first line is
+/// the only place the author can put it that no rule has to find.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Prose<'a> {
+    /// The single line the thing is summarized by. Never `None`: an entry with no brief is a
+    /// [register](super::language::register) failure, not an absent field.
+    pub brief: &'a str,
+    /// Everything else there is to say, or `None` when there is nothing.
+    pub detail: Option<&'a str>,
+    /// The whole documentation exactly as a [`V1`](SchemaVersion::V1) catalogue carries it, kept so
+    /// that [rendering](Self::rendered) one is byte-for-byte what it always was.
+    ///
+    /// **Transitional, and the reason it is private.** A [`V2`](SchemaVersion::V2) entry has no such
+    /// string — its documentation *is* the brief and the detail — so this is `None` there, and the
+    /// field disappears with the last v1 catalogue.
+    whole: Option<&'a str>,
+}
+
+impl<'a> Prose<'a> {
+    /// The prose an entry carries, whichever schema wrote it: the **authored** brief and detail when
+    /// they are there, and the [transitional derivation](Self::from_paragraph) from `doc` when they
+    /// are not.
+    ///
+    /// Dispatching on the presence of an authored brief rather than on the catalogue's declared
+    /// [schema](SchemaVersion) is deliberate: it puts the decision beside the data instead of
+    /// threading a version through every leaf of the model, and it fails in the right direction. A
+    /// v2 entry that forgot its brief has an *empty* one — which the
+    /// [register gate](super::language::register) refuses by name — rather than a plausible-looking
+    /// line derived from a `doc` field the schema does not have.
+    pub fn of(brief: Option<&'a str>, detail: Option<&'a str>, doc: &'a str) -> Self {
+        match brief {
+            Some(brief) => Self::authored(brief, detail),
+            None => Self::from_paragraph(doc),
         }
-        i += 1;
     }
-    doc
+
+    /// The **authored** brief and detail of a [`V2`](SchemaVersion::V2) entry, which is the whole of
+    /// its documentation: there is no paragraph behind them to fall back to, and a blank brief here
+    /// stays blank so that the [register gate](super::language::register) can name it.
+    pub fn authored(brief: &'a str, detail: Option<&'a str>) -> Self {
+        Self {
+            brief,
+            detail: detail.filter(|detail| !detail.trim().is_empty()),
+            whole: None,
+        }
+    }
+
+    /// **TRANSITIONAL.** The brief and detail of a [`V1`](SchemaVersion::V1) paragraph, split at its
+    /// first newline.
+    ///
+    /// It exists for exactly as long as one arm still commits a v1 catalogue, and it is not a
+    /// fallback anything may rely on: the whole point of the v2 model is that a brief is written by
+    /// the person who knows what the thing is, and no rule gg applies to a paragraph can recover
+    /// one that was never authored. Where the paragraph has a break it does the honest thing; where
+    /// it has none — the two ECMAScript arms and Python — the brief is the whole paragraph, which
+    /// reads as *this arm has not authored a brief yet* rather than as a brief that was cut short.
+    ///
+    /// It is deliberately **not** what the [register gate](super::language::register) is run
+    /// against: holding a derived line to a rule about authored lines would fail eleven arms for a
+    /// property none of them has claimed yet.
+    pub fn from_paragraph(doc: &'a str) -> Self {
+        let (brief, detail) = match doc.find('\n') {
+            Some(newline) => (
+                doc[..newline].trim_end(),
+                Some(doc[newline..].trim()).filter(|detail| !detail.is_empty()),
+            ),
+            None => (doc, None),
+        };
+        Self {
+            brief,
+            detail,
+            whole: Some(doc),
+        }
+    }
+
+    /// The whole documentation as one block — what a documentation view renders under the signature.
+    ///
+    /// Borrowed for a [`V1`](SchemaVersion::V1) entry, whose paragraph is kept verbatim so that
+    /// nothing a model already reads changes byte for byte, and assembled for a
+    /// [`V2`](SchemaVersion::V2) one, whose brief and detail are two authored fields with a blank
+    /// line between them.
+    pub fn rendered(&self) -> Cow<'a, str> {
+        match (self.whole, self.detail) {
+            (Some(whole), _) => Cow::Borrowed(whole),
+            (None, None) => Cow::Borrowed(self.brief),
+            (None, Some(detail)) => Cow::Owned(format!("{}\n\n{detail}", self.brief)),
+        }
+    }
 }
 
 /// Every function `language`'s committed catalogue documents — the ending calls, the view calls, the
@@ -542,8 +1169,101 @@ fn first_sentence(doc: &'static str) -> &'static str {
 /// and whether it keeps a program library, and adds the `list` meta function itself, since it is the
 /// carve-out's own and has no catalogue entry. Every other reader of this catalogue that reports what
 /// an object binds — the agent-surface telemetry — has to add it back for the same reason.
+///
+/// # It is the one place either [schema](SchemaVersion) is read
+///
+/// A [`V1`](SchemaVersion::V1) catalogue's six sections and a [`V2`](SchemaVersion::V2) catalogue's
+/// one array arrive here as the same [`CatalogueFunction`], so **no consumer downstream has to know
+/// which schema an arm committed** — which is the whole of what makes converting one arm per commit
+/// possible. Where the two schemas genuinely disagree, the projection says so in the field rather
+/// than papering over it: a v1 entry carries no [operation](CatalogueFunction::operation), no
+/// [fqn](CatalogueFunction::fqn) and no [return position](CatalogueFunction::returns), and a v2
+/// entry carries no gate of its own, because gg states its gate.
 pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunction> {
-    let catalogue = language.catalogue();
+    functions_of(language.catalogue())
+}
+
+/// [`catalogue_functions`], reached by the catalogue rather than by the arm that owns it.
+///
+/// The split exists so that the two schemas can be tested **against each other**: a fixture
+/// catalogue has no arm behind it, and giving one an arm — a component, a checker, a healing dialect
+/// — to ask it one question about its own JSON would be a great deal of apparatus for a question
+/// that is about the JSON.
+pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<CatalogueFunction> {
+    match catalogue.schema {
+        SchemaVersion::V1 => catalogue_functions_v1(catalogue),
+        SchemaVersion::V2 => catalogue_functions_v2(catalogue),
+    }
+}
+
+/// The [`V2`](SchemaVersion::V2) half of [`catalogue_functions`]: one flat array, and every gate
+/// read off gg's own [operations table](super::operations) rather than out of the artifact.
+///
+/// An entry naming an operation gg does not have is projected with **no** gate, which is the
+/// conservative reading and the one that fails safe: [`bound`](crate::docs::DocsRuntime::bound)
+/// answers `false` for an unresolvable operation, so an arm that invents an operation documents
+/// nothing rather than documenting something ungated. Failing it *by name* is a different job —
+/// an arm's claim about gg's own vocabulary belongs to the coverage half of the
+/// [agreement gate](super::language::agreement) — and this is deliberately the quiet, safe half of
+/// that pair rather than a second opinion about it.
+fn catalogue_functions_v2(catalogue: &'static SignatureCatalogue) -> Vec<CatalogueFunction> {
+    catalogue
+        .functions
+        .iter()
+        .map(|function| {
+            let operation = operation_by_id(&function.operation);
+            // gg's own binding, decomposed into the three fields the projection has always carried.
+            // The arm does not get a vote: it named an operation, and what buys that operation is
+            // stated once, on gg's side, in `OPERATIONS`.
+            let (gate, ending, capability) = match operation.map(|operation| operation.binding) {
+                Some(Binding::Tool(tool)) => (Some(tool), None, None),
+                Some(Binding::Ending(role)) => (None, Some(role.id()), None),
+                Some(Binding::Capability(id)) => (None, None, Some(id)),
+                Some(Binding::Always) | None => (None, None, None),
+            };
+            CatalogueFunction {
+                // The module *path* stands where an object used to, because that is what this
+                // schema's model-facing grouping is: it is what a directory of one module lists
+                // under, what the console groups by, and what a model reads. The cross-arm join is
+                // the operation id beside it, never this.
+                object: module_path(catalogue, &function.module),
+                key: operation.map_or(function.name.as_str(), |operation| operation.id.key),
+                name: function.name.as_str(),
+                gate,
+                ending,
+                capability,
+                operation: Some(function.operation.as_str()),
+                kind: function.kind,
+                receiver: function.receiver.as_deref(),
+                module: Some(function.module.as_str()),
+                fqn: Some(function.fqn.as_str()),
+                prose: Prose::authored(function.brief.as_str(), function.detail.as_deref()),
+                signatures: function.signatures.as_slice(),
+                returns: function.returns.as_slice(),
+                types: function.types.as_slice(),
+            }
+        })
+        .collect()
+}
+
+/// This language's own spelling of the module `id`, or the id itself where the catalogue declares no
+/// such module.
+///
+/// The fallback is deliberately the id rather than a panic or an empty string: a module an entry
+/// names and the `modules` section forgot is a real defect, but it is one
+/// [the name rule](fqn::faults) reports by name, and degrading a *grouping label* mid-run is a
+/// worse answer than showing gg's own word for the module until that gate is read.
+fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'static str {
+    catalogue
+        .modules
+        .iter()
+        .find(|module| module.id == id)
+        .map_or(id, |module| module.path.as_str())
+}
+
+/// The [`V1`](SchemaVersion::V1) half of [`catalogue_functions`]: the six sections, each with the
+/// gate its own section decides, exactly as they have always been read.
+fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<CatalogueFunction> {
     let mut functions = Vec::with_capacity(
         catalogue.session.len()
             + catalogue.views.len()
@@ -559,9 +1279,14 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             gate: None,
             ending: Some(session.ending.as_str()),
             capability: None,
-            summary: first_sentence(&session.doc),
+            operation: None,
+            kind: EntryKind::Function,
+            receiver: None,
+            module: None,
+            fqn: None,
+            prose: Prose::from_paragraph(session.doc.as_str()),
             signatures: session.signatures.as_slice(),
-            doc: session.doc.as_str(),
+            returns: &[],
             types: session.types.as_slice(),
         });
     }
@@ -576,9 +1301,14 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             gate: view.requires.as_deref(),
             ending: None,
             capability: None,
-            summary: first_sentence(&view.doc),
+            operation: None,
+            kind: EntryKind::Function,
+            receiver: None,
+            module: None,
+            fqn: None,
+            prose: Prose::from_paragraph(view.doc.as_str()),
             signatures: view.signatures.as_slice(),
-            doc: view.doc.as_str(),
+            returns: &[],
             types: view.types.as_slice(),
         });
     }
@@ -593,9 +1323,14 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             gate: None,
             ending: None,
             capability: Some(CAPABILITY_PROGRAM_LIBRARY),
-            summary: first_sentence(&program.doc),
+            operation: None,
+            kind: EntryKind::Function,
+            receiver: None,
+            module: None,
+            fqn: None,
+            prose: Prose::from_paragraph(program.doc.as_str()),
             signatures: program.signatures.as_slice(),
-            doc: program.doc.as_str(),
+            returns: &[],
             types: program.types.as_slice(),
         });
     }
@@ -607,9 +1342,14 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             gate: Some(tool.tool.as_str()),
             ending: None,
             capability: None,
-            summary: first_sentence(&tool.doc),
+            operation: None,
+            kind: EntryKind::Function,
+            receiver: None,
+            module: None,
+            fqn: None,
+            prose: Prose::from_paragraph(tool.doc.as_str()),
             signatures: tool.signatures.as_slice(),
-            doc: tool.doc.as_str(),
+            returns: &[],
             types: tool.types.as_slice(),
         });
     }
@@ -621,9 +1361,14 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             gate: Some(helper.requires.as_str()),
             ending: None,
             capability: None,
-            summary: first_sentence(&helper.doc),
+            operation: None,
+            kind: EntryKind::Function,
+            receiver: None,
+            module: None,
+            fqn: None,
+            prose: Prose::from_paragraph(helper.doc.as_str()),
             signatures: helper.signatures.as_slice(),
-            doc: helper.doc.as_str(),
+            returns: &[],
             types: helper.types.as_slice(),
         });
     }
@@ -648,15 +1393,6 @@ pub fn meta_function(language: &dyn ProgramLanguage, key: &str) -> Option<&'stat
         .find(|entry| entry.key == key)
 }
 
-/// The first sentence of a documentation paragraph, for the one-line summary a directory lists.
-///
-/// Public because a [meta function](meta_function)'s summary is taken the same way a
-/// [catalogue function](CatalogueFunction::summary)'s is, and taking it two ways would be two answers
-/// to one question.
-pub fn summary_of(doc: &'static str) -> &'static str {
-    first_sentence(doc)
-}
-
 /// The name `language`'s SDK gives the function `call` identifies, or `None` when its catalogue
 /// carries no such function.
 ///
@@ -677,13 +1413,17 @@ pub(crate) fn spelling(language: &dyn ProgramLanguage, call: SurfaceCall) -> Opt
 /// has not already been shown.
 pub fn type_declaration(
     language: &dyn ProgramLanguage,
-    name: &str,
+    key: &str,
 ) -> Option<&'static TypeDeclaration> {
-    language
-        .catalogue()
-        .types
+    let types = &language.catalogue().types;
+    types
         .iter()
-        .find(|declaration| declaration.name == name)
+        .find(|declaration| declaration.key() == key)
+        // A bare name still resolves on a converted arm, and deliberately: a model that read
+        // `FileRead` in a signature and asked for it by that name is asking for the type it just
+        // read. The key is what everything gg emits uses, so this arm of the lookup is only ever
+        // reached by a name a *model* typed.
+        .or_else(|| types.iter().find(|declaration| declaration.name == key))
 }
 
 /// Every **API object** `language`'s catalogue describes, in the order a program's surface is
@@ -696,6 +1436,88 @@ pub fn catalogue_objects(language: &dyn ProgramLanguage) -> &'static [ObjectDoc]
     language.catalogue().objects.as_slice()
 }
 
+/// Every **module** `language`'s surface is divided into, in the order it is presented in — the
+/// normalized reading of [`objects`](SignatureCatalogue::objects) and
+/// [`modules`](SignatureCatalogue::modules) both.
+///
+/// A [`V1`](SchemaVersion::V1) catalogue's API objects are projected as modules whose id and path
+/// are the object's own name, which is the truthful reading of an arm that has not been reshaped:
+/// its grouping *is* the object, gg has no cross-arm id for it beyond the name, and nothing is
+/// imported. The [operation](super::operations::OperationId::namespace) namespace is the real
+/// cross-arm module vocabulary, and an arm earns entries in it by being converted rather than by
+/// having gg guess on its behalf.
+#[allow(
+    dead_code,
+    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
+              register gate and the fully-qualified-name rule — and by the readers that move onto \
+              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
+              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+)]
+pub fn catalogue_modules(language: &dyn ProgramLanguage) -> Vec<ModuleView> {
+    modules_of(language.catalogue())
+}
+
+/// [`catalogue_modules`], reached by the catalogue rather than by the arm that owns it, for the
+/// reason [`functions_of`] is.
+pub(crate) fn modules_of(catalogue: &'static SignatureCatalogue) -> Vec<ModuleView> {
+    match catalogue.schema {
+        SchemaVersion::V1 => catalogue
+            .objects
+            .iter()
+            .map(|object| ModuleView {
+                id: object.object.as_str(),
+                path: object.object.as_str(),
+                prose: Prose::from_paragraph(object.doc.as_str()),
+                import: None,
+            })
+            .collect(),
+        SchemaVersion::V2 => catalogue
+            .modules
+            .iter()
+            .map(|module| ModuleView {
+                id: module.id.as_str(),
+                path: module.path.as_str(),
+                prose: Prose::authored(module.brief.as_str(), module.detail.as_deref()),
+                import: module.import.as_deref(),
+            })
+            .collect(),
+    }
+}
+
+/// One module as every consumer reads it, whichever [schema](SchemaVersion) the arm committed — the
+/// [module](ModuleDoc) half of what [`catalogue_functions`] is for the calls.
+#[allow(
+    dead_code,
+    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
+              register gate and the fully-qualified-name rule — and by the readers that move onto \
+              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
+              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+)]
+pub struct ModuleView {
+    /// gg's cross-arm id for the module, or — on a [`V1`](SchemaVersion::V1) arm — the API object's
+    /// own name, which is the most identity that arm has.
+    pub id: &'static str,
+    /// This language's own spelling of the module path, and what a model reads.
+    pub path: &'static str,
+    /// The line the module is introduced by, and what more there is to say. See [`Prose`].
+    pub prose: Prose<'static>,
+    /// The literal line a program writes to bring it into scope, where there is one.
+    pub import: Option<&'static str>,
+}
+
 #[cfg(test)]
 #[path = "signatures.test.rs"]
 mod tests;
+
+/// **The rule one fully-qualified name is held to**, across eleven languages that disagree about
+/// how a name is spelled. A gate rather than a run-time need, like the
+/// [agreement](super::language::agreement) gate it runs beside.
+#[cfg(test)]
+#[path = "signatures.fqn.rs"]
+pub(crate) mod fqn;
+
+/// The matched pair of catalogues — one surface, written once in each
+/// [schema](SchemaVersion) — that every test of the model's two halves reads.
+#[cfg(test)]
+#[path = "signatures.fixture.rs"]
+pub(crate) mod fixture;

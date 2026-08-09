@@ -49,7 +49,7 @@ use crate::tools::ToolFailure;
 
 use super::ProgramLanguage;
 use super::suggest::fold;
-use crate::sandbox::{ViewRefusal, catalogue_functions, summary_of};
+use crate::sandbox::{TypeReference, ViewRefusal, catalogue_functions};
 
 /// Which kind of thing an [entry](DocEntry) documents.
 ///
@@ -204,12 +204,12 @@ impl DocIndex {
         let mut entries: Vec<DocEntry> = Vec::new();
         // The catalogue's own `types` list per function, kept beside the entry so the type pass can
         // ask which functions named it without walking the catalogue a second time.
-        let mut references: Vec<&'static [String]> = Vec::new();
+        let mut references: Vec<&'static [TypeReference]> = Vec::new();
         for function in catalogue_functions(language) {
             let Some(operation) = crate::sandbox::operation_of(&function) else {
                 continue;
             };
-            let brief = function.summary;
+            let brief = function.prose.brief;
             entries.push(DocEntry {
                 key: function.name,
                 kind: DocKind::Function,
@@ -230,7 +230,7 @@ impl DocIndex {
                     .to_lowercase(),
                 brief,
                 brief_folded: brief.to_lowercase(),
-                detail_folded: detail_of(function.doc, brief).to_lowercase(),
+                detail_folded: function.prose.detail.unwrap_or_default().to_lowercase(),
             });
             references.push(function.types);
         }
@@ -238,8 +238,12 @@ impl DocIndex {
         let functions = entries.len();
         for declaration in &language.catalogue().types {
             let name = declaration.name.as_str();
+            // A reference resolves to the type's own key — its fully-qualified name where the arm
+            // emits one, and its bare name where it does not — while what a model *reads* and
+            // matches on stays the name the signature writes.
+            let key = declaration.key();
             let referenced_by: Vec<usize> = (0..functions)
-                .filter(|position| references[*position].iter().any(|kind| kind == name))
+                .filter(|position| references[*position].iter().any(|kind| kind.fqn() == key))
                 .collect();
             let mut modules: Vec<DocModule> = Vec::new();
             for position in &referenced_by {
@@ -249,9 +253,10 @@ impl DocIndex {
                     }
                 }
             }
-            let brief = summary_of(&declaration.doc);
+            let prose = declaration.prose();
+            let brief = prose.brief;
             entries.push(DocEntry {
-                key: name,
+                key,
                 kind: DocKind::Type,
                 modules,
                 name,
@@ -261,7 +266,7 @@ impl DocIndex {
                 signature: declaration.declaration.to_lowercase(),
                 brief,
                 brief_folded: brief.to_lowercase(),
-                detail_folded: detail_of(&declaration.doc, brief).to_lowercase(),
+                detail_folded: prose.detail.unwrap_or_default().to_lowercase(),
             });
         }
         Self { entries }
@@ -285,17 +290,6 @@ impl DocIndex {
             }),
         }
     }
-}
-
-/// The documentation beneath an entry's `brief` — everything after the first line — or `""` when the
-/// whole of it is the brief.
-///
-/// Today the brief is *derived* from the documentation as its first sentence, so the detail is what
-/// is left after removing that prefix. When each arm's catalogue carries an authored brief and an
-/// authored detail as separate fields, this derivation goes with the one it undoes; the two tiers it
-/// feeds are unaffected either way.
-fn detail_of(doc: &'static str, brief: &str) -> &'static str {
-    doc.get(brief.len()..).unwrap_or("").trim_start()
 }
 
 /// What a documentation search asks for: the words, the filters, and the page.

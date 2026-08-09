@@ -353,7 +353,11 @@ fn the_javascript_arm_differs_from_typescript_only_in_the_check() {
             .map(|function| {
                 format!(
                     "{}.{} [{}] {} — {:?}",
-                    function.object, function.key, function.name, function.doc, function.signatures,
+                    function.object,
+                    function.key,
+                    function.name,
+                    function.prose.rendered(),
+                    function.signatures,
                 )
             })
             .collect::<Vec<_>>()

@@ -407,10 +407,8 @@ fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagree
     // catalogue is checked against gg's own answer to "what may this role end with" and the two
     // cannot be edited apart. A reviewer offered `finish` is a reviewer that can declare the work
     // complete, which is not a verdict a reviewer is asked for.
-    for (role, ending) in [
-        (EndingRole::Standard, "standard"),
-        (EndingRole::Review, "review"),
-    ] {
+    for role in [EndingRole::Standard, EndingRole::Review] {
+        let ending = role.id();
         for tool in role.tools() {
             if let Some(entry) = catalogue.session.iter().find(|e| e.key == *tool)
                 && entry.ending != ending
@@ -664,10 +662,14 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
         .chain(catalogue.programs.iter().flat_map(|e| e.types.iter()))
         .chain(catalogue.tools.iter().flat_map(|e| e.types.iter()))
         .chain(catalogue.helpers.iter().flat_map(|e| e.types.iter()));
-    for name in referenced {
-        if !declared.contains(name.as_str()) {
+    for reference in referenced {
+        // The *written* spelling is what a v1 catalogue's `types` section is keyed by, and it is
+        // what this check has always compared. A converted arm records the resolved name beside it,
+        // and the two are the same string wherever the arm had nothing better to give.
+        if !declared.contains(reference.spelled()) {
             complain(format!(
-                "`{name}` is referenced by a signature and never declared"
+                "`{}` is referenced by a signature and never declared",
+                reference.spelled()
             ));
         }
     }

@@ -139,6 +139,16 @@ mod csharp;
 #[path = "language/agreement.rs"]
 mod agreement;
 
+/// The **documentation register gate**: the assertion that the prose an arm's SDK puts in front of a
+/// model is written in the register gg chose — one line of brief, closed code spans, no narrative.
+///
+/// `#[cfg(test)]` for the reason [`agreement`] is: it reads committed artifacts and answers a
+/// question about them, which is a test's budget rather than a turn's. Its module documentation says
+/// why a policy about *text* is one implementation here instead of eleven in eleven reflectors.
+#[cfg(test)]
+#[path = "language/register.rs"]
+mod register;
+
 /// The **per-agent compiler isolation gate**: the assertion that preparing a program is a function of
 /// that program alone, held under the concurrency a run really produces.
 ///

@@ -170,7 +170,7 @@ pub use {
     invoker::ViewRefusal, limits::resolve_sandbox_limits, membrane::RunEnding,
     signatures::CatalogueFunction, signatures::Parameter, signatures::ParameterKind,
     signatures::TypeDeclaration, signatures::catalogue_functions, signatures::catalogue_objects,
-    signatures::meta_function, signatures::summary_of, signatures::type_declaration,
+    signatures::meta_function, signatures::type_declaration,
 };
 
 // The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are
@@ -178,8 +178,18 @@ pub use {
 // from `meta_function`, a `SignatureEntry` hangs off every `CatalogueFunction`, and a `TypeMember`
 // off every `TypeDeclaration`. A type a reader has to reach into a private module to read is a type
 // nobody reads, and the crate denies warnings.
+//
+// The normalized doc model's own types are here for the same reason and one more: they are the
+// shape each arm is converted *into*, one commit at a time, so the readers that move onto them
+// arrive stage by stage rather than all at once. `SchemaVersion` is what a reader dispatches on,
+// `ModuleView` and `catalogue_modules` are the module half of the projection, `Prose` is every
+// piece of documentation in it, and `EntryKind`, `MemberKind`, `MemberFunction`, `ModuleDoc` and
+// `TypeReference` are its fields.
 #[allow(unused_imports)]
-pub use signatures::{LibraryGroup, MetaSignature, ObjectDoc, SignatureEntry, TypeMember};
+pub use signatures::{
+    EntryKind, LibraryGroup, MemberFunction, MemberKind, MetaSignature, ModuleDoc, ModuleView,
+    ObjectDoc, Prose, SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
+};
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source
 /// whose evaluation — in whatever that guest evaluates — produces its exports.

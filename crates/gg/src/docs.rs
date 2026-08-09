@@ -73,9 +73,9 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage,
+    Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, Prose,
     SignatureEntry, TypeDeclaration, catalogue_functions, language, meta_function, operation_of,
-    summary_of, type_declaration,
+    type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -280,13 +280,13 @@ impl DocsRuntime {
             .filter(|function| function.object == object && self.bound(function))
             .map(|function| FunctionSummary {
                 name: function.name.to_string(),
-                summary: function.summary.to_string(),
+                summary: function.prose.brief.to_string(),
             })
             .collect();
         if let Some(meta) = meta_function(self.language, LIST_FUNCTION) {
             out.push(FunctionSummary {
                 name: meta.name.clone(),
-                summary: summary_of(&meta.doc).to_string(),
+                summary: Prose::from_paragraph(&meta.doc).brief.to_string(),
             });
         }
         out
@@ -310,7 +310,7 @@ impl DocsRuntime {
             return Some(assemble(&meta.signatures, &meta.doc));
         }
         let function = self.function(name)?;
-        Some(assemble(function.signatures, function.doc))
+        Some(assemble(function.signatures, &function.prose.rendered()))
     }
 
     /// One **type's** documentation by the name a signature writes it under: its declaration, the
@@ -359,11 +359,15 @@ impl DocsRuntime {
         let catalogued = catalogue_functions(self.language)
             .into_iter()
             .any(|function| {
-                function.types.iter().any(|referenced| referenced == name) && self.bound(&function)
+                function
+                    .types
+                    .iter()
+                    .any(|referenced| referenced.fqn() == name)
+                    && self.bound(&function)
             });
         catalogued
             || meta_function(self.language, LIST_FUNCTION)
-                .is_some_and(|meta| meta.types.iter().any(|referenced| referenced == name))
+                .is_some_and(|meta| meta.types.iter().any(|referenced| referenced.fqn() == name))
     }
 
     /// One key's documentation, whichever kind of thing it addresses — a function first, a type
@@ -414,9 +418,11 @@ impl DocsRuntime {
     /// reached through what it hands back. The catalogue records no return position of its own, so
     /// this is the closest honest reading of it available — and it errs toward *showing* rather than
     /// withholding, since a type named only by a field of an argument's type is not named by the
-    /// argument itself. The catalogue schema that carries a real return position replaces this with a
-    /// field lookup; [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) and
-    /// [`Off`](DocViewTypes::Off) are exact today and are unaffected by it.
+    /// argument itself. The [normalized schema](crate::sandbox::SchemaVersion::V2) carries a real
+    /// return position — [`CatalogueFunction::returns`](crate::sandbox::CatalogueFunction) — and an
+    /// arm that has been converted to it replaces this inference with a field lookup;
+    /// [`ReturnAndParameters`](DocViewTypes::ReturnAndParameters) and [`Off`](DocViewTypes::Off) are
+    /// exact today and are unaffected either way.
     pub fn types_to_open(&self, name: &str, mode: DocViewTypes) -> Vec<&'static str> {
         if mode == DocViewTypes::Off {
             return Vec::new();
@@ -426,7 +432,7 @@ impl DocsRuntime {
         };
         let mut names: Vec<&'static str> = Vec::new();
         for referenced in function.types {
-            let declaration = match type_declaration(self.language, referenced) {
+            let declaration = match type_declaration(self.language, referenced.fqn()) {
                 Some(declaration) => declaration,
                 // A referenced name this language's catalogue does not declare has nothing to
                 // render, so there is no view to open for it. The agreement gate holds every arm to

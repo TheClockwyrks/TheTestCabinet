@@ -76,7 +76,7 @@ use crate::fsm::{FsmPosition, FsmSpec};
 use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
 use crate::model::ToolDefinition;
 use crate::modules::{CapabilityModules, ModuleHandle};
-use crate::sandbox::{Parameter, ParameterKind, ProgramLanguage, SignatureEntry};
+use crate::sandbox::{Parameter, ParameterKind, ProgramLanguage, SignatureEntry, TypeReference};
 use crate::skills::builtin::FAMILIES;
 use crate::skills::{SkillLibrary, SkillsRuntime, parse_skill};
 use crate::tasks::{TaskMode, TasksRuntime};
@@ -531,9 +531,9 @@ fn functions() -> Vec<GgApiFunction> {
             object: function.object.to_string(),
             name: function.name.to_string(),
             category: category_of_object(function.object),
-            summary: function.summary.to_string(),
+            summary: function.prose.brief.to_string(),
             signatures: signatures(function.signatures),
-            doc: function.doc.to_string(),
+            doc: function.prose.rendered().into_owned(),
             gate: function.gate.map(str::to_string),
             ending: function.ending.map(str::to_string),
             // The page's question is "does this belong to the program library", which the
@@ -552,7 +552,9 @@ fn functions() -> Vec<GgApiFunction> {
                     object: described.object.clone(),
                     name: list.name.clone(),
                     category: category_of_object(described.object.as_str()),
-                    summary: crate::sandbox::summary_of(&list.doc).to_string(),
+                    summary: crate::sandbox::Prose::from_paragraph(&list.doc)
+                        .brief
+                        .to_string(),
                     signatures: signatures(&list.signatures),
                     doc: list.doc.clone(),
                     // Nothing gates the directory: an object that exists carries it.
@@ -582,21 +584,24 @@ fn signatures(entries: &'static [SignatureEntry]) -> Vec<GgApiSignature> {
 /// A name the catalogue's own `types` section does not declare is a corrupt committed artifact
 /// rather than a documented type gg happens not to know; it is dropped instead of rendered as an
 /// empty block, and a test asserts nothing is ever dropped.
-fn types(language: &'static dyn ProgramLanguage, names: &'static [String]) -> Vec<GgApiType> {
-    names
+fn types(
+    language: &'static dyn ProgramLanguage,
+    references: &'static [TypeReference],
+) -> Vec<GgApiType> {
+    references
         .iter()
-        .filter_map(|name| {
-            crate::sandbox::type_declaration(language, name).map(|declared| GgApiType {
-                name: name.clone(),
+        .filter_map(|reference| {
+            crate::sandbox::type_declaration(language, reference.fqn()).map(|declared| GgApiType {
+                name: reference.spelled().to_string(),
                 declaration: declared.declaration.clone(),
-                doc: declared.doc.clone(),
+                doc: declared.prose().rendered().into_owned(),
                 members: declared
                     .members
                     .iter()
                     .map(|member| GgApiTypeMember {
                         name: member.name.clone(),
                         kind: member.r#type.clone(),
-                        doc: member.doc.clone(),
+                        doc: member.prose().rendered().into_owned(),
                     })
                     .collect(),
             })

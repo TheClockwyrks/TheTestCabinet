@@ -61,6 +61,20 @@ impl EndingRole {
     pub(crate) fn owns(self, name: &str) -> bool {
         self.tools().contains(&name)
     }
+
+    /// The word a **catalogue** files this role's ending calls under, and the word gg's own
+    /// [reference projection](crate::reference) reports them by.
+    ///
+    /// It is here rather than at either of those two places because both of them need it and
+    /// neither owns it: a role is a gg concept, so the string that names one in an artifact a human
+    /// or a model reads is gg's to choose, and choosing it twice is how two artifacts come to
+    /// disagree about which agents may declare work complete.
+    pub(crate) const fn id(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Review => "review",
+        }
+    }
 }
 
 /// What an agent declared when it ended its session.

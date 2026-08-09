@@ -649,9 +649,35 @@ pub const OPERATIONS: &[Operation] = &[
 /// documentation is a smaller failure than a run that stops — and `every_catalogued_function_has_an_operation`
 /// proves the case unreachable for every registered language.
 pub fn operation_of(function: &CatalogueFunction) -> Option<&'static Operation> {
-    OPERATIONS.iter().find(|operation| {
-        operation.call.object == function.object && operation.call.key == function.key
-    })
+    match function.operation {
+        // A catalogue in the [normalized schema](super::signatures::SchemaVersion::V2) names its
+        // operation on the declaration itself, which is the end state this join was always heading
+        // for: the id is the entry's identity rather than something recovered from where it was
+        // filed. An id no row carries is not silently re-resolved through the pair below — an arm
+        // that named an operation gg does not have has said something wrong, and answering it with
+        // whatever `(object, key)` happens to match would hide that.
+        Some(id) => operation_by_id(id),
+        // The transitional half, for the catalogues still filing entries under an API object. It
+        // goes with the last of them.
+        None => OPERATIONS.iter().find(|operation| {
+            operation.call.object == function.object && operation.call.key == function.key
+        }),
+    }
+}
+
+/// The operation `id` names, written as a catalogue writes it — `files.read_file` — or `None` for an
+/// id gg has no row for.
+///
+/// The split is at the **first** dot rather than the last, and that is safe by construction: an
+/// [`OperationId`]'s key is `snake_case` and its namespace is one word, so neither half can contain
+/// one. Splitting a rendered id back into its two halves is the only thing this does that
+/// [`Display`](OperationId) does not, and it is here — beside the table — so that the round trip is
+/// one file's problem rather than every caller's.
+pub fn operation_by_id(id: &str) -> Option<&'static Operation> {
+    let (namespace, key) = id.split_once('.')?;
+    OPERATIONS
+        .iter()
+        .find(|operation| operation.id.namespace == namespace && operation.id.key == key)
 }
 
 /// `&str` equality, in a `const` context, where `==` is not available.

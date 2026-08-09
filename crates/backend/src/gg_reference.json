@@ -1179,7 +1179,7 @@
       "object": "harness",
       "name": "finish",
       "category": "gg-session",
-      "summary": "End your session, reporting what you did in a sentence or two.",
+      "summary": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it. It does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
       "signatures": [
         {
           "signature": "finish(summary: string): void",
@@ -1204,7 +1204,7 @@
       "object": "review",
       "name": "approve",
       "category": "gg-session",
-      "summary": "Accept the work you are reviewing: it meets every completion criterion and stays in scope.",
+      "summary": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session. It does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change.",
       "signatures": [
         {
           "signature": "approve(): void",
@@ -1220,7 +1220,7 @@
       "object": "review",
       "name": "requestChanges",
       "category": "gg-session",
-      "summary": "Reject the work you are reviewing, listing every change that must be made before it can be accepted.",
+      "summary": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. Each item says what is wrong and what to change; the list may not be empty. This ends your session, and does not stop your program.",
       "signatures": [
         {
           "signature": "requestChanges(items: string[]): void",
@@ -1245,7 +1245,7 @@
       "object": "view",
       "name": "openFile",
       "category": "gg-views",
-      "summary": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.",
+      "summary": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it. The split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it. Pictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); opening one past that throws `limit-exceeded` naming the cap, and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.",
       "signatures": [
         {
           "signature": "openFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
@@ -1363,7 +1363,7 @@
       "object": "view",
       "name": "openText",
       "category": "gg-views",
-      "summary": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.",
+      "summary": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled. This is what replaced `console.log` as the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty label is `invalid-argument` — a view with no selector could never be closed or attributed — while an empty BODY is allowed, since it is how you say that something you were showing is now empty. A body or label over gg's caps throws `limit-exceeded` naming the cap; nothing is ever silently truncated.",
       "signatures": [
         {
           "signature": "openText(label: string, body: string): void",
@@ -1395,7 +1395,7 @@
       "object": "view",
       "name": "openDocsView",
       "category": "gg-views",
-      "summary": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.",
+      "summary": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session. Pass the function itself (`view.openDocsView(fs.readFile)`) or its name (`view.openDocsView(\"readFile\")`). This is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are done with it. An unknown or unbound name throws `not-found`; `<object>.list()` is how you find out which names exist.",
       "signatures": [
         {
           "signature": "openDocsView(target: Function | string): void",
@@ -1419,7 +1419,7 @@
       "object": "view",
       "name": "close",
       "category": "gg-views",
-      "summary": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied.",
+      "summary": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied. Closing a selector that is not open returns `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
       "signatures": [
         {
           "signature": "close(selector: string): number",
@@ -1443,7 +1443,7 @@
       "object": "view",
       "name": "current",
       "category": "gg-views",
-      "summary": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.",
+      "summary": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather than `list` because every API object already carries a `list()` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
       "signatures": [
         {
           "signature": "current(): OpenView[]",
@@ -1522,7 +1522,7 @@
       "object": "programs",
       "name": "history",
       "category": "gg-programs",
-      "summary": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.",
+      "summary": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window. An agent with no program library throws `unavailable`. It is empty — never an error — for one that has a library and has run nothing yet.",
       "signatures": [
         {
           "signature": "history(): ProgramSummary[]",
@@ -1570,7 +1570,7 @@
       "object": "programs",
       "name": "get",
       "category": "gg-programs",
-      "summary": "The exact source of one program you ran, as a string.",
+      "summary": "The exact source of one program you ran, as a string. With no argument, your most recent one. This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work (`replace`, `replaceAll`, a template literal), and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn. A turn that ran no program, or one old enough that the library has dropped it, throws `not-found` naming the turns that are held; `programs.history()` lists them.",
       "signatures": [
         {
           "signature": "get(turn?: number): string",
@@ -1594,7 +1594,7 @@
       "object": "programs",
       "name": "rerun",
       "category": "gg-programs",
-      "summary": "Hand gg a program to run in place of this one.",
+      "summary": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program. Use it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice. The first call stands; a second throws `refused`, because a silently replaced program is a change you cannot see. A blank source is `invalid-argument`. If your program then throws, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.",
       "signatures": [
         {
           "signature": "rerun(source: string): void",
@@ -1618,7 +1618,7 @@
       "object": "system",
       "name": "shell",
       "category": "gg-shell",
-      "summary": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr.",
+      "summary": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr. A non-zero exit is NOT a failure — check `exitCode` on the result; only a process that could not be launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to whatever is left of the run's wall-clock budget. This run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.",
       "signatures": [
         {
           "signature": "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
@@ -1683,7 +1683,7 @@
       "object": "fs",
       "name": "readFile",
       "category": "gg-filesystem",
-      "summary": "Read a file, returning either `{ kind: \"text\", ...",
+      "summary": "Read a file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. This gets bytes for your program and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. Throws `not-found` for a missing path. Reading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.",
       "signatures": [
         {
           "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
@@ -1801,7 +1801,7 @@
       "object": "fs",
       "name": "writeFile",
       "category": "gg-filesystem",
-      "summary": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written.",
+      "summary": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
       "signatures": [
         {
           "signature": "writeFile(path: string, contents: string): number",
@@ -1834,7 +1834,7 @@
       "object": "fs",
       "name": "editFile",
       "category": "gg-filesystem",
-      "summary": "Replace the one exact occurrence of `oldString` in a file with `newString`.",
+      "summary": "Replace the one exact occurrence of `oldString` in a file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
       "signatures": [
         {
           "signature": "editFile(path: string, oldString: string, newString: string): void",
@@ -1875,7 +1875,7 @@
       "object": "fs",
       "name": "listDir",
       "category": "gg-filesystem",
-      "summary": "List a directory, sorted by name; defaults to your workspace.",
+      "summary": "List a directory, sorted by name; defaults to your workspace. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
       "signatures": [
         {
           "signature": "listDir(path?: string): DirEntry[]",
@@ -1918,7 +1918,7 @@
       "object": "skills",
       "name": "readSkill",
       "category": "gg-skills",
-      "summary": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.",
+      "summary": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read. A skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it exports. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn. Throws `not-found` — listing the skills that do exist — when the name is unknown.",
       "signatures": [
         {
           "signature": "readSkill(name: string): string",
@@ -1943,7 +1943,7 @@
       "object": "memory",
       "name": "writeMemory",
       "category": "gg-memory",
-      "summary": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used.",
+      "summary": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used. Throws `conflict` on a duplicate name and `limit-exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more. A memory may also carry **code**. `code` is a TypeScript module whose exports are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.",
       "signatures": [
         {
           "signature": "writeMemory(memory: MemoryWrite): MemoryUsage",
@@ -2038,7 +2038,7 @@
       "object": "memory",
       "name": "updateMemory",
       "category": "gg-memory",
-      "summary": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget.",
+      "summary": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget. Its `code` and `onUse` are replaced too — omitting them clears them. Throws `not-found` when no memory has that name.",
       "signatures": [
         {
           "signature": "updateMemory(memory: MemoryWrite): MemoryUsage",
@@ -2133,7 +2133,7 @@
       "object": "memory",
       "name": "createMemory",
       "category": "gg-memory",
-      "summary": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget.",
+      "summary": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget. Give it a slug (letters, digits, `-`, `_`, `.`), a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and `onUse` (a script run on that first read). Throws `conflict` on a duplicate slug and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
       "signatures": [
         {
           "signature": "createMemory(memory: MemoryWrite): MemoryUsage",
@@ -2228,7 +2228,7 @@
       "object": "memory",
       "name": "readMemory",
       "category": "gg-memory",
-      "summary": "Read one memory's full contents, by slug — the only thing that brings them into your context.",
+      "summary": "Read one memory's full contents, by slug — the only thing that brings them into your context. If the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session. Throws `not-found` when no memory has that slug.",
       "signatures": [
         {
           "signature": "readMemory(name: string): string",
@@ -2253,7 +2253,7 @@
       "object": "memory",
       "name": "editMemory",
       "category": "gg-memory",
-      "summary": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget.",
+      "summary": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget. Append by quoting the last line and replacing it with itself plus what you are adding. Throws `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — delete it instead.",
       "signatures": [
         {
           "signature": "editMemory(edit: { name: string; search: string; replace: string; }): MemoryUsage",
@@ -2341,7 +2341,7 @@
       "object": "memory",
       "name": "searchMemories",
       "category": "gg-memory",
-      "summary": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often.",
+      "summary": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `readMemory` the hits worth having in full. Throws `invalid-argument` when every keyword is empty; a search that matches nothing is an empty array.",
       "signatures": [
         {
           "signature": "searchMemories(keywords: string[]): MemoryHit[]",
@@ -2399,7 +2399,7 @@
       "object": "memory",
       "name": "deleteMemory",
       "category": "gg-memory",
-      "summary": "Evict a memory by name, freeing room in the budget, and return what is left in use.",
+      "summary": "Evict a memory by name, freeing room in the budget, and return what is left in use. Throws `not-found` when no memory has that name.",
       "signatures": [
         {
           "signature": "deleteMemory(name: string): MemoryUsage",
@@ -2462,7 +2462,7 @@
       "object": "tasks",
       "name": "addTask",
       "category": "gg-tasks",
-      "summary": "Add a task to the task DAG and return the task budget.",
+      "summary": "Add a task to the task DAG and return the task budget. `blockedBy` names the tasks that must finish before this one and defaults to none. Throws `conflict` on a duplicate id or on an edge that would close a cycle.",
       "signatures": [
         {
           "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
@@ -2538,7 +2538,7 @@
       "object": "tasks",
       "name": "updateTask",
       "category": "gg-tasks",
-      "summary": "Revise a task's title, description and/or status; supply at least one.",
+      "summary": "Revise a task's title, description and/or status; supply at least one. An omitted `description` leaves it alone, `null` clears it, and a string replaces it. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "updateTask(id: string, patch: { title?: string; description?: string | null; status?: TaskStatus; }): void",
@@ -2616,7 +2616,7 @@
       "object": "tasks",
       "name": "setBlockedBy",
       "category": "gg-tasks",
-      "summary": "Replace a task's whole blocker set; an empty array clears every blocker.",
+      "summary": "Replace a task's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
       "signatures": [
         {
           "signature": "setBlockedBy(id: string, blockedBy: string[]): void",
@@ -2649,7 +2649,7 @@
       "object": "tasks",
       "name": "completeTask",
       "category": "gg-tasks",
-      "summary": "Mark a task done.",
+      "summary": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "completeTask(id: string): void",
@@ -2674,7 +2674,7 @@
       "object": "tasks",
       "name": "removeTask",
       "category": "gg-tasks",
-      "summary": "Remove a task and every blocker edge pointing at it, and return the task budget.",
+      "summary": "Remove a task and every blocker edge pointing at it, and return the task budget. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "removeTask(id: string): TaskUsage",
@@ -2717,7 +2717,7 @@
       "object": "project",
       "name": "createEpic",
       "category": "gg-project",
-      "summary": "Create an epic to group related issues.",
+      "summary": "Create an epic to group related issues. `prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on. Returns that id and the board budget. Throws `invalid-argument` when the prefix is not 3-6 letters, and `conflict` when another epic already holds it.",
       "signatures": [
         {
           "signature": "createEpic(epic: { prefix: string; title: string; description: string; }): EpicCreated",
@@ -2812,7 +2812,7 @@
       "object": "project",
       "name": "createIssue",
       "category": "gg-project",
-      "summary": "Create a self-contained, dispatchable issue.",
+      "summary": "Create a self-contained, dispatchable issue. Returns the id the board **assigned** it — numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic — together with the board budget; you do not choose the id, so keep the returned one to block a later issue on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required when this run's reviewers feature is on. `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker edge that would close a cycle.",
       "signatures": [
         {
           "signature": "createIssue(issue: { title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; agent: string; reviewers?: string[]; }): IssueCreated",
@@ -2955,7 +2955,7 @@
       "object": "project",
       "name": "updateIssue",
       "category": "gg-project",
-      "summary": "Revise an issue; supply at least one field.",
+      "summary": "Revise an issue; supply at least one field. An omitted field is left alone, `description: null` clears the description, and `epicId: null` detaches the issue from its epic. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "updateIssue(id: string, patch: { title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }): void",
@@ -3065,7 +3065,7 @@
       "object": "project",
       "name": "setIssueBlockedBy",
       "category": "gg-project",
-      "summary": "Replace an issue's whole blocker set; an empty array clears every blocker.",
+      "summary": "Replace an issue's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
       "signatures": [
         {
           "signature": "setIssueBlockedBy(id: string, blockedBy: string[]): void",
@@ -3098,7 +3098,7 @@
       "object": "project",
       "name": "removeEpic",
       "category": "gg-project",
-      "summary": "Remove an epic, keeping its issues and ungrouping them, and return the board budget.",
+      "summary": "Remove an epic, keeping its issues and ungrouping them, and return the board budget. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "removeEpic(id: string): BoardUsage",
@@ -3151,7 +3151,7 @@
       "object": "project",
       "name": "removeIssue",
       "category": "gg-project",
-      "summary": "Remove an issue and every blocker edge pointing at it, and return the board budget.",
+      "summary": "Remove an issue and every blocker edge pointing at it, and return the board budget. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "removeIssue(id: string): BoardUsage",
@@ -3204,7 +3204,7 @@
       "object": "project",
       "name": "waitForIssue",
       "category": "gg-project",
-      "summary": "Register a wait on an issue and return an acknowledgement.",
+      "summary": "Register a wait on an issue and return an acknowledgement. It does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "waitForIssue(id: string): string",
@@ -3229,7 +3229,7 @@
       "object": "context",
       "name": "evictFileView",
       "category": "gg-context",
-      "summary": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view.",
+      "summary": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view. The files on disk are untouched — this forgets what you read, not what exists.",
       "signatures": [
         {
           "signature": "evictFileView(path?: string): ReclaimReport",
@@ -3282,7 +3282,7 @@
       "object": "context",
       "name": "archiveThread",
       "category": "gg-context",
-      "summary": "Move whole turns out of your context window and report what that reclaimed.",
+      "summary": "Move whole turns out of your context window and report what that reclaimed. Every result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.",
       "signatures": [
         {
           "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
@@ -3352,7 +3352,7 @@
       "object": "context",
       "name": "searchArchive",
       "category": "gg-context",
-      "summary": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.",
+      "summary": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits. Check `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
       "signatures": [
         {
           "signature": "searchArchive(query: string): ArchiveSearch",
@@ -3417,7 +3417,7 @@
       "object": "context",
       "name": "compact",
       "category": "gg-context",
-      "summary": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.",
+      "summary": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`. Your skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do. It does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.",
       "signatures": [
         {
           "signature": "compact(summary: string, files?: string[]): void",
@@ -3450,7 +3450,7 @@
       "object": "agents",
       "name": "spawnSubagent",
       "category": "gg-delegation",
-      "summary": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues.",
+      "summary": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue). The child shares your workspace. Throws `limit-exceeded` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
       "signatures": [
         {
           "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; })): SubagentHandle",
@@ -3523,7 +3523,7 @@
       "object": "agents",
       "name": "waitForSubagents",
       "category": "gg-delegation",
-      "summary": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order.",
+      "summary": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order. The run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child. Throws `not-found` for an unknown id.",
       "signatures": [
         {
           "signature": "waitForSubagents(ids?: string[]): SubagentResult[]",
@@ -3602,7 +3602,7 @@
       "object": "agents",
       "name": "sendMessage",
       "category": "gg-delegation",
-      "summary": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.",
+      "summary": "Deliver a message to a running child agent's inbox; it reads the message at its next turn. Throws `not-found` for an unknown agent id and `conflict` when that child has already returned.",
       "signatures": [
         {
           "signature": "sendMessage(agentId: string, message: string): void",
@@ -3635,7 +3635,7 @@
       "object": "agents",
       "name": "transitionState",
       "category": "gg-delegation",
-      "summary": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees.",
+      "summary": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees. Bound only when a state machine is driving you and the state you are in has somewhere to go. Like `compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands, and a second throws `refused`. Throws `invalid-argument` for a state you may not move to.",
       "signatures": [
         {
           "signature": "transitionState(state: string, note?: string): void",
@@ -3668,7 +3668,7 @@
       "object": "agents",
       "name": "exec",
       "category": "gg-delegation",
-      "summary": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.",
+      "summary": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up. `prompt` is its opening message. Registered rather than performed, exactly as `transitionState` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn, so an `exec` after a `transitionState` — or a second `exec` — throws `refused`. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you. Throws `invalid-argument` for an agent you may not become.",
       "signatures": [
         {
           "signature": "exec(agent: string, prompt?: string): void",
@@ -3701,7 +3701,7 @@
       "object": "agents",
       "name": "fork",
       "category": "gg-delegation",
-      "summary": "Run a copy of yourself, in parallel, on something you will not do yourself.",
+      "summary": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there. Its handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `waitForSubagents` can only collect it on a later turn — do not wait on it in the program that made it. Throws `limit-exceeded` at the delegation depth cap.",
       "signatures": [
         {
           "signature": "fork(prompt: string): SubagentHandle",
@@ -3749,7 +3749,7 @@
       "object": "fs",
       "name": "readTextFile",
       "category": "gg-filesystem",
-      "summary": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case.",
+      "summary": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",
       "signatures": [
         {
           "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
@@ -3799,7 +3799,7 @@
       "object": "fs",
       "name": "list",
       "category": "gg-filesystem",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -3832,7 +3832,7 @@
       "object": "system",
       "name": "list",
       "category": "gg-shell",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -3865,7 +3865,7 @@
       "object": "project",
       "name": "list",
       "category": "gg-project",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -3898,7 +3898,7 @@
       "object": "tasks",
       "name": "list",
       "category": "gg-tasks",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -3931,7 +3931,7 @@
       "object": "memory",
       "name": "list",
       "category": "gg-memory",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -3964,7 +3964,7 @@
       "object": "view",
       "name": "list",
       "category": "gg-views",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -3997,7 +3997,7 @@
       "object": "context",
       "name": "list",
       "category": "gg-context",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -4030,7 +4030,7 @@
       "object": "agents",
       "name": "list",
       "category": "gg-delegation",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -4063,7 +4063,7 @@
       "object": "skills",
       "name": "list",
       "category": "gg-skills",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -4096,7 +4096,7 @@
       "object": "programs",
       "name": "list",
       "category": "gg-programs",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -4129,7 +4129,7 @@
       "object": "harness",
       "name": "list",
       "category": "gg-session",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",
@@ -4162,7 +4162,7 @@
       "object": "review",
       "name": "list",
       "category": "gg-session",
-      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
       "signatures": [
         {
           "signature": "list(): FunctionSummary[]",

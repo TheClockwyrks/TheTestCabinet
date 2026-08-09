@@ -245,7 +245,7 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
     assert_eq!(projected("openFile").object, "view");
     assert!(projected("openText").gate.is_none());
     assert!(projected("openText").ending.is_none());
-    assert!(!projected("current").summary.is_empty());
+    assert!(!projected("current").prose.brief.is_empty());
 }
 
 /// **`finish` is not a gg tool, and no gg tool is called `finish`.**
@@ -298,7 +298,10 @@ fn catalogue_functions_carry_object_and_gate() {
         .expect("readFile is documented");
     assert_eq!(read.object, "fs");
     assert_eq!(read.gate, Some("read_file"));
-    assert!(!read.summary.is_empty(), "every function carries a summary");
+    assert!(
+        !read.prose.brief.is_empty(),
+        "every function carries a brief"
+    );
 
     // The helper is gated by the tool it wraps, and lives on that tool's object.
     let helper = functions
@@ -394,5 +397,354 @@ fn the_catalogue_tells_the_truth_about_pictures() {
         open_file.doc.contains("limit-exceeded") && open_file.doc.contains("view.close"),
         "`view.openFile` must say how the cap fails and how to recover from it: {}",
         open_file.doc
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The two schemas
+//
+// What follows is about the doc model rather than about TypeScript: that a catalogue says which
+// shape it is written in, that both shapes parse, and — the load-bearing one — that a consumer
+// reading either through `catalogue_functions` cannot tell which it was handed. That last property
+// is what makes converting one arm per commit possible, so it is asserted against a matched pair of
+// fixtures rather than inferred from the two halves working separately.
+// ---------------------------------------------------------------------------------------------
+
+use super::fixture;
+
+/// **Every committed catalogue is still v1 today.**
+///
+/// Stated rather than assumed, because it is what makes every "inert below v2" claim in the gates a
+/// claim about the tree that exists. When an arm is converted this test is the first thing to say
+/// so, and its failure is the signal to move that arm's name into the converted list rather than a
+/// defect.
+#[test]
+fn every_registered_arm_is_still_written_in_the_first_schema() {
+    for language in language::all_languages() {
+        assert_eq!(
+            language.catalogue().schema,
+            SchemaVersion::V1,
+            "{} has been converted — the gates that are inert below v2 now apply to it",
+            language.display_name()
+        );
+    }
+}
+
+/// **A catalogue declares which schema it is written in, and the absence of the key means the first
+/// one** — the only honest reading of an artifact written before the key existed.
+#[test]
+fn a_catalogue_declares_its_schema_and_absence_means_the_first() {
+    assert_eq!(fixture::v1().schema, SchemaVersion::V1);
+    assert_eq!(fixture::v2().schema, SchemaVersion::V2);
+    assert!(
+        !fixture::V1.contains("\"schema\""),
+        "the v1 fixture is the shape that predates the key, and must not declare one"
+    );
+}
+
+/// **A schema this gg does not know is refused, not rounded down to one it does.**
+///
+/// A catalogue from a newer gg describes a surface this one cannot render, and rendering it as
+/// whichever shape happens to parse is how a model is handed a signature nobody wrote.
+#[test]
+fn a_schema_from_a_newer_gg_is_refused() {
+    let ahead = fixture::V2.replacen("\"schema\": 2", "\"schema\": 3", 1);
+    let error = SignatureCatalogue::parse(&ahead).expect_err("schema 3 is not readable here");
+    assert!(
+        error.to_string().contains("schema"),
+        "the refusal says which key it is about: {error}"
+    );
+}
+
+/// **One surface written in either schema projects the same way.**
+///
+/// This is the property the whole version dispatch exists for. The two fixtures describe the same
+/// four calls — same identities, same gates, same prose, same shapes — and every field a consumer
+/// routes, gates or renders on comes out equal, so a converted arm is not a different arm.
+#[test]
+fn one_surface_written_in_either_schema_projects_the_same_way() {
+    let old = super::functions_of(fixture::v1());
+    let new = super::functions_of(fixture::v2());
+    assert_eq!(
+        old.len(),
+        new.len(),
+        "the two fixtures describe one surface"
+    );
+
+    for (old, new) in old.iter().zip(&new) {
+        assert_eq!(old.key, new.key, "identity is the same in either schema");
+        assert_eq!(old.name, new.name);
+        assert_eq!(old.gate, new.gate, "`{}` is gated the same way", old.key);
+        assert_eq!(old.ending, new.ending);
+        assert_eq!(old.capability, new.capability);
+        assert_eq!(
+            old.prose.brief, new.prose.brief,
+            "`{}`'s brief is the same line the transitional split recovers",
+            old.key
+        );
+        assert_eq!(old.prose.detail, new.prose.detail);
+        assert_eq!(
+            old.prose.rendered(),
+            new.prose.rendered(),
+            "`{}` reads identically in a documentation view",
+            old.key
+        );
+        assert_eq!(
+            old.signatures.len(),
+            new.signatures.len(),
+            "the shape of a call was never the thing that needed normalizing"
+        );
+    }
+}
+
+/// **A v2 entry carries what a v1 entry structurally cannot**, and the projection says so rather
+/// than inventing it: a name, a module, an operation and a return position.
+#[test]
+fn a_v2_entry_carries_the_identity_a_v1_entry_has_nowhere_to_put() {
+    let old = super::functions_of(fixture::v1());
+    for function in &old {
+        assert!(function.fqn.is_none(), "a v1 entry has no name of its own");
+        assert!(function.module.is_none());
+        assert!(function.operation.is_none());
+        assert!(
+            function.returns.is_empty(),
+            "a v1 catalogue records no return position, which is why the depth-one rule has to \
+             sort returns from arguments by elimination"
+        );
+    }
+
+    let new = super::functions_of(fixture::v2());
+    let read = new
+        .iter()
+        .find(|function| function.name == "read_file")
+        .expect("the fixture reads files");
+    assert_eq!(read.fqn, Some("gg::files::read_file"));
+    assert_eq!(read.module, Some("files"));
+    assert_eq!(read.operation, Some("files.read_file"));
+    assert_eq!(read.kind, EntryKind::Function);
+    assert!(read.receiver.is_none());
+    assert_eq!(
+        read.returns
+            .iter()
+            .map(TypeReference::fqn)
+            .collect::<Vec<_>>(),
+        ["gg::files::FileRead"]
+    );
+
+    // The one entry whose idiomatic shape is a member: the receiver is recorded, and it is what
+    // adds the third segment to the name.
+    let close = new
+        .iter()
+        .find(|function| function.name == "close")
+        .expect("the fixture closes views");
+    assert_eq!(close.kind, EntryKind::Method);
+    assert_eq!(close.receiver, Some("OpenView"));
+    assert_eq!(close.fqn, Some("gg::views::OpenView::close"));
+}
+
+/// **A v2 entry's gate is gg's own**, synthesized from the operation it names rather than read out
+/// of the artifact — which is why the schema has no field for one.
+///
+/// All four kinds of binding are exercised, because the failure worth catching is a projection that
+/// gets one of them right and silently answers `None` for the rest.
+#[test]
+fn the_gate_of_a_v2_entry_is_synthesized_from_ggs_own_table() {
+    let functions = super::functions_of(fixture::v2());
+    let by_name = |name: &str| {
+        functions
+            .iter()
+            .find(|function| function.name == name)
+            .unwrap_or_else(|| panic!("`{name}` is in the fixture"))
+    };
+
+    // A tool.
+    assert_eq!(by_name("read_file").gate, Some("read_file"));
+    // An ending, whose role gg names.
+    assert_eq!(by_name("finish").ending, Some("standard"));
+    assert!(by_name("finish").gate.is_none());
+    // A capability, whose id no catalogue ever learns.
+    assert_eq!(
+        by_name("get").capability,
+        Some(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY)
+    );
+    // And an unconditional one: bound to every program whatever a run enables.
+    let close = by_name("close");
+    assert!(close.gate.is_none() && close.ending.is_none() && close.capability.is_none());
+
+    // The `V2` fixture never says any of that: the JSON carries an operation id and no gate at all.
+    assert!(!fixture::V2.contains("\"requires\""));
+    assert!(!fixture::V2.contains("\"ending\""));
+}
+
+/// **An operation named on the declaration resolves to gg's row for it**, which is the join a
+/// converted arm uses in place of the `(object, key)` pair.
+#[test]
+fn a_v2_entry_resolves_to_its_operation_by_id() {
+    let functions = super::functions_of(fixture::v2());
+    let read = functions
+        .iter()
+        .find(|function| function.name == "read_file")
+        .expect("the fixture reads files");
+    let operation = crate::sandbox::operation_of(read).expect("gg has a row for it");
+    assert_eq!(operation.id.namespace, "files");
+    assert_eq!(operation.id.key, "read_file");
+}
+
+/// **A module is read the same way in either schema**, and a v1 catalogue's API objects are
+/// projected as the modules they are — path and id both the object's own name, because that is the
+/// most identity an unconverted arm has.
+#[test]
+fn modules_are_read_the_same_way_in_either_schema() {
+    let old = super::modules_of(fixture::v1());
+    assert_eq!(
+        old.iter().map(|module| module.path).collect::<Vec<_>>(),
+        ["fs", "view", "harness", "programs"]
+    );
+    assert!(old.iter().all(|module| module.id == module.path));
+    assert!(
+        old.iter().all(|module| module.import.is_none()),
+        "a v1 catalogue has nowhere to record an import line"
+    );
+
+    let new = super::modules_of(fixture::v2());
+    assert_eq!(
+        new.iter().map(|module| module.path).collect::<Vec<_>>(),
+        ["gg::files", "gg::views", "gg::session", "gg::programs"]
+    );
+    assert_eq!(
+        new.iter().map(|module| module.id).collect::<Vec<_>>(),
+        ["files", "views", "session", "programs"],
+        "the id is gg's cross-arm vocabulary and the path is the arm's own spelling"
+    );
+    assert_eq!(
+        new.iter()
+            .find(|module| module.id == "programs")
+            .map(|module| module.import),
+        Some(Some("use gg::programs;")),
+        "the one arm that writes a real import line has somewhere to say so"
+    );
+}
+
+/// **A brief is the first LINE, never the first sentence** — the defect that made the old
+/// derivation wrong in any language.
+///
+/// A period followed by a newline is not a sentence end, so a first-sentence rule ran on past the
+/// paragraph break and swallowed the paragraph after it. Measured on today's committed catalogues,
+/// that is every one of the eight arms whose docs have paragraph breaks.
+#[test]
+fn a_brief_is_the_first_line_and_never_the_first_sentence() {
+    let doc = "Run a command. A non-zero exit is not a failure.\n\nRead the exit code instead.";
+    let prose = Prose::from_paragraph(doc);
+    assert_eq!(
+        prose.brief,
+        "Run a command. A non-zero exit is not a failure."
+    );
+    assert_eq!(prose.detail, Some("Read the exit code instead."));
+    assert_eq!(
+        prose.rendered(),
+        doc,
+        "a v1 paragraph is rendered back verbatim, so nothing a model already reads moves"
+    );
+
+    // And a paragraph with no break at all is a brief that is the whole of it, which reads as *this
+    // arm has not authored a brief yet* rather than as a line cut short mid-code-span.
+    let flowing = Prose::from_paragraph("Read a file, returning either `text` or `image`.");
+    assert_eq!(
+        flowing.brief,
+        "Read a file, returning either `text` or `image`."
+    );
+    assert!(flowing.detail.is_none());
+}
+
+/// **An authored brief and detail render as one block**, with the blank line between them a
+/// documentation view needs and a v1 paragraph already had.
+#[test]
+fn authored_prose_renders_as_one_block() {
+    let authored = Prose::of(Some("Read a file."), Some("Narrow it before use."), "");
+    assert_eq!(authored.rendered(), "Read a file.\n\nNarrow it before use.");
+
+    let brief_only = Prose::of(Some("Read a file."), None, "");
+    assert_eq!(brief_only.rendered(), "Read a file.");
+
+    // An authored brief wins over a `doc` that is not there to be split, which is what stops a v2
+    // entry that forgot its brief from being handed a plausible-looking one.
+    let empty = Prose::of(Some(""), None, "Read a file.\n\nNarrow it.");
+    assert_eq!(
+        empty.brief, "",
+        "an absent brief stays absent, and the gate names it"
+    );
+}
+
+/// **A type reference carries the resolved name and the written spelling**, and says which is which
+/// even when an arm has only one of them.
+#[test]
+fn a_type_reference_carries_both_the_spelling_and_the_resolution() {
+    let bare = TypeReference::Bare("FileRead".to_string());
+    assert_eq!(bare.fqn(), "FileRead");
+    assert_eq!(
+        bare.spelled(),
+        "FileRead",
+        "an arm that resolved nothing records the same string twice, which is truthful rather than \
+         a claim to have resolved it"
+    );
+
+    let read = super::functions_of(fixture::v2())
+        .into_iter()
+        .find(|function| function.name == "read_file")
+        .expect("the fixture reads files");
+    let [reference] = read.types else {
+        panic!("the fixture's read names one type: {:?}", read.types)
+    };
+    assert_eq!(reference.spelled(), "FileRead", "what the signature writes");
+    assert_eq!(
+        reference.fqn(),
+        "gg::files::FileRead",
+        "what a documentation view is opened by"
+    );
+}
+
+/// **A type declaration reads the same way in either schema**, and a converted one carries the name
+/// it is opened by, the module it belongs to and the shape of each member.
+#[test]
+fn a_type_is_read_the_same_way_in_either_schema() {
+    let old = fixture::v1()
+        .types
+        .iter()
+        .find(|declaration| declaration.name == "FileRead")
+        .expect("the v1 fixture declares it");
+    let new = fixture::v2()
+        .types
+        .iter()
+        .find(|declaration| declaration.name == "FileRead")
+        .expect("the v2 fixture declares it");
+
+    assert_eq!(old.prose().brief, new.prose().brief);
+    assert_eq!(old.prose().detail, new.prose().detail);
+    assert_eq!(old.prose().rendered(), new.prose().rendered());
+    assert!(old.fqn.is_none() && old.module.is_none());
+    assert_eq!(new.fqn.as_deref(), Some("gg::files::FileRead"));
+    assert_eq!(new.module.as_deref(), Some("files"));
+
+    // A member's shape is stated where the catalogue states it and derived where it does not, and
+    // the two agree: an arm of a union carries no type of its own, because the arm is the value.
+    for (old, new) in old.members.iter().zip(&new.members) {
+        assert_eq!(old.kind(), new.kind());
+        assert_eq!(old.kind(), MemberKind::Variant);
+        assert_eq!(old.prose().brief, new.prose().brief);
+    }
+
+    // And a converted type carries the menu of what can be done with a value of it, which is what
+    // makes opening a function's return type land the model somewhere useful.
+    let view = fixture::v2()
+        .types
+        .iter()
+        .find(|declaration| declaration.name == "OpenView")
+        .expect("the v2 fixture declares it");
+    assert_eq!(
+        view.member_functions
+            .iter()
+            .map(|member| member.fqn.as_str())
+            .collect::<Vec<_>>(),
+        ["gg::views::OpenView::close"]
     );
 }
