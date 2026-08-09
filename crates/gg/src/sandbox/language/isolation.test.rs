@@ -564,3 +564,141 @@ fn a_breach_names_which_preparation_got_whose_program() {
     assert!(rendered.contains("gg-isolation-003-marker"), "{rendered}");
     assert!(rendered.contains("gg-isolation-011-marker"), "{rendered}");
 }
+
+/// A preparation that succeeds on its own and fails the moment sixteen of it run together — a lock
+/// nobody took, a file another preparation removed, a daemon another preparation was mid-build on.
+///
+/// It tells the two phases apart the way [`Rendezvous`] does, by counting: the gate prepares each of
+/// the sixteen inputs serially before it prepares any of them concurrently, so the first `WIDTH`
+/// calls are the baseline and everything after is the concurrent run.
+struct FailsOnlyUnderConcurrency {
+    /// How many preparations have passed through, across both phases.
+    calls: AtomicUsize,
+}
+
+impl Preparation for FailsOnlyUnderConcurrency {
+    fn describe(&self) -> String {
+        "a compiler that only fails when another one is running".to_string()
+    }
+
+    fn source(&self, marker: &str) -> String {
+        format!("program {marker}\n")
+    }
+
+    fn prepare(&self, source: &str, _context: &PrepareContext) -> Result<String, String> {
+        match self.calls.fetch_add(1, Ordering::SeqCst) < WIDTH {
+            true => Ok(source.to_string()),
+            false => Err("the compiler's lock was held by another preparation".to_string()),
+        }
+    }
+}
+
+/// **A failure that only happens under concurrency is reported as contention, not as a baseline
+/// failure and not as silence.**
+///
+/// This is the band [`Breach::Contended`] exists for, and it is the reason the gate prepares
+/// everything serially first: without that pass there would be nothing to tell "this input is
+/// broken" apart from "this input broke when sixteen of it ran", and the two want opposite
+/// responses from whoever reads the failure.
+///
+/// It matters that this is asserted rather than assumed. `Contended` is the **only** report a
+/// concurrent `Err` gets — the loop in [`breaches`] pushes it and moves on to the next preparation —
+/// so a gate that stopped producing it would not fail loudly, it would pass quietly while sixteen
+/// preparations errored.
+///
+/// **Verified by mutation, twice.** Replacing the push with a bare `continue` does not even compile:
+/// the workspace denies warnings, and `Contended` is constructed at exactly that one site, so the
+/// build fails with *"variant `Contended` is never constructed"*. That is the stronger of the two
+/// results — the lint proves the branch is live — but it proves nothing about this test, so the
+/// second mutation reports only the *first* contended failure instead of all sixteen, which compiles
+/// and fails here on the count.
+#[test]
+fn a_failure_that_only_appears_under_concurrency_is_reported_as_contention() {
+    let breaches = breaches(&FailsOnlyUnderConcurrency {
+        calls: AtomicUsize::new(0),
+    });
+    assert_eq!(
+        breaches.len(),
+        WIDTH,
+        "every concurrent preparation failed and every one should be reported:\n{}",
+        render(&breaches)
+    );
+    assert!(
+        breaches
+            .iter()
+            .all(|breach| matches!(breach, Breach::Contended { .. })),
+        "a failure under concurrency is contention, not a corruption:\n{}",
+        render(&breaches)
+    );
+    assert!(
+        breaches[0]
+            .to_string()
+            .contains("prepared alone and failed"),
+        "the report says which side of the two runs it failed on: {}",
+        breaches[0]
+    );
+}
+
+/// **Two preparations handed one workspace are reported**, which is the one thing in this file that
+/// cannot be proved by a broken [`Preparation`].
+///
+/// [`shared_workspaces`]'s own documentation says why: a workspace path is built from a monotonic
+/// counter the seam owns, so no fixture can arrange the collision. The check is a canary on that
+/// construction, and a canary nobody has ever heard sing is worth exactly as much as this test makes
+/// it worth — so the detector is driven directly, with the input the seam is supposed to make
+/// impossible.
+///
+/// **Verified by mutation**: widening the sharing threshold from `> 1` to `> 2` — the off-by-one a
+/// reader of that filter would most plausibly write — fails here with `left: 0, right: 1`.
+#[test]
+fn two_preparations_handed_one_workspace_are_reported() {
+    let shared = Path::new("/tmp/gg-prepare/7-1");
+    let breaches = shared_workspaces([
+        ("gg-isolation-000-marker", Some(shared)),
+        (
+            "gg-isolation-001-marker",
+            Some(Path::new("/tmp/gg-prepare/7-2")),
+        ),
+        ("gg-isolation-002-marker", Some(shared)),
+        // A preparation that never opened one has no path to collide, and must not be counted as
+        // sharing the absence of one with anybody else.
+        ("gg-isolation-003-marker", None),
+        ("gg-isolation-004-marker", None),
+    ]);
+    assert_eq!(
+        breaches.len(),
+        1,
+        "one path was handed out twice, so one breach:\n{}",
+        render(&breaches)
+    );
+    let Breach::SharedWorkspace { path, markers } = &breaches[0] else {
+        panic!("two preparations sharing a tree is not any other kind of breach");
+    };
+    assert_eq!(path, shared);
+    assert_eq!(
+        markers,
+        &["gg-isolation-000-marker", "gg-isolation-002-marker"]
+    );
+    assert!(
+        breaches[0]
+            .to_string()
+            .contains("were handed the same workspace"),
+        "the report names both: {}",
+        breaches[0]
+    );
+}
+
+/// And the ordinary case: sixteen real preparations are handed sixteen different trees.
+#[test]
+fn no_workspace_is_handed_out_twice_in_an_ordinary_run() {
+    assert!(
+        shared_workspaces((0..WIDTH).map(|_| ("gg-isolation-000-marker", None))).is_empty(),
+        "a preparation that opened no workspace shares nothing"
+    );
+    let breaches = breaches(&PrivateWorkspace);
+    assert!(
+        breaches.is_empty(),
+        "sixteen preparations that each opened a workspace got sixteen different ones:\n{}",
+        render(&breaches)
+    );
+}

@@ -299,20 +299,46 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
         }
     }
 
+    breaches.extend(shared_workspaces(markers.iter().zip(&together).map(
+        |(marker, (_, workspace))| (marker.as_str(), workspace.as_deref()),
+    )));
+    breaches
+}
+
+/// Every workspace path that more than one preparation was handed, as one breach apiece.
+///
+/// A preparation that never asked for a workspace has no path to collide and is skipped rather than
+/// counted as sharing one — which is why the argument is an `Option` and not a path.
+///
+/// # Why this is a function rather than four lines inside [`breaches`]
+///
+/// Because it is the one check here that a broken [`Preparation`] **cannot** drive, and that is a
+/// fact about the seam rather than a gap in the fixtures. A [`Workspace`](super::Workspace)'s path is
+/// `{process id}-{n}` where `n` comes from a monotonic counter the seam owns, and a
+/// [`PrepareContext`] can only be minted by the two functions that dispatch through the trait — so no
+/// fixture, however badly behaved, can arrange for two contexts to hand back the same path. The
+/// condition is unreachable by construction.
+///
+/// That is exactly what makes the check worth keeping and exactly what makes it untestable through
+/// the front door: it is the canary on that construction, and it would earn its keep on the day
+/// somebody made those paths reusable. So the detector is proved directly, by
+/// [its own test](tests::two_preparations_handed_one_workspace_are_reported), rather than by a
+/// sixteen-way run that can never produce the input.
+pub(super) fn shared_workspaces<'a>(
+    handed: impl IntoIterator<Item = (&'a str, Option<&'a Path>)>,
+) -> Vec<Breach> {
     let mut seen: Vec<(PathBuf, Vec<String>)> = Vec::new();
-    for (index, (_, workspace)) in together.iter().enumerate() {
+    for (marker, workspace) in handed {
         let Some(path) = workspace else { continue };
         match seen.iter_mut().find(|(seen, _)| seen == path) {
-            Some((_, markers_here)) => markers_here.push(markers[index].clone()),
-            None => seen.push((path.clone(), vec![markers[index].clone()])),
+            Some((_, markers_here)) => markers_here.push(marker.to_string()),
+            None => seen.push((path.to_path_buf(), vec![marker.to_string()])),
         }
     }
-    for (path, markers) in seen {
-        if markers.len() > 1 {
-            breaches.push(Breach::SharedWorkspace { path, markers });
-        }
-    }
-    breaches
+    seen.into_iter()
+        .filter(|(_, markers)| markers.len() > 1)
+        .map(|(path, markers)| Breach::SharedWorkspace { path, markers })
+        .collect()
 }
 
 /// The `n`th input's marker.
