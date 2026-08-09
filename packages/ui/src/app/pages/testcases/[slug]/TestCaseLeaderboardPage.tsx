@@ -3,8 +3,10 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
 import {
+  useVersionPick,
   useVersionScope,
   versionInScope,
+  VersionPicker,
   VersionScopeControl,
 } from "../../../components/VersionScope";
 import { useCaseRunSummaries } from "../../../data/useRuns";
@@ -485,8 +487,10 @@ function ReviewLeaderboard({
 // of the selected variant, ranked by the fuel of its BEST correct engine (lower is
 // better). A model appears once — folding its runs to their best keeps a re-run
 // model from flooding the board, since deterministic fuel makes reruns identical.
-// Fuel is only comparable within one scored scenario set, so the board is scoped to
-// the case's latest version and the selected variant.
+// Fuel is only comparable within one scored scenario set, so the board ranks ONE
+// version of the case at a time (the latest by default, any of them via the
+// picker) and the selected variant — never a mix, which would rank engines that
+// were never set the same scenarios against each other.
 function PerformanceLeaderboard({
   testCase,
   variant,
@@ -497,27 +501,39 @@ function PerformanceLeaderboard({
   const { summaries } = useCaseRunSummaries(testCase.slug);
   const findModel = useFindModel();
 
+  // One exact version, not the review board's widening scope: a fuel cohort is
+  // only comparable within a single version.
+  const versionPick = useVersionPick(testCase);
+  const { version } = versionPick;
+
   const entries = useMemo(
     () =>
       perModelBestFuel(
         summaries,
         {
           slug: testCase.slug,
-          version: testCase.latestVersion,
+          version,
           variant: variant.slug,
         },
         (id, harness) => findModel(id, harness)?.name ?? id,
       ),
-    [summaries, findModel, testCase.slug, testCase.latestVersion, variant.slug],
+    [summaries, findModel, testCase.slug, version, variant.slug],
   );
 
+  // As on the review board, the picker stays mounted alongside the empty state
+  // so a version with no correct runs is not a dead end. The empty state names
+  // the version only when there was a version to choose.
   if (entries.length === 0) {
+    const cohort = versionPick.show
+      ? `${variant.name} on ${version}`
+      : variant.name;
     return (
       <section className={styles.section}>
+        <VersionPicker state={versionPick} />
         <Panel>
           <p className={styles.empty}>
-            No correct runs of {variant.name} yet — the leaderboard ranks models
-            by the fuel of their best correct engine, and only a correct engine
+            No correct runs of {cohort} yet — the leaderboard ranks models by
+            the fuel of their best correct engine, and only a correct engine
             earns a fuel score.
           </p>
         </Panel>
@@ -530,10 +546,11 @@ function PerformanceLeaderboard({
 
   return (
     <section className={styles.section}>
+      <VersionPicker state={versionPick} />
       <Panel>
         <p>
           Ranked by total fuel — lower is better. Each model counts once, at its
-          most efficient correct run of {testCase.latestVersion}.
+          most efficient correct run of {version}.
         </p>
         <div className={styles.wrap}>
           <div

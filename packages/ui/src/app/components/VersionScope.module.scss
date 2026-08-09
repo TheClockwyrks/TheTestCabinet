@@ -13,6 +13,15 @@
   margin-bottom: t.$space-lg;
 }
 
+// The standalone picker's label, in the muted, letter-spaced treatment the
+// board headers use so it reads as a field name rather than body copy.
+.pickerLabel {
+  font-size: t.$font-sm;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: t.$color-text-muted;
+}
+
 // Mirrors the header's variant selector so the two read as one family.
 .versionSelect {
   font: inherit;
