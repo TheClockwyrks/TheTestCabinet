@@ -2,6 +2,11 @@ import { useMemo, useRef, type CSSProperties, type ReactNode } from "react";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { GradeBadge, RatingBadge } from "@test-cabinet/ui";
 import { Panel, canonicalModelId } from "@test-cabinet/ui";
+import {
+  useVersionScope,
+  versionInScope,
+  VersionScopeControl,
+} from "../../../components/VersionScope";
 import { useCaseRunSummaries } from "../../../data/useRuns";
 import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
@@ -245,6 +250,13 @@ function ReviewLeaderboard({
   const findReview = useFindReview();
   const findModel = useFindModel();
 
+  // Which versions of the case the board ranks over — the same control the
+  // Metrics tab carries. Without it a revised case ranks models against each
+  // other that were never set the same task; the `current` default keeps the
+  // board to the version in play, and widening it is the visitor's call.
+  const versionScope = useVersionScope(testCase);
+  const { scope, specificVersion } = versionScope;
+
   const { isVisible, toggle } = useColumnVisibility(
     "ttc:leaderboard:visible",
     METRIC_COLUMNS,
@@ -288,6 +300,17 @@ function ReviewLeaderboard({
       // Only a completed run can be ranked: a failed run produced no result and
       // is never reviewable, so it carries no score.
       if (run.state !== "completed") continue;
+      // Only runs of the versions the visitor scoped to.
+      if (
+        !versionInScope(
+          run.subject.testCaseVersion,
+          scope,
+          testCase.latestVersion,
+          specificVersion,
+        )
+      ) {
+        continue;
+      }
       // The run's earned/total points and overall rating, read from whichever
       // source this host populated: a published run arrives as a summary card the
       // backend/snapshot already enriched with its aggregate score + rating (the
@@ -360,17 +383,33 @@ function ReviewLeaderboard({
     findReview,
     findModel,
     testCase.slug,
+    testCase.latestVersion,
     variant.slug,
     variant.reviewItems,
+    scope,
+    specificVersion,
   ]);
 
+  // The control stays mounted alongside the empty state: a scope that filtered
+  // every run away must still be adjustable, or the visitor is stuck on an empty
+  // board with no way back.
   if (entries.length === 0) {
     return (
       <section className={styles.section}>
+        <VersionScopeControl state={versionScope} />
         <Panel>
           <p className={styles.empty}>
-            No scored runs of {variant.name} yet — the leaderboard ranks models
-            once their runs have been reviewed.
+            {versionScope.show && scope !== "all" ? (
+              <>
+                No scored runs of {variant.name} in the selected versions —
+                widen the version scope, or review a run of this one.
+              </>
+            ) : (
+              <>
+                No scored runs of {variant.name} yet — the leaderboard ranks
+                models once their runs have been reviewed.
+              </>
+            )}
           </p>
         </Panel>
       </section>
@@ -379,6 +418,7 @@ function ReviewLeaderboard({
 
   return (
     <section className={styles.section}>
+      <VersionScopeControl state={versionScope} />
       <Panel>
         <div className={styles.wrap}>
           <div className={styles.menuAnchor}>
