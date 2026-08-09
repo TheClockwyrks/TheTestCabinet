@@ -894,7 +894,16 @@ impl UsageShape {
     /// the shape declares keys for becomes `Some` (even when the total is zero, so
     /// a genuine zero is distinguished from an unreported class); a class with no
     /// keys becomes `None`, marking it as not determinable for this harness.
-    fn finalize(&self, raw: RawCounts) -> TokenCounts {
+    ///
+    /// `raw` is `None` when the output carried **no** usage-bearing line at all,
+    /// which makes every class `None`: the harness never got as far as reporting,
+    /// so nothing about its usage is known. Reporting `Some(0)` there would assert
+    /// a run that used no tokens — a claim the output does not support, and one
+    /// that costs out at a confident `$0.00`.
+    fn finalize(&self, raw: Option<RawCounts>) -> TokenCounts {
+        let Some(raw) = raw else {
+            return TokenCounts::default();
+        };
         TokenCounts {
             uncached_input: self.reports_input().then_some(raw.uncached_input),
             cached_input: (!self.cached.is_empty()).then_some(raw.cached_input),
@@ -905,8 +914,13 @@ impl UsageShape {
 }
 
 /// Parse normalized usage out of a harness's command output.
+///
+/// Output that carries no usage-bearing line at all yields an entirely unreported
+/// [`TokenCounts`] rather than zeros — see [`UsageShape::finalize`]. That is the
+/// shape of a session whose output was cut short before the harness reported, not
+/// of a session that used nothing.
 fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
-    let mut raw = RawCounts::default();
+    let mut raw: Option<RawCounts> = None;
     for line in output.stdout.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -941,12 +955,13 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
             continue;
         }
         match shape.aggregation {
-            Aggregation::Last => raw = line_tokens,
+            Aggregation::Last => raw = Some(line_tokens),
             Aggregation::Sum => {
-                raw.uncached_input += line_tokens.uncached_input;
-                raw.cached_input += line_tokens.cached_input;
-                raw.output += line_tokens.output;
-                raw.reasoning += line_tokens.reasoning;
+                let total = raw.get_or_insert_default();
+                total.uncached_input += line_tokens.uncached_input;
+                total.cached_input += line_tokens.cached_input;
+                total.output += line_tokens.output;
+                total.reasoning += line_tokens.reasoning;
             }
         }
     }
