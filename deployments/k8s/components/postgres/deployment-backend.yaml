@@ -4,15 +4,39 @@
 # its `app.kubernetes.io/name: tcab-backend` label. TCAB_ENV defaults to `prod` here
 # (matching the base); the azure-staging overlay patches it to `staging`.
 #
-# With the record store on managed PostgreSQL the database leaves local disk,
-# so the single-writer pin and the durable volume both go away. Two base constraints
-# still hold (see deployment/kubernetes.md#backend), and shape this manifest:
+# With the record store on managed PostgreSQL the database leaves local disk, so the
+# single-writer pin goes away. Two base constraints still hold (see
+# deployment/kubernetes.md#backend), and shape this manifest:
 #   - The image must still ship a headless Chromium for reference rendering — same
 #     `tcab-backend` image as the base (deployments/images/backend.Dockerfile).
 #   - The definition store and ingest checkout still live on local disk, so /state
-#     stays mounted — but as an emptyDir, since both are regenerable: the ingest
-#     CronJob (POST /ingest) repopulates them, so losing them on a reschedule costs
-#     a re-ingest, not data. They are NOT a backup target (see deployment/backups.md).
+#     stays mounted — and on a PersistentVolumeClaim, not an emptyDir.
+#
+# Why /state is durable even though everything on it is regenerable. It is still not
+# a backup target: losing it costs a re-ingest, not data (deployment/backups.md). But
+# "regenerable" is not "free". Regenerating means cloning the catalog and re-ingesting
+# every version, which runs for minutes, and until it finishes the backend cannot
+# resolve a single test case — it is held out of its Service by /readyz for that whole
+# window, so the queue stalls. An emptyDir paid that cost on EVERY reschedule, and
+# reschedules are not rare: AKS node-image auto-upgrade drains nodes on its own
+# schedule and moved this pod repeatedly. A 10Gi disk that survives the move turns a
+# multi-minute cold rebuild into an attach.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tcab-backend-state
+  namespace: tcab-prod
+spec:
+  # ReadWriteOnce is correct here and requires the Deployment's `Recreate` strategy:
+  # one pod at a time, old fully terminated before the new one attaches. A rolling
+  # update would deadlock on the disk (new pod Pending on attach, old pod never
+  # released) — which is another reason not to relax `Recreate` below.
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: <your-block-storage-class>   # defaults to the cluster's default
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,11 +62,12 @@ spec:
         app.kubernetes.io/part-of: test-cabinet
       annotations:
         # Single active coordinator (replicas: 1, Recreate) — cannot be scaled out.
-        # AKS's cluster autoscaler defaults skip-nodes-with-local-storage=false, so it
-        # will drain a node running this emptyDir-backed pod during scale-down and cause
-        # a ~1-2 min outage (Recreate + 640MB image pull) each time. Keep the autoscaler
-        # from consolidating a node out from under it. Planned node upgrades, which do
-        # not honor this annotation, still move the pod.
+        # Keep the cluster autoscaler from consolidating a node out from under it:
+        # each move is a ~1-2 min outage (Recreate + 640MB image pull + disk
+        # reattach). Now that /state is a PVC the move no longer also costs a full
+        # re-ingest, but it is still an outage worth not inviting. Planned node
+        # upgrades do not honor this annotation and still move the pod — which is
+        # exactly why /state must survive the move.
         cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
     spec:
       containers:
@@ -117,8 +142,10 @@ spec:
               port: 8787
             initialDelaySeconds: 15
             periodSeconds: 20
-      # Regenerable scratch for the definition store + checkout — no PVC, since the
-      # only durable data now lives in managed PostgreSQL.
+      # The definition store + ingest checkout. Durable so a reschedule does not
+      # force a multi-minute cold re-ingest before the backend can serve (see the
+      # header); the only data of record still lives in managed PostgreSQL.
       volumes:
         - name: state
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: tcab-backend-state

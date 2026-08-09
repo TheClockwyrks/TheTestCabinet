@@ -49,9 +49,11 @@ defense in depth, not your backup.
 
 If the whole cluster is deleted and recreated while the database survives (an
 external managed PostgreSQL, or a restored SQLite file), the on-cluster volumes do
-not come back with it: the backend's definition store is an ephemeral volume, and
-the [artifact service](/components/artifacts/overview/)'s PVC is a per-cluster disk
-that a full delete destroys. The database still holds every published run, so the
+not come back with it: the backend's definition store and the
+[artifact service](/components/artifacts/overview/)'s media are both per-cluster
+PVCs that a full delete destroys. (The definition store survives an ordinary pod
+reschedule — that is what its PVC is for — but not the deletion of the cluster the
+disk belongs to.) The database still holds every published run, so the
 site is not lost — but the next publish regenerates the snapshot from those
 now-empty volumes, so mind the order of recovery:
 
