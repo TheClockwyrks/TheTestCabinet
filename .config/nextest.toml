@@ -140,6 +140,26 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # readings did not do. And the arm itself cost almost nothing here, which is consistent with the
 # reading that this gate is dominated by waiting rather than by work: its 32 builds are one `csc`
 # apiece, a one-shot process with nothing warm to be and nothing to contend over.
+#
+# Two further readings were taken when this gate's **byte-equality check was deleted** (see
+# `crates/gg/src/sandbox/language/isolation.rs`), which if anything should have made it cheaper: the
+# gate no longer walks a 7 MB artifact's section framing 64 times for the Swift arm — 16 serial
+# baselines and 16 concurrent, across both the program half and the module half, since the baseline
+# results were projected too before they were compared — and no longer
+# derives that arm's module stamp — two extra `swiftc` runs — inside its own process. What it
+# measured instead, on the same machine within the hour, both run alone:
+#
+#   eleven arms, no byte comparison, run alone               150.2 s
+#   eleven arms, no byte comparison, run alone (again)       221.8 s
+#   eleven arms, no byte comparison, beside four arms' tests 391.1 s
+#
+# A 72 s spread between two consecutive readings of the same code with nothing changed between them,
+# and both above the four tight readings the C# arm took. The third is the one to keep in view: run
+# in a group with the Swift, C++, C# and isolation tests — 242 tests, most of them starting a real
+# compiler — it took 391.1 s against a 600 s ceiling. That is the closest this gate has ever been
+# measured to its own bound, it is the shape a full workspace run has, and it is the headroom this
+# override exists to keep rather than the timeout. A twelfth arm should read this figure, not the
+# 92.5 s one.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::isolation::tests::every_registered_language_prepares_only_its_own_program_under_concurrency)'
 slow-timeout = { period = "600s", terminate-after = 3 }
@@ -228,15 +248,25 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 #
 # Its own hand-pointed copy of the isolation gate is gone, deleted at registration in favour of the
 # seam's exactly as the Rust arm's was — so the thirty-two builds it used to pay for here are paid
-# in the sweep above instead, which is where the ceiling for them now has to be. What is left in
-# this group is the derivation the seam's gate leans on: the projection that sets this arm's debug
-# sections and module stamp aside, which compiles the same program four times to establish itself.
+# in the sweep above instead, which is where the ceiling for them now has to be. Nothing about
+# isolation is left in this group at all now: the derivation that stood here afterwards — the
+# projection the seam's gate used to compare two artifacts through, which compiled one program four
+# times to locate `swiftc`'s random module stamp — went with the byte-equality check that was its
+# only consumer. Why that check was deleted is recorded in
+# `crates/gg/src/sandbox/language/isolation.rs`, and the four compiles per process went with it.
 #
-# Measured on this repository's dev container, run on its own: 32.6 s for the whole of this arm's
-# seventy-two tests, the dearest of them at 32.5 s — against 74 s for the nine substrate tests alone
-# when the rest of the package was also running. That is the same spread every other group here
-# records, and the same remedy: bounded from the work rather than from the default, with room for a
-# CI runner with a quarter of the cores.
+# Measured on this repository's dev container after that deletion, run on its own: 16.7 s for the
+# whole of this arm's seventy-four tests, the dearest of them at 16.6 s. The figures this comment
+# carried before it were 32.6 s over seventy-two tests with the dearest at 32.5 s — but that was a
+# different reading on a differently loaded machine, and this group's readings spread as widely as
+# every other one here does (74 s for nine substrate tests alone, with the rest of the package
+# running), so the honest claim is that the group got no dearer rather than that it halved.
+#
+# The bound stays at three minutes, which is far more headroom than any of those readings needs and
+# is deliberately the same number the other compiled arms carry. What it is sized for is a CI runner
+# with a quarter of the cores starting a real `swiftc` while every other arm's compiler contends for
+# the same machine — bounded from the work rather than from the default, exactly as its neighbours
+# are.
 #
 # The `surface` half is in the same group because it costs the same thing for the same reason: every
 # one of its programs is a real `swiftc` and a real `Component::new`, and the one that imports the
@@ -257,8 +287,10 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 # tests with the arm's own copy of the isolation gate at 2.2 s and the largest program at 1.5 s.
 # That copy is gone as of registration, deleted in favour of the seam's exactly as the Rust and Swift
 # arms' were — so its sixteen concurrent compiles are paid in the sweep above instead, which is where
-# the ceiling for them now has to be, and what is left in this group is the claim that gate rests on:
-# that two preparations of one C++ program produce byte-identical components.
+# the ceiling for them now has to be. What is left in this group is the arm's own claim that two
+# preparations of one C++ program produce byte-identical components — worth keeping as a statement
+# about `clang++`, but no longer something the seam's gate rests on: that gate searches an artifact
+# for markers and never compares two artifacts. See `isolation.rs` for why the comparison went.
 #
 # Three minutes is far more headroom than the rest of it needs and is deliberately the same number
 # the other compiled arms carry: what it is sized for is a CI runner with a quarter of the cores

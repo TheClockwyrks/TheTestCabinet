@@ -24,12 +24,13 @@
 //! structural claim; that `try`/`catch`/`finally` work and that an unhandled exception is reported
 //! with its type, its message *and* its managed frames — the best error surface of any compiled arm
 //! here; that Roslyn's rejection of a program is told apart from a toolchain that could not run; and
-//! that two preparations of one program are byte-identical, which is what the seam's isolation gate
-//! will rest on when this arm is registered.
+//! that two preparations of one program are byte-identical, which is `-deterministic` doing what the
+//! flag list says it does rather than anything the seam requires.
 //!
-//! The isolation gate itself is **not** here. The seam derives its language list from the registry,
-//! so from the moment `language: "csharp"` resolves, this arm's program step is driven sixteen ways
-//! along with every other registered language's.
+//! The isolation gate is **not** here. The seam derives its language list from the registry, so from
+//! the moment `language: "csharp"` resolves, this arm's program step is driven sixteen ways along
+//! with every other registered language's — searching each artifact for markers, which is all it
+//! asks of any arm.
 //!
 //! The programs below call the **SDK**, which is what a model would call: `fs.ReadTextFile`,
 //! `view.OpenText`, `Console.WriteLine`. Every one of them is compiled into the program's own
@@ -535,13 +536,17 @@ fn the_compiler_tells_a_rejected_program_from_a_toolchain_that_could_not_run() {
 
 #[test]
 fn two_preparations_of_one_program_are_byte_identical() {
-    // What the seam's isolation gate will rest on when this arm is registered: it drives a
-    // preparation sixteen ways and compares each result with what the same input produced alone, so
-    // a compiler that stamped anything per-invocation would fail that gate for a reason that has
-    // nothing to do with isolation. Roslyn stamps a build's MVID from its inputs under
-    // `-deterministic`, which is why this arm can pass it — asserted here on its own so that a
-    // failure over there is read as an isolation failure rather than as a compiler that started
-    // stamping something.
+    // `-deterministic` doing what [the flag list](super::compile) says it does. Roslyn stamps a
+    // build's MVID from its inputs rather than from the clock, so one program compiled twice is one
+    // assembly — and that is a claim about a flag gg passes, held to the toolchain rather than to
+    // the documentation.
+    //
+    // It is NOT what the seam's isolation gate rests on. That gate searches an artifact for markers
+    // and has no opinion about whether two compiles agree byte for byte; the check that did compare
+    // them was deleted, for reasons recorded in
+    // [`isolation`](crate::sandbox::language::isolation)'s module documentation. What survives here
+    // is the narrower and still worthwhile claim: this arm's artifact is a function of its program,
+    // so a study that re-prepares a recorded program gets the assembly that ran.
     let source = program(
         r#"
 using System;

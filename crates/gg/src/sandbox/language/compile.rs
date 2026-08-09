@@ -148,10 +148,12 @@ impl PrepareContext {
 
     /// The workspace path, **only if this preparation actually asked for one**.
     ///
-    /// For the [isolation harness](super::isolation), which normalises a compiler's own working path
-    /// out of the artifact before comparing two preparations of the same input — a toolchain that
-    /// bakes its build directory into debug information is isolated, not unstable, and the harness
-    /// has to be able to tell those apart. Nothing on the turn path reads it.
+    /// For the [isolation harness](super::isolation), which collects the path each of its sixteen
+    /// preparations was handed and fails if two of them are the same — the precondition of the
+    /// measured `purs` corruption, caught directly rather than through its consequences. The
+    /// `Option` is the whole point: a preparation that never asked for a workspace has no path to
+    /// collide, and is skipped rather than counted as sharing one. Nothing on the turn path reads
+    /// it.
     #[cfg(test)]
     pub fn opened_workspace(&self) -> Option<&Path> {
         match self.workspace.get() {

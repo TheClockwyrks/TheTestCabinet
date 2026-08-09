@@ -26,8 +26,11 @@
 //! that what it says reaches the host through the real membrane; that a **panic** — which on
 //! `wasm32-unknown-unknown` has no unwinder and therefore traps the store — still reaches the model
 //! with its message and its own line; that a returned `Err` is reported as itself; the two bands
-//! `rustc` produces between them; the one program shape gg refuses; and that all of it stays
-//! isolated at sixteen-way concurrency.
+//! `rustc` produces between them; and the one program shape gg refuses.
+//!
+//! Isolation is **not** here. This arm's own hand-pointed copy of the gate was deleted at
+//! registration in favour of the seam's, which drives this arm's program and module steps sixteen
+//! ways along with every other language's.
 //!
 //! The **SDK** is deliberately not here: a program in this file calls the raw generated bindings,
 //! which no model will ever be shown, so that what these tests prove is the substrate rather than

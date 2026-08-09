@@ -343,25 +343,22 @@ impl ProgramLanguage for CSharp {
 
     /// **The assembly, with its transport encoding taken back off.**
     ///
-    /// The only arm that projects the [source](super::PreparedProgram::source) half rather than a
-    /// component, and the reason is that on this arm that field does not hold source. It holds an IL
-    /// assembly, base64-encoded because the wire's `program` is a string — so a gate looking for an
-    /// ASCII marker inside the artifact would be looking at an alphabet the marker cannot survive,
-    /// and would report every well-isolated C# preparation as one whose output does not carry its
-    /// own input.
+    /// The only arm that answers this at all, and the only one that reaches the
+    /// [source](super::PreparedProgram::source) half rather than a component — because on this arm
+    /// that field does not hold source. It holds an IL assembly, base64-encoded because the wire's
+    /// `program` is a string, so a gate looking for a marker inside the artifact would be looking at
+    /// an alphabet the marker cannot survive, and would report every well-isolated C# preparation as
+    /// one whose output does not carry its own input.
     ///
-    /// Decoding sets **nothing** aside: it shows the gate more of the artifact rather than less,
-    /// which is the opposite direction from [Swift](super::swift)'s projection and legitimate for
-    /// the same reason — the rule is that an arm may hide how its artifact was built and never any
-    /// part of what it does. Nothing here is hidden, because there is nothing to hide: Roslyn's
-    /// `-deterministic` stamps a build's MVID from its inputs rather than from the clock, so two
-    /// preparations of one program are byte-identical without help.
+    /// Decoding hides **nothing**, which is the whole of what the seam asks: it shows the gate more
+    /// of the artifact rather than less, and every check downstream of it is a search for a marker
+    /// that a hidden byte could be sitting in. What comes back is the assembly `csc` wrote, whole.
     ///
     /// An input that is not valid base64 is handed back untouched rather than being silently
     /// replaced by an empty artifact — a preparation that produced something this could not decode
     /// is a failure the gate should see whole.
     #[cfg(test)]
-    fn isolation_stable(&self, artifact: Vec<u8>) -> Vec<u8> {
+    fn isolation_readable(&self, artifact: Vec<u8>) -> Vec<u8> {
         use base64::Engine as _;
         base64::engine::general_purpose::STANDARD
             .decode(&artifact)

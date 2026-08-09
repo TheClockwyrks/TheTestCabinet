@@ -413,9 +413,12 @@ impl Preparation for MiskeyedCache {
     }
 }
 
-/// **A miskeyed cache is caught**, and it is caught by the stability check as well as by the marker
-/// check — which is what makes the gate robust against a corruption that happened not to move a
-/// marker.
+/// **A miskeyed cache is caught** — by the marker check, which is the only kind of check the gate
+/// makes and is enough for the fourth of the four broken preparations as it was for the other three.
+///
+/// A cache keyed on a constant hands fifteen preparations the sixteenth's artifact, so fifteen of
+/// them are carrying a marker that is not their own. There is nothing subtler here to find: the
+/// corruption is wholesale, exactly as it would be in a language that memoised its compiles.
 #[test]
 fn a_cache_keyed_on_the_wrong_thing_is_caught() {
     let breaches = breaches(&MiskeyedCache {
@@ -425,14 +428,6 @@ fn a_cache_keyed_on_the_wrong_thing_is_caught() {
     assert!(
         caught(&breaches, |breach| matches!(breach, Breach::Foreign { .. })),
         "the gate did not notice a cache hit belonging to another program:\n{}",
-        render(&breaches)
-    );
-    assert!(
-        caught(&breaches, |breach| matches!(
-            breach,
-            Breach::Unstable { .. }
-        )),
-        "the stability check should have caught this independently:\n{}",
         render(&breaches)
     );
 }

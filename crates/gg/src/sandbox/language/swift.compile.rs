@@ -265,9 +265,11 @@ const PREPARATION_PREFIX: &str = "/gg";
 /// [isolation contract](super::compile) rather than a breach of it, and every way round it was
 /// measured and rejected (`-file-prefix-map` rewrites the paths but not the hashes;
 /// `-gline-tables-only` still carries them; `-Xcc -Xclang -fdisable-module-hash` still leaves the
-/// PCH name; a shared warm module cache still hashes the working directory). So the seam's gate is
-/// told about it explicitly instead: `swift.substrate.test.rs` excludes the debug sections from its
-/// comparison and says exactly what is still compared whole.
+/// PCH name; a shared warm module cache still hashes the working directory). It costs the seam's
+/// [isolation gate](crate::sandbox::language::isolation) nothing, because that gate searches an
+/// artifact for its own program's marker rather than comparing two artifacts — the marker lives in
+/// the data section and the debug sections are beside the point. It did cost that gate a great deal
+/// while it also compared bytes, which is one of the three reasons that comparison was deleted.
 const DEBUG_INFO: &str = "-g";
 
 /// What the committed archive was built by, and what is in it.
@@ -589,8 +591,9 @@ fn invoke_swiftc(
         // can read, where `/tmp/gg-prepare/8421-3/work/main.swift:7:13` names a directory that was
         // deleted before the message reached it. It does *not* make the artifact a function of the
         // program: the paths are rewritten and the module-cache and bridging-header hashes computed
-        // over them are not, which is why this arm declares a stable projection to the seam's
-        // isolation gate rather than claiming byte-stability it does not have.
+        // over them are not, so this arm claims no byte-stability — unlike the C++ arm, whose
+        // identical-looking flag does buy it. Nothing depends on the difference; the seam's
+        // isolation gate searches for markers rather than comparing artifacts.
         .arg("-file-prefix-map")
         .arg(format!("{}={PREPARATION_PREFIX}", workspace.root().display()));
 

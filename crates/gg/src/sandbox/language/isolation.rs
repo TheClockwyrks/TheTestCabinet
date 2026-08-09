@@ -22,7 +22,7 @@
 //!
 //! # What it asserts
 //!
-//! One property, in four observable parts. Sixteen preparations, each with its own distinguishable
+//! One property, in three observable parts. Sixteen preparations, each with its own distinguishable
 //! input, are driven simultaneously; every result must belong to **its own** input:
 //!
 //! 1. **It succeeded.** The same input prepared cleanly on its own a moment earlier, so a failure
@@ -31,12 +31,48 @@
 //!    silently produced nothing.
 //! 3. **It carries no other preparation's marker** — the `purs` shape, where one artifact held two
 //!    agents' programs.
-//! 4. **It matches what the same input produced alone.** Stricter than the marker checks and the one
-//!    that catches a corruption too partial to move a marker: a fragment of somebody else's program,
-//!    a truncated tail, a stale artifact left by a previous compile.
 //!
 //! Plus one thing observed rather than derived: no two of the sixteen were handed the same
 //! [workspace](super::Workspace).
+//!
+//! # The fourth check this used to have, and why it is gone
+//!
+//! There was a fourth: that each concurrent artifact **matched byte-for-byte** what the same input
+//! produced alone. The argument for it was that it would catch a corruption too partial to move a
+//! marker — a fragment of somebody else's program, a truncated tail, a stale artifact left by a
+//! previous compile. It is recorded here rather than simply deleted, so the next author weighing the
+//! same idea starts from the three things that decided against it:
+//!
+//! * **The seam already isolates structurally, per preparation.** A [workspace](super::Workspace) is
+//!   a private tree keyed on the process id and a monotonic counter, created with `create_dir` and
+//!   not `create_dir_all` — so a collision is a loud error rather than a quiet share — with `HOME`,
+//!   `TMPDIR`, the `XDG_*` roots and the working directory redirected into it and the whole tree
+//!   removed on drop. What is genuinely shared between preparations is content-keyed, installed by
+//!   rename and sealed read-only (0444/0555). The paths a partial corruption would have to arrive
+//!   through are closed by construction, which is a stronger statement than one run of a comparison.
+//! * **It never caught anything on its own.** Every deliberately broken preparation in
+//!   [`tests`] — the shared output tree, the shared build strategy, the memoised compile, the
+//!   miskeyed cache — is caught by the marker checks above, and two of the four *are* the bugs that
+//!   were measured on real toolchains. Not one of them needed the comparison to be reported.
+//! * **It could not be paid for once.** Byte equality only means anything over the part of an
+//!   artifact that is a function of the program, and a compiler is entitled to write things into an
+//!   artifact that are a function of the environment or of nothing at all. Holding [Swift](super::swift)
+//!   to it cost a per-language projection of ~290 lines: a section-framing walk dropping ~1.5 MB of
+//!   `.debug_*`, plus a mask for the random 16-byte module hash `swiftc` stamps into every object,
+//!   located by compiling one program twice and diffing it. That derivation asserted that two random
+//!   16-byte values differ in **all sixteen** positions — which is a property of two random numbers
+//!   rather than of the compiler, and holds only `(255/256)^16` ≈ 93.9% of the time. So it failed
+//!   about **6%** of runs by arithmetic, and was observed failing 2 times in 60 when the derivation
+//!   was driven in a loop, in the one gate whose whole value is being believed when it goes red.
+//!   Every compiled arm after Swift would have owed a tax of the same shape, paid in machinery the
+//!   checks that catch the real bugs never read.
+//!
+//! **None of that projection survived.** What did is one narrower hook, and the distinction matters
+//! because the wider one is what this section exists to stop being reinvented: an arm may make its
+//! artifact **readable** for the marker search — see
+//! [`isolation_readable`](ProgramLanguage::isolation_readable) — and may never hide, mask or
+//! summarise any part of it. Its only implementor is [C#](super::csharp), which base64-decodes an
+//! assembly that would otherwise carry no findable marker at all.
 //!
 //! # Why the gate is generic over a preparation rather than over a language
 //!
@@ -140,15 +176,6 @@ pub(super) enum Breach {
         /// Whose marker turned up in it.
         foreign: String,
     },
-    /// The artifact differs from what the same input produced alone, in a way no marker caught.
-    Unstable {
-        /// Which of the sixteen inputs.
-        marker: String,
-        /// What the input produced on its own.
-        alone: String,
-        /// What it produced under concurrency.
-        together: String,
-    },
     /// Two preparations were handed the same workspace — the precondition of the `purs` corruption,
     /// caught directly rather than through its consequences.
     SharedWorkspace {
@@ -178,14 +205,6 @@ impl std::fmt::Display for Breach {
                 formatter,
                 "{marker}'s artifact carries {foreign}'s program: one agent would evaluate another's"
             ),
-            Self::Unstable {
-                marker,
-                alone,
-                together,
-            } => write!(
-                formatter,
-                "{marker} prepared to {alone:?} alone and {together:?} at {WIDTH}-way"
-            ),
             Self::SharedWorkspace { path, markers } => write!(
                 formatter,
                 "{} were handed the same workspace {}",
@@ -199,30 +218,24 @@ impl std::fmt::Display for Breach {
 /// Drive `preparation` `WIDTH` ways with distinguishable inputs and report every way a result failed
 /// to belong to its own input.
 ///
-/// The baseline is taken **serially first**: the same sixteen inputs, one at a time, each in its own
-/// context. Serial preparation cannot be corrupted by concurrency, so it is the ground truth every
-/// concurrent result is held against — and an input that cannot prepare alone is reported as a
-/// [`Breach::Baseline`] rather than allowed to look like an isolation failure.
+/// Each input is prepared **alone first**: the same sixteen, one at a time, each in its own context.
+/// Serial preparation cannot be corrupted by concurrency, so an input that fails there is failing on
+/// its own account — a harness fault, or a language that cannot prepare its own SDK's call — and it
+/// is reported as a [`Breach::Baseline`] and the concurrent run is abandoned, rather than being
+/// allowed to come back a moment later looking like an isolation failure.
 ///
-/// Every artifact has its own preparation's workspace path replaced by a fixed token before it is
-/// compared. A toolchain that bakes its build directory into debug information is isolated, not
-/// unstable, and the two must not be confused — the workspace path is *supposed* to differ, and it
-/// is the one thing that legitimately does.
+/// That is the *whole* of what the alone run is for. What it produced is deliberately not kept:
+/// nothing compares against it any more, and the reasoning behind that is in this module's header.
 pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
     let markers: Vec<String> = (0..WIDTH).map(marker).collect();
     let sources: Vec<String> = markers.iter().map(|m| preparation.source(m)).collect();
 
-    let mut alone = Vec::with_capacity(WIDTH);
     for (marker, source) in markers.iter().zip(&sources) {
-        let context = PrepareContext::new();
-        match preparation.prepare(source, &context) {
-            Ok(prepared) => alone.push(normalise(&prepared, &context)),
-            Err(error) => {
-                return vec![Breach::Baseline {
-                    marker: marker.clone(),
-                    error,
-                }];
-            }
+        if let Err(error) = preparation.prepare(source, &PrepareContext::new()) {
+            return vec![Breach::Baseline {
+                marker: marker.clone(),
+                error,
+            }];
         }
     }
 
@@ -239,10 +252,7 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
                     barrier.wait();
                     let prepared = preparation.prepare(source, &context);
                     let workspace = context.opened_workspace().map(Path::to_path_buf);
-                    (
-                        prepared.map(|prepared| normalise(&prepared, &context)),
-                        workspace,
-                    )
+                    (prepared, workspace)
                 })
             })
             .collect();
@@ -287,13 +297,6 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
                 });
             }
         }
-        if prepared != &alone[index] {
-            breaches.push(Breach::Unstable {
-                marker: marker.clone(),
-                alone: excerpt(&alone[index]),
-                together: excerpt(prepared),
-            });
-        }
     }
 
     let mut seen: Vec<(PathBuf, Vec<String>)> = Vec::new();
@@ -318,18 +321,6 @@ pub(super) fn breaches(preparation: &dyn Preparation) -> Vec<Breach> {
 /// `gg-isolation-1` is inside `gg-isolation-10` and every artifact would look contaminated.
 fn marker(n: usize) -> String {
     format!("gg-isolation-{n:03}-marker")
-}
-
-/// An artifact with this preparation's own workspace path replaced by a fixed token.
-///
-/// The one thing that is *meant* to differ between two preparations of the same input, so comparing
-/// them without removing it would report every well-isolated toolchain that emits debug information
-/// as unstable.
-fn normalise(prepared: &str, context: &PrepareContext) -> String {
-    match context.opened_workspace() {
-        Some(path) => prepared.replace(&path.to_string_lossy().into_owned(), "<workspace>"),
-        None => prepared.to_string(),
-    }
 }
 
 /// Enough of an artifact to recognise it in a failure, and no more. A prepared program can be
@@ -459,37 +450,36 @@ impl Preparation for LanguagePreparation {
     }
 }
 
-/// What a prepared program's **artifact** is, as text this gate can compare and search for a marker.
+/// What a prepared program's **artifact** is, as text this gate can search for a marker.
 ///
 /// The two shapes of arm keep their artifacts in different places, and the gate's question is the
-/// same for both — *is this a function of the input alone?* — so it asks it of whichever one the
-/// language filled in. An interpreted arm's is
-/// [`source`](super::PreparedProgram::source); a **compiled** arm's is the wasm
-/// [`component`](super::PreparedProgram::component) it produced for this program and nothing else.
+/// same for both — *whose program is this?* — so it asks it of whichever one the language filled in.
+/// An interpreted arm's is [`source`](super::PreparedProgram::source); a **compiled** arm's is the
+/// wasm [`component`](super::PreparedProgram::component) it produced for this program and nothing
+/// else.
 ///
 /// Either half's bytes are mapped **one byte to one `char` of the same value** rather than through
-/// [`String::from_utf8_lossy`], and the difference is load-bearing: lossy decoding replaces every
-/// invalid sequence with one replacement character, so two wasm modules that differ only inside such
-/// a sequence would compare *equal* and the stability check would pass over a real breach. This
-/// mapping is lossless, and it still leaves an ASCII marker in the data section findable as an
-/// ordinary substring.
+/// [`String::from_utf8_lossy`], and the difference is load-bearing. The forms a marker may take are
+/// spelled by the arm itself, byte by byte, in the same mapping — see
+/// [`isolation_marker_forms`](ProgramLanguage::isolation_marker_forms) — so the two sides have to
+/// agree byte for byte or the search is looking for something no artifact contains. Lossy decoding
+/// agrees with nothing: it collapses each invalid sequence into one replacement character, which
+/// both destroys bytes a foreign marker could be sitting in and renumbers everything after it.
 ///
-/// Both go through the language's own
-/// [stable projection](ProgramLanguage::isolation_stable) first, which is identity for every arm but
-/// two and is what lets an arm whose compiler records the *environment* in its artifact be compared
-/// on the part of it that is the program ([Swift](super::swift)), and an arm whose artifact rides
-/// over the wire's `program` string **base64-encoded** be compared on the assembly rather than on
-/// the encoding ([C#](super::csharp)). The projection reaches the source half for the second of
-/// those: C# is neither of the two shapes above, so an artifact that lives in `source` is not
-/// necessarily source, and a gate that assumed it was would look for a marker in text that cannot
-/// carry one.
+/// The bytes go through the language's own
+/// [readable form](ProgramLanguage::isolation_readable) first, which is identity for every arm but
+/// [C#](super::csharp), whose artifact rides over the wire's `program` string **base64-encoded** and
+/// has to be decoded before an ASCII or UTF-16 marker can be found in it at all. That hook reaches
+/// the source half rather than the component half for exactly that arm: C# is neither of the two
+/// shapes above, so an artifact that lives in `source` is not necessarily source, and a gate that
+/// assumed it was would look for a marker in text that cannot carry one.
 fn artifact(language: &'static dyn ProgramLanguage, prepared: super::PreparedProgram) -> String {
     let bytes = match prepared.component {
         Some(component) => component,
         None => prepared.source.into_bytes(),
     };
     language
-        .isolation_stable(bytes)
+        .isolation_readable(bytes)
         .into_iter()
         .map(char::from)
         .collect()

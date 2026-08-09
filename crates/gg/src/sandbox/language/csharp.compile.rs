@@ -396,9 +396,11 @@ impl Target {
 ///   what removes the debug-build scaffolding an interpreter would otherwise walk instruction by
 ///   instruction.
 /// * `-deterministic` — Roslyn stamps a build with an MVID derived from its inputs rather than from
-///   the clock, so two preparations of one program produce byte-identical assemblies. The seam's
-///   [isolation gate](crate::sandbox::language::isolation) compares prepared outputs, and without
-///   this every comparison would fail for a reason that has nothing to do with isolation.
+///   the clock, so two preparations of one program produce byte-identical assemblies. Nothing in the
+///   seam demands that (the [isolation gate](crate::sandbox::language::isolation) searches artifacts
+///   for markers and never compares two of them), and it is passed anyway: an artifact that is a
+///   function of its program is one a study can re-prepare from a recorded program and get back what
+///   ran.
 /// * `-utf8output` — so a diagnostic quoting a model's own identifier arrives as the bytes it wrote.
 ///
 /// The reference set is every `.dll` in the toolchain's `ref/<tfm>` directory, sorted, which is the

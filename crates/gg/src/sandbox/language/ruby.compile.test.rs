@@ -226,8 +226,8 @@ impl Preparation for RubyCompile {
 fn every_ruby_compile_stands_on_ground_no_other_agent_can_reach() {
     // Sixteen at once — `limits.maxParallel`'s ceiling, which is how many agents may be compiling
     // simultaneously in one process. The gate requires every artifact to carry its own marker, to
-    // carry nobody else's, to equal what the same input produced alone, and no two preparations to
-    // have been handed the same workspace. Opal writes nothing outside the arguments gg gives it,
+    // carry nobody else's, and no two preparations to have been handed the same workspace. Opal
+    // writes nothing outside the arguments gg gives it,
     // and this is what makes that a measured fact rather than a belief about a toolchain.
     warm();
     for file in [PROGRAM_FILE, MODULE_FILE] {

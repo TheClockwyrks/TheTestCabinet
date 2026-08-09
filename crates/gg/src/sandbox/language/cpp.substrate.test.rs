@@ -26,9 +26,9 @@
 //! has and no other compiled arm does; that the three ways a C++ program fails reach a model with
 //! what they have to say and where; that a reply with no `main` is refused before it is compiled
 //! rather than linked into a component that traps; that the reply is compiled **verbatim**, so every
-//! diagnostic carries the model's own line; the two bands `clang++` produces between them; and the
-//! claim the seam's own isolation gate rests on, which is that two preparations of one C++ program
-//! produce byte-identical components.
+//! diagnostic carries the model's own line; the two bands `clang++` produces between them; and that
+//! two preparations of one C++ program produce byte-identical components, which is
+//! `-ffile-prefix-map` doing what [`compile`](super::compile) says it does.
 //!
 //! The gate itself is **not** here. This arm's own hand-pointed copy of it was deleted at
 //! registration, exactly as [Rust](super::super::rust)'s and [Swift](super::super::swift)'s were:
@@ -983,20 +983,19 @@ fn artifact(source: &str, context: &PrepareContext) -> Result<Vec<u8>, String> {
 
 #[test]
 fn two_preparations_of_one_program_are_byte_identical() {
-    // The claim the [seam's isolation gate](crate::sandbox::language::isolation) rests on for this
-    // arm, asserted on its own so that a failure there is read as an isolation failure rather than
-    // as a compiler that started stamping something.
+    // `-ffile-prefix-map` doing what [`compile`](super::compile) says it does: the one path that is
+    // per-preparation is rewritten to a fixed name, clang stamps no per-invocation nonce beside it,
+    // and so this arm's artifact is a function of its program. It is a stronger claim than either of
+    // the other compiled arms can make — Swift's artifacts differ across 1.5 MB of debug sections
+    // and a random 16-byte module hash, for reasons that are the isolation contract working as
+    // designed — and it is asserted here because this arm's own documentation makes it.
     //
-    // It is a stronger claim than either of the other compiled arms can make, and it is why this
-    // arm is the only one that hands that gate WHOLE artifacts rather than a projection with its
-    // compiler's entropy set aside. Swift's artifacts differ across 1.5 MB of debug sections and a
-    // 16-byte module hash for reasons that are the isolation contract working as designed. clang
-    // records only the paths, and `-ffile-prefix-map` rewrites the one path that is per-preparation
-    // to a fixed name.
-    //
-    // The marker rides inside a CALL'S ARGUMENT, where a compiler that eliminates dead code cannot
-    // drop it — which on this arm is not a precaution: the link runs `--gc-sections`, and a marker
-    // in an unused constant would vanish from every artifact.
+    // The [seam's isolation gate](crate::sandbox::language::isolation) does NOT rest on it. That
+    // gate searches an artifact for markers and never compares two artifacts; the check that did is
+    // gone, for reasons its module documentation records. What still matters to the gate is the
+    // second assertion below, and it is why the marker rides inside a CALL'S ARGUMENT: the link runs
+    // `--gc-sections`, and a marker in an unused constant would vanish from every artifact this arm
+    // produces and leave the gate asserting nothing.
     compile::warm();
     let marker = "gg-isolation-identical-marker";
     let source = format!("int main() {{\n  log(\"{marker}\");\n  return 0;\n}}\n");
@@ -1004,10 +1003,8 @@ fn two_preparations_of_one_program_are_byte_identical() {
     let second = artifact(&source, &PrepareContext::new()).expect("the subject compiles");
     assert_eq!(
         first, second,
-        "two preparations of one C++ program produced different bytes — if a compiler flag started \
-         recording something per-invocation, this arm needs a stable projection the way the Swift \
-         arm does, and the seam's isolation gate must be told about it rather than left failing \
-         over it"
+        "two preparations of one C++ program produced different bytes — a compiler flag started \
+         recording something per-invocation, and this arm's documentation claims none of them does"
     );
     assert!(
         first

@@ -394,7 +394,9 @@ mod tests;
 ///
 /// A separate test file from any unit tests, because these are a different kind of test: each one
 /// runs a real `rustc` and compiles a wasm component, which is tens of milliseconds rather than
-/// microseconds, and the isolation gate in it runs sixteen of them at once.
+/// microseconds, so each test function there drives several programs rather than one. This arm's own
+/// hand-pointed copy of the isolation gate is gone, deleted at registration in favour of the
+/// [seam's](super::isolation), so nothing here runs sixteen compiles at once any more.
 #[cfg(test)]
 #[path = "rust.substrate.test.rs"]
 mod substrate;

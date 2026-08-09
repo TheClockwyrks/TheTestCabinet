@@ -494,38 +494,31 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.open_docs_views_statement(&[name])
     }
 
-    /// This arm's prepared artifact **as the [isolation gate](isolation) should read it**: with
-    /// whatever is a function of the *environment it was compiled in* set aside, and with any
-    /// transport encoding taken back off.
+    /// This arm's prepared artifact **made readable for the [isolation gate](isolation)'s marker
+    /// search**: with any transport encoding taken back off, and nothing else done to it.
     ///
-    /// Identity by default, and identity is what almost every arm wants: an interpreted arm's
-    /// artifact is the source it hands the guest, and [Rust](rust)'s `rustc` produces the same bytes
-    /// for the same input wherever it ran. It is applied to whichever half a language filled in —
-    /// the [component](PreparedProgram::component) a compiled arm produced, or the
-    /// [source](PreparedProgram::source) every other arm hands over — because the gate's question is
-    /// the same for both and two arms have needed the hook for opposite reasons.
+    /// Identity by default, and identity is what every arm but one wants: an interpreted arm's
+    /// artifact is the source it hands the guest, and the arms whose compilers emit wasm keep the
+    /// marker in the module's data section as the bytes the model wrote. It is applied to whichever
+    /// half a language filled in — the [component](PreparedProgram::component) a compiled arm
+    /// produced, or the [source](PreparedProgram::source) every other arm hands over — because the
+    /// gate's question is the same for both.
     ///
-    /// **Setting aside the environment.** [Swift](swift)'s artifact carries debug information
-    /// describing the compilation environment — the paths and content hashes of a clang module cache
-    /// and a precompiled header, computed over an invocation naming *this preparation's own private
-    /// tree*, which the isolation contract is what made private — and a 16-byte module hash
-    /// `swiftc` fills with entropy per invocation. Neither is part of any program.
+    /// It exists because [C#](csharp) is neither of the seam's two shapes: its artifact is an IL
+    /// **assembly**, and it rides over the wire's `program` string as base64 because that is the only
+    /// channel the world has for it. Left encoded, the gate would be searching an alphabet no marker
+    /// can survive, and would report every well-isolated C# preparation as one whose output does not
+    /// carry its own input.
     ///
-    /// **Taking off a transport encoding.** [C#](csharp) is neither of the seam's two shapes: its
-    /// artifact is an IL **assembly**, and it rides over the wire's `program` string as base64
-    /// because that is the only channel the world has for it. Left encoded, the gate could not find
-    /// a marker that really is in the artifact, and would report every C# preparation as one whose
-    /// output does not carry its own input. Decoding shows the gate *more* of the artifact rather
-    /// than less, which is the opposite direction from Swift's and legitimate for the same reason.
-    ///
-    /// The rule an implementation is held to is that it may set aside a description of **how** the
-    /// artifact was built and never any part of what it does. Swift's keeps every standard section
-    /// and every custom section that is not `.debug_*`, so the marker checks that catch the two
-    /// measured corruptions directly are untouched, and it derives the stamp's position by
-    /// compiling one program twice rather than hard-coding it — so a second source of variation
-    /// fails loudly instead of being swept in.
+    /// **The contract runs one way: an implementation may only show the gate more.** Decode,
+    /// unwrap, unpack — anything that reveals bytes the artifact really holds. It may never drop,
+    /// mask, reorder or summarise any part of it, because everything downstream of here is a search
+    /// for a marker, and a byte hidden here is a byte another agent's program could have been hiding
+    /// in. Input this cannot make sense of is handed back untouched rather than replaced by
+    /// nothing: a preparation that produced something unreadable is a failure the gate should see
+    /// whole, and an empty artifact carries no marker at all.
     #[cfg(test)]
-    fn isolation_stable(&self, artifact: Vec<u8>) -> Vec<u8> {
+    fn isolation_readable(&self, artifact: Vec<u8>) -> Vec<u8> {
         artifact
     }
 

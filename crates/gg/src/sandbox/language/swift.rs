@@ -90,8 +90,8 @@
 //!
 //! — the message and its own line, for a failure it could not have caught. Without the debug
 //! information the same program says `program.wasm!main` and nothing else. See
-//! [`compile::DEBUG_INFO`](self::compile) for the measurement and for what it costs the seam's
-//! isolation gate.
+//! [`compile::DEBUG_INFO`](self::compile) for the measurement, and for what those sections record
+//! about the environment they were produced in.
 //!
 //! One failure is the exception and is worth naming, because it is the opposite of the one above:
 //! an **uncaught throw** arrives with gg's own sentence and *no line at all*. The runtime hands the
@@ -300,33 +300,6 @@ impl ProgramLanguage for Swift {
     /// allowed at the top level* in any other file of a module. So this arm answers for itself, as
     /// the [JVM](super::jvm) arms and [Rust](super::rust) do, and the `name` rides in as a returned
     /// **string literal** — which is where the module's one export hands it back.
-    /// **The artifact with its debug sections dropped and the compiler's own stamp zeroed** — the
-    /// one arm that answers this, and the reason the seam asks.
-    ///
-    /// Two things about a Swift artifact are not a function of the program, and both are declared
-    /// here rather than accommodated by weakening the gate.
-    ///
-    /// The **debug sections** record the *compilation environment*: the paths and content hashes of
-    /// the clang module cache and of the precompiled bridging header, computed over an invocation
-    /// naming this preparation's own working directory, `HOME` and `TMPDIR` — which the
-    /// [isolation contract](super::compile) is what made private. Two preparations of one program
-    /// therefore differ across ~1.5 MB of `.debug_*` and are byte-identical everywhere else. Every
-    /// way round it was measured and rejected: `-file-prefix-map` rewrites the paths and not the
-    /// hashes, `-gline-tables-only` still carries them, `-Xcc -Xclang -fdisable-module-hash` still
-    /// leaves the PCH name, and a shared warm module cache still hashes the working directory. So
-    /// the sections are set aside by a **section-framing walk** — every standard section and every
-    /// custom section that is not `.debug_*` is compared whole, the `name` section included, so the
-    /// marker the gate plants and every byte of code, data, import and export are untouched.
-    ///
-    /// And `swiftc` stamps every object with a **random 16-byte module hash** that no flag
-    /// disables. It is masked by an anchor **derived** from compiling one program twice, with
-    /// assertions that fail loudly if a second source of variation ever appears beside it — a
-    /// projection that quietly widened would be one that could hide a real breach.
-    #[cfg(test)]
-    fn isolation_stable(&self, component: Vec<u8>) -> Vec<u8> {
-        substrate::without_stamp(substrate::without_debug_sections(&component))
-    }
-
     #[cfg(test)]
     fn isolation_module(&self, name: &str) -> String {
         format!(
@@ -442,7 +415,8 @@ mod tests;
 ///
 /// A separate test file from any unit tests, because these are a different kind of test: each one
 /// runs a real `swiftc` and compiles a wasm component, which is hundreds of milliseconds rather
-/// than microseconds, and the isolation gate in it runs sixteen of them at once.
+/// than microseconds — dear enough that each test function there drives several programs rather
+/// than one.
 #[cfg(test)]
 #[path = "swift.substrate.test.rs"]
 mod substrate;

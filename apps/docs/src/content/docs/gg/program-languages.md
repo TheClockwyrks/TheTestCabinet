@@ -2361,9 +2361,8 @@ Three gates, none of which a language opts into:
 1. **The isolation gate** (`crates/gg/src/sandbox/language/isolation.rs`) drives every
    registered language's program step *and* module step **sixteen at a time**, each with a
    distinguishable input, and requires every result to belong to its own input: it
-   succeeded, it carries its own marker, it carries no other preparation's marker, it
-   matches what the same input produced alone, and no two of the sixteen were handed the
-   same workspace. The input it drives them with is each language's own
+   succeeded, it carries its own marker, it carries no other preparation's marker, and no
+   two of the sixteen were handed the same workspace. The input it drives them with is each language's own
    [generated documentation program](#the-steps) with the marker as one of its names — the one
    *whole program* the seam requires every language to be able to write. It used to be a single
    synthesized file-view statement, and PureScript is why it is not: a language whose programs are
@@ -2381,22 +2380,33 @@ Three gates, none of which a language opts into:
    every other arm, opens no workspace and spawns no process, and passes because a
    preparation that touches nothing shared trivially satisfies a rule about shared state.
 
-   One thing the "matches what the same input produced alone" check has to be told, and it is
-   told **by the language rather than by weakening the check**: a compiled arm may put things in
-   its artifact that describe *how* it was built rather than what it does, and some of them are a
-   function of the private tree the isolation contract itself created. A language therefore
-   declares a **stable projection** of its own artifact, identity for every arm but one.
-   [Swift](#swift-the-reply-is-the-artifact-verbatim) is the exception twice over: its debug
-   information records the clang module cache and precompiled-header hashes computed over an
-   invocation naming this preparation's own working directory, `HOME` and `TMPDIR` — ~1.5 MB that
-   differ between two preparations of one program and are byte-identical everywhere else — and
-   `swiftc` stamps every object with a 16-byte module hash no flag disables. The projection sets
-   exactly those aside, by a section-framing walk that keeps every standard section and every
-   custom section that is not `.debug_*`, and by an anchor **derived** from compiling one program
-   twice with assertions that fail loudly if a second source of variation appears. The rule a
-   projection is held to is that it may set aside a description of *how* an artifact was built and
-   never any part of what it does — so the marker checks, which are the two that catch the measured
-   corruptions directly, are untouched by it.
+   **There was a fourth check, and it is worth knowing why there is not.** The gate used to also
+   require each concurrent artifact to match **byte-for-byte** what the same input produced alone,
+   on the argument that it would catch a corruption too partial to move a marker. Three things
+   decided against it. The seam already isolates *structurally, per preparation* — a workspace is
+   a private tree keyed on the process id and a monotonic counter, created with `create_dir` rather
+   than `create_dir_all` so a collision is a loud error, with the environment redirected into it and
+   the tree removed on drop, and what is genuinely shared is content-keyed and sealed read-only — so
+   the paths a partial corruption would arrive through are closed by construction rather than by one
+   run of a comparison. It never caught anything on its own: all four of the deliberately broken
+   preparations below, including both measured bugs, are caught by the marker checks. And it could
+   not be paid for once, because a compiler is entitled to write things into an artifact that are a
+   function of the environment rather than of the program, so every compiled arm owed a per-language
+   projection setting its own entropy aside.
+   [Swift](#swift-the-reply-is-the-artifact-verbatim)'s was ~290 lines — a section-framing walk
+   dropping ~1.5 MB of `.debug_*` whose clang module-cache and precompiled-header hashes are computed
+   over an invocation naming this preparation's own `HOME` and `TMPDIR`, plus a mask for the random
+   16-byte module hash `swiftc` stamps into every object, located by compiling one program twice and
+   diffing it. That derivation assumed two random 16-byte values differ in **all sixteen** positions
+   — a property of two random numbers rather than of the compiler, which holds `(255/256)^16` ≈ 93.9%
+   of the time. So it failed about **6%** of runs by arithmetic, and was observed failing 2 times in
+   60 when the derivation was driven in a loop, in the one gate whose entire value is being believed
+   when it goes red. What survives is the half the marker search genuinely needs — an arm
+   may make its artifact **readable**, and may never hide any part of it. Exactly one arm needs it:
+   [C#](#c-a-compiler-on-the-host-an-interpreter-in-the-guest) hands over an IL assembly encoded as
+   base64, and a marker cannot survive that alphabet, so the encoding comes back off before the
+   search. Nothing is set aside by it — the contract runs one way, and an implementation may only
+   show the gate **more**.
 2. **The gate's own teeth.** It is generic over a *preparation*, not over a language, and
    its tests point it at four deliberately broken ones — the two measured bugs written in
    the smallest code that has their shape, plus a memoised compile and a cache keyed on
@@ -2673,9 +2683,10 @@ own `-ferror-limit` already bounds those, and they are three lines each.
 
 Two smaller things are worth recording beside the other two arms. Its artifacts are
 **byte-identical across preparations** — clang stamps no per-invocation nonce and
-`-ffile-prefix-map` removes the one path that would differ — so it is the only compiled arm
-that hands the isolation gate whole artifacts rather than a projection with a compiler's
-entropy set aside. And its per-turn figures sit between the other two: `clang++` ~85 ms and
+`-ffile-prefix-map` removes the one path that would differ. That is a real property of the flags
+this arm passes and it has its own test, but nothing rests on it: the
+[isolation gate](#per-agent-compiler-isolation) compares no artifact against another, and searches
+for markers instead. And its per-turn figures sit between the other two: `clang++` ~85 ms and
 `Component::new` ~19 ms on an ~800 KB artifact for a small program, against Rust's ~9 ms on
 25 KB and Swift's ~1.3 s on 7 MB.
 
@@ -3897,9 +3908,9 @@ model reaches by accident rather than by writing a sleep.
    discovers `system-code.*.hbs` from the directory and mirrors every one.
 11. **Run the gates.** The [isolation gate](#per-agent-compiler-isolation) drives the new
     language's program and module steps sixteen ways and requires every artifact to belong to
-    its own program — and if the new arm's compiler writes anything into an artifact that
-    describes the *environment* rather than the program, say so with a **stable projection**
-    rather than by loosening the check; the agreement gate compares the new catalogue against TypeScript's
+    its own program — and if the new arm's artifact rides over the wire in a transport encoding, as
+    C#'s base64 IL does, answer `isolation_readable` so the marker search reads the bytes rather
+    than the encoding; the agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
     capability's call and every rule a program runs under; the

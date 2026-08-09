@@ -195,11 +195,12 @@ fn the_isolation_subject_for_a_module_is_a_public_member() {
 /// **The isolation gate reads this arm's artifact as the assembly it is**, not as the base64 it
 /// travels in.
 ///
-/// The one arm that projects the source half. `source` here does not hold source: it holds an IL
-/// assembly, encoded because the wire's `program` is a string — so a gate looking for an ASCII
-/// marker inside the artifact would be looking at an alphabet the marker cannot survive.
+/// The one arm that answers the seam's readability hook, and the one whose `source` does not hold
+/// source: it holds an IL assembly, encoded because the wire's `program` is a string — so a gate
+/// looking for a marker inside the artifact would be looking at an alphabet the marker cannot
+/// survive.
 #[test]
-fn the_isolation_projection_takes_the_transport_encoding_back_off() {
+fn the_isolation_reading_takes_the_transport_encoding_back_off() {
     use base64::Engine as _;
     let assembly = b"MZ\x90\x00gg-isolation-000-marker\x00\x01".to_vec();
     let encoded = base64::engine::general_purpose::STANDARD.encode(&assembly);
@@ -207,16 +208,16 @@ fn the_isolation_projection_takes_the_transport_encoding_back_off() {
         !encoded.contains("gg-isolation-000-marker"),
         "the encoding has to hide the marker, or this test proves nothing"
     );
-    assert_eq!(csharp().isolation_stable(encoded.into_bytes()), assembly);
+    assert_eq!(csharp().isolation_readable(encoded.into_bytes()), assembly);
 }
 
 /// **Something this could not decode is handed back whole**, rather than becoming an empty artifact.
 ///
-/// A preparation that produced bytes the projection cannot read is a failure the gate should see,
-/// and an empty string compares equal to every other empty string — which is the one way a
-/// projection could hide a breach.
+/// A preparation that produced bytes this cannot read is a failure the gate should see, and an empty
+/// artifact carries no marker at all — so it would be reported as this arm's own preparation losing
+/// its program rather than as the one thing that really happened.
 #[test]
-fn an_artifact_that_is_not_base64_survives_the_projection_unchanged() {
+fn an_artifact_that_is_not_base64_survives_the_reading_unchanged() {
     let bytes = b"not base64 at all !!".to_vec();
-    assert_eq!(csharp().isolation_stable(bytes.clone()), bytes);
+    assert_eq!(csharp().isolation_readable(bytes.clone()), bytes);
 }
