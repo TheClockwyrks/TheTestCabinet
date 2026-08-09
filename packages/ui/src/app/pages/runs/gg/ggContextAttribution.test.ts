@@ -301,20 +301,19 @@ describe("attributeGgContext", () => {
     ]);
   });
 
-  it("attributes a documentation view but not the read skill sharing its band", () => {
-    // The `skill` band holds two different things: a pinned read skill, and the ephemeral
-    // documentation view `view.openDocsView` opens. Only the second is a view — it is keyed by
-    // the function's name, can be closed, and is worth ranking against the files and text views
-    // an operator is deciding what to trim. gg tells them apart by that selector alone, and a
-    // fold that read the band instead of the selector would file an unnameable read skill into
-    // the view list under whatever the fallback happened to resolve.
+  it("attributes a documentation view and leaves a read skill out of the view list", () => {
+    // The two are separate bands now, and only one of them holds views. A documentation view is
+    // keyed by the name it was opened under, can be closed, and is worth ranking against the
+    // files and text views an operator is deciding what to trim; a read skill is pinned material
+    // the agent cannot close, so filing it into the view list would offer a close that reclaims
+    // nothing.
     const state = reduceGgEvents([
       message("m-skill", 500, { role: "user" }),
       message("m-docs", 300, { role: "user", label: "readFile" }),
       prompt(
         [
           ["m-skill", "skill"],
-          ["m-docs", "skill"],
+          ["m-docs", "docs_view"],
         ],
         { uncached: 800 },
       ),
@@ -327,8 +326,12 @@ describe("attributeGgContext", () => {
     // The read skill is neither a view nor unattributed material — it is simply not a view.
     expect(attribution.byView.map((r) => r.key)).toEqual(["docs:readFile"]);
     expect(attribution.unattributedViewTokens).toBe(0);
-    // Both still account to the band they share, which is what the graph draws.
-    expect(row(attribution.bySource, "skill").billedTokens).toBeCloseTo(800, 6);
+    // Each still accounts to its own band, which is what the graph draws.
+    expect(row(attribution.bySource, "skill").billedTokens).toBeCloseTo(500, 6);
+    expect(row(attribution.bySource, "docs_view").billedTokens).toBeCloseTo(
+      300,
+      6,
+    );
   });
 
   it("leaves a program's compiler and runtime errors to their own bands", () => {

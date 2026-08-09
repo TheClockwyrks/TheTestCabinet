@@ -865,16 +865,17 @@ async fn a_bare_program_read_of_a_picture_shows_the_model_nothing() {
     );
 }
 
-/// **`view.openFile` is the channel, and the open-image-view cap REFUSES rather than dropping.**
+/// **`view.openFile` is the channel, and no count bounds it.**
 ///
-/// Five mockups, a configured cap of four, and a program that catches its throws: the first four views carry
-/// their pictures into the window, the fifth is refused at the call site with a catchable
-/// `limit-exceeded` naming the cap and the remedy, and **no fifth view exists** — the shipped defect
-/// this replaced was a view whose body promised a picture the window did not carry. This drives the
-/// whole loop and reads the *provider's* copy of the next request, which is the only place the
-/// difference between "refused" and "opened without its picture" is visible.
+/// Five mockups and a program that opens all five: every one of them carries its picture into the
+/// window. There is no cap on how many image views an agent may hold — what makes a window too full
+/// is tokens, which the fullness signal reports per file and the agent can act on with a close, and
+/// a count cap would have refused the model the fifth thing it decided to look at in exchange for a
+/// bound the accounting already gives it honestly. This drives the whole loop and reads the
+/// *provider's* copy of the next request, which is the only place what the run actually uploads is
+/// visible.
 #[tokio::test]
-async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture() {
+async fn every_image_view_a_program_opens_carries_its_picture() {
     let dir = TempDir::new().unwrap();
     for name in ["a.png", "b.png", "c.png", "d.png", "e.png"] {
         std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
@@ -882,7 +883,7 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
 
     let (outcome, _, requests) = drive_recorded_code_run(
         &dir,
-        code_set("mock/primary", json!({ "imageViewCap": 4 })),
+        code_set("mock/primary", json!({})),
         vec![code_reply(
             "const refused = [];
              for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\", \"e.png\"]) {
@@ -892,7 +893,7 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
              \x20   refused.push(p + \": \" + (error as ToolError).code);
              \x20 }
              }
-             fs.writeFile(\"refused.txt\", refused.join(\"\\n\"));",
+             fs.writeFile(\"refused.txt\", refused.join(\"\\n\") || \"none\");",
         )],
     )
     .await;
@@ -900,95 +901,25 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
 
     assert_eq!(
         std::fs::read_to_string(dir.path().join("refused.txt")).unwrap(),
-        "e.png: limit-exceeded",
-        "the program learns at the call site, in a form it can branch on"
+        "none",
+        "nothing is refused for want of a slot"
     );
 
     let after = requests.get(1).expect("a turn after the program ran");
     assert_eq!(
         after.iter().filter(|m| !m.images.is_empty()).count(),
-        4,
-        "exactly four image views are open"
-    );
-
-    let body = |message: &Message| message.content.clone().unwrap_or_default();
-    assert!(
-        !after.iter().any(|m| body(m).contains("`e.png`")),
-        "the refused view must not exist at all: {:?}",
-        after.iter().map(body).collect::<Vec<_>>()
-    );
-
-    // The refusal is delivered where the program can act on it — thrown at the call site, caught,
-    // and written out above — and nowhere else. gg adds no turn report on top of it: the program
-    // already knows, and a message restating what the model's own `catch` block just handled would
-    // be gg narrating the program back at it.
-    assert!(
-        !after.iter().any(|m| body(m).contains("view refused")),
-        "gg does not re-report a refusal the program caught: {:?}",
-        after.iter().map(body).collect::<Vec<_>>()
-    );
-    assert!(
-        !after
-            .iter()
-            .any(|m| body(m).contains("Your program ran to completion.")),
-        "a program that ran earns no report at all: {:?}",
-        after.iter().map(body).collect::<Vec<_>>()
+        5,
+        "all five image views are open and all five carry their picture"
     );
 }
 
-/// **A text file is never refused by the image cap**, however many pictures are open.
+/// **Re-opening a path that is already an open image view replaces it rather than adding one.**
 ///
-/// The cap bounds base64 in the window, and a source file carries none. A cap of four that refused a
-/// `view.openFile("src/a.ts")` because four mockups were open would make the feature unusable in
-/// exactly the run that needs it — one working from reference images.
+/// The property that survives the cap's removal and is what actually bounds what a run uploads: a
+/// program that re-renders and re-opens one screenshot every turn leaves exactly one picture
+/// resident, because the superseded copy is retagged in place *and has its picture taken out*.
 #[tokio::test]
-async fn a_text_view_is_never_refused_by_the_image_cap() {
-    let dir = TempDir::new().unwrap();
-    for name in ["a.png", "b.png", "c.png", "d.png"] {
-        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
-    }
-    std::fs::write(dir.path().join("notes.md"), "the written specification").unwrap();
-
-    let (outcome, _, requests) = drive_recorded_code_run(
-        &dir,
-        code_set("mock/primary", json!({ "imageViewCap": 4 })),
-        vec![code_reply(
-            "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
-             \x20 view.openFile(p);
-             }
-             view.openFile(\"notes.md\");",
-        )],
-    )
-    .await;
-    assert_eq!(outcome, SessionOutcome::Ran);
-
-    let after = requests.get(1).expect("a turn after the program ran");
-    let body = |message: &Message| message.content.clone().unwrap_or_default();
-    assert!(
-        after
-            .iter()
-            .any(|m| body(m).contains("the written specification")),
-        "the text view opened with the image cap full: {:?}",
-        after.iter().map(body).collect::<Vec<_>>()
-    );
-    // Nothing was refused, so nothing threw, so gg says nothing at all — the five views are the
-    // whole of what the turn produced.
-    assert!(
-        !after
-            .iter()
-            .any(|m| body(m).starts_with("Runtime error\n----\n")),
-        "nothing was refused, so nothing threw: {:?}",
-        after.iter().map(body).collect::<Vec<_>>()
-    );
-}
-
-/// **Re-opening a path that is already an open image view succeeds at exactly the cap.**
-///
-/// It supersedes an occupant rather than adding one, so the count does not move. Refusing it would
-/// leave an agent holding four mockups unable to *refresh* any of them — the state in which it most
-/// needs to, since a re-open is how it sees a file it just rewrote.
-#[tokio::test]
-async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
+async fn re_opening_an_image_view_leaves_one_picture_resident() {
     let dir = TempDir::new().unwrap();
     for name in ["a.png", "b.png", "c.png", "d.png"] {
         std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
@@ -996,28 +927,16 @@ async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
 
     let (outcome, _, requests) = drive_recorded_code_run(
         &dir,
-        code_set("mock/primary", json!({ "imageViewCap": 4 })),
+        code_set("mock/primary", json!({})),
         vec![code_reply(
             "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
              \x20 view.openFile(p);
              }
-             let reopened = \"yes\";
-             try {
-             \x20 view.openFile(\"a.png\");
-             } catch (error) {
-             \x20 reopened = \"no: \" + (error as ToolError).code;
-             }
-             fs.writeFile(\"reopened.txt\", reopened);",
+             view.openFile(\"a.png\");",
         )],
     )
     .await;
     assert_eq!(outcome, SessionOutcome::Ran);
-
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("reopened.txt")).unwrap(),
-        "yes",
-        "a supersede is not a new occupant and must not be refused"
-    );
 
     let after = requests.get(1).expect("a turn after the program ran");
     assert_eq!(
@@ -1025,85 +944,6 @@ async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
         4,
         "the same program opened it moments ago and nothing has been sent, so the re-open replaces \
          the copy in place rather than leaving a corpse beside it"
-    );
-}
-
-/// **The cap is the `imageViewCap` of the agent whose turn it is, and two agents in one run differ.**
-///
-/// The whole reason the cap is a capability param rather than a constant is that a run is not one
-/// agent: a builder working from reference art and a reviewer that only ever needs one screenshot
-/// want different numbers, and responses-as-code is resolved per agent. This drives both in one
-/// configuration — a root at three, a subagent at one — and has each open the same three pictures.
-/// The root opens all three; the subagent is refused on the second and the third. A cap read once
-/// from the run (or from the root's profile, which is the plausible mistake) would give both agents
-/// the same number and one half of this would fail.
-#[tokio::test]
-async fn each_agents_image_cap_is_its_own() {
-    let dir = TempDir::new().unwrap();
-    for name in ["a.png", "b.png", "c.png"] {
-        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
-    }
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-code-caps".to_string()), Box::new(sink.clone()));
-
-    // One configuration, two agents, two different caps.
-    let mut set = subagent_set(2, 3, &["reviewer"]);
-    for agent in &mut set.agents {
-        let cap = if agent.name == ROOT_AGENT { 3 } else { 1 };
-        let mut code = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
-        code.params = json!({ "imageViewCap": cap });
-        agent.capabilities.push(code);
-    }
-    let inv = invocation(dir.path(), set);
-
-    // The same program for both, writing where each was refused: whatever differs is the cap.
-    let open_three = |into: &str| {
-        format!(
-            "const refused = [];
-             for (const p of [\"a.png\", \"b.png\", \"c.png\"]) {{
-             \x20 try {{
-             \x20   view.openFile(p);
-             \x20 }} catch (error) {{
-             \x20   refused.push(p + \":\" + (error as ToolError).code);
-             \x20 }}
-             }}
-             fs.writeFile(\"{into}\", refused.join(\",\") || \"none\");"
-        )
-    };
-    let root_program = format!(
-        "{}\nconst child = agents.spawnSubagent({{ agent: \"reviewer\", prompt: \"Look at it.\" \
-         }});\nagents.waitForSubagents([child.id]);",
-        open_three("root.txt")
-    );
-    let reviewer_program = format!("{}\n{FINISHING_PROGRAM}", open_three("reviewer.txt"));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, move |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![code_reply(&root_program), code_reply(FINISHING_PROGRAM)],
-            ))
-        })
-        .slot("reviewer", move |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![code_reply(&reviewer_program)],
-            ))
-        });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("root.txt")).unwrap(),
-        "none",
-        "the root's cap of three admits three pictures"
-    );
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("reviewer.txt")).unwrap(),
-        "b.png:limit-exceeded,c.png:limit-exceeded",
-        "the subagent's own cap of one refuses everything after the first, in the same run"
     );
 }
 

@@ -7,11 +7,13 @@
 //! per **program**, so both are per-program budgets, re-armed every turn: a run of fifty turns
 //! allows every program its own full timeout, and nothing accumulates across them.
 //!
-//! A third ceiling rides along with them without being one of them: the
-//! [open-image-view cap](SandboxLimits::image_view_cap), which bounds how many pictures may be
-//! *resident* in the agent's window rather than what one program may spend. It lives here because
-//! it is resolved from the same capability params and arrives on the same per-agent path, and it is
-//! enforced where the window is, not in the store.
+//! Both are **size** ceilings. There is deliberately no count ceiling here or anywhere else — not
+//! on views of any kind, not on the pictures resident in a window, not on the view operations one
+//! program may make. What makes a window too full is tokens, which every view reports and the
+//! fullness signal totals, and a count is a proxy for that which is wrong in both directions: fifty
+//! one-line views are nothing and four large ones are most of a small model's window. A count cap
+//! also has to *refuse*, which leaves the model unable to show itself the thing it just decided to
+//! look at, in exchange for a bound the accounting was already reporting honestly.
 //!
 //! # Why a timeout, and not a fuel count
 //!
@@ -115,29 +117,6 @@ pub struct SandboxLimits {
     /// The linear-memory cap in bytes. A `memory.grow` that would exceed it is denied — which
     /// fails the run rather than letting a runaway allocation inside the guest disturb the host.
     pub max_memory_bytes: usize,
-    /// The most **image-carrying** file views this agent may hold open at once, or `None` for no
-    /// ceiling — which is the default, and what an agent whose profile names no `imageViewCap`
-    /// runs under.
-    ///
-    /// Unlike the two above this is not a per-program ceiling at all: it bounds what is *resident*
-    /// in the agent's window, because a picture is tens of megabytes of base64 re-sent on every
-    /// request for as long as its view is open. A per-program budget would let N programs open N
-    /// times as many and bound nothing that survived the turn. It travels here, beside the
-    /// per-program ceilings, because it is resolved from the same capability and arrives by the same
-    /// per-agent path; what enforces it is the loop's `view.openFile`, which counts the open image
-    /// views in the live window every call rather than keeping a counter that could drift from it.
-    ///
-    /// Three things it deliberately does not do, whatever it is set to. It does not touch a view of
-    /// a **text** file. It does not refuse **re-opening** a path that is already an open image view,
-    /// which replaces an occupant rather than adding one. And it does not count **pinned** views —
-    /// an autoloaded specification image is the operator's choice and the agent cannot close it, so
-    /// counting a set of pinned mockups would make the cap permanently unreachable.
-    ///
-    /// **Native tool calling is deliberately left uncapped**, whatever this says: a native
-    /// `read_file` of an image pushes a file view with no budget at all. Capping it would move the
-    /// *control* arm of the A/B responses-as-code exists to measure in order to bound the treatment
-    /// arm, so the asymmetry is documented rather than closed.
-    pub image_view_cap: Option<usize>,
 }
 
 /// The [default](SandboxLimits::default) execution timeout: **30 seconds** of guest CPU.
@@ -150,32 +129,23 @@ pub struct SandboxLimits {
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
 impl Default for SandboxLimits {
-    /// The [default timeout](DEFAULT_TIMEOUT), a 256 MiB linear-memory cap, and **no**
-    /// [open-image-view cap](SandboxLimits::image_view_cap).
+    /// The [default timeout](DEFAULT_TIMEOUT) and a 256 MiB linear-memory cap.
     ///
     /// 256 MiB of linear memory is ≈25× the 10.3 MiB the guest engine occupies at rest, which
     /// leaves ample room for the strings a real program builds while still denying a runaway
     /// allocation long before it can disturb the host.
-    ///
-    /// The open-image-view cap is off by default because how many pictures a run needs resident is
-    /// a property of the work, not of the sandbox: a run reproducing a mockup set works from more
-    /// of them at once than one that never looks at anything. A study that wants the ceiling sets
-    /// `imageViewCap`; nothing about the enforcement changes, only whether there is a number to
-    /// compare against.
     fn default() -> Self {
         Self {
             timeout: DEFAULT_TIMEOUT,
             max_memory_bytes: 268_435_456,
-            image_view_cap: None,
         }
     }
 }
 
 /// Resolve the [sandbox limits](SandboxLimits) from **one agent's**
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability params — `timeoutSecs`,
-/// `maxMemoryBytes` and `imageViewCap` — each falling back to the
-/// [default](SandboxLimits::default) when the capability is absent, the param is absent, or the
-/// value is non-numeric or non-positive.
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability params — `timeoutSecs` and
+/// `maxMemoryBytes` — each falling back to the [default](SandboxLimits::default) when the
+/// capability is absent, the param is absent, or the value is non-numeric or non-positive.
 ///
 /// It takes an [agent profile](GgAgentConfig) and not the run's whole set on purpose:
 /// responses-as-code is a per-agent capability, so a reviewer agent may run under ceilings its
@@ -202,21 +172,8 @@ pub fn resolve_sandbox_limits(set: &GgAgentConfig) -> SandboxLimits {
         // configured intent ("as much as possible") rather than wrapping it into something small.
         limits.max_memory_bytes = usize::try_from(bytes).unwrap_or(usize::MAX);
     }
-    if let Some(views) = positive(capability.params.get(PARAM_IMAGE_VIEW_CAP)) {
-        // Saturating for the same reason: a count wider than a `usize` means "as many as you like",
-        // which on this platform is every view the window could ever hold.
-        limits.image_view_cap = Some(usize::try_from(views).unwrap_or(usize::MAX));
-    }
     limits
 }
-
-/// The capability param naming the [open-image-view cap](SandboxLimits::image_view_cap).
-///
-/// Spelled once, as a constant, because the name is **contract-visible**: it is what the console's
-/// capability catalogue offers and what a persisted run's config records, so a run configured under
-/// one spelling and read under another quietly executes the default arm under the configured arm's
-/// name. The two older params beside it predate the convention and are still literals.
-pub const PARAM_IMAGE_VIEW_CAP: &str = "imageViewCap";
 
 /// A capability param as a positive count, or `None` when it is absent, null, non-numeric, or
 /// smaller than one.

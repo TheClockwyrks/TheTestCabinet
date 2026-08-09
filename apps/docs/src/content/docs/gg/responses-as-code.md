@@ -385,8 +385,9 @@ text inline to the program. So the material arrived twice, through two doors tha
 see each other, and the pinned copy was charged to nobody's account and reclaimable by no
 close — a model that looked up eight functions early and then wanted the room back had no
 call that would give it any. Both `.docs()` and `harness.readDocs` are gone. There is one
-door, it is the door everything else goes through, and what it opens can be closed with
-`view.close(name)` like anything else.
+door, it is the door everything else goes through, and what it opens can be closed — by an agent
+holding the `docview-close` capability, through the `docs` module's own close (and, until every
+arm's SDK spells that call, through `view.close` as well, for a capability holder alone).
 
 Two consequences fall out of that, and the prompt states both:
 
@@ -395,12 +396,39 @@ Two consequences fall out of that, and the prompt states both:
   turn, use it in the next. The old prompt claimed exactly this and was simply wrong —
   `.docs()` did return inline, and a model that believed the prompt wasted a turn waiting for
   something it already had. It is true now.
-- **A lookup is self-contained.** It carries every type declaration the function refers to,
-  **every time**, with no dedup against what an earlier lookup showed. Deduplicating would be
-  the obvious economy and it is exactly wrong here: a view can be closed, and a view can be
-  superseded, so a block that omitted `FileRead` on the grounds that some other block already
-  carried it would stop making sense the moment the model tidied up. A lookup that only reads
-  correctly in the company of the lookups that preceded it is not a lookup.
+- **A lookup reads correctly on its own.** A function's view is its signature and its prose; the
+  types the signature names are **views of their own**, opened beside it, addressed by the type's
+  name and closable on the same terms. How many of them one open places is a per-agent setting —
+  the return position, that plus the arguments, or none — and it is exactly one level deep: a
+  type's view never drags in a further type, so a model that wants the shape of a field opens it
+  by name.
+
+  "The types the signature names" is literal. The catalogue records a *transitively closed* list
+  of the types each function touches — every shape reachable through a returned record's own
+  fields — and the one-level rule reads only the names the function's own signature and arguments
+  write down. Opening `readFile` therefore places `FileRead` and the error type, not the two
+  variants inside `FileRead`.
+
+  A type is readable **only when some function this agent can call refers to it**. A type is not
+  a call, so nothing is withheld by reading what a record's fields mean, and an agent that may
+  call `readFile` reads `FileRead` for exactly that reason. But a type's body names the calls
+  that produce it, so one reachable only through withheld calls answers `not-found` — the same
+  answer a name that does not exist gets. Search and the by-name lookup are two halves of one
+  surface, and they answer the same question.
+
+  They used to be folded into the function's own block, every type every time. That kept each
+  block self-contained and cost two things: a record mentioned by five functions was repeated in
+  full five times, with no way to reclaim any of the copies; and there was nothing left to
+  *measure*, since whether a model does better shown its return type up front, shown every type
+  in the signature, or shown none until it asks, is a question with three answers and a block
+  carrying all of them gives one.
+
+- **Re-opening something already open does nothing at all.** Not a replacement — nothing. The
+  documentation for one name is the same bytes every time, so moving the item to the tail would
+  rewrite the middle of the prompt, drop every cached token after it, and show the model text it
+  already had. The documentation band is append-only for the life of a session as a result, and
+  taking a page back out is the only thing that can disturb it — which is why *closing* is the
+  capability and opening is not.
 
 The `harness` object shrank in the same change. It now carries `finish` and nothing else — it
 existed to hold `readDocs` for every role, so a reviewer and a judge, whose endings live on
@@ -1018,7 +1046,7 @@ something. `view.openFile` alone is gated, on `read_file`, because it is a read.
 | --- | --- | --- | --- |
 | **file** | `(path, region)` | `File views` | what the read returned, plus any picture |
 | **text** | `label` | `Agent views` | the string the program supplied |
-| **docs** | the function's name | `Skills & docs` | one function's signature, documentation and types |
+| **docs** | the name of the thing it documents | `Documentation` | one function's signature and prose, or one type's declaration |
 
 The second band answers to two names on purpose, one per audience: the console calls it
 **Agent views**, beside File views, because that is what it is from outside; the agent's own
@@ -1038,16 +1066,23 @@ not a shape material might have; it is what
 thing it produces, and nothing a program computes could be one. gg picks the kind from the
 call, so the model's classification burden is exactly what it was: none. What the kind buys
 is on the other side of the membrane — `view.current()` can say *this slot is documentation,
-not your work*, and the accounting can charge it to the band that already holds authored
-material rather than to the band that holds the agent's own.
+not your work*, and the accounting can charge it to a band of its own.
 
-That band is shared with read [skills](/gg/skills/), which is why it answers to
-**Skills & docs** in the console. The two are told apart by **retention**, not by source: a
-read skill is pinned and unlabelled, so it survives a compaction and `view.current()` does
-not list it (offering a close that would reclaim nothing is worse than offering none); a docs
-view is ephemeral and labelled with the function it documents, so it lists, supersedes and
-closes like every other view. `view.close` therefore reaches a docs view and cannot reach the
-skill beside it.
+It has one, and it is not the read [skills](/gg/skills/) band. The two used to share one and
+be told apart by **retention** — a read skill is pinned and unlabelled, a docs view ephemeral
+and labelled — which worked and made two unrelated things true at once: what a model's own
+lookups cost it could not be read apart from what an operator pinned in front of it, and a
+close of documentation was a removal over the *skill* band that happened to spare skills
+because they were pinned. Both are properties of the band now rather than accidents of it.
+
+A docs view is also the one view kind that **does not supersede**. Re-opening a name that is
+already open does nothing at all: the item is not moved, not re-sent, not retagged. Its
+content is a constant — the documentation for one name is the same bytes every time — so
+replacing it would rewrite the middle of the prompt for identical text, and every token after
+that position would fall out of the provider's cache for nothing. The band is therefore
+**append-only** for the life of a session, and closing is the only thing that can disturb it —
+which is why closing is bought by its own capability and opening is not. `view.close` does not
+reach documentation; `docs.close` does, when the agent has it.
 
 The file-view key is `(path, region)` and not `path`, because
 `view.openFile("a.ts", { offset: 1, limit: 200 })` and the same call at `offset: 201` are a
@@ -1136,9 +1171,8 @@ it has ended, is the second-worst version of the same thing.
 | --- | --- | --- |
 | `MAX_TEXT_VIEW_BYTES` | 65,536 (64 KiB) | one `openText` body |
 | `MAX_VIEW_LABEL_BYTES` | 200 | one `openText` label |
-| `MAX_OPEN_TEXT_VIEWS` | 50 | text views open at once, per agent |
-| `MAX_VIEW_OPS_PER_PROGRAM` | 100 | `openFile` + `openText` + `openDocsView` + `close` calls in one program |
-| [`imageViewCap`](#configuring-it) | unset (no ceiling), per agent | image-carrying **file** views open at once |
+| `IMAGE_ATTACH_CAP` | 8 MiB | one attached picture |
+| `MAX_COMPOSED_VIEW_BYTES_PER_TURN` | 8 MiB | every `openText` body one turn composes, added up |
 
 An **empty label** is `invalid-argument`: a view with no selector could never be closed,
 superseded or attributed. So is an empty selector handed to `close` — a blank string is not a
@@ -1148,45 +1182,35 @@ hide one. So, one layer earlier, is an
 function nor a name. An empty **body** is allowed, because it is how a program says that
 something it was showing is now empty, and refusing it would make that unexpressible.
 
-The last one is the only cap here that counts **occupancy** rather than events, and it has
-to. A picture is not sent once: it is re-sent whole on every request for as long as the view
-carrying it is open, so what costs the run is how many are *resident*, not how many were
-opened this turn. A per-turn budget would bound nothing that matters — four a turn is
-forty over ten turns, all of them still in the window. `imageViewCap` is therefore read off
-the live window at the moment `view.openFile` is about to attach a picture: there is no
-counter to reset, nothing that can drift from what the window actually holds, and
-`view.close(path)` frees a slot for the next mockup immediately. Superseding is what keeps
-open and resident the same number: [re-opening a picture](#re-opening-a-selector-replaces-what-was-under-it)
-takes the image out of the copy it retires, so an agent that re-renders and re-opens one
-screenshot every turn holds exactly one picture, not one per turn.
+**Every one of them bounds the size of one thing, and there is no cap on the number of
+anything.** Not on text views, not on documentation views, not on the pictures resident in a
+window, and no budget on how many view calls one program may make. That is a deliberate
+subtraction: gg used to cap open text views at fifty, view operations at a hundred per
+program, and image-carrying views at a configurable `imageViewCap`.
 
-Over it **refuses**, like every other cap on this page. `view.openFile` throws
-`limit-exceeded` naming the cap and the remedy — close one with `view.close(path)`,
-`view.current()` lists what is open — **no view is opened and nothing is charged to the
-window**. The program learns at the call site, in a form it can branch on, instead of
-discovering afterwards that its window holds a view announcing a picture that is not in it.
-That last failure mode is gone by construction: there is no half-opened view left to
-describe an image the model was never shown.
+What made them wrong is that a count is a proxy for a cost the window already reports exactly.
+What fills a context window is **tokens**, which every view carries and the
+[fullness signal](/gg/agent-managed-context/#the-context-usage-signal) totals per band and per
+file — and a count is wrong about that in both directions: fifty one-line views are nothing,
+and four large ones are most of a small model's window. Worse, a count cap has to *refuse*,
+and a refusal is the one outcome that leaves a model unable to show itself the thing it just
+decided to look at. The model's own context window is the limit, and
+[agent-managed context](/gg/agent-managed-context/) is how it is spent.
 
-Three things sit outside the cap, deliberately:
+One bound survives the subtraction, and it is a bound on the **host** rather than on the
+model: `MAX_COMPOSED_VIEW_BYTES_PER_TURN`, 8 MiB of composed `openText` bodies across
+everything one turn's programs run. It is not a count and it is not a budget a model can
+plausibly meet — 8 MiB is roughly two million tokens, an order of magnitude past the largest
+window gg drives — but without it an unattended `for (;;) view.openText(unique(), big)` is
+bounded only by the program's 30-second timeout, and gg would rather answer that with a
+catchable `limit-exceeded` than with the driver running out of memory.
 
-- A **text** view is never refused by it, however full the pictures are. The two are
-  different resources and the model should not have to close a mockup to show itself a
-  string.
-- **Re-opening a path that is already an open image view** is a supersede, not a new
-  occupant, so it is admitted at exactly the ceiling. Refusing an agent's re-read of a file
-  it is *already* looking at would be a cap punishing the case it exists to bound.
-- A **pinned** [autoloaded specification](/gg/autoload-specifications/) image occupies
-  nothing. It is the operator's choice rather than the agent's, the agent cannot close it,
-  and counting it would let a configuration that pins four mockups make the cap permanently
-  unreachable — an agent refused its first `view.openFile` of the session, with no remedy it
-  could act on.
-
-**Native tool calling stays uncapped, on purpose.** A native `read_file` of an image pushes
-its file view with no budget at all, and that did not change. Introducing a cap there to fix
-a defect in the code arm would move the **control** arm of the A/B this whole capability
-exists to measure, which is worse than an asymmetry — so the asymmetry is documented rather
-than closed.
+What still bounds the expensive case — a picture, which is re-uploaded whole on every request
+for as long as it is resident — is `IMAGE_ATTACH_CAP` per image, and the property that a
+[superseded view is stripped of its picture](#re-opening-a-selector-replaces-what-was-under-it):
+an agent that re-renders and re-opens one screenshot every turn holds exactly one picture, not
+one per turn. That was always what made "open" and "resident" the same number; the count cap
+was only ever bounding the first of them.
 
 ### Nothing reports on the views a program opened
 
@@ -1709,24 +1733,21 @@ The capability is `responses-as-code`, under **Models & tools** in the
 | `language` | `typescript` | The [program language](#the-program-language) this agent writes in — `typescript`, `javascript`, `python`, `ruby`, `purescript`, `java`, `kotlin` or `rust`. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
-| `imageViewCap` | unset — no ceiling | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |
+| `docViewTypes` | `return` | Which SDK types opening a function's documentation opens beside it: `return` (the return position), `return-and-parameters` (everything the signature names), or `off` (nothing). Labelled **Documentation types** in the editor. |
 | `healing` | each strategy at its own default | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. Five of the six are on unless a run says otherwise; `drop-doubled-response` is [armed deliberately](/gg/response-healing/#the-one-strategy-you-have-to-ask-for). |
 
-The three numeric params each fall back to their default when absent, non-numeric, or
-non-positive — and `imageViewCap`'s default is **no ceiling at all**, because how many pictures
-a run needs resident is a property of the work rather than of the sandbox. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is
+The two numeric params each fall back to their default when absent, non-numeric, or
+non-positive. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is
 half a second, which a study measuring a very short ceiling has every reason to ask for —
-while `maxMemoryBytes` and `imageViewCap` are counts and truncate a fraction towards zero.
-None of them is clamped — a study may starve the sandbox on purpose to measure what that
-does — so what protects an operator from a mystifying failure is the error message, which
-names the configured limit.
+while `maxMemoryBytes` is a count and truncates a fraction towards zero. Neither is clamped —
+a study may starve the sandbox on purpose to measure what that does — so what protects an
+operator from a mystifying failure is the error message, which names the configured limit.
+`docViewTypes` is read literally: a value naming no mode gg knows changes nothing and is
+reported at launch, rather than quietly running the default arm under a configured arm's name.
 
 All five are resolved **per agent**, from the profile that agent runs under, so a root that
-may look at four mockups and a reviewer subagent that may look at one are one
-configuration — and, in principle, so are a root and a reviewer writing different
-languages. `imageViewCap` lives here and not on `read-file` because it bounds only the
-code arm; hanging it off the read tool would imply it governs native reads, which it
-deliberately does not.
+opens every type a signature names and a reviewer subagent that opens none are one
+configuration — and, in principle, so are a root and a reviewer writing different languages.
 
 The ceilings that bound the *run* rather than one program — turns, wall clock,
 consecutive errors, recent error rate, cost — are not params of this capability at all.

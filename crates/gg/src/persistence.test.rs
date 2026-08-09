@@ -69,11 +69,12 @@ fn whole(path: &str) -> OpenFileView {
     }
 }
 
-/// A desk holding `files` and no text views — the shape every pre-views test asserts against.
+/// A desk holding `files` and nothing else — the shape every pre-views test asserts against.
 fn desk(files: Vec<OpenFileView>) -> PersistedDesk {
     PersistedDesk {
         files,
         texts: Vec::new(),
+        docviews: Vec::new(),
     }
 }
 
@@ -576,27 +577,139 @@ fn a_closed_text_view_is_not_carried_over() {
     );
 }
 
+/// **A documentation view is recorded as its key and restored by re-rendering it.**
+///
+/// The third mechanism, and the only one that is neither a re-read nor a replay. Storing the
+/// rendered text would put a second copy of gg's own catalogue in a profile's desk — and a stale one
+/// the moment the next instance's scope differs by a tool, which is exactly when re-rendering is the
+/// right answer and replaying is the wrong one.
+#[test]
+fn a_documentation_view_is_recorded_by_key_and_re_rendered() {
+    let docs = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        crate::ending::EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+
+    let mut window = context();
+    window.open_docview(
+        "readFile".to_string(),
+        docs.read("readFile").expect("readFile is bound"),
+    );
+    window.open_docview(
+        "FileRead".to_string(),
+        docs.read_type("FileRead").expect("FileRead is catalogued"),
+    );
+
+    let recorded = PersistedDesk::of(&window);
+    assert_eq!(
+        recorded.docviews,
+        vec!["readFile".to_string(), "FileRead".to_string()],
+        "keys, in first-open order, and no bodies"
+    );
+
+    let mut next = context();
+    assert_eq!(restore_docviews(&mut next, &recorded.docviews, &docs), 2);
+    assert_eq!(next.open_docviews(), window.open_docviews());
+
+    // Idempotent by construction, and for a stronger reason than the text half's: re-opening a key
+    // that is already open is a no-op rather than a supersede, so nothing moves either.
+    restore_docviews(&mut next, &recorded.docviews, &docs);
+    assert_eq!(next.open_docviews(), window.open_docviews());
+}
+
+/// **A key this instance's scope does not bind is skipped, not restored.**
+///
+/// The runtime answers through *this* agent's scope, so a profile whose next instance runs with
+/// `read_file` withheld must not open documentation for a call it cannot make. That is the whole
+/// reason the desk stores a key rather than the text: replaying the text would have restored it.
+#[test]
+fn a_key_this_instance_cannot_bind_is_not_restored() {
+    let full = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        crate::ending::EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    let mut window = context();
+    window.open_docview(
+        "readFile".to_string(),
+        full.read("readFile").expect("readFile is bound"),
+    );
+    let recorded = PersistedDesk::of(&window);
+
+    let ablated = DocsRuntime::new(
+        Vec::new(),
+        crate::ending::EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    let mut next = context();
+    assert_eq!(
+        restore_docviews(&mut next, &recorded.docviews, &ablated),
+        0,
+        "the next instance cannot call `readFile`, so it is not shown its documentation"
+    );
+    assert!(next.open_docviews().is_empty());
+}
+
+/// A view the agent **closed** is off the desk, on the same terms a closed text view is.
+#[test]
+fn a_closed_documentation_view_is_not_carried_over() {
+    let docs = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        crate::ending::EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    let mut window = context();
+    for key in ["readFile", "FileRead"] {
+        window.open_docview(
+            key.to_string(),
+            docs.read_any(key).expect("both keys resolve"),
+        );
+    }
+    window.close_docviews(Some("FileRead"));
+
+    assert_eq!(
+        PersistedDesk::of(&window).docviews,
+        vec!["readFile".to_string()]
+    );
+}
+
 /// The note an instance logs names **which mechanism** brought what back, because the two make
 /// different promises: the file views are the workspace as it stands now (and may well differ from
 /// what the last instance saw), while the text views are that instance's own material reproduced
 /// exactly.
 #[test]
 fn the_restore_note_says_which_mechanism_brought_what_back() {
-    let none = restore_note(0, 0);
+    let none = restore_note(0, 0, 0);
     assert!(none.contains("nothing carried over"), "{none}");
 
-    let files = restore_note(2, 0);
+    let files = restore_note(2, 0, 0);
     assert!(files.contains("re-opened 2 file view(s)"), "{files}");
     assert!(files.contains("as it stands now"), "{files}");
     assert!(!files.contains("text view"), "{files}");
 
-    let texts = restore_note(0, 3);
+    let texts = restore_note(0, 3, 0);
     assert!(texts.contains("restored 3 text view(s)"), "{texts}");
     assert!(!texts.contains("file view"), "{texts}");
 
-    let both = restore_note(2, 3);
-    assert!(both.contains("re-opened 2 file view(s)"), "{both}");
-    assert!(both.contains("restored 3 text view(s)"), "{both}");
+    let docviews = restore_note(0, 0, 4);
+    assert!(
+        docviews.contains("re-opened 4 documentation view(s)"),
+        "{docviews}"
+    );
+    assert!(
+        docviews.contains("this agent's own scope"),
+        "the third mechanism makes its own promise — re-rendered, not replayed: {docviews}"
+    );
+
+    let all = restore_note(2, 3, 4);
+    assert!(all.contains("re-opened 2 file view(s)"), "{all}");
+    assert!(all.contains("restored 3 text view(s)"), "{all}");
+    assert!(all.contains("re-opened 4 documentation view(s)"), "{all}");
 }
 
 // ---------------------------------------------------------------------------

@@ -61,6 +61,16 @@ use crate::tools::{ARCHIVE_THREAD_TOOL, EVICT_FILE_VIEW_TOOL};
 /// counted as ~zero. An approximation, like the rest of the accounting.
 const MESSAGE_FRAMING_TOKENS: usize = 4;
 
+/// The one selector the [search-results view](ContextModel::open_search_view) is ever keyed under —
+/// what its heading is qualified by, what a `view.close` naming it removes, and what makes a second
+/// search replace the first rather than pile up beside it.
+///
+/// Constant rather than the query, because the view names an intent rather than a result: *these are
+/// the results I am working from* is one thing an agent has at a time, and keying it by the query
+/// would give an agent that refined a search three times three pages of results to pay for, two of
+/// which it had already decided against.
+pub const SEARCH_RESULTS_VIEW: &str = "search results";
+
 /// The line appended to a [retired view](ContextModel::retire_view) whose attached picture was
 /// dropped when a newer copy of the same file superseded it.
 ///
@@ -244,15 +254,23 @@ pub enum ViewKind {
     File,
     /// A [text view](GgContextSource::TextView), keyed by the label the agent gave it.
     Text,
-    /// A [documentation view](GgContextSource::Skill), keyed by the name of the function it
+    /// A [documentation view](GgContextSource::DocsView), keyed by the name of the thing it
     /// documents — what `view.openDocsView` opens.
     ///
-    /// It shares the `Skill` band with a read skill because both are reference material gg holds
-    /// rather than material the workspace or the program produced, and the model meets both under
-    /// the same `Documentation` heading. What separates them is retention: a read skill is
-    /// [`Pinned`](Retention::Pinned) for the life of the agent, a docs view is an ordinary
-    /// [`Ephemeral`](Retention::Ephemeral) view the agent can close and compaction can drop.
+    /// It has a band of its own. It used to share the `Skill` band with a read skill and be told
+    /// apart from one by retention alone — a docs view is [`Ephemeral`](Retention::Ephemeral), a
+    /// read skill is [`Pinned`](Retention::Pinned) — which worked, and made two unrelated things
+    /// true at once: what documentation costs a window could not be read apart from what skills
+    /// cost it, and a call that closed documentation was a removal over the *skill* band that
+    /// happened to spare read skills because they were pinned. Both are fixed by the band.
     Docs,
+    /// The [search-results view](GgContextSource::SearchResults): the briefs the agent's last
+    /// documentation search returned, keyed by one constant selector.
+    ///
+    /// There is at most one, because the call that opens it names a mutable **intent** — *these are
+    /// my current search results* — and re-stating an intent replaces it, exactly as
+    /// [`Text`](Self::Text) does and exactly as [`Docs`](Self::Docs) deliberately does not.
+    Search,
 }
 
 /// One [text view](GgContextSource::TextView) open in the window: the label it is keyed by and the
@@ -269,6 +287,61 @@ pub struct OpenTextView {
     pub label: String,
     /// The body the agent supplied, without the [heading](code_heading) the window prefixes it with.
     pub body: String,
+}
+
+/// One [documentation view](GgContextSource::DocsView) open in the window: the key it is addressed
+/// under and the body gg rendered for it.
+///
+/// The body travels with it for the one reason a [text view](OpenTextView)'s does *not* generalize:
+/// nothing else here can re-render it. A docview's body is a pure function of `(key, language,
+/// what this agent's scope binds)` — none of which can change while an agent runs — so a caller
+/// holding a [documentation runtime](crate::docs::DocsRuntime) can always re-derive it from the key
+/// alone, and the callers that can are the ones that record only the key
+/// ([persistence](crate::persistence)). The callers that cannot ([compaction](crate::compaction),
+/// which rewrites a window without a runtime in reach) take the body gg already rendered, which is
+/// byte-for-byte what re-deriving it would produce.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenDocview {
+    /// The key the view is addressed under — the name a lookup resolved and a close names.
+    pub key: String,
+    /// The rendered documentation, without the [heading](code_heading) the window prefixes it with.
+    pub body: String,
+}
+
+/// What [`open_docview`](ContextModel::open_docview) did: placed a new view, or found the key
+/// already open and did nothing whatever.
+///
+/// Two states rather than [`ViewOpened`]'s three flags, because a docview has no third state to be
+/// in. It is never superseded and never replaced in-turn — see
+/// [`open_docview`](ContextModel::open_docview) for why — so `superseded` and `replaced_in_turn`
+/// would both be permanently `false`, which is a shape that invites somebody to make one of them
+/// true.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocviewOpen {
+    /// The key was not open and the view was appended at the tail. Carries what it costs.
+    Placed {
+        /// The estimated tokens the newly placed view occupies.
+        tokens: usize,
+    },
+    /// The key was **already** open, so nothing happened at all: the item was not moved, not
+    /// re-emitted and not retagged.
+    AlreadyOpen,
+}
+
+/// What one removal from a view band reclaimed, and from how far back — the result
+/// [`close_docviews`](ContextModel::close_docviews) reports.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ViewsClosed {
+    /// What was removed: how many items, how many tokens, and the selectors they carried.
+    pub reclaimed: EvictionResult,
+    /// Where the **earliest** removed item sat among the thread's items, or `None` when nothing was
+    /// removed.
+    ///
+    /// It is the cost half of the trade the tokens are the benefit half of. The window renders as a
+    /// prompt a provider caches by prefix, so a removal invalidates everything from its position
+    /// onward — and for the [documentation band](GgContextSource::DocsView), which nothing else can
+    /// disturb, this is the *only* thing that ever does.
+    pub earliest_removed: Option<usize>,
 }
 
 /// One view of either kind open in the window, as [`open_views`](ContextModel::open_views) reports
@@ -1616,13 +1689,25 @@ impl ContextModel {
     /// command's output, the error — not the model's own narration of what it was about to do, which
     /// is the half of the thread that ages worst and would otherwise be what a `search_archive` query
     /// mostly matched.
+    ///
+    /// **A [documentation view](GgContextSource::DocsView) is retained however wide a range is**,
+    /// though it is ordinary ephemeral material by every other rule. Archival selects by *turn*, and
+    /// a docview's turn is an accident of when the model happened to look something up: one opened
+    /// on turn 3 and still being read on turn 40 would be swept away by an archive of turns 1–10,
+    /// with no signal and nothing the model could do about it but discover the gap. Under this
+    /// design [closing](Self::close_docviews) is the only thing that removes a docview, and that has
+    /// to hold against every other removal in the model or "closed and never-opened are the same
+    /// thing" stops being a statement about a set the agent controls.
     pub fn archive_thread(&mut self, ranges: &[TurnRange]) -> ArchiveResult {
         let mut result = ArchiveResult::default();
         if ranges.is_empty() {
             return result;
         }
         self.items.retain(|item| {
-            if item.retention.is_pinned() || !ranges.iter().any(|range| range.contains(item.turn)) {
+            if item.source == GgContextSource::DocsView
+                || item.retention.is_pinned()
+                || !ranges.iter().any(|range| range.contains(item.turn))
+            {
                 return true;
             }
             result.tokens += item.tokens as u64;
@@ -1663,33 +1748,165 @@ impl ContextModel {
         self.remove_views(GgContextSource::TextView, label)
     }
 
-    /// Close the [documentation views](ViewKind::Docs) keyed by `name` (or all of them when `name`
-    /// is `None`), the docs-band counterpart of [`close_text_views`](Self::close_text_views).
+    /// Close the [documentation views](GgContextSource::DocsView) keyed by `key` — or **every** one
+    /// of them when `key` is `None` — and report what that reclaimed and from how far back.
     ///
-    /// It shares [`remove_views`](Self::remove_views)'s pinned carve-out, which is what keeps it
-    /// from touching a **read skill**: skills and docs views live in the same
-    /// [`Skill`](GgContextSource::Skill) band and are told apart by retention alone, so the rule
-    /// that spares every pinned item is exactly the rule that makes this call safe.
-    pub fn close_docs_views(&mut self, name: Option<&str>) -> EvictionResult {
-        self.remove_views(GgContextSource::Skill, name)
+    /// # A plain removal, with no cascade
+    ///
+    /// It removes exactly the items it names and nothing else. Closing the view of a *type* leaves
+    /// every function view that caused it to be opened exactly where it is; closing a function's
+    /// leaves the types beside it. There is no dependency to follow because the state this acts on
+    /// is a **set** — which key is open, and nothing about why — and that is what makes "closed" and
+    /// "never opened" the same thing to everything downstream: opening a function whose types are
+    /// gone opens them again, because the only question ever asked is whether the key is open now.
+    ///
+    /// Its band is its own, so — unlike the shared removal beside it — it needs no carve-out to
+    /// avoid eating a **read skill**. It used to need one: docs views and read skills shared the
+    /// [`Skill`](GgContextSource::Skill) band and were told apart by retention, so the rule sparing
+    /// pinned items was the only thing keeping this call off a skill. That is now a property of what
+    /// it selects rather than of what it happens to skip.
+    pub fn close_docviews(&mut self, key: Option<&str>) -> ViewsClosed {
+        let mut closed = ViewsClosed::default();
+        let mut index = 0;
+        self.items.retain(|item| {
+            let position = index;
+            index += 1;
+            if item.source != GgContextSource::DocsView {
+                return true;
+            }
+            if let Some(wanted) = key
+                && item.label.as_deref() != Some(wanted)
+            {
+                return true;
+            }
+            closed.reclaimed.items += 1;
+            closed.reclaimed.tokens += item.tokens as u64;
+            if let Some(label) = &item.label
+                && !closed.reclaimed.paths.contains(label)
+            {
+                closed.reclaimed.paths.push(label.clone());
+            }
+            closed.earliest_removed.get_or_insert(position);
+            false
+        });
+        closed
     }
 
-    /// Open (or re-open) the [documentation view](ViewKind::Docs) for the function called `name` —
-    /// what `view.openDocsView` pushes.
+    /// Open the [documentation view](ViewKind::Docs) addressed by `key`, or do **nothing at all**
+    /// when one is already open under it.
     ///
-    /// A view rather than the pinned block a documentation lookup used to leave behind, and the
-    /// difference is the whole point: a pinned block could not be closed, could not be superseded,
-    /// and grew for the life of the agent. This is keyed by the function's name, replaces its own
-    /// earlier copy, is [`Ephemeral`](Retention::Ephemeral), and answers to `view.close(name)` like
-    /// every other view.
+    /// # Why this does not supersede, where [`open_text_view`](Self::open_text_view) does
     ///
-    /// It heads as `Documentation: {name}` — qualified, unlike a read skill's bare `Documentation`,
-    /// because several may be open at once and the model has to be able to name the one it wants
-    /// closed.
-    pub fn open_docs_view(&mut self, name: String, body: String) -> ViewOpened {
-        let superseded = self.supersede_view(GgContextSource::Skill, &name, None);
-        let item = self.view_item(GgContextSource::Skill, Message::user(body), name, None);
+    /// `openText` names a mutable **intent** — *this should be visible* — so re-stating it replaces
+    /// the copy that was there. A docview names a **constant**: the documentation addressed by one
+    /// key is the same bytes every time it is rendered, because it is a projection of a catalogue
+    /// compiled into the binary through a scope that cannot change while the agent runs. Superseding
+    /// it would remove and re-place identical text at the tail, which breaks the provider's cached
+    /// prefix from that position onward in exchange for no change in what the model reads.
+    ///
+    /// So a re-open is a **total no-op**: the view is not moved, not re-emitted, not retagged, and
+    /// its position is not touched. Placement is first-open order, permanently. Anyone reading this
+    /// later and reaching for [`supersede_view`](Self::supersede_view) to make it consistent with
+    /// the other two view kinds should stop here: the inconsistency is the correct one, and the
+    /// assertion that a re-open leaves the rendered prompt byte-identical is in
+    /// `context.docviews.test.rs`.
+    ///
+    /// Two things follow, and they are why [closing](Self::close_docviews) is the capability while
+    /// opening is not:
+    ///
+    /// - **There are no docview corpses, ever.** A superseding re-open leaves the old copy in place
+    ///   as retagged history — a dead item in a cached prefix that nothing can reclaim. With one
+    ///   open placing a function's view *and* the views of the types in its signature, a model
+    ///   re-opening a handful of functions across a session would accumulate those at several times
+    ///   the rate a single view kind does. Here it accumulates none.
+    /// - **The band is append-only**, so the prompt prefix survives every open for the life of the
+    ///   session, and the one thing that can disturb it is an explicit close.
+    ///
+    /// It heads as `Documentation: {key}` — qualified, unlike a read skill's bare `Documentation`,
+    /// because several are open at once and the model has to be able to name the one it means.
+    pub fn open_docview(&mut self, key: String, body: String) -> DocviewOpen {
+        if self.docview_is_open(&key) {
+            return DocviewOpen::AlreadyOpen;
+        }
+        let item = self.view_item(GgContextSource::DocsView, Message::user(body), key, None);
+        let tokens = item.tokens;
+        // Pushed directly rather than through [`place_view`](Self::place_view), whose only extra
+        // behaviour is re-inserting at the index a supersession vacated — and there are no
+        // supersessions on this path by construction.
+        self.items.push(item);
+        DocviewOpen::Placed { tokens }
+    }
+
+    /// Whether a [documentation view](GgContextSource::DocsView) is open under `key` right now.
+    ///
+    /// A linear scan of the window rather than an index, and deliberately: the whole state behind
+    /// documentation is *which keys are open*, so answering it from the items themselves is the one
+    /// answer that cannot drift from what the model is actually holding. There is nothing here to
+    /// keep coherent and nothing to reset at a turn, a compaction or a succession.
+    pub fn docview_is_open(&self, key: &str) -> bool {
+        self.items.iter().any(|item| {
+            item.source == GgContextSource::DocsView && item.label.as_deref() == Some(key)
+        })
+    }
+
+    /// The [documentation views](GgContextSource::DocsView) open in the window, **with their
+    /// bodies**, in first-open order — what survives a [compaction](crate::compaction) boundary and
+    /// what [persistence](crate::persistence) records the keys of.
+    ///
+    /// The order is the point as much as the contents. Re-seeding them in the order they were first
+    /// opened is what keeps the property [`open_docview`](Self::open_docview) exists for true across
+    /// a boundary: the band is a growing suffix whose members never move, and a rewrite that
+    /// reordered them would break exactly the prefix the append-only rule protects.
+    pub fn open_docviews(&self) -> Vec<OpenDocview> {
+        self.items
+            .iter()
+            .filter(|item| item.source == GgContextSource::DocsView)
+            .filter_map(|item| {
+                Some(OpenDocview {
+                    key: item.label.clone()?,
+                    body: view_body(item),
+                })
+            })
+            .collect()
+    }
+
+    /// Open (or replace) the [search-results view](GgContextSource::SearchResults): the briefs the
+    /// agent's last documentation search returned.
+    ///
+    /// # It supersedes, where a documentation view deliberately does not
+    ///
+    /// This is the other side of that contrast, and it is the same rule read the same way. A
+    /// [docview](Self::open_docview) names a **constant** — the documentation for one key is the
+    /// same bytes every time — so re-opening one is a no-op and the band stays append-only. A search
+    /// result names a mutable **intent**: *these are the results I am working from*. Re-stating it
+    /// replaces the copy that was there, exactly as [`open_text_view`](Self::open_text_view) does,
+    /// so an agent that searches five times holds one page rather than five, and the four it has
+    /// moved on from are not still in front of it being paid for.
+    ///
+    /// It is keyed by one constant selector ([`SEARCH_RESULTS_VIEW`]) rather than by the query,
+    /// which is what makes the supersession happen at all: a per-query key would accumulate one view
+    /// per search, which is the pile-up the intent reading exists to avoid.
+    pub fn open_search_view(&mut self, body: String) -> ViewOpened {
+        let superseded =
+            self.supersede_view(GgContextSource::SearchResults, SEARCH_RESULTS_VIEW, None);
+        let item = self.view_item(
+            GgContextSource::SearchResults,
+            Message::user(body),
+            SEARCH_RESULTS_VIEW.to_string(),
+            None,
+        );
         self.place_view(item, superseded)
+    }
+
+    /// Close the [search-results view](GgContextSource::SearchResults) when `selector` names it —
+    /// or unconditionally when `selector` is `None` — reclaiming its tokens.
+    ///
+    /// Unlike closing a [documentation view](Self::close_docviews) this is not bought by a
+    /// capability and costs the agent nothing it cannot get back: the same query answers the same
+    /// way, and the band has already been rewritten by every search after the first, so there is no
+    /// cached prefix left for a close to be the thing that invalidated.
+    pub fn close_search_views(&mut self, selector: Option<&str>) -> EvictionResult {
+        self.remove_views(GgContextSource::SearchResults, selector)
     }
 
     /// Open (or re-open) the [text view](GgContextSource::TextView) keyed by `label`: agent-composed
@@ -1940,10 +2157,10 @@ impl ContextModel {
     /// asymmetry is enormous in the other direction: a picture is re-uploaded whole on every
     /// subsequent request for as long as it is resident (up to `IMAGE_ATTACH_CAP`, 8 MiB, each), so
     /// an agent re-opening one screenshot across twenty turns would leave twenty copies of it in the
-    /// window — none of them visible to [`open_image_views`](Self::open_image_views), which counts
-    /// what is *open*, and so none of them bounded by the code path's image-view cap. That is
-    /// precisely the "resident is unbounded" defect the cap exists to close, reintroduced through
-    /// the corpses.
+    /// window and pay to upload all twenty on every request thereafter, while
+    /// [`open_views`](Self::open_views) — which reports what is *open* — showed it one. Nothing in
+    /// the accounting would name the other nineteen, and nothing the agent could close would reach
+    /// them.
     ///
     /// So the picture goes and the text stays, and the item gains a line saying so — the same shape
     /// [`strip_images`](Self::strip_images) uses, and for the same reason: a message that quietly
@@ -1993,9 +2210,8 @@ impl ContextModel {
             let kind = match item.source {
                 GgContextSource::FileView => ViewKind::File,
                 GgContextSource::TextView => ViewKind::Text,
-                // A `Skill` item is a docs view exactly when it is not pinned — a read skill is
-                // pinned and was skipped above, so what reaches here is a `view.openDocsView`.
-                GgContextSource::Skill => ViewKind::Docs,
+                GgContextSource::DocsView => ViewKind::Docs,
+                GgContextSource::SearchResults => ViewKind::Search,
                 _ => continue,
             };
             // A view whose selector is unknown (a malformed native read) is unnameable, so there is
@@ -2016,50 +2232,6 @@ impl ContextModel {
             }
         }
         open
-    }
-
-    /// How many [file views](GgContextSource::FileView) open in the window **carry a picture** —
-    /// the occupancy the code path's image-view cap is measured against.
-    ///
-    /// # Derived, never accumulated
-    ///
-    /// This is computed from the live window on every call rather than counted up as views are
-    /// opened. A counter would have to be reset somewhere — per program, per turn, per compaction —
-    /// and every one of those is wrong for a set of views that outlives all three: a per-program
-    /// counter lets N programs open N times the cap and bounds nothing that matters. Worse, a
-    /// counter can drift from the window it claims to describe, and a drifted cap either refuses an
-    /// agent that has room or admits one that has none. There is nothing here to reset and nothing
-    /// to drift.
-    ///
-    /// # Pinned views are excluded, deliberately
-    ///
-    /// The only [`Pinned`](Retention::Pinned) file views are **locked**
-    /// [autoloaded specifications](https://docs.testcabinet.ai/gg/autoload-specifications/) — the
-    /// operator's choice, placed before the agent's first turn, and impossible for the agent to
-    /// close. Counting them would let a configuration that pins four reference mockups make the cap
-    /// permanently unreachable: the agent would be refused every image view it ever tried to open,
-    /// with the only remedy (`view.close`) unable to touch the views occupying the cap. What this
-    /// bounds is what the agent opened and can itself reclaim.
-    pub fn open_image_views(&self) -> usize {
-        self.items.iter().filter(|item| is_image_view(item)).count()
-    }
-
-    /// Whether an image-carrying [file view](GgContextSource::FileView) is already open under
-    /// exactly `(path, region)` — the key
-    /// [`open_file_view_deduped`](Self::open_file_view_deduped) supersedes on.
-    ///
-    /// This is the image-view cap's one exception: re-opening a path that is already an open image
-    /// view **replaces** an occupant rather than adding one, so it must not be refused at exactly
-    /// the ceiling. Without it an agent holding the maximum could never refresh any of them — the
-    /// same carve-out the open-text-view cap makes for a label that is already open.
-    ///
-    /// [`Pinned`](Retention::Pinned) copies are excluded for the reason
-    /// [`supersede_view`](Self::supersede_view) excludes them: a pinned view is never superseded,
-    /// so re-opening its path appends a *new* view beside it and is a new occupant after all.
-    pub fn holds_image_view(&self, path: &str, region: Option<FileRegion>) -> bool {
-        self.items.iter().any(|item| {
-            is_image_view(item) && item.label.as_deref() == Some(path) && item.region == region
-        })
     }
 
     /// The [text views](GgContextSource::TextView) currently open, **with their bodies**, newest
@@ -2085,7 +2257,7 @@ impl ContextModel {
             let Some(label) = item.label.clone() else {
                 continue;
             };
-            let body = text_view_body(item);
+            let body = view_body(item);
             match open.iter_mut().find(|view| view.label == label) {
                 // Superseding retags the older copy out of this band, so a duplicate label here is
                 // not reachable today; the newest copy wins if one ever is.
@@ -2126,7 +2298,15 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
         GgContextSource::RuntimeError => Some("Runtime error"),
         GgContextSource::FileView => Some("File"),
         GgContextSource::TextView => Some("View"),
-        GgContextSource::Skill => Some("Documentation"),
+        // The three documentation bands share a word deliberately: to the model they are one kind of
+        // thing — reference material gg holds — and a second word would be a taxonomy question it
+        // has to answer before it can read any of them. What tells them apart is the qualifier
+        // [`item_heading`] adds, which is also the handle a close takes. It is also what lets a band
+        // be added without a sentence being added to every language's prompt: the vocabulary the
+        // prompt teaches is the set of *words*, and this is not a new one.
+        GgContextSource::DocsView | GgContextSource::SearchResults | GgContextSource::Skill => {
+            Some("Documentation")
+        }
         GgContextSource::Memory => Some("Memories"),
         GgContextSource::TaskList => Some("Tasks"),
         GgContextSource::Board => Some("Board"),
@@ -2146,10 +2326,11 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 /// match to its own `view.openText` calls nor name in a `view.close`. So a text view reads
 /// `View: {label}`.
 ///
-/// A [`Skill`](GgContextSource::Skill) item is qualified when it *has* a selector, which is exactly
-/// when it is a [documentation view](ViewKind::Docs) — `Documentation: readFile`, nameable in a
-/// `view.close`. A **read skill** carries no selector and keeps the bare `Documentation`, because
-/// its body opens by naming the skill and it cannot be closed anyway.
+/// A [documentation view](GgContextSource::DocsView) is the other, and reads
+/// `Documentation: readFile` — the key it was opened under, which is also the handle a close takes.
+/// A [search-results view](GgContextSource::SearchResults) is qualified for the same reason, by the
+/// one constant selector it is always keyed under. A **read skill** shares the word and keeps the
+/// bare `Documentation`, because its body opens by naming the skill and it cannot be closed anyway.
 ///
 /// Every other band keeps the bare word, including [`FileView`](GgContextSource::FileView) —
 /// deliberately, because a file view's body opens with the read's own path header, so `File` plus
@@ -2157,9 +2338,13 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 pub(crate) fn item_heading(source: GgContextSource, label: Option<&str>) -> Option<String> {
     let heading = code_heading(source)?;
     match (source, label) {
-        (GgContextSource::TextView | GgContextSource::Skill, Some(label)) => {
-            Some(format!("{heading}: {label}"))
-        }
+        (
+            GgContextSource::TextView
+            | GgContextSource::DocsView
+            | GgContextSource::SearchResults
+            | GgContextSource::Skill,
+            Some(label),
+        ) => Some(format!("{heading}: {label}")),
         _ => Some(heading.to_string()),
     }
 }
@@ -2211,7 +2396,12 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::RuntimeError => "Runtime Errors",
         GgContextSource::FileView => "File Views",
         GgContextSource::TextView => "Text Views",
-        GgContextSource::Skill => "Documentation",
+        // Three lines, not one, and the splits are the reason the bands exist: documentation the
+        // model looked up is the thing it can act on, a read skill is not something it can close,
+        // and what *finding* the documentation cost is the measurement the search band is for.
+        GgContextSource::DocsView => "Documentation",
+        GgContextSource::SearchResults => "Documentation Search",
+        GgContextSource::Skill => "Skills",
         GgContextSource::Memory => "Memories",
         GgContextSource::TaskList => "Tasks",
         GgContextSource::Board => "Board",
@@ -2219,34 +2409,17 @@ fn source_label(source: GgContextSource) -> &'static str {
     }
 }
 
-/// Whether one item is an **open, agent-closable file view carrying a picture** — the shape
-/// [`ContextModel::open_image_views`] counts and [`ContextModel::holds_image_view`] looks for.
-///
-/// One predicate rather than two copies, because the count and the supersede check must agree about
-/// what an occupant of the cap is: a divergence between them would show up as an agent refused a
-/// view it could have replaced.
-///
-/// A superseded copy is deliberately *not* one, and it is not resident either:
-/// [`retire_view`](ContextModel::retire_view) retags it to [`History`](GgContextSource::History) in
-/// place *and takes its picture out*, precisely so that "open image views" and "images the window
-/// actually holds" cannot diverge. If a retired copy kept its bytes, an agent re-opening one
-/// screenshot every turn would accumulate pictures this predicate cannot see and the cap cannot
-/// bound — the counter would be honest about a number that had stopped mattering.
-fn is_image_view(item: &ContextItem) -> bool {
-    item.source == GgContextSource::FileView
-        && !item.retention.is_pinned()
-        && !item.message.images.is_empty()
-}
-
-/// The body a [text view](GgContextSource::TextView) item was opened with, with the
-/// [heading](item_heading) the window prefixed it with removed.
+/// The body a view item was opened with, with the [heading](item_heading) the window prefixed it
+/// with removed — what [`open_text_views`](ContextModel::open_text_views) and
+/// [`open_docviews`](ContextModel::open_docviews) report, and what re-opening either reproduces
+/// without heading it twice.
 ///
 /// The heading is derived from the item's own `(source, label)`, so the prefix stripped here is
 /// byte-for-byte the one [`apply_code_heading`] added rather than a guess at its shape. An item
 /// pushed outside code mode carries no heading, and one whose body happens not to start with its
 /// heading (a window that crossed from a code-mode agent to a tool-calling one and back) is
 /// returned untouched.
-fn text_view_body(item: &ContextItem) -> String {
+fn view_body(item: &ContextItem) -> String {
     let content = item.message.content.clone().unwrap_or_default();
     let Some(heading) = item_heading(item.source, item.label.as_deref()) else {
         return content;
@@ -2331,3 +2504,7 @@ mod tests;
 #[cfg(test)]
 #[path = "context.views.test.rs"]
 mod view_tests;
+
+#[cfg(test)]
+#[path = "context.docviews.test.rs"]
+mod docview_tests;

@@ -305,6 +305,7 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
             modules: &[],
             ending: crate::sandbox::RunEnding::Role(crate::ending::EndingRole::Standard),
             library: true,
+            docview_close: false,
         },
         crate::sandbox::SandboxLimits::default(),
         None,

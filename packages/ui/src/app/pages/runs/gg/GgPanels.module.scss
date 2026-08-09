@@ -68,8 +68,9 @@
 // source; indices 4 and 5, the two responses-as-code error bands, arrived together
 // and shifted the six bands from `file_view` on down by two.)
 // 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 compiler_error ·
-// 5 runtime_error · 6 file_view · 7 text_view · 8 skill · 9 memory ·
-// 10 task_list · 11 board · 12 history
+// 5 runtime_error · 6 file_view · 7 text_view · 8 docs_view · 9 skill ·
+// 10 memory · 11 task_list · 12 board · 13 history
+// (`docs_view` split out of `skill` and shifted the five bands from `skill` on down by one.)
 $context-palette: (
   0: #6ea8fe,
   1: #ffca3a,
@@ -79,11 +80,13 @@ $context-palette: (
   5: #ba04b5,
   6: #4cc9c0,
   7: #4361ee,
-  8: #c77dff,
-  9: #ff6b9d,
-  10: #b5e48c,
-  11: #ef5350,
-  12: #9aa5b1,
+  8: #5c8c00,
+  9: #bc0848,
+  10: #c77dff,
+  11: #ff6b9d,
+  12: #b5e48c,
+  13: #ef5350,
+  14: #9aa5b1,
 );
 
 .swatch {

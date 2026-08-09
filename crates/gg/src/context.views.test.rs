@@ -373,124 +373,24 @@ fn a_locked_specification_is_never_superseded_out_of_its_band() {
 }
 
 // ---------------------------------------------------------------------------
-// Counting the pictures that are open
+// The pictures the window actually holds
 // ---------------------------------------------------------------------------
+//
+// There is no cap on how MANY views may be open — of any kind, pictures included. What these assert
+// is the property that survives the cap's removal and matters more without it: a retired copy of an
+// image view does not keep its bytes, so what the run uploads per request is what `view.current()`
+// says is open, and re-opening one screenshot for twenty turns does not leave twenty pictures
+// resident.
 
-/// The count is over **image-carrying** file views: a text view of the same window costs tokens but
-/// no megabytes of base64, and a file view of a text file is not what the cap is about.
-#[test]
-fn open_image_views_counts_only_the_file_views_that_carry_a_picture() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    assert_eq!(ctx.open_image_views(), 0);
-
-    ctx.open_file_view_deduped("src/a.ts".to_string(), None, "code".to_string(), Vec::new());
-    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
-    assert_eq!(ctx.open_image_views(), 0, "neither of those is a picture");
-
-    ctx.open_file_view_deduped(
-        "mock/a.png".to_string(),
-        None,
-        "a PNG".to_string(),
-        vec![image(1_024)],
-    );
-    ctx.open_file_view_deduped(
-        "mock/b.png".to_string(),
-        None,
-        "a PNG".to_string(),
-        vec![image(2_048)],
-    );
-    assert_eq!(ctx.open_image_views(), 2);
-}
-
-/// **Closing an image view frees its slot.** The count is derived from the live window, so this is
-/// not a counter that has to be decremented anywhere — it is simply what the window now holds.
-#[test]
-fn closing_an_image_view_frees_its_slot() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    ctx.open_file_view_deduped(
-        "mock/a.png".to_string(),
-        None,
-        "a PNG".to_string(),
-        vec![image(1_024)],
-    );
-    assert_eq!(ctx.open_image_views(), 1);
-
-    ctx.evict_file_views(Some("mock/a.png"));
-    assert_eq!(ctx.open_image_views(), 0);
-}
-
-/// **A pinned autoloaded specification image does not count.**
+/// **A superseded copy stops carrying its picture.**
 ///
-/// It is the operator's choice, placed before the agent's first turn, and `view.close` cannot touch
-/// it. Counting it would let a configuration that pins four reference mockups make the cap
-/// permanently unreachable — every image view the agent ever tried to open refused, with the only
-/// remedy unable to reach the views occupying the cap.
+/// Re-opening across turns retags the older copy to `History` in place — its *text* stays in the
+/// window to protect a provider's cached prefix — but the picture is taken out. A picture is
+/// re-uploaded whole on every subsequent request for as long as it is resident, so leaving it would
+/// have an agent that refreshed one mockup four times paying for four uploads a turn while
+/// `view.current()` listed a single view.
 #[test]
-fn a_pinned_specification_image_does_not_occupy_the_cap() {
-    let mut ctx = code_model();
-    ctx.push_file_view_with_retention(
-        Some("specs/mockup.png".to_string()),
-        None,
-        "c1",
-        "the mockup",
-        vec![image(4_096)],
-        Retention::Pinned,
-    );
-    ctx.begin_turn(1);
-
-    assert_eq!(
-        ctx.open_image_views(),
-        0,
-        "a view the agent cannot close must not spend the budget it is refused against"
-    );
-    assert!(
-        !ctx.holds_image_view("specs/mockup.png", None),
-        "a pinned copy is never superseded, so re-opening the path is a NEW occupant"
-    );
-}
-
-/// The supersede check keys on `(path, region)` — the same key the push supersedes on — and knows
-/// the difference between a path that holds a picture and one that holds text.
-#[test]
-fn holds_image_view_answers_for_the_key_the_push_supersedes_on() {
-    let mut ctx = code_model();
-    ctx.begin_turn(1);
-    ctx.open_file_view_deduped(
-        "mock/a.png".to_string(),
-        None,
-        "a PNG".to_string(),
-        vec![image(1_024)],
-    );
-    ctx.open_file_view_deduped("src/a.ts".to_string(), None, "code".to_string(), Vec::new());
-
-    assert!(ctx.holds_image_view("mock/a.png", None));
-    assert!(
-        !ctx.holds_image_view("src/a.ts", None),
-        "a text view is not an image view"
-    );
-    assert!(!ctx.holds_image_view("mock/never-opened.png", None));
-    assert!(
-        !ctx.holds_image_view(
-            "mock/a.png",
-            Some(FileRegion {
-                offset: 1,
-                limit: 20
-            })
-        ),
-        "a different region is a different key, and would open a second view"
-    );
-}
-
-/// **A superseded copy stops occupying the cap.**
-///
-/// Re-opening across turns retags the older copy to `History` in place — its bytes stay in the
-/// window to protect a provider's cached prefix — but it is no longer a view, no longer closable by
-/// path, and therefore no longer an occupant. Counting it would leave an agent that refreshed one
-/// mockup four times unable to open anything, with `view.current()` listing a single view.
-#[test]
-fn a_superseded_image_view_stops_occupying_the_cap() {
+fn a_superseded_image_view_stops_carrying_its_picture() {
     let mut ctx = code_model();
     ctx.begin_turn(1);
     ctx.open_file_view_deduped(
@@ -512,15 +412,11 @@ fn a_superseded_image_view_stops_occupying_the_cap() {
         2,
         "the retagged copy stays in the window"
     );
-    assert_eq!(
-        ctx.open_image_views(),
-        1,
-        "but only the live view occupies the cap"
-    );
+    assert_eq!(ctx.open_views().len(), 1, "but only the live view is open");
     assert_eq!(
         resident_images(&ctx),
         1,
-        "and only the live view still carries a picture, so the cap counts what is uploaded"
+        "and only the live view still carries a picture, so what is uploaded is what is open"
     );
     let retired = &ctx.items()[0];
     assert!(
@@ -546,10 +442,9 @@ fn a_superseded_image_view_stops_occupying_the_cap() {
 fn re_opening_one_picture_every_turn_leaves_exactly_one_picture_resident() {
     let mut ctx = code_model();
 
-    // The workflow the supersede carve-out exists for: a program re-renders a screenshot and looks
-    // at it again, turn after turn. Every one of these is admitted (a supersede is never refused),
-    // so if a retired copy kept its bytes the window would end up holding twenty pictures that
-    // `open_image_views` reports as one — the cap counting a number that had stopped mattering.
+    // The workflow this exists for: a program re-renders a screenshot and looks at it again, turn
+    // after turn. If a retired copy kept its bytes the window would end up holding twenty pictures
+    // that `view.current()` reports as one, and the run would upload all twenty on every request.
     for turn in 1..=20 {
         ctx.begin_turn(turn);
         ctx.open_file_view_deduped(
@@ -560,11 +455,11 @@ fn re_opening_one_picture_every_turn_leaves_exactly_one_picture_resident() {
         );
     }
 
-    assert_eq!(ctx.open_image_views(), 1, "one view is open");
+    assert_eq!(ctx.open_views().len(), 1, "one view is open");
     assert_eq!(
         resident_images(&ctx),
         1,
-        "and one picture is resident: the cap bounds what the run actually pays per request"
+        "and one picture is resident: what the run pays per request follows what is open"
     );
 }
 
@@ -1013,117 +908,4 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
         .as_deref()
         .expect("the signal carries text");
     assert!(!text.contains("view.close"), "{text}");
-}
-
-// ---------------------------------------------------------------------------
-// Documentation views
-// ---------------------------------------------------------------------------
-
-/// **A documentation view is a view**, not the pinned block a doc lookup used to leave behind.
-///
-/// The whole of what `view.openDocsView` changed. A pin could not be closed, could not be
-/// superseded, and grew for the life of the agent; this is keyed by the function's name, replaces
-/// its own earlier copy, and answers to `view.close`. It shares the `Skill` band with a read skill
-/// because both are reference material gg holds — but a read skill is pinned and this is not, which
-/// is the only thing telling the two apart.
-#[test]
-fn a_docs_view_is_ephemeral_keyed_and_closable() {
-    let mut ctx = code_model();
-    ctx.open_docs_view(
-        "readFile".to_string(),
-        "readFile(path): FileRead".to_string(),
-    );
-
-    let item = ctx
-        .items()
-        .iter()
-        .find(|item| item.source() == GgContextSource::Skill)
-        .expect("the docs view is in the Documentation band");
-    assert_eq!(item.retention(), Retention::Ephemeral);
-    assert_eq!(item.label(), Some("readFile"));
-    assert_eq!(item.message().role, Role::User);
-    assert!(
-        item.message()
-            .content
-            .as_deref()
-            .expect("a body")
-            .starts_with("Documentation: readFile\n----\n"),
-        "it is headed by the function it documents, so the model can name it in a close"
-    );
-
-    // Closing it by that name reclaims it.
-    let closed = ctx.close_docs_views(Some("readFile"));
-    assert_eq!(closed.items, 1);
-    assert!(
-        !ctx.items()
-            .iter()
-            .any(|item| item.source() == GgContextSource::Skill)
-    );
-}
-
-/// Re-opening the same function's docs **replaces** the view rather than stacking a second copy —
-/// the same intent semantics `view.openText` has, and the reason a model may ask again freely.
-#[test]
-fn re_opening_a_functions_docs_supersedes_the_copy_that_was_there() {
-    let mut ctx = code_model();
-    ctx.open_docs_view("readFile".to_string(), "the first copy".to_string());
-    let opened = ctx.open_docs_view("readFile".to_string(), "the second copy".to_string());
-    assert!(opened.superseded);
-
-    let bodies: Vec<String> = ctx
-        .items()
-        .iter()
-        .filter(|item| item.source() == GgContextSource::Skill)
-        .map(|item| item.message().content.clone().unwrap_or_default())
-        .collect();
-    assert_eq!(bodies.len(), 1, "one copy, not two: {bodies:?}");
-    assert!(bodies[0].contains("the second copy"), "{bodies:?}");
-}
-
-/// **Closing docs views never touches a read skill.**
-///
-/// The two share a band and are told apart by retention alone, so the pinned carve-out
-/// `remove_views` already applies is exactly the rule that makes `view.close` safe here. Without it
-/// a program tidying up its documentation would silently drop an authored skill it cannot get back.
-#[test]
-fn closing_docs_views_spares_a_read_skill() {
-    let mut ctx = code_model();
-    ctx.push(
-        GgContextSource::Skill,
-        Retention::Pinned,
-        Message::user("the authored skill's body".to_string()),
-    );
-    ctx.open_docs_view("readFile".to_string(), "the function's docs".to_string());
-
-    // A blanket close — the most dangerous form — still spares the skill.
-    let closed = ctx.close_docs_views(None);
-    assert_eq!(closed.items, 1);
-    let left: Vec<String> = ctx
-        .items()
-        .iter()
-        .filter(|item| item.source() == GgContextSource::Skill)
-        .map(|item| item.message().content.clone().unwrap_or_default())
-        .collect();
-    assert_eq!(left.len(), 1);
-    assert!(left[0].contains("the authored skill's body"), "{left:?}");
-}
-
-/// A docs view shows up in `view.current()` as its own kind, so a model deciding what to close can
-/// see it — and a read skill does not, because it cannot be closed.
-#[test]
-fn open_views_reports_a_docs_view_and_not_a_read_skill() {
-    let mut ctx = code_model();
-    ctx.push(
-        GgContextSource::Skill,
-        Retention::Pinned,
-        Message::user("the authored skill's body".to_string()),
-    );
-    ctx.open_docs_view("readFile".to_string(), "the function's docs".to_string());
-
-    let open: Vec<(ViewKind, String)> = ctx
-        .open_views()
-        .into_iter()
-        .map(|view| (view.kind, view.selector))
-        .collect();
-    assert_eq!(open, vec![(ViewKind::Docs, "readFile".to_string())]);
 }

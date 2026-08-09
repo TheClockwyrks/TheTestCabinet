@@ -30,6 +30,8 @@ const SOURCE_ORDER: GgContextSource[] = [
   "runtime_error",
   "file_view",
   "text_view",
+  "docs_view",
+  "search_results",
   "skill",
   "memory",
   "task_list",
@@ -243,9 +245,9 @@ describe("ContextFillGraph", () => {
         capabilitySet={caps(["shell", "skills"])}
       />,
     );
-    // The band is named for both the things gg files under it — a pinned read skill and an
-    // ephemeral `view.openDocsView` page.
-    expect(screen.getByText("Skills & docs")).toBeInTheDocument();
+    // The two used to be one band called "Skills & docs"; a pinned read skill is now just
+    // "Skills", and what a model's own lookups cost it is its own band.
+    expect(screen.getByText("Skills")).toBeInTheDocument();
     expect(screen.queryByText("Memories")).not.toBeInTheDocument();
     expect(screen.queryByText("Task list")).not.toBeInTheDocument();
     expect(screen.getByText("System")).toBeInTheDocument();

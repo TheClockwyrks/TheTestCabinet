@@ -459,9 +459,8 @@ Attributing a view to its *selector* is what the `context_message` event's **`la
 carries: the window item's selector tag — a file view's workspace path, the same tag
 `evict_file_view { path }` targets; the label a program opened an
 [agent view](/gg/responses-as-code/#showing-yourself-things) under, which
-`view.close(label)` targets; or, for a **docs view**, the name of the function it
-documents, which is both its heading (`Documentation: openText`) and what
-`view.close(name)` targets. It rides on the pooled definition (emitted once per distinct message) rather
+`view.close(label)` targets; or, for a **docs view**, the name of the thing it documents,
+which is both its heading (`Documentation: openText`) and what a `docs.close` names. It rides on the pooled definition (emitted once per distinct message) rather
 than on each turn's pointer, because it is a property of the material, not of the turn.
 The tag also survives what the message envelope does not: a **locked**, autoloaded
 specification is re-framed as a `user` message across a

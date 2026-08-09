@@ -113,15 +113,14 @@ fn a_zero_memory_cap_falls_back_to_the_default() {
     );
 }
 
-/// Every param together, which is how a sweep configures an arm.
+/// Both params together, which is how a sweep configures an arm.
 #[test]
 fn every_param_resolves_together() {
     let limits = resolve_sandbox_limits(&set_with(
-        json!({ "timeoutSecs": 5, "maxMemoryBytes": 65_536, "imageViewCap": 9 }),
+        json!({ "timeoutSecs": 5, "maxMemoryBytes": 65_536 }),
     ));
     assert_eq!(limits.timeout, Duration::from_secs(5));
     assert_eq!(limits.max_memory_bytes, 65_536);
-    assert_eq!(limits.image_view_cap, Some(9));
 }
 
 /// The defaults themselves, asserted as values: the timeout is a pure infinite-loop guard (see the
@@ -131,121 +130,6 @@ fn the_defaults_are_the_expected_ceilings() {
     let limits = SandboxLimits::default();
     assert_eq!(limits.timeout, Duration::from_secs(30));
     assert_eq!(limits.max_memory_bytes, 268_435_456);
-    assert_eq!(
-        limits.image_view_cap, None,
-        "how many pictures a run needs resident is a property of the work, so the ceiling is off \
-         until a profile asks for one"
-    );
-}
-
-// ---------------------------------------------------------------------------------------------
-// The open-image-view cap
-// ---------------------------------------------------------------------------------------------
-
-/// A configured `imageViewCap` is honoured — including one far above the default, which is how a
-/// study asks what a run does when it can keep every reference image in front of it.
-#[test]
-fn a_configured_image_view_cap_is_honoured() {
-    let limits = resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 12 })));
-    assert_eq!(limits.image_view_cap, Some(12));
-    assert_eq!(
-        limits.timeout,
-        SandboxLimits::default().timeout,
-        "an unset param must not disturb the others"
-    );
-    assert_eq!(
-        limits.max_memory_bytes,
-        SandboxLimits::default().max_memory_bytes,
-        "an unset param must not disturb the others"
-    );
-}
-
-/// A cap of **one** is honoured and not clamped up: an arm measuring a run that may look at exactly
-/// one thing at a time is a legitimate ablation, and the cap is not a safety device.
-#[test]
-fn a_cap_of_one_is_honoured_rather_than_clamped() {
-    assert_eq!(
-        resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 1 }))).image_view_cap,
-        Some(1)
-    );
-}
-
-/// Zero, a negative and a non-numeric all fall back, exactly as they do for the two ceilings beside
-/// this one.
-///
-/// Zero deserves the same reading as a zero timeout — "not configured" rather than "no pictures at
-/// all". An arm that genuinely wants a run which can never look at anything expresses it by not
-/// enabling the file-view tooling, not by a `0` that is indistinguishable from an unset key in a
-/// half-filled sweep config.
-#[test]
-fn a_zero_negative_or_non_numeric_image_view_cap_falls_back() {
-    for nonsense in [json!(0), json!(-3), json!(0.5), json!("four"), json!(null)] {
-        let limits = resolve_sandbox_limits(&set_with(json!({ "imageViewCap": nonsense })));
-        assert_eq!(
-            limits.image_view_cap, None,
-            "{nonsense} must not configure a cap"
-        );
-    }
-}
-
-/// A **float** is honoured and truncated towards zero, because a JSON- or JavaScript-authored sweep
-/// has no integer type to distinguish `4.0` from `4` — reading only the integer form would silently
-/// run the default arm under a configured arm's name.
-#[test]
-fn a_float_image_view_cap_truncates_rather_than_falling_back() {
-    assert_eq!(
-        resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 6.0 }))).image_view_cap,
-        Some(6)
-    );
-    assert_eq!(
-        resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 6.9 }))).image_view_cap,
-        Some(6)
-    );
-}
-
-/// The param NAME is contract-visible: it is what the console's capability catalogue offers and what
-/// a persisted run's config records, so it is pinned here as a literal rather than only through the
-/// constant that spells it.
-#[test]
-fn the_image_view_cap_param_is_named_image_view_cap() {
-    assert_eq!(PARAM_IMAGE_VIEW_CAP, "imageViewCap");
-    assert_eq!(
-        resolve_sandbox_limits(&set_with(json!({ PARAM_IMAGE_VIEW_CAP: 7 }))).image_view_cap,
-        Some(7)
-    );
-}
-
-/// **Two agents in one configuration resolve two different caps.**
-///
-/// Responses-as-code is a per-agent capability, and this is the property that makes the param worth
-/// having: a builder working from four mockups and a reviewer shown one screenshot are configured
-/// separately in the same run. Resolution takes an agent profile precisely so that this is possible;
-/// the loop's end of it — that each agent's turns actually run under its own profile's ceilings — is
-/// asserted through the whole loop in `agent.sandbox.test.rs`.
-#[test]
-fn two_agents_in_one_configuration_resolve_different_caps() {
-    let profile = |name: &str, cap: u64| GgAgentConfig {
-        name: name.to_string(),
-        capabilities: vec![GgCapabilityConfig {
-            params: json!({ "imageViewCap": cap }),
-            ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
-        }],
-        ..GgAgentConfig::root()
-    };
-
-    assert_eq!(
-        resolve_sandbox_limits(&profile("builder", 6)).image_view_cap,
-        Some(6)
-    );
-    assert_eq!(
-        resolve_sandbox_limits(&profile("reviewer", 1)).image_view_cap,
-        Some(1)
-    );
-    assert_eq!(
-        resolve_sandbox_limits(&GgAgentConfig::root()).image_view_cap,
-        None,
-        "a third agent that configures nothing runs under no ceiling at all"
-    );
 }
 
 /// The limiter denies growth past the cap and — the part the classifier depends on — remembers that

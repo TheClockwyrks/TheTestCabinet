@@ -149,7 +149,7 @@ fn a_runtime_error_carries_no_report_of_the_turn_around_it() {
             name: "shell".to_string(),
             message: "withheld".to_string(),
         }],
-        view_refusals: vec!["imageViewCap reached".to_string()],
+        view_refusals: vec!["that body is over MAX_TEXT_VIEW_BYTES".to_string()],
         returned_value: true,
         deferred_note: Some("a microtask ran after the program ended".to_string()),
         ..quiet_outcome()
@@ -164,7 +164,7 @@ fn a_runtime_error_carries_no_report_of_the_turn_around_it() {
     for leaked in [
         "shell",
         "withheld",
-        "imageViewCap",
+        "MAX_TEXT_VIEW_BYTES",
         "return",
         "microtask",
         "finish",

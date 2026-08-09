@@ -39,7 +39,7 @@ import { agentCapabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
 import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
-// The thirteen context sources in their fixed, stable order (mirrors
+// The fifteen context sources in their fixed, stable order (mirrors
 // `GgContextSource::ALL`). Band order and colors are keyed to this list so the
 // graph stays stable across turns — a source is the same band, the same hue,
 // everywhere.
@@ -52,6 +52,8 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
   "runtime_error",
   "file_view",
   "text_view",
+  "docs_view",
+  "search_results",
   "skill",
   "memory",
   "task_list",
@@ -72,10 +74,9 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
 // tuning a run cares about — a program that never compiled versus one that ran and blew up (or
 // hit a sandbox limit) are different failures with different fixes.
 //
-// "Skills & docs" is one band holding two things, and says so: gg files both a pinned read skill
-// and an ephemeral `view.openDocsView` documentation page under `skill`. Calling the band
-// "Skills" would leave a reader hunting for the documentation their agent opened in a band that
-// never mentions it.
+// "Documentation" and "Skills" were one band and are now two, and the split is what makes either
+// of them readable: a documentation view is what a model's own lookups cost it, and a read skill is
+// authored material an operator put in front of it. Added together they answered neither question.
 export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
   system: "System",
   user_prompt: "User prompt",
@@ -85,7 +86,9 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
   runtime_error: "Runtime errors",
   file_view: "File views",
   text_view: "Agent views",
-  skill: "Skills & docs",
+  docs_view: "Documentation",
+  search_results: "Doc search",
+  skill: "Skills",
   memory: "Memories",
   task_list: "Task list",
   board: "Board",
@@ -132,9 +135,53 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 //   sibling; nearest under simulation `compiler_error` at ΔE 10.2 (tritan) and `text_view` at
 //   10.7 (deutan). Contrast 5.6:1 light, 3.5:1 dark.
 //
-// So the pair holds ΔE ≥ 19.5 against all twelve other bands in normal vision and ≥ 10.2 under
-// every one of deutan/protan/tritan — clear of the 15/8 floors, on a wider margin than the one
-// `text_view` was admitted on.
+// So the pair holds ΔE ≥ 19.5 against every other band in normal vision and ≥ 10.0 under every one
+// of deutan/protan/tritan — clear of the 15/8 floors, on a wider margin than the one `text_view`
+// was admitted on. (`text_view`'s own simulated minimum tightened from 10.5 to 8.1 when `docs_view`
+// joined, against `docs_view` under tritan; both are still clear of the 8 floor.)
+//
+// `docs_view` was admitted last, against the same three floors, and it is where the warm arc's
+// remaining slot went unspent. Sweeping the whole 8-bit cube at a 4-step stride, only two regions
+// clear both floors at all: a dark brick around #b13000, and a deep moss around #5c8c00. The brick
+// is the warmer, more obvious choice and is the worse one — it clears normal vision by 15.4 and
+// sits at exactly 3.0:1 on the console's own dark surface, with no margin in either place. The moss
+// clears by 18.5 and reads at 4.8:1 there.
+//
+// - `docs_view` #5c8c00 — nearest band in normal vision `assistant` at ΔE 18.5 (a bright lime
+//   against a dark moss: they share a hue and differ in lightness, which is exactly the relation
+//   `compiler_error` and `runtime_error` have), then `history` at 21.5; nearest under simulation
+//   `text_view` at ΔE 8.1 (tritan) and `board` at 8.2 (deutan). Contrast 4.8:1 on the dark console
+//   surface, 4.0:1 on white.
+//
+// It is the third green in the palette, which is a real cost and was the alternative's one
+// argument: the magenta wedge `skill` sits in has nothing left that clears the floors, and the
+// closest it comes — a crimson at #bc0848 — is 15.2 normal and 3.0:1 dark, i.e. the brick again by
+// another name. A band a colourblind reader can separate beats a band that sorts tidily by theme.
+//
+// `search_results` is that crimson, and the note above is why: it went to the fifteenth band because
+// by then it was the only thing left. Sweeping the whole 8-bit cube at a **2-step** stride against
+// the three floors — ΔE ≥ 15 in normal vision, ≥ 8 under each of deutan/protan/tritan (Machado 2009
+// at full severity, distances in OKLab ×100), ≥ 3:1 against both console surfaces — leaves exactly
+// one connected region, fourteen points of it, all in that crimson. There is no second option to
+// weigh this one against, and the palette is therefore full at fifteen.
+//
+// - `search_results` #bc0848 — nearest band in normal vision `board` at ΔE 15.2 (a red the eye
+//   separates by lightness and by how far into magenta this one sits), then `compiler_error` at 16.5
+//   and `runtime_error` at 17.1; nearest under simulation `compiler_error` at ΔE 8.0 (deutan) and
+//   `runtime_error` at 8.1 (tritan). Contrast 3.01:1 on the dark console surface, 6.43:1 on white.
+//
+// Those are the thinnest margins any band in this palette holds, and they are stated rather than
+// smoothed over: every one clears, none clears comfortably, and a sixteenth band would not. The
+// point of the region being one region is that there is nothing to trade — the alternatives inside
+// it differ in the third decimal place (#bc0648 buys 0.1 of normal ΔE and gives back the whole
+// contrast margin, landing on 3.0002:1), so the one with the most room against the accessibility
+// floor is the one taken.
+//
+// It also lands where it belongs by meaning. `docs_view` and `search_results` are the pair this
+// design's discovery chain is made of — what a model looked up, and what it cost to find — and they
+// read as unrelated hues, which is the opposite of the relation `compiler_error` and `runtime_error`
+// were given. That is a real loss, and it is the one the measurement forced: there was no colour in
+// the moss's own wedge that any colourblind reader could tell from the moss.
 export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   system: "#6ea8fe",
   user_prompt: "#ffca3a",
@@ -144,6 +191,8 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   runtime_error: "#ba04b5",
   file_view: "#4cc9c0",
   text_view: "#4361ee",
+  docs_view: "#5c8c00",
+  search_results: "#bc0848",
   skill: "#c77dff",
   memory: "#ff6b9d",
   task_list: "#b5e48c",
@@ -169,6 +218,11 @@ const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
     file_view: ["read-file", LEGACY_FILESYSTEM_CAP_ID],
     compiler_error: ["responses-as-code"],
     runtime_error: ["responses-as-code"],
+    // A documentation view is opened by a program, so only a responses-as-code run can have one —
+    // exactly as with the two error bands, and unlike `skill`, which a tool-calling run fills too.
+    docs_view: ["responses-as-code"],
+    // Same reasoning, and the same capability: only a program can run a search.
+    search_results: ["responses-as-code"],
     skill: ["skills"],
     memory: ["memories"],
     task_list: ["tasks"],

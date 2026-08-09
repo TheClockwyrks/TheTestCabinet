@@ -121,21 +121,28 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
         })
     }
 
-    /// Open (or replace) the documentation view for the function called `name`.
+    /// Open the documentation view for `name`, and the type views the agent's mode opens beside it.
     ///
     /// It sits beside `open_text_view` rather than beside the [docs directory](super::docs) for the
     /// reason the whole call exists: documentation is something the model *reads*, and everything
-    /// the model reads is a view — keyed, replaceable, closable, and charged to a band. A lookup
-    /// that handed the text straight back to the program instead was a second channel into the
-    /// model that nothing could account for.
+    /// the model reads is a view — keyed, closable, and charged to a band. A lookup that handed the
+    /// text straight back to the program instead was a second channel into the model that nothing
+    /// could account for.
+    ///
+    /// **Every** view the call placed is recorded, which is why the api answers with a list. One
+    /// call can place a function's view and one per type in its signature, and the turn's feedback
+    /// has to report the window the model actually got. An empty list is a real answer too: it is
+    /// what a re-open of something already open produces, since that is a total no-op.
     ///
     /// An unknown or unbound name is `not-found`, worded so the model is pointed at the one call
     /// that enumerates what it *does* have.
     fn open_docs_view(&mut self, name: String) -> Result<(), ToolError> {
         self.recorded(VIEW_OPEN_DOCS_VIEW, |state, rec| {
             match state.api(rec).open_docs_view(name) {
-                Ok(view) => {
-                    state.record_view_opened(view);
+                Ok(views) => {
+                    for view in views {
+                        state.record_view_opened(view);
+                    }
                     Ok(())
                 }
                 Err(refusal) => Err(state.refuse_view(OPEN_DOCS_VIEW_FUNCTION, refusal)),
@@ -180,7 +187,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// membrane's *tool* refusal roster: nothing was dispatched and no tool was withheld, so a
     /// refusal filed there would make the turn's report claim a tool call that never existed. The
     /// view report is where it belongs.
-    fn refuse_view(&mut self, function: &str, refusal: ViewRefusal) -> ToolError {
+    pub(super) fn refuse_view(&mut self, function: &str, refusal: ViewRefusal) -> ToolError {
         self.record_view_refusal(&refusal.message);
         ToolError {
             code: error_code(Some(refusal.failure)),
@@ -207,6 +214,23 @@ fn open_view(view: OpenViewInfo) -> OpenView {
             HostViewKind::File => ViewKind::File,
             HostViewKind::Text => ViewKind::Text,
             HostViewKind::Docs => ViewKind::Docs,
+            // The [search-results view](crate::context::ViewKind::Search) is declared to a program
+            // as a **text** view, and this is the one place gg's own taxonomy and the guest's do not
+            // line up.
+            //
+            // It is a compromise with a date on it rather than a judgement. `view-kind` is a WIT
+            // enum, and a component's import is only satisfied by a host whose types it is a
+            // supertype of — so adding a fourth case to it makes every one of the eleven committed
+            // guests refuse to instantiate until it is rebuilt, which is the stage that reshapes the
+            // SDKs and not this one. What is chosen instead is the word that is *behaviourally*
+            // right at this boundary: like a text view and unlike a documentation view, the results
+            // carry composed text under one label and are closed by `view.close` rather than by the
+            // capability-bought `docs.close-doc-view`. A model told `docs` would reach for the close
+            // that cannot remove it.
+            //
+            // Nothing about the measurement rides on this. The band is gg's own either way, so what
+            // discovery costs a window is still reported apart from every other view.
+            HostViewKind::Search => ViewKind::Text,
         },
         selector,
         tokens,

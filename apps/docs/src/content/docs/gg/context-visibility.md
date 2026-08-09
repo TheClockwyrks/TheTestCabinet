@@ -94,13 +94,21 @@ can produce: with the [board](/gg/project-management/) disabled there is no Boar
 explain. A source that holds tokens is never hidden, whatever the configuration says, so
 nothing can silently drop out of the stack.
 
-**Skills & docs** is the band that does not follow from one capability, and it is worth
-knowing why it can appear in a run you would not expect it in. It has two occupants: a
-pinned [skill](/gg/skills/) an agent read, and the ephemeral documentation view a
-[responses-as-code](/gg/responses-as-code/) program opened with `view.openDocsView`. The
-second is bound whatever the capability set says, because reading the signature of a call
-you were given is not a privilege, so a run with skills switched off can still fill the band
-— and a run whose agents look up a lot of documentation reads on the graph as one.
+**Documentation** is the band that does not follow from one capability, and it is worth
+knowing why it can appear in a run you would not expect it in. It holds the views a
+[responses-as-code](/gg/responses-as-code/) program opened with `view.openDocsView`, and those
+are bound whatever the capability set says, because reading the signature of a call you were
+given is not a privilege. So a run with skills switched off can still fill it, and a run whose
+agents look up a lot of documentation reads on the graph as one. It used to be folded in with
+**Skills**, which made both unreadable: what a model's own lookups cost it and what an operator
+pinned in front of it are different questions, and one number answered neither.
+
+**Doc search** is its neighbour and holds one thing: the results of the agent's last
+documentation search. It is a band rather than a line inside **Documentation** because it
+answers a different question — not what the model read, but what it spent to *find* it — and
+with the surface discovered by searching rather than listed in the prompt, that cost is one of
+the things a run is read for. There is only ever one such view, under one selector, because
+each search replaces the last.
 
 The bands give the window's **shape**; the figures come on **hover**. Pointing at any
 turn marks it with a rule and gives that turn's whole composition — the window total,
@@ -243,8 +251,9 @@ puts material in front of itself by opening a **view** — `view.openFile(path)`
 `view.openText(label, body)` for something it computed, `view.openDocsView(fn)` for a
 function's signature and documentation — and gg pushes one message per open view into the
 next prompt. A file view lands in the same band a `read_file` result does; a text view lands
-in a band of its own, **Agent views**, keyed by the label the agent gave it; a docs view
-lands in **Skills & docs**, keyed by the function's name, beside any skill the agent read.
+in a band of its own, **Agent views**, keyed by the label the agent gave it; a docs view lands
+in **Documentation**, keyed by the name of the thing it documents; and the results of a
+`docs.search` land in **Doc search**, under one constant selector.
 The bands are separate because the *authorship* is: a file view is workspace material with an
 on-disk truth behind it, tool output is gg's own reporting back to the agent, documentation
 is gg describing its own surface, and an agent view exists nowhere but the window.
@@ -254,14 +263,21 @@ page's append-per-read rule does not apply — and the difference is what the tw
 
 - `read_file` names an **action**. It happened; it returned what the file said at that
   moment; each one appends. Collapsing two reads would be rewriting the thread.
-- `view.openFile` / `view.openText` / `view.openDocsView` name an **intent** — _this should
-  be visible to me_. Re-stating an intent replaces it. A program that loops over changed
-  files and re-opens each one would otherwise pile up a duplicate per turn, and the per-item
-  accounting the view mechanism exists to deliver would be worse than the single blob it
-  replaced. A second lookup of the same function supersedes the first for the same reason,
-  which is also why a documentation block is always self-contained: it repeats every type
-  declaration it references rather than relying on one an earlier lookup showed, since that
-  earlier view may well have been closed.
+- `view.openFile` / `view.openText` — and the results view a `docs.search` opens — name an
+  **intent** — _this should be visible to me_. Re-stating an intent replaces it.
+
+  A program that loops over changed files and re-opens each one would otherwise pile up a
+  duplicate per turn, and the per-item accounting the view mechanism exists to deliver would
+  be worse than the single blob it replaced.
+
+`view.openDocsView` is the exception to the exception: re-opening something already open does
+**nothing at all** — not a replacement, nothing. Its content is a constant, since the
+documentation for one name is the same bytes every time, so moving the item to the tail would
+rewrite the middle of the prompt and drop every cached token after it in exchange for text the
+model already had. The documentation band is therefore **append-only** for the life of a
+session, and taking a page back out is the only thing that can disturb it — which is why
+closing documentation is a separate call bought by its own capability, `docview-close`, off by
+default.
 
 Superseding still honours append-only: a copy already sent on an earlier turn is left where
 it sits and retagged as ordinary history with its selector cleared, and the new copy is
@@ -270,13 +286,12 @@ current turn**, which no provider has seen, is replaced in place instead, becaus
 no cached prefix to protect and no history worth keeping; a view opened and closed inside
 one program therefore reaches the window not at all.
 
-Four things do remove material from the middle of the window, and each is a deliberate
+Five things do remove material from the middle of the window, and each is a deliberate
 choice whose point is to reclaim tokens: `evict_file_view` and `archive_thread`, both
 [invoked by the agent](/gg/agent-managed-context/); `view.close(selector)`, which a code-mode
 program may call whether or not it holds the agent-managed-context capability, since closing
-what it opened itself is not a privilege, and which sweeps all three view bands because a
-selector is what the model wrote and it need not say which kind it meant — a pinned skill
-sharing the documentation band is spared, as every pinned item is; and a
-[compaction](/gg/compaction/) boundary, which
-rewrites the window wholesale. Each necessarily resets the cache; that is the price of the
-space they buy back.
+what it opened itself is not a privilege, and which sweeps the file and text bands because a
+selector is what the model wrote and it need not say which of the two it meant; the `docs`
+module's own close, which reaches the documentation band and is bought by `docview-close`; and
+a [compaction](/gg/compaction/) boundary, which rewrites the window wholesale. Each necessarily
+resets the cache; that is the price of the space they buy back.

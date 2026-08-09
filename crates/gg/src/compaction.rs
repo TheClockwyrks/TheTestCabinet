@@ -72,6 +72,7 @@ use test_cabinet_core::gg::{
 };
 
 use crate::context::{ContextModel, Retention, item_heading};
+use crate::docs::DocsRuntime;
 use crate::memories::MemoryCalls;
 use crate::model::{ImageContent, Message, ModelClient, Role};
 use crate::prompts::{self, CompactionPromptContext};
@@ -924,6 +925,49 @@ pub struct RestoredFile {
     pub images: Vec<ImageContent>,
 }
 
+/// One [documentation view](GgContextSource::DocsView) re-derived for the far side of a compaction
+/// boundary: the key it is addressed under, and the body gg renders for that key.
+///
+/// The counterpart of [`RestoredFile`], and it carries a body for the opposite reason that one
+/// carries a path. A file's truth is on disk and can have moved, so the honest thing to restore is
+/// the *reference* and let the re-read report what is there now. A docview's truth is a catalogue
+/// compiled into this binary, read through a scope that cannot change while the agent runs — so
+/// there is nothing to be stale against, and rendering it from the key is a pure function that
+/// produces the same bytes every time.
+///
+/// It is a body rather than a key here only because this function has no
+/// [documentation runtime](crate::docs::DocsRuntime) in reach to render one with, and threading a
+/// runtime through a window rewrite to re-derive text the caller can render in one line would be a
+/// dependency bought for nothing. The re-derivation itself is [`restore_docviews`]'s.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestoredDocview {
+    /// The key the view is addressed under.
+    pub key: String,
+    /// The documentation gg renders for it, without the heading the window prefixes.
+    pub body: String,
+}
+
+/// Re-derive every [documentation view](GgContextSource::DocsView) open in `context` from its key,
+/// ready to be handed back to [`apply_compaction`] once the window has been reset.
+///
+/// Called **before** the rewrite, for the reason [`RestoredFile`]s are read before it: the keys are
+/// in the window the reset is about to empty. A key `docs` no longer resolves is dropped rather than
+/// carried as an error — unlike a file path, which the model chose and may be wondering about, a
+/// docview's key came from gg's own catalogue, so a miss is drift in gg and there is nothing the
+/// model could act on.
+pub fn restore_docviews(context: &ContextModel, docs: &DocsRuntime) -> Vec<RestoredDocview> {
+    context
+        .open_docviews()
+        .into_iter()
+        .filter_map(|open| {
+            Some(RestoredDocview {
+                body: docs.read_any(&open.key)?,
+                key: open.key,
+            })
+        })
+        .collect()
+}
+
 /// Rewrite the window at a compaction boundary and produce the
 /// [`Compaction`](GgTelemetryKind::Compaction) telemetry for it — the **one** place every strategy
 /// converges, so the seven differ only in how `request` was obtained.
@@ -933,7 +977,7 @@ pub struct RestoredFile {
 /// then the summary is appended last, so the last thing the model reads is the recap that tells it
 /// where to continue.
 ///
-/// # Views do not survive the boundary
+/// # Text views do not survive the boundary, and documentation does
 ///
 /// A [text view](GgContextSource::TextView) — material a
 /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) program composed for
@@ -945,14 +989,24 @@ pub struct RestoredFile {
 /// name in `files`, or a [memory](test_cabinet_core::gg::CAPABILITY_MEMORIES). A file view *is*
 /// carried across when the model names its path, because re-reading it is cheap and truthful.
 ///
+/// A [documentation view](GgContextSource::DocsView) is carried across too, and unlike a file it is
+/// carried across **without being asked for**. Documentation is not the agent's material and not the
+/// workspace's: it is the description of the surface the agent is working through, and with search
+/// and on-demand lookup as the only route to it, an agent that compacted would come back holding no
+/// reference to the API it was in the middle of using — and no way to know that is what happened.
+/// So the caller re-derives each open view [from its key](RestoredDocview) and hands them here, in
+/// first-open order, which is what keeps the band's append-only ordering true across the boundary.
+///
 /// `fallback` marks a summary that is gg's fixed note rather than a real recap, so a study reads a
 /// failed condensation as a failure rather than as a terse strategy.
+#[allow(clippy::too_many_arguments)]
 pub fn apply_compaction(
     context: &mut ContextModel,
     setup: &CompactionSetup,
     retained: RetainedCounts,
     request: &CompactionRequest,
     files: Vec<RestoredFile>,
+    docviews: Vec<RestoredDocview>,
     fallback: bool,
 ) -> GgTelemetryKind {
     let before_tokens = context.total_tokens();
@@ -971,6 +1025,13 @@ pub fn apply_compaction(
             Message::user(file.body).with_images(file.images),
             Some(file.path),
         );
+    }
+    // After the files and before the summary: the documentation the agent was reading is reference
+    // material, so it sits behind the workspace material it was being applied to and ahead of the
+    // recap that tells the model where to continue. Re-opened rather than re-pushed, so a key that
+    // somehow arrived twice still lands once.
+    for docview in docviews {
+        context.open_docview(docview.key, docview.body);
     }
     context.push(
         GgContextSource::History,

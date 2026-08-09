@@ -700,6 +700,18 @@ export const ASSISTANT_MESSAGE_OPTIONS = [
 export const ASSISTANT_MESSAGE_HINT =
   "No post-processing records the reply exactly as the model sent it (healing still runs and is disclosed, but its output is not stored). Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not.";
 
+// Which SDK types a documentation lookup opens beside the function it was asked for. Three
+// arms, none of them obviously right, which is why it is a knob rather than a decision —
+// see the option hint for what each one costs.
+export const DOC_VIEW_TYPES_OPTIONS = [
+  { value: "", label: "Return position (default)" },
+  { value: "return-and-parameters", label: "Return position and arguments" },
+  { value: "off", label: "None" },
+] as const;
+
+export const DOC_VIEW_TYPES_HINT =
+  "Opening a function's documentation also opens the SDK types its signature mentions, as views of their own. Return position lands the agent on what it can do with the value it is about to get. Return position and arguments opens everything the signature names, which is more up front and fewer follow-up lookups. None opens nothing and leaves the agent to ask for a type by name. Always exactly one level: a type's own view never drags in a further type.";
+
 // --- Loop detection ---------------------------------------------------------------
 //
 // Some models get stuck generating: thousands of near-identical lines (`void 0;`,
@@ -1308,11 +1320,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         placeholder: "e.g. 67108864",
       },
       {
-        key: "imageViewCap",
-        label: "Max open image views",
-        kind: "number",
-        placeholder: "no limit",
-        hint: "How many views carrying a picture this agent may hold open at once, counted from the views open at that moment: closing one with `view.close` frees a slot. Opening one past the cap throws a catchable limit-exceeded error — no view is opened and nothing is shown. Text views are not counted, and neither is a pinned autoloaded specification image. Empty is no limit, which is gg's default.",
+        key: "docViewTypes",
+        label: "Documentation types",
+        kind: "select",
+        options: DOC_VIEW_TYPES_OPTIONS,
+        hint: DOC_VIEW_TYPES_HINT,
       },
       {
         key: "healing",
@@ -1329,6 +1341,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: ASSISTANT_MESSAGE_HINT,
       },
     ],
+  },
+  {
+    id: "docview-close",
+    name: "Close documentation",
+    group: "Context",
+    // Nothing opens a documentation view outside responses-as-code, so there is nothing for a
+    // tool-calling agent to close.
+    modes: ["rac"],
+    defaultOn: false,
+    purpose:
+      "Let the agent take a documentation view back out of its own context window.",
   },
   {
     id: "program-library",

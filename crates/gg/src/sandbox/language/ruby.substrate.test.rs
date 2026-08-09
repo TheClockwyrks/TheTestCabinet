@@ -139,6 +139,7 @@ fn evaluate(
         modules,
         ending,
         library,
+        docview_close: false,
     };
     let mut store = bounded_store(MembraneState::new(api, ruby(), scope, limits, None), limits);
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
@@ -1232,6 +1233,7 @@ end
         modules: &[],
         ending: RunEnding::None,
         library: false,
+        docview_close: false,
     };
     let started = Instant::now();
     let mut store = bounded_store(
@@ -1324,6 +1326,7 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
         modules: &[],
         ending: RunEnding::None,
         library: false,
+        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(FakeToolApi::new(&log), ruby(), scope, limits, None),

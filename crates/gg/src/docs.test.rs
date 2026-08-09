@@ -71,15 +71,18 @@ fn view_always_carries_open_docs_view() {
     assert!(names.iter().any(|n| n == "openDocsView"), "{names:?}");
 }
 
-/// A doc lookup returns the signature, the description, and every referenced type's declaration —
-/// **every time**, with no dedup against what an earlier lookup showed.
+/// **A function's lookup is the signature and the description, and stops there.**
 ///
-/// That is a property of documentation being a [view](crate::context::ViewKind::Docs) rather than a
-/// pinned block: a view can be closed and it can be replaced, so a block that omitted a declaration
-/// because some *other* block already carried it would stop making sense the moment the model tidied
-/// up. Each one has to read correctly on its own.
+/// The declarations of the types it mentions are not folded in: each is a
+/// [view of its own](DocsRuntime::read_type), placed beside the function according to the agent's
+/// [type mode](DocViewTypes). Folding them in repeated a record in full in every function view that
+/// mentioned it, with no way to reclaim any of the copies — and left the three arms of the mode with
+/// nothing to differ about.
+///
+/// The view still reads correctly on its own, which is what the old shape was protecting: the
+/// signature names its types, and a lookup of a type declares one.
 #[test]
-fn every_lookup_is_self_contained() {
+fn a_function_lookup_is_its_signature_and_its_prose() {
     let docs = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
@@ -93,14 +96,91 @@ fn every_lookup_is_self_contained() {
         "the signature is included: {first}"
     );
     assert!(
-        first.contains("FileRead"),
-        "the referenced type's declaration is included: {first}"
+        !first.contains("interface FileRead"),
+        "but the referenced type's DECLARATION is a view of its own: {first}"
     );
 
-    // A second lookup says exactly the same thing. A repeat that quietly said less would be a view
-    // the model could not trust to be complete.
+    // A lookup is a pure projection of the catalogue through this agent's scope, so a second one
+    // says exactly the same thing — which is what lets a compaction and a restore re-derive a
+    // docview's body from its key rather than replay a stored copy of it.
     let second = docs.read("readFile").expect("readFile is bound");
     assert_eq!(first, second);
+}
+
+/// **A type is addressable by name**, and its lookup is the declaration, the paragraph explaining it,
+/// and a line per member.
+///
+/// The gate is *reachability*, not the type's own: an agent that may call `readFile` reads
+/// `FileRead`, because refusing it the declaration of what `readFile` hands back would be refusing
+/// it half of a call it holds. What the gate stops is the other case — see
+/// [`a_type_only_a_withheld_function_reaches_is_not_readable`].
+#[test]
+fn a_type_lookup_declares_the_type_and_explains_its_members() {
+    let docs = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    let file_read = docs
+        .read_type("FileRead")
+        .expect("FileRead is in the catalogue");
+    assert!(file_read.contains("FileRead"), "{file_read}");
+    assert!(
+        file_read.contains("What `readFile` returned"),
+        "the type is explained, not just declared: {file_read}"
+    );
+    assert!(docs.read_type("NotAType").is_none());
+}
+
+/// **A type no function this agent binds can reach is not readable by name** — the half of the
+/// discovery surface that would otherwise leak past the permission filter.
+///
+/// A type's body names the calls that produce it and the members that hang off it, so an agent
+/// granted only `read_file` reading `SubagentHandle` by name would learn `sendMessage` and
+/// `waitForSubagents` — the very names [`search`](DocsRuntime::search) refuses it — and would then
+/// spend a turn writing a call that dies at the membrane. The two halves of the same carve-out
+/// answer the same predicate, and the refusal is a plain `None`, indistinguishable from a name that
+/// does not exist.
+#[test]
+fn a_type_only_a_withheld_function_reaches_is_not_readable() {
+    let reader = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    assert!(
+        reader.read_type("SubagentHandle").is_none(),
+        "only `spawn_subagent` and its family reach it, and this agent has neither"
+    );
+    assert_eq!(reader.read_any("SubagentHandle"), None);
+
+    // And the same name is readable for an agent that does hold one of those calls, so what is being
+    // asserted is the gate rather than the type being unrenderable.
+    let delegator = DocsRuntime::new(
+        vec!["spawn_subagent".to_string()],
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    assert!(delegator.read_type("SubagentHandle").is_some());
+}
+
+/// **One key, one lookup, whichever kind of thing it names** — the entry point everything that
+/// re-derives a docview from its key goes through, so a re-seeded window cannot come back holding a
+/// different kind of block than the one it lost.
+#[test]
+fn read_any_resolves_a_function_or_a_type() {
+    let docs = DocsRuntime::new(
+        enabled(),
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    assert_eq!(docs.read_any("readFile"), docs.read("readFile"));
+    assert_eq!(docs.read_any("FileRead"), docs.read_type("FileRead"));
+    assert!(docs.read_any("neitherOne").is_none());
 }
 
 /// **A lookup says what each argument is for, and what each field of the result means.**
@@ -128,14 +208,13 @@ fn a_lookup_explains_every_argument_and_every_field() {
         "{read_file}"
     );
 
-    // And the referenced type: its own paragraph, then a line per member.
+    // The referenced type's own members are explained in ITS view, not in this one.
+    let file_read = docs
+        .read_type("FileRead")
+        .expect("FileRead is in the catalogue");
     assert!(
-        read_file.contains("What `readFile` returned"),
-        "the type is explained, not just declared: {read_file}"
-    );
-    assert!(
-        read_file.contains("\n  totalLines: number — "),
-        "{read_file}"
+        file_read.contains("\n  totalLines: number — "),
+        "{file_read}"
     );
 }
 
@@ -191,11 +270,10 @@ fn a_lookup_explains_the_arms_of_a_union() {
         &[],
         GgProgramLanguage::TypeScript,
     );
-    let update_issue = docs.read("updateIssue").expect("updateIssue is bound");
-    assert!(
-        update_issue.contains("\n  \"in_progress\" — "),
-        "{update_issue}"
-    );
+    let status = docs
+        .read_type("IssueStatus")
+        .expect("the status union is catalogued");
+    assert!(status.contains("\n  \"in_progress\" — "), "{status}");
 }
 
 /// A lookup for a function the run did not enable is `None` — the model is told the name is not
@@ -222,15 +300,17 @@ fn read_documents_the_list_meta_function() {
         GgProgramLanguage::TypeScript,
     );
     let list = docs.read("list").expect("list is a meta function");
-    // Its signature, its paragraph and its return type all come from the SDK declaration the guest
-    // binds it from — including `FunctionSummary`'s own declaration, which a lookup that named a
-    // return type it could not then define would have left the model to guess at.
+    // Its signature and its paragraph both come from the SDK declaration the guest binds it from.
     assert!(list.contains("list(): FunctionSummary[]"), "{list}");
-    assert!(list.contains("interface FunctionSummary"), "{list}");
-    assert!(list.contains("summary"), "{list}");
     // And it points at the call that opens a function's full documentation.
     assert!(list.contains("view.openDocsView"), "{list}");
     assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
+    // The type it names is a view of its own, reachable by that name.
+    assert!(
+        docs.read_type("FunctionSummary")
+            .is_some_and(|summary| summary.contains("summary")),
+        "the return type a signature names is addressable"
+    );
 }
 
 /// A missed lookup is answered with the bound names nearest it — the tool name the model wrote

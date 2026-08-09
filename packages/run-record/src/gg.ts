@@ -761,6 +761,8 @@ export type GgContextSource =
   | "runtime_error"
   | "file_view"
   | "text_view"
+  | "docs_view"
+  | "search_results"
   | "skill"
   | "memory"
   | "task_list"
@@ -1302,15 +1304,17 @@ export type GgRetainedState = {
  * the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
  * needs (safe — it can re-read the file later), [close text views](Self::CloseTextViews)
  * it composed and no longer wants in front of it, [close documentation
- * views](Self::CloseDocsViews) it has finished with, or [archive a section of its
+ * views](Self::CloseDocsViews) it has finished with, [close the results of its last
+ * documentation search](Self::CloseSearchViews), or [archive a section of its
  * thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
- * `search_archive`). All four reclaim tokens; a `search_archive` call reclaims nothing and
+ * `search_archive`). All five reclaim tokens; a `search_archive` call reclaims nothing and
  * so is reported only as an ordinary tool result, not as a `ContextManaged` action.
  */
 export type GgContextAction =
   | "evict_file_views"
   | "close_text_views"
   | "close_docs_views"
+  | "close_search_views"
   | "archive_thread";
 
 /**
@@ -2961,6 +2965,20 @@ export type GgTelemetryKind =
        * size), for the console feed.
        */
       detail: string;
+      /**
+       * Where in the window the **earliest** removed item sat, as its zero-based position among
+       * the thread's items just before the removal; `None` for an action that removed nothing.
+       *
+       * The tokens above say what a reclaim *bought*; this says what it **cost**. A provider's
+       * prompt cache serves a prefix of a request it has already seen, so removing an item
+       * invalidates everything from its position onward — and reclaiming three hundred tokens
+       * from the head of a long window is a materially worse trade than reclaiming the same three
+       * hundred from its tail. Nothing else in the record can distinguish the two, which is why
+       * a close of the otherwise append-only [documentation band](GgContextSource::DocsView)
+       * reports it: whether the [close capability](CAPABILITY_DOCVIEW_CLOSE) pays for itself is
+       * exactly this comparison.
+       */
+      earliestRemoved?: number;
     }
   | {
       type: "archive_state";
@@ -4023,6 +4041,20 @@ export type GgTelemetryEvent = {
        * size), for the console feed.
        */
       detail: string;
+      /**
+       * Where in the window the **earliest** removed item sat, as its zero-based position among
+       * the thread's items just before the removal; `None` for an action that removed nothing.
+       *
+       * The tokens above say what a reclaim *bought*; this says what it **cost**. A provider's
+       * prompt cache serves a prefix of a request it has already seen, so removing an item
+       * invalidates everything from its position onward — and reclaiming three hundred tokens
+       * from the head of a long window is a materially worse trade than reclaiming the same three
+       * hundred from its tail. Nothing else in the record can distinguish the two, which is why
+       * a close of the otherwise append-only [documentation band](GgContextSource::DocsView)
+       * reports it: whether the [close capability](CAPABILITY_DOCVIEW_CLOSE) pays for itself is
+       * exactly this comparison.
+       */
+      earliestRemoved?: number;
     }
   | {
       type: "archive_state";

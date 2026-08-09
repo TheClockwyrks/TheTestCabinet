@@ -225,15 +225,22 @@ Extending the `compact` request to name views was considered and is deliberately
 it would give the model a second list to curate at the moment its window is fullest, for
 material it can already preserve through either of the two mechanisms above.
 
-A **documentation view** does not survive either, and that one costs nothing. The
-Documentation band has two occupants and retention is what tells them apart: a skill the
-agent **read** is pinned, so it crosses the boundary with the retained list above, while
-the documentation a program opened with
-[`view.openDocsView`](/gg/responses-as-code/#the-typed-tool-surface) is ephemeral and does
-not. Nothing is lost by that, because a lookup is **self-contained** — it always carries
-every type declaration it references, deduped against nothing an earlier lookup showed — so
-an agent on the far side of a boundary that finds it needs a signature again simply asks for
-it again, and has it back on its next turn at the same one-turn cost it paid the first time.
+A **documentation view** is the exception, and it survives — **without the model naming it**,
+unlike a file. It is ephemeral like every other view, so the reset takes it; gg then re-opens
+each one, in the order it was first opened, before appending the summary.
+
+It is carried across by its **key**, never by its bytes. The documentation for one name is a
+pure function of that name, this agent's language and what its scope binds, and none of those
+can change while an agent runs — so what crosses the boundary is the name, and the body is
+rendered again on the far side. That is the same principle a re-read file follows, for a
+different reason: a file is re-read because its truth can have moved, and a lookup is
+re-rendered because there is no second copy of it worth storing.
+
+Why it is carried at all, when a text view is not: documentation is neither the agent's
+material nor the workspace's. It is the description of the surface the agent is working
+through, and with on-demand lookup as the only route to it, an agent that compacted would come
+back holding no reference to the API it was in the middle of using — and nothing in its window
+to tell it that is what happened.
 
 ## A succession compacts before its first turn
 

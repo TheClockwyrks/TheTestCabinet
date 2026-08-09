@@ -37,6 +37,7 @@ fn code_on() -> CodeSetup {
         limits: SandboxLimits::default(),
         healing: HealingConfig::default(),
         assistant_messages: AssistantMessageMode::None,
+        doc_view_types: crate::docs::DocViewTypes::default(),
     }
 }
 

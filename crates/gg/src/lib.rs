@@ -53,6 +53,7 @@ mod programs;
 mod prompts;
 mod reference;
 mod sandbox;
+mod search;
 mod skills;
 mod subagents;
 mod summary;

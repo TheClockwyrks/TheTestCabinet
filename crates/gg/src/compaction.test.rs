@@ -76,6 +76,7 @@ async fn compact_if_needed(
         retained,
         &request,
         Vec::new(),
+        Vec::new(),
         fallback,
     ))
 }
@@ -549,6 +550,7 @@ fn restored_files_are_seeded_as_tagged_user_file_views() {
             body: "FILE BODY: export function main() {}".to_string(),
             images: Vec::new(),
         }],
+        Vec::new(),
         false,
     );
     assert!(matches!(event, GgTelemetryKind::Compaction { .. }));
@@ -573,6 +575,84 @@ fn restored_files_are_seeded_as_tagged_user_file_views() {
     assert_eq!(reclaimed.paths, vec!["src/main.ts".to_string()]);
 }
 
+/// **The documentation an agent had open crosses the boundary, re-derived from its keys.**
+///
+/// It is the one thing carried across without the model naming it, and the reason is that
+/// documentation is neither the agent's material nor the workspace's: it is the description of the
+/// surface the agent is working through, and with on-demand lookup as the only route to it, an agent
+/// that compacted would come back holding no reference to the API it was in the middle of using.
+///
+/// The keys are read from the window **before** the reset, exactly as the file paths are, and the
+/// bodies are rendered again from *this* agent's own documentation runtime rather than replayed —
+/// which is what [`restore_docviews`] is for, and what the second half of this asserts by checking
+/// the body against what the runtime says now.
+#[test]
+fn the_documentation_an_agent_had_open_crosses_the_boundary() {
+    let setup = setup(CompactionStrategy::SelfCompaction, 0.5, true);
+    let mut ctx = model(400);
+    ctx.set_system("SYSTEM PROMPT");
+    ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
+
+    let docs = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        crate::ending::EndingRole::Standard,
+        &[],
+        test_cabinet_core::gg::GgProgramLanguage::TypeScript,
+    );
+    ctx.open_docview(
+        "readFile".to_string(),
+        docs.read("readFile").expect("readFile is bound"),
+    );
+    ctx.open_docview(
+        "FileRead".to_string(),
+        docs.read_type("FileRead").expect("FileRead is catalogued"),
+    );
+
+    // Read before the rewrite, because the reset is about to empty the band the keys are in.
+    let carried = restore_docviews(&ctx, &docs);
+    assert_eq!(
+        carried.iter().map(|d| d.key.as_str()).collect::<Vec<_>>(),
+        vec!["readFile", "FileRead"]
+    );
+
+    apply_compaction(
+        &mut ctx,
+        &setup,
+        RetainedCounts::default(),
+        &CompactionRequest {
+            summary: "the recap".to_string(),
+            files: Vec::new(),
+        },
+        Vec::new(),
+        carried,
+        false,
+    );
+
+    let open = ctx.open_docviews();
+    assert_eq!(
+        open.iter().map(|d| d.key.as_str()).collect::<Vec<_>>(),
+        vec!["readFile", "FileRead"],
+        "both are back, in first-open order"
+    );
+    assert_eq!(
+        open[0].body,
+        docs.read("readFile").expect("readFile is bound"),
+        "and the body is what the runtime renders now, not a stored copy"
+    );
+    // The summary still lands last, behind the documentation.
+    let contents: Vec<String> = ctx
+        .messages()
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect();
+    assert!(
+        contents
+            .last()
+            .is_some_and(|last| last.contains("the recap")),
+        "{contents:?}"
+    );
+}
+
 /// The summary is the **last** thing in the restarted window, after any restored files: it is the
 /// note that tells the model where to continue, and a model reads the end of its context as the
 /// most recent thing said to it.
@@ -595,6 +675,7 @@ fn the_summary_is_the_last_item_in_the_restarted_window() {
             body: "FILE BODY".to_string(),
             images: Vec::new(),
         }],
+        Vec::new(),
         false,
     );
     let last = ctx
@@ -645,6 +726,7 @@ fn a_text_view_does_not_survive_a_compaction_but_a_named_file_does() {
             body: "FILE BODY".to_string(),
             images: Vec::new(),
         }],
+        Vec::new(),
         false,
     );
 
@@ -699,6 +781,7 @@ fn a_fallback_summary_is_flagged_on_the_event() {
         &setup,
         RetainedCounts::default(),
         &request,
+        Vec::new(),
         Vec::new(),
         is_fallback(&request.summary),
     ) {

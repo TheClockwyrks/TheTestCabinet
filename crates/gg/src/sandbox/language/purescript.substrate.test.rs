@@ -130,6 +130,7 @@ fn evaluate(
         modules,
         ending,
         library,
+        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(api, purescript(), scope, limits, None),

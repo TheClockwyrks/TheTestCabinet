@@ -17,12 +17,15 @@ use serde_json::{Value, json};
 
 use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
 
-use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
+use super::invoker::{
+    DocSearchQuery, DocSearchResult, SandboxViewOpened, ViewOpenOutcome, ViewRefusal,
+};
 use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
 use super::{FunctionSummary, ProgramScope, SandboxLimits, ToolApi};
 use crate::board::IssueStatus;
-use crate::context::{FileRegion, OpenViewInfo, ViewKind};
+use crate::context::{FileRegion, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind};
+use crate::docs::DocSearch;
 use crate::ending::EndingRole;
 use crate::memories::MemoryCode;
 use crate::model::ImageContent;
@@ -568,13 +571,49 @@ impl ToolApi for FakeToolApi {
 
     /// Opens a docs view for every name, so a program that asks for documentation gets a view rather
     /// than a `not-found`. Recorded as a view, not as a call: a documentation lookup is not a tool.
-    fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal> {
-        Ok(SandboxViewOpened {
+    ///
+    /// One view per call, never the several the production api can place: the double does not model
+    /// a catalogue, so it has no types to open beside a function and nothing to be right about if it
+    /// invented some. What it does model is the *shape* — a list, so the membrane's recording of
+    /// several views from one call is exercised by the tests that drive the real api.
+    fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal> {
+        Ok(vec![SandboxViewOpened {
             kind: ViewKind::Docs,
             selector: name,
             tokens: 0,
             superseded: false,
+        }])
+    }
+
+    /// Answers every search with an empty page, and reports the one view a real search would have
+    /// opened.
+    ///
+    /// The double models no catalogue, so it has nothing to find and nothing to be right about if it
+    /// invented hits — and the ranking is `DocsRuntime`'s to be tested, over a real committed
+    /// catalogue, which is where `docs.search.test.rs` tests it. What the double *does* model is the
+    /// shape the membrane bridges: a page plus a view, so the recording of a search's view is
+    /// exercised without a window to open one in.
+    fn search_docs(&mut self, _query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
+        Ok(DocSearchResult {
+            page: DocSearch {
+                total: 0,
+                offset: 0,
+                hits: Vec::new(),
+            },
+            opened: SandboxViewOpened {
+                kind: ViewKind::Search,
+                selector: SEARCH_RESULTS_VIEW.to_string(),
+                tokens: 0,
+                superseded: false,
+            },
         })
+    }
+
+    /// Closes nothing and says so: the double holds no window, so there is nothing to remove and the
+    /// honest answer is `0` — which is a successful call, exactly as it is in production. The
+    /// **capability** gate is the membrane's rather than the api's, so it is exercised without this.
+    fn close_docviews(&mut self, _key: Option<String>) -> Result<u32, ViewRefusal> {
+        Ok(0)
     }
 
     /// The read, recorded as the `read_file` it really is, plus the view it opens.
@@ -961,14 +1000,42 @@ pub(crate) fn membrane_from_scope_in(
     )
 }
 
+/// A membrane state for an agent whose
+/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) capability is `docview_close`
+/// — the one scope variation the documentation-close tests turn on, as the library flag is the one
+/// the program-library tests turn on.
+pub(crate) fn membrane_closing_docs(
+    log: &CallLog,
+    docview_close: bool,
+) -> MembraneState<FakeToolApi> {
+    MembraneState::new(
+        FakeToolApi::new(log),
+        typescript(),
+        ProgramScope {
+            enabled: &all_tools(),
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: true,
+            docview_close,
+        },
+        SandboxLimits::default(),
+        None,
+    )
+}
+
 /// The scope a test's membrane is built from. Modules are always empty: what a program has loaded is
 /// the guest's business, and no host function reads it.
+///
+/// `docview_close` is on, so the two documentation-close calls reach the api like every other call
+/// here — the tests that assert on the *withheld* arm use [`membrane_closing_docs`], exactly as the
+/// program-library ones use their own scope helper.
 fn scope_of(enabled: &[String], ending: RunEnding, library: bool) -> ProgramScope<'_> {
     ProgramScope {
         enabled,
         modules: &[],
         ending,
         library,
+        docview_close: true,
     }
 }
 

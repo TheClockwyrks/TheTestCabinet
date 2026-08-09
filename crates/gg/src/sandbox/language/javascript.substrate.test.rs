@@ -56,6 +56,7 @@ fn run(program: &str) -> (SandboxOutcome, CallLog) {
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
             library: false,
+            docview_close: false,
         },
         SandboxLimits::default(),
         None,

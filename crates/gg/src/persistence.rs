@@ -62,6 +62,7 @@ use test_cabinet_core::gg::{
 };
 
 use crate::context::{ContextModel, OpenFileView, OpenTextView, Retention};
+use crate::docs::DocsRuntime;
 use crate::model::ToolCall;
 use crate::sandbox::FileWindow;
 use crate::telemetry::Emitter;
@@ -116,9 +117,10 @@ pub fn exclusive_key(profile: &GgAgentConfig) -> Option<String> {
 /// One persistent profile's **desk**: everything an instance of it had open in its window when it
 /// last finished successfully, in the order it opened each.
 ///
-/// The two kinds are held apart rather than in one list because they are restored by two different
-/// mechanisms — a file view is [re-read from disk](restore_file_views) and a text view is
-/// [handed back verbatim](restore_text_views) — and because only one of them can fail to come back.
+/// The three kinds are held apart rather than in one list because they are restored by three
+/// different mechanisms — a file view is [re-read from disk](restore_file_views), a text view is
+/// [handed back verbatim](restore_text_views), and a documentation view is
+/// [re-rendered from its key](restore_docviews) — and because only one of them can fail to come back.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PersistedDesk {
     /// The [file views](OpenFileView) open in the window: a path and the region of it the read
@@ -127,6 +129,15 @@ pub struct PersistedDesk {
     /// The [text views](OpenTextView) open in the window, **with their bodies** — the agent composed
     /// them and the window is their only copy. See the module's *Why a text view is the exception*.
     pub texts: Vec<OpenTextView>,
+    /// The [documentation views](crate::context::OpenDocview) open in the window, as **keys** — the
+    /// reference half of the same principle the file half follows, and for a stronger reason.
+    ///
+    /// A file's reference is recorded because its truth can move; a documentation key's cannot move
+    /// at all, and is recorded anyway because the body is *derived* from it. Storing the rendered
+    /// text would put a second copy of gg's own catalogue in a profile's desk, and a stale one the
+    /// moment the next instance's scope differs by a tool — which is exactly when re-rendering is
+    /// the right answer and replaying is the wrong one.
+    pub docviews: Vec<String>,
 }
 
 impl PersistedDesk {
@@ -136,6 +147,11 @@ impl PersistedDesk {
         Self {
             files: context.open_file_views(),
             texts: context.open_text_views(),
+            docviews: context
+                .open_docviews()
+                .into_iter()
+                .map(|open| open.key)
+                .collect(),
         }
     }
 }
@@ -366,14 +382,40 @@ pub fn restore_text_views(context: &mut ContextModel, views: &[OpenTextView]) ->
     views.len()
 }
 
+/// Re-open the [documentation views](crate::context::OpenDocview) the last instance had open, by
+/// **re-rendering each key** through this instance's own [documentation runtime](DocsRuntime).
+///
+/// The third of the three restores, and the only one that is neither a re-read nor a replay. There
+/// is nothing on disk to re-read, and replaying the stored text would hand the next instance a
+/// description of a surface it may not have: the runtime answers through *this* agent's scope, so a
+/// key whose function this instance does not bind renders nothing and is skipped rather than
+/// restored as documentation for a call it cannot make.
+///
+/// No skip-if-already-open pass, for the reason the text half has none and a stronger one:
+/// [`open_docview`](ContextModel::open_docview) is a no-op on a key that is open, so the restore is
+/// idempotent by construction. Returns how many were re-opened.
+pub fn restore_docviews(context: &mut ContextModel, keys: &[String], docs: &DocsRuntime) -> usize {
+    let mut restored = 0;
+    for key in keys {
+        let Some(body) = docs.read_any(key) else {
+            continue;
+        };
+        context.open_docview(key.clone(), body);
+        restored += 1;
+    }
+    restored
+}
+
 /// The one-line note a restored instance logs about the desk it opened on — what came back, and by
 /// which of the two mechanisms.
 ///
 /// The distinction is worth the words to an operator reading the stream: the file views are the
 /// workspace **as it stands now**, which may differ from what the last instance saw, while the text
-/// views are that instance's own material reproduced exactly. An agent whose window disagrees with
-/// its predecessor's is behaving correctly on the first count and would be broken on the second.
-pub fn restore_note(files: usize, texts: usize) -> String {
+/// views are that instance's own material reproduced exactly, and the documentation views are
+/// re-rendered for whatever scope *this* instance has. An agent whose window disagrees with its
+/// predecessor's is behaving correctly on the first and third counts and would be broken on the
+/// second.
+pub fn restore_note(files: usize, texts: usize, docviews: usize) -> String {
     let mut parts = Vec::new();
     if files > 0 {
         parts.push(format!(
@@ -383,6 +425,11 @@ pub fn restore_note(files: usize, texts: usize) -> String {
     if texts > 0 {
         parts.push(format!(
             "restored {texts} text view(s) exactly as it composed them"
+        ));
+    }
+    if docviews > 0 {
+        parts.push(format!(
+            "re-opened {docviews} documentation view(s), rendered again for this agent's own scope"
         ));
     }
     if parts.is_empty() {

@@ -743,6 +743,7 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
                 modules: &[],
                 ending: RunEnding::None,
                 library: false,
+                docview_close: false,
             },
             limits,
             None,

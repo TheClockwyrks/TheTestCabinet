@@ -42,6 +42,7 @@ fn outcome_of(language: &'static dyn ProgramLanguage, program: &str) -> SandboxO
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
             library: false,
+            docview_close: false,
         },
         SandboxLimits::default(),
         None,

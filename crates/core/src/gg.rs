@@ -1171,6 +1171,30 @@ pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 /// no programs in a tool-calling session to keep.
 pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
 
+/// The stable id of the **documentation-view close** capability: whether a
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent may take a documentation view back out of
+/// its own context window.
+///
+/// # Why *closing* is the toggle, and opening is not
+///
+/// A documentation view is keyed by the thing it documents, and what it documents is a constant: the
+/// same key renders the same bytes for the life of the agent. So gg opens one **append-only** — a
+/// second open of a key that is already open is a total no-op, not a re-placement — and the whole
+/// documentation band therefore sits in the prompt as a strictly growing suffix. That is the
+/// property a provider's prompt cache reads: every request extends the last, and nothing a model does
+/// with documentation can invalidate a cached prefix.
+///
+/// Closing is the one thing that can. Removing an item from the middle of the window rewrites the
+/// prompt from that position onward, and the run pays for every cached token after it. That is not a
+/// reason to forbid closing — an agent that has read forty functions it no longer needs is holding
+/// forty blocks it could spend on the task — but it is exactly the reason the two are not one
+/// decision. Opening is unconditional because it is free of that risk; closing is a capability
+/// because it is not, and because whether the reclaim pays for the invalidation is a question with a
+/// measurement rather than an answer.
+///
+/// Default **off**, which is the arm in which the claim above holds without qualification.
+pub const CAPABILITY_DOCVIEW_CLOSE: &str = "docview-close";
+
 /// The workspace-relative dotdir gg keeps **its own** files in during a run: the capture
 /// [journal](crate::gg_session_journal::GG_SESSION_JOURNAL_PATH) and the
 /// [skills](CAPABILITY_SKILLS) library.
@@ -3590,6 +3614,29 @@ pub enum GgContextSource {
     /// Each one is keyed by the label the agent gave it, so it can be attributed, superseded
     /// and closed by name exactly as a file view is by path.
     TextView,
+    /// One **documentation view** a
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) agent opened: the
+    /// documentation for one thing gg's SDK offers, keyed by the name it is addressed under.
+    ///
+    /// Its own band rather than a share of [`Skill`](Self::Skill), which it used to be told apart
+    /// from by retention alone. Two things follow from separating them, and both are the point.
+    /// Documentation is the one band whose size is a direct consequence of how a model *discovers*
+    /// its surface, so what it costs has to be readable on its own rather than added to whatever
+    /// skills the run happened to pin. And a call that closes documentation can then be a removal
+    /// over one band, instead of a removal over the skill band that has to spare pinned items to
+    /// avoid eating a read skill — a carve-out that was load-bearing by accident.
+    DocsView,
+    /// The results of the agent's **last documentation search**: a page of one-line briefs it can
+    /// open the full documentation of by name.
+    ///
+    /// Its own band rather than a text view carrying the same list, and the reason is measurement.
+    /// With the prompt naming no functions, searching is how an agent finds its surface at all — so
+    /// *what discovery costs a window* is one of the things the whole design exists to find out, and
+    /// it can only be read off a band nothing else contributes to. Folded into text views it would
+    /// be added to whatever else the agent happened to show itself; folded into
+    /// [`DocsView`](Self::DocsView) it would break the property that band is built on, since
+    /// documentation is append-only and a search result replaces the one before it.
+    SearchResults,
     /// A [skill](https://docs.testcabinet.ai/gg/skills/) shown or read — retained across
     /// a compaction boundary.
     Skill,
@@ -3612,7 +3659,7 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 13] = [
+    pub const ALL: [GgContextSource; 15] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
@@ -3621,6 +3668,8 @@ impl GgContextSource {
         GgContextSource::RuntimeError,
         GgContextSource::FileView,
         GgContextSource::TextView,
+        GgContextSource::DocsView,
+        GgContextSource::SearchResults,
         GgContextSource::Skill,
         GgContextSource::Memory,
         GgContextSource::TaskList,
@@ -4100,9 +4149,10 @@ pub struct GgRetainedState {
 /// the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
 /// needs (safe — it can re-read the file later), [close text views](Self::CloseTextViews)
 /// it composed and no longer wants in front of it, [close documentation
-/// views](Self::CloseDocsViews) it has finished with, or [archive a section of its
+/// views](Self::CloseDocsViews) it has finished with, [close the results of its last
+/// documentation search](Self::CloseSearchViews), or [archive a section of its
 /// thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
-/// `search_archive`). All four reclaim tokens; a `search_archive` call reclaims nothing and
+/// `search_archive`). All five reclaim tokens; a `search_archive` call reclaims nothing and
 /// so is reported only as an ordinary tool result, not as a `ContextManaged` action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -4121,13 +4171,29 @@ pub enum GgContextAction {
     /// discards it unless the agent wrote it down. A close request naming a workspace path
     /// is reported as `EvictFileViews`; one naming a view label is reported here.
     CloseTextViews,
-    /// The agent closed one or more [documentation views](GgContextSource::Skill) — the blocks
-    /// `view.openDocsView` opened — reclaiming their tokens.
+    /// The agent closed one or more [documentation views](GgContextSource::DocsView), reclaiming
+    /// their tokens — the whole of what [`docview-close`](CAPABILITY_DOCVIEW_CLOSE) buys.
     ///
     /// Its own action rather than a [`CloseTextViews`](Self::CloseTextViews) because the two differ
     /// in what closing costs: a docs view is re-openable by name at any time, like a file view,
     /// whereas a closed text view is gone.
+    ///
+    /// It is also the **only** action that can invalidate a cached prompt prefix, since the
+    /// documentation band is otherwise append-only — which is why the event carries the index of the
+    /// earliest item it removed beside the tokens it reclaimed. Reclaiming three hundred tokens from
+    /// the head of a forty-thousand-token window is not the same trade as reclaiming them from its
+    /// tail, and without the position the two are indistinguishable in the record.
     CloseDocsViews,
+    /// The agent closed its [documentation search results](GgContextSource::SearchResults),
+    /// reclaiming their tokens.
+    ///
+    /// Its own action for the reason the band is its own: what discovery costs a window is a thing
+    /// this design exists to measure, and a close reported as a text view's would put a search's
+    /// cost back into a total that already has three other contributors. Unlike a documentation
+    /// view, nothing is lost by closing one — the same query answers the same way — so it carries no
+    /// position: the band is superseded on every search regardless, and a cached prefix has already
+    /// been rewritten from there by the second search of the session.
+    CloseSearchViews,
     /// The agent archived a section of its [thread](GgContextSource::History) — the oldest
     /// ephemeral turns — removing it from the live window while keeping it searchable and
     /// recoverable through `search_archive`.
@@ -5723,6 +5789,19 @@ pub enum GgTelemetryKind {
         /// example the evicted paths, or how many turns were archived and the archive's new
         /// size), for the console feed.
         detail: String,
+        /// Where in the window the **earliest** removed item sat, as its zero-based position among
+        /// the thread's items just before the removal; `None` for an action that removed nothing.
+        ///
+        /// The tokens above say what a reclaim *bought*; this says what it **cost**. A provider's
+        /// prompt cache serves a prefix of a request it has already seen, so removing an item
+        /// invalidates everything from its position onward — and reclaiming three hundred tokens
+        /// from the head of a long window is a materially worse trade than reclaiming the same three
+        /// hundred from its tail. Nothing else in the record can distinguish the two, which is why
+        /// a close of the otherwise append-only [documentation band](GgContextSource::DocsView)
+        /// reports it: whether the [close capability](CAPABILITY_DOCVIEW_CLOSE) pays for itself is
+        /// exactly this comparison.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        earliest_removed: Option<u64>,
     },
     /// The out-of-window thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) — what `archive_thread`
     /// has put away and `search_archive` can recover.

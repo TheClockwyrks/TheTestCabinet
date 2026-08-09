@@ -7,18 +7,12 @@
 //! tells it which ceiling it hit.
 
 use super::*;
-use crate::context::EvictionResult;
-use crate::sandbox::SandboxLimits;
-
-/// A configured open-image-view cap, standing in for whatever number a profile's `imageViewCap`
-/// resolved to. There is no default to read: an agent that configures none runs under no ceiling
-/// at all ([`SandboxLimits::default`]), which is its own case below.
-const CONFIGURED_CAP: usize = 4;
+use crate::context::{EvictionResult, ViewsClosed};
 
 /// A body under the ceiling, with a label, is simply allowed.
 #[test]
 fn an_ordinary_text_view_passes_every_cap() {
-    assert!(text_view_refusal("build failures", "3 tests failed in x.ts", &[]).is_none());
+    assert!(text_view_refusal("build failures", "3 tests failed in x.ts").is_none());
 }
 
 /// **An empty body is allowed.**
@@ -28,14 +22,48 @@ fn an_ordinary_text_view_passes_every_cap() {
 /// invent a sentence.
 #[test]
 fn an_empty_body_is_allowed() {
-    assert!(text_view_refusal("failures", "", &[]).is_none());
+    assert!(text_view_refusal("failures", "").is_none());
+}
+
+/// **The turn's composed-body budget is a total, not a per-call cap**, and it names itself, what has
+/// been spent and what is left.
+///
+/// It is the one bound left on how much text a single turn can push into the host, and it exists for
+/// the host rather than for the model: there is deliberately no cap on the *number* of views, so
+/// without it `for (;;) view.openText(unique(), sixtyFourKiB)` is bounded only by the program's
+/// wall-clock timeout. The per-body cap does not help — one reused buffer feeds every call.
+#[test]
+fn the_turns_composed_body_budget_refuses_by_total_and_says_what_is_left() {
+    // Nothing spent: an ordinary body, and even a maximal one, passes.
+    assert!(composed_view_budget_refusal(0, 1_024).is_none());
+    assert!(composed_view_budget_refusal(0, MAX_TEXT_VIEW_BYTES).is_none());
+
+    // Exactly at the ceiling is still allowed; one byte past it is not. The ceiling is a total, so
+    // the same body that passed on an empty budget is refused on a nearly spent one.
+    let nearly = MAX_COMPOSED_VIEW_BYTES_PER_TURN - MAX_TEXT_VIEW_BYTES;
+    assert!(composed_view_budget_refusal(nearly, MAX_TEXT_VIEW_BYTES).is_none());
+    let refusal = composed_view_budget_refusal(nearly + 1, MAX_TEXT_VIEW_BYTES)
+        .expect("one byte past the ceiling is refused");
+    assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
+    assert!(
+        refusal.message.contains("MAX_COMPOSED_VIEW_BYTES_PER_TURN"),
+        "a cap that does not name itself cannot be worked around: {}",
+        refusal.message
+    );
+    assert!(
+        refusal
+            .message
+            .contains(&(MAX_TEXT_VIEW_BYTES - 1).to_string()),
+        "the refusal says how much is left, so the program can split what it was composing: {}",
+        refusal.message
+    );
 }
 
 /// **An empty label is not.** A view with no selector could never be closed, replaced or
 /// attributed, so it is an argument error rather than a cap.
 #[test]
 fn a_blank_label_is_an_argument_error() {
-    let refusal = text_view_refusal("  \t ", "body", &[]).expect("a blank label names nothing");
+    let refusal = text_view_refusal("  \t ", "body").expect("a blank label names nothing");
     assert_eq!(refusal.failure, ToolFailure::InvalidArgument);
     assert!(refusal.message.contains("non-empty label"));
 }
@@ -45,7 +73,7 @@ fn a_blank_label_is_an_argument_error() {
 #[test]
 fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
     let long_label = "l".repeat(MAX_VIEW_LABEL_BYTES + 1);
-    let refusal = text_view_refusal(&long_label, "body", &[]).expect("the label is over the cap");
+    let refusal = text_view_refusal(&long_label, "body").expect("the label is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(refusal.message.contains("MAX_VIEW_LABEL_BYTES"));
     assert!(
@@ -55,7 +83,7 @@ fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
     );
 
     let long_body = "b".repeat(MAX_TEXT_VIEW_BYTES + 1);
-    let refusal = text_view_refusal("notes", &long_body, &[]).expect("the body is over the cap");
+    let refusal = text_view_refusal("notes", &long_body).expect("the body is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(refusal.message.contains("MAX_TEXT_VIEW_BYTES"));
     assert!(
@@ -71,39 +99,7 @@ fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
 fn the_size_caps_are_inclusive() {
     let label = "l".repeat(MAX_VIEW_LABEL_BYTES);
     let body = "b".repeat(MAX_TEXT_VIEW_BYTES);
-    assert!(text_view_refusal(&label, &body, &[]).is_none());
-}
-
-/// **At the ceiling, a NEW label is refused and an existing one is not.**
-///
-/// Re-opening a label replaces a view rather than adding one, so refusing it would leave an agent
-/// holding fifty views unable to correct any of them — which is exactly the state in which it most
-/// needs to.
-#[test]
-fn the_open_count_cap_still_admits_a_replacement() {
-    let open: Vec<String> = (0..MAX_OPEN_TEXT_VIEWS)
-        .map(|index| format!("view-{index}"))
-        .collect();
-
-    let refusal = text_view_refusal("view-new", "body", &open).expect("the window is full");
-    assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_OPEN_TEXT_VIEWS"));
-
-    assert!(
-        text_view_refusal("view-7", "a better summary", &open).is_none(),
-        "re-opening an open label replaces a view rather than adding one"
-    );
-}
-
-/// The per-program operation budget refuses only once it is actually spent, and names itself.
-#[test]
-fn the_op_budget_refuses_only_when_spent() {
-    assert!(view_ops_refusal(0).is_none());
-    assert!(view_ops_refusal(MAX_VIEW_OPS_PER_PROGRAM - 1).is_none());
-
-    let refusal = view_ops_refusal(MAX_VIEW_OPS_PER_PROGRAM).expect("the budget is spent");
-    assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_VIEW_OPS_PER_PROGRAM"));
+    assert!(text_view_refusal(&label, &body).is_none());
 }
 
 /// **A failed documentation lookup names the miss, and then the fix.**
@@ -206,6 +202,7 @@ fn a_close_reports_the_band_it_reclaimed_from() {
             reclaimed_tokens,
             items,
             detail,
+            ..
         } => {
             assert_eq!(action, GgContextAction::EvictFileViews);
             assert_eq!((reclaimed_tokens, items), (300, 2));
@@ -227,105 +224,164 @@ fn a_close_reports_the_band_it_reclaimed_from() {
 }
 
 // ---------------------------------------------------------------------------
-// The open-image-view cap
+// Closing documentation
 // ---------------------------------------------------------------------------
 
-/// Under the ceiling, nothing is refused — including the call that fills the last slot.
+/// **A documentation close reports where it cut, as well as what it reclaimed.**
+///
+/// The tokens are what the close bought; the index is what it cost. The documentation band is
+/// append-only — a re-open of an open key is a no-op — so this is the only call in a session that
+/// can invalidate a cached prompt prefix, and reclaiming three hundred tokens from position 3 of a
+/// long window is not the same trade as reclaiming them from position 300.
 #[test]
-fn the_image_cap_admits_everything_up_to_the_ceiling() {
-    for open in 0..CONFIGURED_CAP {
-        assert!(
-            image_view_refusal(Some(CONFIGURED_CAP), open, false).is_none(),
-            "{open} open image views is under the cap"
-        );
+fn a_documentation_close_reports_where_it_cut() {
+    let closed = ViewsClosed {
+        reclaimed: EvictionResult {
+            items: 2,
+            tokens: 420,
+            paths: vec!["readFile".to_string(), "FileRead".to_string()],
+        },
+        earliest_removed: Some(7),
+    };
+    match docs_close_event(Some("readFile"), &closed).expect("two views were closed") {
+        GgTelemetryKind::ContextManaged {
+            action,
+            reclaimed_tokens,
+            items,
+            detail,
+            earliest_removed,
+        } => {
+            assert_eq!(action, GgContextAction::CloseDocsViews);
+            assert_eq!((reclaimed_tokens, items), (420, 2));
+            assert_eq!(earliest_removed, Some(7));
+            assert!(detail.contains("documentation view(s)"));
+            assert!(detail.contains("readFile"));
+        }
+        other => panic!("a close reports as a context-managed event, not {other:?}"),
     }
 }
 
-/// **An agent that configures no `imageViewCap` has no ceiling to hit.**
-///
-/// That is the default ([`SandboxLimits::default`]): how many pictures a run needs resident is a
-/// property of the work rather than of the sandbox, so nothing is refused until a profile asks for
-/// a ceiling.
+/// A blanket close says so in its own words rather than naming a selector it did not take.
 #[test]
-fn no_configured_cap_refuses_nothing() {
-    assert_eq!(SandboxLimits::default().image_view_cap, None);
-    for open in [0, 1, 4, 40, 4_000] {
-        assert!(
-            image_view_refusal(None, open, false).is_none(),
-            "{open} open image views is fine when no ceiling was configured"
-        );
+fn a_blanket_documentation_close_says_it_closed_all_of_them() {
+    let closed = ViewsClosed {
+        reclaimed: EvictionResult {
+            items: 5,
+            tokens: 900,
+            paths: Vec::new(),
+        },
+        earliest_removed: Some(2),
+    };
+    let event = docs_close_event(None, &closed).expect("five views were closed");
+    match event {
+        GgTelemetryKind::ContextManaged { detail, .. } => assert!(detail.contains("all of them")),
+        other => panic!("a close reports as a context-managed event, not {other:?}"),
     }
 }
 
-/// **At the ceiling a new picture is refused — and the refusal names the cap and the remedy.**
-///
-/// A refusal the model cannot act on is a truncation with extra steps: it has to know both which
-/// ceiling it hit and that the way out is a close it can actually perform. It also has to be told
-/// that nothing happened, because the alternative reading — that the view was opened without its
-/// picture — is exactly the shipped defect this replaced.
-///
-/// The cap names itself by its **configured** name, `imageViewCap`, and not by a Rust constant:
-/// there is no longer a constant to name, and an operator reading the transcript can find the knob
-/// that produced this number in the run's own configuration.
+/// **A documentation close that reclaimed nothing emits nothing**, on exactly the terms the other
+/// two bands' closes do: a program that tidies up defensively must not put a line on the operator's
+/// stream for a call that changed nothing.
 #[test]
-fn the_image_cap_refuses_a_new_picture_and_names_itself() {
-    let refusal = image_view_refusal(Some(CONFIGURED_CAP), CONFIGURED_CAP, false)
-        .expect("the window is full");
-    assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("imageViewCap"));
+fn a_documentation_close_that_reclaimed_nothing_emits_no_event() {
+    assert!(docs_close_event(Some("readFile"), &ViewsClosed::default()).is_none());
+    assert!(docs_close_event(None, &ViewsClosed::default()).is_none());
+}
+
+// ---------------------------------------------------------------------------
+// The search-results view
+// ---------------------------------------------------------------------------
+
+/// **A search-results close is its own action and names its own band.**
+///
+/// It carries no cut position, unlike a documentation close, and the omission is the statement: the
+/// search band is superseded on every search, so by the second search of a session a cached prefix
+/// has already been rewritten from wherever the results sit. There is nothing left for a close to be
+/// the thing that cost.
+#[test]
+fn a_search_close_reports_its_own_band() {
+    let reclaimed = EvictionResult {
+        items: 1,
+        tokens: 120,
+        paths: vec!["search results".to_string()],
+    };
+    let event = view_close_event(
+        GgContextAction::CloseSearchViews,
+        "search results",
+        &reclaimed,
+    )
+    .expect("the results view was closed");
+    match event {
+        GgTelemetryKind::ContextManaged {
+            action,
+            reclaimed_tokens,
+            detail,
+            earliest_removed,
+            ..
+        } => {
+            assert_eq!(action, GgContextAction::CloseSearchViews);
+            assert_eq!(reclaimed_tokens, 120);
+            assert!(detail.contains("search-results view(s)"), "{detail}");
+            assert_eq!(earliest_removed, None);
+        }
+        other => panic!("a close reports as a context-managed event, not {other:?}"),
+    }
+}
+
+/// **The results view says how much of the answer it is, and shows a brief per hit.**
+///
+/// The count line is the load-bearing half. A page that did not say what it was a page *of* reads as
+/// a complete answer, and an agent that stops at the first five hits of twenty has lost three
+/// quarters of what it was looking for — which is the exact failure the envelope's `total` exists to
+/// prevent and which a rendering that dropped it would undo.
+#[test]
+fn the_results_view_says_how_much_of_the_answer_it_is() {
+    let query = DocSearchQuery {
+        query: "file".to_string(),
+        module: Some("fs".to_string()),
+        ..DocSearchQuery::default()
+    };
+    let page = DocSearch {
+        total: 9,
+        offset: 3,
+        hits: vec![crate::docs::DocHit {
+            key: "readFile".to_string(),
+            kind: crate::docs::DocKind::Function,
+            module: "fs".to_string(),
+            name: "readFile".to_string(),
+            summary: "Read a file.".to_string(),
+        }],
+    };
+
+    let body = render_search_results(&query, &page);
+    assert!(body.contains('9'), "the total is stated: {body}");
+    assert!(body.contains("4-4"), "and which slice this is: {body}");
     assert!(
-        refusal.message.contains(&CONFIGURED_CAP.to_string()),
-        "the number in force has to be in the message, not just the name of the knob: {}",
-        refusal.message
+        body.contains("`file`") && body.contains("module `fs`"),
+        "{body}"
+    );
+    assert!(
+        body.contains("readFile (function, fs) — Read a file."),
+        "one line per hit, brief and all: {body}"
     );
 }
 
-/// **The cap that is enforced is the configured one, whatever the default says.**
-///
-/// A configured arm is only an arm if the number it set is the number the refusal uses: a cap of two
-/// admits the second picture and refuses the third, and a cap of eight admits what the default would
-/// have refused.
+/// **A search that matched nothing says so, and says what to do about it** — rather than rendering
+/// an empty list the model has to interpret.
 #[test]
-fn the_configured_cap_is_the_one_enforced() {
-    assert!(
-        image_view_refusal(Some(2), 1, false).is_none(),
-        "under a cap of 2"
+fn an_empty_results_view_says_what_to_try_instead() {
+    let query = DocSearchQuery {
+        query: "quinquagenarian".to_string(),
+        ..DocSearchQuery::default()
+    };
+    let body = render_search_results(
+        &query,
+        &DocSearch {
+            total: 0,
+            offset: 0,
+            hits: Vec::new(),
+        },
     );
-    let refusal = image_view_refusal(Some(2), 2, false).expect("a cap of 2 is spent at 2");
-    assert!(
-        refusal.message.contains('2'),
-        "the configured number, not the default, is what the model is told: {}",
-        refusal.message
-    );
-    assert!(
-        image_view_refusal(Some(8), CONFIGURED_CAP, false).is_none(),
-        "a wider arm admits what a tighter one would refuse"
-    );
-}
-
-/// A cap of **zero** refuses the very first picture, rather than wrapping into something permissive.
-///
-/// The [resolver](crate::sandbox::resolve_sandbox_limits) never produces zero from a param — a zero
-/// param reads as "not configured" — but the decision itself must not depend on that, since a cap
-/// arriving from anywhere else would then silently mean "unlimited".
-#[test]
-fn a_cap_of_zero_refuses_the_first_picture() {
-    assert!(image_view_refusal(Some(0), 0, false).is_some());
-}
-
-/// **Re-opening a path that is already an open image view is never refused.**
-///
-/// It replaces an occupant rather than adding one, so the count does not move. Refusing it would
-/// leave an agent at exactly the ceiling unable to refresh any of the mockups holding it there —
-/// the same carve-out the open-text-view cap makes for a label that is already open.
-#[test]
-fn the_image_cap_admits_a_supersede_at_exactly_the_ceiling() {
-    assert!(
-        image_view_refusal(Some(CONFIGURED_CAP), CONFIGURED_CAP, true).is_none(),
-        "re-opening an open image view replaces one; it does not add one"
-    );
-    assert!(
-        image_view_refusal(Some(CONFIGURED_CAP), CONFIGURED_CAP + 3, true).is_none(),
-        "a window somehow over the cap can still be refreshed, which is how it gets back under it"
-    );
+    assert!(body.starts_with("No documentation matches"), "{body}");
+    assert!(body.contains("substring"), "{body}");
 }

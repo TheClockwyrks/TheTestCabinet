@@ -247,7 +247,7 @@ describe("an agent's type", () => {
     openTab("APIs");
     const panel = screen.getByRole("group", { name: "Responses as code" });
     // Its params are the same controls a capability's are…
-    expect(within(panel).getByLabelText(/Max open image views/)).toBeDefined();
+    expect(within(panel).getByLabelText(/Documentation types/)).toBeDefined();
     // …but it has no switch of its own: the type selector is the switch.
     expect(
       screen.queryByText("responses-as-code", { selector: "span" }),
@@ -324,9 +324,7 @@ describe("an agent's type", () => {
     fireEvent.click(typeSegment("RaC"));
     openTab("APIs");
     const panel = screen.getByRole("group", { name: "Responses as code" });
-    fireEvent.change(within(panel).getByLabelText(/Max open image views/), {
-      target: { value: "3" },
-    });
+    select(within(panel).getByLabelText(/Documentation types/), "off");
 
     openTab("Agent");
     fireEvent.click(typeSegment("Tools"));
@@ -346,33 +344,39 @@ describe("an agent's type", () => {
       (
         within(
           screen.getByRole("group", { name: "Responses as code" }),
-        ).getByLabelText(/Max open image views/) as HTMLInputElement
+        ).getByLabelText(/Documentation types/) as HTMLSelectElement
       ).value,
-    ).toBe("3");
+    ).toBe("off");
   });
 });
 
-// The responses-as-code image-view cap is an ungated number — the type has no
+// The responses-as-code documentation-type mode is an ungated picker — the type has no
 // implementations, so the control is offered whenever the agent is a code agent. The
 // catalog entry is the whole of this feature's UI, so rendering the form is the only
-// thing that says the generic param grid picked it up: a label that never appears is a
-// cap an operator can only reach by hand-editing the configuration's JSON.
-describe("the responses-as-code image-view cap", () => {
-  it("is offered whenever the agent is a code agent, and holds what is typed into it", () => {
-    renderCaps(draftWith( "responses-as-code", "", { imageViewCap: "4" }, "rac", ));
+// thing that says the generic param grid picked it up: an option that never appears is an
+// arm of the study an operator can only reach by hand-editing the configuration's JSON.
+describe("the responses-as-code documentation-type mode", () => {
+  it("is offered whenever the agent is a code agent, and holds what is chosen in it", () => {
+    renderCaps(
+      draftWith(
+        "responses-as-code",
+        "",
+        { docViewTypes: "return-and-parameters" },
+        "rac",
+      ),
+    );
     const panel = screen.getByRole("group", { name: "Responses as code" });
 
     const field = within(panel).getByLabelText(
-      /Max open image views/,
-    ) as HTMLInputElement;
-    expect(field.type).toBe("number");
-    expect(field.value).toBe("4");
+      /Documentation types/,
+    ) as HTMLSelectElement;
+    expect(field.value).toBe("return-and-parameters");
 
-    fireEvent.change(field, { target: { value: "1" } });
+    select(field, "off");
     expect(
-      (within(panel).getByLabelText(/Max open image views/) as HTMLInputElement)
+      (within(panel).getByLabelText(/Documentation types/) as HTMLSelectElement)
         .value,
-    ).toBe("1");
+    ).toBe("off");
   });
 });
 
@@ -867,14 +871,18 @@ describe("the two hook lists", () => {
 describe("the sections that no longer explain themselves", () => {
   it("heads neither capability tab, under either agent type", () => {
     renderCaps(emptyDraft());
-    expect(screen.queryByText(/What this agent is offered as tools/)).toBeNull();
+    expect(
+      screen.queryByText(/What this agent is offered as tools/),
+    ).toBeNull();
 
     const draft = emptyDraft();
     renderCaps({
       ...draft,
       agents: [{ ...draft.agents[0]!, mode: "rac" }],
     });
-    expect(screen.queryByText(/What this agent's programs can call/)).toBeNull();
+    expect(
+      screen.queryByText(/What this agent's programs can call/),
+    ).toBeNull();
     // The sandbox settings keep the accessible name their panel is found by; what goes
     // is the heading and the blurb above it.
     expect(screen.queryByText(/whole reply is a program/)).toBeNull();

@@ -114,6 +114,7 @@ pub(super) fn evaluate_as(
         modules,
         ending,
         library,
+        docview_close: false,
     };
     // The component is resolved BEFORE the store, and the order is the whole of it rather than a
     // tidying. `bounded_store` arms the guest's execution deadline the instant it builds the state —

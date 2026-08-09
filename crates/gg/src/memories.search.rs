@@ -1,12 +1,10 @@
 //! The [keyword-search](super::MemoryStrategy::KeywordSearch) strategy's retrieval: how a set of
 //! keywords is turned into a ranked list of memories.
 //!
-//! It is deliberately the simplest thing that can work — case-insensitive substring counting,
-//! ranked by how many of the caller's keywords a memory matches and then by how often — because
-//! the strategy is a *hypothesis about agents*, not a search-engine benchmark. An embedding index
-//! or a stemmer would confound the question it exists to ask (can an agent work from memory it has
-//! to look up?) with a question about retrieval quality, and would put a model's results at the
-//! mercy of a similarity threshold nobody in the study chose.
+//! The matching, the ranking and the excerpting are gg's [shared substring core](crate::search),
+//! which was lifted out of this file when the [documentation surface](crate::docs) needed the same
+//! thing. What is left here is what is *about memories*: which text is searched, how much of the
+//! body an excerpt keeps, and the [hit](MemoryHit) a model reads.
 //!
 //! Two consequences are worth stating because they are choices, not accidents:
 //!
@@ -15,13 +13,19 @@
 //!   trap.
 //! * **Matching a keyword at all outranks matching one many times.** Breadth is the better signal:
 //!   a memory mentioning every keyword once is far more likely to be the one asked for than a
-//!   memory that repeats one of them twenty times.
+//!   memory that repeats one of them twenty times. That is
+//!   [`breadth_then_frequency`](crate::search::breadth_then_frequency), and it is now the same
+//!   ordering documentation search uses.
 
 use super::Memory;
+use crate::search::{Relevance, breadth_then_frequency, excerpt_around, normalize, relevance};
 
-/// The number of characters of context an [excerpt](excerpt_around) keeps on each side of the
-/// match — enough to see the sentence the keyword sits in without turning a result list into the
-/// memories themselves.
+/// The number of characters of context an [excerpt](crate::search::excerpt_around) keeps on each
+/// side of the match — enough to see the sentence the keyword sits in without turning a result list
+/// into the memories themselves.
+///
+/// It stays here rather than moving into the shared core with the function that reads it, because
+/// how much of a *memory* is enough to recognise one by is a judgement about memories.
 const EXCERPT_RADIUS: usize = 80;
 
 /// One memory a [search](super::MemoryStore::search) matched, with the numbers it was ranked by.
@@ -48,15 +52,13 @@ pub struct MemoryHit {
 /// Returns an empty vector when nothing usable survives, which the caller reports as a bad call
 /// rather than as a search that matched nothing — "you gave me no keywords" and "no memory
 /// mentions these" are different answers and the model needs to be able to tell them apart.
+///
+/// Each keyword is normalized **whole**: this call takes a list, and one entry of it may
+/// legitimately be a phrase the model wants matched as one, so nothing here splits on whitespace.
+/// (A [documentation](crate::docs) search takes one query string and splits it before normalizing,
+/// which is the same [primitive](crate::search::normalize) given a different separation.)
 pub fn normalize_keywords(keywords: &[String]) -> Vec<String> {
-    let mut normalized: Vec<String> = Vec::new();
-    for keyword in keywords {
-        let keyword = keyword.trim().to_lowercase();
-        if !keyword.is_empty() && !normalized.contains(&keyword) {
-            normalized.push(keyword);
-        }
-    }
-    normalized
+    normalize(keywords.iter().map(String::as_str))
 }
 
 /// Rank `memories` against already-[normalized](normalize_keywords) `keywords`, best first,
@@ -65,18 +67,17 @@ pub fn normalize_keywords(keywords: &[String]) -> Vec<String> {
 /// Memories matching no keyword at all are dropped rather than ranked last: a zero-score result is
 /// noise in a list a model is going to read.
 pub fn rank(memories: &[Memory], keywords: &[String], limit: Option<usize>) -> Vec<MemoryHit> {
-    let mut hits: Vec<MemoryHit> = memories
+    let mut scored: Vec<(Relevance, MemoryHit)> = memories
         .iter()
         .filter_map(|memory| score(memory, keywords))
         .collect();
     // Breadth first, then frequency, then the slug — so an identical pair of scores always ranks
-    // the same way and a search is reproducible across runs.
-    hits.sort_by(|a, b| {
-        b.matched
-            .cmp(&a.matched)
-            .then(b.occurrences.cmp(&a.occurrences))
-            .then(a.name.cmp(&b.name))
+    // the same way and a search is reproducible across runs. The first two are the shared core's;
+    // the slug is this search's own stable key, which is the half the core has nothing to say about.
+    scored.sort_by(|(left, a), (right, b)| {
+        breadth_then_frequency(left, right).then(a.name.cmp(&b.name))
     });
+    let mut hits: Vec<MemoryHit> = scored.into_iter().map(|(_, hit)| hit).collect();
     if let Some(limit) = limit {
         hits.truncate(limit);
     }
@@ -84,72 +85,38 @@ pub fn rank(memories: &[Memory], keywords: &[String], limit: Option<usize>) -> V
 }
 
 /// Score one memory against the keywords, or `None` when it matches none of them.
-fn score(memory: &Memory, keywords: &[String]) -> Option<MemoryHit> {
+fn score(memory: &Memory, keywords: &[String]) -> Option<(Relevance, MemoryHit)> {
     // The searchable text is the whole record — a memory found by its own name is the point.
     let haystack = format!(
         "{} {} {}",
         memory.name(),
         memory.description(),
         memory.body()
-    )
-    .to_lowercase();
-
-    let mut matched = 0;
-    let mut occurrences = 0;
-    let mut first_at: Option<usize> = None;
-    for keyword in keywords {
-        let count = haystack.matches(keyword.as_str()).count();
-        if count == 0 {
-            continue;
-        }
-        matched += 1;
-        occurrences += count;
-        if let Some(at) = haystack.find(keyword.as_str()) {
-            first_at = Some(first_at.map_or(at, |earliest: usize| earliest.min(at)));
-        }
-    }
-    if matched == 0 {
+    );
+    let scored = relevance(&haystack, keywords);
+    if !scored.is_match() {
         return None;
     }
 
-    // The excerpt is cut from the *body* at the same offset the lowercased haystack matched, minus
+    // The excerpt is cut from the *body* at the same character offset the haystack matched at, minus
     // the name/description prefix the haystack prepended. A match inside that prefix (the memory
     // was found by its slug) has no body offset, so the excerpt simply starts at the top.
     let prefix = memory.name().chars().count() + memory.description().chars().count() + 2;
-    let body_at = first_at
-        .map(|at| haystack[..at].chars().count())
+    let body_at = scored
+        .first_at
         .and_then(|at| at.checked_sub(prefix))
         .unwrap_or(0);
 
-    Some(MemoryHit {
-        name: memory.name().to_string(),
-        description: memory.description().to_string(),
-        matched,
-        occurrences,
-        excerpt: excerpt_around(memory.body(), body_at),
-    })
-}
-
-/// A single-line window of `text` around character offset `at`, elided on either side when it does
-/// not reach the ends.
-///
-/// Newlines are collapsed to spaces: an excerpt is one line in a list of results, and a memory's
-/// own paragraph breaks would make that list unreadable.
-fn excerpt_around(text: &str, at: usize) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let start = at.saturating_sub(EXCERPT_RADIUS);
-    let end = (at + EXCERPT_RADIUS).min(chars.len());
-    let window: String = chars[start..end].iter().collect();
-    let window = window.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut excerpt = String::new();
-    if start > 0 {
-        excerpt.push('…');
-    }
-    excerpt.push_str(&window);
-    if end < chars.len() {
-        excerpt.push('…');
-    }
-    excerpt
+    Some((
+        scored,
+        MemoryHit {
+            name: memory.name().to_string(),
+            description: memory.description().to_string(),
+            matched: scored.matched,
+            occurrences: scored.occurrences,
+            excerpt: excerpt_around(memory.body(), body_at, EXCERPT_RADIUS),
+        },
+    ))
 }
 
 #[cfg(test)]

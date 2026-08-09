@@ -93,13 +93,13 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
-    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction,
-    GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase,
-    GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits,
-    GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgToolFailure,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgHookAgentKind,
+    GgHookEvent, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgProgramLanguage,
+    GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSubagentScope, GgTelemetryKind,
+    GgToolFailure, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 use test_cabinet_core::gg_session_record::{
@@ -123,7 +123,7 @@ use crate::context::{
     BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator, TurnRange,
     UsageSignalOptions, code_heading, tool_output_source,
 };
-use crate::docs::DocsRuntime;
+use crate::docs::{DocViewTypes, DocsRuntime};
 use crate::ending::{Ending, EndingRole};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
@@ -1730,6 +1730,21 @@ impl Orchestrator {
                 ));
             }
         }
+        // The `docViewTypes` mode, per agent because it is a per-agent knob: two agents in one run
+        // may open documentation differently, so a typo has to be reported against the agent that
+        // carries it rather than against the run.
+        for agent in &set.agents {
+            for unknown in &crate::docs::resolve_doc_view_types(agent).unknown_params {
+                warnings.push(format!(
+                    "agent `{}`: the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares \
+                     `{unknown}`, which gg could not read as a documentation-view type mode; it \
+                     changes nothing and the agent opens `{}`. Set it to `\"off\"`, `\"return\"` or \
+                     `\"return-and-parameters\"`.",
+                    agent.name,
+                    DocViewTypes::default().id(),
+                ));
+            }
+        }
         // The `assistantMessages` mode is read literally and reported on mismatch for the same reason
         // healing keys are: a typo would otherwise pick a mode the study did not ask for, silently.
         for unknown in &healing::resolve_assistant_messages(set.root()).unknown_params {
@@ -1796,6 +1811,7 @@ impl Orchestrator {
                 limits: sandbox::resolve_sandbox_limits(set.root()),
                 healing: healing.config,
                 assistant_messages: healing::resolve_assistant_messages(set.root()).mode,
+                doc_view_types: crate::docs::resolve_doc_view_types(set.root()).mode,
             },
             issue_worktrees: Mutex::new(BTreeMap::new()),
             issue_reviews: Mutex::new(BTreeMap::new()),
@@ -1969,6 +1985,7 @@ impl Orchestrator {
             limits: sandbox::resolve_sandbox_limits(profile),
             healing: healing::resolve_healing(profile).config,
             assistant_messages: healing::resolve_assistant_messages(profile).mode,
+            doc_view_types: crate::docs::resolve_doc_view_types(profile).mode,
         }
     }
 
@@ -5478,7 +5495,13 @@ impl Agent {
             )
             .await;
             let texts = crate::persistence::restore_text_views(context, &desk.texts);
-            emitter.emit(log("info", crate::persistence::restore_note(files, texts)));
+            // Last, because documentation is the least of the three a model needs at the tail: the
+            // material it was working *on* sits closest to where it resumes reading.
+            let docviews = crate::persistence::restore_docviews(context, &desk.docviews, &docs);
+            emitter.emit(log(
+                "info",
+                crate::persistence::restore_note(files, texts, docviews),
+            ));
         }
 
         // Pin the blocks whose modules arrived holding something.
@@ -5704,6 +5727,9 @@ impl Agent {
                         let (request, fallback) =
                             compaction::condense_out_of_band(context, client, &compaction).await;
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
+                        // Read *before* the rewrite too, for the reason the files are: the keys are
+                        // in the window `clear_ephemeral` is about to empty.
+                        let docviews = compaction::restore_docviews(context, &docs);
                         // Current *before* the rewrite, so the stale copy goes out with the
                         // history and the fresh one crosses in the pinned prefix.
                         refresh_boundary_blocks(context, caps);
@@ -5713,6 +5739,7 @@ impl Agent {
                             retained,
                             &request,
                             files,
+                            docviews,
                             fallback,
                         ));
                         if let Err(failure) = fire_post_compact(
@@ -6068,6 +6095,7 @@ impl Agent {
                     context,
                     &compaction,
                     caps,
+                    &docs,
                     &request,
                     tool_ctx,
                     &hooks,
@@ -6133,6 +6161,8 @@ impl Agent {
                     replay: replay.as_ref(),
                     pending_compaction,
                     ending_role,
+                    doc_view_types: code.doc_view_types,
+                    docview_close: profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
                     exec_roster: &profile.subagents,
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
@@ -6432,6 +6462,7 @@ impl Agent {
                                     context,
                                     &compaction,
                                     caps,
+                                    &docs,
                                     &request,
                                     tool_ctx,
                                     &hooks,
@@ -6937,6 +6968,7 @@ impl Agent {
                         context,
                         &compaction,
                         caps,
+                        &docs,
                         &request,
                         tool_ctx,
                         &hooks,
@@ -7462,6 +7494,12 @@ struct CodeSetup {
     /// sent, or the healed program that ran. Governs only what the next turn re-reads, never whether a
     /// reply is healed before it runs. See [`AssistantMessageMode`](crate::healing::AssistantMessageMode).
     assistant_messages: AssistantMessageMode,
+    /// Which SDK types an [`openDocsView`](crate::docs::DocsRuntime) of a function opens beside it —
+    /// its return position, that plus its arguments, or none at all.
+    ///
+    /// Per agent, beside the language, and for the same reason: both are arms of the same study, and
+    /// one run may hold two agents at two languages and two modes.
+    doc_view_types: DocViewTypes,
 }
 
 /// Fire the [pre-compact](GgHookEvent::PreCompact) hooks and report whether the run may continue.
@@ -7997,6 +8035,8 @@ fn apply_context_reclaim(
                 reclaimed_tokens: result.tokens,
                 items: result.items as u64,
                 detail,
+                // Only a documentation close reports where it cut; see the field's own note.
+                earliest_removed: None,
             }]
         }
         ARCHIVE_THREAD_TOOL => {
@@ -8048,6 +8088,7 @@ fn apply_context_reclaim(
                     reclaimed_tokens: result.tokens,
                     items: removed as u64,
                     detail,
+                    earliest_removed: None,
                 },
                 archive_state,
             ]
@@ -9158,6 +9199,7 @@ async fn apply_pending_compaction(
     context: &mut ContextModel,
     setup: &CompactionSetup,
     modules: &CapabilityModules,
+    docs: &DocsRuntime,
     request: &CompactionRequest,
     tool_ctx: &ToolContext,
     hooks: &HooksSetup,
@@ -9166,6 +9208,9 @@ async fn apply_pending_compaction(
 ) -> Result<(), HookFailure> {
     fire_pre_compact(hooks, setup.strategy.id(), tool_ctx, offload, emitter).await?;
     let retained = modules.retained_counts();
+    // Both reads happen before the rewrite: the file paths and the documentation keys are in the
+    // window the reset is about to empty.
+    let docviews = compaction::restore_docviews(context, docs);
     refresh_boundary_blocks(context, modules);
     let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
     let restored = files.len();
@@ -9175,6 +9220,7 @@ async fn apply_pending_compaction(
         retained,
         request,
         files,
+        docviews,
         compaction::is_fallback(&request.summary),
     );
     emitter.emit(event);

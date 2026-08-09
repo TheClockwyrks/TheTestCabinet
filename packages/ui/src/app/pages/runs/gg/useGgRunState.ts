@@ -1055,6 +1055,8 @@ function contextActionLabel(action: GgContextAction): string {
       return "close";
     case "close_docs_views":
       return "close docs";
+    case "close_search_views":
+      return "close search";
     case "archive_thread":
       return "archive";
   }

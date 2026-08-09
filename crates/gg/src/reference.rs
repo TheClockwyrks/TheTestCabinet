@@ -87,7 +87,7 @@ use crate::tools::{
 #[path = "reference.gates.rs"]
 mod gates;
 
-use gates::TOOL_GATES;
+pub(crate) use gates::TOOL_GATES;
 
 /// The placeholder name the reference's one roster entry carries. It stands where a run's own
 /// agent names appear in the delegation tools' descriptions, and it is spelled to be *obviously* a

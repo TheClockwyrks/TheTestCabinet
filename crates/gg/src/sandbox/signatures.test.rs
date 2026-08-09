@@ -375,6 +375,16 @@ fn the_catalogue_tells_the_truth_about_pictures() {
         .iter()
         .find(|entry| entry.name == "openFile")
         .expect("openFile is catalogued");
+    // STALE PROSE, HELD DELIBERATELY. `SandboxLimits::image_view_cap` and its per-agent
+    // `imageViewCap` param are gone — nothing refuses an image view for being the n-th one any
+    // more — so these two assertions now hold every arm to a promise the host no longer keeps. They
+    // stay because a catalogue cannot be hand-edited (contract-drift regenerates it from SDK
+    // source), so retiring the promise is a change to ten SDK source trees: stage 4 of the
+    // documentation plan, which rewrites each arm's prose anyway. Until then this is a *marker* for
+    // where the lie is, not a live contract — and its failure on that commit is the expected signal
+    // that the prose was finally fixed, at which point both assertions are deleted rather than
+    // inverted. The same sentence sits in `crates/backend/src/gg_reference.json`, which is likewise
+    // regenerated rather than authored.
     assert!(
         open_file.doc.contains("imageViewCap"),
         "`view.openFile` must name the cap an operator configures: {}",

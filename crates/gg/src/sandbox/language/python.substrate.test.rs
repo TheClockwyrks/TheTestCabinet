@@ -142,6 +142,7 @@ fn run_as(
         modules,
         ending,
         library,
+        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(api, python(), scope, limits, None),
@@ -731,6 +732,7 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
         modules: &[],
         ending: RunEnding::None,
         library: false,
+        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(FakeToolApi::new(&log), python(), scope, limits, None),
@@ -1612,6 +1614,7 @@ print(type(region).__name__, region.offset, region.limit)
         modules: &[],
         ending: RunEnding::None,
         library: true,
+        docview_close: false,
     };
     let mut store = bounded_store(
         MembraneState::new(api, python(), scope, limits, None),

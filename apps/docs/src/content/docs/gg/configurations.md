@@ -164,9 +164,9 @@ an issue's implementer.
 The selected type opens its own settings where a capability's would sit — the sandbox
 ceilings and [response healing](/gg/response-healing/) for **RaC**, the state table for
 **FSM** — and filters the capability list below it. A capability only one type reads is
-listed only under that type: [program library](/gg/program-library/) is offered to a RaC
-agent and not to a Tools one, because there are no programs in a tool-calling session to
-keep.
+listed only under that type: [program library](/gg/program-library/) and **Close
+documentation** are offered to a RaC agent and not to a Tools one, because there are no
+programs in a tool-calling session to keep and nothing in one opens a documentation view.
 
 An **FSM** profile is offered no capabilities whatever — and no model binding, no prompt
 cache lifetime, no custom instructions, no system-prompt override and no roster either.

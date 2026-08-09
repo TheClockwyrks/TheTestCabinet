@@ -679,11 +679,15 @@ interface session {
 
 /// Documentation lookup — the second model-facing carve-out, and like `session` NOT a gg tool.
 ///
-/// No capability offers it and it dispatches nothing through the tool seam. It is bound into every
-/// program's scope so a model can always discover the functions it has and read what they do,
-/// whatever a run enables. It is kept out of the tool interfaces for the same reason `session` is:
-/// so the one-to-one correspondence they hold with `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs) is
-/// not perturbed by it.
+/// It dispatches nothing through the tool seam, and it is kept out of the tool interfaces for the
+/// same reason `session` is: so the one-to-one correspondence they hold with `ALL_TOOL_NAMES`
+/// (crates/gg/src/tools/mod.rs) is not perturbed by it.
+///
+/// Discovering what you have and reading what it does are bound into every program's scope whatever
+/// a run enables — a model must always be able to find the functions it *does* have. Taking
+/// documentation back OUT of the window is the exception, and is bought by a capability: opening a
+/// documentation view only ever adds to the end of your prompt, while closing one rewrites its
+/// middle, and those are different enough trades to be different decisions.
 interface docs {
     use types.{tool-error};
 
@@ -701,6 +705,72 @@ interface docs {
     /// is never a promise the scope cannot keep. An unknown object name returns an empty list.
     list-functions: func(object: string) -> list<function-summary>;
 
+    /// One thing a documentation search found: enough to choose from, and no more.
+    record doc-hit {
+        /// What `open-doc-view` takes to read the whole entry.
+        key: string,
+        /// `"function"` or `"type"`.
+        kind: string,
+        /// The module it lives in. A type shows every module in which a function YOU CAN CALL
+        /// mentions it — never one you hold nothing in.
+        module: string,
+        /// The name a program calls it by, or the type's own name.
+        name: string,
+        /// Its one-line brief — and only that. The rest is what a documentation view is for.
+        summary: string,
+    }
+
+    /// A page of search results, with the total behind it.
+    record doc-search {
+        /// How many entries matched BEFORE paging, so you can tell a capped page from a complete
+        /// answer without guessing.
+        total: u32,
+        /// The offset this page starts at, echoed back.
+        offset: u32,
+        /// The page itself, best first.
+        hits: list<doc-hit>,
+    }
+
+    /// Search everything you can call, and everything its signatures mention, by keyword — the way
+    /// to find a function nobody named to you.
+    ///
+    /// Matching is CASE-INSENSITIVE SUBSTRING over identifiers, signatures, briefs and detailed
+    /// descriptions, so `foobar` finds `getFoobar`. Results are ranked by the KIND of thing that
+    /// matched — an entry whose own name matched comes before one that merely mentions your word in
+    /// a paragraph — and only entries THIS run bound are ever returned, so nothing you find is
+    /// something you cannot call.
+    ///
+    /// The filters compose with the query and with each other. `module` is exact and is a lookup
+    /// rather than a search: an empty query plus a module is that module's whole directory.
+    /// `type` narrows to one type and what takes or returns it. `kind` is `"function"` or `"type"`.
+    /// An empty query with no filter at all is `invalid-argument` — "nothing matched" and "you asked
+    /// for nothing" are different answers.
+    ///
+    /// Results come back as a value AND are opened as a view, so you can read them next turn without
+    /// showing them to yourself. That view is REPLACED by your next search: it names what you are
+    /// working from, not a permanent record, which is the opposite of how a documentation view
+    /// behaves. It appears in `current-views` as a `text` view under the selector `search results`,
+    /// and `close-view` on that selector closes it.
+    search: func(query: string, module: option<string>, %type: option<string>,
+                 kind: option<string>, offset: option<u32>, limit: option<u32>)
+        -> result<doc-search, tool-error>;
+
+    /// Take one documentation view back out of your context window, by the key it was opened under,
+    /// and return how many were closed. A key that is not open closes `0`; it is not a failure.
+    ///
+    /// It is a plain removal with NO cascade. Closing the view of a type leaves every function view
+    /// beside it exactly where it is, and closing a function's leaves its types. Nothing remembers
+    /// why a view was opened, so a type you close is opened again by the next function that
+    /// mentions it — "closed" and "never opened" are the same thing here.
+    ///
+    /// It is NOT bound into every program's scope. Unlike the rest of this interface it is bought by
+    /// a capability, because opening documentation only ever adds to the end of your prompt while
+    /// closing it rewrites the middle. A run that did not enable it gets `unavailable`.
+    close-doc-view: func(key: string) -> result<u32, tool-error>;
+
+    /// Take EVERY documentation view out of your context window and return how many went. The
+    /// blanket form of `close-doc-view`, on exactly the same terms and behind the same capability.
+    close-doc-views: func() -> result<u32, tool-error>;
 }
 
 /// Putting material into your own context window — the third model-facing carve-out, and like
@@ -736,6 +806,10 @@ interface views {
         text,
         /// A documentation view, keyed by the name of the function it documents.
         docs,
+        // There is deliberately NO `search` case: the results of a `docs.search` are reported here
+        // as a `text` view, because that is what they behave like at this boundary — composed text
+        // under one label, closed by `close-view` rather than by the capability-bought
+        // `docs.close-doc-view`. gg accounts them separately regardless.
     }
 
     /// The line window a **paged** file view covers. Absent for a whole-file view and for every
@@ -782,19 +856,31 @@ interface views {
     /// never a silent truncation.
     open-text-view: func(label: string, body: string) -> result<_, tool-error>;
 
-    /// Show yourself the full documentation for one function, addressed by the name it is called by
-    /// (`readFile`, `createIssue`, `finish`) or by the function itself (`view.openDocsView(fs.readFile)`):
-    /// its signature, its description, and the declarations of any types it refers to that have NOT
-    /// already been shown this session.
+    /// Show yourself the full documentation for one thing gg's SDK offers, addressed by the name it
+    /// is called by (`readFile`, `createIssue`, `finish`) or by the function itself
+    /// (`view.openDocsView(fs.readFile)`): its signature and its description. A TYPE's name works
+    /// too, and shows its declaration with a line per member.
+    ///
+    /// Opening a FUNCTION also opens the SDK types in its signature, so you get what it hands back
+    /// (or that plus its arguments, or neither) without asking again — how much is a per-agent
+    /// setting. Exactly one level: a type's own view never drags in further types, so if you want
+    /// the shape of a field you open it by name.
     ///
     /// It is a VIEW, not a return value. The documentation reaches you in your next prompt, under a
-    /// `Documentation` heading keyed by the function name — the same way a file or a computed value
-    /// reaches you. It can be closed with `close-view` and it is replaced rather than duplicated if
-    /// you open it again. An unknown name is `not-found`.
+    /// `Documentation` heading keyed by the name — the same way a file or a computed value reaches
+    /// you. Opening something you ALREADY have open does nothing at all: it is not moved, not
+    /// re-sent, not duplicated. An unknown name is `not-found`.
     open-docs-view: func(name: string) -> result<_, tool-error>;
 
-    /// Close every view whose selector matches — for a file, every page of that path — and return
-    /// how many were closed. Closing a selector that is not open returns `0`; it is not a failure.
+    /// Close every file, text or search-results view whose selector matches — for a file, every page
+    /// of that path — and return how many were closed. Closing a selector that is not open returns
+    /// `0`; it is not a failure.
+    ///
+    /// A DOCUMENTATION view is closed too, but only for a run that enabled the documentation-close
+    /// capability: taking documentation out of your window is bought, and this call is not. The
+    /// call that names that act is `docs.close-doc-view`, and this sweep is a transitional
+    /// convenience for the arms whose SDKs do not spell it yet — a run without the capability gets
+    /// `0` for a documentation key, because it cannot reclaim one by any route.
     close-view: func(selector: string) -> result<u32, tool-error>;
 
     /// What is open in your window right now. Named `current-views` rather than `list` because every

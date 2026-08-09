@@ -753,54 +753,61 @@ describe("gg built-in skill toggles", () => {
   });
 });
 
-// The `responses-as-code` capability's `imageViewCap` param: how many image-carrying
-// views the agent may hold open at once. An ordinary number, but one whose per-agent
-// scoping is the point — a reviewer profile that may look at one mockup and a root that
-// may look at four are the same configuration.
+// The `responses-as-code` capability's `docViewTypes` param: which SDK types a
+// documentation lookup opens beside the function it was asked for. A select, but one whose
+// per-agent scoping is the point — a root that opens everything a signature names and a
+// reviewer that opens nothing are the same configuration.
 
-describe("gg open-image-view cap", () => {
-  it("round-trips a configured cap as a number", () => {
+describe("gg documentation type mode", () => {
+  it("round-trips a configured mode", () => {
     const configured = capSet([
-      { id: CODE, enabled: true, params: { imageViewCap: 2 } },
+      { id: CODE, enabled: true, params: { docViewTypes: "off" } },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[CODE]?.params?.imageViewCap).toBe("2");
+    expect(draftCaps(draft)[CODE]?.params?.docViewTypes).toBe("off");
     expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
 
     const back = setCaps(capabilitySetFromDraft(draft, null)).find(
       (cap) => cap.id === CODE,
     );
-    expect(back?.params).toEqual({ imageViewCap: 2 });
+    expect(back?.params).toEqual({ docViewTypes: "off" });
   });
 
-  it("is per agent, so two profiles can carry different caps", () => {
+  it("is per agent, so two profiles can carry different modes", () => {
     const configured: GgCapabilitySet = {
       agents: [
         agent({
           name: "Root",
           capabilities: [
-            { id: CODE, enabled: true, params: { imageViewCap: 3 } },
+            {
+              id: CODE,
+              enabled: true,
+              params: { docViewTypes: "return-and-parameters" },
+            },
           ],
         }),
         agent({
           name: "Reviewer",
           capabilities: [
-            { id: CODE, enabled: true, params: { imageViewCap: 1 } },
+            { id: CODE, enabled: true, params: { docViewTypes: "off" } },
           ],
         }),
       ],
     };
     const draft = draftFromCapabilitySet(configured);
     expect(
-      draft.agents.map((a) => a.capabilities[CODE]?.params?.imageViewCap),
-    ).toEqual(["3", "1"]);
+      draft.agents.map((a) => a.capabilities[CODE]?.params?.docViewTypes),
+    ).toEqual(["return-and-parameters", "off"]);
 
     const back = capabilitySetFromDraft(draft, null);
     expect(
       back.agents.map(
         (a) => a.capabilities.find((cap) => cap.id === CODE)?.params,
       ),
-    ).toEqual([{ imageViewCap: 3 }, { imageViewCap: 1 }]);
+    ).toEqual([
+      { docViewTypes: "return-and-parameters" },
+      { docViewTypes: "off" },
+    ]);
   });
 });
 
@@ -832,7 +839,9 @@ describe("gg removed capabilities", () => {
     expect(draftCaps(draft)["shell"]?.enabled).toBe(true);
 
     const saved = capabilitySetFromDraft(draft, null);
-    expect(setCaps(saved).find((cap) => cap.id === "completion")).toBeUndefined();
+    expect(
+      setCaps(saved).find((cap) => cap.id === "completion"),
+    ).toBeUndefined();
     expect(setCaps(saved).map((cap) => cap.id)).toContain("shell");
   });
 });
@@ -1216,10 +1225,10 @@ describe("params gated on the selected implementation", () => {
     );
   });
 
-  // gg's own default is no ceiling at all, so there is no figure to seed: an empty field
-  // is the default arm, and seeding one would arm a cap nobody asked for.
-  it("seeds no open-image-view cap", () => {
-    expect(paramOf("responses-as-code", "imageViewCap").defaultValue).toBe(
+  // gg's own default is the return position, which the picker's empty option already reads
+  // as — so seeding a value would only make the default arm look configured.
+  it("seeds no documentation type mode", () => {
+    expect(paramOf("responses-as-code", "docViewTypes").defaultValue).toBe(
       undefined,
     );
   });
@@ -1682,8 +1691,6 @@ describe("an agent's type", () => {
     expect(agentStates(draft.agents[0]!)).toEqual([]);
   });
 });
-
-
 
 // A hook's event decides which of a configuration's two lists it belongs to: the run's
 // own (the two session events) or the agent's (the other eight). The draft holds both,

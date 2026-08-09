@@ -226,25 +226,24 @@ The listing is the *menu*; a read skill's **body** is a separate, pinned item, a
 have different lifetimes. The menu is rendered fresh into every request as part of the system
 prompt; the body is pinned into the window once and survives every boundary after that.
 
-## The band is shared with documentation views
+## The band is its own, and documentation's is another
 
-A read skill lands in the **Documentation** band of the
-[context breakdown](/gg/context-visibility/), and it is not alone there: a
-[responses-as-code](/gg/responses-as-code/#showing-yourself-things) program that calls
-`view.openDocsView` to read a function's signature and documentation puts the result in the
-same band. From the window's point of view the two are the same *kind* of thing — authored
-material the agent asked to see, rather than the workspace, its own output, or the harness
-talking — so they share a band, and the console labels it **Skills & docs**.
+A read skill lands in the **Skills** band of the
+[context breakdown](/gg/context-visibility/), and the documentation views a
+[responses-as-code](/gg/responses-as-code/#showing-yourself-things) program opens with
+`view.openDocsView` land in a **Documentation** band beside it. The two used to be one band,
+told apart by **retention** rather than by source — a read skill is pinned and unlabelled, a
+docs view ephemeral and labelled with what it documents — and it is worth saying why that
+stopped being good enough. What an operator pinned in front of an agent and what the agent's
+own lookups cost it are different questions, and one number answered neither.
 
-What tells them apart is **retention**, not where they came from. A read skill is pinned and
-carries no label: it keeps the bare `Documentation` heading, it survives a
-[compaction](/gg/compaction/) for the reason above, and `view.current()` does not offer it,
-because a close that would reclaim nothing is worse than no close at all. A documentation
-view is ephemeral and labelled with the function it documents (`Documentation: openText`), so
-it is listed, replaceable, and closable like any other view. `view.close(name)` therefore
-reaches a docs view and spares the pinned skill sitting beside it in the same band — the
-removal path skips pinned items, so there is no way for a program to close a skill it did not
-open.
+The model still meets both under the same `Documentation` heading, because to it they are one
+kind of thing: reference material gg holds. What differs is what it can do with each. A read
+skill keeps the bare heading, survives a [compaction](/gg/compaction/) for the reason above,
+and `view.current()` does not offer it — a close that would reclaim nothing is worse than no
+close at all. A documentation view is headed with the name it was opened under
+(`Documentation: openText`), is listed, and is closable by an agent that holds the
+`docview-close` capability. Nothing a program can call reaches a skill.
 
 This is also how a built-in skill pays for itself under responses-as-code: what it puts in
 the window is a handful of ordinary, closable docs views, so an agent that has read the

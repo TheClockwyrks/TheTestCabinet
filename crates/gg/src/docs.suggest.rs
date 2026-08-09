@@ -85,7 +85,12 @@ pub(super) fn nearest<'a>(
 /// separators and case is what makes `write_file` one: both are the *right* function under the wrong
 /// spelling, and a hint that could not see through a spelling would be blind to the commonest miss
 /// there is. Everything else survives, so `writeFile` and `readFile` stay different names.
-fn fold(name: &str) -> String {
+///
+/// Shared with [documentation search](super::search), which folds an identifier for exactly the same
+/// reason and must fold it the same way: a query that finds a function must be a query a failed
+/// lookup would have suggested that function for, and two independent foldings would drift into
+/// disagreeing about which spellings are the same name.
+pub(super) fn fold(name: &str) -> String {
     name.rsplit('.')
         .next()
         .unwrap_or(name)

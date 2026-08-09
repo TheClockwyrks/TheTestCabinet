@@ -24,18 +24,18 @@ use test_cabinet_core::gg::{
 };
 
 /// What buys one tool.
-pub(super) struct ToolGate {
+pub(crate) struct ToolGate {
     /// The tool's name — a member of
     /// [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES), exactly.
-    pub(super) tool: &'static str,
+    pub(crate) tool: &'static str,
     /// The capability id that contributes it. Never absent: every tool gg offers is contributed by
     /// some capability, including `transition_state`, which is contributed by the
     /// [`fsm`](CAPABILITY_FSM) capability of the *shell* profile driving the machine rather than by
     /// anything on the agent's own — which is exactly what its [note](Self::note) says.
-    pub(super) capability: &'static str,
+    pub(crate) capability: &'static str,
     /// The condition beyond the capability, when there is one, or `None` when the capability alone
     /// decides. Written as a sentence, because it is displayed as one.
-    pub(super) note: Option<&'static str>,
+    pub(crate) note: Option<&'static str>,
 }
 
 /// A gate, spelled compactly. The two forms are "the capability decides" and "the capability plus
@@ -59,7 +59,7 @@ macro_rules! gate {
 
 /// Every tool gg can offer, and what buys it. Order is [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES)'s,
 /// so the two lists can be read side by side.
-pub(super) const TOOL_GATES: &[ToolGate] = &[
+pub(crate) const TOOL_GATES: &[ToolGate] = &[
     gate!("shell", CAPABILITY_SHELL),
     gate!("read_file", CAPABILITY_READ_FILE),
     gate!("write_file", CAPABILITY_WRITE_FILE),

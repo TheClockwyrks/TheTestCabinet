@@ -910,7 +910,7 @@ fn the_module_vocabulary_serializes_in_its_documented_spelling() {
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.
-    assert_eq!(GgContextSource::ALL.len(), 13);
+    assert_eq!(GgContextSource::ALL.len(), 15);
     assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
     // The two responses-as-code failure bands sit together, immediately after the tool output
     // they replaced on that path — a code turn produces one of these where a tool-calling turn
@@ -923,16 +923,25 @@ fn context_source_all_covers_every_variant_in_stable_order() {
             GgContextSource::RuntimeError,
         ]
     );
-    // A text view sits immediately after the file view: the two view bands are adjacent,
-    // and every band after them keeps its relative order (the console's palette is keyed
-    // by index, so this order is the contract).
+    // The four view bands are adjacent, and every band after them keeps its relative order
+    // (the console's palette is keyed by index, so this order is the contract).
     assert_eq!(
-        &GgContextSource::ALL[6..9],
+        &GgContextSource::ALL[6..11],
         &[
             GgContextSource::FileView,
             GgContextSource::TextView,
+            GgContextSource::DocsView,
+            GgContextSource::SearchResults,
             GgContextSource::Skill,
         ]
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextSource::DocsView).unwrap(),
+        json!("docs_view")
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextSource::SearchResults).unwrap(),
+        json!("search_results")
     );
     assert_eq!(
         serde_json::to_value(GgContextSource::CompilerError).unwrap(),
@@ -1158,6 +1167,7 @@ fn context_managed_serializes_the_action_and_reclaim() {
         reclaimed_tokens: 1280,
         items: 2,
         detail: "Evicted 2 file view(s) (a.js, b.js), reclaiming ~1280 tokens.".to_string(),
+        earliest_removed: None,
     };
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(
@@ -1173,6 +1183,23 @@ fn context_managed_serializes_the_action_and_reclaim() {
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(kind, back);
 
+    // A documentation close carries where it cut as well as what it reclaimed, and is the only
+    // action that does — so the field is present exactly when it is a fact and absent otherwise,
+    // rather than serialized as a `null` every other action would have to be read past.
+    let closed = GgTelemetryKind::ContextManaged {
+        action: GgContextAction::CloseDocsViews,
+        reclaimed_tokens: 640,
+        items: 3,
+        detail: "Closed 3 documentation view(s) (all of them), reclaiming ~640 tokens.".to_string(),
+        earliest_removed: Some(12),
+    };
+    let value = serde_json::to_value(&closed).expect("serialize");
+    assert_eq!(value["earliestRemoved"], json!(12));
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        closed
+    );
+
     // The other action variants tag snake_case too.
     assert_eq!(
         serde_json::to_value(GgContextAction::ArchiveThread).unwrap(),
@@ -1181,6 +1208,10 @@ fn context_managed_serializes_the_action_and_reclaim() {
     assert_eq!(
         serde_json::to_value(GgContextAction::CloseTextViews).unwrap(),
         json!("close_text_views")
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextAction::CloseDocsViews).unwrap(),
+        json!("close_docs_views")
     );
 }
 

@@ -24,6 +24,7 @@ use test_cabinet_core::gg::GgToolFailure;
 
 use crate::board::IssueStatus;
 use crate::context::{OpenViewInfo, TurnRange, ViewKind};
+use crate::docs::DocSearch;
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
@@ -123,13 +124,36 @@ pub struct ViewRefusal {
     pub message: String,
 }
 
-impl ViewRefusal {
-    /// A refusal as a failed [`ToolOutcome`] — the shape `open_file_view` reports it in, because
-    /// that one call is bridged through the membrane's ordinary tool dispatch and so must answer in
-    /// the currency dispatch speaks.
-    pub fn into_outcome(self) -> ToolOutcome {
-        ToolOutcome::failed(self.failure, self.message)
-    }
+/// What a `docs.search` asks for, owned — the host counterpart of the guest's `search` arguments.
+///
+/// Owned `String`s rather than borrows for the reason [`FunctionSummary`] is spelled out here: the
+/// membrane lifts these out of the guest's linear memory and the trait must not depend on the
+/// generated bindings, nor on how long the guest's copy lives.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DocSearchQuery {
+    /// The words to look for, as the model typed them.
+    pub query: String,
+    /// Restrict to one module, by gg's id for it or by this language's spelling.
+    pub module: Option<String>,
+    /// Restrict to one type and what takes or returns it.
+    pub declared_type: Option<String>,
+    /// Restrict to `function` or `type`.
+    pub kind: Option<String>,
+    /// How many hits to skip.
+    pub offset: Option<u32>,
+    /// How many hits to return.
+    pub limit: Option<u32>,
+}
+
+/// What one `docs.search` produced: the page the program gets back, and the view the host opened of
+/// it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocSearchResult {
+    /// The results, as the program's return value.
+    pub page: DocSearch,
+    /// The [search-results view](test_cabinet_core::gg::GgContextSource::SearchResults) this search
+    /// placed, replacing whatever the previous one left.
+    pub opened: SandboxViewOpened,
 }
 
 /// What one `view.openFile` produced: the read's own outcome, and — when a view was actually opened
@@ -144,13 +168,9 @@ pub struct ViewOpenOutcome {
     /// The read's outcome, which the membrane converts into the same `file-read` a bare
     /// `fs.readFile` returns.
     pub outcome: ToolOutcome,
-    /// The view that was opened, or `None` when the read failed or a cap refused the call.
-    ///
-    /// A cap refusal arrives here as a **failed** `outcome` rather than as a separate field: the
-    /// image-view cap can only be consulted once the read has revealed that the file is a picture,
-    /// so the refusal is made on the api side and replaces the read's outcome, which the membrane
-    /// then lowers into the catchable `limit-exceeded` the program sees thrown. Nothing is shown
-    /// and no view is created, which is why there is no half-open state to report.
+    /// The view that was opened, or `None` when the read failed — in which case there was nothing to
+    /// show, the failure is already a rostered, streamed `read_file` result, and the membrane throws
+    /// it at the program. There is no half-open state to report.
     pub opened: Option<SandboxViewOpened>,
 }
 
@@ -330,14 +350,43 @@ pub trait ToolApi: Send + 'static {
     fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome;
     fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome;
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
-    /// Open (or replace) the documentation view for the function called `name` — the whole of
-    /// `view.openDocsView`.
+    /// Search the documentation surface this agent binds, and **also** open the results as a view.
     ///
-    /// A view rather than a return value, which is what makes documentation accountable: it is
-    /// keyed by the function's name, it supersedes its own earlier copy, it can be closed, and it is
-    /// charged to a band like everything else the model reads. A name this run did not bind is a
-    /// [refusal](ViewRefusal), not an empty view.
-    fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal>;
+    /// Both, deliberately. A search is a value the program computes with — it will page, filter and
+    /// pick out of it — and a program that had to open a text view to read its own results would
+    /// pay a view for every page of a loop. But the results are also the one thing the *model*
+    /// needs next turn, and a value a program did not choose to show reaches nobody. So the host
+    /// opens exactly one, under a constant selector, replaced by the next search: the results view
+    /// names what the agent is working from, which is why it supersedes where a documentation view
+    /// does not.
+    ///
+    /// It answers with the view it opened as well as the page, so a turn's feedback can report what
+    /// the window gained without inferring it from the call.
+    fn search_docs(&mut self, query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal>;
+    /// Open the documentation view for `name` — and, under this agent's type mode, the SDK types
+    /// its signature mentions — reporting **every** view the call actually placed.
+    ///
+    /// A view rather than a return value, which is what makes documentation accountable: each one is
+    /// keyed by the thing it documents, can be closed, and is charged to a band like everything else
+    /// the model reads. A name this run did not bind is a [refusal](ViewRefusal), not an empty view.
+    ///
+    /// It answers with a **list**, and possibly an empty one, for two reasons that are the whole of
+    /// the mechanism. One call can place several views — the function's own and one per type — and
+    /// the turn's feedback has to report what the model's window actually gained, not a stand-in for
+    /// it. And a key that is already open is a *total no-op*: nothing is moved, nothing is
+    /// re-emitted, and nothing is reported, because nothing happened. A model that re-opened three
+    /// functions it already had reads back an empty list, which is exactly true.
+    fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal>;
+    /// Close the documentation view keyed by `key` — or **every** one of them, when `key` is `None`
+    /// — and report how many were closed. Closing a key that is not open closes `0`, which is not a
+    /// failure.
+    ///
+    /// Its own call rather than a band of [`close_view`](Self::close_view), because it is its own
+    /// decision: it is bought by a capability the rest of the view surface is not, and it is the one
+    /// close that can invalidate a cached prompt prefix — the documentation band is otherwise
+    /// append-only. A blank `key` is a [refusal](ViewRefusal): `None` is how a program says *all of
+    /// them*, so a blank string is a typo rather than a way of saying it.
+    fn close_docviews(&mut self, key: Option<String>) -> Result<u32, ViewRefusal>;
     /// Read a workspace file **and** open a file view of it — the one place the code path
     /// deliberately does push a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView).
     ///
@@ -361,8 +410,9 @@ pub trait ToolApi: Send + 'static {
         label: String,
         body: String,
     ) -> Result<SandboxViewOpened, ViewRefusal>;
-    /// Close every view whose selector matches — for a file, every page of that path — and report
-    /// how many were closed. A selector that is not open closes `0`, which is not a failure.
+    /// Close every **file or text** view whose selector matches — for a file, every page of that
+    /// path — and report how many were closed. A selector that is not open closes `0`, which is not
+    /// a failure. Documentation is [closed by its own call](Self::close_docviews).
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal>;
     /// What is open in this agent's window right now, in the order it was opened. Charged against
     /// no cap: it opens nothing and reads nothing off disk.

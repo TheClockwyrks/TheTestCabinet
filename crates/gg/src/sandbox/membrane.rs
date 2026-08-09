@@ -88,6 +88,7 @@ mod session;
 mod views;
 mod workspace;
 
+use docs::DOCS_OBJECT;
 use recording::{GuardedApi, Recording};
 
 wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
@@ -208,6 +209,17 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// Held here and not only handed to the guest for the same reason [`ending`](Self::ending) is:
     /// scope construction is a capability model only for a guest that has a scope to construct.
     library: bool,
+    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE),
+    /// so the two [documentation-close calls](docs) are available to it. Checked by
+    /// [`docview_close_bound`](Self::docview_close_bound).
+    ///
+    /// Held **only** here, unlike [`library`](Self::library), which is also handed to the guest so a
+    /// guest that builds its scope can leave the object out of it. There is nothing to hand over:
+    /// the guest's `run` takes the flags a scope is built from, and adding one would mean rebuilding
+    /// eleven committed guests to teach them a name none of their SDKs spells yet. So this gate is
+    /// the whole gate, which is the shape every capability is moving toward regardless — a static
+    /// SDK, and a call the host refuses at the boundary with a reason the program can catch.
+    docview_close: bool,
     /// The linear-memory ceiling, and its record of having denied a growth.
     limiter: MemoryLimiter,
     /// The run's wall-clock budget, consulted before every bridged call. `None` for a run with no
@@ -605,6 +617,7 @@ impl<A: ToolApi> MembraneState<A> {
             enabled: scope.enabled.iter().cloned().collect(),
             ending: scope.ending,
             library: scope.library,
+            docview_close: scope.docview_close,
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
             program_started: Instant::now(),
@@ -941,6 +954,29 @@ impl<A: ToolApi> MembraneState<A> {
             self.spelled(call)
         );
         Err(self.withhold(call, message))
+    }
+
+    /// Refuse a [documentation-close](docs) call from an agent that was not given the capability.
+    ///
+    /// The counterpart of [`library_bound`](Self::library_bound), and refused on the same terms —
+    /// inside the call's own [bracket](recording), so the reach is counted as a failed API call
+    /// rather than vanishing. What differs is the identity it is filed under: there is no
+    /// [`SurfaceCall`] for it, because no arm's committed catalogue spells it yet, so the refusal
+    /// names it in gg's own vocabulary rather than in a spelling that would resolve to nothing.
+    fn docview_close_bound(&mut self, function: &str) -> Result<(), ToolError> {
+        if self.docview_close {
+            return Ok(());
+        }
+        let message = format!(
+            "`{DOCS_OBJECT}.{function}` is not available to you: this agent may open documentation \
+             but not close it."
+        );
+        self.record_refusal(&format!("{DOCS_OBJECT}.{function}"), &message);
+        Err(ToolError {
+            code: ErrorCode::Unavailable,
+            tool: function.to_string(),
+            message,
+        })
     }
 
     /// Refuse a model-facing call this agent was never offered, record it, and render it as the

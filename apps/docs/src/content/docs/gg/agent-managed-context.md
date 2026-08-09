@@ -149,15 +149,27 @@ that selector — for a file, every page of that path — returning how many it 
 something that is not open returns `0` rather than failing, so a program that tidies up
 unconditionally does not have to guard every call.
 
-All three view bands are swept, the **documentation** band included: a lookup opened with
-`view.openDocsView` is a view like any other and answers to `view.close(name)`. A selector is
-what the *model* wrote, and it has no obligation to tell gg which kind of view it meant, so
-one call reaches all three rather than making the agent pick the right one. The one thing a
-close cannot reach is a **read [skill](/gg/skills/)**, which shares the documentation band
-with docs views and is told apart from them by retention: the skill is pinned, and the
-removal path spares every pinned item. So a program tidying up its lookups can never take the
-skill down with them — not by a special case, but by the same rule that keeps an eviction off
-a locked [autoloaded specification](/gg/autoload-specifications/).
+The file and text bands are both swept. A selector is what the *model* wrote, and it has no
+obligation to tell gg which of the two it meant, so one call reaches both rather than making
+the agent pick. A read [skill](/gg/skills/) is not reachable at all — it is pinned material an
+operator put in front of the agent, and the removal path spares every pinned item, by the same
+rule that keeps an eviction off a locked
+[autoloaded specification](/gg/autoload-specifications/).
+
+**Documentation is bought, and not part of what `view.close` is *for*.** Closing a
+documentation view is its own call, on the `docs` module, and it is bought by its own
+capability — `docview-close`, **off by default**. The reason is a property nothing else in the
+window has: opening documentation only ever *appends* to the prompt (re-opening something
+already open does nothing whatever), so a provider's cached prefix survives every lookup an
+agent makes for a whole session. A close removes an item from the middle and costs the run
+every cached token after it. Whether that reclaim pays for the invalidation is a measurement
+rather than an answer, so it is a toggle.
+
+Until every program language's SDK spells that call, `view.close` also sweeps the
+documentation band **for an agent that holds the capability**, and only for one — so a run
+without `docview-close` still cannot reclaim a documentation view by any route, which is the
+arm of the comparison the toggle exists to measure. The sweep is transitional: each arm's own
+`docs.close` replaces it, and the sentence goes with it.
 
 `view.close` sits **beside** `evict_file_view` rather than inside it, and the two differences
 are the whole reason it is documented separately:

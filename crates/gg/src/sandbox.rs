@@ -165,12 +165,12 @@ pub use outcome::{
 // The rest of the sandbox's surface, re-exported so `sandbox` is the single name the loop and the
 // prompt import from.
 pub use {
-    invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened,
-    invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
-    membrane::RunEnding, signatures::CatalogueFunction, signatures::Parameter,
-    signatures::ParameterKind, signatures::TypeDeclaration, signatures::catalogue_functions,
-    signatures::catalogue_objects, signatures::meta_function, signatures::summary_of,
-    signatures::type_declaration,
+    invoker::DocSearchQuery, invoker::DocSearchResult, invoker::FunctionSummary,
+    invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened, invoker::ViewOpenOutcome,
+    invoker::ViewRefusal, limits::resolve_sandbox_limits, membrane::RunEnding,
+    signatures::CatalogueFunction, signatures::Parameter, signatures::ParameterKind,
+    signatures::TypeDeclaration, signatures::catalogue_functions, signatures::catalogue_objects,
+    signatures::meta_function, signatures::summary_of, signatures::type_declaration,
 };
 
 // The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are
@@ -225,9 +225,16 @@ pub struct ProgramScope<'a> {
     /// [none at all](RunEnding::None) for an on-use script.
     pub ending: RunEnding,
     /// Whether this agent keeps a [program library](crate::programs), which binds the `programs`
-    /// object. A flag rather than a tool name because the library is the one model-facing family a
-    /// *capability* gates rather than the toolset.
+    /// object. A flag rather than a tool name because the library is one of the two model-facing
+    /// families a *capability* gates rather than the toolset.
     pub library: bool,
+    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE),
+    /// which is what decides whether it may take a documentation view back out of its window.
+    ///
+    /// The other capability-gated family, and unlike [`library`](Self::library) it is **not** handed
+    /// to the guest: the membrane refuses the call. See
+    /// [`MembraneState::docview_close`](membrane) for why the two differ.
+    pub docview_close: bool,
 }
 
 /// `language` is the [program language](ProgramLanguage) this agent writes in — which decides how
@@ -324,6 +331,7 @@ fn evaluate<A: ToolApi>(
         modules,
         ending,
         library,
+        docview_close: _,
     } = scope;
     let unreachable = prepared.unreachable;
     // Either the language's committed component, or — for an arm whose prepare step compiled the
@@ -632,6 +640,7 @@ pub(crate) fn component_bound_tools(
         modules: &[],
         ending: RunEnding::None,
         library: false,
+        docview_close: false,
     };
     let state = MembraneState::new(fake::FakeToolApi::new(&log), language, scope, limits, None);
     let mut store = bounded_store(state, limits);

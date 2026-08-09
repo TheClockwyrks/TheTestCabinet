@@ -310,6 +310,11 @@ saved, launched, and analyzed in the console is
   to a reply before running it as a program.
 - [Program library](/gg/program-library/) — keep every program an agent runs, so it can
   fetch one back, patch it, and hand it over to be run instead of writing it again.
+- **Close documentation** (`docview-close`) — let an agent take a
+  [documentation view](/gg/responses-as-code/#three-kinds-of-view) back out of its own
+  window. Off by default, and its own capability because it is the only thing that can
+  disturb a prompt prefix an append-only documentation band otherwise keeps intact for a
+  whole session.
 
 **Observability**
 

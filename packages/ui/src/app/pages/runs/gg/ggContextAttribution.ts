@@ -71,12 +71,12 @@ import type { DerivedGgState, PooledMessage } from "./useGgRunState";
  * taxonomy — everything on disk is a file, everything a program can compute is text, and
  * everything the harness can explain about itself is documentation.
  *
- * A docs view is what `view.openDocsView` opens. It shares the `skill` band with pinned read
- * skills and is told apart from them the same way gg tells them apart: a docs view carries the
- * selector it is keyed by (the function's name — what `view.close` names and what heads it
- * `Documentation: readFile`), and a read skill carries none.
+ * A docs view is what `view.openDocsView` opens, keyed by the name of the thing it documents. A
+ * search view is the results of the agent's last `docs.search` — always one, under one selector,
+ * replaced by the next search — and it is its own kind rather than a text view because what
+ * *finding* the documentation cost is one of the things the run is being read for.
  */
-export type GgViewKind = "file" | "text" | "docs";
+export type GgViewKind = "file" | "text" | "docs" | "search";
 
 /** One thing the window carried — a band, a view, or a tool — and what it was answerable for. */
 export interface GgAttributionRow {
@@ -155,7 +155,9 @@ const SOURCE_LABELS: Record<GgContextSource, string> = {
   runtime_error: "runtime errors",
   file_view: "file views",
   text_view: "agent views",
-  skill: "skills & docs",
+  docs_view: "documentation",
+  search_results: "doc search",
+  skill: "skills",
   memory: "memories",
   task_list: "task list",
   board: "board",
@@ -302,16 +304,15 @@ function viewRowsFrom(
 /**
  * Which kind of view a pooled message is, or null when it is not a view at all.
  *
- * The two view bands map straight across. The `skill` band does not: it holds **both** pinned read
- * skills and the ephemeral documentation views `view.openDocsView` opens, and gg tells the two
- * apart by the selector — a docs view is keyed by the function's name (which is what heads it
- * `Documentation: readFile` and what `view.close` names), while a read skill is pushed unlabelled
- * and cannot be closed at all. So a `skill` message is a view exactly when it carries a label, and
- * a read skill stays counted in its band and out of the view list, which is right: it is not a view
- * and there is no selector to rank it by.
+ * All four view bands map straight across. A `skill` message is never a view: skills and
+ * documentation used to share that band and be told apart by whether the message carried a label,
+ * and now do not — documentation has a band of its own, and a read skill is authored material an
+ * operator pinned rather than something the agent opened and can close.
  *
- * The label is read off the message rather than through {@link viewSelectorOf}, whose `read_file`
- * fallback would answer for a message that is not a view.
+ * An older stream still carries labelled `skill` messages for the documentation its agent opened,
+ * and they are counted in that band rather than promoted into the view list. That is the honest
+ * reading of a record written before the split: the band it was recorded under is what the run
+ * actually reported.
  */
 function viewKindOf(
   source: GgContextSource,
@@ -319,7 +320,8 @@ function viewKindOf(
 ): GgViewKind | null {
   if (source === "file_view") return "file";
   if (source === "text_view") return "text";
-  if (source === "skill" && message.label) return "docs";
+  if (source === "docs_view" && message.label) return "docs";
+  if (source === "search_results") return "search";
   return null;
 }
 

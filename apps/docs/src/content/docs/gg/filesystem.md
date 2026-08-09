@@ -201,12 +201,11 @@ same way, but attaches no picture anywhere: its result carries `shown: false` an
 with `view.openFile(path)` to actually look at it*). A view is the only channel into a code
 agent's window, and a picture is not an exception to that. So a program that means to *look*
 at a reference mockup must open a view of it; one that only wants its dimensions or its bytes
-should not, and pays nothing. How many such views may be open at once is the per-agent
-[`imageViewCap`](/gg/responses-as-code/#configuring-it), which is unset — no ceiling — unless a
-profile names one; opening one past a configured ceiling is refused, not quietly dropped. The **native** `read_file` above is deliberately uncapped and
-attaches its picture as it always has — the two paths are the control and treatment arms of
-an experiment, and putting a ceiling on the control one to fix a defect in the treatment one
-would move what the study measures.
+should not, and pays nothing. How many such views may be open at once is **not** bounded: what
+bounds a picture is its own size, 8 MiB, and the fact that
+[re-opening one](/gg/responses-as-code/#re-opening-a-selector-replaces-what-was-under-it) takes
+the image out of the copy it retires — so what a run uploads per request follows what is open.
+The **native** `read_file` above attaches its picture as it always has.
 
 Reads are **append-only**, as everything in the window is: a second read of the same file
 appends a second view rather than rewriting the first, and re-reading is how an agent

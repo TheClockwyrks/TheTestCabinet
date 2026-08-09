@@ -41,14 +41,18 @@ use tokio::runtime::Handle;
 use test_cabinet_core::gg::GgSubagentRef;
 use test_cabinet_core::gg_session_record::GgShellOrigin;
 
-use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
+use crate::context::{
+    DocviewOpen, EvictionResult, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind, ViewsClosed,
+};
+use crate::docs::{DocQuery, DocSearch};
 use crate::ending::Ending;
 use crate::knowledge::{KnowledgeError, KnowledgeModules, KnowledgeOrigin, PendingOnUse};
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    PreparedProgram, ProgramError, ProgramLanguage, ProgramScope, RunEnding, SandboxViewOpened,
-    ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal, run_prepared_program,
+    DocSearchQuery, DocSearchResult, PreparedProgram, ProgramError, ProgramLanguage, ProgramScope,
+    RunEnding, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
+    run_prepared_program,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -778,6 +782,7 @@ fn view_kind_word(kind: ViewKind) -> &'static str {
         ViewKind::File => "file",
         ViewKind::Text => "text",
         ViewKind::Docs => "documentation",
+        ViewKind::Search => "search",
     }
 }
 
@@ -998,6 +1003,12 @@ pub(super) struct CodeTurn<'a> {
     /// Which [ending calls](EndingRole) this agent's programs are given, and what the sandbox will
     /// accept from them.
     pub(super) ending_role: EndingRole,
+    /// Which SDK types this agent's documentation opens beside a function — its resolved
+    /// [`DocViewTypes`], per agent exactly as its program language is.
+    pub(super) doc_view_types: DocViewTypes,
+    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE),
+    /// which is what decides whether the documentation-close calls are in its program's reach.
+    pub(super) docview_close: bool,
     /// The agents this one may become — its own
     /// [roster](test_cabinet_core::gg::GgAgentConfig::subagents), which is what an `exec` target is
     /// checked against. Empty when it has none, which is also when the call is not bound.
@@ -1091,9 +1102,8 @@ pub(super) struct CodeTurnState {
 /// the model is taught in one line: **`fs.readFile` gets bytes for your program; `view.openFile`
 /// shows a file to you.** A view is an intent — *this should be visible* — so it is an attributable,
 /// evictable, persisted context item keyed by `(path, region)`, and the picture an opened mockup
-/// returned rides in that item. One channel, which is what makes the
-/// [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) a bound on the whole arm
-/// rather than one of two budgets that cannot see each other.
+/// returned rides in that item. One channel, which is what keeps a picture's cost in the window's
+/// own accounting rather than in a second place nothing totals.
 #[allow(clippy::too_many_arguments)]
 async fn run_code_program(
     source: &str,
@@ -1120,6 +1130,9 @@ async fn run_code_program(
     // rather than from a second flag — so the object a program sees and the state gg would answer it
     // from can never disagree.
     let library = programs.is_enabled();
+    // Whether this agent may take a documentation view back out of its window. Held beside the
+    // library flag because the two are the surface's only capability-bought families.
+    let docview_close = turn.docview_close;
     // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -1129,6 +1142,8 @@ async fn run_code_program(
         context,
         skills,
         docs,
+        doc_view_types: turn.doc_view_types,
+        docview_close,
         programs,
         knowledge,
         subagents,
@@ -1154,10 +1169,7 @@ async fn run_code_program(
         handle: Handle::current(),
         pending_compaction: turn.pending_compaction,
         serviced: 0,
-        view_ops: 0,
-        // The one ceiling on `limits` that is not enforced by the store: it bounds what stays in
-        // the window rather than what this program may spend, so it travels onto the api instead.
-        image_view_cap: limits.image_view_cap,
+        composed_view_bytes: 0,
     };
 
     let sandbox = tokio::task::spawn_blocking(move || {
@@ -1179,6 +1191,7 @@ async fn run_code_program(
                     modules: &modules,
                     ending: RunEnding::Role(role),
                     library,
+                    docview_close,
                 },
                 limits,
                 deadline,
@@ -1602,8 +1615,10 @@ fn run_on_use_scripts(
                 enabled,
                 modules: &modules,
                 ending: RunEnding::None,
-                // An on-use script has no business handing gg a replacement for the model's turn.
+                // An on-use script has no business handing gg a replacement for the model's turn,
+                // nor any business rewriting the window the agent that read it is working in.
                 library: false,
+                docview_close: false,
             },
             limits,
             deadline,
@@ -1659,23 +1674,41 @@ const MAX_TEXT_VIEW_BYTES: usize = 65_536;
 /// closes and replaces the view by — so it is a name, not a description.
 const MAX_VIEW_LABEL_BYTES: usize = 200;
 
-/// The most text views one agent may hold open at once. Re-opening a label that is already open is
-/// never refused by this: it replaces a view rather than adding one.
-const MAX_OPEN_TEXT_VIEWS: usize = 50;
-
-// The most **image-carrying** file views one agent may hold open at once is deliberately NOT a
-// constant here. It is `SandboxLimits::image_view_cap` — configured per agent by the `imageViewCap`
-// param and carried onto `LoopToolApi::image_view_cap` with the rest of that agent's ceilings —
-// because it is the one view cap an experiment has a reason to move: it decides how much of a
-// context window a run spends on pictures. The caps above it bound the *shape* of a window (a label
-// is a name, a hundred views in one turn is a loop), which no arm needs to vary.
-
-/// The most view operations — `openFile` + `openText` + `close` — one program may make.
+/// The most bytes of **composed view body** one turn's programs may hand the host in total.
 ///
-/// Not a cost bound (the three caps above are) but a *shape* bound: a program composing a hundred
-/// views in one turn has stopped showing the model material and started writing its window with a
-/// loop. `current()` is not charged against it, because listing what is open opens nothing.
-const MAX_VIEW_OPS_PER_PROGRAM: u32 = 100;
+/// It is a host-robustness bound, not a model-facing budget, and the distinction is the whole reason
+/// it is a *byte* ceiling rather than a count. The number of views an agent may hold is deliberately
+/// unbounded (see below): what makes a window too full is tokens, and the fullness signal reports
+/// those honestly. But `open-text-view` is bound into every program's scope unconditionally, each
+/// accepted call stores up to [`MAX_TEXT_VIEW_BYTES`] in the [`ContextModel`], and a program is
+/// otherwise bounded only by its wall-clock timeout — so `for (;;) view.openText(unique(), big)` has
+/// nothing between it and the driver's resident memory. One reused 64 KiB buffer costs the guest
+/// nothing against its own 256 MiB linear-memory cap, so that cap does not stand in for this one.
+///
+/// 8 MiB is set where it is because it is past anything a program composes on purpose and short of
+/// anything that hurts the host: it is roughly two million tokens of text, an order of magnitude
+/// more than the largest window gg drives, and 128 bodies at the per-view maximum. A model that
+/// reaches it has stopped showing itself material and started writing its window with a loop, which
+/// is the failure the retired per-program view-op ceiling named — so the refusal is a catchable
+/// `limit-exceeded` naming this constant, exactly as the per-body cap's is, and never a truncation.
+///
+/// Charged per **turn** rather than per program because that is the unit the api is alive for: a
+/// [chained](ProgramChain) rerun and an on-use script are the same turn's composition, and a budget
+/// that reset between them would be a budget a `rerun` loop could spend twice.
+const MAX_COMPOSED_VIEW_BYTES_PER_TURN: usize = 8 * 1024 * 1024;
+
+// There is deliberately **no cap on the NUMBER of views** an agent may hold open — not on text
+// views, not on image-carrying file views, not on documentation views, and no budget on how many
+// view operations one program may make. The caps that remain are the two above, and both bound the
+// *size* of one thing: a body is 64 KiB, a label is a name.
+//
+// A count cap answers a question the context window already answers, and answers it worse. What
+// makes a window too full is tokens, which every view reports and the fullness signal totals; a
+// count is a proxy for that which is wrong in both directions — fifty one-line views are nothing and
+// four large ones are most of a small model's window. Worse, a count cap has to refuse, and a
+// refusal is the one outcome that leaves the model unable to show itself the thing it decided to
+// look at, in exchange for a bound the fullness signal was already reporting honestly. The model's
+// context window is the limit; agent-managed context is how it is spent.
 
 // ---------------------------------------------------------------------------
 // The native `ToolApi`: the loop's own state, servicing each typed call inline
@@ -1698,6 +1731,18 @@ pub(super) struct LoopToolApi {
     pub(super) context: ContextModel,
     pub(super) skills: SkillsRuntime,
     pub(super) docs: DocsRuntime,
+    /// Which SDK types an [`open_docs_view`](Self::open_docs_view) opens beside the function it was
+    /// asked for — this agent's resolved [`DocViewTypes`], read at each open rather than baked into
+    /// the runtime, because it governs what is *placed in the window* and not what a lookup says.
+    pub(super) doc_view_types: DocViewTypes,
+    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE).
+    ///
+    /// The membrane already refuses `docs.close` / `docs.close_all` without it, so this is not a
+    /// second copy of that gate: it is what lets `view.close` keep reaching the documentation band
+    /// for the agents that bought the right to reclaim one, until stage 4 of the documentation plan
+    /// gives every arm's SDK a spelling of `docs.close` and this can go. See
+    /// [`close_view`](Self::close_view).
+    pub(super) docview_close: bool,
     /// This agent's [program library](crate::programs) — the source of every program it has run,
     /// which its own programs read through `programs.get` / `programs.history`.
     ///
@@ -1756,20 +1801,10 @@ pub(super) struct LoopToolApi {
     handle: Handle,
     pending_compaction: Option<PendingCompaction>,
     serviced: u64,
-    /// How many view operations this program has made, against
-    /// [`MAX_VIEW_OPS_PER_PROGRAM`]. Refused ones count: a refusal is an operation the program
-    /// chose to attempt, and not counting them would leave a program that swallows the throws
-    /// looping on a budget it can never spend.
-    view_ops: u32,
-    /// How many image-carrying views **this agent** may hold open at once — the
-    /// [`imageViewCap`](crate::sandbox::SandboxLimits::image_view_cap) param, resolved from this
-    /// agent's own profile and carried in on its [ceilings](SandboxLimits). `None` when the
-    /// profile names none, which is the default: no ceiling at all.
-    ///
-    /// It is a ceiling and not a counter: what it is compared against is counted from the live
-    /// window ([`ContextModel::open_image_views`]) at each call, so views that outlived the program
-    /// that opened them are counted and nothing has to be reset between turns.
-    image_view_cap: Option<usize>,
+    /// How many bytes of composed view body this turn's programs have handed the host so far, against
+    /// [`MAX_COMPOSED_VIEW_BYTES_PER_TURN`]. Beside `serviced` because it is the same kind of thing —
+    /// a running total for the life of the api, which is the life of the turn.
+    composed_view_bytes: usize,
 }
 
 #[allow(dead_code)]
@@ -2117,59 +2152,25 @@ impl LoopToolApi {
         )
     }
 
-    /// Charge one view operation against [`MAX_VIEW_OPS_PER_PROGRAM`], refusing when the budget is
-    /// spent.
+    /// Check one `view.openText` against the two size caps that bound a text view and the turn's
+    /// composed-body budget, then push it and report what the push did.
     ///
-    /// Charged before anything else a view call does, and charged for refusals too — a program that
-    /// catches the throw and keeps calling has still made the call, and a budget that only counted
-    /// successes would never actually stop one.
-    fn charge_view_op(&mut self) -> Result<(), ViewRefusal> {
-        if let Some(refusal) = view_ops_refusal(self.view_ops) {
-            return Err(refusal);
-        }
-        self.view_ops += 1;
-        Ok(())
-    }
-
-    /// Decide whether the open-image-view cap refuses this `view.openFile`, having read the file
-    /// and discovered it is a picture.
-    ///
-    /// The cap is read from the **live window** rather than from a counter this api carries: views
-    /// outlive the program that opened them, so the only honest question is how many are open right
-    /// now. Re-opening a path that already holds an image view is a supersede — it replaces an
-    /// occupant instead of adding one — so it is admitted at exactly the ceiling; that check uses
-    /// the same `(path, region)` key the push itself supersedes on, so the two cannot disagree.
-    ///
-    /// The ceiling itself is **this agent's**: it comes from the `imageViewCap` its own profile
-    /// resolved, so a reviewer that is only ever shown one screenshot and a builder working from
-    /// four mockups can be configured differently in one run.
-    fn refuse_over_image_cap(&self, path: &str, region: Option<FileRegion>) -> Option<ViewRefusal> {
-        image_view_refusal(
-            self.image_view_cap,
-            self.context.open_image_views(),
-            self.context.holds_image_view(path, region),
-        )
-    }
-
-    /// Check one `view.openText` against the caps that bound a text view, then push it and report
-    /// what the push did.
-    ///
-    /// The count cap needs the window (how many text views are open, and whether this label is one
-    /// of them), so it is resolved here and decided by [`text_view_refusal`].
+    /// The budget is charged on what was **accepted**, and it is charged whether the push placed a
+    /// new view or superseded one: what it bounds is how much text the host was handed, not how much
+    /// of it survives in the window, because the two come apart exactly in the loop it exists to
+    /// stop.
     fn push_text_view(
         &mut self,
         label: String,
         body: String,
     ) -> Result<SandboxViewOpened, ViewRefusal> {
-        let open: Vec<String> = self
-            .context
-            .open_text_views()
-            .into_iter()
-            .map(|view| view.label)
-            .collect();
-        if let Some(refusal) = text_view_refusal(&label, &body, &open) {
+        if let Some(refusal) = text_view_refusal(&label, &body) {
             return Err(refusal);
         }
+        if let Some(refusal) = composed_view_budget_refusal(self.composed_view_bytes, body.len()) {
+            return Err(refusal);
+        }
+        self.composed_view_bytes += body.len();
         let opened = self.context.open_text_view(label.clone(), body);
         Ok(SandboxViewOpened {
             kind: ViewKind::Text,
@@ -2240,26 +2241,16 @@ fn did_you_mean(names: &[String]) -> Option<String> {
     Some(format!("Did you mean {list}?"))
 }
 
-/// The refusal [`MAX_VIEW_OPS_PER_PROGRAM`] makes when a program has already spent its budget.
-fn view_ops_refusal(made: u32) -> Option<ViewRefusal> {
-    (made >= MAX_VIEW_OPS_PER_PROGRAM).then(|| ViewRefusal {
-        failure: ToolFailure::LimitExceeded,
-        message: format!(
-            "this program has already made {MAX_VIEW_OPS_PER_PROGRAM} view operations \
-             (MAX_VIEW_OPS_PER_PROGRAM)"
-        ),
-    })
-}
-
 /// The refusal the text-view caps make about one `view.openText`, or `None` to let it through.
 ///
-/// `open` is the labels already open. The count cap is checked against **new** labels only:
-/// re-opening a label that is already open replaces a view rather than adding one, so refusing it
-/// at the ceiling would leave an agent with fifty views unable to correct any of them.
+/// Both caps bound the **size** of one thing — a body is 64 KiB, a label is a name — and there is no
+/// cap on how many text views an agent may hold: what makes a window too full is tokens, which the
+/// fullness signal already reports honestly, and a count is a proxy for that which is wrong in both
+/// directions.
 ///
 /// An empty **body** is deliberately allowed: it is how a program says that something it was
 /// showing is now empty, and refusing it would make that unexpressible.
-fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRefusal> {
+fn text_view_refusal(label: &str, body: &str) -> Option<ViewRefusal> {
     if label.trim().is_empty() {
         return Some(ViewRefusal {
             failure: ToolFailure::InvalidArgument,
@@ -2284,41 +2275,23 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
             ),
         });
     }
-    if open.len() >= MAX_OPEN_TEXT_VIEWS && !open.iter().any(|open| open == label) {
-        return Some(ViewRefusal {
-            failure: ToolFailure::LimitExceeded,
-            message: format!("{MAX_OPEN_TEXT_VIEWS} text views already open (MAX_OPEN_TEXT_VIEWS)"),
-        });
-    }
     None
 }
 
-/// The refusal the [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) makes about
-/// a `view.openFile` whose read turned out to be a picture, or `None` to let it through.
+/// The refusal the turn's [composed-body budget](MAX_COMPOSED_VIEW_BYTES_PER_TURN) makes about one
+/// `view.openText`, or `None` to let it through.
 ///
-/// `cap` is the agent's own configured ceiling — its `imageViewCap`, or `None` when its profile
-/// names none, which is the default and refuses nothing. `open` is how many image views its window
-/// already holds, and `superseding` is whether this call re-opens one of them. Superseding is never
-/// refused, for the reason re-opening an already-open label is never refused by
-/// [`MAX_OPEN_TEXT_VIEWS`]: it replaces an occupant instead of adding one, and refusing it would
-/// leave an agent at the ceiling unable to *refresh* any of the views holding it there.
-///
-/// A cap of zero is honourable and reachable: it refuses every picture, which is exactly what an
-/// arm measuring a run that cannot look at anything asks for. (The
-/// [resolver](crate::sandbox::resolve_sandbox_limits) will not *produce* zero from a param — a zero
-/// param reads as "not configured" — but nothing here depends on that.)
-///
-/// It **refuses** rather than dropping the picture and pushing the view anyway. A drop leaves the
-/// model holding a view whose body says a picture is there and no picture — it learns about the loss
-/// afterwards, in a form it cannot branch on, if it learns at all. A refusal is a value the program
-/// catches at the call site, and nothing enters the window: no view, no read charged to it. So the
-/// message names the cap and what is already open, which is what a program branching on it needs.
-fn image_view_refusal(cap: Option<usize>, open: usize, superseding: bool) -> Option<ViewRefusal> {
-    let cap = cap?;
-    (open >= cap && !superseding).then(|| ViewRefusal {
+/// It refuses the call that would cross the ceiling rather than truncating it, and names the
+/// constant, so a program that meant to compose something enormous is told what it may still spend
+/// instead of silently showing the model half of what it wrote.
+fn composed_view_budget_refusal(spent: usize, body: usize) -> Option<ViewRefusal> {
+    let remaining = MAX_COMPOSED_VIEW_BYTES_PER_TURN.saturating_sub(spent);
+    (body > remaining).then(|| ViewRefusal {
         failure: ToolFailure::LimitExceeded,
         message: format!(
-            "{open} image views already open (max {cap}, this agent's `imageViewCap`)"
+            "this turn's programs have already composed {spent} bytes of view bodies, and another \
+             {body} would pass gg's ceiling of {MAX_COMPOSED_VIEW_BYTES_PER_TURN} \
+             (MAX_COMPOSED_VIEW_BYTES_PER_TURN); {remaining} bytes are left"
         ),
     })
 }
@@ -2352,6 +2325,7 @@ fn view_close_event(
     }
     let what = match action {
         GgContextAction::CloseTextViews => "text view(s)",
+        GgContextAction::CloseSearchViews => "search-results view(s)",
         _ => "file view(s)",
     };
     Some(GgTelemetryKind::ContextManaged {
@@ -2362,7 +2336,97 @@ fn view_close_event(
             "Closed {} {what} for `{selector}`, reclaiming ~{} tokens.",
             result.items, result.tokens
         ),
+        // A file or text view is *placed* wherever a supersession left room, so where the earliest
+        // one sat says nothing about a cached prefix that its own re-opens were already rewriting.
+        // The documentation band is the one that is append-only, and so the one where the position
+        // is a fact worth recording.
+        earliest_removed: None,
     })
+}
+
+/// The [`ContextManaged`](GgTelemetryKind::ContextManaged) event a documentation close produced, or
+/// `None` when nothing was open to close.
+///
+/// It carries the **position** of the earliest removed item as well as what was reclaimed, and it is
+/// the only close that does. Every other band is disturbed by ordinary use — a re-opened file view
+/// supersedes, a re-stated text view replaces — so a removal there is one rewrite among many. The
+/// documentation band is append-only by construction, which makes this call the single event in a
+/// session that can cost a run its cached prompt prefix, and how much it cost is entirely a question
+/// of how far back the cut was.
+fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemetryKind> {
+    if closed.reclaimed.items == 0 {
+        return None;
+    }
+    let what = match key {
+        Some(key) => format!("for `{key}`"),
+        None => "(all of them)".to_string(),
+    };
+    Some(GgTelemetryKind::ContextManaged {
+        action: GgContextAction::CloseDocsViews,
+        reclaimed_tokens: closed.reclaimed.tokens,
+        items: closed.reclaimed.items as u64,
+        detail: format!(
+            "Closed {} documentation view(s) {what}, reclaiming ~{} tokens.",
+            closed.reclaimed.items, closed.reclaimed.tokens
+        ),
+        earliest_removed: closed.earliest_removed.map(|index| index as u64),
+    })
+}
+
+/// The body of the [search-results view](ContextModel::open_search_view): what was asked for, how
+/// much of the answer this page is, and one line per hit.
+///
+/// # Why the host renders it, and why it says the total
+///
+/// It is documentation about the surface, so it is written where every other word about the surface
+/// is — on gg's side, from the catalogue — rather than left to a program to paraphrase into a text
+/// view, which would be the one description of the SDK nothing could check against the SDK.
+///
+/// The count line is load-bearing rather than decorative. A page that did not say how much it was a
+/// page *of* reads as a complete answer, and an agent that stops at the first five hits of twenty
+/// has silently lost three quarters of what it was looking for — the exact failure the envelope's
+/// `total` exists to prevent, which would be undone by a rendering that dropped it.
+///
+/// A hit's brief is shown whole and nothing else is: choosing is what this list is for, and reading
+/// is what a documentation view is for.
+fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
+    let mut asked: Vec<String> = Vec::new();
+    if !query.query.trim().is_empty() {
+        asked.push(format!("`{}`", query.query.trim()));
+    }
+    for (what, value) in [
+        ("module", &query.module),
+        ("type", &query.declared_type),
+        ("kind", &query.kind),
+    ] {
+        if let Some(value) = value.as_deref().map(str::trim).filter(|it| !it.is_empty()) {
+            asked.push(format!("{what} `{value}`"));
+        }
+    }
+    let asked = asked.join(", ");
+    if page.hits.is_empty() {
+        return format!(
+            "No documentation matches {asked}.\nTry fewer words, or a shorter one: matching is by \
+             substring, so a fragment finds more than a phrase."
+        );
+    }
+    let first = page.offset as usize + 1;
+    let last = page.offset as usize + page.hits.len();
+    let mut body = format!(
+        "{} match(es) for {asked}, showing {first}-{last}. Open one by its name to read it in \
+         full.\n",
+        page.total
+    );
+    for hit in &page.hits {
+        body.push_str(&format!(
+            "\n{} ({}, {}) — {}",
+            hit.name,
+            hit.kind.id(),
+            hit.module,
+            hit.summary
+        ));
+    }
+    body
 }
 
 /// A `TaskStatus` in the spelling gg's schema declares, for the telemetry `args` value only.
@@ -2964,18 +3028,126 @@ impl ToolApi for LoopToolApi {
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
         self.docs.list(object)
     }
-    fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal> {
-        self.charge_view_op()?;
-        let Some(read) = self.docs.read(&name) else {
+    /// Search the documentation surface, hand the program its page, and leave the same page in the
+    /// window as the agent's [search-results view](ContextModel::open_search_view).
+    ///
+    /// # Both a value and a view, and why neither alone would do
+    ///
+    /// The **program** is not the reader. A search that only opened a view would make every page of
+    /// a filtered loop a thing the model has to look at, and a search that only returned a value
+    /// would reach the model on no turn at all unless the program spent a `view.openText` on it —
+    /// which is a call the program has to remember to make, in a design where searching is the only
+    /// way to find anything. So the host does it: one view, under one selector, replaced by the next
+    /// search.
+    ///
+    /// The rendering is the host's rather than the program's for the same reason the documentation
+    /// itself is: what a model reads about the surface is not a thing a program should be able to
+    /// paraphrase. Refusals never open a view — a page that does not exist has nothing to show.
+    fn search_docs(&mut self, query: DocSearchQuery) -> Result<DocSearchResult, ViewRefusal> {
+        let page = self.docs.search(DocQuery {
+            query: &query.query,
+            module: query.module.as_deref(),
+            declared_type: query.declared_type.as_deref(),
+            kind: query.kind.as_deref(),
+            offset: query.offset,
+            limit: query.limit,
+        })?;
+        let opened = self
+            .context
+            .open_search_view(render_search_results(&query, &page));
+        Ok(DocSearchResult {
+            page,
+            opened: SandboxViewOpened {
+                kind: ViewKind::Search,
+                selector: SEARCH_RESULTS_VIEW.to_string(),
+                tokens: opened.tokens as u64,
+                superseded: opened.superseded,
+            },
+        })
+    }
+    /// Open the documentation for `name`, plus — under this agent's [type
+    /// mode](crate::docs::DocViewTypes) — the SDK types its signature mentions.
+    ///
+    /// # The whole algorithm, and what it deliberately does not do
+    ///
+    /// One call, one level. The named thing's own view is placed unless a view is already open under
+    /// that key, in which case **nothing whatever happens to it** — not a move, not a re-emit. Then,
+    /// for a *function* only, the types the mode selects are placed on the same terms. A type view
+    /// never opens a second type view, so there is no recursion here, no closure to compute and no
+    /// cycle to terminate: the depth is one because the rule is written at one level, not because a
+    /// counter stops it.
+    ///
+    /// Nothing is deduplicated against anything but the live open set, and nothing remembers *why* a
+    /// view was opened. A type opened beside `readFile` and then closed is re-opened by a later
+    /// `openFile`, because the only question ever asked is whether that key is open now — which is
+    /// exactly what makes closing a plain removal with no cascade.
+    ///
+    /// A key that resolves to nothing this agent binds is a [refusal](docs_not_found_refusal) and
+    /// places nothing, including none of the types: a lookup that half-succeeded would leave the
+    /// model holding records for a call it cannot make.
+    ///
+    /// A re-open of a function that is already open still places any of its types that are **not**,
+    /// which is the one place the two halves come apart. That is the set model doing its work: the
+    /// question is never "has this function been opened before", it is "is this key open now", and a
+    /// model whose types were closed and whose function was not gets them back by asking for the
+    /// function again — which is the only thing it has to ask for.
+    fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal> {
+        let Some(read) = self.docs.read_any(&name) else {
             return Err(docs_not_found_refusal(&name, &self.docs.suggest(&name)));
         };
-        let opened = self.context.open_docs_view(name.clone(), read);
-        Ok(SandboxViewOpened {
-            kind: ViewKind::Docs,
-            selector: name,
-            tokens: opened.tokens as u64,
-            superseded: opened.superseded,
-        })
+        // Resolved from the catalogue and this agent's bound set, never from the window: what the
+        // mode selects is a property of the signature, and which of those are *already* open is the
+        // separate question each `open_docview` answers for itself.
+        let types = self.docs.types_to_open(&name, self.doc_view_types);
+        let mut opened = Vec::new();
+        if let DocviewOpen::Placed { tokens } = self.context.open_docview(name.clone(), read) {
+            opened.push(SandboxViewOpened {
+                kind: ViewKind::Docs,
+                selector: name,
+                tokens: tokens as u64,
+                // Never true on this path, and the field is filled in rather than left to a default
+                // so that the one place it could become true is here: a docview is never superseded.
+                superseded: false,
+            });
+        }
+        for referenced in types {
+            let Some(body) = self.docs.read_type(referenced) else {
+                continue;
+            };
+            if let DocviewOpen::Placed { tokens } =
+                self.context.open_docview(referenced.to_string(), body)
+            {
+                opened.push(SandboxViewOpened {
+                    kind: ViewKind::Docs,
+                    selector: referenced.to_string(),
+                    tokens: tokens as u64,
+                    superseded: false,
+                });
+            }
+        }
+        Ok(opened)
+    }
+
+    /// Close the documentation view keyed by `key` — or every one of them, when `key` is `None` —
+    /// and report how many went.
+    ///
+    /// The gate is the membrane's: an agent without
+    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) never reaches here. What
+    /// this owns is the removal and its record, and the record carries **where** the earliest
+    /// removed item sat as well as what it reclaimed — because the documentation band is otherwise
+    /// append-only, so this call is the only thing in a session that can invalidate a cached prompt
+    /// prefix, and the tokens alone cannot say whether that trade was worth making.
+    fn close_docviews(&mut self, key: Option<String>) -> Result<u32, ViewRefusal> {
+        if let Some(key) = &key
+            && let Some(refusal) = close_selector_refusal(key)
+        {
+            return Err(refusal);
+        }
+        let closed = self.context.close_docviews(key.as_deref());
+        if let Some(event) = docs_close_event(key.as_deref(), &closed) {
+            self.emitter.emit(event);
+        }
+        Ok(saturating_u32(closed.reclaimed.items))
     }
     /// Read a file and show it to the model — the one place a code turn pushes a
     /// [`FileView`](GgContextSource::FileView).
@@ -2992,45 +3164,19 @@ impl ToolApi for LoopToolApi {
     /// become the program's own return value — the model is handed the bytes *and* shown the file
     /// for the price of one read, which is the reason this call exists at all.
     ///
-    /// # The image cap is consulted here, and only for a picture
+    /// # A picture is bounded by its size, and by nothing else
     ///
-    /// A view is the only way a picture enters the window, so this agent's
-    /// [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) is enforced
-    /// on this one call. It can only be asked **after** the read, because nothing before it knows
-    /// the file is a picture — gg sniffs the magic bytes rather than trusting an extension — so the
-    /// order is read, then decide, then push. A read that produced no picture (a text file, or one
-    /// of [`read_image`](crate::tools)'s own two refusals: a text-only model, a file over the
-    /// display limit) is never touched by it: those already carry an honest `shown: false` and no
-    /// image, and refusing them for a cap they do not spend would answer "you cannot see this" with
-    /// "close something first".
-    ///
-    /// The refusal replaces the read's outcome, which the membrane lowers into the catchable
-    /// `limit-exceeded` the program sees thrown. The read itself already streamed its own
-    /// `ToolCall`/`ToolResult` pair and its session-record entry — it really did happen, and the telemetry
-    /// says so — while the roster line the *model* reads next turn records the call it actually
-    /// made, which failed. Both are true of different readers, and the alternative (streaming no
-    /// telemetry for a read that ran) would leave the operator's stream with a gap.
+    /// A view is the only way a picture enters the window, and how many pictures may be open at once
+    /// is no longer a question gg answers: what bounds them is `IMAGE_ATTACH_CAP`, 8 MiB **per
+    /// image**, and the window's own fullness. A count cap here would refuse a model the thing it
+    /// had just decided to look at, in exchange for a bound the fullness signal reports honestly and
+    /// per-file.
     fn open_file_view(
         &mut self,
         path: String,
         offset: Option<usize>,
         limit: Option<usize>,
     ) -> ViewOpenOutcome {
-        if let Err(refusal) = self.charge_view_op() {
-            // Refused as a **serviced** call rather than as a silent nothing, exactly as the
-            // compaction and memory gates refuse one: the roster the model reads next turn is
-            // counted against the number of `ToolCall`/`ToolResult` pairs the turn streamed, and a
-            // refusal that skipped the pair would make the two disagree.
-            let outcome = self.serviced(
-                READ_FILE_TOOL,
-                json!({ "path": path, "offset": offset, "limit": limit }),
-                |_api| refusal.into_outcome(),
-            );
-            return ViewOpenOutcome {
-                outcome,
-                opened: None,
-            };
-        }
         let mut outcome = self.read_file(path.clone(), offset, limit);
         if !outcome.ok {
             // The read failed; there is nothing to show. The failure is already a rostered,
@@ -3052,14 +3198,6 @@ impl ToolApi for LoopToolApi {
         // the model looks at it there, and leaving a copy behind would let the membrane attach a
         // second one to the turn.
         let images = std::mem::take(&mut outcome.images);
-        if !images.is_empty()
-            && let Some(refusal) = self.refuse_over_image_cap(&path, region)
-        {
-            return ViewOpenOutcome {
-                outcome: refusal.into_outcome(),
-                opened: None,
-            };
-        }
         let opened = self.context.open_file_view_deduped(
             path.clone(),
             region,
@@ -3081,34 +3219,66 @@ impl ToolApi for LoopToolApi {
         label: String,
         body: String,
     ) -> Result<SandboxViewOpened, ViewRefusal> {
-        self.charge_view_op()?;
         self.push_text_view(label, body)
     }
-    /// Close every view carrying `selector` — every page of a path, or the text view under a label.
+    /// Close every view carrying `selector` — every page of a path, the text view under a label, or
+    /// the search-results view when the selector is the one it is keyed under.
     ///
-    /// All three bands are swept, because a selector is what the *model* wrote and it has no
-    /// obligation to tell gg which kind it meant. A selector that names nothing closes `0`, which is a
-    /// successful call: a program that tidies up unconditionally should not have to guard every
+    /// Every band it reaches is swept, because a selector is what the *model* wrote and it has no
+    /// obligation to tell gg which kind it meant. A selector that names nothing closes `0`, which is
+    /// a successful call: a program that tidies up unconditionally should not have to guard every
     /// call with a `current()` check.
+    ///
+    /// The search-results band is among them precisely because it is not the documentation band:
+    /// nothing is lost by closing it (the same query answers the same way), and it is superseded on
+    /// every search regardless, so a close of it can never be the thing that cost a run its cached
+    /// prefix. A view the model can see in `current()` and cannot close would be a trap.
+    ///
+    /// The **documentation** band is swept only for an agent that holds
+    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE), and that condition is a
+    /// dated stopgap rather than the design.
+    ///
+    /// The design is [`close_docviews`](Self::close_docviews): closing documentation is its own call
+    /// because it is its own decision — the one close that can invalidate a cached prompt prefix,
+    /// bought by a capability this call is not — and a shared sweep whose behaviour turns on a
+    /// capability it does not name is exactly the shape that design avoids. But **no arm's SDK
+    /// spells `docs.close` yet**: the calls exist in the WIT and on this api, and every committed
+    /// catalogue still documents `view.close` as the way to close *"a documentation view, the
+    /// function's name"*. Removing this sweep before the spellings land would leave a documentation
+    /// view unreclaimable in every configuration on all eleven arms — a band that compaction
+    /// re-seeds and archival retains, growing by up to one type view per lookup, with nothing in the
+    /// language able to take one back out.
+    ///
+    /// So the sweep stays until **stage 4** of the documentation plan gives each arm its own
+    /// `docs.close`, and it is gated on the capability so that the *semantics* are already the final
+    /// ones: an agent without it cannot reclaim a docview by any route, which is the arm of the
+    /// comparison where the cached prefix is provably intact for the whole session. Delete this half
+    /// on the commit that lands the last arm's spelling.
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
-        self.charge_view_op()?;
         if let Some(refusal) = close_selector_refusal(&selector) {
             return Err(refusal);
         }
         let files = self.context.evict_file_views(Some(&selector));
         let texts = self.context.close_text_views(Some(&selector));
-        let docs = self.context.close_docs_views(Some(&selector));
+        let searches = self.context.close_search_views(Some(&selector));
+        let docs = match self.docview_close {
+            true => self.context.close_docviews(Some(&selector)),
+            false => ViewsClosed::default(),
+        };
         for event in [
             view_close_event(GgContextAction::EvictFileViews, &selector, &files),
             view_close_event(GgContextAction::CloseTextViews, &selector, &texts),
-            view_close_event(GgContextAction::CloseDocsViews, &selector, &docs),
+            view_close_event(GgContextAction::CloseSearchViews, &selector, &searches),
+            docs_close_event(Some(&selector), &docs),
         ]
         .into_iter()
         .flatten()
         {
             self.emitter.emit(event);
         }
-        Ok(saturating_u32(files.items + texts.items + docs.items))
+        Ok(saturating_u32(
+            files.items + texts.items + searches.items + docs.reclaimed.items,
+        ))
     }
     fn current_views(&mut self) -> Vec<OpenViewInfo> {
         self.context.open_views()
