@@ -546,3 +546,141 @@ fn the_captured_duplicate_replies_are_located_early_errors_when_healing_is_off()
         );
     }
 }
+
+/// `count` classes, each with a doubled accessibility modifier — the source the
+/// [bound's measurement](SHOWN) was taken from.
+///
+/// It has to be a mistake the parser *recovers* from, which a hard syntax error is not: `oxc` stops
+/// at the first of those, so a program with fifty of them would produce one diagnostic and prove
+/// nothing about a bound.
+fn fifty_recovered(count: usize) -> String {
+    (0..count)
+        .map(|index| format!("class C{index} {{ public public x = 1; }}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// **A refusal the model can read whole is unchanged.**
+///
+/// Below the bound the model reads every diagnostic, in the parser's order, on this arm's own
+/// `"; "`, with nothing said about what was not shown.
+#[test]
+fn a_refusal_under_the_bound_is_rendered_exactly_as_it_always_was() {
+    let message = prepare_program(&fifty_recovered(SHOWN))
+        .expect_err("a doubled modifier is refused")
+        .to_string();
+
+    assert_eq!(
+        message
+            .matches("Accessibility modifier already seen.")
+            .count(),
+        SHOWN,
+        "every diagnostic reached the model: {message}"
+    );
+    assert!(
+        !message.contains("more like these"),
+        "a refusal that fitted was told it had been cut: {message}"
+    );
+    // Each is located, and the locations are the eight distinct lines the model has to visit — which
+    // is why the fold above them is on byte-identical renderings and not on the message alone.
+    for line in 1..=SHOWN {
+        assert!(
+            message.contains(&format!("line {line}, column ")),
+            "the diagnostic for line {line} is missing: {message}"
+        );
+    }
+}
+
+/// **Past the bound the model reads the first few and an honest count of the rest.**
+///
+/// Fifty of these renders as 4729 bytes on one line uncapped, which is the shape this arm's bound
+/// exists for: a paragraph a model must read to the end of to discover that it said the same thing
+/// fifty times.
+#[test]
+fn a_refusal_past_the_bound_keeps_the_first_few_and_counts_the_rest() {
+    let message = prepare_program(&fifty_recovered(50))
+        .expect_err("a doubled modifier is refused")
+        .to_string();
+
+    assert_eq!(
+        message
+            .matches("Accessibility modifier already seen.")
+            .count(),
+        SHOWN,
+        "the bound did not bound anything: {message}"
+    );
+    assert!(
+        message.contains("line 1, column ") && message.contains(&format!("line {SHOWN}, column ")),
+        "the kept diagnostics are the parser's first {SHOWN}: {message}"
+    );
+    assert!(
+        !message.contains(&format!("line {}, column ", SHOWN + 1)),
+        "a diagnostic past the bound was shown: {message}"
+    );
+    assert!(
+        message.ends_with(&format!("; … and {} more like these.", 50 - SHOWN)),
+        "the count closes the list on the arm's own separator: {message}"
+    );
+    assert!(
+        message.len() < 1200,
+        "fifty of these is 4729 bytes uncapped; this is {} bytes",
+        message.len()
+    );
+}
+
+/// **The bound cannot move a verdict from one band to the other.**
+///
+/// Nothing here reads the rendered text to decide anything: each of this module's three calls to
+/// [`located`] already knows which pass it is reporting, so a parse failure stays
+/// [`Syntax`](PrepareError::Syntax) and an early error stays
+/// [`Semantic`](PrepareError::Semantic) however much of either was shown.
+#[test]
+fn the_bound_does_not_decide_whose_failure_it_is() {
+    let syntax = prepare_program(&fifty_recovered(50)).expect_err("refused");
+    assert!(
+        matches!(syntax, PrepareError::Syntax(_)),
+        "a bounded parse failure is still a parse failure: {syntax:?}"
+    );
+
+    // The semantic pass reports through the same rendering, so it is bounded by the same number and
+    // is still its own band.
+    let redeclared: String = (0..50)
+        .map(|index| format!("const a{index} = 1;\nconst a{index} = 2;\n"))
+        .collect();
+    let semantic = prepare_program(&redeclared).expect_err("a redeclaration is refused");
+    let PrepareError::Semantic(message) = &semantic else {
+        panic!("an early error is not a parse failure: {semantic:?}");
+    };
+    assert!(
+        message.contains("… and 42 more like these."),
+        "the semantic band is bounded too: {message}"
+    );
+}
+
+/// **The JavaScript arm is bounded by the same number, because it is bounded by this code.**
+///
+/// That arm's whole preparation is this module — [its `prepare_program`](super::super::javascript)
+/// calls this one and does nothing else — so the bound is not something the two arms each have but
+/// one thing they share. Asserted through the arm rather than by reading it, because "delegates to"
+/// is exactly the kind of claim that stops being true without anybody noticing.
+#[test]
+fn the_javascript_arm_reads_the_same_bounded_refusal() {
+    use crate::sandbox::{PrepareContext, PrepareFailure, ProgramLanguage};
+
+    let failure = crate::sandbox::language::javascript::JAVASCRIPT
+        .prepare_program(&fifty_recovered(50), &[], &PrepareContext::new())
+        .expect_err("a doubled modifier is refused on the JavaScript arm too");
+    let PrepareFailure::Program(PrepareError::Syntax(message)) = failure else {
+        panic!("expected the parser's own band: {failure}");
+    };
+    assert_eq!(
+        message
+            .matches("Accessibility modifier already seen.")
+            .count(),
+        SHOWN,
+    );
+    assert!(
+        message.ends_with(&format!("; … and {} more like these.", 50 - SHOWN)),
+        "{message}"
+    );
+}

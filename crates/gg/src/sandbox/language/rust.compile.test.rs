@@ -236,3 +236,158 @@ fn a_non_json_line_beside_the_diagnostics_is_ignored() {
     );
     assert!(rendered.contains("help: consider parsing it"), "{rendered}");
 }
+
+/// One `rustc` JSON diagnostic naming `nope<index>` at line `index + 1` of the entry file, with the
+/// `help` child every real one of these carries.
+///
+/// A distinct message *and* a distinct line, so the [bound](crate::sandbox::language::diagnostics)
+/// has nothing to de-duplicate and what a test counts is the cap rather than the fold.
+fn unresolved(index: usize) -> String {
+    serde_json::json!({
+        "level": "error",
+        "message": format!("cannot find function `nope{index}` in this scope"),
+        "code": { "code": "E0425" },
+        "spans": [{
+            "file_name": PROGRAM_FILE,
+            "is_primary": true,
+            "line_start": LINE_OFFSET + 1 + index,
+            "column_start": 5,
+            "label": "not found in this scope",
+        }],
+        "children": [{
+            "level": "help",
+            "message": "consider importing it",
+            "code": null,
+            "spans": [],
+            "children": [],
+        }],
+    })
+    .to_string()
+}
+
+/// A report carrying `count` of them, as `rustc` writes them: one JSON object per line of stderr.
+fn unresolved_report(count: usize) -> CompilerReport {
+    CompilerReport {
+        ok: false,
+        code: Some(1),
+        status: "exited with status 1".to_string(),
+        stdout: String::new(),
+        stderr: (0..count).map(unresolved).collect::<Vec<_>>().join("\n"),
+    }
+}
+
+/// The `Compile` rendering `classify` produces for such a report.
+fn compile_text(count: usize) -> String {
+    let failure = classify(&unresolved_report(count), PROGRAM_FILE, 400)
+        .expect_err("unresolved names are a failure");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = failure else {
+        panic!("unresolved names are a compile error");
+    };
+    rendered
+}
+
+/// **A refusal the model can read whole is unchanged.**
+///
+/// The bound is a ceiling, not a filter: below it the model reads exactly the text this arm has
+/// always rendered — every diagnostic, in `rustc`'s own order, joined by a blank line, with no
+/// closing line about what was not shown, because nothing was not shown.
+#[test]
+fn a_refusal_under_the_bound_is_rendered_exactly_as_it_always_was() {
+    let rendered = compile_text(SHOWN);
+
+    // Byte for byte what the unbounded join produced: the same renderings, the same separator.
+    let expected: Vec<String> = (0..SHOWN)
+        .map(|index| {
+            format!(
+                "error[E0425]: cannot find function `nope{index}` in this scope\n  --> line {}, \
+                 column 5\n  not found in this scope\n  help: consider importing it",
+                index + 1
+            )
+        })
+        .collect();
+    assert_eq!(rendered, expected.join("\n\n"));
+    assert!(
+        !rendered.contains("more like these"),
+        "a refusal that fitted was told it had been cut: {rendered}"
+    );
+}
+
+/// **Past the bound the model reads the first few and an honest count of the rest.**
+///
+/// Fifty unresolved names is one mistake reported fifty times — the measurement this arm's
+/// [`SHOWN`] was set from — and what the model needs from the forty-second copy is that it exists,
+/// not what it says.
+#[test]
+fn a_refusal_past_the_bound_keeps_the_first_few_and_counts_the_rest() {
+    let rendered = compile_text(50);
+
+    assert!(
+        rendered.contains("`nope0`") && rendered.contains(&format!("`nope{}`", SHOWN - 1)),
+        "the first {SHOWN} diagnostics are what the model reads: {rendered}"
+    );
+    assert!(
+        !rendered.contains(&format!("`nope{SHOWN}`")),
+        "a diagnostic past the bound was shown: {rendered}"
+    );
+    assert!(
+        rendered.ends_with(&format!("\n\n… and {} more like these.", 50 - SHOWN)),
+        "the count is the honest one, on the arm's own separator: {rendered}"
+    );
+
+    // The kept diagnostics are whole — location, label and `rustc`'s suggestion — rather than a
+    // list of headlines. What the bound drops is diagnostics, never parts of one.
+    assert!(rendered.contains("--> line 1, column 5"), "{rendered}");
+    assert!(
+        rendered.contains("help: consider importing it"),
+        "{rendered}"
+    );
+
+    // And it really is a bound: fifty diagnostics is 5982 bytes uncapped on this arm.
+    assert!(
+        rendered.len() < 1500,
+        "the bound did not bound anything: {} bytes",
+        rendered.len()
+    );
+}
+
+/// **The bound cannot move a verdict from one band to the other.**
+///
+/// Whose failure a `rustc` invocation is gets decided on the whole of what it said, before a byte is
+/// rendered: any error at all is the model's [`Compile`](PrepareError::Compile), and no error at all
+/// is a [`Toolchain`](PrepareFailure::Toolchain) failure the model is never shown. Capping happens
+/// after both, so no number of diagnostics can turn one into the other.
+#[test]
+fn the_bound_does_not_decide_whose_failure_it_is() {
+    // Far past the bound, and still the model's own compile error.
+    assert!(matches!(
+        classify(&unresolved_report(200), PROGRAM_FILE, 400),
+        Err(PrepareFailure::Program(PrepareError::Compile(_)))
+    ));
+
+    // And a stream of non-errors past the bound is still nobody's compile error: the band was
+    // decided by there being no `error` in it, not by how much of it there was.
+    let warnings = CompilerReport {
+        ok: false,
+        code: Some(1),
+        status: "exited with status 1".to_string(),
+        stdout: String::new(),
+        stderr: (0..50)
+            .map(|index| {
+                serde_json::json!({
+                    "level": "warning",
+                    "message": format!("unused variable: `x{index}`"),
+                    "code": null,
+                    "spans": [],
+                    "children": [],
+                })
+                .to_string()
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    };
+    let failure = classify(&warnings, PROGRAM_FILE, 400).expect_err("a non-zero exit is a failure");
+    assert!(
+        matches!(failure, PrepareFailure::Toolchain(_)),
+        "a compiler that reported no error was blamed on the model: {failure}"
+    );
+}

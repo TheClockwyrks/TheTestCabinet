@@ -732,10 +732,24 @@ fn classify(report: &CompilerReport) -> Result<(), PrepareFailure> {
 /// location in front of them, and the surrounding source-snippet lines the compiler draws are the
 /// half a model gains most from — so they are kept whole rather than reduced to fields.
 fn errors(stderr: &str) -> Vec<&str> {
-    stderr
-        .lines()
-        .filter(|line| line.contains(": error: "))
-        .collect()
+    stderr.lines().filter(|line| is_error(line)).collect()
+}
+
+/// Whether a line **opens** a diagnostic — `swiftc`'s located `error:` header, the line the excerpt
+/// and the caret under it belong to.
+///
+/// One predicate rather than the same `contains` written in three places, because all three are
+/// answering the same question and must not be able to disagree: which lines
+/// [classification](classify) counts as diagnostics, where [the rendering](rendered) stops treating
+/// lines as part of a warning, and where a [group](SHOWN) begins when the rendering is bounded.
+///
+/// A **located** `: error: ` rather than `error:` anywhere, which is what this arm has always
+/// matched and is the opposite choice from the warning match beside it. A driver's own `error:`,
+/// printed with nothing in front of it, is not a compiler reading a program, and both ways it can
+/// arrive end in a [toolchain failure](PrepareFailure::Toolchain): either nothing matches here at
+/// all, or what matched is located somewhere no model wrote.
+fn is_error(line: &str) -> bool {
+    line.contains(": error: ")
 }
 
 /// Whether a diagnostic line is located in a file the **model's session** owns: its own program, or
@@ -775,11 +789,16 @@ fn located_elsewhere(line: &str) -> bool {
 /// see `scripts/ci/install-swift.sh`) and a model must not be shown gg's own toolchain notes. And
 /// the compiler's summary of how it exited is dropped with them, because it is about the process
 /// rather than the program.
+///
+/// What is left is then **bounded** — see [`SHOWN`] for the number and the measurement behind it —
+/// and bounded in place rather than by rebuilding the text, because on this arm a diagnostic is a
+/// picture: the header, the source line `swiftc` drew under it and the caret it drew under that only
+/// mean anything while they are still lined up.
 fn rendered(stderr: &str) -> String {
     let mut kept: Vec<&str> = Vec::new();
     let mut in_warning = false;
     for line in stderr.lines() {
-        if line.contains(": error: ") {
+        if is_error(line) {
             in_warning = false;
         } else if line.contains("warning: ") || line.contains(": note: ") {
             in_warning = true;
@@ -788,8 +807,29 @@ fn rendered(stderr: &str) -> String {
             kept.push(line);
         }
     }
-    kept.join("\n").trim().to_string()
+    crate::sandbox::language::diagnostics::capped_lines(kept.join("\n").trim(), is_error, SHOWN)
 }
+
+/// How many of `swiftc`'s errors a model is shown.
+///
+/// [Kotlin's eight](super::super::kotlin), and this arm is the reason there is a number at all. The
+/// measured mistake — one misremembered SDK name called at fifty call sites — is **11614 bytes
+/// across 395 lines** here, the worst of the eight arms measured and nearly twice the next, because
+/// `swiftc` draws the offending source line and a caret under every error: ~232 bytes and ~8 lines
+/// apiece where a [Roslyn](super::super::csharp) diagnostic is one line of ~97. Eight of them is
+/// ~1.9 KB and ~63 lines, and the other forty-two become one sentence.
+///
+/// Eight rather than [C++'s four](super::super::cpp), even though both arms keep an excerpt, because
+/// a group here has a *bounded* size. A `clang` error drags an instantiation backtrace of unbounded
+/// depth behind it and the model's own line can be thirty notes into it; `swiftc` has no template
+/// instantiation to unwind, and [the rendering above](rendered) has already dropped every `note:`, so
+/// eight groups is eight headers and the picture each drew — the ~8 lines the measurement recorded —
+/// with no backtrace tail for the number to have to allow for.
+///
+/// It bounds what the model **reads** and nothing else. Which band the compilation falls in —
+/// whether a diagnostic sits in gg's own guest, and whether anything was located in a program at all
+/// — is decided by [`classify`] over the compiler's whole `stderr`, before a line of it is dropped.
+const SHOWN: usize = 8;
 
 // ---------------------------------------------------------------------------------------------
 // The component

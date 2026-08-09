@@ -674,6 +674,26 @@ struct Position {
 /// disagreed*.
 const PARSE_ERROR_CODES: [&str; 2] = ["ErrorParsingModule", "ErrorParsingFFIModule"];
 
+/// How many of `purs`'s diagnostics a model is shown.
+///
+/// [Kotlin's eight](super::super::kotlin), with one thing to say about the measurement behind it.
+/// The eight-arm measurement — one misremembered SDK name called at fifty call sites — puts this arm
+/// at 3139 bytes across 149 lines: ~63 bytes and ~3 lines a diagnostic, which would make eight of
+/// them ~500 bytes and this the cheapest uncapped arm of the eight. **That is a floor rather than a
+/// typical case.** It is what an `UnknownName` costs, which is about the shortest thing `purs` says;
+/// the compiler's ordinary output is multi-paragraph prose it has already wrapped and indented — a
+/// `TypesDoNotUnify` prints both types in full under `while trying to match type … with type …`, and
+/// then the expression it was checking. So this bounds a tail whose per-item cost the measurement
+/// understates rather than overstates, and the ~500 bytes is the least eight of them can be.
+///
+/// Eight and not fewer, because `purs` reports one error per *site* and a model fixing a surface
+/// mistake wants the list of places to fix it, not one place and a number.
+///
+/// It bounds what the model **reads** and never what a [band](classify) is decided on: whether any
+/// diagnostic is in the model's own file at all, and whether one of them is a parse failure, are
+/// both settled over the whole set first.
+const SHOWN: usize = 8;
+
 /// Turn a finished `purs` invocation into a verdict.
 fn classify(report: &CompilerReport, file: &str, shift: usize) -> Result<(), PrepareFailure> {
     if report.ok {
@@ -705,13 +725,20 @@ fn classify(report: &CompilerReport, file: &str, shift: usize) -> Result<(), Pre
         )));
     }
 
-    let rendered = mine
-        .iter()
-        .map(|diagnostic| diagnostic.render(file, shift))
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    // Deduplicated and capped through the seam's own [bound](SHOWN), because `purs` reports one
+    // error per site: a name the SDK does not have is a separate `UnknownName` at every place the
+    // program used it, each carrying the same paragraph of prose.
+    let rendered = crate::sandbox::language::diagnostics::capped(
+        mine.iter()
+            .map(|diagnostic| diagnostic.render(file, shift))
+            .collect(),
+        SHOWN,
+        "\n\n",
+    );
     // A parse failure anywhere is the whole verdict: the compiler never got as far as meaning, so
-    // whatever else it says is downstream of text it could not read.
+    // whatever else it says is downstream of text it could not read. Asked of `mine` — every
+    // diagnostic in the model's own file — rather than of the bounded rendering, so a parse error
+    // the cap did not show still decides the band it belongs to.
     Err(PrepareFailure::Program(
         match mine
             .iter()

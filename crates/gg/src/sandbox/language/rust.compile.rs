@@ -550,6 +550,26 @@ impl Diagnostic {
     }
 }
 
+/// How many distinct diagnostics a model is shown.
+///
+/// Eight, which is [the number Kotlin measured](super::super::kotlin) and the one the
+/// [shared bound](super::super::diagnostics) is asked for by every arm with no reason to differ.
+/// This arm's reason to keep it is its own measurement: one misremembered SDK name called at fifty
+/// call sites is 5982 bytes across 201 lines of `rustc`, so a diagnostic here costs ~120 bytes and ~4
+/// lines and eight of them is ~1 KB — a screenful, which is what a model can act on before it is
+/// reading repetitions.
+///
+/// Four lines for a *compact* rendering is not an accident of it. [`render`](Diagnostic::render)
+/// appends **every** `child`, and the children are where `rustc` puts the half of a diagnostic a
+/// model gains the most from — the `help: consider borrowing here` and the `note:` naming the type
+/// it expected against the one it found. Dropping them to fit more diagnostics in would trade the
+/// sentence that says what to do for more copies of the sentence that says what is wrong.
+///
+/// The count is a pure error count, unlike an arm that has to reason about warnings: the
+/// [invocation](rustc) passes `-Awarnings` because a model's program is not being reviewed for
+/// style, so every diagnostic that reaches here is one `rustc` refused to compile over.
+const SHOWN: usize = 8;
+
 /// Turn a finished `rustc` invocation into a verdict.
 ///
 /// The split is the seam's: a compiler that **read the program and rejected it** is a
@@ -592,12 +612,20 @@ fn classify(report: &CompilerReport, file: &str, lines: usize) -> Result<(), Pre
     // model's program — but it is still reported, because withholding it would leave the model with
     // "your program did not compile" and nothing else. What is *not* done is inventing a line for
     // it: `render` reports a location only for a span in the model's own file.
+    //
+    // Which band this is was settled above, on the WHOLE set: every error is a `Compile` on this
+    // arm and the only other outcome — a `Toolchain` failure — was decided by `errors` being empty
+    // before a single diagnostic was rendered. So the bound below cannot move a verdict from one
+    // band to the other; all it decides is how much of a refusal the model reads.
     Err(PrepareFailure::Program(PrepareError::Compile(
-        errors
-            .iter()
-            .map(|diagnostic| diagnostic.render(file, lines))
-            .collect::<Vec<_>>()
-            .join("\n\n"),
+        crate::sandbox::language::diagnostics::capped(
+            errors
+                .iter()
+                .map(|diagnostic| diagnostic.render(file, lines))
+                .collect(),
+            SHOWN,
+            "\n\n",
+        ),
     )))
 }
 

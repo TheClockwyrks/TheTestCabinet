@@ -75,6 +75,17 @@ pub use compile::{
     daemon, place, place_tree, shared_toolchain_dir,
 };
 
+/// The **bound on what a compiler says to a model** — the shared capping every arm's verdict puts
+/// its diagnostics through before they become context the model pays for.
+///
+/// Not a language's own module for the same reason [`compile`] is not: nothing downstream of an arm
+/// shortens a diagnostic, so each arm was deciding the size of its own compiler's opinion, and the
+/// eight arms that run a compiler over the model's own text answered one measured mistake with
+/// anything from 475 bytes to 11614. Its module documentation carries that measurement, says why the
+/// C++ arm keeps a cap of its own, and says why the three arms absent from it need none.
+#[path = "language/diagnostics.rs"]
+mod diagnostics;
+
 #[path = "language/typescript.rs"]
 mod typescript;
 
@@ -1039,15 +1050,32 @@ pub enum PrepareError {
     /// [`SandboxError::Compile`](super::SandboxError::Compile), which is the committed interpreter
     /// component failing to compile — an artifact defect that ends the session.
     ///
-    /// TypeScript raises it: its prepare step runs `tsc` over the model's own source against the
-    /// SDK's declarations, and hands back the compiler's diagnostics unaltered but for the one line
-    /// number the wrapper it is checked in made wrong.
+    /// Every arm with a compiler in front of it raises it: TypeScript's prepare step runs `tsc` over
+    /// the model's own source against the SDK's declarations, and the checked arms beside it run
+    /// their own. What each hands back is that compiler's diagnostics, in the program's own
+    /// coordinates — the one line number the wrapper it was checked in made wrong is corrected, and
+    /// nothing else about the text is.
+    ///
+    /// It is **bounded**, and this is the type that makes the bound necessary. The `Display` above
+    /// is `"{0}"` and nothing downstream shortens it: what an arm renders here is what the next
+    /// request to the model carries, and goes on carrying for the rest of the session. So the size
+    /// of a compiler's opinion is settled in the one place that knows what a diagnostic of that
+    /// compiler costs — the arm — and the arms settle it through a shared cap, which shows the first
+    /// few distinct diagnostics and closes with a count of the ones it did not. See the `diagnostics`
+    /// module beside them for the measurement the number came out of.
     #[error("{0}")]
     Compile(String),
     /// It could not be lowered into what the guest evaluates. Distinct from
     /// [`Syntax`](Self::Syntax) because it is not the model's text that failed but the transform
     /// over it — a distinction worth keeping when one of the two starts happening and the other does
     /// not.
+    ///
+    /// It is **bounded** like [`Compile`](Self::Compile), and it is the one that most looks as
+    /// though it should not be. What it carries is gg's own defect, so it reads as the bug report an
+    /// operator wants whole — but it is a `Program` failure rather than a
+    /// [`Toolchain`](PrepareFailure::Toolchain) one, which means a *model* is handed it verbatim on
+    /// the next request and on every request after. Whatever is here is read twice over, by two
+    /// readers, and only one of them can act on it.
     #[error("{0}")]
     Lowering(String),
     /// It asks for something the sandbox will not run it with, and is refused with an explanation of

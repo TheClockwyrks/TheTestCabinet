@@ -37,7 +37,12 @@ fn a_compiler_that_succeeded_is_not_a_failure_whatever_it_printed() {
 }
 
 #[test]
-fn a_rejected_program_is_the_models_and_carries_only_roslyns_own_lines() {
+fn a_rejected_program_is_the_models_and_carries_only_roslyns_own_errors() {
+    // Two things are dropped and neither is a nicety. The banner and the blank line are not
+    // diagnostics at all. The **warning** is: it is Roslyn's own format, it is located in the
+    // model's own file, and it is still dropped — a model's program is not being reviewed, and this
+    // arm compiles with `-nullable:enable` and no `-nowarn`, so a program refused for one reason can
+    // otherwise arrive trailing a nullable-annotation tail as long as itself.
     let rejected = report(
         false,
         "exited with status 1",
@@ -51,13 +56,130 @@ fn a_rejected_program_is_the_models_and_carries_only_roslyns_own_lines() {
         Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) => {
             assert_eq!(
                 diagnostic,
-                "program.cs(3,17): error CS0029: Cannot implicitly convert type 'string' to 'int'\n\
-                 program.cs(4,9): warning CS0168: The variable 'x' is declared but never used",
-                "the banner or the blank line survived into what the model reads"
+                "program.cs(3,17): error CS0029: Cannot implicitly convert type 'string' to 'int'",
+                "the banner, the blank line or a warning survived into what the model reads"
             );
         }
         other => panic!("a rejected program is the model's compile error, not {other:?}"),
     }
+}
+
+#[test]
+fn a_compile_that_failed_in_ggs_sdk_and_only_warned_about_the_program_is_ggs() {
+    // The band consequence of dropping warnings, and it is the safe direction. The compilation
+    // failed inside gg's own SDK; the only thing `csc` had to say about the model's file was an
+    // opinion about a nullable annotation. Counting that opinion as "the model has diagnostics"
+    // would hand a model a warning it cannot act on for a failure that was never its.
+    let rejected = report(
+        false,
+        "exited with status 1",
+        &format!(
+            "{SDK_DIRECTORY}/Objects/fs.cs(12,5): error CS0246: The type or namespace name 'Nope' \
+             could not be found\n\
+             program.cs(4,9): warning CS8600: Converting null literal or possible null value\n"
+        ),
+        "",
+    );
+    match verdict(&rejected) {
+        Err(PrepareFailure::Toolchain(message)) => assert!(
+            message.contains("gg's own C# SDK did not compile") && message.contains("CS0246"),
+            "the failure does not name gg's own defect: {message}"
+        ),
+        other => panic!("a failure in gg's own SDK is not the model's, and got {other:?}"),
+    }
+}
+
+#[test]
+fn fifty_call_sites_of_one_mistake_reach_the_model_as_eight_and_a_count() {
+    // The measurement this bound exists for: one misremembered SDK name called at fifty call sites
+    // is 4840 bytes across 50 lines of the same sentence, and a model pays for every one of them in
+    // this turn's request and in every request after it.
+    let mut stdout = String::new();
+    for line in 1..=50 {
+        stdout.push_str(&format!(
+            "program.cs({line},9): error CS0117: 'Fs' does not contain a definition for 'ReadAll'\n"
+        ));
+    }
+    let Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) =
+        verdict(&report(false, "exited with status 1", &stdout, ""))
+    else {
+        panic!("fifty diagnostics about the model's own file are the model's compile error");
+    };
+    assert_eq!(
+        diagnostic.matches("does not contain a definition").count(),
+        SHOWN,
+        "at most {SHOWN} diagnostics reach the model: {diagnostic}"
+    );
+    // Counted honestly, and counted AFTER de-duplication: these are fifty distinct renderings
+    // because Roslyn located each at its own line, so eight are shown and forty-two are counted.
+    assert!(
+        diagnostic.ends_with("\n… and 42 more like these."),
+        "the count is not what was dropped: {diagnostic}"
+    );
+    // And what it did show is the first eight, unaltered, in the order `csc` reported them.
+    assert!(
+        diagnostic.starts_with(
+            "program.cs(1,9): error CS0117: 'Fs' does not contain a definition for 'ReadAll'\n\
+             program.cs(2,9): error CS0117: 'Fs' does not contain a definition for 'ReadAll'\n"
+        ),
+        "the kept diagnostics are not the ones the compiler reported first: {diagnostic}"
+    );
+}
+
+#[test]
+fn a_rejection_the_bound_does_not_reach_is_byte_for_byte_what_it_always_was() {
+    // The ordinary turn — a handful of errors — must be unchanged by the existence of a cap, down
+    // to the separator. A bound that quietly reformats the common case would be paid on every turn
+    // to save bytes on the rare one.
+    let stdout = "program.cs(3,17): error CS0029: Cannot implicitly convert type 'string' to 'int'\n\
+                  program.cs(9,5): error CS0103: The name 'gg' does not exist in the current context\n";
+    let Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) =
+        verdict(&report(false, "exited with status 1", stdout, ""))
+    else {
+        panic!("two diagnostics about the model's own file are the model's compile error");
+    };
+    assert_eq!(diagnostic, stdout.trim_end());
+}
+
+#[test]
+fn the_band_is_decided_before_anything_is_dropped_for_length() {
+    // The invariant a bound must not be able to break: whose failure it is comes off the WHOLE set
+    // of diagnostics. Here gg's own SDK is named once, at the very end, past the point any cap
+    // reaches — and the model still gets its own errors rather than gg's, because the partition ran
+    // before the truncation did.
+    let mut stdout = String::new();
+    for line in 1..=40 {
+        stdout.push_str(&format!(
+            "program.cs({line},9): error CS0103: no such name\n"
+        ));
+    }
+    stdout.push_str(&format!(
+        "{SDK_DIRECTORY}/Objects/fs.cs(12,5): error CS0246: gg's own file\n"
+    ));
+    let Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) =
+        verdict(&report(false, "exited with status 1", &stdout, ""))
+    else {
+        panic!("a program with its own diagnostics is the model's, however deep gg's own are");
+    };
+    assert!(
+        !diagnostic.contains(SDK_DIRECTORY),
+        "gg's own file reached the model: {diagnostic}"
+    );
+
+    // And the other direction: every one of forty errors is in gg's SDK, so it is gg's defect no
+    // matter that only eight of them would ever have been shown.
+    let ours: String = (1..=40)
+        .map(|line| {
+            format!("{SDK_DIRECTORY}/Objects/fs.cs({line},5): error CS0246: gg's own file\n")
+        })
+        .collect();
+    assert!(
+        matches!(
+            verdict(&report(false, "exited with status 1", &ours, "")),
+            Err(PrepareFailure::Toolchain(_))
+        ),
+        "forty diagnostics in gg's own SDK are gg's defect whatever the cap would show"
+    );
 }
 
 #[test]
@@ -112,23 +234,24 @@ fn a_compiler_that_said_nothing_is_never_reported_as_the_models_mistake() {
 }
 
 #[test]
-fn what_counts_as_a_diagnostic_is_roslyns_own_format_and_nothing_else() {
-    assert!(is_diagnostic(
+fn what_counts_as_a_diagnostic_is_roslyns_own_error_format_and_nothing_else() {
+    assert!(is_error(
         "program.cs(3,17): error CS0029: Cannot implicitly convert type 'string' to 'int'"
     ));
-    assert!(is_diagnostic("program.cs(1,1): warning CS8321: unused"));
-    assert!(is_diagnostic(
-        "error CS2001: Source file could not be found"
+    assert!(is_error("error CS2001: Source file could not be found"));
+    assert!(!is_error(""));
+    assert!(!is_error("Microsoft (R) Visual C# Compiler version 5.0.0"));
+    assert!(!is_error("Copyright (C) Microsoft Corporation."));
+    // A warning is Roslyn's own format and is deliberately not a diagnostic this arm acts on: it is
+    // neither shown to the model nor counted when deciding whose failure the compilation was.
+    assert!(!is_error("program.cs(1,1): warning CS8321: unused"));
+    assert!(!is_error(
+        "program.cs(4,9): warning CS8600: Converting null literal or possible null value"
     ));
-    assert!(!is_diagnostic(""));
-    assert!(!is_diagnostic(
-        "Microsoft (R) Visual C# Compiler version 5.0.0"
-    ));
-    assert!(!is_diagnostic("Copyright (C) Microsoft Corporation."));
     // A model's own source quoted back at it must not be mistaken for a diagnostic — a program
     // whose string literal happens to read like one would otherwise put its own text in front of
     // itself.
-    assert!(!is_diagnostic("Console.WriteLine(\"error CS0029: no\");"));
+    assert!(!is_error("Console.WriteLine(\"error CS0029: no\");"));
 }
 
 #[test]

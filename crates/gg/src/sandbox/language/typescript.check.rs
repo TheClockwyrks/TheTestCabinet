@@ -238,6 +238,59 @@ fn check(
     classify(file, shift, report)
 }
 
+/// How many diagnostics a model is shown.
+///
+/// Eight, the number [Kotlin measured](super::super::kotlin) and the
+/// [shared bound](super::super::diagnostics) carries between arms. What eight costs here has three
+/// answers, because a `tsc` diagnostic's size is a property of the *type* it is talking about rather
+/// than of the mistake:
+///
+/// * the [cross-arm measurement](super::super::diagnostics) — one misremembered SDK name at fifty
+///   call sites — is 3390 bytes across 50 lines, so 68 bytes on one line each, and eight is ~0.5 KB;
+/// * the same mistake made against `fs`, whose type `tsc` prints structurally into the message,
+///   measures 21440 bytes across 50 lines on this checkout: 429 bytes each, still one line each, and
+///   eight is ~3.4 KB;
+/// * a structural mismatch, the shape that elaborates, measures 2942 bytes across 24 lines for
+///   twelve of them — 245 bytes and two lines each — so eight is ~2 KB.
+///
+/// The middle row is the argument for the bound and also the limit of it: what this constant governs
+/// is how many times a model is told the same thing, not how much `tsc` says each time. Fifty copies
+/// of a printed object type is 21 KB the model reads to learn one misspelling; eight copies is the
+/// same lesson, and no arithmetic on this number could have made one copy of it small.
+///
+/// # What it does not do, stated rather than hidden
+///
+/// It keeps the compiler's first eight, not the model's first eight. `tsc` reports in the order of
+/// the project's `files`, which puts gg's own declarations before the program — so a verdict that
+/// carried diagnostics in *both* could spend the whole bound on gg's and show the model none of its
+/// own. There is no ordering preference here to stop that, and the reason is that the mix is very
+/// nearly unreachable rather than that it would not matter: [`tsconfig`] sets `skipLibCheck`, so a
+/// declaration file can only earn a diagnostic by failing to *parse*, and `tsc` withholds every
+/// semantic diagnostic while a syntactic one stands — so a declaration file that fails to parse
+/// produces *no* program-located diagnostic at all, and the verdict is the
+/// [`Lowering`](PrepareError::Lowering) one below rather than a mixed [`Compile`](PrepareError::Compile).
+/// The mix this paragraph guards against is unreachable for that reason rather than merely unlikely.
+/// An arm that met it anyway would want [C++'s answer](super::super::cpp) — exempt anything naming a
+/// file the author wrote — rather than a larger number here.
+const SHOWN: usize = 8;
+
+/// Whether a line **begins** a diagnostic rather than continuing one.
+///
+/// `tsc` runs with [`--pretty false`](invoke), which writes a diagnostic as one unindented line and
+/// then indents whatever elaborates it — `Type 'FileRead' is not assignable to type 'number'.`
+/// followed by two spaces and the structural reason. That indentation is the compiler's own
+/// statement of where one diagnostic ends, which is why this arm is bounded by group rather than by
+/// line.
+///
+/// It asks about indentation rather than about the `{file}(` prefix [`shift_line`] matches, and the
+/// difference is real: the [`Compile`](PrepareError::Compile) band needs only *some* line located in
+/// the program, so a verdict can carry a diagnostic in one of gg's declaration files beside the
+/// model's own. Under a prefix test that line opens nothing, and is absorbed into the group above it
+/// — sharing a fate it has nothing to do with, and going uncounted when that fate is being dropped.
+fn opens_a_diagnostic(line: &str) -> bool {
+    !line.is_empty() && !line.starts_with(char::is_whitespace)
+}
+
 /// Turn a finished invocation into a verdict.
 ///
 /// The exit status alone cannot decide: `tsc` exits non-zero both for "your program has errors" and
@@ -264,21 +317,55 @@ fn classify(file: &str, shift: usize, report: CompilerReport) -> Result<(), Prep
             checker_version(),
         )));
     }
+    // The band is decided here, on the WHOLE of what `tsc` said, and before anything is bounded:
+    // "is any diagnostic located in the model's file" is a question about the compiler's output,
+    // not about the part of it a model will read. Asking it after the cap would let a program whose
+    // ninth diagnostic is the only one in its own file be reported as gg's pipeline failing.
     let located_in_program = diagnostics
         .lines()
         .any(|line| line.starts_with(&format!("{file}(")));
     if !located_in_program {
+        // Bounded like the band below it, and the reason is that this string has two readers rather
+        // than the one it reads as having. It is gg's own declarations being refused — a defect in
+        // gg rather than a mistake a model can act on — so it is tempting to keep it whole as the
+        // bug report an operator reads out of the run record. But `Lowering` is a
+        // `PrepareFailure::Program`, which `SandboxError::Prepare` carries to
+        // `CodeFeedback::compiler` and into the very next request: whatever is here, a **model**
+        // reads it too, and reads it again on every turn after.
+        //
+        // That makes it the largest model-facing string this arm can produce, not the smallest.
+        // `skipLibCheck` means a declaration file earns a diagnostic only by failing to *parse*, and
+        // `tsc` withholds every semantic diagnostic while a syntactic one stands — so this branch is
+        // reached with the *whole* of a broken generated surface and nothing of the program. Two
+        // hundred generated declarations with one codegen defect apiece measured **29682 bytes
+        // across 600 lines** on this checkout, which is two and a half times the worst row in the
+        // [table](super::super::diagnostics) this bound was written against.
+        //
+        // What the operator loses is nothing they had a use for: generated declarations that do not
+        // parse fail the same way six hundred times, and the first eight say which codegen wrote
+        // them and what it got wrong. The count line keeps the total honest.
         return Err(PrepareFailure::Program(PrepareError::Lowering(format!(
-            "the generated declarations gg checks a program against were rejected by tsc \
-             {}: {diagnostics}",
+            "the generated declarations gg checks a program against were rejected by tsc {}: {}",
             checker_version(),
+            crate::sandbox::language::diagnostics::capped_lines(
+                diagnostics,
+                opens_a_diagnostic,
+                SHOWN,
+            ),
         ))));
     }
-    Err(PrepareFailure::Program(PrepareError::Compile(shift_lines(
-        diagnostics,
-        file,
-        shift,
-    ))))
+    // Renumbered first, bounded second, and that order is not interchangeable. `shift_lines`
+    // rebuilds the text through `str::lines`, so anything it runs over it also normalises; the
+    // bound's promise is that what it kept is byte-for-byte what it was handed, which only holds if
+    // nothing edits the text after it. Putting the bound inside `shift_lines` instead would have
+    // left the module path — which is checked with `shift == 0` and returns early — uncapped.
+    Err(PrepareFailure::Program(PrepareError::Compile(
+        crate::sandbox::language::diagnostics::capped_lines(
+            &shift_lines(diagnostics, file, shift),
+            opens_a_diagnostic,
+            SHOWN,
+        ),
+    )))
 }
 
 /// Move every diagnostic located in `file` back by `shift` lines, leaving everything else — the

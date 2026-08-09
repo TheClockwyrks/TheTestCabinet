@@ -395,6 +395,14 @@ const PARSE_ERROR_CODE: &str = "SYNTAX";
 /// TeaVM reports one problem per *call site*, so a single unsupported library call can arrive
 /// forty-five times with the same message at different lines inside the standard library. What a
 /// model can act on is the first few; the rest is noise it pays tokens to read.
+///
+/// This was the first bound any arm carried, and it is the number the rest of them took: the
+/// [shared measurement](super::super::diagnostics) — one misremembered SDK name at fifty call sites
+/// — costs **475 bytes across 17 lines** through this arm, which is eight diagnostics and the line
+/// that counts the forty-two it did not show. The uncapped arms measured against it in the same
+/// table cost between six and twenty-four times that for the identical mistake. Eight is therefore
+/// justified here by what it *reports* rather than by what it drops, and that is the row every other
+/// arm's constant cites.
 const SHOWN: usize = 8;
 
 /// Turn a finished build into a verdict.
@@ -427,20 +435,17 @@ fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailu
     }
 
     // Deduplicated, because one unsupported call is one thing to fix however many call sites TeaVM
-    // found it at, and capped, because a model reads the first few and pays for all of them.
-    let mut seen: Vec<String> = Vec::new();
-    for diagnostic in &mine {
-        let rendered = diagnostic.render(file, shift);
-        if !seen.contains(&rendered) {
-            seen.push(rendered);
-        }
-    }
-    let more = seen.len().saturating_sub(SHOWN);
-    seen.truncate(SHOWN);
-    let mut rendered = seen.join("\n\n");
-    if more > 0 {
-        rendered.push_str(&format!("\n\n… and {more} more like these."));
-    }
+    // found it at, and capped, because a model reads the first few and pays for all of them. Both
+    // through the seam's own bound: this arm's answer to that question was measured against every
+    // other arm's and became the shared one, so what is left here is the number and the reason for
+    // it.
+    let rendered = crate::sandbox::language::diagnostics::capped(
+        mine.iter()
+            .map(|diagnostic| diagnostic.render(file, shift))
+            .collect(),
+        SHOWN,
+        "\n\n",
+    );
     // A parse failure anywhere is the whole verdict: the compiler never got as far as meaning, so
     // whatever else it says is downstream of text it could not read.
     Err(PrepareFailure::Program(

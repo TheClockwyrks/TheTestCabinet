@@ -461,10 +461,39 @@ fn module_keyword(program: &Program<'_>) -> Option<&'static str> {
     })
 }
 
+/// How many distinct diagnostics a model is shown.
+///
+/// Eight, the number [Kotlin measured](super::super::kotlin) and the
+/// [shared bound](super::super::diagnostics) carries between arms. What eight costs was measured
+/// on this path, on this checkout: fifty recovered parse errors — fifty classes each with a doubled
+/// accessibility modifier — render as 4729 bytes, ~95 bytes each, so eight is ~760 bytes.
+///
+/// The 4729 arrive on **one line**, because this arm joins with `"; "` and not with newlines, and
+/// that is the sharpest thing about the shape. Fifty newline-separated diagnostics are at least
+/// scannable; fifty semicolon-separated ones are a paragraph a model has to read to the end of to
+/// discover it said the same thing fifty times.
+///
+/// Eight rather than something tighter, even though a parse error's tail is worth less here than a
+/// type error's is on a checker's arm — `oxc` recovers and keeps going, so what follows the first
+/// diagnostic is often the parser's opinion of text it is already confused about, and the first is
+/// the one to fix. Tighter would start trading away the thing this rendering exists for: two
+/// genuinely separate mistakes in one reply are two turns if only one of them is reported, which is
+/// what `every_diagnostic_reaches_the_message` in this module's tests pins at two. Eight is a wide
+/// margin over that, and the bound's closing line says how many it did not show.
+const SHOWN: usize = 8;
+
 /// Every diagnostic, **located in the program's own coordinates** and joined.
 ///
-/// All of them are kept rather than only the first: a model that fixes one syntax error and is then
-/// told about the next has spent two turns on one program.
+/// The first [few](SHOWN) are kept rather than only the first: a model that fixes one syntax error
+/// and is then told about the next has spent two turns on one program. Past that the bound closes
+/// with a count, because the tail of a recovered parse is the same mistake seen from further away.
+///
+/// Every band this arm can reach comes through here — the parser's
+/// [`Syntax`](PrepareError::Syntax), the semantic pass's [`Semantic`](PrepareError::Semantic), the
+/// transformer's [`Lowering`](PrepareError::Lowering) — so it is one bound for all three. It is also
+/// the [JavaScript arm's](super::super::javascript) only bound: that arm's whole preparation is this
+/// module's [`prepare_program`] and [`prepare_module`], so what is decided here is what a JavaScript
+/// program is told too.
 ///
 /// # Why not `Display`
 ///
@@ -477,11 +506,17 @@ fn module_keyword(program: &Program<'_>) -> Option<&'static str> {
 /// attached is the whole fix: the line, the column, and the source line itself turn an
 /// uninterpretable sentence into one whose cause is visible in it.
 fn located(src: &str, diagnostics: &[OxcDiagnostic]) -> String {
-    diagnostics
-        .iter()
-        .map(|diagnostic| locate(src, diagnostic))
-        .collect::<Vec<_>>()
-        .join("; ")
+    // Nothing here chooses a band: each of this arm's three calls already knows which pass it is
+    // reporting, and an empty list never reaches any of them. So the bound decides only how much of
+    // a refusal the model reads, and cannot decide whose refusal it was.
+    crate::sandbox::language::diagnostics::capped(
+        diagnostics
+            .iter()
+            .map(|diagnostic| locate(src, diagnostic))
+            .collect(),
+        SHOWN,
+        "; ",
+    )
 }
 
 /// One diagnostic as `line L, column C: message | the source line`, or bare when it carries no

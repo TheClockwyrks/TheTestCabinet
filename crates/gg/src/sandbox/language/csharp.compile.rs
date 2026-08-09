@@ -566,12 +566,32 @@ fn classify(
         return Err(failure);
     }
     match parse_errors(root, written, context) {
+        // The band is decided on what the parser reported in full — one error anywhere in it makes
+        // this a typo rather than a misunderstood surface — and only what the model reads is
+        // [bounded](SHOWN). A parse failure the cap dropped cannot therefore stop being one.
         Some(syntax) if !syntax.is_empty() => Err(PrepareFailure::Program(PrepareError::Syntax(
-            syntax.join("\n"),
+            crate::sandbox::language::diagnostics::capped(syntax, SHOWN, "\n"),
         ))),
         _ => Err(failure),
     }
 }
+
+/// How many of `csc`'s diagnostics a model is shown.
+///
+/// [Kotlin's eight](super::super::kotlin), and on this arm the arms agree for the same reason rather
+/// than by default: a Roslyn diagnostic is **exactly one line**. `csc` prints no source excerpt and
+/// no caret, so eight diagnostics is eight lines, and there is no per-diagnostic tail for the number
+/// to have to allow for the way [C++'s four](super::super::cpp) does. Measured on this machine
+/// against this arm's own flags, one misremembered SDK name called at fifty call sites is **4840
+/// bytes across 50 lines** — ~97 bytes a diagnostic — so eight is ~775 bytes and the fifty were
+/// ~4.8 KB of one sentence repeated with the line number changed.
+///
+/// It bounds what the model **reads** and never what a [band](classify) is decided on: the partition
+/// into the model's diagnostics and gg's own SDK's, and the parser's answer about which stage
+/// refused the program, are both taken over the whole set before this applies. Nor does it bound
+/// what gg's own SDK's diagnostics say when they are the failure — that string is for an operator
+/// reading a defect in gg, who wants all of it, and it never reaches a model.
+const SHOWN: usize = 8;
 
 /// What `csc` decided, before the [band](classify) is refined — the pure half, over the invocation's
 /// own output and nothing else.
@@ -583,7 +603,7 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
         .stdout
         .lines()
         .map(str::trim_end)
-        .filter(|line| is_diagnostic(line))
+        .filter(|line| is_error(line))
         .collect();
     if reported.is_empty() {
         return Err(PrepareFailure::Toolchain(format!(
@@ -592,7 +612,10 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
             report.stderr_tail(),
         )));
     }
-    // What the model wrote, which is everything `csc` did not locate inside gg's own SDK.
+    // What the model wrote, which is everything `csc` did not locate inside gg's own SDK. Decided
+    // over every error the compiler reported, before anything is dropped for length: a diagnostic
+    // the cap below does not show is still a diagnostic this partition counted, so no bound on what
+    // the model reads can move a compile error into gg's own band or out of it.
     let (mine, ours): (Vec<&str>, Vec<&str>) =
         reported.into_iter().partition(|line| !in_the_sdk(line));
     if mine.is_empty() {
@@ -602,8 +625,15 @@ fn verdict(report: &CompilerReport) -> Result<(), PrepareFailure> {
             ours.join("\n"),
         )));
     }
+    // Deduplicated and capped through the seam's own [bound](SHOWN), because Roslyn reports one
+    // diagnostic per call site: a single misremembered SDK name arrives once for every place the
+    // program called it, saying the same sentence at fifty different columns.
     Err(PrepareFailure::Program(PrepareError::Compile(
-        mine.join("\n"),
+        crate::sandbox::language::diagnostics::capped(
+            mine.into_iter().map(str::to_string).collect(),
+            SHOWN,
+            "\n",
+        ),
     )))
 }
 
@@ -669,7 +699,10 @@ fn parse_errors(root: &Path, file: &Path, context: &PrepareContext) -> Option<Ve
             .stdout
             .lines()
             .map(str::trim_end)
-            .filter(|line| is_diagnostic(line))
+            // The driver prints errors and nothing else — `Parse.cs` filters on
+            // `DiagnosticSeverity.Error`, because a parser warning is not a rejection — so this is
+            // the same predicate `csc`'s own output is read with rather than a laxer one.
+            .filter(|line| is_error(line))
             .map(str::to_string)
             .collect()
     })
@@ -804,17 +837,32 @@ fn fingerprint(bytes: &[u8]) -> u64 {
     hasher.finish()
 }
 
-/// Whether one line of `csc`'s output is a diagnostic about the model's program.
+/// Whether one line of `csc`'s output is an **error** about the compilation.
 ///
 /// Roslyn writes `program.cs(7,9): error CS0117: 'string' does not contain a definition for 'Nope'`
 /// and, for something not attached to a location, a bare `error CS2001: Source file … not found`.
 /// Both are kept; a summary line, a blank, or anything else is not.
-fn is_diagnostic(line: &str) -> bool {
+///
+/// **A `warning CS` line is not one**, and that is a decision about each of the two things this
+/// predicate feeds.
+///
+/// On what the model reads it is [the C++ arm's](super::super::cpp) decision, taken here for the
+/// same stated reason: a model's program is not being reviewed, and an unused variable that failed a
+/// turn would be gg imposing a lint policy on an experiment about capability. It costs more on this
+/// arm than on that one, because a compile here runs with `-nullable:enable` and no `-nowarn` — so a
+/// program `csc` refused for one reason can arrive trailing a `CS8600`/`CS8602` nullable tail as long
+/// as the program, none of which is what stopped it.
+///
+/// On the [band](verdict) it is the safe direction. A compilation that failed inside gg's own SDK
+/// while merely *warning* about the model's file used to partition as "the model has diagnostics",
+/// and the model was handed a warning it could not act on for a failure that was gg's; with errors
+/// alone deciding it, that compilation is reported as gg's defect, which is what it is.
+fn is_error(line: &str) -> bool {
     let after_location = match line.split_once("): ") {
         Some((_, rest)) => rest,
         None => line.trim_start(),
     };
-    after_location.starts_with("error CS") || after_location.starts_with("warning CS")
+    after_location.starts_with("error CS")
 }
 
 #[cfg(test)]

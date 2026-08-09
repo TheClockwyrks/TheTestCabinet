@@ -218,6 +218,107 @@ fn a_program_with_no_entry_point_is_told_so_in_a_sentence() {
     );
 }
 
+/// A finished `purs --json-errors`, spelled out — the shape [`classify`](super::classify) reads,
+/// with no compiler run. The cap below is about *fifty* diagnostics, and provoking fifty out of a
+/// real `purs` would be a test about writing bad PureScript rather than about the bound.
+fn json_report(errors: &[String]) -> CompilerReport {
+    CompilerReport {
+        ok: false,
+        code: Some(1),
+        status: "exited with status 1".to_string(),
+        stdout: format!("{{\"warnings\":[],\"errors\":[{}]}}", errors.join(",")),
+        stderr: String::new(),
+    }
+}
+
+/// One `purs` error at `line`, in the JSON the compiler prints it as.
+fn json_error(code: &str, line: usize, file: &str) -> String {
+    format!(
+        "{{\"errorCode\":\"{code}\",\"message\":\"  Unknown value ggReadAll\\n\",\
+         \"filename\":\"/w/{file}\",\
+         \"position\":{{\"startLine\":{line},\"startColumn\":8,\"endLine\":{line},\"endColumn\":18}}}}"
+    )
+}
+
+#[test]
+fn fifty_call_sites_of_one_mistake_reach_the_model_as_eight_and_a_count() {
+    // `purs` reports one error per SITE, so a name the SDK does not have arrives once for every
+    // place the program used it — each carrying the compiler's own paragraph of prose, which is why
+    // the measured ~63 bytes a diagnostic is a floor for this arm rather than a typical case.
+    let errors: Vec<String> = (1..=50)
+        .map(|line| json_error("UnknownName", line, PROGRAM_FILE))
+        .collect();
+    let failure = classify(&json_report(&errors), PROGRAM_FILE, 0).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
+        panic!("fifty diagnostics in the model's own file are its compile error, got {failure:?}");
+    };
+    assert_eq!(
+        message.matches("UnknownName").count(),
+        SHOWN,
+        "at most {SHOWN} diagnostics reach the model: {message}"
+    );
+    // Counted honestly, and counted AFTER de-duplication: `purs` located each of these at its own
+    // line, so these are fifty distinct renderings rather than one repeated.
+    assert!(
+        message.ends_with("\n… and 42 more like these."),
+        "the count is not what was dropped: {message}"
+    );
+    assert!(
+        message.starts_with("program.purs:1:8: UnknownName\n  Unknown value ggReadAll"),
+        "the kept diagnostics are not the ones the compiler reported first: {message}"
+    );
+}
+
+#[test]
+fn a_rejection_the_bound_does_not_reach_is_byte_for_byte_what_it_always_was() {
+    // The ordinary turn — two errors — is untouched by the existence of a cap, blank line between
+    // them and all. A bound that quietly reformatted the common case would be paid on every turn to
+    // save bytes on the rare one.
+    let errors = [
+        json_error("UnknownName", 7, PROGRAM_FILE),
+        json_error("TypesDoNotUnify", 9, PROGRAM_FILE),
+    ];
+    let failure = classify(&json_report(&errors), PROGRAM_FILE, 0).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(message)) = &failure else {
+        panic!("expected a compile error, got {failure:?}");
+    };
+    assert_eq!(
+        message,
+        "program.purs:7:8: UnknownName\n  Unknown value ggReadAll\n\n\
+         program.purs:9:8: TypesDoNotUnify\n  Unknown value ggReadAll"
+    );
+}
+
+#[test]
+fn the_band_is_decided_before_anything_is_dropped_for_length() {
+    // The invariant a bound must not be able to break: which band a rejection is in comes off the
+    // WHOLE set of diagnostics. A parse failure fiftieth in the list — long past anything the model
+    // will be shown — still makes this a typo rather than a program written against the wrong
+    // surface, because the compiler never got as far as meaning.
+    let mut errors: Vec<String> = (1..=49)
+        .map(|line| json_error("UnknownName", line, PROGRAM_FILE))
+        .collect();
+    errors.push(json_error("ErrorParsingModule", 50, PROGRAM_FILE));
+    let failure = classify(&json_report(&errors), PROGRAM_FILE, 0).expect_err("refused");
+    assert!(
+        matches!(failure, PrepareFailure::Program(PrepareError::Syntax(_))),
+        "a parse failure the cap dropped stopped being one: {failure:?}"
+    );
+
+    // And the other direction: fifty diagnostics, none of them in the model's file, are gg's own
+    // library tree failing however few of them would have been shown.
+    let ours: Vec<String> = (1..=50)
+        .map(|line| json_error("UnknownName", line, "Gg/Internal.purs"))
+        .collect();
+    assert!(
+        matches!(
+            classify(&json_report(&ours), PROGRAM_FILE, 0),
+            Err(PrepareFailure::Toolchain(_))
+        ),
+        "a tree that did not compile is gg's artifact failing, not the model's program"
+    );
+}
+
 #[test]
 fn a_code_module_compiles_to_a_namespace() {
     let bundled = compile_module(

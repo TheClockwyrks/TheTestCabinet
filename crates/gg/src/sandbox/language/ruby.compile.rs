@@ -315,6 +315,13 @@ pub(super) fn compile(
 /// The exit code is the whole of the decision, because the driver in the committed bundle exists to
 /// make it one: a status gg had to interpret is a status gg would eventually interpret wrongly, and
 /// reporting a broken compiler as a broken program is the misattribution this whole split is for.
+///
+/// **Unbounded, and this is the one arm where that is the answer rather than an omission.** Every
+/// other compiled arm caps what it hands a model through the [shared bound](super::diagnostics),
+/// because a compiler that reports one problem per call site can say the same sentence fifty times.
+/// Opal cannot: the driver catches a *single* thrown `SyntaxError` and prints it, so a rejection here
+/// is structurally one diagnostic and there is no list to cap. A bound would be a cap of eight on a
+/// set that never exceeds one — machinery that could only ever be wrong about what it was for.
 fn classify(report: CompilerReport) -> Result<(), PrepareFailure> {
     if report.ok {
         return Ok(());

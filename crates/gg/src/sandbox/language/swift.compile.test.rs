@@ -166,6 +166,78 @@ fn a_rejected_program_keeps_the_compilers_errors_and_drops_its_warnings() {
     }
 }
 
+/// One `swiftc` error as the compiler prints it: the located header, the source line it drew under
+/// it, and the caret under that. Three lines, which is why this arm is the most expensive of the
+/// nine to leave unbounded.
+fn swift_error(line: usize) -> String {
+    format!(
+        "main.swift:{line}:9: error: value of type 'Gg' has no member 'readAll'\n\
+         {line} | let text = gg.readAll(path)\n\
+         \x20 |            `- error: value of type 'Gg' has no member 'readAll'\n"
+    )
+}
+
+#[test]
+fn fifty_call_sites_of_one_mistake_reach_the_model_as_eight_and_a_count() {
+    // The measurement this arm's bound exists for: one misremembered SDK name called at fifty call
+    // sites is 11614 bytes across 395 lines here — the worst of the nine arms — because `swiftc`
+    // draws an excerpt and a caret under every error. The model pays for all of it in this turn's
+    // request and in every request after it, to be told one thing fifty times.
+    let stderr: String = (1..=50).map(swift_error).collect();
+    let Err(PrepareFailure::Program(PrepareError::Compile(rendered))) =
+        classify(&report(false, &stderr))
+    else {
+        panic!("fifty diagnostics in the model's own file are the model's compile error");
+    };
+    assert_eq!(
+        rendered.matches("has no member 'readAll'").count(),
+        // Two per kept error: the header and the caret line repeat the message.
+        SHOWN * 2,
+        "at most {SHOWN} errors reach the model: {rendered}"
+    );
+    assert!(
+        rendered.ends_with("\n… and 42 more like these."),
+        "the count is not what was dropped: {rendered}"
+    );
+    // Each kept group arrives whole and unreflowed. An excerpt and a caret are a picture, and a
+    // picture survives being cut but not being re-indented.
+    assert!(
+        rendered.starts_with(swift_error(1).trim_end()),
+        "the first diagnostic is not the compiler's own three lines: {rendered}"
+    );
+}
+
+#[test]
+fn a_rejection_the_bound_does_not_reach_is_byte_for_byte_what_it_always_was() {
+    // The ordinary turn — a couple of errors — must be untouched by the existence of a cap, down to
+    // the whitespace `swiftc` chose. A bound that quietly reformats the common case would be paid on
+    // every turn to save bytes on the rare one.
+    let stderr = format!("{}{}", swift_error(4), swift_error(11));
+    let Err(PrepareFailure::Program(PrepareError::Compile(rendered))) =
+        classify(&report(false, &stderr))
+    else {
+        panic!("two diagnostics in the model's own file are the model's compile error");
+    };
+    assert_eq!(rendered, stderr.trim_end());
+}
+
+#[test]
+fn the_band_is_decided_before_anything_is_dropped_for_length() {
+    // The invariant a bound must not be able to break: whose failure it is comes off the WHOLE of
+    // `swiftc`'s output. Here gg's own guest is named once, past the point any cap reaches, and the
+    // compilation is still gg's failure rather than the model's — a model asked to fix a file it
+    // never wrote is the one misattribution this arm spends the most effort not making.
+    let mut stderr: String = (1..=40).map(swift_error).collect();
+    stderr.push_str("/tmp/gg-toolchain-swift/guest/shell.swift:20:5: error: cannot find 'ggWat'\n");
+    match classify(&report(false, &stderr)) {
+        Err(PrepareFailure::Toolchain(message)) => assert!(
+            message.contains("gg's own guest"),
+            "the failure did not say whose it was: {message}"
+        ),
+        other => panic!("a diagnostic in gg's own shell is not the model's failure: {other:?}"),
+    }
+}
+
 #[test]
 fn a_compile_that_said_nothing_at_all_is_a_success() {
     assert!(classify(&report(true, "")).is_ok());

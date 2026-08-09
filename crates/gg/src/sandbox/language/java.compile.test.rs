@@ -223,3 +223,189 @@ fn a_module_bundle_hands_its_namespace_back_and_a_program_does_not() {
         assert!(tail.contains("throw $ggThrown;"), "{tail}");
     }
 }
+
+/// One TeaVM refusal naming a class it does not carry, at line `12 + index` of the entry file.
+///
+/// TeaVM's own shape, which is what makes this arm's volume: it reports the missing class once per
+/// **call site**, so the same sentence arrives at as many lines as the model wrote calls.
+fn unsupported(index: usize) -> Diagnostic {
+    Diagnostic {
+        stage: "teavm".to_string(),
+        error: true,
+        code: None,
+        file: Some(PROGRAM_FILE.to_string()),
+        line: 12 + index,
+        column: 0,
+        message: "Class java.nio.file.Paths was not found".to_string(),
+    }
+}
+
+/// A refused build carrying `count` of them.
+fn unsupported_report(count: usize) -> Report {
+    Report {
+        ok: false,
+        internal: None,
+        diagnostics: (0..count).map(unsupported).collect(),
+    }
+}
+
+/// What `verdict` shows a model for such a build.
+fn compile_text(count: usize) -> String {
+    let failure = verdict(&unsupported_report(count), PROGRAM_FILE, 11).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = failure else {
+        panic!("an unsupported class is a compile error");
+    };
+    rendered
+}
+
+/// **A refusal the model can read whole is unchanged.**
+///
+/// Below the bound the model reads exactly what this arm has always rendered: every diagnostic it is
+/// answerable for, in the compiler's order, joined by a blank line, and nothing about what was not
+/// shown — because nothing was not shown.
+#[test]
+fn a_refusal_under_the_bound_is_rendered_exactly_as_it_always_was() {
+    let rendered = compile_text(SHOWN);
+
+    let expected: Vec<String> = (0..SHOWN)
+        .map(|index| {
+            format!(
+                "program.java:{}: Class java.nio.file.Paths was not found",
+                index + 1
+            )
+        })
+        .collect();
+    assert_eq!(rendered, expected.join("\n\n"));
+    assert!(
+        !rendered.contains("more like these"),
+        "a refusal that fitted was told it had been cut: {rendered}"
+    );
+}
+
+/// **Past the bound the model reads the first few and an honest count of the rest.**
+///
+/// The count is of what survived de-duplication rather than of what TeaVM said, which is the only
+/// count worth printing here: fifty call sites naming one missing class are fifty *distinct*
+/// renderings only because they carry fifty different lines, and each of those lines is somewhere
+/// the model has to go and delete the same call.
+#[test]
+fn a_refusal_past_the_bound_keeps_the_first_few_and_counts_the_rest() {
+    let rendered = compile_text(50);
+
+    assert!(rendered.starts_with("program.java:1: Class"), "{rendered}");
+    assert!(
+        rendered.contains(&format!("program.java:{}: Class", SHOWN)),
+        "the first {SHOWN} are what the model reads: {rendered}"
+    );
+    assert!(
+        !rendered.contains(&format!("program.java:{}: Class", SHOWN + 1)),
+        "a diagnostic past the bound was shown: {rendered}"
+    );
+    assert!(
+        rendered.ends_with(&format!("\n\n… and {} more like these.", 50 - SHOWN)),
+        "the count is the honest one, on the arm's own separator: {rendered}"
+    );
+    // Fifty of these is 5139 bytes uncapped on this arm.
+    assert!(
+        rendered.len() < 800,
+        "the bound did not bound anything: {} bytes",
+        rendered.len()
+    );
+}
+
+/// **Byte-identical renderings are one thing to fix, and are folded before they are counted.**
+///
+/// TeaVM reports per call site, so two calls on one line of the model's program render identically.
+/// Counting those separately would make the closing line an inventory of repetitions rather than of
+/// diagnostics.
+#[test]
+fn identical_renderings_are_folded_before_the_count_is_taken() {
+    let report = Report {
+        ok: false,
+        internal: None,
+        diagnostics: (0..50).map(|_| unsupported(0)).collect(),
+    };
+    let failure = verdict(&report, PROGRAM_FILE, 11).expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Compile(rendered)) = failure else {
+        panic!("an unsupported class is a compile error");
+    };
+    assert_eq!(
+        rendered, "program.java:1: Class java.nio.file.Paths was not found",
+        "fifty copies of one sentence are one sentence, with nothing left to count: {rendered}"
+    );
+}
+
+/// **The bound cannot move a verdict from one band to the other.**
+///
+/// Two decisions are made on the **whole** set before anything is rendered, and each is one the
+/// bound must not be able to reach:
+///
+/// * whether any diagnostic is the model's at all — if none is, the build failed on gg's own
+///   generated entry class and is a [`Toolchain`](PrepareFailure::Toolchain) failure the model never
+///   sees;
+/// * whether any of the model's own is a **parse** failure — which makes the whole verdict
+///   [`Syntax`](PrepareError::Syntax), because javac never got as far as meaning.
+///
+/// The second is the one a cap could plausibly break: a parse error is not required to arrive first,
+/// so asking the kept eight instead of all of them would report a program with an unclosed brace as
+/// one javac read and disagreed with.
+#[test]
+fn the_bound_does_not_decide_whose_failure_it_is() {
+    // A parse error past the bound still makes the whole verdict a syntax failure.
+    let mut diagnostics: Vec<Diagnostic> = (0..50).map(unsupported).collect();
+    diagnostics.push(Diagnostic {
+        stage: "javac".to_string(),
+        error: true,
+        code: Some("compiler.err.premature.eof".to_string()),
+        file: Some(PROGRAM_FILE.to_string()),
+        line: 99,
+        column: 1,
+        message: "reached end of file while parsing".to_string(),
+    });
+    let failure = verdict(
+        &Report {
+            ok: false,
+            internal: None,
+            diagnostics,
+        },
+        PROGRAM_FILE,
+        11,
+    )
+    .expect_err("refused");
+    let PrepareFailure::Program(PrepareError::Syntax(rendered)) = failure else {
+        panic!("a parse failure the bound did not show is still a parse failure");
+    };
+    // Shown or not, the band is the parser's. Here it is not shown, and the count says so.
+    assert!(
+        !rendered.contains("reached end of file"),
+        "the fifty-first diagnostic was shown: {rendered}"
+    );
+    assert!(rendered.contains("… and 43 more like these."), "{rendered}");
+
+    // And a build whose diagnostics are all about gg's own generated class is gg's failure however
+    // many of them there are.
+    let failure = verdict(
+        &Report {
+            ok: false,
+            internal: None,
+            diagnostics: (0..50)
+                .map(|index| Diagnostic {
+                    stage: "javac".to_string(),
+                    error: true,
+                    code: Some("compiler.err.cant.resolve.location".to_string()),
+                    file: Some("GgEntry.java".to_string()),
+                    line: 7 + index,
+                    column: 1,
+                    message: "cannot find symbol: class Program".to_string(),
+                })
+                .collect(),
+        },
+        PROGRAM_FILE,
+        11,
+    )
+    .expect_err("refused");
+    assert!(
+        matches!(failure, PrepareFailure::Toolchain(_)),
+        "gg's own generated code failing is gg's bug however loudly it fails: {failure:?}"
+    );
+}

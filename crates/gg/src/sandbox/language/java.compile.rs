@@ -420,6 +420,32 @@ const PARSE_ERROR_PREFIXES: [&str; 6] = [
     "compiler.err.class.expected",
 ];
 
+/// How many distinct diagnostics a model is shown.
+///
+/// Eight, the same as [Kotlin's](super::super::kotlin), and here the sameness is the point rather
+/// than a default taken for want of an argument. The two JVM arms share
+/// [the driver](super::super::jvm), the [`Diagnostic`] shape and the rendering, and they are the
+/// pair an A/B most naturally compares — so an arm that showed fifty diagnostics beside one that
+/// showed eight would have the comparison measuring context size along with the language.
+///
+/// The measurement it costs: one misremembered SDK name called at fifty call sites is 5139 bytes
+/// across 199 lines out of this arm, so a diagnostic is ~103 bytes and ~4 lines and eight of them
+/// is ~820 bytes.
+///
+/// # This arm had a ceiling already, and it was not one
+///
+/// Alone among the uncapped arms, javac stops on its own: `-Xmaxerrs` defaults to 100 and
+/// [the driver](super::super::jvm) does not set it — its option list is `-g`, `-nowarn`, `--release`
+/// (`crates/gg/src/sandbox/checkers/jvm.backend.java`) — and the limit applies to the
+/// `DiagnosticCollector` the driver reads through exactly as it does to the command line, which was
+/// measured rather than assumed: 150 unresolvable calls through that same option list arrive as 100
+/// diagnostics and no note saying so. At the measured ~103 bytes each that ceiling is ~10 KB, which
+/// is a truncation with no count attached rather than a bound worth having.
+///
+/// TeaVM, the other half of this arm's compile, has no such limit at all and reports one problem per
+/// **call site** — the shape that produced the measurement above.
+const SHOWN: usize = 8;
+
 /// Turn a finished build into a verdict.
 fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailure> {
     let errors: Vec<&Diagnostic> = report
@@ -449,13 +475,22 @@ fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailu
         )));
     }
 
-    let rendered = mine
-        .iter()
-        .map(|diagnostic| diagnostic.render(file, shift))
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    // Deduplicated and capped through the seam's own bound: TeaVM reports one problem per call site,
+    // so a single unsupported call is one thing to fix however many times it is named.
+    let rendered = crate::sandbox::language::diagnostics::capped(
+        mine.iter()
+            .map(|diagnostic| diagnostic.render(file, shift))
+            .collect(),
+        SHOWN,
+        "\n\n",
+    );
     // A parse failure anywhere is the whole verdict: javac never got as far as meaning, so whatever
     // else it says is downstream of text it could not read.
+    //
+    // `mine` and not the capped rendering, and that is the invariant rather than a preference: the
+    // band is decided on the WHOLE set, so a parse error the bound did not show is still a parse
+    // error. Asking the kept eight instead would let a program whose ninth diagnostic was the
+    // unclosed brace be reported as a program javac read and disagreed with.
     Err(PrepareFailure::Program(
         match mine.iter().any(|diagnostic| diagnostic.is_parse_error()) {
             true => PrepareError::Syntax(rendered),
