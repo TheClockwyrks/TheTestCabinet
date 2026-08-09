@@ -683,6 +683,33 @@
   gap: t.$space-sm;
 }
 
+// The per-verdict undo, trailing the note field: it appears only once the
+// reviewer's answer differs from the one this run's debug script decided, and puts
+// that machine call back. A quiet, text-weight control — the override it undoes is
+// the deliberate act; restoring is the cheap one — accented on hover to match the
+// rail's bulk restore.
+.verdictRestore {
+  flex: 0 0 auto;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: 0 t.$space-sm;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid transparent;
+  background: none;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
+  }
+
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 2px;
+  }
+}
+
 // The mechanical assertions behind a verdict's auto-set pass/fail — one fact per
 // row, each with its own detail — shown beneath the validation media and above the
 // Pass/Fail control so a reviewer reads what was checked before deciding. A leading
@@ -999,6 +1026,33 @@
   &:hover:not(:disabled) {
     color: t.$color-negative;
     border-color: t.$color-negative;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// The "Restore validator verdicts" undo beside it: puts every point the reviewer
+// overrode back to what this run's automated validation decided. Shares the
+// shortcut's outlined shape — it is the same kind of all-at-once action — but
+// hovers to the accent rather than the negative cue, since it restores rather than
+// condemns. Inert (dimmed) while nothing is overridden.
+.restoreAuto {
+  align-self: flex-start;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  padding: t.$space-xs t.$space-md;
+  border-radius: t.$radius-md;
+  border: t.$border-hairline solid t.$color-border;
+  background: s.$panel-bg;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: t.$color-accent;
+    border-color: t.$color-accent;
   }
 
   &:disabled {
