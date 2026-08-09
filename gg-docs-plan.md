@@ -28,7 +28,7 @@ Everything below is designed to rulings D1–D11. Where the brief, the ground-tr
 | 3 | Module granularity | **Per related function family**, not per toggleable capability. |
 | 4 | Search-ranking validation | **Option (a)** — the tiered scheme in §7 with no tuning surface, validated by the §10 discoverability gate alone. No committed relevance golden file. |
 | 5 | Search results: value or view | **Search opens a view automatically**, and it is **its own view type** — not piggybacked on text views. A model would only ever hand results straight to a text view anyway, since search already offers filtering and keyword matching; a distinct view type also makes context spent on searching separately measurable. |
-| 6 | Does `log` stay outside the catalogue | **There are no log functions at all.** Remove every custom log function from the SDKs. (See §0.3 for the one part of this that needs a decision before it can be executed.) |
+| 6 | Does `log` stay outside the catalogue | **No log function is exposed to models.** Remove every custom log function from the SDKs; the host WIT `log` that carries operator output is kept. The prompt must stop advertising the operator as a destination — see §0.3. |
 | 7 | Does a transitive placement charge a view op | **There is no cap on the number of views at all.** A cap on characters per text view stays; a cap on view *count* does not. The model's context window already is that limit. Delete `MAX_OPEN_TEXT_VIEWS` (`agent.code.rs:1664`) and `MAX_VIEW_OPS_PER_PROGRAM` (`agent.code.rs:1678`) with their refusal paths, and **extend the same removal to the image-view count cap** — `SandboxLimits::image_view_cap`, its per-agent `imageViewCap` param, and its carry onto `LoopToolApi` (`agent.code.rs:1095, 1160, 1667`). The per-image byte cap `IMAGE_ATTACH_CAP` is a size limit, not a count limit, and stays. |
 | 8 | Java's search entry point | **A static function.** |
 
@@ -40,12 +40,20 @@ Three concerns raised during design are accepted rather than mitigated:
 - **CI cannot prove the static-SDK inversion** (§1(b)). Accepted.
 - **Flat-name collisions with host-language names** (§11, stage 4: Ruby `Kernel#system`/`exec`/`fork`, Python `list`/`exec`, PureScript's `Prelude` clash, Java/Kotlin on-demand-import ambiguity). **Not an issue:** arms may legitimately spell a function differently, because search always returns language-specific documentation. The cross-arm name audit that §11 called a prerequisite is therefore **not** required — rename per arm as the language demands.
 
-**Open item under decision 6.** "Custom log function" covers two distinct things, and only one is unambiguously in scope:
+**Decision 6, resolved in full.** "Custom log function" covers two distinct things, and they are treated differently:
 
-1. the **model-facing** SDK log function (`gg::log` / `gg.log` / `Gg.Log`), public on every arm and deliberately uncatalogued — **removed**, unambiguously;
-2. the **host** `log` func in the WIT interface (`crates/gg/wit/gg-sandbox.wit:1026`), which is never bound into a program's scope and exists because `console.*` is rebound onto it to carry **operator-facing** run output.
+1. the **model-facing** SDK log function (`gg::log` / `gg.log` / `Gg.Log`), public on every arm and deliberately uncatalogued — **removed**;
+2. the **host** `log` func in the WIT interface (`crates/gg/wit/gg-sandbox.wit:1026`), which is never bound into a program's scope and carries operator-facing run output — **kept**.
 
-Removing (2) as well would change what an operator can see of a run. It is not obviously what "get rid of all custom log functions" intends, so it is **not** actioned here and needs one word from the owner before stage 4.
+The governing rule is **the log function must not be exposed to models**. (2) satisfies it and stays.
+
+A third consequence follows, and it is a **prompt** change rather than an SDK one. A model should never be deliberately emitting operator-facing output: most runs have only their result and metrics examined, not their event stream or output, so anything a model writes there is work spent for no reader. Therefore **models must not be instructed to emit operator output, and the prompt must not advertise the operator as a destination.**
+
+Today it does, in **all 22 templates** (`crates/gg/templates/system-code.*.hbs` and `code-nothing-shown.*.hbs`), each carrying a variant of:
+
+> `Effect.Console.log` / `console.log` / `println` / `WriteLine` **goes to the run's operator, not to you.**
+
+The half of that sentence which earns its place is *"not to you"* — without it a model burns turns printing values it will never read. The half that must go is *"goes to the run's operator"*, which names a channel the model then has a reason to aim at. Reword all 22 to state only that the output is unreadable by the model and that views are the sole way to read a value. Rust's existing `` `println!` goes nowhere at all `` is the register to match. This lands in **stage 8** with the rest of the prompt rewrite (§10, §11).
 
 ---
 
