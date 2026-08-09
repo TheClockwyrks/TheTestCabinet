@@ -98,15 +98,45 @@ async fn main() -> ExitCode {
     }
 }
 
-/// Download the run's source tree and release it, streaming a progress line before
-/// and after each phase. Returns the produced links on success, or a human-readable
-/// failure reason on any error — the caller turns either into the terminal
-/// [`PublishResult`].
+/// Release one run: confirm it still needs publishing, download its source tree, and
+/// release it, streaming a progress line before and after each phase. Returns the
+/// produced links on success, or a human-readable failure reason on any error — the
+/// caller turns either into the terminal [`PublishResult`].
+///
+/// The publication preflight comes first and is load-bearing, not cosmetic: a job
+/// that runs against an already-published run would deploy a second Cloudflare Pages
+/// deployment for it. See the check itself for why an unreachable backend fails the
+/// job rather than falling through to a release.
 ///
 /// Progress lines are best-effort observation (relayed, never persisted), so a
 /// failure to post one is logged and the release continues; only the download and
 /// the release itself are load-bearing.
 async fn run(config: &Config, client: &PublishJobClient) -> Result<ReleasedLinks, String> {
+    // Preflight: never release a run that is already published. A publish job can
+    // legitimately reach this point against a published run — a duplicate enqueued
+    // before the first one finished, or a retry after the live stream dropped once
+    // the release had already landed — and going ahead would deploy a *second*
+    // Cloudflare Pages deployment, since `wrangler pages deploy` mints a new one on
+    // every invocation. Reporting the links the run already carries makes the job a
+    // truthful no-op: the backend re-asserts the same links and leaves the original
+    // `published_at` intact.
+    if let Some(published) = client
+        .published_run(&config.run_id)
+        .await
+        .map_err(|err| format!("checking whether the run is already published: {err}"))?
+    {
+        tracing::warn!(
+            run_id = %config.run_id,
+            publish_job_id = %config.publish_job_id,
+            "run is already published; skipping the release rather than deploying it again"
+        );
+        progress(client, "run is already published — skipping the release").await;
+        return Ok(ReleasedLinks {
+            source_repo: published.source_repo,
+            playable_build: published.playable_build,
+        });
+    }
+
     progress(client, "downloading the run's source tree").await;
     let run_dir = download_run_tree(
         &config.artifacts_url,

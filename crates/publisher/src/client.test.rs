@@ -139,6 +139,109 @@ async fn post_result_hits_result_with_the_links() {
     );
 }
 
+/// Spin up a stub backend whose `GET /runs/{id}` answers with `body`, for the
+/// publication preflight. Returns its base URL.
+async fn stub_run_backend(body: Value) -> String {
+    let app = Router::new()
+        .route(
+            "/runs/{id}",
+            axum::routing::get(move || {
+                let body = body.clone();
+                async move { axum::Json(body) }
+            }),
+        )
+        .route(
+            "/publish-jobs/{id}/events",
+            post(|| async { StatusCode::NO_CONTENT }),
+        );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.expect("serve");
+    });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn published_run_reports_the_links_of_an_already_published_run() {
+    let base = stub_run_backend(serde_json::json!({
+        "published": true,
+        "links": {
+            "sourceRepo": "https://github.com/TheClockwyrks/tcab-pong",
+            "playableBuild": "https://abc.test-cabinet-runs.pages.dev",
+        },
+    }))
+    .await;
+    let client = PublishJobClient::new(base, "pub-job-1", "pub-tok");
+
+    let published = client
+        .published_run("run-1")
+        .await
+        .expect("the preflight should succeed")
+        .expect("an already-published run must be reported as such");
+    assert_eq!(
+        published.source_repo.as_deref(),
+        Some("https://github.com/TheClockwyrks/tcab-pong")
+    );
+    assert_eq!(
+        published.playable_build.as_deref(),
+        Some("https://abc.test-cabinet-runs.pages.dev")
+    );
+}
+
+#[tokio::test]
+async fn published_run_is_none_for_a_run_still_awaiting_release() {
+    let base = stub_run_backend(serde_json::json!({
+        "published": false,
+        "links": {},
+    }))
+    .await;
+    let client = PublishJobClient::new(base, "pub-job-2", "pub-tok");
+
+    assert!(
+        client
+            .published_run("run-2")
+            .await
+            .expect("the preflight should succeed")
+            .is_none(),
+        "an unpublished run still needs releasing"
+    );
+}
+
+#[tokio::test]
+async fn published_run_tolerates_a_published_run_with_no_links() {
+    // An asset-generation run creates no repository and may deploy no build.
+    let base = stub_run_backend(serde_json::json!({ "published": true })).await;
+    let client = PublishJobClient::new(base, "pub-job-3", "pub-tok");
+
+    let published = client
+        .published_run("run-3")
+        .await
+        .expect("the preflight should succeed")
+        .expect("still published, links or not");
+    assert!(published.source_repo.is_none());
+    assert!(published.playable_build.is_none());
+}
+
+#[tokio::test]
+async fn published_run_surfaces_a_backend_failure_rather_than_publishing_anyway() {
+    // The preflight gates irreversible external work, so an unreachable or erroring
+    // backend must fail the job, never fall through to a second deploy.
+    let (base, _captured) = stub_backend(StatusCode::INTERNAL_SERVER_ERROR).await;
+    let client = PublishJobClient::new(base, "pub-job-4", "pub-tok");
+
+    let err = client
+        .published_run("run-4")
+        .await
+        .expect_err("a backend that cannot answer must fail the preflight");
+    match err {
+        ClientError::Status { what, .. } | ClientError::Transport { what, .. } => {
+            assert_eq!(what, "run");
+        }
+    }
+}
+
 #[tokio::test]
 async fn a_non_success_status_is_surfaced_as_an_error() {
     let (base, _captured) = stub_backend(StatusCode::INTERNAL_SERVER_ERROR).await;
