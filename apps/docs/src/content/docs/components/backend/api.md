@@ -309,6 +309,23 @@ snapshot and the gallery. **Refuses a run that has no review** (`422`). The rele
 (the run flips public when the Job reports a terminal success). Requires a bearer
 token.
 
+It is **idempotent while a release is under way**: if the run already has a live
+publish job, this returns *that* job's id and live URL instead of enqueuing a second
+one, so a double-click, a second console tab, or a retry after the live stream
+dropped re-attaches to the publish already running. This matters because a publish
+is **not** idempotent externally — every publish job runs `wrangler pages deploy`,
+which mints a brand-new Cloudflare Pages deployment, while the `gh` side reuses an
+existing repository. Two jobs for one run therefore leave an orphaned public build
+behind, visible only on the Pages side. A partial unique index on the publish queue
+backs the check so two concurrent requests cannot both enqueue.
+
+A publish job whose publisher died before reporting stops blocking after an hour
+(nothing reaps it, so it would otherwise wedge the run's publishing forever), and a
+**failed** publish never blocks — it stays immediately retryable. As a second layer,
+the publisher itself re-checks the run's publication state before doing any external
+work and skips the release (reporting the links the run already carries) if the run
+is already published.
+
 ### `DELETE /runs/{id}` — delete
 
 Permanently delete a run: its record, its reviews, its links, and its stored
