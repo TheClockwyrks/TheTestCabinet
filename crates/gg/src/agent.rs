@@ -5284,7 +5284,11 @@ impl Agent {
         let mut docs = crate::docs::DocsRuntime::new(
             scope_tools(registry),
             ending_role,
-            programs.is_enabled(),
+            if programs.is_enabled() {
+                &[CAPABILITY_PROGRAM_LIBRARY]
+            } else {
+                &[]
+            },
             code.language,
         );
         // The code this agent has loaded by reading a code skill or memory, and the on-use scripts a
@@ -8474,11 +8478,14 @@ struct PromptInputs<'a> {
 /// The API objects a code program has this run, in the catalogue's own order, each with the one-line
 /// description the prompt names it by, and the functions it actually binds.
 ///
-/// An object appears exactly when the agent binds at least one of its functions — derived from the
-/// enabled tools **and its [ending role](EndingRole)** through the
+/// An object appears exactly when the agent binds at least one of its functions — grouped by the
 /// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest builds a
-/// program's scope from — so a withheld capability drops its whole object rather than leaving a
-/// named-but-empty one, and a reviewer is shown a `review` object where an implementer is not.
+/// program's scope from, and decided by
+/// [`DocsRuntime::bound`](crate::docs::DocsRuntime::bound), which is the *one* implementation of
+/// "may this agent call X" and used to have a verbatim copy here. So a withheld capability drops its
+/// whole object rather than leaving a named-but-empty one, a reviewer is shown a `review` object
+/// where an implementer is not, and this readout cannot report a call the model's own documentation
+/// would refuse to describe.
 /// `view` always appears, because it carries the one thing nothing gates: the channel a program puts
 /// material into its own window with — including documentation, which is why the object that used to
 /// exist purely to hold the doc lookup no longer has to. A run that offers no tools at all must
@@ -8511,28 +8518,24 @@ fn api_surface(
     library: bool,
     program_language: GgProgramLanguage,
 ) -> Vec<GgAgentApi> {
-    // In the catalogue's order, which is the order the SDK declares them in.
-    let objects = crate::sandbox::catalogue_objects(crate::sandbox::language(program_language));
-    let enabled: BTreeSet<String> = scope_tools(registry).into_iter().collect();
-    let ending = match role {
-        EndingRole::Standard => "standard",
-        EndingRole::Review => "review",
+    // The agent's own documentation runtime, built from exactly what its program's scope is built
+    // from — and asked the same question the model's own lookups are answered by. This readout used
+    // to carry a verbatim copy of that predicate; a second copy of "may this agent call X" is a
+    // drift hazard the moment either side grows a gate, and it is the same question either way.
+    let capabilities: &[&'static str] = if library {
+        &[CAPABILITY_PROGRAM_LIBRARY]
+    } else {
+        &[]
     };
-    // Grouped by object rather than filtered per object, so the catalogue is walked once and the
-    // gating predicate is written once.
+    let docs =
+        crate::docs::DocsRuntime::new(scope_tools(registry), role, capabilities, program_language);
+    let language = docs.language();
+    // In the catalogue's order, which is the order the SDK declares them in.
+    let objects = crate::sandbox::catalogue_objects(language);
+    // Grouped by object rather than filtered per object, so the catalogue is walked once.
     let mut bound: BTreeMap<&'static str, Vec<GgAgentApiFunction>> = BTreeMap::new();
-    for function in crate::sandbox::catalogue_functions(crate::sandbox::language(program_language))
-    {
-        let is_bound = if function.library {
-            library
-        } else {
-            match (function.gate, function.ending) {
-                (Some(tool), _) => enabled.contains(tool),
-                (None, Some(role)) => role == ending,
-                (None, None) => true,
-            }
-        };
-        if is_bound {
+    for function in crate::sandbox::catalogue_functions(language) {
+        if docs.bound(&function) {
             bound
                 .entry(function.object)
                 .or_default()
@@ -8545,10 +8548,7 @@ fn api_surface(
     // `list` is catalogued like everything else, in the section for the functions that hang off no
     // object — so its name is this language's own spelling of it rather than gg's key for it, which
     // is the whole reason it is looked up rather than written here.
-    let list = crate::sandbox::meta_function(
-        crate::sandbox::language(program_language),
-        crate::docs::LIST_FUNCTION,
-    );
+    let list = crate::sandbox::meta_function(language, crate::docs::LIST_FUNCTION);
     objects
         .iter()
         .filter_map(|described| {

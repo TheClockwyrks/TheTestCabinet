@@ -98,6 +98,7 @@ mod invoker;
 mod language;
 mod limits;
 mod membrane;
+mod operations;
 mod outcome;
 mod signatures;
 
@@ -136,12 +137,27 @@ pub(crate) use language::fixture_languages;
 #[cfg(test)]
 pub(crate) use language::fixture;
 
-// The enumeration of gg's whole model-facing surface, for the gates that resolve each call against
-// every registered language and against what the membrane records. A production reader wants one
-// call by name, never the whole set.
+// gg's own vocabulary of model-facing operations: the gating identity every catalogue entry is
+// resolved through, and the successor of the bare `(object, key)` enumeration that preceded it.
+pub use operations::{Binding, operation_of};
+
+// The whole table, for the gates that resolve every operation against every registered language and
+// against what the membrane records. A production reader resolves one entry at a time through
+// [`operation_of`], and never walks the set.
 #[cfg(test)]
-pub(crate) use language::MODEL_FACING_CALLS;
+pub(crate) use operations::OPERATIONS;
+
 pub use limits::SandboxLimits;
+
+// The table's own types, which nothing outside `sandbox` names *yet* and which are exported all the
+// same because they are what `operation_of` hands back and what its fields are: an `Operation`
+// carries an `OperationId` and an `Applicability`, and a type a reader has to reach into a private
+// module to read is a type nobody reads. `#[allow(unused_imports)]` because `sandbox` is a private
+// module — so these re-exports are reachable only from inside the crate, where the stages that
+// consume them have not landed — and the crate is built with warnings denied.
+#[allow(unused_imports)]
+pub use operations::{Applicability, Operation, OperationId};
+
 pub use outcome::{
     ProgramCompletion, ProgramError, ProgramErrorKind, ProgramResult, SandboxError, SandboxOutcome,
 };

@@ -470,7 +470,7 @@ fn every_object_reports_the_list_meta_function_last_and_ungated() {
     let docs = crate::docs::DocsRuntime::new(
         scope_tools(&registry),
         EndingRole::Review,
-        true,
+        &[CAPABILITY_PROGRAM_LIBRARY],
         GgProgramLanguage::TypeScript,
     );
 

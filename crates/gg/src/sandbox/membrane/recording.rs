@@ -108,7 +108,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// One caller: `object.list()`, the [documentation carve-out](crate::docs)'s meta function. The
     /// guest seeds it onto *every* object it creates and passes the object's name as the argument,
     /// so there is no fixed pair to write into
-    /// [`MODEL_FACING_CALLS`](crate::sandbox::language::MODEL_FACING_CALLS) — and the object it
+    /// [`OPERATIONS`](crate::sandbox::operations::OPERATIONS) — and the object it
     /// records is therefore whatever the guest sent. In practice that is one of the names the shim
     /// seeded; a guest that sent something else records a row that joins to no reported surface,
     /// which is inert rather than dangerous.

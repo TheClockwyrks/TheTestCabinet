@@ -59,11 +59,11 @@ use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
     CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
-    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
-    COMPACTION_STRATEGY_SELF_COMPACTION, FSM_PARAM_STATES, GgAgentConfig, GgCapabilityConfig,
-    GgProgramLanguage, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE,
-    SHELL_OUTPUT_OFFLOAD,
+    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_WRITE_FILE, COMPACTION_STRATEGY_SELF_COMPACTION, FSM_PARAM_STATES, GgAgentConfig,
+    GgCapabilityConfig, GgProgramLanguage, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_reference::{
     GgApiFunction, GgApiParameter, GgApiParameterPassing, GgApiSignature, GgApiType,
@@ -536,7 +536,11 @@ fn functions() -> Vec<GgApiFunction> {
             doc: function.doc.to_string(),
             gate: function.gate.map(str::to_string),
             ending: function.ending.map(str::to_string),
-            library: function.library,
+            // The page's question is "does this belong to the program library", which the
+            // projection now answers by naming the capability that buys it rather than with a
+            // boolean. The wire field stays a boolean because it is a published contract, and it is
+            // read off the id rather than restated.
+            library: function.capability == Some(CAPABILITY_PROGRAM_LIBRARY),
             types: types(language, function.types),
         })
         .collect();

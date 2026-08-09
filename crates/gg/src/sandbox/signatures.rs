@@ -43,7 +43,7 @@
 //! unavoidable.
 
 use serde::Deserialize;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
 
 use super::language::{ProgramLanguage, SurfaceCall};
 
@@ -119,8 +119,9 @@ pub(crate) struct SignatureCatalogue {
     ///
     /// Kept out of [`tools`](Self::tools) on the same rule the two above are: none of them has a gg
     /// tool name. They carry no gate field at all, because the whole object is bound or absent
-    /// together and what decides that is a *capability* rather than a tool — which is why
-    /// [`CatalogueFunction::library`] exists as a flag of its own.
+    /// together and what decides that is a *capability* rather than a tool — which the projection
+    /// carries as [`CatalogueFunction::capability`], synthesized from this section's membership
+    /// rather than read out of the JSON.
     pub programs: Vec<ProgramSignature>,
     /// One entry per gg tool the sandbox binds, in catalogue order.
     pub tools: Vec<ToolSignature>,
@@ -487,10 +488,21 @@ pub struct CatalogueFunction {
     /// For an ending call, the [role](crate::ending::EndingRole) whose programs bind it; `None` for
     /// a tool or helper, which every role's programs reach the same way.
     pub ending: Option<&'static str>,
-    /// Whether this function belongs to the [program library](crate::programs) — the one family a
-    /// *capability* gates rather than a tool or a role, and therefore the one whose binding neither
-    /// [`gate`](Self::gate) nor [`ending`](Self::ending) can express.
-    pub library: bool,
+    /// The gg **capability id** that buys this function, for the families neither
+    /// [`gate`](Self::gate) nor [`ending`](Self::ending) can express — `None` for everything a tool
+    /// or a role decides.
+    ///
+    /// It is [synthesized here](catalogue_functions) from the **section** the entry arrived in, and
+    /// that is the point rather than an implementation detail: a capability id is a fact about gg's
+    /// own configuration surface, and an arm that wrote one into its catalogue would be asserting
+    /// something about gg that gg alone can be held to. So no reflector and no committed JSON ever
+    /// learns one. The section an entry sits in is the most an arm has to get right, and the mapping
+    /// from section to capability lives on this side of the seam, next to the
+    /// [operations table](super::operations) that names the same ids.
+    ///
+    /// Today the [program library](crate::programs) is the only one: its whole family is bound or
+    /// absent together, from a capability rather than from a tool or a role.
+    pub capability: Option<&'static str>,
     /// The one-line summary `object.list()` shows — the first sentence of the documentation.
     pub summary: &'static str,
     /// How it may be called: one [entry](SignatureEntry) per shape this language offers, each with
@@ -546,7 +558,7 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             name: session.name.as_str(),
             gate: None,
             ending: Some(session.ending.as_str()),
-            library: false,
+            capability: None,
             summary: first_sentence(&session.doc),
             signatures: session.signatures.as_slice(),
             doc: session.doc.as_str(),
@@ -563,7 +575,7 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             name: view.name.as_str(),
             gate: view.requires.as_deref(),
             ending: None,
-            library: false,
+            capability: None,
             summary: first_sentence(&view.doc),
             signatures: view.signatures.as_slice(),
             doc: view.doc.as_str(),
@@ -571,7 +583,8 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
         });
     }
     // The program library, whose binding neither gate can express: the object is bound or absent as
-    // a whole, from the capability, so the flag carries it instead.
+    // a whole, from a capability — and *which* capability is decided here, by the section the entry
+    // arrived in, so that no arm has to know gg's id for it. See `CatalogueFunction::capability`.
     for program in &catalogue.programs {
         functions.push(CatalogueFunction {
             object: program.object.as_str(),
@@ -579,7 +592,7 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             name: program.name.as_str(),
             gate: None,
             ending: None,
-            library: true,
+            capability: Some(CAPABILITY_PROGRAM_LIBRARY),
             summary: first_sentence(&program.doc),
             signatures: program.signatures.as_slice(),
             doc: program.doc.as_str(),
@@ -593,7 +606,7 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             name: tool.name.as_str(),
             gate: Some(tool.tool.as_str()),
             ending: None,
-            library: false,
+            capability: None,
             summary: first_sentence(&tool.doc),
             signatures: tool.signatures.as_slice(),
             doc: tool.doc.as_str(),
@@ -607,7 +620,7 @@ pub fn catalogue_functions(language: &dyn ProgramLanguage) -> Vec<CatalogueFunct
             name: helper.name.as_str(),
             gate: Some(helper.requires.as_str()),
             ending: None,
-            library: false,
+            capability: None,
             summary: first_sentence(&helper.doc),
             signatures: helper.signatures.as_slice(),
             doc: helper.doc.as_str(),

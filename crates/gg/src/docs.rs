@@ -13,9 +13,15 @@
 //!
 //! # Why the host, and not the guest
 //!
-//! Both answers depend on facts only gg holds: which tools this run enabled, and which
-//! [ending role](EndingRole) this agent has. A directory baked into the guest would list functions
-//! the scope did not bind, which is the one thing a directory must never do.
+//! Both answers depend on facts only gg holds: which tools this run enabled, which
+//! [ending role](EndingRole) this agent has, and which capabilities it was granted. A directory
+//! baked into the guest would list functions the scope did not bind, which is the one thing a
+//! directory must never do.
+//!
+//! Which of those three decides a given function is not a fact the guest holds either, and — since
+//! the [operations table](crate::sandbox::operation_of) — it is no longer a fact each arm's
+//! committed catalogue asserts about itself. gg states it once, and
+//! [`bound`](DocsRuntime::bound) is where it is read.
 //!
 //! # Whose spellings it answers in
 //!
@@ -50,8 +56,9 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, SignatureEntry,
-    TypeDeclaration, catalogue_functions, language, meta_function, summary_of, type_declaration,
+    Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage,
+    SignatureEntry, TypeDeclaration, catalogue_functions, language, meta_function, operation_of,
+    summary_of, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -78,12 +85,17 @@ pub struct DocsRuntime {
     enabled: BTreeSet<String>,
     /// This agent's [ending role](EndingRole), the second gate: an ending call belonging to another
     /// role is not in this agent's scope, so documenting it would describe a function the model
-    /// cannot call. The catalogue's `ending` tag is what this is matched against.
-    role: &'static str,
-    /// Whether this agent keeps a [program library](crate::programs) — the third gate, and the one
-    /// neither of the others can express: the `programs` object is bound or absent as a whole, from
-    /// a capability rather than from a tool or a role.
-    library: bool,
+    /// cannot call.
+    role: EndingRole,
+    /// The gg capability ids this agent holds that buy it part of the surface — the third gate, and
+    /// the one neither of the others can express, because nothing dispatches a capability and no
+    /// role decides one.
+    ///
+    /// A set rather than the single `library` flag it grew out of: the
+    /// [program library](crate::programs) is the only family bought this way today, and it is
+    /// already not the last, so what the runtime holds is *which* capabilities rather than *whether*
+    /// one particular capability.
+    capabilities: BTreeSet<&'static str>,
     /// The [program language](test_cabinet_core::gg::GgProgramLanguage) this agent writes in.
     ///
     /// It is not a gate — every language offers the same functions under the same gates — but it
@@ -93,22 +105,22 @@ pub struct DocsRuntime {
 }
 
 impl DocsRuntime {
-    /// A fresh runtime for an agent whose scope binds `enabled`'s tools and `role`'s ending calls,
-    /// and — when `library` — the [program library](crate::programs)'s three, answering in
-    /// `program_language`'s spellings.
+    /// A fresh runtime for an agent whose scope binds `enabled`'s tools, `role`'s ending calls and
+    /// whatever `capabilities` buys — answering in `program_language`'s spellings.
+    ///
+    /// `capabilities` is the agent's own resolved set, not its profile's: an agent whose profile
+    /// asks for a [program library](crate::programs) it was not given keeps neither the object nor
+    /// its documentation, and the caller is the only thing that knows which it ended up with.
     pub fn new(
         enabled: Vec<String>,
         role: EndingRole,
-        library: bool,
+        capabilities: &[&'static str],
         program_language: GgProgramLanguage,
     ) -> Self {
         Self {
             enabled: enabled.into_iter().collect(),
-            role: match role {
-                EndingRole::Standard => "standard",
-                EndingRole::Review => "review",
-            },
-            library,
+            role,
+            capabilities: capabilities.iter().copied().collect(),
             language: language(program_language),
         }
     }
@@ -194,25 +206,35 @@ impl DocsRuntime {
         suggest::nearest(name, bound)
     }
 
-    /// Whether a function is bound this run, by whichever of the three gates decides it: a
-    /// [library](crate::programs) function by the capability, a `Some(tool)` gate by that tool being
-    /// enabled, an ending call by this agent's role, and a `None`/`None` carve-out always.
-    fn bound(&self, function: &CatalogueFunction) -> bool {
-        // The program library first, because it is the one family neither of the two gates below
-        // describes: it carries no tool name and belongs to no role, so without this it would fall
-        // into the ungated arm and be documented for an agent that has no `programs` object.
-        if function.library {
-            return self.library;
-        }
-        match (function.gate, function.ending) {
-            // A tool or helper: bound when the run enables it.
-            (Some(tool), _) => self.enabled.contains(tool),
-            // An ending call: bound when it is this agent's role's.
-            (None, Some(ending)) => ending == self.role,
-            // Neither gate: an ungated carve-out, which today is `view.openText` / `view.close` /
-            // `view.current` — bound to every program whatever a run enables, because a run that
-            // offers no tools at all must still be able to show its model something.
-            (None, None) => true,
+    /// **Whether this agent's scope binds a function** — the one predicate deciding what a model may
+    /// be shown, and the reason nothing else may grow a second copy of it.
+    ///
+    /// It answers from gg's [operations table](crate::sandbox::operation_of) rather than from the
+    /// catalogue entry's own gate fields, and that is a deliberate reversal. The three gates the
+    /// module header describes are all still here — a tool this run enabled, this agent's ending
+    /// role, a capability it holds — but which of them applies to a given function is now gg's
+    /// answer, stated once, instead of a claim eleven committed catalogues each make about
+    /// themselves. An arm has nothing left to be wrong about, and the three gates read as the three
+    /// arms of one [`Binding`] instead of a boolean, a pair and a fall-through.
+    ///
+    /// A function gg has **no** operation for is not bound. That is drift rather than a run-time
+    /// condition — an arm binding something gg has no identity for — and refusing to document it is
+    /// the safe direction: a directory that lists a call the scope did not bind is the one thing a
+    /// directory must never do. `every_catalogued_function_has_an_operation` proves the case
+    /// unreachable for every registered language.
+    ///
+    /// Public because the [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface)
+    /// reports the very same set and used to answer it with a verbatim copy of this predicate. Two
+    /// copies of "may this agent call X" is one copy too many the moment either grows a gate.
+    pub fn bound(&self, function: &CatalogueFunction) -> bool {
+        match operation_of(function) {
+            Some(operation) => match operation.binding {
+                Binding::Tool(tool) => self.enabled.contains(tool),
+                Binding::Ending(role) => role == self.role,
+                Binding::Capability(id) => self.capabilities.contains(id),
+                Binding::Always => true,
+            },
+            None => false,
         }
     }
 }

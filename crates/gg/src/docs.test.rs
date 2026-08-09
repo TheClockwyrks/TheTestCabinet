@@ -1,6 +1,6 @@
 //! Tests for the [documentation carve-out runtime](super::DocsRuntime).
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
 
 use super::*;
 use crate::ending::EndingRole;
@@ -21,7 +21,7 @@ fn list_enumerates_bound_functions_and_the_list_meta() {
     let docs = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     let fs = docs.list("fs");
@@ -47,7 +47,7 @@ fn harness_always_carries_finish_and_list() {
     let docs = DocsRuntime::new(
         Vec::new(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     let harness = docs.list("harness");
@@ -64,7 +64,7 @@ fn view_always_carries_open_docs_view() {
     let docs = DocsRuntime::new(
         Vec::new(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     let names: Vec<String> = docs.list("view").into_iter().map(|f| f.name).collect();
@@ -83,7 +83,7 @@ fn every_lookup_is_self_contained() {
     let docs = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
 
@@ -115,7 +115,7 @@ fn a_lookup_explains_every_argument_and_every_field() {
     let docs = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     let read_file = docs.read("readFile").expect("readFile is bound");
@@ -188,7 +188,7 @@ fn a_lookup_explains_the_arms_of_a_union() {
     let docs = DocsRuntime::new(
         vec!["update_issue".to_string()],
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     let update_issue = docs.read("updateIssue").expect("updateIssue is bound");
@@ -205,7 +205,7 @@ fn read_of_a_withheld_function_is_none() {
     let docs = DocsRuntime::new(
         vec!["read_file".to_string()],
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     assert!(docs.read("writeFile").is_none());
@@ -218,7 +218,7 @@ fn read_documents_the_list_meta_function() {
     let docs = DocsRuntime::new(
         Vec::new(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     let list = docs.read("list").expect("list is a meta function");
@@ -240,7 +240,7 @@ fn a_miss_suggests_the_bound_names_nearest_it() {
     let docs = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     assert_eq!(docs.suggest("write_file"), vec!["writeFile"]);
@@ -260,7 +260,7 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
     let docs = DocsRuntime::new(
         vec!["read_file".to_string()],
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     assert!(docs.read("writeFile").is_none());
@@ -277,14 +277,14 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
     let worker = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     assert!(worker.suggest("request_changes").is_empty());
     let reviewer = DocsRuntime::new(
         enabled(),
         EndingRole::Review,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     assert_eq!(reviewer.suggest("request_changes"), vec!["requestChanges"]);
@@ -303,7 +303,7 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
     let without = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        false,
+        &[],
         GgProgramLanguage::TypeScript,
     );
     assert!(without.read("rerun").is_none());
@@ -320,7 +320,7 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
     let with = DocsRuntime::new(
         enabled(),
         EndingRole::Standard,
-        true,
+        &[CAPABILITY_PROGRAM_LIBRARY],
         GgProgramLanguage::TypeScript,
     );
     let listed = with.list("programs");
@@ -339,7 +339,7 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
     let reviewer = DocsRuntime::new(
         enabled(),
         EndingRole::Review,
-        true,
+        &[CAPABILITY_PROGRAM_LIBRARY],
         GgProgramLanguage::TypeScript,
     );
     assert!(reviewer.read("get").is_some());

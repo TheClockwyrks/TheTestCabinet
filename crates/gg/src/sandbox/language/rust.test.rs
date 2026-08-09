@@ -297,7 +297,10 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = rust().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Rust);
-    for call in crate::sandbox::MODEL_FACING_CALLS {
+    for call in crate::sandbox::OPERATIONS
+        .iter()
+        .map(|operation| operation.call)
+    {
         let spelled = crate::sandbox::spell(rust(), call);
         assert_eq!(
             spelled,

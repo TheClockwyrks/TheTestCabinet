@@ -256,7 +256,10 @@ fn an_unreadable_language_falls_back_and_says_so() {
 fn every_model_facing_call_resolves_in_every_language() {
     for language in all_languages() {
         let functions = crate::sandbox::catalogue_functions(language);
-        for call in crate::sandbox::MODEL_FACING_CALLS {
+        for call in crate::sandbox::OPERATIONS
+            .iter()
+            .map(|operation| operation.call)
+        {
             let entry = functions
                 .iter()
                 .find(|function| function.object == call.object && function.key == call.key)
@@ -278,36 +281,6 @@ fn every_model_facing_call_resolves_in_every_language() {
                 ),
                 "{}: the quoted spelling is not the one the catalogue gives that key",
                 language.id()
-            );
-        }
-    }
-}
-
-/// **And the table covers the catalogue whole** — the other half of the same agreement.
-///
-/// The test above proves no entry in the table is invented. This one proves none is *missing*: a
-/// function a language's SDK binds with no entry here is a call the membrane has no identity to
-/// record under, which is precisely the silent undercount the per-function accounting exists to
-/// remove — the model calls it, the console reports it as offered and never called, and nothing
-/// anywhere says otherwise.
-///
-/// [`list`](crate::docs::LIST_FUNCTION) is the one exclusion, and it is excluded from the
-/// *catalogue* too: the guest seeds it onto every object rather than exporting it once, so it has no
-/// catalogue entry on either side to compare.
-#[test]
-fn the_model_facing_table_covers_every_catalogued_function() {
-    for language in all_languages() {
-        for function in crate::sandbox::catalogue_functions(language) {
-            assert!(
-                crate::sandbox::MODEL_FACING_CALLS
-                    .iter()
-                    .any(|call| { call.object == function.object && call.key == function.key }),
-                "{}: the catalogue binds `{}.{}` (spelled `{}`), which gg has no identity to record \
-                 it under",
-                language.id(),
-                function.object,
-                function.key,
-                function.name
             );
         }
     }
@@ -719,7 +692,10 @@ fn no_language_serves_another_languages_artifacts() {
 fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
     let fixture = fixture_language();
     let functions = crate::sandbox::catalogue_functions(fixture);
-    for call in crate::sandbox::MODEL_FACING_CALLS {
+    for call in crate::sandbox::OPERATIONS
+        .iter()
+        .map(|operation| operation.call)
+    {
         let name = functions
             .iter()
             .find(|function| function.object == call.object && function.key == call.key)

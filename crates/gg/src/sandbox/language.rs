@@ -596,7 +596,7 @@ pub struct PromptDialect {
 /// language's own committed catalogue. That is the difference between "a test checks the two agree"
 /// and "there is only one of them".
 ///
-/// It is used for two things, and the second is why the table below covers the *whole* surface
+/// It is used for two things, and the second is why the constants below cover the *whole* surface
 /// rather than the handful gg quotes. It is what gg [spells](spell) when it names a call back at a
 /// model — and it is the identity every call is **recorded** under, as the
 /// [`ApiCall`](test_cabinet_core::gg::GgTelemetryKind::ApiCall) pair the
@@ -766,73 +766,11 @@ pub const REVIEW_APPROVE: SurfaceCall = SurfaceCall::new("review", "approve");
 /// The review role's change request.
 pub const REVIEW_REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "request_changes");
 
-/// **Every model-facing call gg has**, in catalogue order — the vocabulary the membrane records
-/// under and gg quotes from.
-///
-/// Enumerated rather than derived because it is one half of an agreement: the
-/// [gate](super::signatures) asserts this table and every registered language's committed catalogue
-/// name exactly the same set of `(object, key)` pairs. A call that reached a program with no entry
-/// here would be recorded under nothing; an entry here that no language binds would put a sentence
-/// in front of a model naming a call its scope does not hold. Deriving one from the other would
-/// prove neither.
-///
-/// [`list`](crate::docs::LIST_FUNCTION) is deliberately **not** here. It is the
-/// [documentation carve-out](crate::docs)'s own meta function, seeded onto *every* object the guest
-/// creates rather than catalogued on one, so its object is a runtime argument and there is no fixed
-/// pair to write down — see `MembraneState::recorded_on`.
-///
-/// `#[cfg(test)]` because it is a gate rather than a runtime need: production reaches for one call
-/// by name, and the whole set is only ever walked to prove the two halves agree.
-#[cfg(test)]
-pub(crate) const MODEL_FACING_CALLS: [SurfaceCall; 47] = [
-    SYSTEM_SHELL,
-    FS_READ_FILE,
-    FS_READ_TEXT_FILE,
-    FS_WRITE_FILE,
-    FS_EDIT_FILE,
-    FS_LIST_DIR,
-    SKILLS_READ_SKILL,
-    MEMORY_WRITE_MEMORY,
-    MEMORY_UPDATE_MEMORY,
-    MEMORY_CREATE_MEMORY,
-    MEMORY_READ_MEMORY,
-    MEMORY_EDIT_MEMORY,
-    MEMORY_SEARCH_MEMORIES,
-    MEMORY_DELETE_MEMORY,
-    TASKS_ADD_TASK,
-    TASKS_UPDATE_TASK,
-    TASKS_SET_BLOCKED_BY,
-    TASKS_COMPLETE_TASK,
-    TASKS_REMOVE_TASK,
-    PROJECT_CREATE_EPIC,
-    PROJECT_CREATE_ISSUE,
-    PROJECT_UPDATE_ISSUE,
-    PROJECT_SET_ISSUE_BLOCKED_BY,
-    PROJECT_REMOVE_EPIC,
-    PROJECT_REMOVE_ISSUE,
-    PROJECT_WAIT_FOR_ISSUE,
-    CONTEXT_EVICT_FILE_VIEW,
-    CONTEXT_ARCHIVE_THREAD,
-    CONTEXT_SEARCH_ARCHIVE,
-    CONTEXT_COMPACT,
-    AGENTS_SPAWN_SUBAGENT,
-    AGENTS_WAIT_FOR_SUBAGENTS,
-    AGENTS_SEND_MESSAGE,
-    AGENTS_TRANSITION_STATE,
-    AGENTS_EXEC,
-    AGENTS_FORK,
-    VIEW_OPEN_FILE,
-    VIEW_OPEN_TEXT,
-    VIEW_OPEN_DOCS_VIEW,
-    VIEW_CLOSE,
-    VIEW_CURRENT,
-    PROGRAMS_HISTORY,
-    PROGRAMS_GET,
-    PROGRAMS_RERUN,
-    HARNESS_FINISH,
-    REVIEW_APPROVE,
-    REVIEW_REQUEST_CHANGES,
-];
+// The constants above are the *spellings* half of the surface — what gg quotes and what the
+// membrane records under. The half that used to sit here beside them, a bare enumeration of all 47
+// pairs, is now `super::operations::OPERATIONS`: the same surface, with the gate that decides who
+// gets each call written down beside it, where eleven committed catalogues used to each carry their
+// own copy of that fact.
 
 /// How `language` spells `call`, qualified exactly as a program writes it —
 /// `review.requestChanges`.
@@ -840,8 +778,8 @@ pub(crate) const MODEL_FACING_CALLS: [SurfaceCall; 47] = [
 /// Resolved from that language's own committed catalogue by the call's language-independent
 /// [key](SurfaceCall::key), so a language that renamed a function renames it in gg's sentences too,
 /// with nothing to keep in step. A catalogue that carries no such key falls back to the key itself:
-/// the [agreement gate](agreement) proves every [model-facing call](MODEL_FACING_CALLS) resolves in
-/// every registered language, so the fallback is unreachable — and degrading one word of a notice is
+/// the [operation gate](super::operations) proves every model-facing call resolves in every
+/// registered language, so the fallback is unreachable — and degrading one word of a notice is
 /// the right failure anyway, where panicking mid-run is not.
 pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
     let name = super::signatures::spelling(language, call).unwrap_or(call.key);

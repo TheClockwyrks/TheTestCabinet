@@ -36,7 +36,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
 
 use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
@@ -227,11 +227,20 @@ pub fn builtin_skills(
 ) -> Vec<Skill> {
     let off = switched_off(params);
     let offered: BTreeSet<&str> = offered.iter().map(String::as_str).collect();
+    // The one capability that buys part of the model-facing surface, as the documentation runtime
+    // takes it: a set of ids rather than the boolean this function is handed, because gg's gating
+    // vocabulary is capability ids and the boolean is this caller's resolved answer about one of
+    // them.
+    let capabilities: &[&'static str] = if library {
+        &[CAPABILITY_PROGRAM_LIBRARY]
+    } else {
+        &[]
+    };
     let docs = program_language.map(|language| {
         crate::docs::DocsRuntime::new(
             offered.iter().map(|name| (*name).to_string()).collect(),
             role,
-            library,
+            capabilities,
             language,
         )
     });

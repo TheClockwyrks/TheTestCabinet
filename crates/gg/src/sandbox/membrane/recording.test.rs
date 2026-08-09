@@ -4,7 +4,7 @@
 //!
 //! The centrepiece is [`every_host_function_records_its_own_api_call`], which calls all forty-eight
 //! of them and compares the identities recorded against
-//! [`MODEL_FACING_CALLS`](crate::sandbox::MODEL_FACING_CALLS). It is deliberately exhaustive rather
+//! [`OPERATIONS`](crate::sandbox::OPERATIONS). It is deliberately exhaustive rather
 //! than a sample: a host function that forgot its bracket produces a *silent zero* on the console —
 //! a page saying the model ignored a call it in fact used — which is the one failure this whole
 //! mechanism exists to prevent and the one a sample would miss.
@@ -37,7 +37,7 @@ use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::*;
 use test_cabinet_core::gg::GgToolFailure;
 
-use crate::sandbox::MODEL_FACING_CALLS;
+use crate::sandbox::OPERATIONS;
 use crate::sandbox::fake::{ApiLog, CallLog, FakeToolApi, membrane_from};
 
 /// A membrane over a fake api, with both of its records to hand: what ran, and what was written.
@@ -177,9 +177,9 @@ fn every_host_function_records_its_own_api_call() {
     call_everything(&mut state);
 
     let got: BTreeSet<String> = recorded.names().into_iter().collect();
-    let want: BTreeSet<String> = MODEL_FACING_CALLS
+    let want: BTreeSet<String> = OPERATIONS
         .iter()
-        .map(|call| format!("{}.{}", call.object, call.key))
+        .map(|operation| format!("{}.{}", operation.call.object, operation.call.key))
         // `list` is bound on every object and catalogued on none; the one call above asks
         // `context` for its directory.
         .chain(std::iter::once("context.list".to_string()))

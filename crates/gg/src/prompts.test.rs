@@ -2104,8 +2104,9 @@ fn every_language() -> impl Iterator<Item = &'static dyn crate::sandbox::Program
 /// of its model-facing surface — so a call renamed there is a failure here rather than a lookup
 /// that silently finds nothing.
 fn surface_call((object, key): (&str, &str)) -> crate::sandbox::SurfaceCall {
-    *crate::sandbox::MODEL_FACING_CALLS
+    crate::sandbox::OPERATIONS
         .iter()
+        .map(|operation| operation.call)
         .find(|call| call.object == object && call.key == key)
         .unwrap_or_else(|| panic!("`{object}.{key}` is part of gg's model-facing surface"))
 }
