@@ -115,6 +115,23 @@ pub(super) fn evaluate_as(
         ending,
         library,
     };
+    // The component is resolved BEFORE the store, and the order is the whole of it rather than a
+    // tidying. `bounded_store` arms the guest's execution deadline the instant it builds the state —
+    // `MembraneState::new` takes `Instant::now()` and the epoch callback compares WALL clock against
+    // it — so a `component()` evaluated in `Sandbox::instantiate`'s argument list spends its compile
+    // inside a budget belonging to a program that has not started. That compile is not small: 1.59 s
+    // on an idle dev container, and measured at a median of 10.6 s and a worst of 34.0 s across the
+    // processes that paid it during one `cargo nextest run --workspace`, because every one of this
+    // arm's tests is its own process and compiles the 14 MB shared guest again. Past thirty of those
+    // seconds the first guest instruction traps and the arm reports `Timeout { limit: 30s }` for a
+    // program that ran for microseconds — which is what four of this arm's tests were doing when a
+    // full run called them flaky. Proved rather than reasoned: with a 31 s sleep in place of the
+    // compile, instantiation still succeeds and `call_run` comes back timed out after 1.55 s of real
+    // guest work.
+    //
+    // `run_program` — the production path this is a near-copy of — has always resolved its component
+    // first, which is why no run ever saw this. Keep the two in that order.
+    let component = component();
     let mut store = bounded_store(
         MembraneState::new(
             api,
@@ -125,7 +142,7 @@ pub(super) fn evaluate_as(
         ),
         limits,
     );
-    let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
             "the shared ECMAScript guest instantiates against the real membrane: {}",

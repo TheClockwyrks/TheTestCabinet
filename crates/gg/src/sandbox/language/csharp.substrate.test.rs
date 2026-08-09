@@ -105,6 +105,28 @@ fn component() -> &'static Component {
 /// The [membrane state](MembraneState) is built with TypeScript's arm, because this one has no wire
 /// id yet. Nothing these tests assert depends on it: the language decides how a *refused* call's
 /// name is spelled back at the model, and no program here is refused one.
+///
+/// # Why the component is resolved before the store is built
+///
+/// Because the store's clock starts when the store is built, and it is a **wall** clock.
+/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
+/// and the callback behind it reads `guest_elapsed`, which is time since a `program_started` stamped
+/// inside [`MembraneState::new`] less whatever was charged back for time parked in bridged tool
+/// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
+/// back: it is charged in full to a program that has not started.
+///
+/// [`component`] is exactly that work, and this arm has the **largest** exposure of any: its guest is
+/// 34.9 MB, the biggest artifact any arm here instantiates, and every `#[test]` is its own process
+/// so every one of them compiles it again. The same compile of the 14 MB *shared* guest — a third of
+/// the size — was measured on this repository's dev container at 1.35 s alone, a median of 10.6 s
+/// and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
+/// --workspace`. Past thirty of those seconds the guest's first instruction traps, and the arm
+/// reports `Timeout { limit: 30s }` for a program that ran for microseconds; that is what was
+/// observed doing it on the JVM and PureScript arms, which had this same ordering.
+///
+/// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
+/// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This
+/// is that order.
 pub(super) fn evaluate(
     program: &str,
     enabled: &[String],
@@ -115,6 +137,8 @@ pub(super) fn evaluate(
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
+    // Both of these before the store exists, for the reason this function's documentation gives.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
         enabled,
@@ -132,7 +156,7 @@ pub(super) fn evaluate(
         ),
         limits,
     );
-    let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
             "the committed C# guest instantiates against the real membrane: {}",

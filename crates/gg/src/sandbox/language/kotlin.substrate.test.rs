@@ -29,7 +29,7 @@
 //! # Why these tests are consolidated
 //!
 //! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 20 MB component and start a JVM that loads the Kotlin compiler and TeaVM — seconds
+//! compile a 13.4 MB component and start a JVM that loads the Kotlin compiler and TeaVM — seconds
 //! rather than microseconds. So each function drives *many* programs against many stores rather than
 //! being one behaviour per function, exactly as `sandbox.test.rs` does. Add a program to an existing
 //! function rather than adding a function.
@@ -104,6 +104,30 @@ fn evaluate(
 /// [`evaluate`], with the agent's [ending group](RunEnding) and its
 /// [program-library](ProgramScope) flag said out loud — the two facts that decide which of this
 /// SDK's objects the guest binds.
+///
+/// # Why the component is compiled before the store is built, and not in the call that uses it
+///
+/// Because the store's clock starts when the store is built, and it is a **wall** clock.
+/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
+/// and the callback behind it reads `guest_elapsed`, which is the time since a `program_started`
+/// stamped inside [`MembraneState::new`] less whatever was charged back for time parked in bridged
+/// tool calls. Host work done after that stamp and before the guest runs is charged to the program:
+/// it is not guest execution, and it is not a bridged call, so nothing gives it back.
+///
+/// [`component`] is exactly that work and it is not small. It is a `Component::new` of the 13.4 MB
+/// shared ECMAScript guest, paid once per **process** — which under `cargo nextest` means once per
+/// `#[test]` — and measured on this repository's dev container at 1.5 s alone, 4.2 s beside a full
+/// workspace run, and **12.1 s and 21.8 s** on two readings taken beside six arms' substrate and
+/// surface tests. Evaluated where `Sandbox::instantiate`'s argument list would evaluate it, the
+/// larger of those is 73% of a program's whole budget spent before it executes an instruction, and
+/// what came back was `Timeout { limit: 30s }` for a guest that had run for 228 µs. That is the
+/// mechanism behind the JVM arms' first-attempt failures under `cargo nextest run --workspace`: not
+/// a runner terminating a slow test, but this file charging a compiler to the program.
+///
+/// Production never had it. `sandbox::evaluate` resolves the component and builds the linker and
+/// only then builds the store, so a run's 30 s is 30 s of the program. This is that order, which
+/// also makes the note on [`evaluate`] true again: the per-language component cache really is the
+/// only thing left out.
 pub(super) fn evaluate_as(
     program: &str,
     enabled: &[String],
@@ -115,6 +139,10 @@ pub(super) fn evaluate_as(
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
+    // Both of these before the store exists, for the reason this function's documentation gives:
+    // everything between `bounded_store` and the guest's first instruction is charged to the
+    // program's execution budget, and compiling the component is seconds of it on a busy machine.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
         enabled,
@@ -126,7 +154,7 @@ pub(super) fn evaluate_as(
         MembraneState::new(api, language(), scope, limits, None),
         limits,
     );
-    let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
             "the shared ECMAScript guest instantiates against the real membrane: {}",
@@ -694,21 +722,50 @@ fn a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one() {
     // The measurement this arm's whole shape rests on. `kotlinc` has no daemon of its own, and a
     // compiler started per compile would make this arm ten times dearer than every other one — which
     // is a difference in the harness rather than in the language.
+    //
+    // What is asserted is the RATIO, and that is a correction rather than a refinement. This test
+    // used to time three warm builds and assert each took under sixty seconds — a bound on the
+    // machine rather than on the pool, which said nothing about either half of this test's name and
+    // which a busy machine crossed: measured failing on its first attempt at 144.8 s under
+    // `cargo nextest run --workspace` and at 134.6 s beside six arms' substrate and surface tests,
+    // both against a 360 s ceiling, so both were this assertion rather than a runner terminating
+    // anything. A ratio is what the claim actually is, and it is the reading that survives a loaded
+    // machine, because a cold build and a warm one inflate together.
+    //
+    // The cold half is a JVM start AND the first build inside it, because that pair is what a
+    // per-compile process would pay every single time — which is the thing the pool exists not to
+    // pay.
+    let cold = Instant::now();
     warm();
-    let mut timings = Vec::new();
-    for _ in 0..3 {
-        let started = Instant::now();
-        let _ = prepare("println((1..10).sum())\n");
-        timings.push(started.elapsed());
-    }
-    // Wall-clock, so the assertion is deliberately loose: what it says is that a warm build is
-    // seconds rather than tens of seconds, which is the difference between an arm a study can run
-    // and one it cannot. The ratio a cold build would show is not asserted, because `warm` may have
-    // been paid by another test in this process.
-    for elapsed in &timings {
-        assert!(
-            elapsed.as_secs() < 60,
-            "a warm build took {elapsed:?}, which is not warm",
-        );
-    }
+    let _ = prepare("println((1..10).sum())\n");
+    let cold = cold.elapsed();
+
+    // Three more through the same pool, of which the cheapest is the steady state. Three rather than
+    // one because a single warm build that landed in a bad scheduling window would be a reading of
+    // the scheduler; the minimum of three is the closest this can get to a reading of the compiler
+    // without asking the machine to be idle — which the override in `.config/nextest.toml` asks for
+    // separately, and for this same reason.
+    let warm_builds: Vec<_> = (0..3)
+        .map(|_| {
+            let started = Instant::now();
+            let _ = prepare("println((1..10).sum())\n");
+            started.elapsed()
+        })
+        .collect();
+    let steady = warm_builds
+        .iter()
+        .copied()
+        .min()
+        .expect("three warm builds were timed");
+
+    // Twice, against a spread measured between three and six times on this dev container: 6.06 s
+    // cold against 1.52 s warm run alone, 21.3 s against 4.67 s beside six arms' tests, and 72.9 s
+    // against 11.6 s on a busier reading of the same group. Two is far below the narrowest of them
+    // and far above one, which is what makes it a claim about the pool rather than about the day.
+    assert!(
+        cold > steady * 2,
+        "starting a JVM and building in it took {cold:?} and a warm build takes {steady:?} \
+         ({warm_builds:?}); the first one is supposed to be the expensive one, so a pool that made \
+         no difference is what this reads like",
+    );
 }

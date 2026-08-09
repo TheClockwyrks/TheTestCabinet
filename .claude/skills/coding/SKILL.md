@@ -63,8 +63,9 @@ The gate command is:
 cargo nextest run --workspace
 ```
 
-nextest is configured via `.config/nextest.toml` (retries, no fail-fast, and a
-per-test hard timeout) and is installed in the devcontainer. `cargo test` must
+nextest is configured via `.config/nextest.toml` (no retries, `flaky-result =
+"fail"`, no fail-fast, and a per-test hard timeout) and is installed in the
+devcontainer. A test gets one attempt: a flaky test is a failing test. `cargo test` must
 not be used to run the test suite.
 
 The one exception: nextest does not execute doctests. When a change touches

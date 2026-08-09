@@ -12,7 +12,8 @@
 # validation that both Azure DevOps and GitHub run.
 #
 # Tests run with cargo-nextest (the repo's runner; see .config/nextest.toml —
-# retries=1, fail-fast=false, and a per-test hard timeout). nextest does not
+# no retries, flaky-result=fail, fail-fast=false, and a per-test hard timeout;
+# a test that fails and then passes fails the run). nextest does not
 # execute doctests, so those run separately with `cargo test --doc`. Both CI
 # systems install nextest first (scripts/ci/install-nextest.sh).
 set -euo pipefail

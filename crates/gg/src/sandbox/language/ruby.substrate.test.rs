@@ -98,6 +98,28 @@ fn run_as(
 
 /// Evaluate already-compiled JavaScript, so a measurement of what a *turn* costs is not a
 /// measurement of what the compiler costs.
+///
+/// # Why the component is resolved before the store is built
+///
+/// Because the store's clock starts when the store is built, and it is a **wall** clock.
+/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
+/// and the callback behind it reads `guest_elapsed`, which is time since a `program_started` stamped
+/// inside [`MembraneState::new`] less whatever was charged back for time parked in bridged tool
+/// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
+/// back: it is charged in full to a program that has not started.
+///
+/// [`component`] is exactly that work: a `Component::new` of this arm's 21 MB committed guest, paid
+/// once per **process** — which under `cargo nextest` means once per `#[test]`. The same compile of
+/// the 14 MB shared guest was measured on this repository's dev container at 1.35 s alone, a median
+/// of 10.6 s and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
+/// --workspace`. Past thirty of those seconds the guest's first instruction traps and the arm
+/// reports `Timeout { limit: 30s }` for a program that ran for microseconds, which is what was
+/// observed happening on the JVM and PureScript arms, which had this same ordering.
+///
+/// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
+/// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This
+/// is that order, and it is also what keeps this function's own promise: a turn measured through it
+/// is a turn, not a compiler.
 fn evaluate(
     program: &str,
     enabled: &[String],
@@ -109,6 +131,8 @@ fn evaluate(
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
+    // Both of these before the store exists, for the reason this function's documentation gives.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
         enabled,
@@ -117,7 +141,7 @@ fn evaluate(
         library,
     };
     let mut store = bounded_store(MembraneState::new(api, ruby(), scope, limits, None), limits);
-    let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
             "the committed Ruby guest instantiates against the real membrane: {}",
@@ -976,15 +1000,33 @@ review.request_changes("widen the test", "name the file")
 fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     // The measurement this artifact exists for, held as a bound rather than as a number: evaluating
     // a Ruby program on this component must cost what a JavaScript program costs plus a little, not
-    // the 45–51 ms that prepending Opal's 743 KB runtime to every program measured. Measured here:
-    // 4.8 ms with no tool bound and 7.7 ms with all thirty-five, against 1.2–1.4 ms for a plain
-    // JavaScript program on the ECMAScript component — the difference being this SDK's surface,
-    // which is built in Ruby, per run, out of the run's own enabled set. The threshold is
-    // deliberately far above that and far below the prepended figure, so only a real regression —
-    // the runtime or the SDK falling out of the snapshot — can move it.
+    // the 45–51 ms that prepending Opal's 743 KB runtime to every program measured.
+    //
+    // It is a COMPARISON rather than a millisecond ceiling, and that is a correction rather than a
+    // refinement. The sentence above was always phrased as a comparison — "what a JavaScript program
+    // costs plus a little" — but what was asserted was `< 25 ms`, with JavaScript's 1.2–1.4 ms
+    // quoted from a reading taken on another artifact in another process, where nothing could
+    // re-take it. That makes the assertion a claim about the machine: measured on this dev container
+    // it now reads 12.2–12.9 ms rather than the 4.8–7.7 ms the quote was chosen against, so the
+    // margin the comment described as generous had quietly become a factor of two — and under
+    // `cargo nextest run --workspace` it was measured **failing at 28.7 ms** with nothing whatever
+    // wrong with the guest. A study that runs on a busier box than this one would have failed it
+    // every time.
+    //
+    // The control is the same program's language, removed: plain JavaScript through the same
+    // `evaluate`, on the same component, in the same process, with the same thirty-five tools
+    // enabled — so instantiating a 21 MB guest and building this SDK's surface are paid by both
+    // readings and cancel, and what is left is exactly the thing this artifact exists to have made
+    // free, the Opal runtime the compiled program requires. The two are interleaved rather than
+    // measured in blocks, so a bad scheduling window lands on both. This is the idiom the PureScript
+    // arm already uses for the same question about its own compiler output.
+    //
     // Compiled ONCE, outside the reading: what is being measured is a turn, and the compile is
     // measured — and recorded per program — in its own right.
     let program = prepare("puts (1..20).reduce(:+)\n");
+    // Not a compiled Ruby program: a line of JavaScript that reaches the same `console.log` the
+    // compiled one reaches, which is what makes it the same turn minus the runtime.
+    let javascript = "console.log(210)";
     let enabled = all_tools();
     // One run first, so the component compile and the first instantiation are not in the reading.
     assert_eq!(
@@ -1002,7 +1044,8 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
         ["210"]
     );
 
-    let mut best = std::time::Duration::MAX;
+    let mut ruby = std::time::Duration::MAX;
+    let mut plain = std::time::Duration::MAX;
     for _ in 0..5 {
         let started = Instant::now();
         let outcome = evaluate(
@@ -1014,13 +1057,58 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
             canned_outcome,
         )
         .0;
-        best = best.min(started.elapsed());
+        ruby = ruby.min(started.elapsed());
         assert_eq!(logs(&outcome), ["210"]);
+
+        let started = Instant::now();
+        let outcome = evaluate(
+            javascript,
+            &enabled,
+            &[],
+            RunEnding::None,
+            false,
+            canned_outcome,
+        )
+        .0;
+        plain = plain.min(started.elapsed());
+        assert_eq!(
+            logs(&outcome),
+            ["210"],
+            "the control has to be the same turn, not a different one"
+        );
     }
+    // Twice, against a ratio measured at 1.02–1.04 in every condition it was taken in: 12.2 ms
+    // against 11.8 ms on an idle dev container, 12.9 against 12.6 beside six arms' substrate and
+    // surface tests, and 12.7 against 12.4 with twenty-four busy loops holding the machine down. The
+    // regression it is set against is the one in the first paragraph — Opal's 743 KB runtime
+    // prepended to every program, 45–51 ms against a 4.8–7.7 ms base, which is a ratio near seven.
+    // Two sits an order of magnitude below that and comfortably above every reading of a healthy
+    // artifact, and unlike a millisecond ceiling it does not move when the machine does.
     assert!(
-        best.as_millis() < 25,
-        "instantiating and evaluating a Ruby program took {best:?}; Opal's runtime or gg's SDK is \
-         being built per turn rather than coming out of the component's pre-initialised snapshot",
+        ruby < plain * 2,
+        "a Ruby turn on this component took {ruby:?} against plain JavaScript's {plain:?} on the \
+         same component and the same enabled set; Opal's runtime is being built or prepended per \
+         turn rather than coming out of the component's pre-initialised snapshot",
+    );
+
+    // The ratio above cannot see the cost the two readings SHARE, and that is most of what a turn
+    // costs: instantiating the 20.1 MiB guest and building the SDK's surface is ~11 ms of an ~11.6 ms
+    // reading, so it cancels. A regression that put the shared half at 500 ms would leave the ratio
+    // at ~1.0 and this test green while a turn had got forty times dearer — and the test is named
+    // for a turn being *affordable*, which is an absolute claim the ratio does not make.
+    //
+    // So the absolute bound is kept, deliberately loose, as a second assertion rather than as the
+    // first. What made the old one flake was not that it was absolute but that it was TIGHT: 25 ms
+    // chosen against a 4.8–7.7 ms reading had drifted to 2.15x margin as this container got slower,
+    // and 28.7 ms beside a full workspace run was enough to fail it. 250 ms against the 11–12 ms
+    // measured here is 23x, which no amount of machine weather reaches and which still catches the
+    // shared-cost regression the ratio is blind to. It bounds the CONTROL, not the Ruby reading,
+    // because the control is the shared cost with none of Opal's share in it.
+    assert!(
+        plain < std::time::Duration::from_millis(250),
+        "a plain JavaScript turn on this component took {plain:?}; the cost this arm shares with it \
+         — instantiating the guest and building the SDK surface — has regressed, which the Ruby/JS \
+         ratio above cannot see because it cancels",
     );
 
     // One thing the threshold above is too coarse to catch, and which was measured costing ~3 ms of
@@ -1121,8 +1209,22 @@ end
         timeout: std::time::Duration::from_millis(400),
         ..SandboxLimits::default()
     };
-    let started = Instant::now();
+    // Everything the host has to do is done BEFORE the reading and before the store. `bounded_store`
+    // arms the 400 ms deadline the moment it builds the state, against a WALL clock that only credits
+    // back time parked in bridged calls, so host work done after it is charged to a program that has
+    // not started.
+    //
+    // What that costs *here* is the `prepare` alone, and the distinction is worth stating precisely
+    // rather than borrowing the alarming version from the arms where this was a live defect. The
+    // `prepare` is a real `opal` invocation and would genuinely have been inside the armed window.
+    // The `component()` beside it would not: it is a `OnceLock::get_or_init`, and this test calls
+    // `run(...)` three times before reaching this case, so the compile is long since paid and the
+    // call returns in nanoseconds. The multi-second compile figures that justify this ordering in
+    // `evaluate` — where the store is built once per process, before anything has warmed the lock —
+    // are costs this particular case could never have paid. The ordering is right for both; only one
+    // of them was ever at risk.
     let program = prepare("sleep 30\nputs 'never'\n");
+    let component = component();
     let log = CallLog::default();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
@@ -1131,6 +1233,7 @@ end
         ending: RunEnding::None,
         library: false,
     };
+    let started = Instant::now();
     let mut store = bounded_store(
         MembraneState::new(
             FakeToolApi::with(&log, canned_outcome),
@@ -1141,7 +1244,7 @@ end
         ),
         limits,
     );
-    let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let returned = bound
         .call_run(
             &mut store,
@@ -1209,6 +1312,10 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     // The bijection the committed artifact is held to: this guest binds gg's whole tool vocabulary
     // and nothing else. It is the RUBY SDK's own catalogue doing the answering, so this is a check
     // of that SDK rather than a second reading of the TypeScript one.
+    // The component before the store, as everywhere in this file: `bounded_store` arms the guest's
+    // 30 s wall-clock deadline, and a `Component::new` of a 21 MB guest performed inside it is
+    // charged to a program that has not started. See [`evaluate`] for the measurements.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     let log = CallLog::default();
@@ -1222,7 +1329,7 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
         MembraneState::new(FakeToolApi::new(&log), ruby(), scope, limits, None),
         limits,
     );
-    let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let mut answered = bound
         .call_bound_tools(&mut store)
         .expect("the guest answers");

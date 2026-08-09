@@ -378,8 +378,9 @@ mod tests;
 /// membrane and store.
 ///
 /// A separate test file from [`tests`], because these are a different kind of test: each one
-/// compiles a 20 MB component and starts a JVM that loads the Kotlin compiler and TeaVM, which is
-/// seconds rather than microseconds, where everything next door is a pure function over text.
+/// compiles the 13.4 MB shared ECMAScript guest and starts a JVM that loads the Kotlin compiler and
+/// TeaVM, which is seconds rather than microseconds, where everything next door is a pure function
+/// over text.
 #[cfg(test)]
 #[path = "kotlin.substrate.test.rs"]
 mod substrate;

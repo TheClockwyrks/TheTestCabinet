@@ -96,6 +96,33 @@ fn run_with(
 /// They are the other half of what the SDK binds — `harness.finish` is bound from the first and the
 /// whole `programs` object from the second — so a test about the surface has to be able to vary
 /// them, where a test about the substrate never did.
+///
+/// # Why the component is resolved before the store is built
+///
+/// Because the store's clock starts when the store is built, and it is a **wall** clock.
+/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
+/// and the callback behind it reads `guest_elapsed`, which is time since a `program_started` stamped
+/// inside [`MembraneState::new`] less whatever was charged back for time parked in bridged tool
+/// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
+/// back: it is charged in full to a program that has not started.
+///
+/// [`component`] is exactly that work: a `Component::new` of this arm's 25 MB committed guest, paid
+/// once per **process** — which under `cargo nextest` means once per `#[test]`. The same compile of
+/// the 14 MB shared guest was measured on this repository's dev container at 1.35 s alone, a median
+/// of 10.6 s and a worst of 34.0 s across the processes that paid it during one `cargo nextest run
+/// --workspace`. Past thirty of those seconds the guest's first instruction traps and the arm
+/// reports `Timeout { limit: 30s }` for a program that ran for microseconds, which is what was
+/// observed happening on the JVM and PureScript arms, which had this same ordering.
+///
+/// This one takes its `limits` from the caller rather than the default, so the ordering matters
+/// twice over here: the arm's own deadline cases arm budgets of one and three seconds, and a
+/// compile charged inside one of those would satisfy the `Timeout` they assert without the guest
+/// ever running — a test passing for a reason that has nothing to do with what it claims — while
+/// also inflating the `elapsed` the parking half of that same test bounds.
+///
+/// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
+/// builds its linker and only then builds the store — so a run's budget is the program's. This is
+/// that order.
 fn run_as(
     program: &str,
     enabled: &[String],
@@ -107,6 +134,8 @@ fn run_as(
 ) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
+    // Both of these before the store exists, for the reason this function's documentation gives.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
         enabled,
@@ -118,7 +147,7 @@ fn run_as(
         MembraneState::new(api, python(), scope, limits, None),
         limits,
     );
-    let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
             "the committed Python guest instantiates against the real membrane: {}",
@@ -690,6 +719,10 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
     // The bijection the committed artifact is held to: this guest's SDK binds gg's whole tool
     // vocabulary and nothing else. It is the one drift check that reads the `.wasm` rather than a
     // source file, so a tool added to gg with a stale artifact still checked in fails here.
+    // The component before the store, as everywhere in this file: `bounded_store` arms the guest's
+    // 30 s wall-clock deadline, and a `Component::new` of a 25 MB guest performed inside it is
+    // charged to a program that has not started. See [`run_as`] for the measurements.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     let log = CallLog::default();
@@ -703,7 +736,7 @@ fn the_committed_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
         MembraneState::new(FakeToolApi::new(&log), python(), scope, limits, None),
         limits,
     );
-    let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     let mut answered = bound
         .call_bound_tools(&mut store)
         .expect("the guest answers");
@@ -1570,6 +1603,8 @@ print(type(region).__name__, region.offset, region.limit)
     // there or it is not a name at all.
     let log = CallLog::default();
     let api = FakeToolApi::new(&log).with_program(3, "print('the program that ran')");
+    // The component before the store, as everywhere in this file; see [`run_as`] for why.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let limits = SandboxLimits::default();
     let scope = ProgramScope {
@@ -1582,7 +1617,7 @@ print(type(region).__name__, region.offset, region.limit)
         MembraneState::new(api, python(), scope, limits, None),
         limits,
     );
-    let bound = Sandbox::instantiate(&mut store, component(), &linker).expect("instantiates");
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
     bound
         .call_run(
             &mut store,

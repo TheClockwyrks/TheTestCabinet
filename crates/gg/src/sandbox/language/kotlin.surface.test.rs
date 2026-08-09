@@ -13,7 +13,7 @@
 //! # Why they are consolidated all the same
 //!
 //! Each `#[test]` is its own process under `cargo nextest`, and the first thing any of these does is
-//! compile a 20 MB component and start a JVM that loads the Kotlin compiler and TeaVM. So each
+//! compile a 13.4 MB component and start a JVM that loads the Kotlin compiler and TeaVM. So each
 //! function drives *many* programs rather than being one behaviour per function. Add a statement to
 //! an existing function rather than adding a function.
 

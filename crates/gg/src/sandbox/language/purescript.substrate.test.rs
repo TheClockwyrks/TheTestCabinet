@@ -87,6 +87,30 @@ fn prepare(source: &str) -> String {
 ///
 /// The [membrane state](MembraneState) is built with **this** language, which is what a refusal
 /// naming a call resolves its spelling from.
+///
+/// # Why the component is resolved before the store is built
+///
+/// Because the store's clock starts when the store is built, and it is a **wall** clock.
+/// [`bounded_store`] arms an epoch deadline against [`SandboxLimits::timeout`] — 30 s by default —
+/// and the callback behind it reads `guest_elapsed`, which is time since a `program_started` stamped
+/// inside [`MembraneState::new`] less whatever was charged back for time parked in bridged tool
+/// calls. Host work done after that stamp and before the guest runs is neither, so nothing gives it
+/// back: it is charged in full to a program that has not started.
+///
+/// [`component`] is exactly that work. It is a `Component::new` of the 14 MB shared ECMAScript
+/// guest, paid once per **process** — which under `cargo nextest` means once per `#[test]` — and
+/// measured on this repository's dev container at 1.35 s alone but at a median of 10.6 s and a worst
+/// of 34.0 s across the processes that paid it during one `cargo nextest run --workspace`. Past
+/// thirty of those seconds the guest's first instruction traps, and this arm reports
+/// `Timeout { limit: 30s }` for a program that ran for microseconds. That is not hypothetical here:
+/// `a_located_failure_names_the_bundle_rather_than_the_model_s_purescript` and
+/// `a_code_module_is_a_purescript_module_bound_at_lib` were both observed failing that way on a full
+/// workspace run, with the JVM arms failing identically in the same window.
+///
+/// Production never had it — [`run_program`](crate::sandbox::run_program) resolves its component and
+/// builds its linker and only then builds the store — so a run's 30 s is 30 s of the program. This
+/// is that order, and it is also what makes the note above true: the per-language component cache
+/// really is the only thing left out.
 fn evaluate(
     program: &str,
     enabled: &[String],
@@ -98,6 +122,8 @@ fn evaluate(
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
+    // Both of these before the store exists, for the reason this function's documentation gives.
+    let component = component();
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let scope = ProgramScope {
         enabled,
@@ -109,7 +135,7 @@ fn evaluate(
         MembraneState::new(api, purescript(), scope, limits, None),
         limits,
     );
-    let bound = match Sandbox::instantiate(&mut store, component(), &linker) {
+    let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
         Err(error) => panic!(
             "the shared ECMAScript guest instantiates against the real membrane: {}",

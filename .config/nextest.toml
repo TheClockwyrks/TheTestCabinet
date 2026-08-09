@@ -1,5 +1,39 @@
+# No retries. A test gets one attempt, and if it fails the run is red.
+#
+# There was one, and it is gone rather than reduced, because what it bought was not reliability but
+# silence. A flaky test IS a failing test — it is a claim this repository makes about itself that
+# happens not to be true on some runs — and a retry converts exactly that into a green summary with a
+# word in it that nobody reads. That is not a hypothetical: nextest's default `flaky-result` is
+# `pass`, so the run that provoked this change reported `4271 passed (9 flaky)` and exited zero while
+# nine tests had failed. `flaky-result = "fail"` below and this line were written together, in that
+# one change, and neither has a history older than it — a retry kept alongside them has never been
+# tried here and should not be reinstated on the strength of this comment.
+#
+# The concrete reason it can go, rather than an aspiration: not one of the nine flakes that made this
+# decision was the runner giving up on slow work, which is the only thing a retry is for. Eight of
+# them were one defect wearing eight names — six arms' test helpers armed the sandbox's 30 s
+# wall-clock execution deadline and only then compiled a multi-megabyte component inside it, so a
+# program that ran for microseconds came back `Timeout { limit: 30s }`. The ninth, and one more the
+# retry had been hiding, were assertions reading an absolute wall clock where the claim they were
+# making was a ratio. All of them are defects with addresses, all of them are fixed at the address,
+# and none of them was ever going to be fixed by running it again. Every remaining override in this
+# file bounds work whose cost was *measured*; none of them is a second chance.
+#
+# Removing the retry is also what FOUND the second of those two assertions. The Ruby arm's per-turn
+# reading had been failing and passing again silently — a green summary, one word in it — and it went
+# red the first time this line said zero. That is the argument for the line, better than any of the
+# above.
+#
+# What this costs, said plainly: a genuinely nondeterministic test now stops the run instead of
+# hiding. That is the point. If a test here goes red intermittently, it is telling you something
+# true, and the remedy is the mechanism rather than the retry — the paragraphs of measurement
+# attached to the overrides below are what that looks like when it is done properly.
 [profile.default]
-retries = 1
+retries = 0
+# Kept with no retries to retry, deliberately. It is what says which way this profile leans, so that
+# a future override adding retries to one filter still has to reckon with a flake being a failure
+# rather than inheriting a default that quietly forgives one.
+flaky-result = "fail"
 fail-fast = false
 
 # Hard cap on any single test's execution. nextest marks a test "slow" after
@@ -52,6 +86,20 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 # below the 45-51 ms a per-turn rebuild costs. Under contention it failed while the property it
 # checks was perfectly intact. Giving it every slot is what makes the reading a reading of the
 # workload rather than of the load average.
+#
+# That was not enough on its own, and the paragraph above is left standing because the remedy is
+# still right — but this override was the *whole* defence, and a `cargo nextest run --workspace` with
+# retries removed measured the test failing anyway, at 28.7 ms against that 25 ms ceiling, in the
+# very same run that proved the JVM and PureScript arms fixed. Taking every runner slot does not
+# undo the state a machine is left in by the four thousand tests before it, and the absolute
+# millisecond ceiling had drifted from generous to a factor of two as the container got slower: the
+# turn it bounds reads 12.2-12.9 ms here against the 4.8-7.7 ms the bound was chosen against.
+#
+# So the assertion is now a RATIO — the same turn against plain JavaScript on the same component in
+# the same process, measured at 1.02-1.04 in every condition it was taken in, against a regression
+# that would put it near seven — and this override is the second line rather than the first. It
+# stays because a minimum-of-five reading of two interleaved measurements is still better taken with
+# the machine than beside it, and because it costs ~4 s of exclusive runner against a ~700 s run.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::ruby::substrate::the_baked_runtime_and_sdk_are_what_make_a_turn_affordable)'
 threads-required = "num-test-threads"
@@ -191,6 +239,30 @@ slow-timeout = { period = "180s", terminate-after = 3 }
 filter = 'package(test-cabinet-gg) and test(=sandbox::language::java::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
 threads-required = "num-test-threads"
 
+# The Kotlin arm's warm-JVM measurement, for the same reason as the Java arm's directly above and
+# with the same remedy — and it is here because that reason was proved on this arm rather than
+# assumed. The test used to assert an ABSOLUTE bound, that each of three warm builds took under
+# sixty seconds, which is a claim about the machine and not about the pool. It failed on its first
+# attempt at 144.8 s under `cargo nextest run --workspace` and at 134.6 s beside six arms' substrate
+# and surface tests — both against the 360 s the override below grants it, so neither was a
+# termination and neither would have been helped by moving that ceiling. It was this assertion, and
+# the retry that then passed at 60.3 s was 0.3 s from failing too.
+#
+# The assertion is now the ratio the test's name claims — a JVM start plus the first build in it
+# against the cheapest of three that follow — which is the reading that survives a loaded machine,
+# because a cold build and a warm one inflate together. This override is what makes it a reading of
+# the pool rather than of the load average all the same: measured cold-against-warm at 6.06 s / 1.52 s
+# alone, 21.3 s / 4.67 s beside those six arms, and 72.9 s / 11.6 s on a busier reading of that same
+# group. The spread of a single reading here is the whole argument for taking the runner.
+#
+# What it costs is head-of-line blocking, and that is reported rather than waved past: nextest cannot
+# start a test wanting every slot until every other test has finished, so a full run drains to one
+# process before this one goes. That was watched happening for the Java test above during a workspace
+# run. This arm's reading takes ~10 s of the runner on an idle container against a ~790 s run.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::language::kotlin::substrate::a_pooled_jvm_is_reused_and_the_first_one_is_the_expensive_one)'
+threads-required = "num-test-threads"
+
 # The Kotlin arm's compile-driving tests, which are the dearest per-test work in this workspace and
 # the only ones measured reaching the default hard kill. Every one of them is its own process under
 # nextest, and the first thing each does is compile a 20 MB component and start a JVM that loads the
@@ -204,6 +276,25 @@ threads-required = "num-test-threads"
 # run that cost two minutes of wall clock to a test doing exactly what it says, and three that do not
 # are a red run naming the wrong thing. Bounded from the work rather than from the default, with room
 # for a CI runner with a quarter of the cores.
+#
+# The ceiling stays where it is, and the paragraph above is left standing because the reading in it
+# was real — but what came AFTER it says the ceiling was never the thing this arm was crossing, and
+# that correction belongs here rather than in a commit message. Five of this arm's tests were
+# reported flaky by a full workspace run. Every first-attempt failure was measured well under this
+# 360 s bound — 144.8 s for the pooled-JVM reading, and this group's dearest test at 200.5 s while
+# passing — so not one of them was a termination, and not one of them would have been helped by
+# raising this number again.
+#
+# What they were is two defects with names. The pooled-JVM reading asserted an absolute wall clock;
+# see the override above it. The other four went through this file's own `evaluate_as`, which built
+# the store — and therefore armed the guest's 30 s execution deadline, which is WALL clock — and only
+# then compiled the 13.4 MB shared ECMAScript guest inside the call that used it. That compile is 1.5 s
+# alone and was measured at 12.1 s and 21.8 s beside six arms' substrate and surface tests, all of it
+# charged to a program that had not started; a guest that ran for 228 µs came back as
+# `Timeout { limit: 30s }`, and on the other JVM arm the panic said so in as many words. Production
+# resolves the component before it builds the store and never had it. Both are fixed in the tests,
+# which is why this ceiling is not moving: the headroom the note above asks to be watched is real,
+# but the coin flip it was written for was not this one.
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(/^sandbox::language::kotlin::(substrate|surface)::/)'
 slow-timeout = { period = "120s", terminate-after = 3 }
