@@ -851,6 +851,19 @@ impl DefinitionStore {
         Ok(out)
     }
 
+    /// Whether the store holds at least one ingested test-case version.
+    ///
+    /// The startup half of the readiness signal (see [`crate::readiness`]): an empty
+    /// store cannot resolve anything, so the backend must stay out of its Service
+    /// until an ingest fills it. A store root that cannot be read is reported as
+    /// unpopulated — "cannot tell" and "nothing there" both mean "do not serve yet".
+    ///
+    /// Walks the catalog, so call it on startup and after an ingest rather than per
+    /// request; the probe reads the latch this seeds, not the filesystem.
+    pub fn is_populated(&self) -> bool {
+        self.list_cases().is_ok_and(|cases| !cases.is_empty())
+    }
+
     /// List the ingested versions for a slug, ordered oldest-first by semantic
     /// version so the newest is listed last (matches the catalog contract's
     /// "newest-listed-last").

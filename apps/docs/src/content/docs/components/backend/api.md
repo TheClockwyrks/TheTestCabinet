@@ -50,8 +50,34 @@ this contract.
 
 ### `GET /healthz`
 
-Liveness and readiness probe. Returns the service status, its version, and
-whether its store is ready.
+**Liveness** probe and service identity. Always `200` while the process is
+serving. Returns the service status, its contract version, and `storeReady` —
+whether the definition store can resolve test-case versions yet.
+
+`storeReady` is reported here for display (the console's Connections page shows
+it); it is deliberately *not* what makes this endpoint `200`, because a backend
+whose store is still filling is alive and must not be restarted.
+
+### `GET /readyz`
+
+**Readiness** probe: `200` once the definition store holds versions, `503` while
+it is still empty.
+
+Keep this separate from the `/healthz` liveness probe in every deployment. A
+backend whose definition store lives on an ephemeral volume starts with an empty
+store and re-ingests the whole catalog on boot, which takes minutes:
+
+- A **liveness** probe on this signal would kill the pod mid-ingest, and it would
+  never converge.
+- A **readiness** probe on `/healthz` admits traffic to an empty store, so every
+  run launched in that window fails with a spurious
+  `test-case version ... is not ingested` 404.
+
+The signal latches: once the store is populated the backend stays ready, and a
+later re-ingest does not withdraw it. Re-ingest swaps each version into place
+atomically, so resolution keeps working throughout one — and since the backend
+runs at a single replica, going unready would empty its Service and fail every
+caller outright rather than 404 one case.
 
 ### `POST /ingest`
 
