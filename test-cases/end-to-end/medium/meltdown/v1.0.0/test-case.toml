@@ -1039,8 +1039,9 @@ title = "Pause behavior"
 id = "freezes"
 title = "Pausing freezes the simulation"
 description = "While paused the simulation does not advance — the surge holds its position."
-# Automated validation: a unit's position does not change while the game is paused
-# and stepped. See validation/pause/freezes.mjs.
+# Automated validation: on the build's own clock, a unit walks, and then holds its
+# position — and the simulation clock stops — once the game is paused. See
+# validation/pause/freezes.mjs.
 validation = { script = "validation/pause/freezes.mjs", outputs = [
   { id = "frozen", name = "The surge frozen while paused", kind = "image" },
   { id = "pause", name = "The surge walking, then held by the pause", kind = "video" },

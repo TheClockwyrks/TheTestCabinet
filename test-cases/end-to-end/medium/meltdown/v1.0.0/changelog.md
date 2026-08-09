@@ -263,3 +263,31 @@ sealing placement being refused, a build-zone boundary, a tower held against the
 showed the preview parked wherever the real cursor sat, which under an automated driver is
 the top-left corner of the stage. It now drives the pointer, which also brings the debug
 path under the same keep-it-on-the-grid clamp the mouse already had.
+
+## The pause freeze is measured on the clock a player is on
+
+`pause.freezes` paused the match and then advanced, on the reasoning that a paused
+simulation ignores the advance. But an advance is the debug API's `step`, and where a build
+puts its pause gate is its own business: the reference closes it inside the simulation's
+own update, while a build that holds the pause in the shell that drives the clock — feeding
+its simulation no time at all while the menu is up — freezes the floor just as completely
+for the player and steps right through the check. `specs/instrumentation.md` does not
+settle it ("stepping only advances the live game; it has no effect on a menu screen", and
+the pause menu is a required menu over a screen that is not the live one), so the item was
+scoring a free choice. One such build walked its Mote 180 px through the pause while the
+clip filmed for the same item — in real time, where the freeze is real — showed it stopping
+dead behind the menu. The verdict contradicted its own evidence.
+
+It was the weaker check in the other direction too, and that matters more: a build whose
+pause menu opens over a floor that keeps running passes the old check outright, so long as
+its `step` is gated. The one thing the item exists to catch was the one thing it could not
+see.
+
+The freeze is now watched in real time, with the clock in the build's hands and nothing
+stepping it, over two windows of the same length: the Mote must genuinely walk in the
+first, and hold its position — with the simulation clock stopped alongside it — through the
+second. The running window is what keeps the freeze from passing vacuously, since a dead
+floor is also a still one, and it is the contrast the item's clip was always named for.
+Proved with three mutants: a reference that simulates through its pause fails, one that
+simulates through its pause only when a player is driving (and so passed the old check)
+fails, and one whose floor never advances at all fails the running window instead.
