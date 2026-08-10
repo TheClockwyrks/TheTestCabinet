@@ -22,8 +22,8 @@ extern "C" {
 #include "sandbox.h"
 }
 
-#include "sdk/api.hpp"
-#include "sdk/error.hpp"
+#include "sdk/gg/core.hpp"
+#include "sdk/runtime.hpp"
 
 // The entry point of the model's own program.
 //
@@ -41,9 +41,9 @@ extern "C" int __main_void(void);
 
 // **The gg tool names this component can bind** — what `bound-tools` answers.
 //
-// It is `gg::bound_tool_names()`, which is assembled from the SDK's own per-object tables: each
-// API object states the tools it dispatches in the same translation unit as the functions that
-// dispatch them, so a tool that gained a function without gaining an entry — or the reverse — is a
+// It is `gg::bound_tool_names()`, which is assembled from the SDK's own per-module tables: each
+// capability module states the tools it dispatches in the same translation unit as the functions
+// that dispatch them, so a tool that gained a function without gaining an entry — or the reverse — is a
 // failing gate rather than a silent difference between what a model may call and what gg thinks it
 // may call.
 //
@@ -78,9 +78,9 @@ extern "C" void exports_sandbox_bound_tools(sandbox_list_string_t *ret) {
 // `what()`, reported over `feedback.report-error` as a located-nowhere program error — which is what
 // the Rust arm's panic hook buys that arm, reached a different way.
 //
-// **The code is read off a `gg::tool_error`**, which is the whole reason that exception carries
+// **The code is read off a `gg::core::tool_error`**, which is the whole reason that exception carries
 // one. The host classifies a turn from the code rather than from the kind, so a failed
-// `fs::read_file` that nothing caught arrives as `not-found` and is recorded as the same class of
+// `files::read_file` that nothing caught arrives as `not-found` and is recorded as the same class of
 // failure it would be on every other arm. Anything else a program threw has no gg code at all and
 // is reported without one, which is honest: a `std::out_of_range` a model's own `.at()` raised is
 // not a gg failure.
@@ -158,18 +158,18 @@ static void report_uncaught(const char *kind, const char *what,
 }
 
 // The wire's code for a failure the SDK threw.
-static test_cabinet_gg_types_error_code_t wire_code(gg::tool_error_code code) {
+static test_cabinet_gg_types_error_code_t wire_code(gg::core::tool_error_code code) {
   switch (code) {
-    case gg::tool_error_code::invalid_argument:
+    case gg::core::tool_error_code::invalid_argument:
       return TEST_CABINET_GG_TYPES_ERROR_CODE_INVALID_ARGUMENT;
-    case gg::tool_error_code::not_found: return TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND;
-    case gg::tool_error_code::conflict: return TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT;
-    case gg::tool_error_code::refused: return TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED;
-    case gg::tool_error_code::unavailable: return TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE;
-    case gg::tool_error_code::limit_exceeded:
+    case gg::core::tool_error_code::not_found: return TEST_CABINET_GG_TYPES_ERROR_CODE_NOT_FOUND;
+    case gg::core::tool_error_code::conflict: return TEST_CABINET_GG_TYPES_ERROR_CODE_CONFLICT;
+    case gg::core::tool_error_code::refused: return TEST_CABINET_GG_TYPES_ERROR_CODE_REFUSED;
+    case gg::core::tool_error_code::unavailable: return TEST_CABINET_GG_TYPES_ERROR_CODE_UNAVAILABLE;
+    case gg::core::tool_error_code::limit_exceeded:
       return TEST_CABINET_GG_TYPES_ERROR_CODE_LIMIT_EXCEEDED;
-    case gg::tool_error_code::io_error: return TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR;
-    case gg::tool_error_code::other: return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
+    case gg::core::tool_error_code::io_error: return TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR;
+    case gg::core::tool_error_code::other: return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
   }
   return TEST_CABINET_GG_TYPES_ERROR_CODE_OTHER;
 }
@@ -204,12 +204,12 @@ extern "C" void exports_sandbox_run(sandbox_string_t *program,
     // `return 1` is not an error gg invents a band for, exactly as a top-level `return` on the
     // ECMAScript arms is not.
     (void)__main_void();
-  } catch (const gg::tool_error &failure) {
+  } catch (const gg::core::tool_error &failure) {
     // A gg call the program did not catch. `what()` is already gg's own sentence about it — the
     // call, the class and the guidance — so what is added here is only that nothing caught it, and
     // the CODE, which is what the host classifies the turn by.
     const test_cabinet_gg_types_error_code_t code = wire_code(failure.code());
-    report_uncaught("gg::tool_error", failure.what(), &code);
+    report_uncaught("gg::core::tool_error", failure.what(), &code);
   } catch (const std::exception &failure) {
     // `typeid` rather than a fixed string, so a model reading the report sees the class it actually
     // threw — its own `struct TooSmall : std::runtime_error` rather than `std::exception`. What

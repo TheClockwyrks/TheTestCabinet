@@ -49,9 +49,9 @@ through something you cared about. Three consequences worth knowing:
 
 - every call **throws** on failure, so there is no status to forget to look at
   and `try` is the whole of the ceremony. A failure you do not catch ends the
-  turn with the failed call named. A failure you *expect* is a `gg::tool_error`,
-  which is a `std::runtime_error`, and its `code()` is an `enum class` rather
-  than free text;
+  turn with the failed call named. A failure you *expect* is a
+  `core::tool_error`, which is a `std::runtime_error`, and its `code()` is an
+  `enum class` rather than free text;
 - **undefined behavior is the one failure this sandbox cannot explain to you.** A
   division by zero, a dangling reference or a read past the end of a raw array
   ends your program at your own line with no message at all. Container bounds are
@@ -81,14 +81,20 @@ a program with nothing in it. Return `0` from it, or nothing at all — `main` i
 the one function that may.
 
 **gg's own surface needs no `#include`.** The whole SDK and the standard library
-are already in front of your first line, so `fs`, `view`, `system`,
-`std::vector` and `std::format` are names you can write on line 1. Writing the
-includes anyway is harmless and costs nothing. Each API object is a `namespace`,
-so a call is a qualified name and nothing is constructed first. If you declare
-something of your own with the same name, it wins — with one exception worth
-knowing, because it is a reflex: a namespace **alias** such as
-`namespace fs = std::filesystem;` is ambiguous rather than shadowing, and it is
-why `<filesystem>` is not on the list below.
+are already in front of your first line, so every module listed below is in
+scope under its own name, along with `std::vector` and `std::format`. Writing
+the includes anyway is harmless and costs nothing. Each capability module is a
+`namespace`, so a call is a qualified name and nothing is constructed first. A
+type or a variable of your own may share a module's name freely. A **namespace**
+of your own may not, at file scope: `namespace files { … }` or the reflex
+`namespace files = std::filesystem;` beside gg's own makes an unqualified
+`files::` *ambiguous*, and either `gg::files::` or `::files::` says which one you
+meant. Every module is also reachable as `gg::` + its name, which is the spelling
+that never needs disambiguating.
+
+Each module owns the types it produces, so a type is written under its module —
+`files::file_read`, `tasks::text_edit`, `delegation::brief` — and two modules are
+free to declare a type of the same name.
 
 The signatures below are written the way C++ writes them. Required arguments are
 positional. A call with exactly one optional argument gives that parameter a
@@ -103,7 +109,7 @@ int main() {
   const auto entries = {{api.fs.list_dir.call}}("src");
   std::vector<std::string> names;
   for (const auto &entry : entries) {
-    if (entry.kind == entry_kind::file) names.push_back(entry.name);
+    if (entry.kind == files::entry_kind::file) names.push_back(entry.name);
   }
   std::ranges::sort(names);
   {{api.view.open_text.call}}("sources", std::format("{}", names.size()));
@@ -119,8 +125,8 @@ int main() {
   try {
     const std::string notes = {{api.fs.read_text_file.call}}("notes.md");
     {{api.view.open_text.call}}("notes", notes);
-  } catch (const tool_error &failure) {
-    if (failure.code() != tool_error_code::not_found) throw;
+  } catch (const core::tool_error &failure) {
+    if (failure.code() != core::tool_error_code::not_found) throw;
     {{api.fs.write_file.call}}("notes.md", "");
   }
   return 0;
@@ -152,8 +158,9 @@ them are worth knowing about before you spend a turn on one:
 - `<iostream>`: nothing reads your standard output. `gg::log` reaches the run's
   operator and a view reaches you; `<sstream>`, on the list above, is what builds
   a string.
-- `<filesystem>`: for the name collision above. The workspace and the outside
-  world are reached through the `fs` and `system` objects below.
+- `<filesystem>`: it compiles, and nothing you read through it is gated, recorded
+  or shown to you. The workspace and the outside world are reached through the
+  `gg::files` and `gg::shell` modules below.
 {{/if}}
 
 ### Ending your session
@@ -175,22 +182,23 @@ Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
 
 ### Your APIs
 
-Your program is given these objects, each grouping the functions of one
-capability. Each is a namespace, so you call one with
-`<object>::<function>(args...)`. They are in scope already, with no `#include`
-line of your own.
+Your program is given these modules, each grouping the functions of one
+capability. Each is a namespace, so a call is a qualified name —
+`<module>::<function>(args...)` — and the module's last segment is what you
+write, since the surface is in scope already with no `#include` line of your
+own.
 
 {{#each apis}}
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what an object holds, and they reach you by different routes.
+Two calls tell you what a module holds, and they reach you by different routes.
 
-`<object>::{{meta.list.name}}()` — for example `fs::{{meta.list.name}}()` — **returns** an object's
-functions to your program, each as a `function_summary`. It is an ordinary return
-value, so it puts nothing in front of you on its own: to read it yourself you
-must open a view of it, exactly as you would any other value your program
-computed.
+`<module>::{{meta.list.name}}()` — for example `files::{{meta.list.name}}()` — **returns** a
+module's functions to your program, each as a `core::function_summary`. It is an
+ordinary return value, so it puts nothing in front of you on its own: to read it
+yourself you must open a view of it, exactly as you would any other value your
+program computed.
 
 `{{api.view.open_docs_view.signature}}` **opens a
 view** directly, of one function's full signature, documentation, and the types
@@ -334,7 +342,7 @@ A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{#if tasks}}
 ## Tasks
 
-You have access to a task list on the `tasks` object. Use `{{api.tasks.add_task.call}}` to add
+You have access to a task list in the `gg::tasks` module. Use `{{api.tasks.add_task.call}}` to add
 work, `{{api.tasks.update_task.call}}` to update a task's data, `{{api.tasks.complete_task.call}}` to mark a
 task as completed, and `{{api.tasks.remove_task.call}}` to drop a task. At most
 {{tasks.maxTasks}} may be recorded.
@@ -348,9 +356,10 @@ automatically rejected.
 ## Subagents
 
 Use `{{api.agents.spawn_subagent.call}}` to delegate work to another agent. Its second
-argument is a `brief`, which is one value with two named factories:
-`brief::prompt("…")` or `brief::issue("…")` — so naming both, or neither, is a
-program that does not compile. You have the following agents available to you:
+argument is a `delegation::brief`, which is one value with two named factories:
+`delegation::brief::prompt("…")` or `delegation::brief::issue("…")` — so naming
+both, or neither, is a program that does not compile. You have the following
+agents available to you:
 
 {{#each spawnableAgents}}
 - `{{name}}`{{#if description}}: {{description}}{{/if}}
@@ -363,8 +372,9 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-You have access to a shared project board, reached through the `project` object,
-that you and other agents may use. This board is shared across the entire run.
+You have access to a shared project board, reached through the `gg::board`
+module, that you and other agents may use. This board is shared across the
+entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational
 purposes and can be created using `{{api.project.create_epic.call}}`. Issues represent units

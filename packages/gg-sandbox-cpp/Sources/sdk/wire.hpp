@@ -18,7 +18,7 @@
 //
 // It holds them in a `std::deque`, deliberately. A `std::vector` would move its elements on
 // growth and invalidate every pointer already handed out, which is a use-after-free that only
-// appears once a call takes more than a handful of strings — `project::create_issue` takes nine.
+// appears once a call takes more than a handful of strings — `board::create_issue` takes nine.
 // `std::deque` guarantees references to existing elements survive a push at either end.
 //
 // LIFTING (C → C++) has to copy and then free. What an import hands back is memory the guest owns:
@@ -40,9 +40,16 @@ extern "C" {
 #include "sandbox.h"
 }
 
-#include "error.hpp"
-#include "options.hpp"
-#include "types.hpp"
+#include "gg/board.hpp"
+#include "gg/context.hpp"
+#include "gg/core.hpp"
+#include "gg/delegation.hpp"
+#include "gg/files.hpp"
+#include "gg/memories.hpp"
+#include "gg/programs.hpp"
+#include "gg/shell.hpp"
+#include "gg/tasks.hpp"
+#include "gg/views.hpp"
 
 namespace gg::detail {
 
@@ -64,13 +71,13 @@ class scratch {
   sandbox_list_string_t list(const std::vector<std::string>& texts);
 
   // `ranges`, lowered as the ABI's list of turn ranges. Both ends are inclusive on both sides.
-  test_cabinet_gg_context_list_turn_range_t turn_ranges(const std::vector<turn_range>& ranges);
+  test_cabinet_gg_context_list_turn_range_t turn_ranges(const std::vector<context::turn_range>& ranges);
 
   // `edit`, lowered as the wire's three-way variant.
-  test_cabinet_gg_types_text_edit_t edit(const text_edit& value);
+  test_cabinet_gg_types_text_edit_t edit(const tasks::text_edit& value);
 
   // `assignment`, lowered as the wire's three-way variant.
-  test_cabinet_gg_board_epic_assignment_t epic(const epic_assignment& value);
+  test_cabinet_gg_board_epic_assignment_t epic(const board::epic_assignment& value);
 
  private:
   std::deque<std::string> strings_;
@@ -100,7 +107,7 @@ std::vector<std::string> lift(const sandbox_list_string_t& texts);
 // The two nullable scalars the reads take, as the ABI spells an optional `u32` argument: a pointer
 // that is null for the absent case.
 struct window {
-  explicit window(const read_window& from);
+  explicit window(const files::read_window& from);
 
   std::uint32_t* offset();
   std::uint32_t* limit();
@@ -113,42 +120,42 @@ struct window {
 };
 
 // The lifts for the records this SDK hands back, one per wire type.
-shell_output lift_shell_output(test_cabinet_gg_shell_shell_output_t& wire);
-file_read lift_file_read(test_cabinet_gg_files_file_read_t& wire);
-dir_entry lift_dir_entry(const test_cabinet_gg_files_dir_entry_t& wire);
-memory_usage lift_memory_usage(const test_cabinet_gg_memories_memory_usage_t& wire);
-memory_hit lift_memory_hit(const test_cabinet_gg_memories_memory_hit_t& wire);
-task_usage lift_task_usage(const test_cabinet_gg_tasks_task_usage_t& wire);
-board_usage lift_board_usage(const test_cabinet_gg_board_board_usage_t& wire);
-reclaim_report lift_reclaim_report(test_cabinet_gg_context_reclaim_report_t& wire);
-archive_search lift_archive_search(test_cabinet_gg_context_archive_search_t& wire);
-open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire);
-function_summary lift_function_summary(const test_cabinet_gg_docs_function_summary_t& wire);
-program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire);
-subagent_handle lift_subagent_handle(test_cabinet_gg_delegation_subagent_handle_t& wire);
-subagent_result lift_subagent_result(const test_cabinet_gg_delegation_subagent_result_t& wire);
+shell::shell_output lift_shell_output(test_cabinet_gg_shell_shell_output_t& wire);
+files::file_read lift_file_read(test_cabinet_gg_files_file_read_t& wire);
+files::dir_entry lift_dir_entry(const test_cabinet_gg_files_dir_entry_t& wire);
+memories::memory_usage lift_memory_usage(const test_cabinet_gg_memories_memory_usage_t& wire);
+memories::memory_hit lift_memory_hit(const test_cabinet_gg_memories_memory_hit_t& wire);
+tasks::task_usage lift_task_usage(const test_cabinet_gg_tasks_task_usage_t& wire);
+board::board_usage lift_board_usage(const test_cabinet_gg_board_board_usage_t& wire);
+context::reclaim_report lift_reclaim_report(test_cabinet_gg_context_reclaim_report_t& wire);
+context::archive_search lift_archive_search(test_cabinet_gg_context_archive_search_t& wire);
+views::open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire);
+core::function_summary lift_function_summary(const test_cabinet_gg_docs_function_summary_t& wire);
+programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire);
+delegation::subagent_handle lift_subagent_handle(test_cabinet_gg_delegation_subagent_handle_t& wire);
+delegation::subagent_result lift_subagent_result(const test_cabinet_gg_delegation_subagent_result_t& wire);
 
 // The wire's value for a fixed choice, and the choice a wire value names.
-test_cabinet_gg_tasks_task_status_t lower(task_status status);
-test_cabinet_gg_board_issue_status_t lower(issue_status status);
-entry_kind lift_entry_kind(test_cabinet_gg_files_entry_kind_t wire);
-message_role lift_message_role(test_cabinet_gg_context_message_role_t wire);
-view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire);
-agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire);
-tool_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire);
+test_cabinet_gg_tasks_task_status_t lower(tasks::task_status status);
+test_cabinet_gg_board_issue_status_t lower(board::issue_status status);
+files::entry_kind lift_entry_kind(test_cabinet_gg_files_entry_kind_t wire);
+context::message_role lift_message_role(test_cabinet_gg_context_message_role_t wire);
+views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire);
+delegation::agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire);
+core::tool_error_code lift_error_code(test_cabinet_gg_types_error_code_t wire);
 
-// Each object's share of what the artifact answers `bound-tools` with, defined in the same
+// Each module's share of what the artifact answers `bound-tools` with, defined in the same
 // translation unit as the functions that dispatch them — so a tool that gained a function without
 // gaining an entry, or the reverse, is a failing gate rather than a silent difference between what
 // a model may call and what gg thinks it may call. `gg::bound_tool_names` is their concatenation.
-const std::vector<std::string>& fs_tools();
-const std::vector<std::string>& system_tools();
+const std::vector<std::string>& files_tools();
+const std::vector<std::string>& shell_tools();
 const std::vector<std::string>& skills_tools();
-const std::vector<std::string>& memory_tools();
+const std::vector<std::string>& memories_tools();
 const std::vector<std::string>& tasks_tools();
-const std::vector<std::string>& project_tools();
+const std::vector<std::string>& board_tools();
 const std::vector<std::string>& context_tools();
-const std::vector<std::string>& agents_tools();
+const std::vector<std::string>& delegation_tools();
 
 // Every element of an ABI list, mapped — the shape every list lift here has.
 template <typename Wire, typename Each>

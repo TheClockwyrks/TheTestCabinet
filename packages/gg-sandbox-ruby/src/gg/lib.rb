@@ -11,7 +11,7 @@ module GG
   # module defines is what the namespace offers, which is what `require` gives a Ruby file.
   #
   # Modules are evaluated **before** the program and against the same surface, so a module may call
-  # `fs.read_file` or `system.shell` like anything else.
+  # `GG::Files.read_file` or `GG::Shell.run` like anything else.
   #
   # @api private
   module Lib
@@ -62,6 +62,50 @@ module GG
       namespace = @pending || Module.new
       @pending = nil
       @registry[key] = namespace
+    end
+
+    # The `lib` a program reaches its loaded code modules through.
+    #
+    # It is not a capability module and carries no `list`: nothing on it is a gg function, its
+    # members are whatever each module's body left behind, and the host already told the model which
+    # key each one got and what it offers when it answered the read. It exists as a class of its own
+    # rather than as a bare `Object.new` for what it says when a program reaches for a key that is
+    # not bound.
+    #
+    # @api private
+    class Namespaces
+      # @param modules [Hash{String => Module}] the namespaces bound this run, by binding key
+      def initialize(modules)
+        @modules = modules
+        modules.each do |key, namespace|
+          define_singleton_method(key) { namespace }
+        end
+      end
+
+      # What a program gets for a key this run did not bind.
+      #
+      # @param name [Symbol] the key that was reached for
+      # @param _args [Array] whatever it was called with
+      # @raise [NoMethodError] always, naming the key and where the real ones came from
+      def method_missing(name, *_args)
+        raise NoMethodError,
+              "`lib.#{name}` is not bound this run; the keys gg named when it answered the read " \
+              "are the ones it has"
+      end
+
+      # @param name [Symbol] the key being asked about
+      # @param include_private [Boolean] whether private methods count, as Ruby's contract requires
+      # @return [Boolean] whether this run really bound `name`
+      def respond_to_missing?(name, include_private = false)
+        @modules.key?(name.to_s) || super
+      end
+
+      # @return [String] the keys bound this run
+      def inspect
+        "#<gg lib: #{@modules.keys.sort.join(", ")}>"
+      end
+
+      alias to_s inspect
     end
   end
 end

@@ -106,7 +106,7 @@ const REQUIRES = ["corelib/string/unpack", "opal/compiler", "opal/source_map"];
  *
  * It checks POSITIONAL count and MISSING REQUIRED keywords. An *unknown* keyword it does not see —
  * Opal lowers keyword arguments to a trailing hash and never looks at the extra keys. That half is
- * caught in the guest by `GG::ApiObject`, which knows what each SDK function declares; see
+ * caught in the guest by `GG::Scope`, which knows what each SDK function declares; see
  * `src/gg/scope.rb`.
  *
  * **A source map is appended to every compile**, and it is what makes a run-time error point at the

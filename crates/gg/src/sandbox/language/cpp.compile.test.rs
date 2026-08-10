@@ -120,76 +120,64 @@ fn what_gg_compiles_every_program_against_is_what_this_checkout_committed() {
 /// sides.
 const SDK_HEADERS: &[(&str, &str)] = &[
     (
-        "sdk/api.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/api.hpp"),
-    ),
-    (
-        "sdk/error.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/error.hpp"),
-    ),
-    (
         "sdk/gg.hpp",
         include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg.hpp"),
     ),
     (
-        "sdk/options.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/options.hpp"),
-    ),
-    (
-        "sdk/types.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/types.hpp"),
+        "sdk/runtime.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/runtime.hpp"),
     ),
     (
         "sdk/wire.hpp",
         include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/wire.hpp"),
     ),
     (
-        "sdk/objects/agents.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/agents.hpp"),
+        "sdk/gg/board.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/board.hpp"),
     ),
     (
-        "sdk/objects/context.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/context.hpp"),
+        "sdk/gg/context.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/context.hpp"),
     ),
     (
-        "sdk/objects/fs.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/fs.hpp"),
+        "sdk/gg/core.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/core.hpp"),
     ),
     (
-        "sdk/objects/harness.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/harness.hpp"),
+        "sdk/gg/delegation.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/delegation.hpp"),
     ),
     (
-        "sdk/objects/memory.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/memory.hpp"),
+        "sdk/gg/files.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/files.hpp"),
     ),
     (
-        "sdk/objects/programs.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/programs.hpp"),
+        "sdk/gg/memories.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/memories.hpp"),
     ),
     (
-        "sdk/objects/project.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/project.hpp"),
+        "sdk/gg/programs.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/programs.hpp"),
     ),
     (
-        "sdk/objects/review.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/review.hpp"),
+        "sdk/gg/session.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/session.hpp"),
     ),
     (
-        "sdk/objects/skills.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/skills.hpp"),
+        "sdk/gg/shell.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/shell.hpp"),
     ),
     (
-        "sdk/objects/system.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/system.hpp"),
+        "sdk/gg/skills.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/skills.hpp"),
     ),
     (
-        "sdk/objects/tasks.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/tasks.hpp"),
+        "sdk/gg/tasks.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/tasks.hpp"),
     ),
     (
-        "sdk/objects/view.hpp",
-        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/objects/view.hpp"),
+        "sdk/gg/views.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/views.hpp"),
     ),
 ];
 
@@ -310,7 +298,7 @@ fn a_diagnostic_in_ggs_own_guest_is_ggs_failure_and_not_the_models() {
     // The model's file is named relatively and gg's inputs absolutely, and gg's own inputs are the
     // only files besides the model's that a compile reads. A model handed a diagnostic about a file
     // it never wrote would be a model asked to fix gg.
-    let stderr = "/tmp/gg-toolchain-cpp/guest/sdk/objects/fs.hpp:57:1: error: unknown type name \
+    let stderr = "/tmp/gg-toolchain-cpp/guest/sdk/gg/files.hpp:57:1: error: unknown type name \
                   'file_read'\n";
     match classify(&report(false, stderr), &authored()) {
         Err(PrepareFailure::Toolchain(message)) => {
@@ -318,7 +306,7 @@ fn a_diagnostic_in_ggs_own_guest_is_ggs_failure_and_not_the_models() {
                 message.contains("gg's own guest"),
                 "the failure did not say whose it was: {message}"
             );
-            assert!(message.contains("fs.hpp"), "{message}");
+            assert!(message.contains("files.hpp"), "{message}");
         }
         other => panic!("a diagnostic in gg's own prelude is not the model's failure: {other:?}"),
     }

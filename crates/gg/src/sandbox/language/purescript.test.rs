@@ -88,7 +88,7 @@ fn the_binding_name_is_camel_case_with_a_lower_case_front() {
 fn the_synthesized_file_view_is_purescript() {
     assert_eq!(
         purescript().open_file_statement("src/Main.purs", None),
-        r#"void (view.openFile "src/Main.purs" {})"#
+        r#"void (Gg.Views.openFile "src/Main.purs" {})"#
     );
     assert_eq!(
         purescript().open_file_statement(
@@ -98,7 +98,7 @@ fn the_synthesized_file_view_is_purescript() {
                 limit: 200
             })
         ),
-        r#"void (view.openFile "src/Main.purs" { offset: 400, limit: 200 })"#
+        r#"void (Gg.Views.openFile "src/Main.purs" { offset: 400, limit: 200 })"#
     );
 }
 
@@ -110,6 +110,10 @@ fn the_synthesized_file_view_is_purescript() {
 /// language's generated program; what is asserted here is that gg wrote PureScript — a module
 /// header, a top-level array with its own signature, and a `for_` — rather than another arm's
 /// syntax.
+///
+/// The **import** is the half no other arm has to write, and it is taken off the front of the call
+/// rather than written beside it: this is the one arm where the surface is reached by a real import
+/// line, so a program naming `Gg.Views.openDocsView` and importing anything else would not compile.
 #[test]
 fn the_generated_documentation_program_is_a_purescript_module() {
     assert_eq!(
@@ -120,7 +124,7 @@ fn the_generated_documentation_program_is_a_purescript_module() {
          \n\
          import Data.Foldable (for_)\n\
          import Effect (Effect)\n\
-         import Gg\n\
+         import Gg.Views as Gg.Views\n\
          \n\
          functions :: Array String\n\
          functions =\n\
@@ -129,7 +133,7 @@ fn the_generated_documentation_program_is_a_purescript_module() {
          \x20 ]\n\
          \n\
          main :: Effect Unit\n\
-         main = for_ functions view.openDocsView\n"
+         main = for_ functions Gg.Views.openDocsView\n"
     );
 
     // The empty case is a program too, and it is the one the top-level signature exists for: an
@@ -152,13 +156,13 @@ fn the_generated_documentation_program_is_a_purescript_module() {
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = purescript().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::PureScript);
-    assert!(!catalogue.tools.is_empty());
+    assert!(!catalogue.functions.is_empty());
     // The signature shape that says the reflection is PureScript's rather than a bracketed
     // language's: an ML type, whose arguments are a chain of top-level arrows.
     let read_file = catalogue
-        .tools
+        .functions
         .iter()
-        .find(|entry| entry.tool == "read_file")
+        .find(|entry| entry.operation == "files.read_file")
         .expect("`read_file` is catalogued");
     assert_eq!(read_file.name, "readFile");
     assert!(
@@ -166,6 +170,47 @@ fn the_committed_catalogue_is_this_languages() {
         "the catalogue is not in ML notation: {:?}",
         read_file.signatures[0]
     );
+}
+
+/// **Every name this arm advertises is one a program can write**, which on this arm means the
+/// module's own path followed by a dot.
+///
+/// It is the invariant the whole conversion rests on and the one that is *this language's* rather
+/// than the name rule's: PureScript resolves a fully-qualified reference only under a qualified
+/// import, and it accepts an alias that is the module's own dotted name — so `import Gg.Files as
+/// Gg.Files` makes `Gg.Files.readFile` an expression rather than a key gg invented. An arm that
+/// documented a name under one prefix and told a program to import another would be handing a model
+/// a name its compiler refuses, with every catalogue-shaped gate still green.
+#[test]
+fn every_name_is_written_under_the_module_a_program_imports() {
+    let catalogue = purescript().catalogue();
+    for module in &catalogue.modules {
+        assert_eq!(
+            module.import.as_deref(),
+            Some(format!("import {} as {}", module.path, module.path).as_str()),
+            "`{}` is documented under an import line that does not make its own names resolve",
+            module.path
+        );
+    }
+    for function in &catalogue.functions {
+        let module = catalogue
+            .modules
+            .iter()
+            .find(|module| module.id == function.module)
+            .expect("every entry is filed under a declared module");
+        assert_eq!(
+            function.fqn,
+            format!("{}.{}", module.path, function.name),
+            "`{}` is not its module's path followed by the name a program calls",
+            function.fqn
+        );
+        assert_eq!(
+            function.call, None,
+            "`{}` claims a call site that differs from its name, and on this arm they are one \
+             string",
+            function.fqn
+        );
+    }
 }
 
 /// **PureScript's libraries are declared in its catalogue**, which is what the prompt renders.

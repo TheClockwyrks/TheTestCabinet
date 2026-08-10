@@ -38,23 +38,23 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
     assert!(cpp().compiles_component());
 }
 
-/// **An API object here is a namespace, so a call is a qualified name.**
+/// **A capability module here is a namespace, so a call is a qualified name.**
 ///
 /// The second arm to answer `::`, after [Rust](super::super::rust), and reached through a different
 /// construct: a module there, a namespace here. gg quotes qualified calls in its own notices and in
-/// every line of every prompt template, and `view.open_text` on this arm is *no member named
+/// every line of every prompt template, and `views.open_text` on this arm is *no member named
 /// 'open_text' in the global namespace* — so a model would be taught, in every sentence gg writes
 /// about a call, a spelling that cannot compile.
 #[test]
-fn an_api_object_is_a_namespace() {
+fn a_capability_module_is_a_namespace() {
     assert_eq!(cpp().member_separator(), "::");
     assert_eq!(
         crate::sandbox::spell(cpp(), crate::sandbox::VIEW_OPEN_TEXT),
-        "view::open_text"
+        "gg::views::open_text"
     );
     assert_eq!(
         crate::sandbox::spell(cpp(), crate::sandbox::REVIEW_REQUEST_CHANGES),
-        "review::request_changes"
+        "gg::session::request_changes"
     );
 }
 
@@ -105,7 +105,7 @@ fn the_binding_name_is_a_snake_case_cpp_identifier() {
 #[test]
 fn the_synthesized_file_view_is_cpp() {
     let whole = cpp().open_file_statement("src/main.cpp", None);
-    assert_eq!(whole, "view::open_file(\"src/main.cpp\");");
+    assert_eq!(whole, "gg::views::open_file(\"src/main.cpp\");");
 
     let windowed = cpp().open_file_statement(
         "src/main.cpp",
@@ -116,7 +116,7 @@ fn the_synthesized_file_view_is_cpp() {
     );
     assert_eq!(
         windowed,
-        "view::open_file(\"src/main.cpp\", {.offset = 400, .limit = 200});"
+        "gg::views::open_file(\"src/main.cpp\", {.offset = 400, .limit = 200});"
     );
 
     // A path a model could not have written safely is still one statement.
@@ -140,7 +140,7 @@ fn the_generated_documentation_program_is_a_translation_unit() {
          const std::array functions{\n      \
          \"read_file\",\n      \"open_text\",\n  };\n  \
          for (const auto &name : functions) {\n    \
-         view::open_docs_view(name);\n  }\n  \
+         gg::views::open_docs_view(name);\n  }\n  \
          return 0;\n}\n"
     );
     assert!(source::defines_main(&program), "{program}");
@@ -306,22 +306,35 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
     assert!(source::namespaced(&module, "module").is_ok());
 }
 
-/// **The committed catalogue is this language's**, and it carries the whole surface in C++'s own
-/// spelling.
+/// **The committed catalogue is this language's**, and every operation gg names is spelled as a
+/// real C++ path a program could write.
+///
+/// The spelling is the module's own namespace and the function's own name — `gg::files::read_file`
+/// — rather than gg's `(object, key)` pair, which is the whole of what converting this arm to the
+/// [normalized doc model](crate::sandbox::SchemaVersion::V2) changed about what gg quotes back at a
+/// model. The two halves are checked separately because they fail differently: a spelling that is
+/// not the catalogue's own name is gg assembling a path, and a path that is not module-qualified is
+/// a name a second module could collide with.
 #[test]
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = cpp().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Cpp);
-    for call in crate::sandbox::OPERATIONS
-        .iter()
-        .map(|operation| operation.call)
-    {
-        let spelled = crate::sandbox::spell(cpp(), call);
+    let functions = crate::sandbox::catalogue_functions(cpp());
+    for operation in crate::sandbox::OPERATIONS {
+        let id = operation.id.to_string();
+        let spelled = crate::sandbox::spell(cpp(), operation.call);
+        let canonical = functions
+            .iter()
+            .find(|function| function.operation == Some(id.as_str()) && function.alias_of.is_none())
+            .map(|function| function.fqn.expect("a converted arm names every entry"));
         assert_eq!(
-            spelled,
-            format!("{}::{}", call.object, call.key),
-            "this arm spells `{}` in `snake_case`, so its catalogue key and its name are one word",
-            call.key
+            canonical,
+            Some(spelled.as_str()),
+            "gg spells `{id}` as `{spelled}`, which is not the name this arm's catalogue gives it"
+        );
+        assert!(
+            spelled.starts_with("gg::") && spelled.matches("::").count() >= 2,
+            "`{spelled}` is not a module-qualified C++ path"
         );
     }
 }

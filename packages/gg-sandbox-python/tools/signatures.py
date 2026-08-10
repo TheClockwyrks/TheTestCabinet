@@ -11,30 +11,36 @@ The pipeline:
         --griffe (static, no import)-->
     crates/gg/src/sandbox/guests/python.signatures.json
 
-Nothing here imports the SDK. `gg.errors` and every tool module import `wit_world`, which only exists
-inside the baked component, so the reflector reads the *sources* with `griffe` — which is also the
-right tool for the job: a docstring is documentation, and griffe is Python's own answer to reading
-it. `gg.catalogue` is the one module that is loaded rather than parsed, because it is data with no
-membrane import in it and re-implementing its tables here would be a second copy of them.
+Nothing here imports the SDK. Every capability module imports `wit_world`, which only exists inside
+the baked component, so the reflector reads the *sources* with `griffe` — which is also the right
+tool for the job: a docstring is documentation, and griffe is Python's own answer to reading it.
+`gg.catalogue` is the one module that is loaded rather than parsed, because it is data with no
+membrane import in it and re-implementing its module list here would be a second copy of it.
 
-Six properties are enforced here rather than left to review. Every one of them is the same rule under
-a different subject: NOTHING a model reads about this SDK may be written anywhere but on the
-declaration it describes, and an undocumented declaration is a build error rather than a blank in a
-prompt.
+What is written where, and what this refuses to emit
+----------------------------------------------------
 
-  * every catalogued function must exist, in the module the catalogue names for it — a typo in
-    `gg/catalogue.py` is an error, not a missing prompt line;
-  * every catalogued function must carry a docstring;
-  * every PARAMETER a catalogued signature declares must carry an `Args:` entry describing it;
-  * an `Args:` entry that names something the signature does not declare is an error too, so a
-    renamed parameter cannot leave its description behind under the old name;
-  * every TYPE the catalogue carries must be documented, and so must each of its members;
-  * every API OBJECT must carry the sentence the prompt introduces it by, taken from the docstring on
-    its declaration in `gg/catalogue.py`.
+Everything a model reads about this surface is written on the declaration it describes, and this
+reflector's whole job is to fail the build rather than emit a gap. Concretely:
 
-And one more that is this language's own: every public declaration in `gg/types.py` and `gg/errors.py`
-must appear in `TYPE_ORDER`. A type nothing lists is a type no signature can safely mention, because
-the closure below would silently not find it.
+  * the **module** a function lives in is the Python module it is declared in, and the fully-qualified
+    name is that module's path plus the function's own name — assembled by nobody, because both
+    halves are facts about where the `def` is;
+  * the **gg operation** it binds is the `@operation("files.read_file")` decorator on it. A public
+    function with no decorator is an error, and two functions claiming one operation is an error;
+  * the **public surface** is `__all__`, which is Python's own declaration of one. A name in it that
+    is not a function is a type;
+  * the **brief** is the docstring's first line and the **detail** is everything after the blank line
+    that follows it — PEP 257's own shape. A first paragraph that runs over one line is an error
+    naming the declaration, so the split fails where the author is standing rather than three steps
+    later in a gate;
+  * every **parameter** a signature declares carries an `Args:` entry, and an `Args:` entry naming
+    something the signature does not declare is an error too, so a renamed argument cannot leave its
+    description behind under the old name;
+  * every **type** the catalogue carries is documented, and so is each of its members;
+  * every type a signature refers to is **resolved** to the fully-qualified name it is declared
+    under, and the reference closure is **transitive**, so a type reachable only through another
+    type's field is still reachable, still documented and still openable.
 
 The catalogue carries one thing that is not a signature, on the same rule: the LIBRARY SET a program
 may import, read off the module-scope imports of `src/library.py` — the file that decides it, because
@@ -59,7 +65,7 @@ import importlib.util
 import json
 import re
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Iterable
@@ -74,35 +80,55 @@ LANGUAGE = "python"
 artifacts are filed at. Written into the catalogue so a committed artifact says whose spellings it
 carries, and asserted by the host against the language that embedded it."""
 
-GENERATED_FROM = "packages/gg-sandbox-python/src"
+SCHEMA = 2
+"""The schema this catalogue is written in — the normalized doc model: modules, operations,
+fully-qualified names, authored briefs and resolved type references."""
+
+GENERATED_FROM = "packages/gg-sandbox-python/src/gg/ (griffe, static)"
 """The provenance string written into the catalogue, so a reader of the JSON knows it is generated
-and where from.
+and where from."""
 
-The whole of `src`, not just `src/gg`: the SDK's signatures are reflected out of the package, and the
-[library set](libraries) is read off `src/library.py` — the module whose imports decide it."""
+OPERATION_DECORATOR = "operation"
+"""The decorator that names the gg operation a declaration binds.
 
-ALWAYS_INCLUDED_TYPE = "ToolError"
-"""The one type declaration the catalogue always carries, whatever a run enables: every call can
-raise it."""
+Matched on the decorator expression's *callee*, so `@operation("files.read_file")` is recognised and
+anything else on the declaration is left alone. It is the same fact `gg._registry` reads at run time,
+read here out of the source instead — the reflector never imports this package.
+"""
 
-TYPE_MODULES = ("types", "errors")
-"""The modules a catalogued type may be declared in, in the order they are searched."""
+ALWAYS_REFERENCED = ("ToolError",)
+"""The types every catalogued function refers to whether or not its signature writes them.
+
+Exactly one, and it is not a convenience: every function in this SDK raises `ToolError` on a failure,
+which is the half of a signature Python states in prose rather than in the annotation. An arm whose
+`Result<_, ToolError>` is written in the return type carries it in every entry's references; this one
+would carry it in none, and the failure type would be a declaration no model could open.
+"""
+
+META_FUNCTION = "list"
+"""The one model-facing function that hangs off no module, because it hangs off all of them.
+
+It is declared once in `gg.docs` and bound onto each capability module with that module's path closed
+over, so it has no module of its own to be filed under and no gg operation to name — which is why it
+is catalogued in a section of its own rather than among the functions.
+"""
+
+META_MODULE = "docs"
+"""The module `META_FUNCTION` is declared in."""
 
 
 def load_catalogue() -> ModuleType:
     """Load `gg/catalogue.py` as a standalone module.
 
     It is the one SDK module that can be imported outside the component, because it imports nothing
-    but `dataclasses`. Loading it by path rather than as `gg.catalogue` is what keeps `gg/__init__.py`
-    — and through it `wit_world` — out of the way.
+    at all. Loading it by path rather than as `gg.catalogue` is what keeps `gg/__init__.py` — and
+    through it `wit_world` — out of the way.
     """
     path = SRC_DIR / "gg" / "catalogue.py"
     spec = importlib.util.spec_from_file_location("gg_catalogue", path)
     if spec is None or spec.loader is None:
         raise SystemExit(f"cannot load {path}")
     module = importlib.util.module_from_spec(spec)
-    # Registered before it is executed, because `@dataclass` reads its own class's module out of
-    # `sys.modules` while it is deciding what a field's annotation means.
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
@@ -123,46 +149,123 @@ def load_sources() -> griffe.Module:
 
 
 def flatten(text: str) -> str:
-    """One paragraph of prose, as the catalogue carries it.
+    """One paragraph of prose on one line.
 
-    Every newline a docstring wraps at becomes a space, exactly as the TypeScript arm's JSDoc does,
-    because what this feeds is a markdown prompt rather than a fixed-width file.
+    Every newline a docstring wraps at becomes a space, because what this feeds is a markdown prompt
+    rather than a fixed-width file.
     """
     return re.sub(r"\s+", " ", text).strip()
 
 
-def documentation(function: griffe.Function, where: str) -> str:
-    """The model-facing paragraph for one function: its prose, then what it raises.
+def reflow(text: str) -> str:
+    """A block of prose with its paragraphs flattened and its fenced examples kept verbatim.
 
-    The `Raises:` section is folded in rather than dropped, because what a call does when it fails is
-    half of what a model needs to write a program that survives one — and a Google-style docstring is
-    where a Python author puts it.
+    A docstring wraps at whatever width its author writes to, and those line breaks are an artifact of
+    the source file rather than anything a reader of the rendered prompt should see. A fenced block is
+    the exception: its line breaks are the code.
     """
-    docstring = function.docstring
-    if docstring is None or not docstring.value.strip():
+    out: list[str] = []
+    fenced = False
+    paragraph: list[str] = []
+
+    def close() -> None:
+        if paragraph:
+            out.append(flatten(" ".join(paragraph)))
+            paragraph.clear()
+
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            close()
+            if fenced:
+                out[-1] = f"{out[-1]}\n{line}"
+                fenced = False
+            else:
+                out.append(line)
+                fenced = True
+            continue
+        if fenced:
+            out[-1] = f"{out[-1]}\n{line}"
+            continue
+        if line.strip():
+            paragraph.append(line.strip())
+        else:
+            close()
+    close()
+    return "\n\n".join(out)
+
+
+@dataclass(frozen=True)
+class Prose:
+    """One declaration's documentation, split as every arm's catalogue carries it."""
+
+    brief: str
+    """The docstring's first line."""
+
+    detail: str | None
+    """Everything after it, paragraphs flattened; `None` when the docstring is one line."""
+
+
+def prose_of(docstring: str | None, where: str) -> Prose:
+    """Split one docstring into its brief and its detail, or fail naming the declaration.
+
+    The rule is PEP 257's: a summary line, then a blank line, then the rest. It is enforced here
+    rather than in a gate over the emitted JSON because here is where the author is standing — a
+    first paragraph that wraps over two lines is a mistake to be told about at the `def`, not three
+    steps later under a name the author has to go looking for.
+    """
+    if docstring is None or not docstring.strip():
         raise SystemExit(
-            f"{where} has no docstring. Every catalogued function's documentation is shown to a "
+            f"{where} has no docstring. Every catalogued declaration's documentation is shown to a "
             "model, so an undocumented one would reach it as a bare signature."
         )
-    parts: list[str] = []
-    for section in docstring.parsed:
-        if section.kind is griffe.DocstringSectionKind.text:
-            parts.append(flatten(section.value))
-        elif section.kind is griffe.DocstringSectionKind.raises:
-            for raised in section.value:
-                parts.append(f"Raises `{raised.annotation}`: {flatten(raised.description)}")
-    return " ".join(part for part in parts if part)
+    lines = docstring.strip("\n").splitlines()
+    brief = lines[0].strip()
+    if not brief:
+        raise SystemExit(f"{where}'s docstring opens with a blank line rather than with a brief.")
+    rest = lines[1:]
+    if rest and rest[0].strip():
+        raise SystemExit(
+            f"{where}'s brief runs over more than one line. The first line of a docstring is the "
+            "brief and everything after the blank line that follows it is the detail, so a first "
+            f"paragraph that wraps has no brief in it: {brief!r}"
+        )
+    detail = reflow("\n".join(rest))
+    return Prose(brief=brief, detail=detail or None)
+
+
+def sections(function: griffe.Function, kind: griffe.DocstringSectionKind) -> list[Any]:
+    """The parsed docstring sections of one kind, or nothing when there is no docstring."""
+    docstring = function.docstring
+    if docstring is None:
+        return []
+    return [section for section in docstring.parsed if section.kind is kind]
+
+
+def documentation(function: griffe.Function, where: str) -> Prose:
+    """The model-facing brief and detail for one function: its prose, then what it raises.
+
+    The `Raises:` section is folded into the detail rather than dropped, because what a call does when
+    it fails is half of what is needed to write a program that survives one — and a Google-style
+    docstring is where a Python author puts it. It is folded in as its own paragraph, so the brief is
+    unaffected whatever a function raises.
+    """
+    text = sections(function, griffe.DocstringSectionKind.text)
+    prose = prose_of(text[0].value if text else None, where)
+    raised = [
+        f"Raises `{entry.annotation}`: {flatten(entry.description)}"
+        for section in sections(function, griffe.DocstringSectionKind.raises)
+        for entry in section.value
+    ]
+    if not raised:
+        return prose
+    detail = "\n\n".join(part for part in [prose.detail, *raised] if part)
+    return Prose(brief=prose.brief, detail=detail)
 
 
 def parameter_docs(function: griffe.Function, where: str) -> dict[str, str]:
     """The `Args:` entries, keyed by the parameter each describes."""
     docs: dict[str, str] = {}
-    docstring = function.docstring
-    if docstring is None:
-        return docs
-    for section in docstring.parsed:
-        if section.kind is not griffe.DocstringSectionKind.parameters:
-            continue
+    for section in sections(function, griffe.DocstringSectionKind.parameters):
         for described in section.value:
             if described.name in docs:
                 raise SystemExit(f"{where} documents `{described.name}` twice.")
@@ -170,12 +273,174 @@ def parameter_docs(function: griffe.Function, where: str) -> dict[str, str]:
     return docs
 
 
-# --- Signatures ----------------------------------------------------------------------------------
+# --- Identity ------------------------------------------------------------------------------------
+
+
+def operation_of(function: griffe.Function) -> str | None:
+    """The gg operation `function`'s `@operation` decorator names, or `None` when it carries none.
+
+    Read off the decorator's own source text rather than by importing the module, because griffe never
+    imports: the decorator expression arrives as written, and what is wanted from it is the one string
+    literal it was called with.
+    """
+    for decorator in function.decorators:
+        written = str(decorator.value)
+        match = re.fullmatch(rf"{OPERATION_DECORATOR}\(\s*[\"']([^\"']+)[\"']\s*,?\s*\)", written)
+        if match is not None:
+            return match.group(1)
+    return None
+
+
+# --- Types ---------------------------------------------------------------------------------------
+
+
+@dataclass
+class Declared:
+    """One type this SDK declares, as the catalogue carries it and as the closure resolves it."""
+
+    fqn: str
+    """Its module-qualified fully-qualified name — `gg.files.FileRead`."""
+
+    module: str
+    """The gg module id it belongs to."""
+
+    name: str
+    """Its bare name, which is what every signature in this SDK writes."""
+
+    entry: dict[str, Any]
+    """The catalogue entry, ready to emit."""
+
+    mentions: set[str] = field(default_factory=set)
+    """The bare names its own declaration refers to — the edges the closure walks."""
+
+
+def base_names(cls: griffe.Class) -> list[str]:
+    """The class's bases, by name."""
+    return [str(base) for base in cls.bases]
 
 
 def annotation_of(expression: Any) -> str:
     """One annotation, as the SDK wrote it."""
     return "" if expression is None else str(expression)
+
+
+def member_prose(owner: str, name: str, member: Any) -> Prose:
+    """One member's brief and detail, or a build error naming what is missing."""
+    docstring = getattr(member, "docstring", None)
+    return prose_of(
+        None if docstring is None else docstring.value, f"the member `{owner}.{name}`"
+    )
+
+
+def declare_type(module: str, path: str, name: str, declared: Any) -> Declared:
+    """One type, as the catalogue carries it: its declaration, its prose, and a line per member.
+
+    Three shapes reach a model through this: a **dataclass**, whose members are its fields; an
+    **enum**, whose members are values rather than fields and so carry no type of their own; and a
+    **union alias**, which is a name for two classes catalogued in their own right and so has no
+    members here.
+    """
+    fqn = f"{path}.{name}"
+    docstring = getattr(declared, "docstring", None)
+    prose = prose_of(None if docstring is None else docstring.value, f"the type `{fqn}`")
+
+    if isinstance(declared, griffe.Attribute):
+        written = annotation_of(declared.value)
+        return Declared(
+            fqn=fqn,
+            module=module,
+            name=name,
+            entry={
+                "fqn": fqn,
+                "module": module,
+                "name": name,
+                "declaration": f"{name} = {written}",
+                "brief": prose.brief,
+                "detail": prose.detail,
+                "members": [],
+                "memberFunctions": [],
+            },
+            mentions=identifiers(written),
+        )
+
+    bases = base_names(declared)
+    members: list[dict[str, Any]] = []
+    lines: list[str] = []
+    mentions: set[str] = set()
+    if "Enum" in bases:
+        header = f"class {name}(Enum):"
+        for member_name, member in declared.members.items():
+            if not isinstance(member, griffe.Attribute):
+                continue
+            lines.append(f"    {member_name}")
+            member_text = member_prose(name, member_name, member)
+            members.append(
+                {
+                    "name": member_name,
+                    # A member is the value, not a field holding one, so it carries no type beside
+                    # itself. Its wire spelling is deliberately not shown: the member's NAME is the
+                    # API, and a model shown `PENDING = "pending"` would reach for the string.
+                    "type": None,
+                    "kind": "variant",
+                    "brief": member_text.brief,
+                    "detail": member_text.detail,
+                }
+            )
+    else:
+        decorators = [str(decorator.value) for decorator in declared.decorators]
+        inherits = f"({', '.join(bases)})" if bases else ""
+        header = "\n".join([*[f"@{decorator}" for decorator in decorators], f"class {name}{inherits}:"])
+        mentions.update(*(identifiers(base) for base in bases) or [set()])
+        for member_name, member in declared.members.items():
+            if not isinstance(member, griffe.Attribute) or member_name.startswith("_"):
+                continue
+            annotation = annotation_of(member.annotation)
+            lines.append(f"    {member_name}: {annotation}")
+            mentions.update(identifiers(annotation))
+            member_text = member_prose(name, member_name, member)
+            members.append(
+                {
+                    "name": member_name,
+                    "type": annotation,
+                    "kind": "field",
+                    "brief": member_text.brief,
+                    "detail": member_text.detail,
+                }
+            )
+    if not members:
+        raise SystemExit(f"the type `{fqn}` declares no members a model could read.")
+    return Declared(
+        fqn=fqn,
+        module=module,
+        name=name,
+        entry={
+            "fqn": fqn,
+            "module": module,
+            "name": name,
+            "declaration": "\n".join([header, *lines]),
+            "brief": prose.brief,
+            "detail": prose.detail,
+            "members": members,
+            "memberFunctions": [],
+        },
+        mentions=mentions,
+    )
+
+
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+"""Every identifier in a piece of written type text, which is what a reference is looked up by.
+
+The SDK's type names are unique across its twelve modules, so a bare name resolves to exactly one
+declaration and the lookup needs no scope. That uniqueness is asserted below rather than assumed.
+"""
+
+
+def identifiers(text: str) -> set[str]:
+    """The identifiers a piece of written text mentions."""
+    return set(IDENTIFIER.findall(text))
+
+
+# --- Signatures ----------------------------------------------------------------------------------
 
 
 def signature_of(function: griffe.Function, name: str, where: str) -> dict[str, Any]:
@@ -237,178 +502,64 @@ def signature_of(function: griffe.Function, name: str, where: str) -> dict[str, 
     }
 
 
-@dataclass(frozen=True)
-class Reflected:
-    """What one catalogued function contributes to the catalogue."""
-
-    signatures: list[dict[str, Any]]
-    doc: str
-    referenced: set[str]
+# --- The reference closure -----------------------------------------------------------------------
 
 
-def reflect(
-    sources: griffe.Module, module: str, name: str, types: dict[str, str]
-) -> Reflected:
-    """Everything the catalogue carries about one function, read off its declaration."""
-    where = f"`{module}.{name}`"
-    try:
-        found = sources[f"{module}.{name}"]
-    except KeyError:
-        raise SystemExit(
-            f"{where} is in the catalogue and `gg/{module.replace('.', '/')}.py` does not define it."
-        ) from None
-    if not isinstance(found, griffe.Function):
-        raise SystemExit(f"{where} is catalogued as a function and is a {found.kind.value}.")
-    signature = signature_of(found, name, where)
-    referenced: set[str] = set()
-    for candidate in referenced_types(signature["signature"], types):
-        referenced.add(candidate)
-    return Reflected([signature], documentation(found, where), referenced)
+class Resolver:
+    """Every declared type, and the closure over what a piece of written text refers to."""
 
-
-def referenced_types(text: str, types: dict[str, str], seen: set[str] | None = None) -> set[str]:
-    """The declared type names a piece of text refers to, closed transitively.
-
-    Transitively, because a declaration that names a type the prompt does not also carry is a dangling
-    reference in front of the model: `context.search_archive` returns an `ArchiveSearch`, whose
-    declaration is only useful alongside `ArchiveHit`.
-    """
-    seen = set() if seen is None else seen
-    for name, declaration in types.items():
-        if name in seen or not re.search(rf"\b{re.escape(name)}\b", text):
-            continue
-        seen.add(name)
-        referenced_types(declaration, types, seen)
-    return seen
-
-
-# --- Types ---------------------------------------------------------------------------------------
-
-
-def base_names(cls: griffe.Class) -> list[str]:
-    """The class's bases, by name."""
-    return [str(base) for base in cls.bases]
-
-
-def member_doc(owner: str, name: str, member: Any) -> str:
-    """One member's documentation, or a build error naming what is missing."""
-    docstring = getattr(member, "docstring", None)
-    if docstring is None or not docstring.value.strip():
-        raise SystemExit(
-            f"`{owner}.{name}` has no docstring. A record whose fields arrive unexplained is a record "
-            "a model has to guess at."
-        )
-    return flatten(docstring.value)
-
-
-def declare_type(name: str, declared: Any) -> dict[str, Any]:
-    """One type, as the catalogue carries it: its declaration, its paragraph, and a line per member.
-
-    Three shapes reach a model through this: a **dataclass**, whose members are its fields; an
-    **enum**, whose members are values rather than fields and so carry no type of their own — the same
-    convention the TypeScript arm's union-of-literals uses; and a **union alias**, which is a name for
-    two classes catalogued in their own right and so has no members here.
-    """
-    docstring = getattr(declared, "docstring", None)
-    if docstring is None or not docstring.value.strip():
-        raise SystemExit(f"the type `{name}` has no docstring.")
-    doc = flatten(docstring.value)
-
-    if isinstance(declared, griffe.Attribute):
-        return {
-            "name": name,
-            "declaration": f"{name} = {annotation_of(declared.value)}",
-            "doc": doc,
-            "members": [],
-        }
-
-    bases = base_names(declared)
-    members: list[dict[str, Any]] = []
-    lines: list[str] = []
-    if "Enum" in bases:
-        header = f"class {name}(Enum):"
-        for member_name, member in declared.members.items():
-            if not isinstance(member, griffe.Attribute):
-                continue
-            lines.append(f"    {member_name}")
-            members.append(
-                {
-                    "name": member_name,
-                    # A member is the value, not a field holding one, so it carries no type beside
-                    # itself. Its wire spelling is deliberately not shown: the member's NAME is the
-                    # API, and a model shown `PENDING = "pending"` would reach for the string.
-                    "type": None,
-                    "doc": member_doc(name, member_name, member),
-                }
-            )
-    else:
-        decorators = [str(decorator.value) for decorator in declared.decorators]
-        inherits = f"({', '.join(bases)})" if bases else ""
-        header = f"class {name}{inherits}:"
-        lines_before = [f"@{decorator}" for decorator in decorators]
-        header = "\n".join([*lines_before, header])
-        for member_name, member in declared.members.items():
-            if not isinstance(member, griffe.Attribute) or member_name.startswith("_"):
-                continue
-            annotation = annotation_of(member.annotation)
-            lines.append(f"    {member_name}: {annotation}")
-            members.append(
-                {
-                    "name": member_name,
-                    "type": annotation,
-                    "doc": member_doc(name, member_name, member),
-                }
-            )
-    if not members:
-        raise SystemExit(f"the type `{name}` declares no members a model could read.")
-    return {
-        "name": name,
-        "declaration": "\n".join([header, *lines]),
-        "doc": doc,
-        "members": members,
-    }
-
-
-def type_declarations(sources: griffe.Module, order: Iterable[str]) -> dict[str, dict[str, Any]]:
-    """Every catalogued type, in `TYPE_ORDER`, each read off the declaration it is written on.
-
-    Also the check that nothing was left out: a public declaration in `gg/types.py` or `gg/errors.py`
-    that `TYPE_ORDER` does not name is a type the closure above could never find, so it would
-    silently never reach a model.
-    """
-    listed = list(order)
-    declared: dict[str, dict[str, Any]] = {}
-    for name in listed:
-        for module in TYPE_MODULES:
-            found = sources[module].members.get(name)
-            if found is not None:
-                declared[name] = declare_type(name, found)
-                break
-        else:
-            raise SystemExit(
-                f"`{name}` is in TYPE_ORDER and neither {' nor '.join(TYPE_MODULES)} declares it."
-            )
-    for module in TYPE_MODULES:
-        exported = sources[module].members.get("__all__")
-        if exported is None:
-            continue
-        for name in literal_strings(exported):
-            if name not in listed and name.isupper():
-                # A module-level CONSTANT rather than a type — `UNCHANGED` is the value, `Unchanged`
-                # the type — and the value travels with its type rather than as a declaration of its
-                # own.
-                continue
-            if name not in listed:
+    def __init__(self, declared: Iterable[Declared]) -> None:
+        self.by_name: dict[str, Declared] = {}
+        for declaration in declared:
+            if declaration.name in self.by_name:
                 raise SystemExit(
-                    f"`gg.{module}` exports `{name}` and TYPE_ORDER does not list it, so no "
-                    "signature that mentions it could ever have its declaration shown."
+                    f"two modules declare a type called `{declaration.name}`. This SDK's signatures "
+                    "write a bare name, so two declarations answering to one would make the lookup "
+                    "that resolves it a coin toss."
                 )
-    return declared
+            self.by_name[declaration.name] = declaration
 
+    def closure(self, *written: str) -> list[Declared]:
+        """Every declaration the written text refers to, closed transitively, in declaration order.
 
-def literal_strings(attribute: griffe.Attribute) -> list[str]:
-    """The string literals in an `__all__`, read off its source rather than evaluated."""
-    return re.findall(r"[\"']([^\"']+)[\"']", str(attribute.value))
+        Transitively, because a declaration that names a type the catalogue does not also carry is a
+        dangling reference in front of the model: `context.search_archive` returns an `ArchiveSearch`,
+        whose declaration is only useful alongside `ArchiveHit`.
+        """
+        seen: dict[str, Declared] = {}
+        pending = [name for text in written for name in identifiers(text)]
+        while pending:
+            name = pending.pop()
+            declaration = self.by_name.get(name)
+            if declaration is None or name in seen:
+                continue
+            seen[name] = declaration
+            pending.extend(declaration.mentions)
+        return [
+            declaration for declaration in self.by_name.values() if declaration.name in seen
+        ]
+
+    def references(self, *written: str) -> list[dict[str, str]]:
+        """The closure, as the catalogue's resolved type references."""
+        return [
+            {"spelled": declaration.name, "fqn": declaration.fqn}
+            for declaration in self.closure(*written)
+        ]
+
+    def direct(self, written: str) -> list[dict[str, str]]:
+        """Only the declarations `written` itself names, as resolved references.
+
+        The **return position** is this rather than the closure, and the difference is what a reader
+        of it spends: opening a function's return type is meant to land on the one value the call
+        hands back, not on that value's fields and their fields. The closure answers a different
+        question — what can this agent reach at all — and is what `types` carries.
+        """
+        names = identifiers(written)
+        return [
+            {"spelled": declaration.name, "fqn": declaration.fqn}
+            for declaration in self.by_name.values()
+            if declaration.name in names
+        ]
 
 
 # --- The libraries -------------------------------------------------------------------------------
@@ -507,192 +658,167 @@ def libraries() -> list[dict[str, Any]]:
 # --- The catalogue -------------------------------------------------------------------------------
 
 
+def public_names(module: griffe.Module, where: str) -> list[str]:
+    """The names a capability module declares public, in the order `__all__` lists them.
+
+    `__all__` is Python's own declaration of a module's public surface, and it is the whole of this
+    arm's public-surface rule: a name in it is model-facing, a name outside it is not. It is read off
+    the source rather than evaluated, exactly as every other fact here is.
+    """
+    exported = module.members.get("__all__")
+    if exported is None:
+        raise SystemExit(
+            f"{where} declares no `__all__`, so nothing says which of its names are model-facing."
+        )
+    listed = set(re.findall(r"[\"']([^\"']+)[\"']", str(exported.value)))
+    # Walked in DECLARATION order rather than in `__all__`'s, because the order is model-facing: it
+    # is the sequence a module's directory lists its functions in and the sequence a documentation
+    # view appends its types in. `__all__` is sorted so that a reader can find a name in it, which is
+    # the opposite of the order the SDK was written to be read in.
+    declared = [name for name in module.members if name in listed]
+    missing = sorted(listed.difference(declared))
+    if missing:
+        raise SystemExit(f"{where} exports {missing} and does not define them.")
+    return declared
+
+
 def build() -> str:
     """The whole catalogue, as the JSON text the guests directory carries."""
     catalogue = load_catalogue()
     sources = load_sources()
+    package = catalogue.PACKAGE
 
-    declarations = type_declarations(sources, catalogue.TYPE_ORDER)
-    types_by_declaration = {
-        name: declared["declaration"] for name, declared in declarations.items()
-    }
-    used: set[str] = referenced_types(ALWAYS_INCLUDED_TYPE, types_by_declaration)
+    modules: list[dict[str, Any]] = []
+    declared: list[Declared] = []
+    functions: list[tuple[str, str, str, griffe.Function]] = []
 
-    def order(names: Iterable[str]) -> list[str]:
-        listed = list(catalogue.TYPE_ORDER)
-        return sorted(names, key=listed.index)
-
-    def entry(module: str, name: str) -> Reflected:
-        reflected = reflect(sources, module, name, types_by_declaration)
-        used.update(reflected.referenced)
-        return reflected
-
-    tools_module = "tools"
-    object_for_tool = {
-        item.tool: catalogue.OBJECT_FOR_MODULE[item.module] for item in catalogue.TOOL_CATALOGUE
-    }
-
-    meta = []
-    for item in catalogue.META_ENTRIES:
-        reflected = entry(f"{tools_module}.{catalogue.META_MODULE}", item.python)
-        meta.append(
+    for module_id in catalogue.MODULE_ORDER:
+        path = f"{package}.{module_id}"
+        try:
+            module = sources[module_id]
+        except KeyError:
+            raise SystemExit(f"`{path}` is in MODULE_ORDER and the package has no such module.") from None
+        prose = prose_of(
+            None if module.docstring is None else module.docstring.value, f"the module `{path}`"
+        )
+        modules.append(
             {
-                "key": item.key,
-                "name": item.python,
-                "signatures": reflected.signatures,
-                "doc": reflected.doc,
-                "types": order(reflected.referenced),
+                "id": module_id,
+                "path": path,
+                "brief": prose.brief,
+                "detail": prose.detail,
+                # `None`, and honestly: gg injects this SDK into a program's scope, so a documented
+                # import would be a line a model would be wrong to think it had to write.
+                "import": None,
+            }
+        )
+        for name in public_names(module, f"`{path}`"):
+            member = module.members[name]
+            if isinstance(member, griffe.Function):
+                functions.append((module_id, path, name, member))
+            elif name.isupper():
+                # A module-level CONSTANT rather than a type — `UNCHANGED` is the value and
+                # `Unchanged` is the type it is a member of — and PEP 8's own casing is what tells
+                # the two apart. The value travels with its type's declaration rather than as a
+                # declaration of its own, because a documentation view of a single value would carry
+                # nothing the type's own view does not.
+                continue
+            else:
+                declared.append(declare_type(module_id, path, name, member))
+
+    resolver = Resolver(declared)
+    reached: set[str] = set()
+    emitted: list[dict[str, Any]] = []
+    claimed: dict[str, str] = {}
+
+    for module_id, path, name, function in functions:
+        fqn = f"{path}.{name}"
+        where = f"`{fqn}`"
+        operation = operation_of(function)
+        if operation is None:
+            raise SystemExit(
+                f"{where} is public and names no gg operation. Write `@operation(\"<namespace>."
+                "<key>\")` on the declaration: an entry gg cannot resolve is dropped from search, "
+                "from every directory and from every documentation view."
+            )
+        if operation in claimed:
+            raise SystemExit(
+                f"{where} and `{claimed[operation]}` both claim the gg operation `{operation}`."
+            )
+        claimed[operation] = fqn
+        prose = documentation(function, where)
+        signature = signature_of(function, name, where)
+        returned = annotation_of(function.returns)
+        written = [parameter["type"] for parameter in signature["parameters"]]
+        types = resolver.references(returned, *written, *ALWAYS_REFERENCED)
+        reached.update(reference["fqn"] for reference in types)
+        emitted.append(
+            {
+                "operation": operation,
+                # This SDK offers each operation exactly once: a module-level function is the whole
+                # of the idiom, so there is no second way to reach one and nothing is an alias.
+                "aliasOf": None,
+                "module": module_id,
+                "kind": "function",
+                "receiver": None,
+                "name": name,
+                "fqn": fqn,
+                # The fully-qualified name IS what a program writes: `gg.files.read_file` resolves
+                # after `import gg`, and the module the scope binds makes `files.read_file` the same
+                # object. There is no third spelling for a call site to need.
+                "call": None,
+                "brief": prose.brief,
+                "detail": prose.detail,
+                "signatures": [signature],
+                "returns": resolver.direct(returned),
+                "types": types,
             }
         )
 
-    session = []
-    for item in catalogue.SESSION_ENTRIES:
-        reflected = entry(catalogue.SESSION_MODULE, item.python)
-        session.append(
-            {
-                "key": item.key,
-                "name": item.python,
-                "object": item.object,
-                "ending": item.ending,
-                "signatures": reflected.signatures,
-                "doc": reflected.doc,
-                "types": order(reflected.referenced),
-            }
-        )
+    meta_where = f"`{package}.{META_MODULE}.{META_FUNCTION}`"
+    meta = sources[META_MODULE].members.get(META_FUNCTION)
+    if not isinstance(meta, griffe.Function):
+        raise SystemExit(f"{meta_where} is not declared, and every module carries it.")
+    meta_prose = documentation(meta, meta_where)
+    meta_signature = signature_of(meta, META_FUNCTION, meta_where)
+    meta_types = resolver.references(annotation_of(meta.returns))
+    reached.update(reference["fqn"] for reference in meta_types)
 
-    views = []
-    for item in catalogue.VIEW_ENTRIES:
-        reflected = entry(f"{tools_module}.{catalogue.VIEW_MODULE}", item.python)
-        views.append(
-            {
-                "key": item.key,
-                "requires": item.requires,
-                "name": item.python,
-                "object": catalogue.OBJECT_FOR_MODULE[catalogue.VIEW_MODULE],
-                "signatures": reflected.signatures,
-                "doc": reflected.doc,
-                "types": order(reflected.referenced),
-            }
-        )
-
-    programs = []
-    for item in catalogue.PROGRAM_ENTRIES:
-        reflected = entry(f"{tools_module}.{catalogue.PROGRAM_MODULE}", item.python)
-        programs.append(
-            {
-                "key": item.key,
-                "name": item.python,
-                "object": catalogue.OBJECT_FOR_MODULE[catalogue.PROGRAM_MODULE],
-                "signatures": reflected.signatures,
-                "doc": reflected.doc,
-                "types": order(reflected.referenced),
-            }
-        )
-
-    tools = []
-    for item in catalogue.TOOL_CATALOGUE:
-        reflected = entry(f"{tools_module}.{item.module}", item.python)
-        tools.append(
-            {
-                "tool": item.tool,
-                "name": item.python,
-                "object": catalogue.OBJECT_FOR_MODULE[item.module],
-                "signatures": reflected.signatures,
-                "doc": reflected.doc,
-                "types": order(reflected.referenced),
-            }
-        )
-
-    helpers = []
-    for item in catalogue.HELPER_CATALOGUE:
-        reflected = entry(catalogue.HELPER_MODULE, item.python)
-        helpers.append(
-            {
-                "key": item.key,
-                "requires": item.requires,
-                "name": item.python,
-                # A helper hangs off the object of the tool it is built on, which is the whole of
-                # what "bound alongside" means.
-                "object": object_for_tool[item.requires],
-                "signatures": reflected.signatures,
-                "doc": reflected.doc,
-                "types": order(reflected.referenced),
-            }
-        )
-
-    objects = api_objects(catalogue, sources, tools, helpers, views, programs, session)
-
-    unused = [name for name in catalogue.TYPE_ORDER if name not in used]
-    if unused:
+    unreached = [declaration.fqn for declaration in declared if declaration.fqn not in reached]
+    if unreached:
         raise SystemExit(
-            f"{unused} are declared and no signature mentions them, so nothing would ever show them "
-            "to a model. Remove them, or reference them from the signature that returns one."
+            f"{unreached} are declared and nothing refers to them, so no documentation view of one "
+            "could ever be opened. Remove them, or refer to them from the signature that produces "
+            "one."
         )
 
     return (
         json.dumps(
             {
+                "schema": SCHEMA,
                 "language": LANGUAGE,
                 "generatedFrom": GENERATED_FROM,
                 "libraries": libraries(),
-                "objects": objects,
-                "meta": meta,
-                "session": session,
-                "views": views,
-                "programs": programs,
-                "tools": tools,
-                "helpers": helpers,
-                "types": [declarations[name] for name in order(used)],
+                "modules": modules,
+                "meta": [
+                    {
+                        "key": META_FUNCTION,
+                        "name": META_FUNCTION,
+                        "signatures": [meta_signature],
+                        "doc": "\n\n".join(
+                            part for part in [meta_prose.brief, meta_prose.detail] if part
+                        ),
+                        "types": meta_types,
+                    }
+                ],
+                "functions": emitted,
+                "types": [declaration.entry for declaration in declared],
             },
             indent=2,
             ensure_ascii=False,
         )
         + "\n"
     )
-
-
-def api_objects(
-    catalogue: ModuleType,
-    sources: griffe.Module,
-    *sections: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    """The API objects, in presentation order, each with the sentence a model is introduced to it by.
-
-    The sentence comes off the docstring on the constant in `gg/catalogue.py` that *is* the object's
-    name — written where the object is declared, for the reason every function's description is
-    written on the function.
-    """
-    constants = {
-        getattr(catalogue, name): name
-        for name in dir(catalogue)
-        if name.startswith("OBJECT_") and isinstance(getattr(catalogue, name), str)
-    }
-    grouped = {item["object"] for section in sections for item in section}
-    described: list[dict[str, Any]] = []
-    for object_name in catalogue.OBJECT_ORDER:
-        constant = constants.get(object_name)
-        if constant is None:
-            raise SystemExit(
-                f"`{object_name}` is in OBJECT_ORDER and no `OBJECT_*` constant holds it, so there "
-                "is no declaration its description could be written on."
-            )
-        declared = sources["catalogue"].members.get(constant)
-        docstring = getattr(declared, "docstring", None)
-        if docstring is None or not docstring.value.strip():
-            raise SystemExit(f"`{constant}` has no docstring describing the `{object_name}` object.")
-        if object_name not in grouped:
-            raise SystemExit(
-                f"the API object `{object_name}` is described and no catalogued function hangs off "
-                "it, so a model would be introduced to an object it is never given."
-            )
-        described.append({"object": object_name, "doc": flatten(docstring.value)})
-        grouped.discard(object_name)
-    for object_name in sorted(grouped):
-        raise SystemExit(
-            f"`{object_name}` groups catalogued functions and is not in OBJECT_ORDER, so nothing "
-            "describes it to a model."
-        )
-    return described
 
 
 def main() -> None:
@@ -716,10 +842,8 @@ def main() -> None:
     out.write_text(catalogue, encoding="utf-8")
     parsed = json.loads(catalogue)
     print(
-        f"Wrote {out} ({len(parsed['objects'])} objects, {len(parsed['tools'])} tools, "
-        f"{len(parsed['helpers'])} helpers, {len(parsed['views'])} view functions, "
-        f"{len(parsed['programs'])} program-library functions, {len(parsed['meta'])} meta "
-        f"functions, {len(parsed['types'])} types, "
+        f"Wrote {out} ({len(parsed['modules'])} modules, {len(parsed['functions'])} functions, "
+        f"{len(parsed['types'])} types, "
         f"{sum(len(group['modules']) for group in parsed['libraries'])} libraries)."
     )
 

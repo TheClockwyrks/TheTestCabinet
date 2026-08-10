@@ -373,14 +373,14 @@ fn the_catalogue_tells_the_truth_about_pictures() {
         read.doc
     );
 
-    // THE IMAGE-VIEW CAP IS GONE, AND NINE ARMS STILL PROMISE IT.
+    // THE IMAGE-VIEW CAP IS GONE, AND FIVE ARMS STILL PROMISE IT.
     // `SandboxLimits::image_view_cap` and its per-agent `imageViewCap` param were deleted —
     // nothing refuses an image view for being the n-th one — but a catalogue cannot be hand-edited
     // (contract-drift regenerates it from SDK source), so retiring the promise is a change to each
-    // SDK source tree in turn. C# and Rust have made it; cpp, java, javascript, kotlin, purescript,
-    // python, ruby, swift and typescript have not, and their `view.openFile` still names a cap the
-    // host no longer has. The same sentence sits in `crates/backend/src/gg_reference.json`, which is
-    // likewise regenerated rather than authored.
+    // SDK source tree in turn. C++, C#, PureScript, Python, Ruby and Rust have made it; java,
+    // javascript, kotlin, swift and typescript have not, and their `view.openFile` still names a cap
+    // the host no longer has. The same sentence sits in `crates/backend/src/gg_reference.json`,
+    // which is likewise regenerated rather than authored.
     //
     // What is asserted is therefore the direction rather than the state: **an arm that has been
     // converted may not carry it**. That tightens by itself as each arm lands, and it never holds an
@@ -429,7 +429,14 @@ use super::fixture;
 /// It fails in both directions, which is the point. Converting an arm and forgetting to name it
 /// here leaves the tree quietly holding a v2 catalogue to no v2 gate; naming one that has not been
 /// converted claims a coverage nothing provides.
-const CONVERTED: [GgProgramLanguage; 2] = [GgProgramLanguage::CSharp, GgProgramLanguage::Rust];
+const CONVERTED: [GgProgramLanguage; 6] = [
+    GgProgramLanguage::Cpp,
+    GgProgramLanguage::CSharp,
+    GgProgramLanguage::PureScript,
+    GgProgramLanguage::Python,
+    GgProgramLanguage::Ruby,
+    GgProgramLanguage::Rust,
+];
 
 #[test]
 fn every_registered_arm_is_written_in_the_schema_this_tree_says_it_is() {

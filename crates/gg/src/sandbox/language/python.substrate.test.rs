@@ -71,7 +71,7 @@ fn component() -> &'static Component {
 /// Everything else is production: the component comes out of the production cache under this
 /// language's own wire id, and the [membrane state](MembraneState) is built with **this language**,
 /// so a refusal that names a call back at the model spells it from this arm's catalogue —
-/// `view.open_file` rather than `view.openFile`.
+/// `views.open_file` rather than `view.openFile`.
 fn run_with(
     program: &str,
     enabled: &[String],
@@ -93,7 +93,7 @@ fn run_with(
 /// [`run_with`], with the two things a *role* decides said explicitly: which ending group this
 /// program is given, and whether it keeps a [program library](crate::programs).
 ///
-/// They are the other half of what the SDK binds — `harness.finish` is bound from the first and the
+/// They are the other half of what the SDK binds — `session.finish` is bound from the first and the
 /// whole `programs` object from the second — so a test about the surface has to be able to vary
 /// them, where a test about the substrate never did.
 ///
@@ -823,27 +823,27 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            program: "system.shell(\"npm test\", timeout_secs=30)",
+            program: "shell.shell(\"npm test\", timeout_secs=30)",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            program: "fs.read_file(\"src/a.py\", offset=2, limit=5)",
+            program: "files.read_file(\"src/a.py\", offset=2, limit=5)",
             expected: || json!({ "path": "src/a.py", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            program: "fs.write_file(\"out.txt\", \"hello\")",
+            program: "files.write_file(\"out.txt\", \"hello\")",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            program: "fs.edit_file(\"src/a.py\", \"alpha\", \"beta\")",
+            program: "files.edit_file(\"src/a.py\", \"alpha\", \"beta\")",
             expected: || json!({ "path": "src/a.py", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            program: "fs.list_dir(\"src\")",
+            program: "files.list_dir(\"src\")",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
@@ -853,37 +853,37 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "write_memory",
-            program: "memory.write_memory(\"layout\", \"d\", \"b\")",
+            program: "memories.write_memory(\"layout\", \"d\", \"b\")",
             expected: || json!({ "name": "layout", "description": "d", "body": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "update_memory",
-            program: "memory.update_memory(\"layout\", \"d2\", \"b2\")",
+            program: "memories.update_memory(\"layout\", \"d2\", \"b2\")",
             expected: || json!({ "name": "layout", "description": "d2", "body": "b2", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "create_memory",
-            program: "memory.create_memory(\"layout\", \"d\", \"b\")",
+            program: "memories.create_memory(\"layout\", \"d\", \"b\")",
             expected: || json!({ "name": "layout", "description": "d", "contents": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "read_memory",
-            program: "memory.read_memory(\"layout\")",
+            program: "memories.read_memory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            program: "memory.edit_memory(\"layout\", \"old\", \"new\")",
+            program: "memories.edit_memory(\"layout\", \"old\", \"new\")",
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            program: "memory.search_memories([\"cargo\", \"nextest\"])",
+            program: "memories.search_memories([\"cargo\", \"nextest\"])",
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            program: "memory.delete_memory(\"layout\")",
+            program: "memories.delete_memory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
@@ -918,12 +918,12 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "create_epic",
-            program: "project.create_epic(\"epc\", \"E\", \"D\")",
+            program: "board.create_epic(\"epc\", \"E\", \"D\")",
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            program: "project.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers=[\"critic\"])",
+            program: "board.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers=[\"critic\"])",
             expected: || {
                 json!({
                     "title": "I",
@@ -940,7 +940,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            program: "project.update_issue(\"i1\", status=IssueStatus.DONE, epic_id=None)",
+            program: "board.update_issue(\"i1\", status=IssueStatus.DONE, epic_id=None)",
             expected: || {
                 // `epic_id=None` ungroups the issue, which gg's schema spells as the empty string;
                 // a `description` left out keeps the one it has, so its key is absent entirely.
@@ -957,22 +957,22 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            program: "project.set_issue_blocked_by(\"i1\", [\"i0\"])",
+            program: "board.set_issue_blocked_by(\"i1\", [\"i0\"])",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            program: "project.remove_epic(\"e1\")",
+            program: "board.remove_epic(\"e1\")",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            program: "project.remove_issue(\"i1\")",
+            program: "board.remove_issue(\"i1\")",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            program: "project.wait_for_issue(\"i1\")",
+            program: "board.wait_for_issue(\"i1\")",
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
@@ -997,32 +997,32 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "spawn_subagent",
-            program: "agents.spawn_subagent(\"subagent\", prompt=\"write the lexer\")",
+            program: "delegation.spawn_subagent(\"subagent\", prompt=\"write the lexer\")",
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            program: "agents.wait_for_subagents([\"agent-1\"])",
+            program: "delegation.wait_for_subagents([\"agent-1\"])",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            program: "agents.send_message(\"agent-1\", \"prefer the simpler parser\")",
+            program: "delegation.send_message(\"agent-1\", \"prefer the simpler parser\")",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            program: "agents.transition_state(\"verify\", \"the build is green\")",
+            program: "delegation.transition_state(\"verify\", \"the build is green\")",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            program: "agents.exec(\"Builder\", \"pick it up from here\")",
+            program: "delegation.exec(\"Builder\", \"pick it up from here\")",
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            program: "agents.fork(\"try the other fix\")",
+            program: "delegation.fork(\"try the other fix\")",
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -1082,30 +1082,30 @@ fn the_sdk_hands_a_program_values_python_can_read() {
     let enabled = all_tools();
     let (outcome, _log) = run_with(
         r#"
-read = fs.read_file("notes.md")
+read = files.read_file("notes.md")
 print(type(read).__name__, read.first_line, read.total_lines, read.byte_truncated)
 print(repr(read.contents.splitlines()[0]))
 
-picture = fs.read_file("logo.png")
+picture = files.read_file("logo.png")
 print(type(picture).__name__, picture.label, picture.bytes, picture.shown, picture.not_shown_reason is not None)
 print(isinstance(read, TextFile), isinstance(picture, TextFile), isinstance(picture, FileRead))
 
-entries = fs.list_dir("src")
+entries = files.list_dir("src")
 print([entry.name for entry in entries], entries[2].kind is EntryKind.DIRECTORY, entries[0].kind)
 
-budget = memory.write_memory("layout", "d", "b")
+budget = memories.write_memory("layout", "d", "b")
 print(budget.count, budget.max_count, budget.index_chars)
 
-ran = system.shell("make")
+ran = shell.shell("make")
 print(ran.exit_code, ran.truncated)
 
-collected = agents.wait_for_subagents()
+collected = delegation.wait_for_subagents()
 print(collected[0].status is AgentEnding.COMPLETED, collected[0].summary)
 
 archive = context.search_archive("the parser")
 print(archive.archive_empty, archive.hits[0].role is MessageRole.ASSISTANT, archive.hits[0].seq)
 
-created = project.create_issue("I", "s", "o", "c", "worker")
+created = board.create_issue("I", "s", "o", "c", "worker")
 print(created.id, created.board.issues, created.board.max_issues)
 "#,
         &enabled,
@@ -1118,10 +1118,10 @@ print(created.id, created.board.issues, created.board.max_issues)
         [
             "TextFile 1 2 False",
             "'contents of notes.md'",
-            // `shown` is false and a reason is given, because `fs.read_file` describes a picture
+            // `shown` is false and a reason is given, because `files.read_file` describes a picture
             // rather than showing it. The reason's own PROSE is not asserted: the host resolves the
             // call it points at from the run's language, and this harness builds the membrane in
-            // TypeScript, so it names `view.openFile` here and will name `view.open_file` the day
+            // TypeScript, so it names `view.openFile` here and will name `views.open_file` the day
             // this arm is registered.
             "ImageFile PNG 1234 False True",
             "True False True",
@@ -1135,7 +1135,7 @@ print(created.id, created.board.issues, created.board.max_issues)
     );
 
     // A dataclass is a dataclass: frozen, comparable, and printable. A model that shows itself a
-    // result with `view.open_text(label, str(result))` gets something it can read back.
+    // result with `views.open_text(label, str(result))` gets something it can read back.
     let (outcome, _log) = run_with(
         r#"
 import dataclasses
@@ -1173,7 +1173,7 @@ fn a_failed_call_arrives_as_a_python_exception() {
     let (outcome, _log) = run_with(
         r#"
 try:
-    fs.edit_file("src/a.py", "alpha", "beta")
+    files.edit_file("src/a.py", "alpha", "beta")
 except ToolError as failure:
     print(failure.tool, failure.code is ToolErrorCode.CONFLICT, failure.code.value)
     print(str(failure))
@@ -1204,7 +1204,7 @@ except ToolError as failure:
     // host branches on — which is what makes a failure raised through the SDK indistinguishable, to
     // gg, from one a program raised by reaching past it into the generated bindings.
     let (outcome, _log) = run_with(
-        "fs.read_file(\"missing.py\")",
+        "files.read_file(\"missing.py\")",
         &enabled,
         &[],
         SandboxLimits::default(),
@@ -1230,7 +1230,7 @@ except ToolError as failure:
     // An argument of the right type and the wrong range is refused HERE, before it wraps into a
     // `u32` and reads a window nobody asked for.
     let (outcome, log) = run_with(
-        "fs.read_file(\"a.py\", offset=-1)",
+        "files.read_file(\"a.py\", offset=-1)",
         &enabled,
         &[],
         SandboxLimits::default(),
@@ -1266,8 +1266,8 @@ except ToolError as failure:
 
     // Briefing a child with neither half of the choice, or with both, is refused by name.
     for program in [
-        "agents.spawn_subagent(\"worker\")",
-        "agents.spawn_subagent(\"worker\", prompt=\"p\", issue_id=\"AUTH-1\")",
+        "delegation.spawn_subagent(\"worker\")",
+        "delegation.spawn_subagent(\"worker\", prompt=\"p\", issue_id=\"AUTH-1\")",
     ] {
         let (outcome, log) = run_with(
             program,
@@ -1286,13 +1286,13 @@ except ToolError as failure:
 }
 
 #[test]
-fn what_a_run_withholds_is_not_on_the_object_it_would_hang_off() {
-    // The surface follows the run. A withheld tool is not an attribute of its object, an object with
+fn what_a_run_withholds_is_not_on_the_module_it_would_hang_off() {
+    // The surface follows the run. A withheld tool is not an attribute of its module, a module with
     // nothing on it does not exist at all, and both failures are classified as the SAME thing a
     // guest that could withhold a *name* reports — because they are the same fact, and counting them
     // differently per language would put the arm's error rate in the study.
     let (outcome, log) = run_with(
-        "fs.read_file(\"notes.md\")",
+        "files.read_file(\"notes.md\")",
         &["write_file".to_string()],
         &[],
         SandboxLimits::default(),
@@ -1303,15 +1303,16 @@ fn what_a_run_withholds_is_not_on_the_object_it_would_hang_off() {
     assert!(
         error
             .message
-            .contains("`fs.read_file` is not one of the functions this run offers")
-            && error.message.contains("fs.list()"),
-        "the object is named and its directory is pointed at: {}",
+            .contains("`gg.files.read_file` is not one of the functions this run offers")
+            && error.message.contains("gg.files.list()"),
+        "the module is named — by the fully-qualified name the documentation is keyed by — and its \
+         directory is pointed at: {}",
         error.message
     );
     assert!(log.calls().is_empty(), "nothing reached the host");
 
     let (outcome, _log) = run_with(
-        "project.create_epic(\"epc\", \"E\", \"D\")",
+        "board.create_epic(\"epc\", \"E\", \"D\")",
         &["write_file".to_string()],
         &[],
         SandboxLimits::default(),
@@ -1320,7 +1321,7 @@ fn what_a_run_withholds_is_not_on_the_object_it_would_hang_off() {
     assert_eq!(
         program_error(&outcome).kind,
         ProgramErrorKind::UnknownName,
-        "an object with no enabled function is not a name"
+        "a module with no enabled function is not a name"
     );
 
     // And the same mistake against anything else is the ordinary program bug it looks like.
@@ -1333,12 +1334,13 @@ fn what_a_run_withholds_is_not_on_the_object_it_would_hang_off() {
     );
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
 
-    // The SDK is a library, not the capability model: a program that reaches past its object still
-    // reaches the call, and the HOST is what refuses it. That is the whole reason gating moved to
-    // the host, and it is what a language whose SDK is an ordinary import cannot do for itself.
+    // The SDK is a library, not the capability model: a program that reaches past the surface it
+    // was given still reaches the call, and the HOST is what refuses it. That is the whole reason
+    // gating moved to the host, and it is what a language whose SDK is an ordinary import cannot do
+    // for itself.
     let (outcome, log) = run_with(
         r#"
-from gg.tools import files
+from gg import files
 
 try:
     files.read_file("notes.md")
@@ -1375,59 +1377,48 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     // that is not there.
     let catalogue: Value =
         serde_json::from_str(SIGNATURES).expect("the committed Python catalogue is valid JSON");
-    let named = |section: &str| -> Vec<(String, String)> {
-        catalogue[section]
-            .as_array()
-            .unwrap_or_else(|| panic!("the catalogue's `{section}` is an array"))
-            .iter()
-            .map(|entry| {
-                (
-                    entry["object"].as_str().expect("an object").to_string(),
-                    entry["name"].as_str().expect("a name").to_string(),
-                )
-            })
-            .collect()
+    // One flat array of functions, each naming the gg operation it binds and the module it lives in.
+    // The ending group is the only thing a role changes, and an operation id is what names one, so
+    // the split below is read off `session.` rather than off a section this schema no longer has.
+    let functions = catalogue["functions"]
+        .as_array()
+        .expect("the catalogue's `functions` is an array");
+    let entry = |value: &Value| -> (String, String, String) {
+        (
+            value["operation"]
+                .as_str()
+                .expect("an operation")
+                .to_string(),
+            value["module"].as_str().expect("a module").to_string(),
+            value["name"].as_str().expect("a name").to_string(),
+        )
     };
+    let review_endings = ["session.approve", "session.request_changes"];
 
-    // A standard agent that keeps a library: every tool, every helper, every view function, the
-    // whole program library, and the `harness` ending — plus the `list` every object carries, which
-    // is checked against each object the catalogue describes rather than against a section of its
-    // own, because that is how it is bound.
-    let mut expected: Vec<(String, String)> = named("tools");
-    expected.extend(named("helpers"));
-    expected.extend(named("views"));
-    expected.extend(named("programs"));
-    expected.extend(
-        catalogue["session"]
-            .as_array()
-            .expect("an array")
-            .iter()
-            .filter(|entry| entry["ending"] == json!("standard"))
-            .map(|entry| {
-                (
-                    entry["object"].as_str().expect("an object").to_string(),
-                    entry["name"].as_str().expect("a name").to_string(),
-                )
-            }),
-    );
+    // A standard agent that keeps a library gets every operation except the reviewer's two endings —
+    // plus the `list` every module carries, which is checked against each module that offered
+    // something rather than against a section of its own, because that is how it is bound.
+    let mut expected: Vec<(String, String)> = functions
+        .iter()
+        .map(entry)
+        .filter(|(operation, ..)| !review_endings.contains(&operation.as_str()))
+        .map(|(_, module, name)| (module, name))
+        .collect();
     let meta: Vec<String> = catalogue["meta"]
         .as_array()
         .expect("an array")
         .iter()
-        .map(|entry| entry["name"].as_str().expect("a name").to_string())
+        .map(|value| value["name"].as_str().expect("a name").to_string())
         .collect();
-    for object in catalogue["objects"].as_array().expect("an array") {
-        let object = object["object"].as_str().expect("an object name");
-        // `review` is the other role's ending object, and this program is a standard agent's.
-        if object == "review" {
-            continue;
-        }
-        expected.extend(meta.iter().map(|name| (object.to_string(), name.clone())));
+    let mut offered: Vec<String> = expected.iter().map(|(module, _)| module.clone()).collect();
+    offered.dedup();
+    for module in &offered {
+        expected.extend(meta.iter().map(|name| (module.clone(), name.clone())));
     }
 
     let calls: Vec<String> = expected
         .iter()
-        .map(|(object, name)| format!("{object}.{name}"))
+        .map(|(module, name)| format!("{module}.{name}"))
         .collect();
     let program = format!(
         "print(\",\".join(\"missing\" if not callable(f) else \"ok\" for f in [{}]))",
@@ -1445,22 +1436,46 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     assert_eq!(
         logs(&outcome),
         [vec!["ok"; calls.len()].join(",")],
-        "every call the catalogue describes is bound as a function on the object it names"
+        "every call the catalogue describes is bound as a function on the module it names"
     );
 
-    // The reviewer's ending is the other group, and it is bound only for the role that produces it.
-    let review: Vec<String> = catalogue["session"]
+    // And under the FULLY-QUALIFIED name the catalogue keys it by, which is the same object rather
+    // than a second binding of it. That name is what a documentation view is opened by, what a
+    // search returns and what gg quotes back in a refusal, so a program that read it everywhere and
+    // could not type it would be reading a key it has no use for.
+    let qualified: Vec<String> = catalogue["functions"]
         .as_array()
         .expect("an array")
         .iter()
-        .filter(|entry| entry["ending"] == json!("review"))
-        .map(|entry| {
-            format!(
-                "{}.{}",
-                entry["object"].as_str().expect("an object"),
-                entry["name"].as_str().expect("a name")
-            )
-        })
+        .map(|value| value["fqn"].as_str().expect("a name").to_string())
+        .filter(|fqn| !fqn.ends_with(".approve") && !fqn.ends_with(".request_changes"))
+        .collect();
+    let pairs: Vec<String> = qualified
+        .iter()
+        .zip(&calls)
+        .map(|(fqn, short)| format!("\"ok\" if {fqn} is {short} else \"different\""))
+        .collect();
+    let (outcome, _log) = run_as(
+        &format!("print(\",\".join([{}]))", pairs.join(", ")),
+        &all_tools(),
+        &[],
+        RunEnding::Role(crate::ending::EndingRole::Standard),
+        true,
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [vec!["ok"; qualified.len()].join(",")],
+        "the fully-qualified name and the short one are the same function"
+    );
+
+    // The reviewer's ending is the other group, and it is bound only for the role that produces it.
+    let review: Vec<String> = functions
+        .iter()
+        .map(entry)
+        .filter(|(operation, ..)| review_endings.contains(&operation.as_str()))
+        .map(|(_, module, name)| format!("{module}.{name}"))
         .collect();
     let (outcome, _log) = run_as(
         &format!(
@@ -1503,27 +1518,27 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
 }
 
 #[test]
-fn the_view_object_and_the_program_library_are_reached_in_python_too() {
+fn the_views_module_and_the_program_library_are_reached_in_python_too() {
     // Neither family is a gg tool, so neither appears in the crossing table above — and both are
     // where a program puts something in front of the model, which makes them the two families a
     // silent bridging mistake would cost the most.
     let (outcome, _log) = run_as(
         r#"
-view.open_text("summary", "eight files, two failing")
-view.open_text("scratch", "throwaway")
-open = view.current()
+views.open_text("summary", "eight files, two failing")
+views.open_text("scratch", "throwaway")
+open = views.current()
 print(len(open), [v.selector for v in open], open[0].kind is ViewKind.TEXT, open[0].tokens)
-print(view.close("scratch"), view.close("never opened"), len(view.current()))
+print(views.close("scratch"), views.close("never opened"), len(views.current()))
 
 # The documentation of a function, named by the FUNCTION rather than by a string — which works
 # because an SDK function's `__name__` is the name gg catalogues it under, and the one closure this
 # SDK builds is wrapped so that it keeps its own.
-view.open_docs_view(fs.read_file)
-view.open_docs_view("write_file")
-view.open_docs_view(fs.list)
+views.open_docs_view(files.read_file)
+views.open_docs_view("write_file")
+views.open_docs_view(files.list)
 
-whole = view.open_file("notes.md")
-print(type(whole).__name__, [v.region for v in view.current() if v.kind is ViewKind.FILE])
+whole = views.open_file("notes.md")
+print(type(whole).__name__, [v.region for v in views.current() if v.kind is ViewKind.FILE])
 "#,
         &all_tools(),
         &[],
@@ -1559,8 +1574,8 @@ print(type(whole).__name__, [v.region for v in view.current() if v.kind is ViewK
     // whatever the membrane's `option<view-region>` looks like.
     let (outcome, _log) = run_with(
         r#"
-view.open_file("notes.md", offset=2, limit=1)
-region = [v.region for v in view.current() if v.kind is ViewKind.FILE][0]
+views.open_file("notes.md", offset=2, limit=1)
+region = [v.region for v in views.current() if v.kind is ViewKind.FILE][0]
 print(type(region).__name__, region.offset, region.limit)
 "#,
         &all_tools(),
@@ -1587,7 +1602,7 @@ print(type(region).__name__, region.offset, region.limit)
     // A value that is neither a function nor a name is refused before the lookup, so a model is
     // never told that a function called "None" does not exist.
     let (outcome, _log) = run_with(
-        "view.open_docs_view(None)",
+        "views.open_docs_view(None)",
         &all_tools(),
         &[],
         SandboxLimits::default(),

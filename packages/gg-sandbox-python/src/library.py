@@ -34,7 +34,7 @@ What is deliberately left out
   runs.
 * **``subprocess`` and ``multiprocessing``.** A WASI component cannot spawn a process. Their absence
   is the honest signal; their presence would be an import that succeeds and a call that fails.
-  ``system.shell`` is how an agent runs a command, and it is a gg tool rather than a Python API.
+  ``shell.shell`` is how an agent runs a command, and it is a gg tool rather than a Python API.
 * **``unittest`` and ``doctest``.** A program is one turn's worth of work, not a test suite, and
   both are large.
 * **``ssl``, ``bz2``, ``lzma``, ``ctypes``, ``curses``.** Not available at all: they are C

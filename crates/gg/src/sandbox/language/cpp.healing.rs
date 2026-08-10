@@ -257,7 +257,7 @@ const CODE_ENDINGS: [&str; 13] = [
 /// almost nothing a model writes has.
 ///
 /// The backtick is absent for [Rust's reason](super::super::rust::healing): a lead-in written with
-/// an inline code span (`` Use `view::open_text` to show yourself a value ``) is the single most
+/// an inline code span (`` Use `views::open_text` to show yourself a value ``) is the single most
 /// common prose line there is, and one that could never be deleted would cost a repair on almost
 /// every fenced reply.
 const NON_PROSE_CHARS: [char; 15] = [
@@ -430,7 +430,8 @@ fn looks_like_code(line: &str) -> bool {
         return true;
     }
     // 5. It carries a scope resolution, a member arrow or a stream insertion anywhere. `::` is in
-    //    every qualified name a C++ author writes — `fs::read_file`, `std::vector` — and is the one
+    //    every qualified name a C++ author writes — `files::read_file`, `std::vector` — and is the
+    //    one
     //    piece of punctuation this language uses that English has no version of at all.
     if line.contains("::") || line.contains("->") || line.contains("<<") {
         return true;
@@ -471,7 +472,7 @@ fn carries_an_assignment(line: &str) -> bool {
     })
 }
 
-/// Whether `line` opens with `name(`, `a::b(` or `a.b(` — `view::open_text(`, `entries.size(`.
+/// Whether `line` opens with `name(`, `a::b(` or `a.b(` — `views::open_text(`, `entries.size(`.
 fn opens_with_call(line: &str) -> bool {
     let mut chars = line.char_indices().peekable();
     let Some((_, first)) = chars.peek().copied() else {

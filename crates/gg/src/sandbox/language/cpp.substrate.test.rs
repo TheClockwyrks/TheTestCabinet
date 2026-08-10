@@ -36,7 +36,7 @@
 //! resolves, this arm's program and module steps are driven sixteen ways along with every other
 //! registered language's.
 //!
-//! The programs below are written the way a model writes one — `gg::log`, `fs::read_file`,
+//! The programs below are written the way a model writes one — `gg::log`, `files::read_file`,
 //! `text_edit::set` — because the SDK is what a program actually has. What they are *for* is still
 //! the substrate: that the crossing happens, not that it is spelled well.
 //! [`surface`](super::surface) is where the spelling is driven, function by function.
@@ -256,14 +256,14 @@ fn a_real_cpp_program_runs_through_the_real_membrane() {
 
 #[test]
 fn a_cpp_program_dispatches_a_real_call_through_the_membrane() {
-    // `fs::read_file` takes a string and hands back a `std::variant`, which is the shortest round
+    // `files::read_file` takes a string and hands back a `std::variant`, which is the shortest round
     // trip this arm has through the membrane that is not a bare string. What it proves is that a
     // C++ program's arguments are lowered, that gg's host dispatches the tool, and that what comes
     // back is a value the program can compute with — through the SDK a model actually writes.
     let program = "#include <string>\n\
          int main() {\n\
-         \x20 const auto read = fs::read_file(\"notes.md\");\n\
-         \x20 const auto *text = std::get_if<text_file>(&read);\n\
+         \x20 const auto read = files::read_file(\"notes.md\");\n\
+         \x20 const auto *text = std::get_if<files::text_file>(&read);\n\
          \x20 if (text == nullptr) {\n\
          \x20   log(\"that was a picture\");\n\
          \x20   return 1;\n\

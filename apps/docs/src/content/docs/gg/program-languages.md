@@ -334,7 +334,8 @@ this guest is neither).
 What a turn costs went up and is worth stating: **4.8 ms with no tool bound and 7.7 ms with all
 thirty-five**, against 2.1–2.6 ms for the substrate that had no SDK and 1.2–1.4 ms for a plain
 JavaScript program. The difference is this SDK's surface, which is built *in Ruby, per run*, out
-of the run's own enabled set — twelve API objects and thirty-odd methods defined on `Object`.
+of the run's own enabled set — eleven capability modules and thirty-odd methods put back onto
+them.
 Still two hundredths of a second beside a model request measured in seconds, and still bounded by
 a test that only a runtime falling out of the snapshot could move.
 
@@ -344,39 +345,51 @@ An idiomatic Ruby SDK is not the Python one with different brackets. Every diffe
 spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
 them:
 
-- **A block where a Ruby author expects one.** `view.open_text("failing tests") { rows.join("\n") }`
-  and `fs.write_file("notes.md") { body }` — the two calls whose last argument is a long body.
+- **A block where a Ruby author expects one.**
+  `GG::Views.open_text("failing tests") { rows.join("\n") }` and
+  `GG::Files.write_file("notes.md") { body }` — the two calls whose last argument is a long body.
   That makes Ruby the **first arm to emit an entry with more than one signature**, which turns
   that half of the catalogue schema from a shape nothing produced into a shape a gate reads —
   exactly as Python was the first to emit `kind: "keyword"`.
-- **A `Range` is a span.** `context.archive_thread(4..19, 30...36)` rather than a record with a
+- **A `Range` is a span.** `GG::Context.archive_thread(4..19, 30...36)` rather than a record with a
   `start` and an `end`, because a span of integers in this language *is* a `Range`. An exclusive
   range means the same thing and is lowered the same way.
-- **Splats where the argument is a list.** `memory.search_memories("cargo", "nextest")`,
-  `review.request_changes("widen the test", "name the file")`,
-  `project.set_issue_blocked_by("i1", "i0")`. Passing an array instead works too, which is the
+- **Splats where the argument is a list.** `GG::Memories.search_memories("cargo", "nextest")`,
+  `GG::Session.request_changes("widen the test", "name the file")`,
+  `GG::Board.set_issue_blocked_by("i1", "i0")`. Passing an array instead works too, which is the
   forgiveness a Ruby caller expects of a variadic method.
 - **Predicates.** `read.byte_truncated?`, `out.truncated?`, `found.archive_empty?`,
   `summary.ok?` — a boolean reader ends in `?`, so the catalogue's member names do too.
 - **Value objects.** A result carries `==`, `hash`, `to_h`, `inspect` and `deconstruct_keys`, so
-  two reads of one file compare equal and `case read in TextFile[contents:]` destructures.
-- **`case`, not a discriminant.** A read is a `TextFile` or an `ImageFile`, narrowed with an
+  two reads of one file compare equal and `case read in GG::Files::TextFile[contents:]`
+  destructures.
+- **`case`, not a discriminant.** A read is a `GG::Files::TextFile` or a `GG::Files::ImageFile`,
+  narrowed with an
   ordinary `case … when`. There is no union *type* at all, because Ruby has no annotations for one
   to appear in — where Python needs `FileRead = TextFile | ImageFile` to write its signature.
-- **Symbols for a fixed choice**, with a real check behind them. `tasks.update_task(id,
-  status: :done)`, `failure.code == ToolErrorCode::NOT_FOUND`. Opal's `Symbol` **is** `String`, so
+- **Symbols for a fixed choice**, with a real check behind them. `GG::Tasks.update_task(id,
+  status: :done)`, `failure.code == GG::Core::ToolErrorCode::NOT_FOUND`. Opal's `Symbol` **is**
+  `String`, so
   the language will not tell `:done` from `"done"` and cannot tell `:nearly` from a typo — which
   is why the SDK validates every fixed choice against its accepted set by hand and refuses an
   unknown one with `invalid-argument` naming every symbol that would have worked. That is what
   [rule 3](#the-rules-an-agent-facing-surface-obeys-in-every-language) actually asks for, and it
   is a place where the *guarantee* had to be re-earned rather than inherited from the language.
-- **A raised `ToolError`,** which is a `StandardError` — so a bare `rescue => failure` catches it,
-  as a Ruby programmer expects of anything a library raises.
-- **The surface is Ruby's own top level.** The API objects are methods on `Object`, which is what a
-  top-level `def` produces, so `fs.read_file("main.rb")` works with no receiver and no `require`
-  line; the types are top-level constants. A program that reaches past the surface into
-  `GG::Files.read_file` is refused **by the host**, exactly as a Python program that imports `gg`
-  is.
+- **A raised `GG::Core::ToolError`,** which is a `StandardError` — so a bare `rescue => failure`
+  catches it, as a Ruby programmer expects of anything a library raises.
+- **The surface is a namespace, the way Ruby's own libraries are.** `GG::Files.read_file`,
+  `GG::Shell.run`, `GG::Views.open_text` — module functions on capability modules, which is how
+  `FileUtils.mkdir_p`, `JSON.parse` and `Digest::SHA256.hexdigest` are reached. Each module owns
+  the types it produces (`GG::Files::TextFile`, `GG::Board::IssueCreated`), so every name a
+  signature writes is a name a program could write in full and two modules are free to declare a
+  type of the same name. Nothing is mixed into `Object`: `system`, `exec` and `fork` are `Kernel`
+  methods, and a flat surface would have a program reaching for the builtin and silently getting
+  gg's tool.
+- **The surface is built from the run.** `GG::Scope` lifts every declaration off its module at load
+  and puts back only the subset this run offers, so a module's `list` is the honest directory of
+  what a program has and a withheld name raises `NoMethodError` on the line that wrote it, naming
+  the module and its directory. That is the one place this arm still differs from the compiled
+  ones, where every name exists and the host refuses the call instead.
 - **`lib.<key>` is a `Module`.** A Ruby file has no exports, so the host wraps a code skill's or
   memory's source in the call that evaluates it against a fresh anonymous module, which extends
   itself. What the body defines is what the namespace offers, and there is no export protocol for
@@ -410,18 +423,17 @@ artifact:
   SDK's functions for exactly this reason.
 - **`arity_check` does not see an *unknown* keyword.** It counts positionals and catches a missing
   *required* keyword; Opal lowers keyword arguments to a trailing hash and never reads the extra
-  keys. So `project.create_issue(…, reviewer: ["r1"])` — the singular/plural typo — was accepted,
+  keys. So `GG::Board.create_issue(…, reviewer: ["r1"])` — the singular/plural typo — was accepted,
   and the issue was created with `reviewers: []` while the program believed it had named one.
-  `GG::ApiObject`, the forwarder that binds each function onto its API object, is the one place that
+  `GG::Scope`, the forwarder that puts each function back onto its module, is the one place that
   knows both what was passed and what the target declares, and it raises CRuby's own
   `unknown keyword: :reviewer` naming the accepted set. It checks the positional count there too,
-  so the refusal names `fs.read_file` — the call the model wrote — rather than the internal
-  `GG::Files.read_file`, and renders `expected 1..2` rather than Ruby's negative arity encoding
-  (`expected -3`), which is a number no CRuby message ever prints.
+  so the refusal renders `expected 1..2` rather than Ruby's negative arity encoding (`expected
+  -3`), which is a number no CRuby message ever prints.
 
 Knowing what each function declares is reflection, and reflection is not free: `Method#parameters`
 over the thirty-five bound functions cost **~3 ms of a ~9 ms turn** when the forwarder did it as a
-run bound its objects. It is reflected at the SDK's top level instead, so the table is in the heap
+run built its surface. It is reflected at the SDK's top level instead, so the table is in the heap
 `wizer` snapshots and a turn pays nothing — the same argument the baked Opal runtime rests on, one
 level down, and asserted the same way: a test reads the table's size out of a running program,
 because a per-turn rebuild and a baked one are indistinguishable from inside one.
@@ -663,24 +675,36 @@ An idiomatic PureScript SDK is not the TypeScript one with `::` in it. Every dif
 a spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
 them:
 
-- **An API object is a record of functions.** `fs.readFile "main.purs" {}` is a field access and
-  an application. That is not decoration: it is the only way this language can carry the
-  `fs.read_file` **identity** every other arm has, because a module alias must be capitalised and
-  `Fs.readFile` is therefore a different name from the one the seam says every arm must offer.
+- **The surface is modules of free functions**, which is what a PureScript library is. `Gg.Files`,
+  `Gg.Shell`, `Gg.Board` — one module per capability, each exporting plain functions and the types
+  it produces, so `Gg.Files.readFile "main.purs" {}` is an application of a qualified name rather
+  than a field read off a value that appeared in scope by magic. It is the only arm that writes a
+  real `import` line for it, and the name in the documentation is therefore the expression:
+  `import Gg.Files as Gg.Files` makes `Gg.Files.readFile` write exactly as it reads.
+- **Nothing is a method, because a record has none.** Where [C++](#what-cs-sdk-looks-like) and
+  [Ruby](#what-native-means-in-ruby) let a result reach its own follow-up call —
+  `created.wait()`, `hit.read` — this arm has only the module function, and a free function taking
+  the record would be a second name to learn for a saving of `.id`. So `Gg.Board.waitForIssue
+  created.id` is the whole of it, and the capability is the same one.
 - **Optional arguments are a record whose row is checked.**
   `Union given rest ReadOptions => String -> Record given -> Effect FileRead` is PureScript's own
-  idiom for "any subset of these fields": `fs.readFile "a" {}` and `fs.readFile "a" { limit: 20 }`
-  both type-check, and `{ limitt: 20 }` is a type error that prints every field that would have
-  worked. A call with a bag of required fields takes one **open** record instead —
-  `project.createIssue { title, inScope, outOfScope, completionCriteria, agent, blockedBy }` —
+  idiom for "any subset of these fields": `Gg.Files.readFile "a" {}` and
+  `Gg.Files.readFile "a" { limit: 20 }` both type-check, and `{ limitt: 20 }` is a type error that
+  prints every field that would have worked. A call with a bag of required fields takes one **open**
+  record instead —
+  `Gg.Board.createIssue { title, inScope, outOfScope, completionCriteria, agent, blockedBy }` —
   where the required labels are in the type and the rest is that same constrained row.
 - **A three-way patch field needs no sentinel.** Leave `description` out to keep it, pass
   `Nothing` to clear it, pass `Just` to replace it — where [Python](#what-native-bought-in-the-catalogue)
   needs an `UNCHANGED` because `None` is already taken and TypeScript needs `undefined` beside
   `null`.
 - **A fixed choice is a `data` type**, and its arms are prefixed by what they belong to
-  (`TaskDone`, `IssueDone`, `AgentTimedOut`, `FileEntry`) because a program imports the whole
-  surface from one module and two types cannot both call an arm `Done` there.
+  (`TaskDone`, `IssueDone`, `AgentTimedOut`, `FileEntry`). A PureScript constructor lives at
+  **module** scope rather than under the type that declares it, so a module is as far down as a
+  name can go and the prefix is what carries the rest — where [C++](#what-cs-sdk-looks-like) writes
+  `tasks::task_status::done` and [Ruby](#what-native-means-in-ruby) writes
+  `GG::Tasks::TaskStatus::DONE`, each with the type itself as a namespace this language has no
+  equivalent of.
 - **A read is a real sum type.** `case read of TextFile file -> … ; ImageFile picture -> …`,
   narrowed by the compiler rather than by comparing a `kind` field against a string.
 - **A failure is thrown and caught with `attempt`**, which hands back
@@ -697,14 +721,23 @@ them:
   `Maybe a` and the program annotates it. What comes back really is ordinary PureScript — a
   curried function, because that is what a PureScript function is.
 
-Underneath all of it is **one foreign module**, `Gg.Internal.Wire`, naming the API objects the
-guest binds. They are free identifiers in the bundle, resolved at call time against the scope the
-guest built — which is what makes a capability this run withheld a `ToolError` carrying
-`unavailable` rather than a `ReferenceError`, and what makes every call land in the *same*
+Underneath all of it is **one foreign module**, `Gg.Internal.Wire`. It is the one file in this arm
+that still names the shared ECMAScript guest's own objects — `fs`, `system`, `view` — because this
+arm has no component of its own and that guest builds a program's scope out of them; the typed
+`Gg.*` modules above are what a model reads, and the bridge is what turns `Gg.Files.readFile` into
+the call that guest binds. They are free identifiers in the bundle, resolved at call time against
+the scope the guest built — which is what makes a capability this run withheld a `ToolError`
+carrying `unavailable` rather than a `ReferenceError`, and what makes every call land in the *same*
 lowering a TypeScript program's does. That last part is worth stating plainly, because it is what
 a cross-language study rests on: the two arms produce **byte-identical** arguments for the same
 capability by construction, and a test drives all thirty-five tools through the real membrane to
 say so.
+
+It is also the one place a capability's **gate** is named by hand rather than decided by the host,
+and the gate is not always the call's own name: `Gg.Views.openFile` refuses under `read_file`,
+because showing a file is a read gg also puts in the window. Where nothing a run can withhold has a
+tool name at all — an ending call, which a role decides, or a program-library call, which a
+capability buys — the call's own key stands in.
 
 ### The catalogue, and the two things PureScript does not have
 
@@ -723,7 +756,7 @@ and `Record given` on its own says nothing at all — so the reflector prints th
 the fields it stands for: `readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect FileRead`.
 Unmarked, that record reads as a **closed** one — every field required — which would be the single
 point where a model is told something stricter than what it is compiled against, and it matters most
-where a record mixes the two (`project.createIssue`'s six required labels beside its four optional
+where a record mixes the two (`Gg.Board.createIssue`'s six required labels beside its four optional
 ones). The `?` is gg's notation rather than PureScript's, it is the marker
 [TypeScript's](#stripped-and-checked) catalogue already carries for the same fact, and the prompt
 says so where it explains the idiom.
@@ -1903,7 +1936,7 @@ that arm a `main` is a function nothing calls; on this one its absence is a prog
 in it. Both are the failure a model cannot recover from: a clean turn over work that never ran.
 
 **Nothing has to be included.** The precompiled prelude puts gg's whole surface *and* the C++
-standard library in front of the model's first line, so `fs::read_file`, `std::vector` and
+standard library in front of the model's first line, so `files::read_file`, `std::vector` and
 `std::format` are names a program may write on line 1. Writing the includes anyway costs nothing —
 clang de-duplicates them against the precompiled header — which is the point of compiling the reply
 verbatim rather than editing it.
@@ -3016,32 +3049,35 @@ is written to read like the **standard library**: `snake_case` functions, `snake
 nothing a C++ author has to switch conventions for mid-expression.
 
 ```cpp
-const auto entries = fs::list_dir("src");
+const auto entries = files::list_dir("src");
 std::vector<std::string> sources;
 for (const auto &entry : entries) {
-  if (entry.kind == entry_kind::file) sources.push_back(entry.name);
+  if (entry.kind == files::entry_kind::file) sources.push_back(entry.name);
 }
-const auto built = system::shell("cmake --build build", 300.0);
-view::open_text("build", built.output);
-harness::finish(std::format("looked at {} sources", sources.size()));
+const auto built = shell::run("cmake --build build", 300.0);
+views::open_text("build", built.output);
+session::finish(std::format("looked at {} sources", sources.size()));
 ```
 
 Every difference below is a spelling rather than an identity, and the
 [agreement gate](#the-agreement-gate) accepts each of them:
 
-- **An API object is a namespace**, so `fs::read_file(…)` is a qualified name and a call. That is
-  the same answer [Rust](#what-rusts-sdk-looks-like) gives, reached with C++'s own construct.
+- **A capability module is a namespace**, so `files::read_file(…)` is a qualified name and a call.
+  That is the same answer [Rust](#what-rusts-sdk-looks-like) gives, reached with C++'s own
+  construct — and each module owns the types it produces, so `files::file_read`,
+  `tasks::text_edit` and `board::issue_created` are written under their own module and two modules
+  are free to declare a type of the same name.
 - **The whole surface lives in `namespace gg`, and the prelude ends with `using namespace gg;`.**
-  That is the one thing on this arm that is *forced* rather than chosen, and by one object's name:
-  `<cstdlib>` declares `int system(const char *)` at global scope, and `namespace system { … }`
-  beside it is *redefinition of 'system' as different kind of symbol*. Qualified lookup for a
-  nested-name-specifier considers only namespaces and types and never functions, so once the
-  surface is in a namespace the C library's `system` cannot shadow the object. The using-directive
-  also gives a program the last word, as Rust's glob `use` does — with one measured exception: a
-  namespace **alias** is *ambiguous* rather than shadowing, so `namespace fs = std::filesystem;`
-  beside `gg::fs` is a compile error naming both candidates at the model's own line. That is why
-  `<filesystem>` is deliberately not in this arm's library set: the alias is a reflex, and an arm
-  that invited it would spend turns on gg's namespace rather than on the work.
+  The nesting is what makes `gg::files::read_file` — the name the catalogue advertises and a search
+  hit shows — a real C++ path a program can write rather than a label, and the using-directive is
+  what keeps the ordinary call site to `files::read_file`. Nothing forces it: measured against this
+  arm's pinned `clang++`, every one of the twelve module names compiles as a fresh `namespace` at
+  global scope beside the prelude. What the directive costs is one measured surprise, and it is a
+  reflex worth knowing before a model spends a turn on it — a using-directive makes gg's names
+  visible *at* global scope rather than nested inside it, so a program's own file-scope
+  `namespace files { … }`, or `namespace files = std::filesystem;`, is a second candidate and an
+  unqualified `files::` is *reference to 'files' is ambiguous* with both candidates named at the
+  model's own line. `gg::files::` and `::files::` each resolve it, and block scope is unaffected.
 - **A failure is thrown.** `gg::tool_error` derives from `std::runtime_error`, so
   `catch (const std::exception &)` catches it as a C++ programmer expects of anything a library
   throws, `what()` is gg's own sentence about the failure, and `code()` is the value a `catch`
@@ -3050,12 +3086,12 @@ Every difference below is a spelling rather than an identity, and the
   where every call returned `std::expected` would force a branch after every line and make a
   composed program unwritable.
 - **One optional argument is a default argument; several are an aggregate filled in with
-  designated initialisers.** `fs::read_file("main.cpp", {.limit = 40})` names the one field it sets
-  and says nothing about the rest — which matters because C++ has no keyword arguments and a
+  designated initialisers.** `files::read_file("main.cpp", {.limit = 40})` names the one field it
+  sets and says nothing about the rest — which matters because C++ has no keyword arguments and a
   defaulted parameter cannot be skipped over, so `read_file(path, std::nullopt, 40)` would have
   made a model count commas. The one call spelled as an **overload pair** instead is
-  `agents::wait_for_subagents`, where "every outstanding child" and "these children" are two calls
-  rather than one with an absent argument.
+  `delegation::wait_for_subagents`, where "every outstanding child" and "these children" are two
+  calls rather than one with an absent argument.
 - **A read is a `std::variant`**, narrowed with `std::get_if` — what C++ has for a value that is
   exactly one of two things — and a fixed choice is an `enum class`, never a string.
 - **A three-way patch field is a value with named factories.** Leave `description` default to keep
@@ -3066,6 +3102,11 @@ Every difference below is a spelling rather than an identity, and the
   C++ has no value type for a closed integer range — `std::ranges::iota_view` is a *sequence*,
   which a span of turn numbers is not — so this is the one place the arm spells with a record what
   Rust spells with `4..=19`.
+- **A result reaches its own follow-up call.** `created.wait()`, `hit.read()`, `open.close()`,
+  `child.send(…)`, `summary.source()` — five member functions, each the module function with the id
+  the value already carries already supplied. They are catalogued as **aliases** of the operation
+  they reach rather than as capabilities of their own, so nothing is counted twice and gg still
+  names the module function when it names the call back at a model.
 - **`gg::log` is this arm's `console.log`.** `std::printf` reaches the same place, because ambient
   WASI gives this guest a real standard output, but it is the C library's rather than gg's. The
   bare name resolves to gg's even beside `<cmath>`'s `log`, because one takes text and the other a
@@ -3076,7 +3117,7 @@ ABI's strings do not own what they point at, so every call's arguments are held 
 frees them in its destructor — and held in a `std::deque` rather than a `std::vector`, because a
 vector would move its elements on growth and invalidate every pointer already handed out, which is
 a use-after-free that appears only once a call takes more than a handful of strings.
-`project::create_issue` takes nine.
+`board::create_issue` takes nine.
 
 ##### The catalogue, and the one arm whose compiler reads its own documentation
 
@@ -3095,13 +3136,27 @@ needs the same, because neither language has anywhere to write a comment on a pa
 compiler polices it, and the reflection is compiled with `-Werror=documentation` so a `\param`
 naming an argument the function does not take fails the reflection rather than reaching a model.
 
+**The gg operation a function binds is written on the declaration**, as a
+`<ggop>files.read_file</ggop>` line in its own `///` comment, and the gg module a `namespace` is as
+`<ggmodule>files</ggmodule>`; a member function that reaches an operation the module already offers
+writes `<ggop-alias>` instead. A pseudo-tag rather than an attribute, because C++ has no attribute
+that survives into a comment AST — and on the declaration rather than in a side table, because a
+table naming every function twice is the second copy that drifts. The reflector fails in **both**
+directions: a public model-facing declaration carrying no operation id, and an id gg has no row for.
+
+**The brief is the first line and the detail is the rest**, which is Doxygen's own implicit
+structure and needs no `\brief`. The reflector enforces it where the author is standing: a
+declaration whose first line runs on is refused by name rather than reaching a gate three steps
+later. The split has to happen *before* the existing unwrapping step, since unwrapping first would
+hand the whole opening paragraph to the brief and blow its 120-character cap.
+
 Three mechanics of it are worth recording, because each was a decision:
 
 | | |
 | --- | --- |
-| **The AST is filtered** | A translation unit that includes this SDK also includes half the standard library, and dumping the whole of one is ~300 MB for `<string>` alone. `-ast-dump-filter=gg` keeps the declarations whose name matches — which for this SDK is all of them, because the surface lives in one namespace for the collision above. 3 MB and half a second. |
+| **The AST is filtered** | A translation unit that includes this SDK also includes half the standard library, and dumping the whole of one is ~300 MB for `<string>` alone. `-ast-dump-filter=gg` keeps the declarations whose name matches — which for this SDK is all of them, because the whole surface nests inside `namespace gg`. 3 MB and half a second. |
 | **`///` means model-facing and `//` does not** | A public member the bridge needs — `text_edit::tag()`, `brief::is_issue()` — carries `//` and is left out of the declaration a model is shown. There is no other marker, and a public member with no documentation at all is omitted rather than emitted blank. |
-| **`list` is written once and declared twelve times** | C++ has no protocol extension, and a comment inside a macro body is gone before the macro is ever expanded — so the twelve `list()` declarations cannot share one written paragraph the way [Swift](#what-swifts-sdk-looks-like)'s protocol default or Rust's `macro_rules!` do. They share `gg::detail::api_object_list` instead, by a one-line `\copydoc` the reflector resolves, and the reflector asserts all twelve declare the same shape. |
+| **`list` is written once and declared eleven times** | C++ has no protocol extension, and a comment inside a macro body is gone before the macro is ever expanded — so the eleven `list()` declarations cannot share one written paragraph the way [Swift](#what-swifts-sdk-looks-like)'s protocol default or Rust's `macro_rules!` do. They share `gg::detail::module_directory` instead, by a one-line `\copydoc` the reflector resolves, and the reflector asserts all eleven declare the same shape. |
 
 Two smaller things the reflector has to do that no other arm's does. clang's comment lexer splits a
 line wherever it thinks it sees markup, so `std::get_if<text_file>` arrives as four fragments —
@@ -3132,7 +3187,10 @@ Three absences inside the standard set are decisions rather than gaps: `<thread>
 `<atomic>`, because this sandbox has no concurrency and a header a model is told it has and cannot
 use is worse than one it was never offered; `<iostream>`, because a program's stdout is not a
 channel a turn is read from and including it drags its static initialisation into every artifact;
-and `<filesystem>`, for the namespace collision above.
+and `<filesystem>`, which compiles and links on this target — measured — and is off the set for
+the reason [Rust](#what-rusts-sdk-looks-like) keeps `std::fs` off its own: nothing read through it
+is gated, recorded in the run's events or put in front of the model, and the workspace is reached
+through `gg::files` and `gg::shell`.
 
 ### C#: a committed interpreter for a compiled language
 
@@ -3668,8 +3726,9 @@ the comparison this gate was built for rather than a stand-in: nine of the catal
 written by hand, in nine languages, sharing no declaration and reflected by nine different
 documentation tools, and each arm brought at least one call shape its predecessors did not
 have — Ruby a two-signature entry, Java fourteen overload groups where Kotlin has none on the
-same compiler, PureScript curried ML notation with no argument list to look inside, Rust and
-C++ an API object that is a module or a namespace rather than a value with a `.` on it. Only
+same compiler, PureScript curried ML notation with no argument list to look inside, and the
+converted arms a surface of capability **modules** with their types nested inside them, where the
+arms still on the first schema present a value with a `.` on it. Only
 the TypeScript/JavaScript pair is an easy comparison, its two catalogues being one
 set of declarations reflected twice. It is also exercised, on every run, against a
 **fixture language** that exists only
@@ -3986,12 +4045,18 @@ the property the seam was built for.
 An idiomatic Python SDK is not the TypeScript one transliterated. The differences are the
 point, and every one of them is a spelling rather than an identity:
 
-- **Keyword arguments, not a trailing options object.** `fs.read_file(path, limit=200)`
+- **The surface is a package of modules**, which is what a Python library is. `gg.files`,
+  `gg.shell`, `gg.board` — one module per capability, each exporting plain functions and the
+  dataclasses and enums it speaks in, so `files.read_file(path)` is a qualified call and
+  `gg.files.read_file(path)` is the same object reached by its full name. Nothing appears in scope
+  as a value a model has to be told about first, which is the one thing a search over the surface
+  could not have helped with.
+- **Keyword arguments, not a trailing options object.** `files.read_file(path, limit=200)`
   where TypeScript writes `fs.readFile(path, { limit: 200 })`. Required arguments stay
   positional in both.
 - **`snake_case` throughout** — `request_changes` for `requestChanges`, `open_text` for
-  `openText`. The catalogue's `key` is what lets gg tell that those are the *same function*,
-  which is exactly what it is for.
+  `openText`. The [operation](#the-agreement-gate) written on each declaration is what lets gg tell
+  that those are the *same capability*, which is exactly what it is for.
 - **`None`, not `undefined`.** An absent optional is `None`, and an optional field of a
   result is `T | None` rather than `T | undefined`.
 - **Exceptions for the wire's error arm.** WIT's `result<T, tool-error>` becomes a typed
@@ -4004,7 +4069,7 @@ point, and every one of them is a spelling rather than an identity:
   `entry.kind is EntryKind.FILE` rather than by string comparison, and the model's editor
   and the model's memory can both complete it.
 - **A record's fields are the function's own arguments.** The wire declares one
-  `memory-input` for three calls; the SDK spells it `memory.create_memory(name, description,
+  `memory-input` for three calls; the SDK spells it `memories.create_memory(name, description,
   body, code=…)` rather than asking a model to construct a value before it can make a call.
   A language whose optional arguments are keyword arguments has no reason to do otherwise —
   and it is why this arm documents more arguments per entry than TypeScript does, which is
@@ -4014,11 +4079,17 @@ point, and every one of them is a spelling rather than an identity:
   the third is `UNCHANGED`: leave the argument out to keep what is there, pass `None` to empty
   it, pass a value to replace it. TypeScript needs no such name, because `undefined` and
   `null` are two words there and one here.
-- **`isinstance`, not a discriminant.** A read is `TextFile | ImageFile`, two classes a
-  program narrows with `isinstance` or a `match` statement, where TypeScript reads a `kind`
-  field off a union of object literals.
+- **`isinstance`, not a discriminant.** A read is `gg.files.FileRead`, an alias for
+  `TextFile | ImageFile` — two classes a program narrows with `isinstance` or a `match` statement,
+  where TypeScript reads a `kind` field off a union of object literals.
+- **Each module owns the types it produces**, so a type is written under its module —
+  `files.FileRead`, `tasks.TaskStatus`, `delegation.SubagentResult` — and two modules are free to
+  declare a type of the same name. That is what makes the name in a signature a name a program can write in
+  full, which is the property the whole surface is arranged around.
 
-What must not differ: which functions exist, which object each hangs off, what gates each
-one, and the [five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language). A
-Python SDK that offered `call("read_file", {...})` would be a smaller diff and a different
-experiment.
+What must not differ: which capabilities exist, what gates each one, and the
+[five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language). What may differ is
+everything about the shape, including how many functions there are: this arm ships no convenience
+method on a result where [C++](#what-cs-sdk-looks-like) and [Ruby](#what-native-means-in-ruby) ship
+five, which is a gap rather than a decision and is recorded as one. A Python SDK that offered
+`call("read_file", {...})` would be a smaller diff and a different experiment.

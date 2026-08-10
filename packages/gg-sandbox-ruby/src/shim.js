@@ -4,9 +4,9 @@
  *
  * A gg Ruby program never crosses the membrane as Ruby. It is compiled to JavaScript on the *host*,
  * by Opal, before it is handed over (`crates/gg/src/sandbox/language/ruby.compile.rs`), so what this
- * guest evaluates is JavaScript — but everything it evaluates it against is Ruby: the API objects
- * are methods on `Object`, the types are top-level constants, a failure is a raised
- * `GG::ToolError`, and a code module is a `Module`.
+ * guest evaluates is JavaScript — but everything it evaluates it against is Ruby: the capability
+ * modules are constants under `GG`, the types are declared inside them, a failure is a raised
+ * `GG::Core::ToolError`, and a code module is a `Module` bound at `lib.<key>`.
  *
  * # Why the runtime and the SDK are imported at top level
  *
@@ -59,7 +59,7 @@ import * as views from "test-cabinet:gg/views";
  * The SDK is Ruby and the bindings are JavaScript modules, so there has to be one hand-off, and
  * this is it: one object, keyed by the interface name the WIT gives, read by Opal's
  * inline-JavaScript interop. Nothing here is model-facing — a program's scope is built by
- * `GG::Scope`, out of the API objects, and `__ggWire` is not one of them.
+ * `GG::Scope`, out of the capability modules, and `__ggWire` is not one of them.
  */
 globalThis.__ggWire = {
   board,
@@ -391,7 +391,7 @@ function locate(thrown, program) {
  * that is the sentence the model can act on, and it is a *different* sentence from the compiled
  * JavaScript's `TypeError`. That is only true because gg compiles both the model's program and the
  * SDK with `arity_check`; with Opal's default the same mistake arrives here as a raw JavaScript
- * `TypeError` naming a compiled variable, and `describe` below is what renders it. A `GG::ToolError`
+ * `TypeError` naming a compiled variable, and `describe` below is what renders it. A `GG::Core::ToolError`
  * is reported as the tool failure it is, carrying the membrane's own code, so gg classifies the turn
  * from the code rather than from what this guest made of the raise.
  *
@@ -399,7 +399,7 @@ function locate(thrown, program) {
  * precompiled corelib is the one place that still produces one — it is outside gg's compile, so
  * `[1, 2].fetch` with no argument is a JavaScript `TypeError` rather than an `ArgumentError`.
  */
-function report(thrown, program, objects, lib) {
+function report(thrown, program, modules, lib) {
   const location = locate(thrown, program);
   const klass = thrown && thrown.$$class ? String(thrown.$$class.$$name) : undefined;
   const message = klass === undefined ? describe(thrown) : String(Opal.send(thrown, "message"));
@@ -416,13 +416,13 @@ function report(thrown, program, objects, lib) {
   }
   if (klass === "NoMethodError" || klass === "NameError") {
     // The most common cause is a program reaching for a name it was not given, so answer the
-    // question it is about to ask: which objects does it have? Each object's `list` then names that
-    // object's own functions.
+    // question it is about to ask: which modules does it have? Each module's `list` then names
+    // that module's own functions.
     const lend = lib ? ", plus `lib` for loaded skill and memory code" : "";
     return {
       kind: "unknown-name",
       code: undefined,
-      message: `${message}; API objects this run: ${objects.join(", ")}${lend}`,
+      message: `${message}; modules this run: ${modules.join(", ")}${lend}`,
       location,
     };
   }
@@ -468,12 +468,13 @@ export function run(program, modules, enabled, ending, library) {
   installEnvironment();
   const flush = attachStreams();
   try {
-    const objects = Array.from(
+    const bound = Array.from(
       Opal.send(gg("Scope"), "install", [Array.from(enabled), ending, library]),
     );
 
-    // Modules are evaluated after the scope and before the program, so a module may call
-    // `fs.read_file` like anything else, and each is given the same surface the program gets.
+    // Code modules are evaluated after the scope and before the program, so one may call
+    // `GG::Files.read_file` like anything else, and each is given the same surface the program
+    // gets.
     // A module that raises does not take the turn down: its author is whoever wrote the skill or
     // the memory, not the model whose program merely has it in scope.
     Opal.send(gg("Lib"), "reset");
@@ -497,7 +498,7 @@ export function run(program, modules, enabled, ending, library) {
     try {
       new Function(program)();
     } catch (thrown) {
-      feedback.reportError(report(thrown, program, objects, lib));
+      feedback.reportError(report(thrown, program, bound, lib));
     }
   } catch (thrown) {
     // Everything above the program's own `catch` — building the surface, evaluating the modules —

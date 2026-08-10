@@ -17,8 +17,9 @@
 //! # How a call gets from PureScript to gg
 //!
 //! Through the SDK, and through nothing else. `packages/gg-sandbox-purescript/src/Gg/**` is compiled
-//! into the same library tree a program is compiled against, so `import Gg` is an ordinary import
-//! resolved by `purs`; its one foreign module names the API objects the guest binds, which are free
+//! into the same library tree a program is compiled against, so `import Gg.Files as Gg.Files` is an
+//! ordinary import resolved by `purs`; its one foreign module names the namespaces the guest binds,
+//! which are free
 //! identifiers in the bundle and are resolved at call time against the scope the guest built. That is
 //! what [`every_tool_crosses_the_membrane_from_its_purescript_spelling`] drives: real PureScript,
 //! really compiled, whose calls arrive at gg's dispatch carrying the same JSON every other arm's do.
@@ -31,6 +32,7 @@
 //! per function, exactly as `sandbox.test.rs` does. Add a program to an existing function rather than
 //! adding a function.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 use std::time::Instant;
 
@@ -474,19 +476,19 @@ fn a_code_module_is_a_purescript_module_bound_at_lib() {
     // PureScript — `add` is curried, because that is what a PureScript function IS.
     let outcome = run_with(
         &program_of(&[
-            "case lib \"helpers\" \"greet\" of",
+            "case Gg.Core.lib \"helpers\" \"greet\" of",
             "  Just greet -> Console.log (greet \"gg\" :: String)",
             "  Nothing -> Console.log \"no greet\"",
-            "case lib \"helpers\" \"add\" of",
+            "case Gg.Core.lib \"helpers\" \"add\" of",
             "  Just add -> Console.log (show (add 40 2 :: Int))",
             "  Nothing -> Console.log \"no add\"",
-            "case lib \"helpers\" \"missing\" :: Maybe String of",
+            "case Gg.Core.lib \"helpers\" \"missing\" :: Maybe String of",
             "  Just _ -> Console.log \"found something that is not there\"",
             "  Nothing -> Console.log \"nothing under that name\"",
         ])
         .replace(
-            "import Gg\n",
-            "import Gg\nimport Effect.Class.Console as Console\n",
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
         ),
         &[],
         &modules,
@@ -644,77 +646,77 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: "_ <- system.shell \"npm test\" { timeoutSecs: 30 }",
+            statement: "_ <- Gg.Shell.shell \"npm test\" { timeoutSecs: 30 }",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: "_ <- fs.readFile \"src/a.purs\" { offset: 2, limit: 5 }",
+            statement: "_ <- Gg.Files.readFile \"src/a.purs\" { offset: 2, limit: 5 }",
             expected: || json!({ "path": "src/a.purs", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: "_ <- fs.writeFile \"out.txt\" \"hello\"",
+            statement: "_ <- Gg.Files.writeFile \"out.txt\" \"hello\"",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: "_ <- fs.editFile \"src/a.purs\" \"alpha\" \"beta\"",
+            statement: "_ <- Gg.Files.editFile \"src/a.purs\" \"alpha\" \"beta\"",
             expected: || json!({ "path": "src/a.purs", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: "_ <- fs.listDir { path: \"src\" }",
+            statement: "_ <- Gg.Files.listDir { path: \"src\" }",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            statement: "_ <- skills.readSkill \"testing\"",
+            statement: "_ <- Gg.Skills.readSkill \"testing\"",
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            statement: "_ <- memory.writeMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            statement: "_ <- Gg.Memories.writeMemory { name: \"layout\", description: \"d\", body: \"b\" }",
             expected: || json!({ "name": "layout", "description": "d", "body": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "update_memory",
-            statement: "_ <- memory.updateMemory { name: \"layout\", description: \"d2\", body: \"b2\" }",
+            statement: "_ <- Gg.Memories.updateMemory { name: \"layout\", description: \"d2\", body: \"b2\" }",
             expected: || json!({ "name": "layout", "description": "d2", "body": "b2", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "create_memory",
-            statement: "_ <- memory.createMemory { name: \"layout\", description: \"d\", body: \"b\" }",
+            statement: "_ <- Gg.Memories.createMemory { name: \"layout\", description: \"d\", body: \"b\" }",
             expected: || json!({ "name": "layout", "description": "d", "contents": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "read_memory",
-            statement: "_ <- memory.readMemory \"layout\"",
+            statement: "_ <- Gg.Memories.readMemory \"layout\"",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: "_ <- memory.editMemory { name: \"layout\", search: \"old\", replace: \"new\" }",
+            statement: "_ <- Gg.Memories.editMemory { name: \"layout\", search: \"old\", replace: \"new\" }",
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: "_ <- memory.searchMemories [ \"cargo\", \"nextest\" ]",
+            statement: "_ <- Gg.Memories.searchMemories [ \"cargo\", \"nextest\" ]",
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: "_ <- memory.deleteMemory \"layout\"",
+            statement: "_ <- Gg.Memories.deleteMemory \"layout\"",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            statement: "_ <- tasks.addTask { id: \"t1\", title: \"T\", description: \"D\", blockedBy: [ \"t0\" ] }",
+            statement: "_ <- Gg.Tasks.addTask { id: \"t1\", title: \"T\", description: \"D\", blockedBy: [ \"t0\" ] }",
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            statement: "_ <- tasks.updateTask \"t1\" { title: \"T2\", description: Nothing, status: TaskInProgress }",
+            statement: "_ <- Gg.Tasks.updateTask \"t1\" { title: \"T2\", description: Nothing, status: Gg.Tasks.TaskInProgress }",
             expected: || {
                 // `description: Nothing` is what CLEARS it — the field left out of the record is the
                 // one that keeps it — and `in_progress` is gg's own spelling, so the membrane's
@@ -724,27 +726,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            statement: "_ <- tasks.setBlockedBy \"t1\" []",
+            statement: "_ <- Gg.Tasks.setBlockedBy \"t1\" []",
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            statement: "_ <- tasks.completeTask \"t1\"",
+            statement: "_ <- Gg.Tasks.completeTask \"t1\"",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            statement: "_ <- tasks.removeTask \"t1\"",
+            statement: "_ <- Gg.Tasks.removeTask \"t1\"",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            statement: "_ <- project.createEpic { prefix: \"epc\", title: \"E\", description: \"D\" }",
+            statement: "_ <- Gg.Board.createEpic { prefix: \"epc\", title: \"E\", description: \"D\" }",
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: "_ <- project.createIssue { title: \"I\", inScope: \"s\", outOfScope: \"o\", \
+            statement: "_ <- Gg.Board.createIssue { title: \"I\", inScope: \"s\", outOfScope: \"o\", \
                         completionCriteria: \"c\", agent: \"worker\", reviewers: [ \"critic\" ] }",
             expected: || {
                 json!({
@@ -762,7 +764,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: "_ <- project.updateIssue \"i1\" { status: IssueDone, epicId: Nothing }",
+            statement: "_ <- Gg.Board.updateIssue \"i1\" { status: Gg.Board.IssueDone, epicId: Nothing }",
             expected: || {
                 // `epicId: Nothing` ungroups the issue, which gg's schema spells as the empty string;
                 // a `description` left out of the record keeps the one it has, so its key is absent.
@@ -779,83 +781,92 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: "_ <- project.setIssueBlockedBy \"i1\" [ \"i0\" ]",
+            statement: "_ <- Gg.Board.setIssueBlockedBy \"i1\" [ \"i0\" ]",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: "_ <- project.removeEpic \"e1\"",
+            statement: "_ <- Gg.Board.removeEpic \"e1\"",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: "_ <- project.removeIssue \"i1\"",
+            statement: "_ <- Gg.Board.removeIssue \"i1\"",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: "_ <- project.waitForIssue \"i1\"",
+            statement: "_ <- Gg.Board.waitForIssue \"i1\"",
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            statement: "_ <- context.evictFileView { path: \"src/a.purs\" }",
+            statement: "_ <- Gg.Context.evictFileView { path: \"src/a.purs\" }",
             expected: || json!({ "path": "src/a.purs" }),
         },
         Crossing {
             tool: "archive_thread",
             // A span of turns is a record with the two fields the header of every result carries,
             // which is what a span of integers is in a language with no range literal.
-            statement: "_ <- context.archiveThread [ { from: 4, to: 19 }, { from: 30, to: 35 } ]",
+            statement: "_ <- Gg.Context.archiveThread [ { from: 4, to: 19 }, { from: 30, to: 35 } ]",
             expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
         },
         Crossing {
             tool: "search_archive",
-            statement: "_ <- context.searchArchive \"the parser\"",
+            statement: "_ <- Gg.Context.searchArchive \"the parser\"",
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            statement: "_ <- context.compact \"scaffolded the page\" { files: [ \"src/Main.purs\" ] }",
+            statement: "_ <- Gg.Context.compact \"scaffolded the page\" { files: [ \"src/Main.purs\" ] }",
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/Main.purs"] }),
         },
         Crossing {
             tool: "spawn_subagent",
             // The brief is a constructor rather than one of two optional fields, so "both" and
             // "neither" are programs that do not compile.
-            statement: "_ <- agents.spawnSubagent \"subagent\" (Prompt \"write the lexer\")",
+            statement: "_ <- Gg.Delegation.spawnSubagent \"subagent\" (Gg.Delegation.Prompt \"write the lexer\")",
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            statement: "_ <- agents.waitForSubagents { ids: [ \"agent-1\" ] }",
+            statement: "_ <- Gg.Delegation.waitForSubagents { ids: [ \"agent-1\" ] }",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: "_ <- agents.sendMessage \"agent-1\" \"prefer the simpler parser\"",
+            statement: "_ <- Gg.Delegation.sendMessage \"agent-1\" \"prefer the simpler parser\"",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: "_ <- agents.transitionState \"verify\" { note: \"the build is green\" }",
+            statement: "_ <- Gg.Delegation.transitionState \"verify\" { note: \"the build is green\" }",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: "_ <- agents.exec \"Builder\" { prompt: \"pick it up from here\" }",
+            statement: "_ <- Gg.Delegation.exec \"Builder\" { prompt: \"pick it up from here\" }",
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: "_ <- agents.fork \"try the other fix\"",
+            statement: "_ <- Gg.Delegation.fork \"try the other fix\"",
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
 }
 
 /// One program made of `statements`, written the way a model writes one.
+///
+/// Every capability module is imported under its own full name, which is the line the catalogue's
+/// own `import` field states and the only import under which `Gg.Files.readFile` resolves. Importing
+/// all twelve rather than the ones a given program uses costs an unused-import warning and keeps the
+/// statement tables below readable as the one thing they are about.
 fn program_of(statements: &[&str]) -> String {
+    let imports: String = crate::sandbox::catalogue_modules(purescript())
+        .iter()
+        .map(|module| format!("import {0} as {0}\n", module.path))
+        .collect();
     format!(
         "module Main where\n\
          \n\
@@ -863,7 +874,7 @@ fn program_of(statements: &[&str]) -> String {
          \n\
          import Data.Maybe (Maybe(..))\n\
          import Effect (Effect)\n\
-         import Gg\n\
+         {imports}\
          \n\
          main :: Effect Unit\n\
          main = do\n  {}\n  pure unit\n",
@@ -927,21 +938,24 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     // this arm's catalogue describes has been driven through the real membrane.
     let (outcome, log) = run_as(
         &program_of(&[
-            "text <- fs.readTextFile \"notes.md\" { limit: 2 }",
-            "read <- view.openFile \"notes.md\" { offset: 1, limit: 2 }",
-            "view.openText \"summary\" text",
-            "view.openDocsView \"readFile\"",
-            "closed <- view.close \"summary\"",
-            "missing <- view.close \"never opened\"",
-            "open <- view.current",
-            "directory <- fs.list",
+            "text <- Gg.Files.readTextFile \"notes.md\" { limit: 2 }",
+            "read <- Gg.Views.openFile \"notes.md\" { offset: 1, limit: 2 }",
+            "Gg.Views.openText \"summary\" text",
+            "Gg.Views.openDocsView \"readFile\"",
+            "closed <- Gg.Views.close \"summary\"",
+            "missing <- Gg.Views.close \"never opened\"",
+            "open <- Gg.Views.current",
+            "directory <- Gg.Files.list",
             "Console.log (show (map _.selector open) <> \" \" <> show (map _.kind open))",
             "Console.log (show closed <> \" \" <> show missing)",
-            "case read of\n                 TextFile file -> Console.log file.contents\n                 ImageFile picture -> Console.log picture.label",
+            "case read of\n                 Gg.Files.TextFile file -> Console.log file.contents\n                 Gg.Files.ImageFile picture -> Console.log picture.label",
             "Console.log (show (map _.name directory))",
-            "harness.finish \"read the file and showed myself the result\"",
+            "Gg.Session.finish \"read the file and showed myself the result\"",
         ])
-        .replace("import Gg\n", "import Gg\nimport Effect.Class.Console as Console\n"),
+        .replace(
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
+        ),
         &all_tools(),
         &[],
         RunEnding::Role(EndingRole::Standard),
@@ -961,7 +975,25 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
         "{:?}",
         lines[2]
     );
+    // The fake echoes the grouping it was asked about, so on its own this line *records* the
+    // argument `Gg.Files.list` passed rather than judging it. What judges it is the directory
+    // below: this arm rides the shared ECMAScript guest, whose `list` is seeded with the API object
+    // name it built the object under, so `Gg.Files.list` can only ever ask with `fs` however this
+    // arm's own module is spelled — and a host that answered only the module path would hand the
+    // program a well-formed empty array instead of a refusal.
     assert_eq!(lines[3], "[\"fsFunction\"]");
+    let directory = crate::docs::DocsRuntime::new(
+        all_tools(),
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::PureScript,
+    )
+    .list("fs");
+    assert!(
+        directory.iter().any(|entry| entry.name == "readFile"),
+        "`fs` is the grouping this arm's `list` asks with, and the real directory does not answer \
+         it: {directory:?}",
+    );
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -981,7 +1013,7 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     );
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view.openFile` performs. Neither has a tool name of its own, which is exactly the point —
+    // `Gg.Views.openFile` performs. Neither has a tool name of its own, which is exactly the point —
     // a helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
@@ -990,19 +1022,20 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer
-    // gets the other ending group and no `harness.finish` at all.
+    // gets the other ending group and no `Gg.Session.finish` at all.
     let (outcome, _log) = run_as(
         &program_of(&[
-            "history <- programs.history",
-            "outcome <- attempt (programs.get { turn: 2 })",
-            "programs.rerun \"module Main where\\nimport Prelude\\nmain = pure unit\"",
-            "review.requestChanges [ \"widen the test\", \"name the file\" ]",
+            "history <- Gg.Programs.history",
+            "outcome <- Gg.Core.attempt (Gg.Programs.get { turn: 2 })",
+            "Gg.Programs.rerun \"module Main where\\nimport Prelude\\nmain = pure unit\"",
+            "Gg.Session.requestChanges [ \"widen the test\", \"name the file\" ]",
             "Console.log (show (map _.turn history))",
             "case outcome of\n                 Left failure -> Console.log (show failure.code)\n                 Right source -> Console.log source",
         ])
         .replace(
-            "import Gg\n",
-            "import Gg\nimport Data.Either (Either(..))\nimport Effect.Class.Console as Console\n",
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Data.Either (Either(..))\n\
+             import Effect.Class.Console as Console\n",
         ),
         &[],
         &[],
@@ -1025,7 +1058,7 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
 
     // The other verdict, which is the same role's other ending.
     let (outcome, _log) = run_as(
-        &program_of(&["review.approve"]),
+        &program_of(&["Gg.Session.approve"]),
         &[],
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -1058,7 +1091,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // classifies a turn's error from the code: a capability nobody granted must not be recorded as a
     // name the model got wrong.
     let (outcome, log) = run_with(
-        &program_of(&["_ <- fs.readFile \"src/Main.purs\" {}"]),
+        &program_of(&["_ <- Gg.Files.readFile \"src/Main.purs\" {}"]),
         &[],
         &[],
         canned_outcome,
@@ -1069,7 +1102,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // from the code rather than from what the guest made of the throw.
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
     assert!(
-        error.message.contains("fs.readFile"),
+        error.message.contains("Gg.Files.readFile"),
         "the refusal names the call the model wrote: {}",
         error.message
     );
@@ -1079,14 +1112,15 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // code, which is what `attempt` is for.
     let (outcome, _log) = run_with(
         &program_of(&[
-            "outcome <- attempt (fs.readFile \"gone.purs\" {})",
+            "outcome <- Gg.Core.attempt (Gg.Files.readFile \"gone.purs\" {})",
             "case outcome of",
             "  Left failure -> Console.log (show failure.code <> \" on \" <> failure.tool)",
             "  Right _ -> Console.log \"read it\"",
         ])
         .replace(
-            "import Gg\n",
-            "import Gg\nimport Data.Either (Either(..))\nimport Effect.Class.Console as Console\n",
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Data.Either (Either(..))\n\
+             import Effect.Class.Console as Console\n",
         ),
         &all_tools(),
         &[],
@@ -1122,12 +1156,16 @@ fn every_optional_argument_is_a_field_of_a_record() {
         "the catalogue says whose spellings it carries"
     );
 
-    let optional_arguments: usize = document["tools"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|entry| entry["signatures"].as_array().into_iter().flatten())
-        .flat_map(|signature| signature["parameters"].as_array().into_iter().flatten())
+    let parameters = || {
+        document["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .flat_map(|entry| entry["signatures"].as_array().into_iter().flatten())
+            .flat_map(|signature| signature["parameters"].as_array().into_iter().flatten())
+    };
+
+    let optional_arguments: usize = parameters()
         .filter(|parameter| parameter["optional"] == json!(true))
         .count();
     assert_eq!(
@@ -1135,16 +1173,14 @@ fn every_optional_argument_is_a_field_of_a_record() {
         "an optional argument here is a field of a record argument, never an argument"
     );
 
-    let optional: usize = document["tools"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .flat_map(|entry| entry["signatures"].as_array().into_iter().flatten())
-        .flat_map(|signature| signature["parameters"].as_array().into_iter().flatten())
+    let optional: usize = parameters()
         .flat_map(|parameter| parameter["fields"].as_array().into_iter().flatten())
         .filter(|field| field["optional"] == json!(true))
         .count();
-    assert_eq!(optional, 31, "the optional record fields the tools declare");
+    assert_eq!(
+        optional, 36,
+        "the optional record fields the surface declares"
+    );
 }
 
 #[test]
@@ -1154,20 +1190,67 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
     // that was never compiled into the shipped tree would read perfectly and name a call that is not
     // there — which for this arm is the failure mode that matters, since the tree a program compiles
     // against is a committed artifact rather than the working directory.
+    //
+    // It is asked as an **explicit import list** per module, which is the one question a program can
+    // put to `purs` about a name without also having to solve its type: importing a name a module
+    // does not export is `Cannot import value … from module …`, while every function here is
+    // row-constrained and mentioning one in a value position would ask the compiler to solve
+    // constraints this test is not about. The import list also checks the half that is new — that
+    // the module a fully-qualified name claims is the module that really declares it — because an
+    // import names both.
     let catalogue: Value =
         serde_json::from_str(SIGNATURES).expect("the committed PureScript catalogue is valid JSON");
 
-    // Every TYPE it declares, as a type synonym a program writes: a name `import Gg` does not bring
-    // into scope is a compile error rather than a sentence a model acts on and cannot.
-    let aliases: String = catalogue["types"]
-        .as_array()
-        .expect("an array")
+    let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut capability_modules: BTreeSet<String> = BTreeSet::new();
+    let path_of = |id: &str| -> String {
+        catalogue["modules"]
+            .as_array()
+            .expect("an array")
+            .iter()
+            .find(|module| module["id"] == json!(id))
+            .and_then(|module| module["path"].as_str())
+            .expect("every entry is filed under a declared module")
+            .to_string()
+    };
+    for entry in catalogue["functions"].as_array().expect("an array") {
+        let module = path_of(entry["module"].as_str().expect("a module"));
+        let name = entry["name"].as_str().expect("a name").to_string();
+        // The name and the module are checked against each other as well as against the SDK: a
+        // fully-qualified name is its module's path and then the name, and nothing else.
+        assert_eq!(
+            entry["fqn"].as_str().expect("a name"),
+            format!("{module}.{name}"),
+            "a catalogued name is not its own module's path followed by its own name"
+        );
+        capability_modules.insert(module.clone());
+        wanted.entry(module).or_default().insert(name);
+    }
+    for declaration in catalogue["types"].as_array().expect("an array") {
+        let module = path_of(declaration["module"].as_str().expect("a module"));
+        let name = declaration["name"].as_str().expect("a name").to_string();
+        assert_eq!(
+            declaration["fqn"].as_str().expect("a name"),
+            format!("{module}.{name}"),
+        );
+        wanted.entry(module).or_default().insert(name);
+    }
+    // The directory is bound on every capability module rather than declared on one, so it is asked
+    // of each of them — which is also what proves the eleven declarations really exist rather than
+    // being one declaration the catalogue reports eleven times.
+    for entry in catalogue["meta"].as_array().expect("an array") {
+        let name = entry["name"].as_str().expect("a name").to_string();
+        for path in &capability_modules {
+            wanted.entry(path.clone()).or_default().insert(name.clone());
+        }
+    }
+
+    let imports: String = wanted
         .iter()
-        .enumerate()
-        .map(|(index, declaration)| {
+        .map(|(module, names)| {
             format!(
-                "type Check{index} = {}\n",
-                declaration["name"].as_str().expect("a name")
+                "import {module} ({})\n",
+                names.iter().cloned().collect::<Vec<String>>().join(", ")
             )
         })
         .collect();
@@ -1176,76 +1259,10 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
          \n\
          import Prelude\n\
          import Effect (Effect)\n\
-         import Gg\n\
+         {imports}\
          \n\
-         {aliases}\n\
          main :: Effect Unit\n\
          main = pure unit\n"
-    ));
-    assert!(
-        matches!(&outcome.result, Ok(result) if result.error.is_none()),
-        "{:?}",
-        outcome.result
-    );
-
-    // And every FUNCTION it describes is a field of the object it claims, checked at the type level
-    // so that nothing has to be called: `{ readFile :: t | r }` accepts any record that has the
-    // field, whatever its type, which is how a row-typed language asks "is this name there?".
-    let functions: Vec<(String, String)> = ["session", "views", "programs", "tools", "helpers"]
-        .iter()
-        .flat_map(|section| catalogue[section].as_array().expect("an array"))
-        .map(|entry| {
-            (
-                entry["object"].as_str().expect("an object").to_string(),
-                entry["name"].as_str().expect("a name").to_string(),
-            )
-        })
-        .chain(
-            // The meta function is bound on every object rather than declared on one, so it is
-            // checked against each object the catalogue describes.
-            catalogue["objects"]
-                .as_array()
-                .expect("an array")
-                .iter()
-                .flat_map(|object| {
-                    catalogue["meta"]
-                        .as_array()
-                        .expect("an array")
-                        .iter()
-                        .map(|entry| {
-                            (
-                                object["object"].as_str().expect("a name").to_string(),
-                                entry["name"].as_str().expect("a name").to_string(),
-                            )
-                        })
-                }),
-        )
-        .collect();
-    let checks: String = functions
-        .iter()
-        .enumerate()
-        .map(|(index, (_object, name))| {
-            format!(
-                "has{index} :: forall t r. {{ {name} :: t | r }} -> Unit\n\
-                 has{index} _ = unit\n\
-                 \n"
-            )
-        })
-        .collect();
-    let uses: String = functions
-        .iter()
-        .enumerate()
-        .map(|(index, (object, _))| format!("  let _ = has{index} {object}\n"))
-        .collect();
-    let outcome = run(&format!(
-        "module Main where\n\
-         \n\
-         import Prelude\n\
-         import Effect (Effect)\n\
-         import Gg\n\
-         \n\
-         {checks}main :: Effect Unit\n\
-         main = do\n{uses}  pure unit\n"
     ));
     assert!(
         matches!(&outcome.result, Ok(result) if result.error.is_none()),

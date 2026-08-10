@@ -79,8 +79,8 @@ fn everything_on() -> SystemContext {
         language: Some(GgProgramLanguage::Cpp),
         program_library: true,
         apis: vec![ApiView {
-            object: "fs".to_string(),
-            description: "read, write, and edit workspace files".to_string(),
+            object: "gg::files".to_string(),
+            description: "Read, write, edit and list the files of the workspace.".to_string(),
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),

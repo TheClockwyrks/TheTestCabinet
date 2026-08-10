@@ -24,9 +24,9 @@ evaluated against another's runtime does not fail cleanly.
 
 **A Ruby program is compiled to JavaScript on the host, and evaluated by a guest whose
 whole surface is Ruby.** Nothing crosses the membrane as Ruby, and everything the compiled
-program is evaluated *against* is Ruby: the API objects are methods on `Object`, the types
-are top-level constants, a failure is a raised `GG::ToolError`, and a code module is an
-anonymous `Module` bound at `lib.<key>`.
+program is evaluated *against* is Ruby: the capability modules are constants under `GG`
+(`GG::Files`, `GG::Views`), each declaring the types it produces, a failure is a raised
+`GG::Core::ToolError`, and a code module is an anonymous `Module` bound at `lib.<key>`.
 
 That is what makes this arm cheap in the two places a language arm is usually expensive.
 There is no second engine — the compiled program is JavaScript, so a `componentize-js`
@@ -39,7 +39,7 @@ toolchain.
 
 | | |
 | --- | --- |
-| `src/gg/` | the SDK. `catalogue.rb` holds the identity data — which gg tool is which method, on which object, gated by what — and every other file holds the spellings. `wire.rb` is the one file that touches the membrane, and the only Ruby here written in JavaScript. |
+| `src/gg/` | the SDK: one file per capability module, each declaring that module's functions and the types they produce, plus `core.rb` for what every one of them names. Which gg operation a method binds is written under that method's own `end`, as the `operation` line `surface.rb` records — there is no table naming a function twice. `wire.rb` is the one file that touches the membrane, and the only Ruby here written in JavaScript. |
 | `src/library.rb` | the manifest of what a program may `require`. `build.sh` compiles exactly this set out of the pinned Opal's own sources; `signatures.sh` reflects the same lines into the catalogue's `libraries` section. One file decides both. |
 | `src/shim.js` | the entry module: it imports the runtime, the libraries and the SDK at top level (so `wizer` snapshots them), publishes the membrane where `GG::Wire` can reach it, and owns `run`. |
 

@@ -25,8 +25,8 @@ fn python() -> &'static dyn ProgramLanguage {
 #[test]
 fn a_program_crosses_as_the_model_wrote_it() {
     for source in [
-        "total: int = 1\nview.open_text(\"total\", str(total))\n",
-        "import json\nfs.write_file(\"a.json\", json.dumps({\"ok\": True}))\n",
+        "total: int = 1\nviews.open_text(\"total\", str(total))\n",
+        "import json\nfiles.write_file(\"a.json\", json.dumps({\"ok\": True}))\n",
         "def (\n",
         "",
     ] {
@@ -105,7 +105,7 @@ fn the_binding_name_is_snake_case() {
 fn the_synthesized_file_view_is_python() {
     assert_eq!(
         python().open_file_statement("src/main.py", None),
-        r#"view.open_file("src/main.py")"#
+        r#"gg.views.open_file("src/main.py")"#
     );
     assert_eq!(
         python().open_file_statement(
@@ -115,7 +115,7 @@ fn the_synthesized_file_view_is_python() {
                 limit: 200
             })
         ),
-        r#"view.open_file("src/main.py", offset=400, limit=200)"#
+        r#"gg.views.open_file("src/main.py", offset=400, limit=200)"#
     );
 }
 
@@ -131,7 +131,7 @@ fn the_generated_documentation_program_is_python() {
     assert_eq!(
         program,
         "functions = [\n    \"read_file\",\n    \"write_file\",\n]\n\
-         for name in functions:\n    view.open_docs_view(name)\n"
+         for name in functions:\n    gg.views.open_docs_view(name)\n"
     );
     python()
         .prepare_program(&program, &[], &PrepareContext::new())
@@ -148,14 +148,24 @@ fn the_generated_documentation_program_is_python() {
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = python().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Python);
-    assert!(!catalogue.tools.is_empty());
-    // The spelling that says the reflection is Python's rather than the other arm's.
+    assert_eq!(catalogue.schema, crate::sandbox::SchemaVersion::V2);
+    assert!(!catalogue.functions.is_empty());
+    // The spellings that say the reflection is Python's rather than another arm's: the module is a
+    // dotted package path and the function keeps the snake_case gg itself uses, which is the one
+    // arm where the idiomatic name and gg's own key coincide.
+    let read_file = catalogue
+        .functions
+        .iter()
+        .find(|entry| entry.operation == "files.read_file")
+        .expect("`files.read_file` is catalogued");
+    assert_eq!(read_file.name, "read_file");
+    assert_eq!(read_file.fqn, "gg.files.read_file");
     assert!(
         catalogue
-            .tools
+            .modules
             .iter()
-            .any(|entry| entry.tool == "read_file" && entry.name == "read_file"),
-        "the catalogue does not spell `read_file` the way this SDK does"
+            .any(|module| module.id == "files" && module.path == "gg.files"),
+        "the catalogue does not spell the `files` module the way this SDK does"
     );
 }
 
@@ -171,10 +181,10 @@ fn optional_arguments_are_passed_by_name() {
 
     let read_file = python()
         .catalogue()
-        .tools
+        .functions
         .iter()
-        .find(|entry| entry.tool == "read_file")
-        .expect("`read_file` is catalogued");
+        .find(|entry| entry.operation == "files.read_file")
+        .expect("`files.read_file` is catalogued");
     let parameters = &read_file.signatures[0].parameters;
     assert_eq!(parameters[0].name, "path");
     assert_eq!(parameters[0].kind, ParameterKind::Positional);

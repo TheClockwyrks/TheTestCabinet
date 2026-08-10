@@ -12,12 +12,13 @@ module GG
   # **The model never sees any of this.** Every function above this layer is ordinary Ruby taking
   # ordinary Ruby values; what lives here is the lowering — `nil` to `undefined`, a Symbol to the
   # wire's kebab-cased enum arm, a `BigInt` back to an Integer, a thrown record to a raised
-  # `ToolError`. That split is deliberate: a generic `call(name, hash)` would have been a smaller
-  # diff and a different experiment.
+  # `GG::Core::ToolError`. That split is deliberate: a generic `call(name, hash)` would have been a
+  # smaller diff and a different experiment.
   #
   # @api private
   module Wire
-    # Make one membrane call and hand back whatever it returned, raising `ToolError` if it failed.
+    # Make one membrane call and hand back whatever it returned, raising `GG::Core::ToolError` if
+    # it failed.
     #
     # The `try` is written in JavaScript rather than as a Ruby `rescue` because what the generated
     # bindings throw is a bare JavaScript object rather than a Ruby exception, and no `rescue`
@@ -28,7 +29,7 @@ module GG
     # @param name [String] the binding's own name on that interface (`readFile`)
     # @param args [Array] the positional arguments, already lowered to JavaScript values
     # @return [Object] the binding's return value, as JavaScript left it
-    # @raise [ToolError] whatever the membrane refused the call with
+    # @raise [GG::Core::ToolError] whatever the membrane refused the call with
     def self.call(tool, family, name, args)
       outcome = %x{
         (function () {
@@ -47,7 +48,8 @@ module GG
       return `#{outcome}.value` if `#{outcome}.ok`
 
       failure = `#{outcome}.failure`
-      raise ToolError.new(`#{failure}.tool`, symbol(`#{failure}.code`), `#{failure}.message`)
+      raise Core::ToolError.new(`#{failure}.tool`, symbol(`#{failure}.code`),
+                                `#{failure}.message`)
     end
 
     # A Ruby value as the membrane's `option<T>`: `nil` becomes `undefined`.
@@ -134,13 +136,43 @@ module GG
 
     # The three-way text edit a patch field lowers to: keep it, clear it, or set it.
     #
-    # @param value [String, nil, Unchanged] `UNCHANGED`, `nil`, or the replacement text
+    # @param value [String, nil, Symbol] `GG::Core::UNCHANGED`, `nil`, or the replacement text
     # @return [Object] the membrane's `text-edit` variant
     def self.text_edit(value)
-      return variant("keep") if value.equal?(UNCHANGED)
+      return variant("keep") if value.equal?(Core::UNCHANGED)
       return variant("clear") if value.nil?
 
       variant("set", value)
+    end
+
+    # The membrane's tagged read, as the class a program actually gets.
+    #
+    # It lives here rather than on `GG::Files` because two modules perform the very same host read
+    # and hand back the very same shape — `GG::Files.read_file` and `GG::Views.open_file` — and a
+    # lowering owned by one of them would be a public method on that module with no gg operation
+    # behind it.
+    #
+    # @param read [Object] the `{ tag, val }` variant the membrane returned
+    # @return [GG::Files::TextFile, GG::Files::ImageFile] the read, as the model-facing class
+    def self.file_read(read)
+      value = `#{read}.val`
+      if `#{read}.tag` == "text"
+        Files::TextFile.new(
+          contents: field(value, "contents"),
+          first_line: field(value, "firstLine"),
+          last_line: field(value, "lastLine"),
+          total_lines: field(value, "totalLines"),
+          byte_truncated: field(value, "byteTruncated")
+        )
+      else
+        Files::ImageFile.new(
+          media_type: field(value, "mediaType"),
+          label: field(value, "label"),
+          bytes: integer(`#{value}.bytes`),
+          shown: field(value, "shown"),
+          not_shown_reason: field(value, "notShownReason")
+        )
+      end
     end
   end
 end

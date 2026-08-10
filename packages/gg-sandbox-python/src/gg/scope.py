@@ -1,21 +1,21 @@
-"""The names a program is given: the API objects, and the types they speak in.
+"""The names a program is given: the capability modules, and the types they speak in.
 
 Two things are built here, and the difference between them is the whole of gg's capability model as
 this guest sees it.
 
-**The API objects are built from the run.** `fs`, `project`, `view`, `harness` — one per
-`gg.catalogue.OBJECT_FOR_MODULE` namespace with at least one function this run offers, each carrying
-the functions it offers and the `list()` directory every object has. A tool the run withheld is not
-an attribute, so `<object>.list()` is the honest directory of what is really available and a model is
+**The modules are built from the run.** `files`, `board`, `views`, `session` — one per
+`gg.catalogue.MODULE_ORDER` entry with at least one function this run offers, each carrying the
+functions it offers and the `list` directory every module has. A withheld function is not an
+attribute, so `<module>.list()` is the honest directory of what is really available and a model is
 never shown a call it cannot make.
 
 **It is not the enforcement.** That is the difference from a guest that could hide a name and be done
-with it: this SDK is an ordinary Python package, a program can `import gg` and reach every function
-in it, and gg is built for that — the **host** refuses a call outside the run's enabled set,
+with it: this SDK is an ordinary Python package, a program can `import gg.files` and reach every
+function in it, and gg is built for that — the **host** refuses a call outside the run's enabled set,
 whichever name the program used to make it. What is built here is the *surface*, and the surface is
 what a model reads.
 
-**The types are built from the SDK.** Every declaration `gg.catalogue.TYPE_ORDER` names is bound
+**The types are built from the SDK.** Every class a capability module exports is bound
 unconditionally, because a type is not a capability: `TurnRange` is what `context.archive_thread`
 takes, `ToolError` is what every call raises and `TaskStatus.DONE` is what a status argument is, and
 a program that could not name them would have to reach for a string. They cost nothing and gate
@@ -29,62 +29,114 @@ from typing import Any
 
 from wit_world.imports import session as wire_session
 
-from . import errors, helpers, session, types
+from . import board, context, core, delegation, docs, files, memories, programs
+from . import session as session_module
+from . import shell, skills, tasks, views
+from ._registry import ATTRIBUTE, REGISTRY
 from .catalogue import (
-    HELPER_CATALOGUE,
-    META_ENTRIES,
-    OBJECT_FOR_MODULE,
-    PROGRAM_ENTRIES,
-    PROGRAM_MODULE,
-    SESSION_ENTRIES,
-    TOOL_CATALOGUE,
-    TYPE_ORDER,
-    VIEW_ENTRIES,
-    VIEW_MODULE,
+    ALWAYS_BOUND,
+    ENDING_BOUND,
+    GG_TOOLS,
+    LIBRARY_BOUND,
+    MODULE_ORDER,
+    PACKAGE,
+    TOOL_BOUND,
 )
-from .tools import board, context, delegation, docs, files, memories, programs, shell, skills, tasks
-from .tools import views
 
 _MODULES: dict[str, ModuleType] = {
-    "shell": shell,
     "files": files,
-    "skills": skills,
-    "memories": memories,
-    "tasks": tasks,
+    "shell": shell,
     "board": board,
+    "tasks": tasks,
+    "memories": memories,
+    "views": views,
     "context": context,
     "delegation": delegation,
-    "views": views,
+    "skills": skills,
     "programs": programs,
+    "session": session_module,
+    "core": core,
 }
-"""The SDK modules, keyed by the `module` field of `gg.catalogue.TOOL_CATALOGUE` — plus `views` and
-`programs`, whose functions are catalogued separately because none of them is a gg tool.
+"""Every capability module, by its gg module id.
 
-Every module is imported unconditionally. The component is baked once, so there is nothing to gain by
+Imported unconditionally, and eagerly. The component is baked once, so there is nothing to gain by
 importing lazily — and an import `componentize-py` never executed is a module that is not in the
-artifact at all.
+artifact at all. Importing them is also what populates
+`gg._registry.REGISTRY`, since a decorator runs when its module does.
 """
 
 
-class ApiObject:
-    """One of the API objects a program calls gg through: `fs`, `project`, `view`, `harness`, ….
+class Bound:
+    """A namespace built from the run rather than declared in a file.
+
+    The two below share it so that `shim.py` can tell the mistake they exist to report — reaching for
+    a capability this run does not offer — from an ordinary `AttributeError` against anything else.
+    Python raises the same exception for both, and the namespace the failure happened on is the only
+    thing that distinguishes them.
+    """
+
+    __slots__ = ()
+
+
+class Surface(Bound):
+    """The `gg` name a program starts with: every capability module this run offers, under its id.
+
+    It is what makes a fully-qualified name a thing a program can *write*. `gg.files.read_file` is
+    the key a documentation view is opened by, the name search returns, and the name gg quotes back
+    at a model in a refusal — so it has to resolve in a program's own scope rather than only after an
+    `import`, or the one string the model reads everywhere would be the one string it cannot type.
+
+    The modules on it are the same objects the short names are, so `gg.files.read_file` and
+    `files.read_file` are one function under one gate. The `gg` **package** is importable too, and
+    reaches past this to every function the SDK declares; that is deliberate and is not a hole, since
+    the host refuses a withheld call whichever name reached it.
+    """
+
+    __slots__ = ("_modules",)
+
+    def __init__(self, modules: dict[str, CapabilityModule]) -> None:
+        self._modules = modules
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._modules[name]
+        except KeyError:
+            raise AttributeError(
+                f"`{PACKAGE}.{name}` is not one of the capability modules this run offers; "
+                f"it offers {', '.join(sorted(self._modules))}",
+                name=name,
+                obj=self,
+            ) from None
+
+    def __dir__(self) -> list[str]:
+        return sorted(self._modules)
+
+    def __repr__(self) -> str:
+        return f"<gg: {', '.join(sorted(self._modules))}>"
+
+
+class CapabilityModule(Bound):
+    """One of the capability modules a program calls gg through: `files`, `board`, `views`, ….
 
     A plain namespace would have done, and this exists for what it says when a program reaches for a
-    function that is **not** on it. `fs.read_file` in a run with reading withheld is the single most
-    likely mistake a model makes against this surface, and the difference between
-    `'types.SimpleNamespace' object has no attribute 'read_file'` and a sentence naming the object and
-    pointing at its directory is a turn.
+    function that is **not** on it. `files.read_file` in a run with reading withheld is the single
+    most likely mistake a model makes against this surface, and the difference between
+    `'types.SimpleNamespace' object has no attribute 'read_file'` and a sentence naming the module
+    and pointing at its directory is a turn.
 
     It is also what lets the shim classify that mistake correctly. Python raises `AttributeError`
     where a guest that could withhold a *name* would raise `NameError`, and the two mean the same
-    thing here — a capability this run does not offer — so the failure carries the object it happened
+    thing here — a capability this run does not offer — so the failure carries the module it happened
     on and `shim.py` reads it back off the exception.
+
+    It is a **view of** the real module rather than a replacement for it: everything on it is the
+    function the module declares, so `files.read_file` and `gg.files.read_file` are one object.
     """
 
-    __slots__ = ("_object", "_members")
+    __slots__ = ("_path", "_members")
 
-    def __init__(self, object: str, members: dict[str, Any]) -> None:
-        self._object = object
+    def __init__(self, path: str, members: dict[str, Any]) -> None:
+        self._path = path
         self._members = members
 
     def __getattr__(self, name: str) -> Any:
@@ -92,8 +144,8 @@ class ApiObject:
             return self._members[name]
         except KeyError:
             raise AttributeError(
-                f"`{self._object}.{name}` is not one of the functions this run offers; "
-                f"`{self._object}.list()` shows the ones it does",
+                f"`{self._path}.{name}` is not one of the functions this run offers; "
+                f"`{self._path}.list()` shows the ones it does",
                 name=name,
                 obj=self,
             ) from None
@@ -102,18 +154,18 @@ class ApiObject:
         return sorted(self._members)
 
     def __repr__(self) -> str:
-        return f"<gg `{self._object}`: {', '.join(sorted(self._members))}>"
+        return f"<gg `{self._path}`: {', '.join(sorted(self._members))}>"
 
 
-def _exported(module: ModuleType, name: str) -> Any | None:
-    """The function `name` in `module`, or `None` when the module does not define one.
+def _implemented() -> dict[str, Any]:
+    """Every operation this SDK really implements, by its gg operation id.
 
-    A catalogue entry naming something the module does not export is then a missing name in
-    `bound_tools` — which gg compares against its own vocabulary — rather than a `None` a program
-    would discover by calling it.
+    `gg._registry.REGISTRY` is filled by the `@operation` decorators as the modules above are
+    imported, so an operation named in `gg.catalogue` that no declaration claims is simply absent
+    here — which is how `bound_tools` reports a tool the artifact does not implement rather than
+    binding a name that would fail when it was called.
     """
-    candidate = getattr(module, name, None)
-    return candidate if callable(candidate) else None
+    return dict(REGISTRY)
 
 
 def bound_tools() -> list[str]:
@@ -124,106 +176,99 @@ def bound_tools() -> list[str]:
     catches the failure no compiler can: a tool added, renamed or removed in gg, with a stale `.wasm`
     still checked in.
     """
-    return [
-        entry.tool
-        for entry in TOOL_CATALOGUE
-        if _exported(_MODULES[entry.module], entry.python) is not None
-    ]
+    implemented = _implemented()
+    # A gg tool is DISPATCHED by the operation that shares its key — `files.write_file` dispatches
+    # `write_file`. The other two rows of `TOOL_BOUND` are a helper and a view that a tool merely
+    # *buys*, and reporting either as a tool would put a name in this answer that gg's own vocabulary
+    # does not hold.
+    dispatched = {
+        tool
+        for operation, tool in TOOL_BOUND.items()
+        if operation in implemented and operation.split(".", 1)[1] == tool
+    }
+    return [tool for tool in GG_TOOLS if tool in dispatched]
 
 
-def build_objects(
+def build_modules(
     enabled: list[str], ending: wire_session.EndingKind, library: bool
-) -> dict[str, ApiObject]:
-    """The API objects a program is given, each carrying the functions this run offers on it.
+) -> dict[str, CapabilityModule]:
+    """The capability modules a program is given, each carrying the functions this run offers.
 
-    An object with nothing on it is not built at all, so a run with no board tools has no `project`
-    name rather than an empty one.
+    A module with nothing on it is not built at all, so a run with no board tools has no `board` name
+    rather than an empty one.
 
     Args:
         enabled: The run's enabled gg tool names.
         ending: The role whose ending group this program is given; `NONE` binds no ending at all,
             which is what an on-use script runs under.
-        library: Whether this agent keeps a program library, which is what binds the whole `programs`
-            object.
+        library: Whether this agent keeps a program library, which is what buys the whole `programs`
+            module.
     """
     on = set(enabled)
-    objects: dict[str, dict[str, Any]] = {}
+    role = ending.name.lower()
+    implemented = _implemented()
+    offered: dict[str, dict[str, Any]] = {}
 
-    def object_for(name: str) -> dict[str, Any]:
-        """Fetch (creating on first use) one object, seeded with the directory every object shares."""
-        members = objects.get(name)
+    def offer(operation: str, function: Any) -> None:
+        module = operation.split(".", 1)[0]
+        members = offered.get(module)
         if members is None:
-            members = {entry.python: docs.bind_list(name) for entry in META_ENTRIES}
-            objects[name] = members
-        return members
+            # Seeded with the directory every module carries, so a module a run offers is always a
+            # module whose contents a program can ask for.
+            members = {"list": docs.bind_list(f"{PACKAGE}.{module}")}
+            offered[module] = members
+        members[function.__name__] = function
 
-    for entry in TOOL_CATALOGUE:
-        if entry.tool not in on:
-            continue
-        function = _exported(_MODULES[entry.module], entry.python)
-        if function is not None:
-            object_for(OBJECT_FOR_MODULE[entry.module])[entry.python] = function
+    for operation, function in implemented.items():
+        tool = TOOL_BOUND.get(operation)
+        if tool is not None:
+            bought = tool in on
+        elif operation in ALWAYS_BOUND:
+            bought = True
+        elif operation in LIBRARY_BOUND:
+            bought = library
+        else:
+            bought = ENDING_BOUND.get(operation) == role
+        if bought:
+            offer(operation, function)
 
-    # A helper lives on the object of the tool it is built on, and is bound exactly when that tool is.
-    for helper in HELPER_CATALOGUE:
-        if helper.requires not in on:
-            continue
-        required = next(entry for entry in TOOL_CATALOGUE if entry.tool == helper.requires)
-        function = _exported(helpers, helper.python)
-        if function is not None:
-            object_for(OBJECT_FOR_MODULE[required.module])[helper.python] = function
-
-    # `view`: always present, on the same carve-out `harness` has — a run that enables no tools at all
-    # must still be able to show its model something, and a view is the only channel that reaches it.
-    # `open_file` is the one exception: it is a read, so it is offered exactly when `read_file` is.
-    view = object_for(OBJECT_FOR_MODULE[VIEW_MODULE])
-    for entry in VIEW_ENTRIES:
-        if entry.requires is not None and entry.requires not in on:
-            continue
-        function = _exported(views, entry.python)
-        if function is not None:
-            view[entry.python] = function
-
-    # `programs`: the whole object, or no object at all. It is the one family a *capability* gates
-    # rather than a tool or a role, so the host says so with a flag instead of a name in `enabled`.
-    if library:
-        library_object = object_for(OBJECT_FOR_MODULE[PROGRAM_MODULE])
-        for entry in PROGRAM_ENTRIES:
-            function = _exported(programs, entry.python)
-            if function is not None:
-                library_object[entry.python] = function
-
-    # The one ending group this role produces: what is not this role's ending is not a name.
-    for entry in SESSION_ENTRIES:
-        if entry.ending != ending.name.lower():
-            continue
-        function = _exported(session, entry.python)
-        if function is not None:
-            object_for(entry.object)[entry.python] = function
-
-    return {name: ApiObject(name, members) for name, members in objects.items()}
+    return {
+        module: CapabilityModule(f"{PACKAGE}.{module}", offered[module])
+        for module in MODULE_ORDER
+        if module in offered
+    }
 
 
 def type_names() -> dict[str, Any]:
     """Every type this SDK declares, by the name a program writes.
 
     Bound whatever a run enables, because none of them reaches the host: they are the vocabulary the
-    API objects speak in, and a program that could not write `TurnRange(4, 19)` or catch `ToolError`
-    would be reading signatures it cannot act on. `UNCHANGED` travels with them for the same reason —
-    it is the value a patch argument defaults to, and a program that spells one out has to name it.
+    capability modules speak in, and a program that could not write `TurnRange(4, 19)` or catch
+    `ToolError` would be reading signatures it cannot act on. `UNCHANGED` travels with them for the
+    same reason — it is the value a patch argument defaults to, and a program that spells one out has
+    to name it.
+
+    The set is read off each module's `__all__`, which is Python's own declaration of a module's
+    public surface and the same list the reflector catalogues from. A name that is a function is not
+    a type and is skipped: functions are bound per run, above.
     """
     bound: dict[str, Any] = {}
-    for name in TYPE_ORDER:
-        declared = getattr(types, name, None)
-        bound[name] = getattr(errors, name) if declared is None else declared
-    bound["UNCHANGED"] = types.UNCHANGED
+    for module in _MODULES.values():
+        for name in module.__all__:
+            declared = getattr(module, name)
+            if getattr(declared, ATTRIBUTE, None) is None:
+                bound[name] = declared
     return bound
 
 
 def build_scope(
     enabled: list[str], ending: wire_session.EndingKind, library: bool
 ) -> dict[str, Any]:
-    """Every name a program starts with: the API objects this run offers, and the SDK's types.
+    """Every name a program starts with: the modules this run offers, and the SDK's types.
+
+    Each module is bound twice, under its bare id and on the `gg` surface, and the two are the same
+    object: `files.read_file` is the short way and `gg.files.read_file` is the fully-qualified name
+    the documentation is keyed by, so whichever of them a model reads is one it can write.
 
     `lib` is not here: it is bound by the shim, from the code modules the host handed over, and a run
     with none has no such name.
@@ -233,6 +278,8 @@ def build_scope(
         ending: The role whose ending group this program is given.
         library: Whether this agent keeps a program library.
     """
+    modules = build_modules(enabled, ending, library)
     scope: dict[str, Any] = type_names()
-    scope.update(build_objects(enabled, ending, library))
+    scope.update(modules)
+    scope[PACKAGE] = Surface(modules)
     return scope

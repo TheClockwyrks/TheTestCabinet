@@ -4,35 +4,43 @@ and write it to ``crates/gg/src/sandbox/guests/cpp.signatures.json``.
 
 WHAT READS THE DOCUMENTATION. ``clang++``'s own **comment AST**, dumped as JSON. clang has a real
 documentation parser built into it — the one ``-Wdocumentation`` diagnoses against and the one
-``clang-doc`` and ``libclang``'s comment API are built on — and it does the two things that matter:
-it decides which comment belongs to which declaration, and it parses the Doxygen commands inside
-one into structure. So ``\\param path``'s prose arrives attached to the parameter called ``path``
-rather than as a line this script had to find, ``\\returns`` and ``\\throws`` arrive as their own
-nodes, and ``\\copydoc`` arrives as a resolvable reference.
+``clang-doc`` and ``libclang``'s comment API are built on — and it does the three things that
+matter: it decides which comment belongs to which declaration, it parses the Doxygen commands
+inside one into structure, and it **keeps the lines** the author wrote. So ``\\param path``'s prose
+arrives attached to the parameter called ``path``, ``\\returns`` and ``\\throws`` arrive as their
+own nodes, ``\\copydoc`` arrives as a resolvable reference, and the first line of a comment is
+recoverable as a first line rather than as a sentence this script had to find.
 
-That makes C++ one of the few arms here with a **real per-parameter documentation slot** rather than
-a convention standing in for one: Rust needs a ``# Arguments`` list and PureScript needs the same,
-because neither language has anywhere to write a comment on a parameter. clang polices this one for
-us — ``signatures.sh`` compiles the reflection unit with ``-Werror=documentation``, so a ``\\param``
-naming an argument the function does not take is a failed reflection rather than a sentence a model
-reads about an argument that does not exist.
+THE BRIEF IS THE FIRST LINE, AND THE SPLIT HAPPENS BEFORE ANYTHING IS UNWRAPPED. Doxygen's implicit
+structure, with no ``\\brief`` tag anywhere: the opening paragraph of a declaration's comment is its
+brief and everything after the blank line is its detail. It is checked here rather than three steps
+later in a gate — an opening paragraph that runs to two source lines is refused, by name, at the
+declaration it was written on — and it is checked on the RAW lines, because
+:func:`unwrapped` exists to join a wrapped paragraph back into one line and running it first would
+turn a three-line opening paragraph into a single line no rule could tell from a brief.
+
+WHY THE OPERATION ID IS WRITTEN ON THE DECLARATION. gg's identity for a call — that
+``files::read_file`` **is** gg's ``files.read_file`` operation, the same capability Java spells
+``Workspace#readFile`` — is the one thing C++'s own syntax cannot say. It is written on the
+declaration all the same, as a ``<ggop>files.read_file</ggop>`` line in its own ``///`` comment,
+which clang's comment lexer hands back as ordinary text and this script lifts out before a model
+ever reads the paragraph. An element rather than a ``\\command`` because an unknown Doxygen command
+is a compiler warning on every declaration that carries one; on the declaration rather than in
+``catalogue.py`` because a side table naming every function twice is the second copy that drifts.
 
 WHY THE FILTER. A translation unit that includes this SDK also includes half the standard library,
 and dumping its whole AST is ~300 MB for ``<string>`` alone. ``-ast-dump-filter=gg`` dumps only the
 declarations whose name matches, which for this SDK is every one of them: the surface lives in
-``namespace gg`` because one of its objects is called ``system`` and ``<cstdlib>`` already has one.
-3 MB and half a second.
+``namespace gg``.
 
 WHAT IT IS NOT ALLOWED TO DO. Invent a word. Every string in the emitted JSON is either an identity
-from ``catalogue.py`` (a tool name, an object, a gate) or text lifted out of a ``///`` comment. A
-blank anywhere is an error.
+written on a declaration or text lifted out of a ``///`` comment. A blank anywhere is an error.
 
 WHAT ``///`` MEANS HERE, which is a convention this file enforces. A ``///`` comment is
 **model-facing** and a ``//`` comment is not. That is how a public member the bridge needs —
-``text_edit::tag()``, ``brief::is_issue()`` — stays out of a model's reading of the type while
-staying reachable to the SDK's own implementation: it carries ``//``. A public member with no
-documentation comment at all is therefore left out of the declaration and out the member list
-rather than emitted blank.
+``tasks::text_edit::tag()``, ``delegation::brief::is_issue()`` — stays out of a model's reading of
+the type while staying reachable to the SDK's own implementation, and how ``gg::core::gg_name``
+stays out of a catalogue that carries exactly the declarations binding a gg operation.
 
 Usage (through ``signatures.sh``, which dumps the AST first):
 
@@ -46,15 +54,30 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import catalogue  # noqa: E402  (the identity table, beside this file)
+import catalogue  # noqa: E402  (the module table, beside this file)
+
+#: The schema this catalogue is written in — the normalized doc model: modules, operations,
+#: fully-qualified names, authored briefs and resolved type references.
+SCHEMA = 2
 
 #: What the emitted catalogue records itself as reflected from.
 GENERATED_FROM = "packages/gg-sandbox-cpp/Sources/sdk/ (clang++ -ast-dump=json)"
 
-#: The types every call's failure arm refers to, added to every entry's `types` because every
-#: function in this SDK throws one of these when the call fails — including the two that cannot
-#: fail, whose documentation says so.
-ALWAYS_REFERENCED = ("tool_error", "tool_error_code")
+#: The types every call's failure arm refers to, closed over on every entry because every function
+#: in this SDK throws one of these when the call fails — including the two that cannot fail, whose
+#: documentation says so. Written as a program writes them, and resolved like any other reference.
+ALWAYS_REFERENCED = ("core::tool_error", "core::tool_error_code")
+
+#: The line a declaration carries to name the gg operation it binds.
+OPERATION_TAG = re.compile(r"^<ggop>([a-z_]+\.[a-z_]+)</ggop>$")
+
+#: The line a declaration carries when it is a **second** way to reach an operation some other
+#: declaration in this SDK binds canonically.
+ALIAS_TAG = re.compile(r"^<ggop-alias>([a-z_]+\.[a-z_]+)</ggop-alias>$")
+
+#: The line a module's namespace carries to name which of gg's cross-arm modules it is.
+MODULE_TAG = re.compile(r"^<ggmodule>([a-z_]+)</ggmodule>$")
+
 
 class Failure(Exception):
     """Something a model would have read is missing, or says something the code does not."""
@@ -166,12 +189,16 @@ def fragments(node):
     return out
 
 
-def joined(pieces):
-    """One comment node's fragments, back as the lines they were written on.
+def lines_of(pieces):
+    """One comment node's fragments, back as **the lines they were written on**.
 
     Exactly ONE leading space comes off each line, because that is the space after `///` and
     everything past it is the author's. Stripping the lot would flatten a fenced block's
     indentation, which on this arm is C++ a model is being shown.
+
+    Nothing is joined here. What the lines are for decides that: a brief is the first of them and
+    has to still be a line to be checked as one, while a paragraph of detail is put back together
+    by `unwrapped`.
     """
     lines = []
     end = None
@@ -181,9 +208,12 @@ def joined(pieces):
         else:
             lines.append(text)
         end = None if offset is None else offset + len(text)
-    return unwrapped(
-        "\n".join(line[1:] if line.startswith(" ") else line for line in lines).rstrip()
-    ).strip()
+    return "\n".join(line[1:] if line.startswith(" ") else line for line in lines).rstrip()
+
+
+def joined(pieces):
+    """One comment node's fragments as a single settled line — what a `\\param` carries."""
+    return unwrapped(lines_of(pieces)).strip()
 
 
 def unwrapped(text):
@@ -191,9 +221,9 @@ def unwrapped(text):
 
     A `///` comment is wrapped to the source's line width, and those breaks are an artefact of
     reading C++ rather than anything a model should be shown: they turn one sentence into three
-    lines in a system prompt and make a diff of the catalogue a diff of where the author's editor
-    wrapped. Blank lines, list items and fenced blocks all survive — the first two because they are
-    structure, the third because whitespace inside it is the code.
+    lines in a documentation view and make a diff of the catalogue a diff of where the author's
+    editor wrapped. Blank lines, list items and fenced blocks all survive — the first two because
+    they are structure, the third because whitespace inside it is the code.
     """
     out = []
     paragraph = []
@@ -227,12 +257,12 @@ def unwrapped(text):
 
 
 def paragraphs(comment):
-    """One ``FullComment``'s description: every paragraph before the first command."""
+    """One ``FullComment``'s description: every paragraph before the first command, as written."""
     out = []
     for child in comment.get("inner", []):
         if child.get("kind") != "ParagraphComment":
             break
-        text = joined(fragments(child))
+        text = lines_of(fragments(child))
         if text:
             out.append(text)
     return out
@@ -264,6 +294,26 @@ def comment_of(node):
     return None
 
 
+def tagged(node, pattern):
+    """The one identity line on `node` matching `pattern`, or ``None``.
+
+    Two of them would be two claims about one declaration, which is a defect rather than a choice,
+    so it is refused here rather than resolved by picking the first.
+    """
+    comment = comment_of(node)
+    if comment is None:
+        return None
+    found = [
+        matched.group(1)
+        for paragraph in paragraphs(comment)
+        for matched in [pattern.fullmatch(paragraph.strip())]
+        if matched
+    ]
+    if len(found) > 1:
+        raise Failure(f"`{node.get('name')}` carries {len(found)} identity lines of one kind")
+    return found[0] if found else None
+
+
 class Docs:
     """Every doc comment in the SDK, and the one command that points from one to another."""
 
@@ -271,27 +321,47 @@ class Docs:
         self.index = index
 
     def described(self, node, what):
-        """One declaration's model-facing prose, with ``\\copydoc`` resolved."""
+        """One declaration's ``(brief, detail)``, with ``\\copydoc`` resolved and identity lines out.
+
+        The brief is the **first paragraph and one line**. An opening paragraph that runs to two
+        lines is not a brief, and it is refused here — naming the declaration it was written on —
+        rather than reaching a model as a paragraph in the field where it expected a line.
+        """
         comment = comment_of(node)
         if comment is None:
             raise Failure(f"{what} has no `///` documentation, so a model would read nothing")
-        text = "\n\n".join(paragraphs(comment)).strip()
-        copied = re.fullmatch(r"\\copydoc\s+([A-Za-z0-9_:]+)", text)
-        if copied:
-            target = self.index.get(copied.group(1))
-            if target is None:
-                raise Failure(
-                    f"{what} copies the documentation of `{copied.group(1)}`, which this SDK does "
-                    "not declare"
-                )
-            return self.described(target, f"`{copied.group(1)}`")
-        if not text:
+        written = [
+            paragraph
+            for paragraph in paragraphs(comment)
+            if not OPERATION_TAG.fullmatch(paragraph.strip())
+            and not ALIAS_TAG.fullmatch(paragraph.strip())
+            and not MODULE_TAG.fullmatch(paragraph.strip())
+        ]
+        if len(written) == 1:
+            copied = re.fullmatch(r"\\copydoc\s+([A-Za-z0-9_:]+)", written[0].strip())
+            if copied:
+                target = self.index.get(copied.group(1))
+                if target is None:
+                    raise Failure(
+                        f"{what} copies the documentation of `{copied.group(1)}`, which this SDK "
+                        "does not declare"
+                    )
+                return self.described(target, f"`{copied.group(1)}`")
+        if not written:
             raise Failure(f"{what}'s documentation is blank")
-        return text
+        brief = written[0].strip()
+        if "\n" in brief:
+            raise Failure(
+                f"{what} opens with a paragraph of {len(brief.splitlines())} lines where a brief "
+                "is one line — the first line is the brief and everything after the blank line is "
+                f"the detail, so this reads as a brief nobody wrote: {brief!r}"
+            )
+        detail = unwrapped("\n\n".join(written[1:])).strip() or None
+        return brief, detail
 
 
-def with_tail(text, comment):
-    """A function's prose with its ``\\returns`` and ``\\throws`` blocks written back on the end.
+def with_tail(detail, comment):
+    """A function's detail with its ``\\returns`` and ``\\throws`` blocks written back on the end.
 
     They are commands rather than paragraphs, so they are not in the description — and they are two
     of the most useful sentences a model reads about a call, so they are not dropped either. The
@@ -309,25 +379,31 @@ def with_tail(text, comment):
         thrown = " ".join(arguments)
         tail.append(f"Throws: {thrown} {prose}".strip())
     if not tail:
-        return text
-    return text + "\n\n" + "\n".join(tail)
+        return detail
+    written = "\n".join(tail)
+    return f"{detail}\n\n{written}" if detail else written
 
 
 # ------------------------------------------------------------------------------------------------
 # Types
 # ------------------------------------------------------------------------------------------------
 
-#: An identifier that is not preceded by `::`, which is how a name this SDK declared is told from a
-#: member of `std`.
-_NAME = re.compile(r"(?<!:)\b([A-Za-z_][A-Za-z0-9_]*)\b")
 
+class Declared:
+    """One type this SDK declares, and the two names it answers to.
 
-def referenced(rendered, declared, out):
-    """Every type this SDK declares that appears in `rendered`, in first-mention order."""
-    for match in _NAME.finditer(rendered or ""):
-        name = match.group(1)
-        if name in declared and name not in out:
-            out.append(name)
+    ``fqn`` is the key a documentation view is opened by and the string a program could write in
+    full; ``spelled`` is what a signature writes, which is the module-qualified form the prelude's
+    ``using namespace gg;`` leaves resolvable — `files::text_file` rather than `gg::files::text_file`
+    or a bare `text_file`.
+    """
+
+    def __init__(self, module, node):
+        self.module = module
+        self.node = node
+        self.name = node["name"]
+        self.fqn = f"{module.path}::{self.name}"
+        self.spelled = f"{module.name}::{self.name}"
 
 
 def parameters_of(node):
@@ -382,23 +458,27 @@ def source_of(name):
     return _SOURCES[name]
 
 
+def returns_of(node):
+    """The return type of one function declaration, as this SDK wrote it."""
+    whole = (node.get("type") or {}).get("qualType", "")
+    return whole.split("(", 1)[0].strip() or "void"
+
+
 def signature_of(node, name):
     """One function declaration, rendered the way a catalogue entry carries it.
 
-    ``read_file(std::string_view path, read_window window = {}) -> file_read``: the name a program
-    writes first, because the agreement gate holds every arm to that, then C++'s own parameter list
-    with its own defaults, then the return type. It is the shape the [Java](java) arm settled on for
-    the same reason — a language that writes its return type first cannot lead with the name and
-    also be a declaration.
+    ``read_file(std::string_view path, files::read_window window = {}) -> files::file_read``: the
+    name a program writes first, because every arm's catalogue leads with it, then C++'s own
+    parameter list with its own defaults, then the return type. A language that writes its return
+    type first cannot lead with the name and also be a declaration, so this is a rendering rather
+    than a quotation — and every type in it is spelled the way a program writes it.
     """
     parameters = parameters_of(node)
     written = ", ".join(
         f"{kind} {argument}" + (f" = {value}" if value else "")
         for argument, kind, value in parameters
     )
-    whole = (node.get("type") or {}).get("qualType", "")
-    returns = whole.split("(", 1)[0].strip() or "void"
-    return f"{name}({written}) -> {returns}", parameters, returns
+    return f"{name}({written}) -> {returns_of(node)}", parameters
 
 
 def public_members(node):
@@ -434,10 +514,23 @@ def public_members(node):
     return out
 
 
+def is_member_function(member):
+    """Whether one documented member is a **member function** rather than a part of the value.
+
+    The two are told apart by the identity line and by nothing else: a member that binds a gg
+    operation is a call in its own right, catalogued with its own signature and its own
+    documentation view, while everything else — a field, an enumerator, a named factory — is part
+    of what the type IS and is listed on the type's own declaration. Reading the C++ kind instead
+    would file this SDK's named factories, which construct a value and bind no operation, as
+    capabilities.
+    """
+    return tagged(member, OPERATION_TAG) is not None or tagged(member, ALIAS_TAG) is not None
+
+
 def member_declaration(member, owner):
     """One member, as it is written in the declaration a model is shown."""
     kind = member.get("kind")
-    if kind in ("FieldDecl",):
+    if kind == "FieldDecl":
         return f'{(member.get("type") or {}).get("qualType", "")} {member.get("name")};'
     if kind == "EnumConstantDecl":
         return member.get("name")
@@ -454,39 +547,56 @@ def member_declaration(member, owner):
     return f"{prefix}{returns} {member.get('name')}({written}){trailing};"
 
 
+def member_name(member, owner):
+    """What the catalogue lists one member under.
+
+    A field and an enumerator are their own names. A named factory is its name **with its
+    parameters**, because `set` and `set(std::string text)` are not the same thing to a model
+    building one, and the type's members are the only place this SDK says how a value of it is
+    constructed.
+    """
+    kind = member.get("kind")
+    if kind in ("FieldDecl", "EnumConstantDecl"):
+        return member.get("name")
+    written = ", ".join(
+        f"{argument_type} {argument}" for argument, argument_type, _ in parameters_of(member)
+    )
+    name = owner if kind == "CXXConstructorDecl" else member.get("name")
+    return f"{name}({written})"
+
+
 def member_type(member, owner):
     """What the catalogue records as a member's type.
 
-    A field's is its type; a **function's is its whole signature**, because that is what a member of
-    a class with named factories actually is and a bare return type would tell a model nothing about
-    how to reach it. An enum's constant has none at all: the constant *is* the value.
+    A field's is its type and a factory's is what it hands back, which for every one of them is the
+    type being constructed. An enum's constant has none at all: the constant *is* the value.
     """
     kind = member.get("kind")
     if kind == "FieldDecl":
         return (member.get("type") or {}).get("qualType", "")
     if kind == "EnumConstantDecl":
         return None
-    return member_declaration(member, owner).rstrip(";")
+    if kind == "CXXConstructorDecl":
+        return owner
+    return returns_of(member)
 
 
-def declaration_of(node, name):
-    """One type's declaration, as this SDK wrote it, and its documented members."""
+def declaration_of(node, name, members):
+    """One type's declaration, as this SDK wrote it."""
     kind = node.get("kind")
     if kind == "TypeAliasDecl":
         alias = (node.get("type") or {}).get("qualType", "")
-        return f"using {name} = {alias}", []
+        return f"using {name} = {alias}"
     if kind == "EnumDecl":
-        members = public_members(node)
         arms = ", ".join(member.get("name") for member in members)
-        return f"enum class {name} {{ {arms} }}", members
-    members = public_members(node)
+        return f"enum class {name} {{ {arms} }}"
     written = " ".join(member_declaration(member, name) for member in members)
     tag = node.get("tagUsed", "struct")
     bases = "".join(
         f' : {base.get("writtenAccess", "public")} {base["type"]["qualType"]}'
         for base in node.get("bases", [])
     )
-    return f"{tag} {name}{bases} {{ {written} }}", members
+    return f"{tag} {name}{bases} {{ {written} }}"
 
 
 # ------------------------------------------------------------------------------------------------
@@ -510,47 +620,193 @@ class Reflector:
         # `namespace gg { … }` is reopened by every header, and clang dumps each block, so the
         # surface is their union rather than any one of them.
         self.children = [child for block in blocks for child in block.get("inner", [])]
-        self.objects = {}
-        self.declarable = {}
         self.qualified = {}
         for child in self.children:
-            name = child.get("name")
-            if child.get("kind") == "NamespaceDecl":
-                self.objects.setdefault(name, []).extend(child.get("inner", []))
-                for member in child.get("inner", []):
-                    if member.get("name"):
-                        self.qualified[f'gg::{name}::{member["name"]}'] = member
-            elif child.get("kind") in ("CXXRecordDecl", "EnumDecl", "TypeAliasDecl"):
-                if name and not child.get("isImplicit"):
-                    self.declarable[name] = child
+            if child.get("kind") != "NamespaceDecl":
+                continue
+            for member in child.get("inner", []):
+                if member.get("name"):
+                    self.qualified[f'gg::{child["name"]}::{member["name"]}'] = member
         self.docs = Docs(self.qualified)
+        self.modules = {}
+        self.declared = {}
         self.types = {}
+        self.member_functions = {}
+        self.collect()
 
-        missing = [name for name in catalogue.OBJECTS if name not in self.objects]
+    def collect(self):
+        """Index the surface: its capability modules, and every type they declare.
+
+        A type is catalogued exactly when a **catalogued module declares it**, which is what makes
+        every fully-qualified name in this artifact a real C++ path. It is also what keeps
+        `gg::detail` out: the bridge declares records of its own there, and a catalogue that picked
+        those up would describe the membrane to a model instead of the SDK.
+        """
+        by_name = {module.name: module for module in catalogue.MODULES}
+        seen = {}
+        for child in self.children:
+            if child.get("kind") != "NamespaceDecl":
+                continue
+            id_ = tagged(child, MODULE_TAG)
+            if id_ is None:
+                continue
+            if id_ in seen and seen[id_] != child["name"]:
+                raise Failure(f"two namespaces claim gg's `{id_}` module")
+            seen[id_] = child["name"]
+            module = by_name.get(child["name"])
+            if module is None or module.id != id_:
+                raise Failure(
+                    f"`gg::{child['name']}` declares itself gg's `{id_}` module, which "
+                    "`catalogue.py` does not name it — the table and the declarations must agree "
+                    "in both directions"
+                )
+            self.modules.setdefault(module.id, []).extend(child.get("inner", []))
+
+        missing = [module.id for module in catalogue.MODULES if module.id not in self.modules]
         if missing:
-            raise Failure(f"the catalogue names API objects this SDK has no namespace for: {missing}")
+            raise Failure(
+                f"`catalogue.py` names modules no `namespace` declares itself to be: {missing}"
+            )
+
+        for module in catalogue.MODULES:
+            for child in self.modules[module.id]:
+                if child.get("kind") not in ("CXXRecordDecl", "EnumDecl", "TypeAliasDecl"):
+                    continue
+                if not child.get("name") or child.get("isImplicit"):
+                    continue
+                if comment_of(child) is None:
+                    continue
+                declared = Declared(module, child)
+                if declared.spelled in self.declared:
+                    raise Failure(f"two types are written `{declared.spelled}`")
+                self.declared[declared.spelled] = declared
+
+        self._spellings = re.compile(
+            r"(?<![\w:])("
+            + "|".join(re.escape(spelled) for spelled in sorted(self.declared, reverse=True))
+            + r")(?![\w])"
+        )
+        self._bare = re.compile(
+            r"(?<![\w:])("
+            + "|".join(
+                sorted({declared.name for declared in self.declared.values()}, reverse=True)
+            )
+            + r")(?![\w])"
+        )
+
+    # -- types -----------------------------------------------------------------------------------
+
+    def referenced(self, written, out, what):
+        """Every type this SDK declares that `written` names, in first-mention order.
+
+        A type this SDK does not declare — `std::string`, `std::optional`, `std::vector` — is not
+        catalogued and is not meant to be: it is C++'s, a model already knows it, and a declaration
+        of it would be gg describing the standard library.
+
+        A declared type written **bare** is refused rather than resolved. The spelling is what a
+        model reads in a signature and copies out of it, so it has to be one that resolves at a
+        call site and one string per type: an unqualified `text_file` beside a qualified
+        `files::text_file` would be two names for one declaration, and only one of them opens.
+        """
+        for match in self._spellings.finditer(written or ""):
+            if match.group(1) not in out:
+                out.append(match.group(1))
+        # A bare name that survives the lookbehind is one nothing qualified: `files::text_file`
+        # cannot match here, because the `text_file` in it is preceded by a `:`.
+        for match in self._bare.finditer(written or ""):
+            bare = match.group(1)
+            raise Failure(
+                f"{what} writes the declared type `{bare}` unqualified, where every reference is "
+                "module-qualified so that the spelling a model reads is one it can open"
+            )
+
+    def declare(self, spelled):
+        """Record one type's declaration, once, and hand back the spellings its members mention."""
+        if spelled in self.types:
+            return self.types[spelled]["referenced"]
+        declared = self.declared[spelled]
+        node = declared.node
+        found = public_members(node)
+        parts = [member for member in found if not is_member_function(member)]
+        rendered = declaration_of(node, declared.name, parts)
+        brief, detail = self.docs.described(node, f"the type `{declared.fqn}`")
+        members = []
+        referenced = []
+        for member in parts:
+            kind = "variant" if member.get("kind") == "EnumConstantDecl" else "field"
+            # The owner is the type as a program WRITES it, because a constructor's
+            # "type" is the value it builds and that string is a reference like any
+            # other — a bare one would name a type nothing could open.
+            written = member_type(member, declared.spelled)
+            if written:
+                self.referenced(written, referenced, f"`{declared.fqn}::{member.get('name')}`")
+            member_brief, member_detail = self.docs.described(
+                member, f"`{declared.fqn}::{member.get('name')}`"
+            )
+            members.append(
+                {
+                    "name": member_name(member, declared.name),
+                    "type": written,
+                    "kind": kind,
+                    "brief": member_brief,
+                    "detail": member_detail,
+                }
+            )
+        # An ALIAS carries its referent rather than members, and the referent is the half a reader
+        # would otherwise lose: `files::file_read` is `std::variant<files::text_file,
+        # files::image_file>`, so a model shown the alias and neither alternative has been shown
+        # nothing at all.
+        if node.get("kind") == "TypeAliasDecl":
+            self.referenced(
+                (node.get("type") or {}).get("qualType", ""),
+                referenced,
+                f"the type `{declared.fqn}`",
+            )
+        self.types[spelled] = {
+            "fqn": declared.fqn,
+            "module": declared.module.id,
+            "name": declared.name,
+            "declaration": rendered,
+            "brief": brief,
+            "detail": detail,
+            "members": members,
+            "memberFunctions": [],
+            "referenced": referenced,
+        }
+        return referenced
+
+    def close_over(self, spellings):
+        """The declared types a signature mentions, transitively closed, in first-mention order.
+
+        Transitive because the list answers *which declarations does this run's surface reach*,
+        which is what decides whether a type may be opened at all. What a documentation view opens
+        beside a function is a **depth-one** question gg answers for itself from `returns` and the
+        signature text, so widening here costs nothing there.
+        """
+        pending = list(spellings)
+        seen = []
+        while pending:
+            spelled = pending.pop(0)
+            if spelled in seen or spelled not in self.declared:
+                continue
+            seen.append(spelled)
+            pending.extend(self.declare(spelled))
+        return seen
+
+    def references(self, spellings):
+        """A list of spellings, as the resolved type references the catalogue carries."""
+        return [
+            {"spelled": spelled, "fqn": self.declared[spelled].fqn} for spelled in spellings
+        ]
 
     # -- functions -------------------------------------------------------------------------------
-
-    def overloads(self, object_, name):
-        """Every declaration of one function on an API object — one per overload."""
-        found = [
-            child
-            for child in self.objects[object_]
-            if child.get("kind") == "FunctionDecl" and child.get("name") == name
-        ]
-        if not found:
-            raise Failure(
-                f"the catalogue names `{object_}::{name}`, which this SDK does not declare"
-            )
-        return found
 
     def shape(self, node, name, what):
         """One calling shape and the arguments it documents."""
         comment = comment_of(node)
         if comment is None:
             raise Failure(f"{what} has no `///` documentation")
-        rendered, parameters, _ = signature_of(node, name)
+        rendered, parameters = signature_of(node, name)
         documented = parameter_docs(comment)
         if len(documented) != len(parameters):
             raise Failure(
@@ -578,31 +834,31 @@ class Reflector:
                     "kind": "positional",
                     "default": value,
                     "doc": description,
-                    # Always empty: every structured argument here is typed by NAME — `read_window`,
-                    # `issue_options` — and that type is catalogued with its own documented members.
-                    # Filling both would be two copies of one sentence with nothing keeping them
-                    # equal.
+                    # Always empty: every structured argument here is typed by NAME —
+                    # `files::read_window`, `board::issue_options` — and that type is catalogued
+                    # with its own documented members. Filling both would be two copies of one
+                    # sentence with nothing keeping them equal.
                     "fields": [],
                 }
             )
         return {"signature": rendered, "parameters": out}
 
-    def entry(self, spec):
-        """One catalogue entry, whatever section it belongs to."""
-        what = f"`{spec['object']}::{spec['name']}`"
-        nodes = self.overloads(spec["object"], spec["name"])
-        names = []
-        shapes = []
-        for node in nodes:
-            shapes.append(self.shape(node, spec["name"], what))
-            for _, kind, _ in parameters_of(node):
-                referenced(kind, self.declarable, names)
-            referenced((node.get("type") or {}).get("qualType", ""), self.declarable, names)
-        # An overload pair is two spellings of one capability and the catalogue carries one
-        # description, so one of them documents the whole — and it is the FULLEST, because the shape
-        # that takes the most arguments is the one whose prose has to cover them. [Java](java)'s arm
-        # reached the same answer from the other direction. Two overloads of the same arity would
-        # make that choice arbitrary, so it is refused rather than decided by declaration order.
+    def entry(self, nodes, module, operation, alias_of, receiver=None):
+        """One catalogued call, from every declaration that spells it.
+
+        An overload pair is two spellings of one capability and the catalogue carries one
+        description, so one of them documents the whole — and it is the FULLEST, because the shape
+        that takes the most arguments is the one whose prose has to cover them. Two overloads of
+        the same arity would make that choice arbitrary, so it is refused rather than decided by
+        declaration order.
+        """
+        name = nodes[0]["name"]
+        fqn = (
+            f"{module.path}::{receiver}::{name}"
+            if receiver is not None
+            else f"{module.path}::{name}"
+        )
+        what = f"`{fqn}`"
         widths = [len(parameters_of(node)) for node in nodes]
         if len(set(widths)) != len(widths):
             raise Failure(
@@ -611,167 +867,219 @@ class Reflector:
                 "read by making the fullest overload the documented one"
             )
         described = max(nodes, key=lambda node: len(parameters_of(node)))
-        prose = self.docs.described(described, what)
+        # The identity belongs on the declaration that carries the description, because that is the
+        # one a reader of the header is standing at when they read what the call is. An id on the
+        # shorter overload would be an id on a comment the catalogue never renders.
+        if tagged(described, OPERATION_TAG) is None and tagged(described, ALIAS_TAG) is None:
+            raise Failure(
+                f"{what} names its gg operation on an overload other than the one that documents "
+                "the entry — the identity goes on the fullest shape, beside the prose that covers "
+                "every argument"
+            )
+        shapes = [self.shape(node, name, what) for node in nodes]
+        arguments = []
+        returned = []
+        for node in nodes:
+            for _, kind, _ in parameters_of(node):
+                self.referenced(kind, arguments, what)
+            self.referenced(returns_of(node), returned, what)
+        brief, detail = self.docs.described(described, what)
         return {
-            "name": spec["name"],
-            "object": spec["object"],
-            "signatures": shapes,
-            "doc": with_tail(prose, comment_of(described)),
-            "types": self.close_over(names),
-        }
-
-    def close_over(self, names):
-        """The SDK's own types a signature mentions, transitively closed, in first-mention order.
-
-        A type this SDK does not declare — `std::string`, `std::optional`, `std::vector` — is not
-        catalogued and is not meant to be: it is C++'s, a model already knows it, and a declaration
-        of it would be gg describing the standard library.
-        """
-        pending = list(names) + list(ALWAYS_REFERENCED)
-        seen = []
-        while pending:
-            name = pending.pop(0)
-            if name in seen or name not in self.declarable:
-                continue
-            seen.append(name)
-            self.declare(name)
-            # A record's members carry types, and an ALIAS carries its referent instead — and the
-            # referent is the half a prompt would otherwise lose: `file_read` is
-            # `std::variant<text_file, image_file>`, so a model shown the alias and neither
-            # alternative has been shown nothing at all.
-            more = []
-            for member in self.types[name]["members"]:
-                if member["type"]:
-                    referenced(member["type"], self.declarable, more)
-            if self.declarable[name].get("kind") == "TypeAliasDecl":
-                referenced(
-                    (self.declarable[name].get("type") or {}).get("qualType", ""),
-                    self.declarable,
-                    more,
-                )
-            pending.extend(more)
-        return seen
-
-    def declare(self, name):
-        """Record one type's declaration, once."""
-        if name in self.types:
-            return
-        node = self.declarable[name]
-        rendered, members = declaration_of(node, name)
-        self.types[name] = {
+            "operation": operation,
+            "aliasOf": alias_of,
+            "module": module.id,
+            "kind": "method" if receiver is not None else "function",
+            "receiver": receiver,
             "name": name,
-            "declaration": rendered,
-            "doc": self.docs.described(node, f"the type `{name}`"),
-            "members": [
-                {
-                    "name": member.get("name"),
-                    "type": member_type(member, name),
-                    "doc": self.docs.described(
-                        member, f"`{name}::{member.get('name')}`"
-                    ),
-                }
-                for member in members
-            ],
+            "fqn": fqn,
+            # `null`, because on this arm the fully-qualified name IS what a program writes: the
+            # prelude's `using namespace gg;` puts every module in scope, so `files::read_file` and
+            # `gg::files::read_file` are the same path written short and long.
+            "call": None,
+            "brief": brief,
+            "detail": with_tail(detail, comment_of(described)),
+            "signatures": shapes,
+            # The closure runs first, because it is what records the declarations both lists then
+            # name; `returns` itself is the DIRECT return position and nothing beyond it, since
+            # what it feeds is a one-level rule.
+            "types": self.references(
+                self.close_over(arguments + returned + list(ALWAYS_REFERENCED))
+            ),
+            "returns": self.references(returned),
         }
+
+    def functions_and_members(self):
+        """Every catalogued call, module by module, with the member functions collected beside them.
+
+        The member walk runs over the **declared types** rather than out of the type renderer,
+        deliberately: a member function is a real declaration with its own operation id, its own
+        signature and its own documentation, and a renderer that listed a type's methods from the
+        type would emit entries nobody had written an id on — this SDK's named factories among
+        them.
+        """
+        functions = []
+        for module in catalogue.MODULES:
+            groups = {}
+            for child in self.modules[module.id]:
+                if child.get("kind") != "FunctionDecl" or child.get("isImplicit"):
+                    continue
+                if child["name"] == catalogue.META:
+                    continue
+                # A declaration carrying no `///` is not model-facing on this arm, and is the one
+                # way a module may hold something a program can call and a model is never told
+                # about — `gg::core::gg_name`, which assembles this SDK's own error message.
+                if comment_of(child) is None:
+                    continue
+                groups.setdefault(child["name"], []).append(child)
+            for name, nodes in groups.items():
+                operation = next(
+                    (found for node in nodes if (found := tagged(node, OPERATION_TAG))), None
+                )
+                alias_of = next(
+                    (found for node in nodes if (found := tagged(node, ALIAS_TAG))), None
+                )
+                if operation is None and alias_of is None:
+                    raise Failure(
+                        f"`{module.path}::{name}` is documented and names no gg operation, so a "
+                        "model would never be told it exists — write "
+                        "`<ggop><namespace>.<key></ggop>` in its own `///` comment"
+                    )
+                if operation is not None and alias_of is not None:
+                    raise Failure(
+                        f"`{module.path}::{name}` is both an operation and an alias of one"
+                    )
+                functions.append(
+                    self.entry(nodes, module, operation or alias_of, alias_of)
+                )
+
+        # The members, over the types the modules declare. Each one is emitted twice on purpose:
+        # once as a catalogued call, because it is one, and once as a line on its receiver's own
+        # documentation view, which is the menu a model reads when it opens the type.
+        for spelled, declared in self.declared.items():
+            for member in public_members(declared.node):
+                if not is_member_function(member):
+                    continue
+                operation = tagged(member, OPERATION_TAG)
+                alias_of = tagged(member, ALIAS_TAG)
+                if operation is not None and alias_of is not None:
+                    raise Failure(
+                        f"`{declared.fqn}::{member['name']}` is both an operation and an alias"
+                    )
+                entry = self.entry(
+                    [member], declared.module, operation or alias_of, alias_of, declared.name
+                )
+                functions.append(entry)
+                self.member_functions.setdefault(spelled, []).append(
+                    {
+                        "operation": entry["operation"],
+                        "name": entry["name"],
+                        "fqn": entry["fqn"],
+                        "brief": entry["brief"],
+                    }
+                )
+        return functions
 
     # -- the whole document ----------------------------------------------------------------------
 
-    def objects_section(self):
-        """Each API object's one-line description: the first paragraph of its namespace's `///`."""
+    def modules_section(self):
+        """Each module's own brief and detail, out of its namespace's own `///`."""
         out = []
-        for name in catalogue.OBJECTS:
+        for module in catalogue.MODULES:
             block = next(
                 child
                 for child in self.children
                 if child.get("kind") == "NamespaceDecl"
-                and child.get("name") == name
+                and child.get("name") == module.name
                 and comment_of(child) is not None
             )
-            described = self.docs.described(block, f"the API object `{name}`")
-            out.append({"object": name, "doc": described.split("\n\n")[0].strip()})
+            brief, detail = self.docs.described(block, f"the `{module.path}` module")
+            out.append(
+                {
+                    "id": module.id,
+                    "path": module.path,
+                    "brief": brief,
+                    "detail": detail,
+                    # `null`, and truthfully: the prelude is put in front of every program with
+                    # `-include-pch` and ends with `using namespace gg;`, so there is no import
+                    # line a program would be right to write.
+                    "import": None,
+                }
+            )
         return out
 
     def meta_section(self):
-        """The `list` every object carries, documented once and declared twelve times."""
-        namespace, function = catalogue.META_DOC_HOME
-        home = next(
-            child
-            for child in self.objects.get(namespace, [])
-            if child.get("name") == function
-        )
-        prose = with_tail(
-            self.docs.described(home, f"`{namespace}::{function}`"), comment_of(home)
-        )
-        shapes = {}
-        for object_ in catalogue.OBJECTS:
-            node = self.overloads(object_, "list")[0]
-            rendered, _, _ = signature_of(node, "list")
-            shapes.setdefault(rendered, []).append(object_)
-        if len(shapes) != 1:
-            raise Failure(
-                "the twelve `list()` declarations are not one function: " + repr(shapes)
-            )
-        rendered = next(iter(shapes))
-        names = []
-        referenced(rendered, self.declarable, names)
-        return [
-            {
-                "key": "list",
-                "name": "list",
-                "signatures": [{"signature": rendered, "parameters": []}],
-                "doc": prose,
-                "types": [name for name in self.close_over(names) if name in self.types],
-            }
-        ]
+        """The `list` every capability module carries, read once and asserted identical on all of
+        them.
 
-    def unclaimed(self):
-        """Every function an API object declares that `catalogue.py` names nowhere.
-
-        The direction that is easy to forget: a function added to the SDK and not to the identity
-        table is a call a model can make and gg has never heard of.
+        Every module that offers a capability carries one, and `core` — which offers none — carries
+        none. Both halves are asserted rather than tolerated: a module with capabilities and no
+        directory would be a module a program could not enumerate, and a directory on a module with
+        nothing in it would list nothing.
         """
-        claimed = {(spec["object"], spec["name"]) for spec in catalogue.ENTRIES}
-        claimed |= {(object_, "list") for object_ in catalogue.OBJECTS}
-        out = []
-        for object_ in catalogue.OBJECTS:
-            for child in self.objects[object_]:
-                if child.get("kind") != "FunctionDecl":
-                    continue
-                if (object_, child["name"]) not in claimed:
-                    out.append(f'{object_}::{child["name"]}')
-        return sorted(set(out))
+        entries = []
+        for module in catalogue.MODULES:
+            declared = [
+                child
+                for child in self.modules[module.id]
+                if child.get("kind") == "FunctionDecl" and child["name"] == catalogue.META
+            ]
+            offers = any(
+                child.get("kind") == "FunctionDecl"
+                and child["name"] != catalogue.META
+                and comment_of(child) is not None
+                for child in self.modules[module.id]
+            )
+            if not offers:
+                if declared:
+                    raise Failure(
+                        f"`{module.path}` offers no capability and carries a `{catalogue.META}`"
+                    )
+                continue
+            if not declared:
+                raise Failure(f"`{module.path}` offers capabilities and carries no directory")
+            what = f"`{module.path}::{catalogue.META}`"
+            shape = self.shape(declared[0], catalogue.META, what)
+            brief, detail = self.docs.described(declared[0], what)
+            returned = []
+            self.referenced(returns_of(declared[0]), returned, what)
+            entries.append(
+                {
+                    "key": catalogue.META,
+                    "name": catalogue.META,
+                    "signatures": [shape],
+                    "doc": "\n\n".join(part for part in (brief, detail) if part),
+                    "types": self.references(self.close_over(returned)),
+                }
+            )
+        first = entries[0]
+        for other in entries[1:]:
+            if other != first:
+                raise Failure(
+                    "the directory a module carries is not the same declaration on every module; "
+                    f"it is a `\\copydoc` of {catalogue.META_DOC_HOME} and must be"
+                )
+        return [first]
 
     def build(self, libraries):
-        stray = self.unclaimed()
-        if stray:
-            raise Failure(
-                f"the SDK declares functions the identity table names nowhere: {stray}"
-            )
-        sections = {"session": [], "views": [], "programs": [], "tools": [], "helpers": []}
-        for spec in catalogue.ENTRIES:
-            entry = self.entry(spec)
-            if spec["section"] == "tools":
-                entry = {"tool": spec["key"], **entry}
-            else:
-                entry = {"key": spec["key"], **entry}
-            if spec["section"] in ("views", "helpers"):
-                entry["requires"] = spec["gate"]
-            if spec["ending"]:
-                entry["ending"] = spec["ending"]
-            sections[spec["section"]].append(entry)
-        meta = self.meta_section()
+        functions = self.functions_and_members()
+        # The member functions are folded into their receivers by the walk above, so the type
+        # declarations are finished last — after every entry that could add a line to one.
+        for spelled in list(self.types):
+            self.types[spelled]["memberFunctions"] = self.member_functions.get(spelled, [])
         return {
+            "schema": SCHEMA,
             "language": "cpp",
             "generatedFrom": GENERATED_FROM,
             "libraries": libraries,
-            "objects": self.objects_section(),
-            "meta": meta,
-            "session": sections["session"],
-            "views": sections["views"],
-            "programs": sections["programs"],
-            "tools": sections["tools"],
-            "helpers": sections["helpers"],
-            "types": [self.types[name] for name in sorted(self.types)],
+            "modules": self.modules_section(),
+            "meta": self.meta_section(),
+            "functions": functions,
+            "types": [
+                {key: value for key, value in declaration.items() if key != "referenced"}
+                for _, declaration in sorted(
+                    self.types.items(), key=lambda pair: pair[1]["fqn"]
+                )
+            ],
         }
 
 
@@ -818,11 +1126,14 @@ def main():
     catalogued = Reflector(Path(dump).read_text()).build(libraries_of(prelude))
     Path(out).write_text(json.dumps(catalogued, indent=2, ensure_ascii=False) + "\n")
     print(
-        f"wrote {out}: {len(catalogued['tools'])} tools, {len(catalogued['types'])} types, "
-        f"{sum(len(group['modules']) for group in catalogued['libraries'])} headers"
+        f"wrote {out}: {len(catalogued['functions'])} functions, "
+        f"{len(catalogued['types'])} types, {len(catalogued['modules'])} modules"
     )
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Failure as failure:
+        raise SystemExit(f"error: {failure}")

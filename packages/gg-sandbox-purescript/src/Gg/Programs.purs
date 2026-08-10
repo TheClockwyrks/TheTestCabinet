@@ -1,99 +1,115 @@
--- | The `programs` object: the library of programs this agent has already run.
+-- | The library of programs this agent has already run.
 -- |
 -- | Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line
 -- | program costs the sixty lines again. The library makes the fix proportional to the mistake: fetch
 -- | what ran, patch it with ordinary string work, hand it back.
 -- |
 -- | ```
--- | source <- programs.get {}
--- | programs.rerun (replaceAll (Pattern "fs.readfile") (Replacement "fs.readFile") source)
+-- | source <- Gg.Programs.get {}
+-- | Gg.Programs.rerun (replaceAll (Pattern "readfile") (Replacement "readFile") source)
 -- | ```
 module Gg.Programs
-  ( programs
-  , history
+  ( history
   , get
   , rerun
+  , list
+  , ProgramSummary
   , GetOptions
   ) where
 
 import Prelude
 
+import Data.Maybe (Maybe)
 import Effect (Effect)
-import Gg.Internal.Read (programSummary)
+import Gg.Core (FunctionSummary)
+import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
-import Gg.Meta (listOn)
-import Gg.Types (FunctionSummary, ProgramSummary)
 import Prim.Row (class Union)
 
--- | Which program to fetch. Optional; `{}` fetches your most recent one.
+-- | Which program to fetch. Optional; `{}` fetches the most recent one.
 type GetOptions = (turn :: Int)
 
--- | fetch a program you already ran, and hand a patched copy back to be run
-programs
-  :: { history :: Effect (Array ProgramSummary)
-     , get ::
-         forall given rest
-          . Union given rest GetOptions
-         => Record given
-         -> Effect String
-     , rerun :: String -> Effect Unit
-     , list :: Effect (Array FunctionSummary)
-     }
-programs =
-  { history
-  , get
-  , rerun
-  , list: listOn "programs"
+-- | One program that has already run, as the library's directory lists it.
+-- |
+-- | It describes the program's **shape**, never its source: a directory that inlined every program
+-- | would put the whole session back in the context window, which is the one thing the library exists
+-- | to avoid.
+-- |
+-- | # Fields
+-- |
+-- | - `turn` — The turn it ran on, which is what fetches its source.
+-- | - `lines` — How many lines of source it was.
+-- | - `chars` — How many characters of source it was.
+-- | - `ok` — Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it.
+-- | - `error` — The error it ended with, when it did not run to its end.
+type ProgramSummary =
+  { turn :: Int
+  , lines :: Int
+  , chars :: Int
+  , ok :: Boolean
+  , error :: Maybe String
   }
 
--- | The programs you have already run this session, oldest first — each with the turn it ran on, how
--- | big it was, and whether it ran to its end.
+-- | The programs already run this session, oldest first.
 -- |
--- | It lists shapes, not sources: fetch the one you want with `programs.get`. The list survives a
--- | compaction, so it is also how you find a program whose text has left your context window. It is
--- | empty — never an error — for a session that has run nothing yet.
+-- | Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes
+-- | rather than sources, so the one worth having is then fetched. The list survives a compaction,
+-- | which makes it the way to find a program whose text has left the context window. A session that
+-- | has run nothing yet gets an empty array rather than an error.
+-- |
+-- | # Operation
+-- |
+-- | programs.history
 -- |
 -- | # Arguments
 -- |
 -- | (none)
 history :: Effect (Array ProgramSummary)
-history = map programSummary <$> Wire.call "history" "programs" "history" []
+history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.history" []
 
--- | The exact source of one program you ran, as a string. With `{}`, your most recent one.
+-- | The exact source of one program that ran, as a string. With `{}`, the most recent one.
 -- |
 -- | This is the first half of fixing a program without rewriting it: get what ran, patch it with
--- | ordinary string work, and hand the result to `programs.rerun`. What comes back is the program
--- | that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get
--- | the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn
--- | after turn.
+-- | ordinary string work, and hand the result back to be run. What comes back is the program that
+-- | **executed**, so when a turn's program was itself handed over, the answer is the program that
+-- | ran rather than the few lines that asked for it — and fetch, patch and run compose turn after
+-- | turn.
+-- |
+-- | # Operation
+-- |
+-- | programs.get
 -- |
 -- | # Arguments
 -- |
--- | - `options` — Which program to fetch; pass `{}` for your most recent one.
--- | - `options.turn` — The turn whose program to fetch, as `programs.history` reports it.
+-- | - `options` — Which program to fetch; `{}` fetches the most recent one.
+-- | - `options.turn` — The turn whose program to fetch, as the history reports it.
 -- |
 -- | # Raises
 -- |
--- | `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough
--- | that the library has dropped it.
+-- | `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that
+-- | the library has dropped it.
 get
   :: forall given rest
    . Union given rest GetOptions
   => Record given
   -> Effect String
-get options = Wire.call "get" "programs" "get" [ Wire.pick "turn" options ]
+get options = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.pick "turn" options ]
 
--- | Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs
--- | `source` as this turn's program.
+-- | Hand gg a program to run in place of this one.
 -- |
--- | Use it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call
--- | your program already made stands, and the program that runs next sees the world your program left
--- | behind — so hand over BEFORE doing work you do not want done twice.
+-- | This program finishes, then gg compiles and runs the given source as this turn's program. Paired
+-- | with a fetch it fixes a program without re-emitting it. Nothing is undone: every call this
+-- | program already made stands, and the program that runs next sees the world this one left behind,
+-- | so handing over comes before work that should not be done twice.
 -- |
--- | The first call stands, because a silently replaced program is a change you cannot see. If your
--- | program then fails, the hand-over is cancelled along with everything else the failed program
--- | decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn,
--- | and write the fixed program to do the work.
+-- | The first call stands, because a silently replaced program is a change nobody can see. A program
+-- | that then fails cancels the hand-over along with everything else it decided, and the turn ends as
+-- | an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program does the
+-- | work.
+-- |
+-- | # Operation
+-- |
+-- | programs.rerun
 -- |
 -- | # Arguments
 -- |
@@ -103,4 +119,26 @@ get options = Wire.call "get" "programs" "get" [ Wire.pick "turn" options ]
 -- |
 -- | `Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.
 rerun :: String -> Effect Unit
-rerun source = Wire.call_ "rerun" "programs" "rerun" [ Wire.wire source ]
+rerun source = Wire.call_ "rerun" "programs" "Gg.Programs.rerun" [ Wire.wire source ]
+
+-- | List the functions this module offers, each with a one-line summary.
+-- |
+-- | Only the functions this run actually bound are returned, so the directory never names a call the
+-- | program cannot make. One function's full signature, argument descriptions and types are opened as
+-- | a view with `Gg.Views.openDocsView`.
+-- |
+-- | # Arguments
+-- |
+-- | (none — the module is the one the directory is declared in)
+list :: Effect (Array FunctionSummary)
+list = directory "Gg.Programs.list" [ "programs" ]
+
+-- | One program in the library's directory.
+programSummary :: Wire.Wire -> ProgramSummary
+programSummary value =
+  { turn: Wire.field "turn" value
+  , lines: Wire.field "lines" value
+  , chars: Wire.field "chars" value
+  , ok: Wire.field "ok" value
+  , error: Wire.optional "error" value
+  }

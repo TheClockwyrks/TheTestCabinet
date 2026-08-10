@@ -45,7 +45,8 @@
 //! Hoisting it out is the alternative and it is the one thing this arm has never done to anybody's
 //! text. It does not need to: the precompiled prelude puts the standard library **and** gg's whole
 //! surface in front of a module exactly as it does in front of a program, so a module that includes
-//! nothing already has `std::vector` and `fs::read_file`. The refusal says that, at the author's own
+//! nothing already has `std::vector` and `files::read_file`. The refusal says that, at the author's
+//! own
 //! line, and it is the whole of what a module author has to know that a program author does not.
 //!
 //! # Why gg has to look at all
@@ -167,7 +168,7 @@ fn refuse_include(source: &str) -> Result<(), PrepareError> {
          pulled into that namespace rather than into the file. Delete the line and write nothing in \
          its place: this sandbox compiles every module against a prelude that already declares the \
          C++ standard library and the whole of gg's own surface, so `std::vector`, `std::format` and \
-         `fs::read_file` are in scope with no include at all."
+         `files::read_file` are in scope with no include at all."
     )))
 }
 

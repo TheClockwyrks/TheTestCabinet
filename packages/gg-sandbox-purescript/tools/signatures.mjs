@@ -13,28 +13,47 @@
  * # It reads `purs`, which is what a PureScript author already writes
  *
  * `purs compile --codegen docs` emits a `docs.json` per module carrying every exported declaration's
- * doc comment and its full type. So a signature here is the compiler's own reading of the SDK, not a
- * second copy of it, and a renamed argument or a changed type shows up as a diff in the committed
- * catalogue rather than as a sentence that quietly stopped being true.
+ * doc comment and its full type, with the types already resolved to the module that declares them.
+ * So a signature here is the compiler's own reading of the SDK, not a second copy of it, and a
+ * renamed argument or a changed type shows up as a diff in the committed catalogue rather than as a
+ * sentence that quietly stopped being true.
  *
- * # The one thing PureScript does not have, and the convention that replaces it
+ * # The surface is capability modules, and a name is what a program writes
  *
- * There is no per-parameter documentation slot in this language — a type says `String -> Int ->
- * Effect Unit` and names nothing — and `purs` discards a comment written on a record field in all
- * three placements it might go. So both are written as a `# Arguments` (or `# Fields`) list in the
- * declaration's own doc comment, exactly as Rust's `# Arguments` convention does it, and this script
- * is what turns them into structure. The completeness rules below are what stop the convention from
- * being decoration:
+ * Each module in `tools/catalogue.mjs` is a real PureScript module with an explicit export list, so
+ * the public surface is a compiler-enforced protocol rather than a convention. A fully-qualified
+ * name is `Gg.Files.readFile`: a program writes `import Gg.Files as Gg.Files` and then writes that
+ * expression, so the key a documentation view is opened by and the call site are one string, and
+ * `call` is therefore `null` on every entry.
+ *
+ * # What this language does not have, and the conventions that replace it
+ *
+ * **Per-parameter documentation.** A type says `String -> Int -> Effect Unit` and names nothing, and
+ * `purs` discards a comment written on a record field in all three placements it might go. So both
+ * are written as a `# Arguments` (or `# Fields`) list in the declaration's own doc comment, and this
+ * script is what turns them into structure. The completeness rules below are what stop the
+ * convention from being decoration:
  *
  *   * a signature that takes N arguments must document N, in order;
  *   * every field of a record argument must be documented, and every documented field must exist;
  *   * a `# Fields` list must name every field of the type it is on, and only those;
+ *   * an argument's description is one paragraph, because a parameter carries a brief and nothing
+ *     else; a field's first paragraph is its brief and any that follow are its detail;
  *   * nothing may be blank.
  *
- * Each of those is a `throw` here rather than a `null` in the JSON, because the
- * [agreement gate](../../../apps/docs/src/content/docs/gg/program-languages.md) fails a catalogue
- * with a blank in it and the failure would otherwise land on a model reading a signature it cannot
- * act on.
+ * **An attribute a declaration can carry.** gg's identity for a call — that `Gg.Files.readFile` is
+ * gg's `files.read_file` operation, the same capability C# spells `Gg.Files.ReadTextFile` — is the
+ * one thing PureScript's syntax cannot say. It is written on the declaration all the same, in a
+ * `# Operation` section of that declaration's own doc comment. On the declaration rather than in
+ * `catalogue.mjs`, because a side table naming every function twice is the second copy that drifts.
+ *
+ * **A macro.** Every capability module carries a `list`, and PureScript has no way to declare one
+ * function eleven times from one source. So the eleven are real declarations and this script refuses
+ * a catalogue whose directories are not word for word identical — the guarantee a macro gives, held
+ * by the reflector instead of by the language.
+ *
+ * Each of those is a `throw` here rather than a `null` in the JSON, because the failure would
+ * otherwise land on a model reading a signature it cannot act on.
  *
  * # Usage
  *
@@ -49,21 +68,30 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  HELPERS,
-  META,
-  OBJECTS,
-  PROGRAMS,
-  SESSION,
-  TOOLS,
-  TYPE_MODULES,
-  VIEWS,
-  moduleFor,
-} from "./catalogue.mjs";
+import { CORE, META, MODULES } from "./catalogue.mjs";
 
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(PACKAGE, "..", "..");
-const OUT = join(ROOT, "crates", "gg", "src", "sandbox", "guests", "purescript.signatures.json");
+const OUT = join(
+  ROOT,
+  "crates",
+  "gg",
+  "src",
+  "sandbox",
+  "guests",
+  "purescript.signatures.json",
+);
+
+/** The schema this catalogue is written in: modules, operations, fully-qualified names, authored
+ * briefs and resolved type references. */
+const SCHEMA = 2;
+
+/** What the emitted catalogue records itself as reflected from. */
+const GENERATED_FROM =
+  "packages/gg-sandbox-purescript/src/Gg/ + spago.yaml (purs --codegen docs)";
+
+/** The types every failure names, closed over on every entry because every call here throws one. */
+const ALWAYS_REFERENCED = ["Gg.Core.ToolError", "Gg.Core.ToolErrorCode"];
 
 /** Where `signatures.sh` put the `--codegen docs` output, and the tree it compiled against. */
 const [DOCS_DIR, TREE_DIR] = process.argv.slice(2);
@@ -80,7 +108,9 @@ function loadModules() {
   const modules = new Map();
   for (const entry of readdirSync(DOCS_DIR, { withFileTypes: true })) {
     if (!entry.isDirectory() || !entry.name.startsWith("Gg")) continue;
-    const document = JSON.parse(readFileSync(join(DOCS_DIR, entry.name, "docs.json"), "utf8"));
+    const document = JSON.parse(
+      readFileSync(join(DOCS_DIR, entry.name, "docs.json"), "utf8"),
+    );
     const values = new Map();
     const types = new Map();
     const order = [];
@@ -92,18 +122,52 @@ function loadModules() {
         order.push(declaration.title);
       }
     }
-    modules.set(entry.name, { values, types, order });
+    modules.set(entry.name, {
+      comments: document.comments,
+      values,
+      types,
+      order,
+    });
   }
   return modules;
 }
 
-const MODULES = loadModules();
+const MODULES_BY_NAME = loadModules();
+
+/**
+ * The catalogued modules and the documented ones are the same set, in both directions.
+ *
+ * A module the table names and nobody compiled would be a documented path no name resolves under; a
+ * `Gg.*` module nobody catalogued would be a public surface no model is ever told about, which is
+ * the failure the export lists exist to make impossible. `Gg.Internal.*` is neither: it is this
+ * SDK's own plumbing, exported for the other modules and named so in its own path.
+ */
+function checkModules() {
+  for (const module_ of MODULES) {
+    if (!MODULES_BY_NAME.has(module_.path)) {
+      throw new Error(
+        `\`purs\` documented no module called ${module_.path}; is it in src/?`,
+      );
+    }
+  }
+  const catalogued = new Set(MODULES.map((module_) => module_.path));
+  for (const name of MODULES_BY_NAME.keys()) {
+    if (!catalogued.has(name) && !name.startsWith("Gg.Internal.")) {
+      throw new Error(
+        `${name} is a model-facing module that tools/catalogue.mjs does not name — add it there, ` +
+          "or move it under Gg.Internal if it is this SDK's own plumbing",
+      );
+    }
+  }
+}
 
 /** One module's documented declarations, or a failure naming the module nobody compiled. */
 function moduleDocs(name) {
-  const found = MODULES.get(name);
+  const found = MODULES_BY_NAME.get(name);
   if (found === undefined) {
-    throw new Error(`\`purs\` documented no module called ${name}; is it in src/ and exported?`);
+    throw new Error(
+      `\`purs\` documented no module called ${name}; is it in src/ and exported?`,
+    );
   }
   return found;
 }
@@ -117,14 +181,46 @@ function value(module_, name) {
   return found;
 }
 
-/** One exported type declaration, wherever in the SDK it is declared. */
-function typeDeclaration(name) {
-  for (const module_ of TYPE_MODULES) {
-    const found = moduleDocs(module_).types.get(name);
-    if (found !== undefined) return found;
+// ---------------------------------------------------------------------------------------------
+// The declared types
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Every type a catalogued module declares, by the fully-qualified name it answers to.
+ *
+ * A type is catalogued exactly when a **catalogued module declares it**, which is what makes every
+ * fully-qualified name in this artifact a real PureScript path. A `data` declaration and a record
+ * synonym are both shapes a model reads; a **row** synonym — `ReadOptions`, `UpdateTaskOptions` — is
+ * not, because the row is what an optional-argument record stands for and it is rendered inline,
+ * field by marked field, into the signature that takes it. Neither is exported for a model's sake:
+ * PureScript requires a type named by an exported signature to be exported too.
+ */
+function declaredTypes() {
+  const declared = new Map();
+  for (const module_ of MODULES) {
+    for (const name of moduleDocs(module_.path).order) {
+      const declaration = moduleDocs(module_.path).types.get(name);
+      if (!isModelFacingType(declaration)) continue;
+      declared.set(`${module_.path}.${name}`, {
+        module: module_,
+        name,
+        declaration,
+      });
+    }
   }
-  return undefined;
+  return declared;
 }
+
+/** Whether a type declaration is a shape a model reads, rather than a row an argument stands for. */
+function isModelFacingType(declaration) {
+  if (declaration.info.declType === "data") return true;
+  return recordRow(declaration.info.type) !== undefined;
+}
+
+const DECLARED = (() => {
+  checkModules();
+  return declaredTypes();
+})();
 
 // ---------------------------------------------------------------------------------------------
 // The type printer
@@ -139,7 +235,7 @@ function bare(node) {
 function constructor_(node) {
   if (bare(node).tag !== "TypeConstructor") return undefined;
   const [path, name] = bare(node).contents;
-  return { module: path.join("."), name };
+  return { module: path.join("."), name, fqn: `${path.join(".")}.${name}` };
 }
 
 /** Whether `node` is the constructor `module.name`. */
@@ -180,7 +276,16 @@ function rowFields(node) {
   return { fields, tail: current };
 }
 
-/** One type, as PureScript writes it. `optional` resolves a row variable to the row it stands for. */
+/**
+ * One type, as PureScript writes it. `optional` resolves a row variable to the row it stands for.
+ *
+ * A type this SDK declares is written **module-qualified**, because that is what a program writes:
+ * the modules are imported under their own full names, so `Gg.Files.FileRead` is the expression a
+ * signature's reader copies and the key its documentation view is opened by, and a bare `FileRead`
+ * would be a spelling that does not resolve. Everything else — `String`, `Int`, `Array`, `Maybe`,
+ * `Effect` — is written by its last segment, which is PureScript's own and is in every program's
+ * scope through `Prelude` and the imports the prompt names.
+ */
 function renderType(node, optional) {
   const type = bare(node);
   const split = arrow(type);
@@ -193,7 +298,10 @@ function renderType(node, optional) {
     const [fn, argument] = type.contents;
     return `${renderType(fn, optional)} ${renderApplied(argument, optional)}`;
   }
-  if (type.tag === "TypeConstructor") return constructor_(type).name;
+  if (type.tag === "TypeConstructor") {
+    const named = constructor_(type);
+    return DECLARED.has(named.fqn) ? named.fqn : named.name;
+  }
   if (type.tag === "TypeVar") return type.contents;
   throw new Error(`this script cannot print a ${type.tag} type`);
 }
@@ -251,10 +359,13 @@ function recordFields(row, optional) {
     optional: false,
   }));
   if (tail.tag === "REmpty") return required;
-  if (tail.tag !== "TypeVar") throw new Error(`this script cannot print a ${tail.tag} row tail`);
+  if (tail.tag !== "TypeVar")
+    throw new Error(`this script cannot print a ${tail.tag} row tail`);
   const resolved = optional.get(tail.contents);
   if (resolved === undefined) {
-    throw new Error(`the row variable \`${tail.contents}\` is not bound by a Union constraint`);
+    throw new Error(
+      `the row variable \`${tail.contents}\` is not bound by a Union constraint`,
+    );
   }
   return required.concat(
     resolved.map((field) => ({
@@ -296,7 +407,9 @@ function readConstraint(constraint, optional) {
   const [given, , row] = constraint.constraintArgs;
   const variable = bare(given);
   if (variable.tag !== "TypeVar") {
-    throw new Error("a Union constraint's first argument must be the row variable it constrains");
+    throw new Error(
+      "a Union constraint's first argument must be the row variable it constrains",
+    );
   }
   optional.set(variable.contents, resolveRow(row));
 }
@@ -306,43 +419,90 @@ function resolveRow(node) {
   const named = constructor_(node);
   if (named === undefined) return rowFields(node).fields;
   const declaration = moduleDocs(named.module).types.get(named.name);
-  if (declaration === undefined || declaration.info.declType !== "typeSynonym") {
-    throw new Error(`${named.module}.${named.name} is not a row synonym this script can resolve`);
+  if (
+    declaration === undefined ||
+    declaration.info.declType !== "typeSynonym"
+  ) {
+    throw new Error(
+      `${named.module}.${named.name} is not a row synonym this script can resolve`,
+    );
   }
   return rowFields(declaration.info.type).fields;
 }
 
-/** Every type this SDK declares that `node` mentions, transitively closed. */
-function referencedTypes(node, found = []) {
-  const walk = (value_) => {
-    if (Array.isArray(value_)) {
-      for (const item of value_) walk(item);
+// ---------------------------------------------------------------------------------------------
+// The type references a signature carries
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Every catalogued type `node` mentions **directly**, by fully-qualified name, in mention order.
+ *
+ * A row synonym is followed rather than recorded: `UpdateTaskOptions` is not a type a model reads,
+ * but the types its fields are typed by are — without following it, `status :: Gg.Tasks.TaskStatus`
+ * would reach a model as a name nothing in the catalogue declares.
+ */
+function mentions(node, found = [], seenRows = new Set()) {
+  const walk = (candidate) => {
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) walk(item);
       return;
     }
-    if (value_ === null || typeof value_ !== "object") return;
-    const named = constructor_(value_);
-    if (named !== undefined && TYPE_MODULES.includes(named.module) && !found.includes(named.name)) {
-      found.push(named.name);
-      const declaration = typeDeclaration(named.name);
-      if (declaration !== undefined) {
-        referencedTypes(declaration.info.type ?? {}, found);
-        for (const child of declaration.children ?? []) {
-          referencedTypes(child.info.arguments ?? [], found);
-        }
-      }
-    } else if (named !== undefined && named.module.startsWith("Gg.")) {
-      // A row synonym — `UpdateTaskOptions` — is not itself a type a model reads, but the types its
-      // fields are typed by are: without following it, `status :: TaskStatus` would reach a model as
-      // a name nothing in the catalogue declares.
-      const row = MODULES.get(named.module)?.types.get(named.name);
+    if (candidate === null || typeof candidate !== "object") return;
+    const named = constructor_(candidate);
+    if (named !== undefined && DECLARED.has(named.fqn)) {
+      if (!found.includes(named.fqn)) found.push(named.fqn);
+    } else if (
+      named !== undefined &&
+      named.module.startsWith("Gg.") &&
+      !seenRows.has(named.fqn)
+    ) {
+      seenRows.add(named.fqn);
+      const row = MODULES_BY_NAME.get(named.module)?.types.get(named.name);
       if (row !== undefined && row.info.declType === "typeSynonym") {
-        referencedTypes(row.info.type, found);
+        mentions(row.info.type, found, seenRows);
       }
     }
-    for (const nested of Object.values(value_)) walk(nested);
+    for (const nested of Object.values(candidate)) walk(nested);
   };
   walk(node);
   return found;
+}
+
+/**
+ * A set of fully-qualified names, transitively closed through the declarations they name.
+ *
+ * Transitive because the list answers *which declarations does this run's surface reach*, which is
+ * what decides whether a type may be opened at all: a type buried two levels inside a bound call's
+ * result is plainly one the program can hold. What a documentation view opens beside a function is a
+ * depth-one question gg answers for itself from `returns` and the signature text, so widening here
+ * costs nothing there.
+ */
+function closure(names) {
+  const pending = [...names];
+  const seen = [];
+  while (pending.length > 0) {
+    const fqn = pending.shift();
+    if (seen.includes(fqn) || !DECLARED.has(fqn)) continue;
+    seen.push(fqn);
+    const { declaration } = DECLARED.get(fqn);
+    const reached = [];
+    if (declaration.info.type !== undefined && declaration.info.type !== null) {
+      mentions(declaration.info.type, reached);
+    }
+    for (const child of declaration.children ?? []) {
+      mentions(child.info.arguments ?? [], reached);
+    }
+    pending.push(...reached);
+  }
+  return seen;
+}
+
+/** A list of fully-qualified names, as the catalogue's resolved type references. */
+function references(names) {
+  // The spelling and the resolution are the same string on this arm, deliberately: a signature
+  // writes the module-qualified name because that is the expression a program writes, so there is no
+  // second spelling for a model to read and fail to look up.
+  return names.map((fqn) => ({ spelled: fqn, fqn }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -382,6 +542,10 @@ function comment(declaration, what) {
  *
  * The wrapping is an artefact of an 100-column source file, not something a model should read; a
  * fenced example's line breaks are the example.
+ *
+ * It is also what makes the **brief** a single line without the author having to keep one inside the
+ * source's line width: the brief is the first paragraph, and a paragraph is one line by the time it
+ * leaves here.
  */
 function unwrap(lines) {
   const blocks = [];
@@ -414,26 +578,61 @@ function unwrap(lines) {
     paragraph.push(line.trim());
   }
   flush();
-  if (fence !== null) throw new Error("a doc comment has an unterminated code fence");
+  if (fence !== null)
+    throw new Error("a doc comment has an unterminated code fence");
   return blocks.join("\n\n").trim();
 }
 
-/** One `- \`name\` — description` list, as an ordered list of entries. */
+/**
+ * One piece of settled prose as `(brief, detail)`: the first paragraph, and the rest.
+ *
+ * Doxygen's implicit structure, which is the whole of the convention this SDK is written to. The
+ * brief is authored rather than derived — there is no "first sentence of" anywhere in this file —
+ * and the split is on the blank line the author put there, so a doc comment whose opening paragraph
+ * is really three sentences of narrative fails the register gate as the paragraph it is rather than
+ * being silently cut at a full stop.
+ */
+function split(text, what) {
+  if (!text) throw new Error(`${what} has no documentation`);
+  const [brief, ...rest] = text.split("\n\n");
+  const detail = rest.join("\n\n").trim();
+  return { brief: brief.trim(), detail: detail === "" ? null : detail };
+}
+
+/**
+ * One `- \`name\` — description` list, as an ordered list of entries with their paragraphs.
+ *
+ * An entry's first paragraph is its brief. A paragraph that follows it — a blank line and then more
+ * indented text — is its detail, which a **field** carries and an argument does not: gg's model gives
+ * a parameter one line and a type's member a brief and a detail, and the convention says the same.
+ */
 function entries(parsed, heading) {
   const lines = parsed.sections.get(heading);
   if (lines === undefined) {
     throw new Error(`${parsed.what} has no \`# ${heading}\` section`);
   }
   const found = [];
+  let paragraph = [];
+  const flush = () => {
+    if (paragraph.length > 0 && found.length > 0) {
+      found[found.length - 1].paragraphs.push(paragraph.join(" "));
+    }
+    paragraph = [];
+  };
   for (const line of lines) {
-    if (line.trim() === "") continue;
     const item = /^- `([^`]+)` — (.*)$/u.exec(line);
     if (item !== null) {
-      found.push({ name: item[1], doc: item[2].trim() });
+      flush();
+      found.push({ name: item[1], paragraphs: [] });
+      paragraph = [item[2].trim()];
+      continue;
+    }
+    if (line.trim() === "") {
+      flush();
       continue;
     }
     if (/^\s+\S/u.test(line) && found.length > 0) {
-      found[found.length - 1].doc = `${found[found.length - 1].doc} ${line.trim()}`;
+      paragraph.push(line.trim());
       continue;
     }
     // Anything else is the "(none)" body of a section that documents nothing, which is only legal
@@ -444,74 +643,217 @@ function entries(parsed, heading) {
       );
     }
   }
+  flush();
   for (const entry of found) {
-    if (entry.doc === "") throw new Error(`${parsed.what} documents \`${entry.name}\` with nothing`);
+    if (entry.paragraphs.length === 0 || entry.paragraphs[0] === "") {
+      throw new Error(
+        `${parsed.what} documents \`${entry.name}\` with nothing`,
+      );
+    }
   }
   return found;
 }
 
-/** The section that says what a call raises, folded into the doc the way every other arm folds it. */
+/** One entry's brief, refusing the detail an argument has nowhere to put. */
+function brieflyDocumented(parsed, entry) {
+  if (entry.paragraphs.length > 1) {
+    throw new Error(
+      `${parsed.what} gives \`${entry.name}\` more than one paragraph; an argument's ` +
+        "documentation is a single line, because that is the whole of what gg's model carries for one",
+    );
+  }
+  return entry.paragraphs[0];
+}
+
+/** The gg operation a declaration binds, read out of its own `# Operation` section. */
+function operationOf(parsed, module_) {
+  const lines = parsed.sections.get("Operation");
+  if (lines === undefined) {
+    throw new Error(
+      `${parsed.what} is exported and names no gg operation, so a model would never be told it ` +
+        "exists — give it a `# Operation` section naming one, as `<namespace>.<key>`",
+    );
+  }
+  const text = lines.join("\n").trim();
+  if (!/^[a-z_]+\.[a-z_]+$/u.test(text)) {
+    throw new Error(
+      `${parsed.what}'s \`# Operation\` section is not one \`<namespace>.<key>\` id: ${text}`,
+    );
+  }
+  const [namespace] = text.split(".");
+  if (namespace !== module_.id) {
+    throw new Error(
+      `${parsed.what} binds the operation \`${text}\`, whose namespace is not this module's gg id ` +
+        `\`${module_.id}\` — a module and the operations it binds are one vocabulary`,
+    );
+  }
+  return text;
+}
+
+/** The section that says what a call raises, folded into the detail as its own heading. */
 function raises(parsed) {
   const lines = parsed.sections.get("Raises");
   if (lines === undefined) return undefined;
-  const text = lines.join("\n").trim();
-  if (text === "") throw new Error(`${parsed.what} has an empty \`# Raises\` section`);
-  return text.replace(/\n\s*/gu, " ");
+  const text = unwrap(lines);
+  if (text === "")
+    throw new Error(`${parsed.what} has an empty \`# Raises\` section`);
+  return text;
+}
+
+/** A declaration's brief and detail, with the `# Raises` section folded onto the end of the detail. */
+function documented(parsed) {
+  const { brief, detail } = split(parsed.prose, parsed.what);
+  const raised = raises(parsed);
+  const parts = [detail, raised === undefined ? null : `# Raises\n\n${raised}`];
+  const whole = parts
+    .filter((part) => part !== null && part !== "")
+    .join("\n\n");
+  return { brief, detail: whole === "" ? null : whole };
 }
 
 // ---------------------------------------------------------------------------------------------
 // One function
 // ---------------------------------------------------------------------------------------------
 
+/** Each catalogued module's own source, by module path, read once. */
+const SOURCES = new Map();
+
+/** One catalogued module's `.purs` source, which is this package's own `src/` rather than the tree
+ * `purs` compiled — the two are the same text, and this one is where a human edits it. */
+function sourceOf(modulePath) {
+  let source = SOURCES.get(modulePath);
+  if (source === undefined) {
+    // A module path is its own directory path in this language, so `Gg.Files` is `Gg/Files.purs` and
+    // nothing else here has to know the layout.
+    const segments = modulePath.split(".");
+    segments[segments.length - 1] += ".purs";
+    source = readFileSync(join(PACKAGE, "src", ...segments), "utf8");
+    SOURCES.set(modulePath, source);
+  }
+  return source;
+}
+
 /**
- * One catalogued function: its signature as `purs` reads it, its arguments as the `# Arguments`
- * convention names them, its documentation, and the types it refers to.
+ * The argument names the **defining equation** of `name` binds, in order, or `undefined` where it
+ * binds none this can read.
+ *
+ * This is the one thing on this arm that the compiler cannot be asked. `purs` emits no binder names
+ * for a curried function — a type is `String -> String -> String -> Int` and names nothing — so the
+ * only place the argument *order* is written down twice is the definition and its own doc comment,
+ * and [`checkBinders`](#checkBinders) is what holds the two together.
+ *
+ * The source is where the answer is, so the source is read. Only an equation whose binders are all
+ * plain names is read; a point-free definition or a pattern binder answers `undefined` and is
+ * skipped, because weakening the rule to accommodate one shape would drop it for every shape.
  */
-function describe(module_, name) {
-  const declaration = value(module_, name);
-  const what = `${module_}.${name}`;
-  const parsed = comment(declaration, what);
+function binderNames(modulePath, name) {
+  const equation = new RegExp(
+    `^${name}((?:[ \\t]+[a-z_][\\w']*)*)[ \\t]*=(?!=)`,
+    "mu",
+  );
+  const found = equation.exec(sourceOf(modulePath));
+  if (found === null) return undefined;
+  return found[1].split(/\s+/u).filter((binder) => binder !== "");
+}
+
+/**
+ * The `# Arguments` list is not a **permutation** of the equation's binders.
+ *
+ * The check is deliberately about order alone and not about the names themselves, because the two
+ * are answering different questions and are allowed to differ. A binder is the definition's own
+ * word for a value it is about to lower — `writeMemory written` — while a documented name is what a
+ * *model* is told the argument is, and holding the second to the first would be this script having
+ * an opinion about how the SDK spells its own locals. So a list whose names simply do not match the
+ * binders is a rename and is left alone.
+ *
+ * What is caught is the case where they match as a **set** and disagree as a **sequence**, which
+ * cannot be a rename and can only be a transposition: either two `# Arguments` lines were swapped,
+ * or two binders were, and nothing else in this arm would notice. `agreement.rs::names_arguments`
+ * skips the "a documented name appears in the signature" check for ML notation because a curried
+ * type names nothing, and the type gives no cover where consecutive arguments share one —
+ * `editFile path oldString newString` is three `String`s. The catalogue would regenerate green
+ * telling a model to write `editFile path newString oldString`, the edit would fail at run time as
+ * "old string not found", and it would read as the model's mistake.
+ *
+ * Thrown from here rather than reported as a diff, for the reason the arity check beside it is: the
+ * author is standing at the declaration.
+ *
+ * A count that disagrees is **not** reported here. The arity the catalogue is held to is the one the
+ * *type* declares, which [`shapeOf`](#shapeOf) has already checked against the documentation; a
+ * definition free to bind fewer binders than its type takes arguments — returning a function for the
+ * rest — is ordinary curried PureScript, and reporting it from here would be this check having an
+ * opinion about a shape that is none of its business. So a disagreement means there is no ordering
+ * to compare and the equation is skipped.
+ */
+function checkBinders(modulePath, name, parsed, documentedNames) {
+  const binders = binderNames(modulePath, name);
+  if (binders === undefined || binders.length !== documentedNames.length)
+    return;
+  const sorted = (names) => [...names].sort().join(" ");
+  if (sorted(binders) !== sorted(documentedNames)) return;
+  for (const [index, binder] of binders.entries()) {
+    if (binder === documentedNames[index]) continue;
+    throw new Error(
+      `${parsed.what} binds \`${binders.join(" ")}\` and documents ` +
+        `\`${documentedNames.join(" ")}\` — the same names in a different order. The ` +
+        "`# Arguments` list is the order a model is told to call in, so it has to be the order the " +
+        "definition takes them in",
+    );
+  }
+}
+
+/** One calling shape: the signature as `purs` reads it, and the arguments the convention names. */
+function shapeOf(modulePath, declaration, name, parsed) {
   const { type, optional } = peel(declaration.info.type);
 
   const argumentTypes = [];
   let rest = type;
   for (;;) {
-    const split = arrow(rest);
-    if (split === undefined) break;
-    argumentTypes.push(split.argument);
-    rest = bare(split.result);
+    const split_ = arrow(rest);
+    if (split_ === undefined) break;
+    argumentTypes.push(split_.argument);
+    rest = bare(split_.result);
   }
 
-  const documented = entries(parsed, "Arguments");
-  const top = documented.filter((entry) => !entry.name.includes("."));
+  const documented_ = entries(parsed, "Arguments");
+  const top = documented_.filter((entry) => !entry.name.includes("."));
   if (top.length !== argumentTypes.length) {
     throw new Error(
-      `${what} takes ${argumentTypes.length} arguments and documents ${top.length}; ` +
+      `${parsed.what} takes ${argumentTypes.length} arguments and documents ${top.length}; ` +
         "every argument needs a `- `name` — what it is for` line, in order",
     );
   }
+  checkBinders(
+    modulePath,
+    name,
+    parsed,
+    top.map((entry) => entry.name),
+  );
 
   const parameters = top.map((entry, index) => {
     const node = argumentTypes[index];
     const row = recordRow(node);
     const fields = row === undefined ? [] : recordFields(row, optional);
-    const documentedFields = documented
+    const documentedFields = documented_
       .filter((candidate) => candidate.name.startsWith(`${entry.name}.`))
-      .map((candidate) => ({ ...candidate, name: candidate.name.slice(entry.name.length + 1) }));
+      .map((candidate) => ({
+        ...candidate,
+        name: candidate.name.slice(entry.name.length + 1),
+      }));
     return {
       name: entry.name,
       type: renderType(node, optional),
       optional: false,
       kind: "positional",
       default: null,
-      doc: entry.doc,
+      doc: brieflyDocumented(parsed, entry),
       fields: fields.map((field) => ({
         name: field.name,
         type: field.type,
         optional: field.optional,
         kind: "positional",
         default: null,
-        doc: fieldDoc(what, entry.name, field.name, documentedFields),
+        doc: fieldDoc(parsed, entry.name, field.name, documentedFields),
         fields: [],
       })),
     };
@@ -519,49 +861,79 @@ function describe(module_, name) {
 
   // Every documented field has to belong to an argument that has it: a `# Arguments` line naming a
   // field that was renamed reads perfectly and tells a model to write something the call refuses.
-  for (const entry of documented) {
+  for (const entry of documented_) {
     const dot = entry.name.indexOf(".");
     if (dot < 0) continue;
     const owner = entry.name.slice(0, dot);
     const field = entry.name.slice(dot + 1);
     const parameter = parameters.find((candidate) => candidate.name === owner);
-    if (parameter === undefined || !parameter.fields.some((candidate) => candidate.name === field)) {
-      throw new Error(`${what} documents \`${entry.name}\`, which is not a field of any argument`);
+    if (
+      parameter === undefined ||
+      !parameter.fields.some((candidate) => candidate.name === field)
+    ) {
+      throw new Error(
+        `${parsed.what} documents \`${entry.name}\`, which is not a field of any argument`,
+      );
     }
   }
 
-  const raised = raises(parsed);
-  const types = referencedTypes(declaration.info.type);
-  if (raised !== undefined) referencedTypes(errorType(), types);
-
   return {
-    name,
-    signatures: [
-      {
-        signature: `${name} :: ${renderType(type, optional)}`,
-        parameters,
-      },
-    ],
-    doc: raised === undefined ? parsed.prose : `${parsed.prose}\n\nRaises \`ToolError\`: ${raised}`,
-    types,
+    shape: {
+      signature: `${name} :: ${renderType(type, optional)}`,
+      parameters,
+    },
+    returned: rest,
   };
 }
 
-/** The `ToolError` declaration, as a type node, so a raising function pulls it into its types. */
-function errorType() {
-  return { tag: "TypeConstructor", contents: [["Gg", "Error"], "ToolError"] };
-}
-
 /** One field's documentation, or a failure naming the field nobody described. */
-function fieldDoc(what, parameter, field, documented) {
-  const found = documented.find((entry) => entry.name === field);
+function fieldDoc(parsed, parameter, field, documented_) {
+  const found = documented_.find((entry) => entry.name === field);
   if (found === undefined) {
     throw new Error(
-      `${what} takes \`${parameter}.${field}\` and does not document it; ` +
+      `${parsed.what} takes \`${parameter}.${field}\` and does not document it; ` +
         "a record argument needs a `- `argument.field` — what it is for` line per field",
     );
   }
-  return found.doc;
+  return brieflyDocumented(parsed, found);
+}
+
+/** One catalogued call: what it binds, how it is written, what it says, and the types it reaches. */
+function describe(module_, name) {
+  const declaration = value(module_.path, name);
+  const fqn = `${module_.path}.${name}`;
+  const parsed = comment(declaration, `\`${fqn}\``);
+  const { shape, returned } = shapeOf(module_.path, declaration, name, parsed);
+  const { brief, detail } = documented(parsed);
+
+  // The WHOLE declared type, constraints included, rather than the arguments the shape peeled out of
+  // it: an optional-argument record is `Record given` with a `Union given rest UpdateTaskOptions`
+  // constraint beside it, so the row naming `Gg.Tasks.TaskStatus` is in the constraint and nowhere
+  // else. Walking the peeled arguments alone left two types documented and unreachable.
+  const reached = mentions(declaration.info.type);
+  const returnMentions = mentions(returned);
+
+  return {
+    operation: operationOf(parsed, module_),
+    // No entry on this arm is a second way to reach an operation: a value is reached by a free
+    // function over it rather than by a member on it, so there is no member form beside the free one.
+    aliasOf: null,
+    module: module_.id,
+    kind: "function",
+    receiver: null,
+    name,
+    fqn,
+    // `null`, because the fully-qualified name IS what a program writes: a module is imported under
+    // its own full name, so `Gg.Files.readFile` is the key and the call site at once.
+    call: null,
+    brief,
+    detail,
+    signatures: [shape],
+    types: references(
+      closure([...reached, ...returnMentions, ...ALWAYS_REFERENCED]),
+    ),
+    returns: references(returnMentions),
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -569,65 +941,93 @@ function fieldDoc(what, parameter, field, documented) {
 // ---------------------------------------------------------------------------------------------
 
 /** One catalogued type: its declaration, what it is for, and a line per member. */
-function describeType(name) {
-  const declaration = typeDeclaration(name);
-  if (declaration === undefined) throw new Error(`no SDK module declares the type ${name}`);
-  const parsed = comment(declaration, name);
-  return declaration.info.declType === "data"
-    ? describeData(name, declaration, parsed)
-    : describeSynonym(name, declaration, parsed);
+function describeType(fqn) {
+  const { module: module_, name, declaration } = DECLARED.get(fqn);
+  const parsed = comment(declaration, `the type \`${fqn}\``);
+  const { brief, detail } = documented(parsed);
+  const members =
+    declaration.info.declType === "data"
+      ? dataMembers(name, declaration)
+      : synonymMembers(fqn, declaration, parsed);
+  const rendered =
+    declaration.info.declType === "data"
+      ? `data ${name} = ${members
+          .map((member) =>
+            member.type === null
+              ? member.name
+              : `${member.name} ${member.type}`,
+          )
+          .join(" | ")}`
+      : `type ${name} = { ${members
+          .map((member) => `${member.name} :: ${member.type}`)
+          .join(", ")} }`;
+  return {
+    fqn,
+    module: module_.id,
+    name,
+    declaration: rendered,
+    brief,
+    detail,
+    members,
+    // Empty on every type this SDK declares, and by design rather than by omission: a value here
+    // carries no behaviour, and every capability another arm hangs off a value is a free function
+    // over that value instead. A member on a record is a field access no search can reach, which is
+    // the same failure an API object was.
+    memberFunctions: [],
+  };
 }
 
 /** A `data` type: its arms are its members, each documented on the constructor itself. */
-function describeData(name, declaration, parsed) {
+function dataMembers(name, declaration) {
   const arms = (declaration.children ?? []).filter(
     (child) => child.info.declType === "dataConstructor",
   );
-  const members = arms.map((arm) => {
+  return arms.map((arm) => {
     const carried = arm.info.arguments ?? [];
-    if (carried.length > 1) throw new Error(`${name}.${arm.title} carries more than one value`);
+    if (carried.length > 1)
+      throw new Error(`${name}.${arm.title} carries more than one value`);
+    const parsed = comment(arm, `\`${name}.${arm.title}\``);
+    const { brief, detail } = documented(parsed);
     return {
       name: arm.title,
       type: carried.length === 0 ? null : renderType(carried[0], new Map()),
-      doc: comment(arm, `${name}.${arm.title}`).prose,
+      kind: "variant",
+      brief,
+      detail,
     };
   });
-  const rendered = members.map((member) =>
-    member.type === null ? member.name : `${member.name} ${member.type}`,
-  );
-  return {
-    name,
-    declaration: `data ${name} = ${rendered.join(" | ")}`,
-    doc: parsed.prose,
-    members,
-  };
 }
 
 /** A record synonym: its fields are its members, documented under `# Fields`. */
-function describeSynonym(name, declaration, parsed) {
+function synonymMembers(fqn, declaration, parsed) {
   const row = recordRow(declaration.info.type);
-  if (row === undefined) throw new Error(`${name} is a type synonym this catalogue cannot describe`);
   const fields = recordFields(row, new Map());
-  const documented = entries(parsed, "Fields");
+  const documented_ = entries(parsed, "Fields");
   const members = fields.map((field) => {
-    const found = documented.find((entry) => entry.name === field.name);
+    const found = documented_.find((entry) => entry.name === field.name);
     if (found === undefined) {
-      throw new Error(`${name} has a field \`${field.name}\` its \`# Fields\` list does not describe`);
+      throw new Error(
+        `${fqn} has a field \`${field.name}\` its \`# Fields\` list does not describe`,
+      );
     }
-    return { name: field.name, type: field.type, doc: found.doc };
+    const [brief, ...rest] = found.paragraphs;
+    const detail = rest.join("\n\n");
+    return {
+      name: field.name,
+      type: field.type,
+      kind: "field",
+      brief,
+      detail: detail === "" ? null : detail,
+    };
   });
-  for (const entry of documented) {
+  for (const entry of documented_) {
     if (!fields.some((field) => field.name === entry.name)) {
-      throw new Error(`${name} describes a field \`${entry.name}\` it does not have`);
+      throw new Error(
+        `${fqn} describes a field \`${entry.name}\` it does not have`,
+      );
     }
   }
-  const rendered = members.map((member) => `${member.name} :: ${member.type}`);
-  return {
-    name,
-    declaration: `type ${name} = { ${rendered.join(", ")} }`,
-    doc: parsed.prose,
-    members,
-  };
+  return members;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -660,7 +1060,8 @@ function libraries() {
       groups[groups.length - 1].packages.push(dependency[1]);
     }
   }
-  if (groups.length === 0) throw new Error("spago.yaml declares no `# --- group ---` headings");
+  if (groups.length === 0)
+    throw new Error("spago.yaml declares no `# --- group ---` headings");
 
   const staged = readdirSync(join(TREE_DIR, "libs"), { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -669,7 +1070,9 @@ function libraries() {
     group: group.group,
     modules: group.packages
       .flatMap((name) => {
-        const directory = staged.find((candidate) => candidate.startsWith(`${name}-`));
+        const directory = staged.find((candidate) =>
+          candidate.startsWith(`${name}-`),
+        );
         if (directory === undefined) {
           throw new Error(
             `spago.yaml declares \`${name}\` and the committed library tree does not carry it; ` +
@@ -704,107 +1107,138 @@ function modulesUnder(directory) {
 // The catalogue
 // ---------------------------------------------------------------------------------------------
 
-/** Every function the identity table names, described from the module that declares it. */
-function catalogue() {
-  const objects = OBJECTS.map((entry) => ({
-    object: entry.object,
-    doc: comment(value(entry.module, entry.object), `${entry.module}.${entry.object}`).prose,
-  }));
-
-  const meta = META.map((entry) => ({
-    key: entry.key,
-    ...describe(entry.module, entry.name),
-  }));
-  const session = SESSION.map((entry) => ({
-    key: entry.key,
-    ending: entry.ending,
-    object: entry.object,
-    ...describe(moduleFor(entry.object), entry.name),
-  }));
-  const views = VIEWS.map((entry) => ({
-    key: entry.key,
-    requires: entry.requires ?? null,
-    object: entry.object,
-    ...describe(moduleFor(entry.object), entry.name),
-  }));
-  const programs = PROGRAMS.map((entry) => ({
-    key: entry.key,
-    object: entry.object,
-    ...describe(moduleFor(entry.object), entry.name),
-  }));
-  const tools = TOOLS.map((entry) => ({
-    tool: entry.tool,
-    object: entry.object,
-    ...describe(moduleFor(entry.object), entry.name),
-  }));
-  const helpers = HELPERS.map((entry) => ({
-    key: entry.key,
-    requires: entry.requires,
-    object: entry.object,
-    ...describe(moduleFor(entry.object), entry.name),
-  }));
-
-  const referenced = new Set();
-  for (const entry of [...meta, ...session, ...views, ...programs, ...tools, ...helpers]) {
-    for (const name of entry.types) referenced.add(name);
-  }
-  const types = TYPE_MODULES.flatMap((module_) => moduleDocs(module_).order)
-    .filter((name) => referenced.has(name))
-    .map(describeType);
-
-  // Every function this SDK's objects offer has to be catalogued, or a model is shown a surface
-  // narrower than the one it has. The object records are the surface, so they are what is compared.
-  catalogued(objects, [...session, ...views, ...programs, ...tools, ...helpers], meta);
-
-  return {
-    language: "purescript",
-    generatedFrom: "packages/gg-sandbox-purescript/src/Gg/ + spago.yaml (purs --codegen docs)",
-    libraries: libraries(),
-    objects,
-    meta,
-    session,
-    views,
-    programs,
-    tools,
-    helpers,
-    types,
-  };
+/** Each module's own brief, detail and import line, out of its `-- |` header. */
+function modulesSection() {
+  return MODULES.map((module_) => {
+    const docs = moduleDocs(module_.path);
+    const parsed = {
+      prose: unwrap((docs.comments ?? "").split("\n")),
+      sections: new Map(),
+      what: `the \`${module_.path}\` module`,
+    };
+    const { brief, detail } = documented(parsed);
+    return {
+      id: module_.id,
+      path: module_.path,
+      brief,
+      detail,
+      // The one arm that writes a real import line, and it is the module's own name on both sides:
+      // an alias of the full path is what makes `Gg.Files.readFile` — the key a documentation view
+      // is opened by — an expression the program can write as it stands.
+      import: `import ${module_.path} as ${module_.path}`,
+    };
+  });
 }
 
 /**
- * Every field of every API object record is either catalogued or the meta function, and every
- * catalogued function is a field of the object it claims.
+ * Every catalogued call, module by module.
  *
- * This is the check that makes `catalogue.mjs` safe to be a hand-written table: it is identity data
- * with no run-time use in this language, so nothing but this would notice it drifting from the
- * modules it names.
+ * The `Gg.Core` module binds nothing and is the only one allowed to: it declares the two failure
+ * types, the directory's own result, and the three helpers that read a failure. Every other module's
+ * exported values are either the directory or a bound operation, which is the reverse check that
+ * stops a capability from being exported, compiled, documented for a human reader and invisible to
+ * every model.
  */
-function catalogued(objects, functions, meta) {
-  const metaNames = meta.map((entry) => entry.name);
-  for (const object of objects) {
-    const module_ = moduleFor(object.object);
-    const row = recordRow(peel(value(module_, object.object).info.type).type);
-    if (row === undefined) throw new Error(`${module_}.${object.object} is not a record of functions`);
-    const offered = rowFields(row).fields.map((field) => field.label);
-    const described = functions
-      .filter((entry) => entry.object === object.object)
-      .map((entry) => entry.name);
-    for (const name of offered) {
-      if (!described.includes(name) && !metaNames.includes(name)) {
+function functionsSection() {
+  const functions = [];
+  const bound = new Map();
+  for (const module_ of MODULES) {
+    const names = [...moduleDocs(module_.path).values.keys()];
+    const capabilities = names.filter((name) => name !== META);
+    if (module_.id === CORE) {
+      if (names.includes(META)) {
         throw new Error(
-          `\`${object.object}.${name}\` is offered by ${module_} and catalogued by nothing; ` +
-            "add it to tools/catalogue.mjs",
+          `${module_.path} binds no operation and carries a \`${META}\``,
         );
       }
+      continue;
     }
-    for (const name of described) {
-      if (!offered.includes(name)) {
+    if (capabilities.length === 0) {
+      throw new Error(
+        `${module_.path} exports no capability at all; is it a module or plumbing?`,
+      );
+    }
+    if (!names.includes(META)) {
+      throw new Error(
+        `${module_.path} binds capabilities and carries no directory`,
+      );
+    }
+    for (const name of capabilities) {
+      const entry = describe(module_, name);
+      const claimed = bound.get(entry.operation);
+      if (claimed !== undefined) {
         throw new Error(
-          `tools/catalogue.mjs says \`${object.object}.${name}\` exists and ${module_} does not offer it`,
+          `\`${claimed}\` and \`${entry.fqn}\` both bind the operation \`${entry.operation}\``,
         );
       }
+      bound.set(entry.operation, entry.fqn);
+      functions.push(entry);
     }
   }
+  return functions;
+}
+
+/**
+ * The `list` every capability module carries, read once and asserted identical on all of them.
+ *
+ * PureScript has no macro, so identical declarations are something this script has to check rather
+ * than something the language guarantees: a directory that said one thing on ten modules and another
+ * on the eleventh would be a function a model is told about eleven times and understands ten.
+ */
+function metaSection() {
+  const entries_ = [];
+  for (const module_ of MODULES) {
+    if (module_.id === CORE) continue;
+    const declaration = value(module_.path, META);
+    const parsed = comment(declaration, `\`${module_.path}.${META}\``);
+    const { shape, returned } = shapeOf(
+      module_.path,
+      declaration,
+      META,
+      parsed,
+    );
+    const { brief, detail } = documented(parsed);
+    entries_.push({
+      key: META,
+      name: META,
+      signatures: [shape],
+      doc: [brief, detail]
+        .filter((part) => part !== null && part !== "")
+        .join("\n\n"),
+      types: references(closure(mentions(returned))),
+    });
+  }
+  const [first, ...rest] = entries_;
+  for (const other of rest) {
+    if (JSON.stringify(other) !== JSON.stringify(first)) {
+      throw new Error(
+        `the \`${META}\` a module carries is not the same declaration on every module; every one ` +
+          "of them documents one function and they must agree word for word",
+      );
+    }
+  }
+  return [first];
+}
+
+/** Every catalogued type, in the order the modules present them. */
+function typesSection() {
+  return [...DECLARED.keys()].map(describeType);
+}
+
+/** The whole catalogue. */
+function catalogue() {
+  const functions = functionsSection();
+  const types = typesSection();
+  return {
+    schema: SCHEMA,
+    language: "purescript",
+    generatedFrom: GENERATED_FROM,
+    libraries: libraries(),
+    modules: modulesSection(),
+    meta: metaSection(),
+    functions,
+    types,
+  };
 }
 
 writeFileSync(OUT, `${JSON.stringify(catalogue(), null, "\t")}\n`);

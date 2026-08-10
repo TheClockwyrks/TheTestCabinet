@@ -272,12 +272,30 @@ impl DocsRuntime {
         self.language
     }
 
-    /// The directory for one API object: its bound functions with one-line summaries, plus the
-    /// `list` meta function every object carries. An unknown object lists `list` alone.
-    pub fn list(&self, object: &str) -> Vec<FunctionSummary> {
+    /// The directory for one grouping: its bound functions with one-line summaries, plus the
+    /// `list` meta function every grouping carries. An unknown grouping lists `list` alone.
+    ///
+    /// # Why two spellings of the grouping are accepted
+    ///
+    /// Because two different routes reach this, and they cannot ask in the same words. A compiled
+    /// arm calls the `docs.list-functions` import with whatever its own SDK closed over, which on a
+    /// [converted](crate::sandbox::SchemaVersion::V2) arm is the module path — `gg::files`. The
+    /// arms sharing the ECMAScript guest have no such freedom: that guest seeds each object's
+    /// `list` with the **API object** name it built the object under, so a PureScript program
+    /// writing `Gg.Files.list` reaches here with `fs` however its own module is spelled.
+    ///
+    /// Matching only [`object`](crate::sandbox::CatalogueFunction::object) would answer the second
+    /// route with a well-formed **empty** directory, which is the worst shape the failure could
+    /// take: a program gets a one-element array holding nothing but `list` itself, and reads it as
+    /// a capability this run withheld rather than as a question asked in the wrong words. So the
+    /// grouping an entry's [operation](crate::sandbox::operation_of) is filed under is accepted
+    /// beside it. The two agree by construction on every unconverted arm, and are disjoint on every
+    /// converted one — no arm spells a module `fs` — so accepting both can widen an answer that was
+    /// empty and can never merge two groupings that were meant to stay apart.
+    pub fn list(&self, grouping: &str) -> Vec<FunctionSummary> {
         let mut out: Vec<FunctionSummary> = catalogue_functions(self.language)
             .into_iter()
-            .filter(|function| function.object == object && self.bound(function))
+            .filter(|function| self.grouped_under(function, grouping) && self.bound(function))
             .map(|function| FunctionSummary {
                 name: function.name.to_string(),
                 summary: function.prose.brief.to_string(),
@@ -290,6 +308,13 @@ impl DocsRuntime {
             });
         }
         out
+    }
+
+    /// Whether `grouping` names the heading `function` is listed under, in either of the two
+    /// spellings [`list`](Self::list) accepts.
+    fn grouped_under(&self, function: &CatalogueFunction, grouping: &str) -> bool {
+        function.object == grouping
+            || operation_of(function).is_some_and(|operation| operation.call.object == grouping)
     }
 
     /// Every function of one **capability family** this agent binds, with one-line summaries.

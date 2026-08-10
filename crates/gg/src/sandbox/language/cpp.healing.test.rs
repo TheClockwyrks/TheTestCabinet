@@ -24,18 +24,18 @@ use crate::healing::{Dialect, Healed, HealingConfig, HealingStrategy, heal};
 /// `concept` in one program, an apostrophe in a line of English, and two replies that are no program
 /// at all.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```cpp\n#include <vector>\n\nint main() {\n  const auto rows = fs::list_dir(\"src\");\n  view::open_text(\"rows\", std::format(\"{}\", rows.size()));\n  return 0;\n}\n```\n\nThat lists the directory.",
-    "#include <vector>\n#include <string>\n\nint main() {\n  std::vector<std::string> rows;\n  view::open_text(\"rows\", std::format(\"{}\", rows.size()));\n  return 0;\n}\n",
-    "#define LIMIT 40\n\nint main() {\n  const auto notes = fs::read_text_file(\"notes.md\", {.limit = LIMIT});\n  view::open_text(\"notes\", notes);\n  return 0;\n}\n",
-    "# Plan\n\nI will read the manifest and show it to myself.\n\n```c++\nint main() {\n  view::open_text(\"notes\", fs::read_text_file(\"notes.md\"));\n  return 0;\n}\n```",
-    "int main() {\n  view::open_text(\"n\", \"1\");\n  return 0;\n}\nint main() {\n  view::open_text(\"n\", \"1\");\n  return 0;\n}\n",
-    "int helper() { return 1; }\nint main() { view::open_text(\"n\", std::format(\"{}\", helper())); return 0; }\nint helper() { return 1; }\nint main() { view::open_text(\"n\", std::format(\"{}\", helper())); return 0; }\n",
-    "int main() {\n  const char *usage = R\"gg(int main() { \"unbalanced\n  and a \\ backslash )gg\";\n  view::open_text(\"usage\", usage);\n  return 0;\n}\n",
-    "int main() {\n  const int big = 1'000'000;\n  view::open_text(\"big\", std::format(\"{}\", big));\n  return 0;\n}\n",
-    "/* outer /* inner */\nint main() {\n  view::open_text(\"note\", \"done\");\n  return 0;\n}\n",
-    "template <typename T>\nconcept summable = requires(T value) { value + value; };\n\ntemplate <summable T>\nT twice(T value) {\n  return value + value;\n}\n\nint main() {\n  view::open_text(\"n\", std::format(\"{}\", twice(21)));\n  return 0;\n}\n",
-    "I couldn't finish that, and it doesn't work yet.\n\n```cpp\nint main() {\n  view::open_text(\"note\", \"partial\");\n  return 0;\n}\n```",
-    "namespace helpers {\nint one() { return 1; }\n}  // namespace helpers\n\nnamespace helpers {\nint two() { return 2; }\n}  // namespace helpers\n\nint main() {\n  view::open_text(\"n\", std::format(\"{}\", helpers::one() + helpers::two()));\n  return 0;\n}\n",
+    "Here is the program.\n\n```cpp\n#include <vector>\n\nint main() {\n  const auto rows = files::list_dir(\"src\");\n  views::open_text(\"rows\", std::format(\"{}\", rows.size()));\n  return 0;\n}\n```\n\nThat lists the directory.",
+    "#include <vector>\n#include <string>\n\nint main() {\n  std::vector<std::string> rows;\n  views::open_text(\"rows\", std::format(\"{}\", rows.size()));\n  return 0;\n}\n",
+    "#define LIMIT 40\n\nint main() {\n  const auto notes = files::read_text_file(\"notes.md\", {.limit = LIMIT});\n  views::open_text(\"notes\", notes);\n  return 0;\n}\n",
+    "# Plan\n\nI will read the manifest and show it to myself.\n\n```c++\nint main() {\n  views::open_text(\"notes\", files::read_text_file(\"notes.md\"));\n  return 0;\n}\n```",
+    "int main() {\n  views::open_text(\"n\", \"1\");\n  return 0;\n}\nint main() {\n  views::open_text(\"n\", \"1\");\n  return 0;\n}\n",
+    "int helper() { return 1; }\nint main() { views::open_text(\"n\", std::format(\"{}\", helper())); return 0; }\nint helper() { return 1; }\nint main() { views::open_text(\"n\", std::format(\"{}\", helper())); return 0; }\n",
+    "int main() {\n  const char *usage = R\"gg(int main() { \"unbalanced\n  and a \\ backslash )gg\";\n  views::open_text(\"usage\", usage);\n  return 0;\n}\n",
+    "int main() {\n  const int big = 1'000'000;\n  views::open_text(\"big\", std::format(\"{}\", big));\n  return 0;\n}\n",
+    "/* outer /* inner */\nint main() {\n  views::open_text(\"note\", \"done\");\n  return 0;\n}\n",
+    "template <typename T>\nconcept summable = requires(T value) { value + value; };\n\ntemplate <summable T>\nT twice(T value) {\n  return value + value;\n}\n\nint main() {\n  views::open_text(\"n\", std::format(\"{}\", twice(21)));\n  return 0;\n}\n",
+    "I couldn't finish that, and it doesn't work yet.\n\n```cpp\nint main() {\n  views::open_text(\"note\", \"partial\");\n  return 0;\n}\n```",
+    "namespace helpers {\nint one() { return 1; }\n}  // namespace helpers\n\nnamespace helpers {\nint two() { return 2; }\n}  // namespace helpers\n\nint main() {\n  views::open_text(\"n\", std::format(\"{}\", helpers::one() + helpers::two()));\n  return 0;\n}\n",
     "I have finished the task. Everything works.",
 ];
 
@@ -122,7 +122,7 @@ fn an_include_is_never_deleted() {
                  int main() {\n  \
                  std::vector<int> values{3, 1, 2};\n  \
                  std::ranges::sort(values);\n  \
-                 view::open_text(\"n\", std::format(\"{}\", values.front()));\n  \
+                 views::open_text(\"n\", std::format(\"{}\", values.front()));\n  \
                  return 0;\n\
                  }\n";
     let result = healed(reply);
@@ -153,7 +153,7 @@ fn an_include_is_never_deleted() {
 #[test]
 fn there_is_no_concurrency_wrapper_here_and_rusts_is_still_taken_off() {
     let program = "int main() {\n  \
-                   std::thread worker([] { view::open_text(\"note\", \"done\"); });\n  \
+                   std::thread worker([] { views::open_text(\"note\", \"done\"); });\n  \
                    worker.join();\n  \
                    return 0;\n\
                    }\n";
@@ -171,7 +171,7 @@ fn there_is_no_concurrency_wrapper_here_and_rusts_is_still_taken_off() {
     // The same question asked of the arm that does have one, so this test is a comparison rather
     // than an assertion that a method returns `None`.
     let rusty =
-        "std::thread::spawn(|| {\n    view::open_text(\"note\", \"done\")?;\n    Ok(())\n});";
+        "std::thread::spawn(|| {\n    views::open_text(\"note\", \"done\")?;\n    Ok(())\n});";
     assert!(
         rust()
             .unwrap_async(rusty, &rust().code_mask(rusty).expect("this source lexes"))
@@ -192,7 +192,7 @@ fn there_is_no_concurrency_wrapper_here_and_rusts_is_still_taken_off() {
 /// `main` — `redefinition of 'main'`, before a statement runs.
 #[test]
 fn a_doubled_program_redefines_main() {
-    let once = "int main() {\n  view::open_text(\"n\", \"1\");\n  return 0;\n}\n";
+    let once = "int main() {\n  views::open_text(\"n\", \"1\");\n  return 0;\n}\n";
     let result = healed(&format!("{once}{once}"));
     assert_eq!(result.program, once.trim_end());
     assert!(
@@ -339,9 +339,9 @@ fn an_unterminated_construct_declines_for_healing_and_not_for_the_entry_point_re
 /// qualified call code.
 #[test]
 fn a_qualified_call_is_code_and_a_sentence_is_not() {
-    assert!(cpp().looks_like_code("view::open_text(\"n\", body)"));
+    assert!(cpp().looks_like_code("views::open_text(\"n\", body)"));
     assert!(cpp().looks_like_code("std::ranges::sort(values);"));
-    assert!(cpp().looks_like_code("const auto rows = fs::list_dir(\"src\");"));
+    assert!(cpp().looks_like_code("const auto rows = files::list_dir(\"src\");"));
     assert!(cpp().looks_like_code("}"));
     assert!(!cpp().looks_like_code("Then I read the manifest and summarised it."));
     assert!(cpp().is_prose_line("Then I read the manifest and summarised it."));

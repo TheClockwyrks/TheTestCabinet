@@ -54,21 +54,28 @@ const UNAVAILABLE = "unavailable";
 // was never given. `ToolError` is bound into every program's scope by the guest, so this is the
 // same class a program's `attempt` catches; the fallback is for a scope that somehow has not got
 // it, where a plain error beats no error at all.
-const unavailable = (tool, object, name) => {
+const unavailable = (tool, written) => {
   const message =
-    `\`${object}.${name}\` is not available in this run: this program's capability set does not ` +
+    `\`${written}\` is not available in this run: this program's capability set does not ` +
     "offer it";
   return typeof ToolError === "function"
     ? new ToolError(tool, UNAVAILABLE, message)
     : new Error(message);
 };
 
-export const callImpl = (tool) => (object) => (name) => (args) => () => {
-  const target = objectFor(object);
+// `written` is the fully-qualified name a PureScript program writes — `Gg.Files.readFile` — and its
+// last segment is the guest's own name for the same function. One string rather than two because
+// the two halves are the same word: what differs is the qualifier, which is `Gg.Files` on the side
+// the model reads and an object in this scope on the side the call lands in.
+export const callImpl = (tool) => (namespace) => (written) => (args) => () => {
+  const target = objectFor(namespace);
+  const name = written.slice(written.lastIndexOf(".") + 1);
   const fn = target === undefined ? undefined : target[name];
-  if (typeof fn !== "function") throw unavailable(tool, object, name);
+  if (typeof fn !== "function") throw unavailable(tool, written);
   return fn.apply(target, args);
 };
+
+export const boundImpl = (name) => () => objectFor(name) !== undefined;
 
 export const lowerImpl = (converters) => (record) => {
   const lowered = {};

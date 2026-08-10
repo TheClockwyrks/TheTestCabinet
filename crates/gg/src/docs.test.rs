@@ -486,3 +486,52 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
         }
     }
 }
+
+/// **Every grouping name an arm's `list` can pass resolves to that function's directory**, on every
+/// arm and in both of the two spellings a guest can hold.
+///
+/// The two spellings exist because [`list`](DocsRuntime::list) is reached by two different routes.
+/// A compiled arm calls the `docs.list-functions` import with the module path its own SDK closed
+/// over, so it asks with [`object`](crate::sandbox::CatalogueFunction::object). The three arms that
+/// share the ECMAScript guest cannot: that guest seeds each object's `list` with the **API object**
+/// name it built the object under, so a PureScript program writing `Gg.Files.list` asks with `fs`.
+/// A directory that answered only one of the two would hand the other route a well-formed empty
+/// array — the failure shape worth designing out, because an empty directory reads as a capability
+/// that is not there rather than as a question asked in the wrong words.
+///
+/// It is asked of an agent holding everything, so that a name missing from the answer is a grouping
+/// that does not resolve rather than a capability this run withheld.
+#[test]
+fn both_spellings_of_a_grouping_open_its_directory_on_every_arm() {
+    for language in crate::sandbox::all_languages() {
+        let arm = language.display_name();
+        for role in [EndingRole::Standard, EndingRole::Review] {
+            let docs = DocsRuntime::new(
+                crate::tools::ALL_TOOL_NAMES
+                    .iter()
+                    .map(|tool| tool.to_string())
+                    .collect(),
+                role,
+                test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG,
+                language.id(),
+            );
+            for function in crate::sandbox::catalogue_functions(language) {
+                if !docs.bound(&function) {
+                    continue;
+                }
+                let legacy = crate::sandbox::operation_of(&function)
+                    .map(|operation| operation.call.object)
+                    .unwrap_or(function.object);
+                for grouping in [function.object, legacy] {
+                    let listed = docs.list(grouping);
+                    assert!(
+                        listed.iter().any(|entry| entry.name == function.name),
+                        "{arm}: `{}` is grouped under `{grouping}`, and asking that grouping for \
+                         its directory does not list it",
+                        function.name,
+                    );
+                }
+            }
+        }
+    }
+}

@@ -35,6 +35,17 @@ Your response is executed as a module — the body of a `program.py`, at the top
 level, with `__name__` set to `"__main__"`. So there is no function to return
 from and no `return` statement to write; the way out of your program is a view.
 
+**gg's own surface needs no import.** Every module listed below is already bound
+in your program's namespace under its own name, and so is every type they speak
+in — `ToolError`, `TaskStatus`, `TurnRange` and the rest are written bare. The
+modules are also reachable under `gg`, so `gg.<module>.<function>` and
+`<module>.<function>` are the same call; the first is the fully-qualified name
+the documentation is keyed by, and either one is a call you can write.
+
+Each module owns the types it produces, so a type belongs to the module that
+hands it back — `gg.files.FileRead`, `gg.tasks.TaskStatus`, `gg.views.OpenView` —
+and two modules are free to declare a type of the same name.
+
 The signatures below are written with type annotations. They say what each call
 takes and what it hands back; your own program may write them or leave them off.
 
@@ -80,21 +91,22 @@ Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
 
 ### Your APIs
 
-Your program is given these objects, each grouping the functions of one
-capability. Call a function using `<object>.<function>(args...)`. Required
-arguments are positional; optional ones are keyword arguments with defaults.
+Your program is given these modules, each grouping the functions of one
+capability. Call a function using `<module>.<function>(args...)`, writing the
+module's last segment. Required arguments are positional; optional ones are
+keyword arguments with defaults.
 
 {{#each apis}}
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what an object holds, and they reach you by different routes.
+Two calls tell you what a module holds, and they reach you by different routes.
 
-`<object>.{{meta.list.name}}()` **returns** an object's functions to your program, each as a
-`FunctionSummary`. It is an ordinary return value, so it puts nothing in front
-of you on its own: to read it yourself you must open a view of it, exactly as
-you would any other value your program computed —
-`{{api.view.open_text.call}}("fs", repr(fs.{{meta.list.name}}()))`.
+`<module>.{{meta.list.name}}()` — for example `files.{{meta.list.name}}()` — **returns** a module's
+functions to your program, each as a `FunctionSummary`. It is an ordinary return
+value, so it puts nothing in front of you on its own: to read it yourself you
+must open a view of it, exactly as you would any other value your program
+computed — `{{api.view.open_text.call}}("files", repr(files.{{meta.list.name}}()))`.
 
 `{{api.view.open_docs_view.signature}}` **opens a view** directly, of one function's full
 signature, documentation, and the types it uses. Pass the function itself
@@ -230,7 +242,7 @@ A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{#if tasks}}
 ## Tasks
 
-You have access to a task list on the `tasks` object. Use `{{api.tasks.add_task.call}}` to add
+You have access to a task list in the `gg.tasks` module. Use `{{api.tasks.add_task.call}}` to add
 work, `{{api.tasks.update_task.call}}` to update a task's data, `{{api.tasks.complete_task.call}}` to mark a
 task as completed, and `{{api.tasks.remove_task.call}}` to drop a task. At most
 {{tasks.maxTasks}} may be recorded.
@@ -257,8 +269,9 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-You have access to a shared project board, reached through the `project` object,
-that you and other agents may use. This board is shared across the entire run.
+You have access to a shared project board, reached through the `gg.board`
+module, that you and other agents may use. This board is shared across the
+entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational
 purposes and can be created using `{{api.project.create_epic.call}}`. Issues represent units

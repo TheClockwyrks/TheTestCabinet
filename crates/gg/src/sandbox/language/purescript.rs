@@ -63,7 +63,8 @@
 //! # What a PureScript program is, here
 //!
 //! A **module**. PureScript has no loose statements, so a program is a module with a `main` of type
-//! `Effect Unit` that reaches gg's surface with `import Gg`, and the compile
+//! `Effect Unit` that reaches gg's surface by importing the capability modules it uses, and the
+//! compile
 //! [renames its header](compile) to a fixed name so the bundler can find the entry point. A reply
 //! with no header at all is given one, which costs exactly one line and is the number every
 //! diagnostic is moved back by; a program that defines no `main` is refused with a sentence saying
@@ -83,14 +84,22 @@
 //! It is **idiomatic PureScript** rather than the TypeScript SDK transliterated, and every difference
 //! is a spelling the seam leaves free:
 //!
-//! * **An API object is a record of functions**, so `fs.readFile "main.purs" {}` is a field access
-//!   and an application. That is what keeps the surface *namespaced* in a language whose only other
-//!   grouping is the module system — a module alias must be capitalised, so `Fs.readFile` could never
-//!   be the `fs.read_file` identity every other arm carries.
+//! * **The surface is eleven capability modules** — `Gg.Files`, `Gg.Shell`, `Gg.Board`, … — plus a
+//!   twelfth, `Gg.Core`, that binds no operation and holds the failure types every other module's
+//!   signatures name. Each is a real PureScript module with an explicit export list, which is the
+//!   best public-surface protocol of the eleven arms: `purs` will not let anything else escape.
+//! * **A program writes the module's own name.** It is the one arm with a real import line, and the
+//!   line aliases a module to itself: `import Gg.Files as Gg.Files` makes `Gg.Files.readFile` — the
+//!   key a documentation view is opened by — the expression a call site writes, so the name a model
+//!   reads and the name it types are one string. Verified against `purs`: an *open* import does not
+//!   make a fully-qualified reference resolve, and a dotted alias does.
+//! * **Free functions over values, and no member functions at all.** Where an arm with objects hangs
+//!   `wait` off a handle, this one offers `Gg.Delegation.waitForSubagents` over it. A member on a
+//!   record would be a field access no search can reach, which is the same failure an API object was.
 //! * **Optional arguments are a record, and the row is checked.** `Union given rest ReadOptions` is
-//!   PureScript's own idiom for "these fields, any subset of them": `fs.readFile "a" {}` and
-//!   `fs.readFile "a" { limit: 20 }` both type-check, and `{ limitt: 20 }` is a type error naming
-//!   every field that would have worked.
+//!   PureScript's own idiom for "these fields, any subset of them": `Gg.Files.readFile "a" {}` and
+//!   `Gg.Files.readFile "a" { limit: 20 }` both type-check, and `{ limitt: 20 }` is a type error
+//!   naming every field that would have worked.
 //! * **A three-way patch field needs no sentinel.** Leave `description` out of the record to keep it,
 //!   pass `Nothing` to clear it, pass `Just` to replace it — where Python needs an `UNCHANGED`
 //!   because `None` is already taken.
@@ -102,11 +111,13 @@
 //! * **The brief a child agent is spawned with is a constructor** — `Prompt` or `Issue` — so "both"
 //!   and "neither" are programs that do not compile rather than calls the host refuses.
 //!
-//! The bridge underneath it is `Gg.Internal.Wire`, one foreign module naming the API objects the
-//! guest binds. Those are free identifiers in the bundle, resolved at call time against the scope the
-//! guest built, which is why a capability this run withheld is a `ToolError` carrying `unavailable`
-//! rather than a `ReferenceError` — the SDK exposes the whole surface, as every arm's does, and the
-//! refusal is the host's.
+//! The bridge underneath it is `Gg.Internal.Wire`, one foreign module naming the namespaces the
+//! shared ECMAScript guest binds. Those are free identifiers in the bundle, resolved at call time
+//! against the scope the guest built, which is why a capability this run withheld is a `ToolError`
+//! carrying `unavailable` rather than a `ReferenceError` — the SDK exposes the whole surface, as
+//! every arm's does, and the refusal is the host's. The guest's own spellings are the lowering and
+//! not the surface: they are written once, beside the function that uses them, and a model never
+//! sees one.
 //!
 //! # What this arm has that no other does
 //!
@@ -277,14 +288,14 @@ impl ProgramLanguage for PureScript {
         &PROMPT
     }
 
-    /// [`void (view.openFile "src/Main.purs" {})`](self::open_file_statement) — the call, its
+    /// [`void (Gg.Views.openFile "src/Main.purs" {})`](self::open_file_statement) — the call, its
     /// options record, and the `void` that discards what it hands back.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
     }
 
-    /// [A module with an array of names and a `for_` over
-    /// it](self::open_docs_views_statement), each iteration opening one documentation view.
+    /// [A module that imports the view module and folds a `for_` over an array of
+    /// names](self::open_docs_views_statement), each iteration opening one documentation view.
     fn open_docs_views_statement(&self, names: &[&str]) -> String {
         open_docs_views_statement(&spell(self, VIEW_OPEN_DOCS_VIEW), names)
     }
@@ -409,6 +420,7 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
     if entries.is_empty() {
         entries.push_str("  [\n");
     }
+    let module = module_of(open_docs_view);
     format!(
         "module Main where\n\
          \n\
@@ -416,7 +428,7 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
          \n\
          import Data.Foldable (for_)\n\
          import Effect (Effect)\n\
-         import Gg\n\
+         import {module} as {module}\n\
          \n\
          functions :: Array String\n\
          functions =\n\
@@ -425,6 +437,19 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
          main :: Effect Unit\n\
          main = for_ functions {open_docs_view}\n"
     )
+}
+
+/// The module a fully-qualified call is documented under, taken off the front of the call itself.
+///
+/// The one place gg has to write this arm's **import** line, and it is derived from the call rather
+/// than looked up beside it so that the two cannot disagree: an import of some other module would
+/// leave the call it was written for unresolved, which is a program that does not compile in the one
+/// place a model reads gg's own output as an example of its own. Every catalogued name is
+/// module-qualified — the name rule (`signatures.fqn.rs`) is what makes that true on
+/// every arm — so the module is everything before the last separator, and a call that somehow
+/// carried none is imported as itself rather than crashing a turn.
+fn module_of(call: &str) -> &str {
+    call.rsplit_once('.').map_or(call, |(module, _)| module)
 }
 
 #[cfg(test)]

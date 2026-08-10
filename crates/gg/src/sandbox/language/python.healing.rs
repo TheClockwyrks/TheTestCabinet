@@ -283,7 +283,7 @@ fn is_name_shaped(text: &str) -> bool {
     })
 }
 
-/// Whether `line` opens with `identifier(`, `a.b(` or `a.b.c(` — `print(`, `view.open_file(`,
+/// Whether `line` opens with `identifier(`, `a.b(` or `a.b.c(` — `print(`, `views.open_file(`,
 /// `entries.append(`.
 fn opens_with_call(line: &str) -> bool {
     let mut chars = line.char_indices().peekable();

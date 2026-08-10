@@ -114,7 +114,7 @@ struct Crossing {
 /// arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
 /// language-independent: ten arms writing the same call in their own idioms must produce
 /// **byte-identical** arguments, or they are not running the same experiment. A designated
-/// initialiser lowered onto the wrong wire slot, a `text_edit::clear()` read as "leave it alone"
+/// initialiser lowered onto the wrong wire slot, a `tasks::text_edit::clear()` read as "leave it alone"
 /// instead of "clear it", an enumerator whose wire word did not translate — none of them is a
 /// compile error in any of the ten, and all of them are visible here.
 ///
@@ -126,27 +126,27 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: r#"system::shell("npm test", 30.0);"#,
+            statement: r#"shell::run("npm test", 30.0);"#,
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: r#"fs::read_file("src/a.cpp", {.offset = 2, .limit = 5});"#,
+            statement: r#"files::read_file("src/a.cpp", {.offset = 2, .limit = 5});"#,
             expected: || json!({ "path": "src/a.cpp", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: r#"fs::write_file("out.txt", "hello");"#,
+            statement: r#"files::write_file("out.txt", "hello");"#,
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: r#"fs::edit_file("src/a.cpp", "alpha", "beta");"#,
+            statement: r#"files::edit_file("src/a.cpp", "alpha", "beta");"#,
             expected: || json!({ "path": "src/a.cpp", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: r#"fs::list_dir("src");"#,
+            statement: r#"files::list_dir("src");"#,
             expected: || json!({ "path": "src" }),
         },
         Crossing {
@@ -156,7 +156,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "write_memory",
-            statement: r#"memory::write_memory("layout", "d", "b");"#,
+            statement: r#"memories::write_memory("layout", "d", "b");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -164,7 +164,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: r#"memory::update_memory("layout", "d2", "b2");"#,
+            statement: r#"memories::update_memory("layout", "d2", "b2");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -174,7 +174,7 @@ fn crossings() -> Vec<Crossing> {
             tool: "create_memory",
             // The one crossing that carries a memory's CODE, and the one that fills in a single
             // field of an options aggregate by name and leaves the other at its default.
-            statement: r#"memory::create_memory("layout", "d", "b",
+            statement: r#"memories::create_memory("layout", "d", "b",
                                                 {.code = "int one() { return 1; }"});"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "contents": "b",
@@ -183,22 +183,22 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "read_memory",
-            statement: r#"memory::read_memory("layout");"#,
+            statement: r#"memories::read_memory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: r#"memory::edit_memory("layout", "old", "new");"#,
+            statement: r#"memories::edit_memory("layout", "old", "new");"#,
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: r#"memory::search_memories({"cargo", "nextest"});"#,
+            statement: r#"memories::search_memories({"cargo", "nextest"});"#,
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: r#"memory::delete_memory("layout");"#,
+            statement: r#"memories::delete_memory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
@@ -209,10 +209,10 @@ fn crossings() -> Vec<Crossing> {
         Crossing {
             tool: "update_task",
             statement: r#"tasks::update_task("t1", {.title = "T2",
-                                                   .description = text_edit::clear(),
-                                                   .status = task_status::in_progress});"#,
+                                                   .description = tasks::text_edit::clear(),
+                                                   .status = tasks::task_status::in_progress});"#,
             expected: || {
-                // `text_edit::clear()` is what CLEARS it — a default-constructed `text_edit` is what
+                // `tasks::text_edit::clear()` is what CLEARS it — a default-constructed `text_edit` is what
                 // leaves it alone — and `in_progress` is gg's own spelling, so the membrane's
                 // `in-progress` reaches neither a model nor a tool.
                 json!({ "id": "t1", "title": "T2", "status": "in_progress", "description": "" })
@@ -235,12 +235,12 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "create_epic",
-            statement: r#"project::create_epic("epc", "E", "D");"#,
+            statement: r#"board::create_epic("epc", "E", "D");"#,
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: r#"project::create_issue("I", "s", "o", "c", "worker",
+            statement: r#"board::create_issue("I", "s", "o", "c", "worker",
                                                 {.reviewers = {"critic"}});"#,
             expected: || {
                 json!({
@@ -258,10 +258,10 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: r#"project::update_issue("i1", {.status = issue_status::done,
-                                                      .epic = epic_assignment::ungroup()});"#,
+            statement: r#"board::update_issue("i1", {.status = board::issue_status::done,
+                                                      .epic = board::epic_assignment::ungroup()});"#,
             expected: || {
-                // `epic_assignment::ungroup()` ungroups the issue, which gg's schema spells as the
+                // `board::epic_assignment::ungroup()` ungroups the issue, which gg's schema spells as the
                 // empty string; a description the patch left default keeps the one it has, so its
                 // key is absent.
                 json!({
@@ -277,22 +277,22 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: r#"project::set_issue_blocked_by("i1", {"i0"});"#,
+            statement: r#"board::set_issue_blocked_by("i1", {"i0"});"#,
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: r#"project::remove_epic("e1");"#,
+            statement: r#"board::remove_epic("e1");"#,
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: r#"project::remove_issue("i1");"#,
+            statement: r#"board::remove_issue("i1");"#,
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: r#"project::wait_for_issue("i1");"#,
+            statement: r#"board::wait_for_issue("i1");"#,
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
@@ -323,7 +323,7 @@ fn crossings() -> Vec<Crossing> {
             tool: "spawn_subagent",
             // The brief is one value with two named factories rather than one of two optional
             // arguments, so "both" and "neither" are programs that do not compile.
-            statement: r#"agents::spawn_subagent("subagent", brief::prompt("write the lexer"));"#,
+            statement: r#"delegation::spawn_subagent("subagent", delegation::brief::prompt("write the lexer"));"#,
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
@@ -331,27 +331,27 @@ fn crossings() -> Vec<Crossing> {
             // The one function this SDK spells as an OVERLOAD PAIR rather than a default argument,
             // because "every outstanding child" and "these children" are two calls in C++ and an
             // `std::optional<std::vector<…>>` would have made the common one write `std::nullopt`.
-            statement: r#"agents::wait_for_subagents({"agent-1"});"#,
+            statement: r#"delegation::wait_for_subagents({"agent-1"});"#,
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: r#"agents::send_message("agent-1", "prefer the simpler parser");"#,
+            statement: r#"delegation::send_message("agent-1", "prefer the simpler parser");"#,
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: r#"agents::transition_state("verify", "the build is green");"#,
+            statement: r#"delegation::transition_state("verify", "the build is green");"#,
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: r#"agents::exec("Builder", "pick it up from here");"#,
+            statement: r#"delegation::exec("Builder", "pick it up from here");"#,
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: r#"agents::fork("try the other fix");"#,
+            statement: r#"delegation::fork("try the other fix");"#,
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -411,19 +411,19 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     let (outcome, log) = evaluate(
         &prepare(&program(
             r####"
-  const std::string text = fs::read_text_file("notes.md", {.offset = 1, .limit = 2});
-  const auto read = view::open_file("notes.md", {.offset = 1, .limit = 2});
-  view::open_text("summary", text);
-  view::open_docs_view("read_file");
-  const std::uint32_t closed = view::close("summary");
-  const std::uint32_t missing = view::close("never opened");
-  const auto open = view::current();
-  const auto directory = fs::list();
-  log(std::format("{} {}", open[0].selector, open[0].kind == view_kind::file));
+  const std::string text = files::read_text_file("notes.md", {.offset = 1, .limit = 2});
+  const auto read = views::open_file("notes.md", {.offset = 1, .limit = 2});
+  views::open_text("summary", text);
+  views::open_docs_view("read_file");
+  const std::uint32_t closed = views::close("summary");
+  const std::uint32_t missing = views::close("never opened");
+  const auto open = views::current();
+  const auto directory = files::list();
+  log(std::format("{} {}", open[0].selector, open[0].kind == views::view_kind::file));
   log(std::format("{} {}", closed, missing));
-  const std::string shown = std::holds_alternative<text_file>(read)
-                                ? std::get<text_file>(read).contents
-                                : std::get<image_file>(read).label;
+  const std::string shown = std::holds_alternative<files::text_file>(read)
+                                ? std::get<files::text_file>(read).contents
+                                : std::get<files::image_file>(read).label;
   log(shown.substr(0, shown.find('\n')));
   std::string names;
   for (const auto &function : directory) {
@@ -431,7 +431,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     names += function.name;
   }
   log(names);
-  harness::finish("read the file and showed myself the result");
+  session::finish("read the file and showed myself the result");
 "####,
         )),
         &all_tools(),
@@ -445,7 +445,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "fsFunction");
+    assert_eq!(lines[3], "gg::filesFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -465,7 +465,7 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     );
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
+    // `views::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
     // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
@@ -485,11 +485,11 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
   log(std::to_string(programs::history().size()));
   try {
     log(programs::get(2));
-  } catch (const tool_error &failure) {
-    log(std::string(gg_name(failure.code())));
+  } catch (const core::tool_error &failure) {
+    log(std::string(core::gg_name(failure.code())));
   }
   programs::rerun("int main() { log(\"again\"); return 0; }");
-  review::request_changes({"widen the test", "name the file"});
+  session::request_changes({"widen the test", "name the file"});
 "####,
         )),
         &[],
@@ -513,7 +513,7 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare(&program("  review::approve();")),
+        &prepare(&program("  session::approve();")),
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -534,17 +534,17 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_cpp_too() {
 
 #[test]
 fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
-    // Caught: an ordinary `catch` on `tool_error` with a test on the code, which is what a program
+    // Caught: an ordinary `catch` on `core::tool_error` with a test on the code, which is what a program
     // that expects one failure and not the others writes. Nothing about it is exceptional —
-    // `tool_error` is a `std::runtime_error`, so `catch (const std::exception&)` sees it too and no
+    // `core::tool_error` is a `std::runtime_error`, so `catch (const std::exception&)` sees it too and no
     // SDK-specific combinator is needed to compose with the standard library's own throws.
     let (outcome, _log) = run_with(
         r####"
   try {
-    log(fs::read_text_file("gone.cpp"));
-  } catch (const tool_error &failure) {
-    if (failure.code() != tool_error_code::not_found) throw;
-    log(std::format("{} on {}", gg_name(failure.code()), failure.tool()));
+    log(files::read_text_file("gone.cpp"));
+  } catch (const core::tool_error &failure) {
+    if (failure.code() != core::tool_error_code::not_found) throw;
+    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
   }
   log("carried on");
 "####,
@@ -557,13 +557,13 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
 
     // Let out: gg's shell catches what escapes `main`, so an uncaught failure is a reported,
     // RECOVERABLE program error rather than a trap — and it carries the failed call's own gg code,
-    // which is what the host classifies the turn by. That code is read off the `tool_error` itself:
+    // which is what the host classifies the turn by. That code is read off the `core::tool_error` itself:
     // an arm whose uncaught gg failure was recorded as `other` would be an arm whose error rates a
     // study could not compare with any other.
     let (outcome, _log) = run_with(
         r####"
   log("before");
-  fs::read_text_file("gone.cpp");
+  files::read_text_file("gone.cpp");
   log("after");
 "####,
         &all_tools(),
@@ -582,7 +582,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     assert_eq!(
         error.kind,
         crate::sandbox::outcome::ProgramErrorKind::ToolFailure,
-        "an uncaught gg failure is classified from the CODE gg's shell read off the `tool_error`;          without that it would land in `Other` beside a model that threw an `int`: {error:?}"
+        "an uncaught gg failure is classified from the CODE gg's shell read off the `core::tool_error`;          without that it would land in `Other` beside a model that threw an `int`: {error:?}"
     );
     assert_eq!(
         outcome.logs,
@@ -600,9 +600,9 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     let (outcome, log) = run_with(
         r####"
   try {
-    fs::write_file("out.txt", "hello");
-  } catch (const tool_error &failure) {
-    log(std::format("{} on {}", gg_name(failure.code()), failure.tool()));
+    files::write_file("out.txt", "hello");
+  } catch (const core::tool_error &failure) {
+    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
   }
   log("carried on");
 "####,
@@ -667,7 +667,7 @@ fn cpp_reaches_every_library() {
   const auto span = std::chrono::seconds(90) + std::chrono::minutes(1);
   log(std::format("{} {} {} {} {} {} {} {}", values[0], parsed.value_or(-1), built.str(),
                   matched, (int)(pi * 100), rolled > 0, span.count(),
-                  std::to_underlying(entry_kind::directory)));
+                  std::to_underlying(files::entry_kind::directory)));
 "####,
         )),
         &[],
@@ -815,167 +815,230 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
 #[test]
 fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     let catalogue = catalogue();
+    assert_eq!(catalogue["schema"], 2);
     assert_eq!(catalogue["language"], "cpp");
     assert_eq!(
         text(&catalogue, "generatedFrom"),
         "packages/gg-sandbox-cpp/Sources/sdk/ (clang++ -ast-dump=json)"
     );
 
-    // One entry per gg tool, under gg's own name, and nothing else. On this arm the `tool` and the
-    // `name` coincide for all thirty-five, because gg's vocabulary is `snake_case` and so is this
-    // SDK — which is a spelling that happens to agree rather than an identity being borrowed, and
-    // the reason `catalogue.py` still writes both.
-    let mut tools: Vec<&str> = section(&catalogue, "tools")
-        .iter()
-        .map(|entry| text(entry, "tool"))
-        .collect();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
-    tools.sort_unstable();
-    vocabulary.sort_unstable();
-    assert_eq!(tools, vocabulary);
-    for entry in section(&catalogue, "tools") {
-        assert_eq!(
-            text(entry, "tool"),
-            text(entry, "name"),
-            "this SDK spells a tool the way gg does; if that changes the two must still be an \
-             identity and a spelling rather than one string used twice"
+    // The twelve modules, in the order a model is presented with them, each spelled as a C++
+    // program writes it and introduced by the first line of its own namespace's documentation.
+    assert_eq!(
+        section(&catalogue, "modules")
+            .iter()
+            .map(|module| (text(module, "id"), text(module, "path")))
+            .collect::<Vec<_>>(),
+        [
+            ("files", "gg::files"),
+            ("shell", "gg::shell"),
+            ("board", "gg::board"),
+            ("tasks", "gg::tasks"),
+            ("memories", "gg::memories"),
+            ("views", "gg::views"),
+            ("context", "gg::context"),
+            ("delegation", "gg::delegation"),
+            ("skills", "gg::skills"),
+            ("programs", "gg::programs"),
+            ("session", "gg::session"),
+            ("core", "gg::core"),
+        ]
+    );
+    for module in section(&catalogue, "modules") {
+        assert!(
+            module["import"].is_null(),
+            "the prelude is precompiled in front of every program, so there is no import line a \
+             model would be right to write: {module}"
         );
     }
 
-    // The twelve objects, in the order a model is presented with them, each with the one line it is
-    // introduced by — which is the first paragraph of its namespace's own documentation.
-    assert_eq!(
-        section(&catalogue, "objects")
-            .iter()
-            .map(|object| text(object, "object"))
-            .collect::<Vec<_>>(),
-        [
-            "fs", "system", "project", "tasks", "memory", "view", "context", "agents", "skills",
-            "programs", "harness", "review"
-        ]
-    );
-
-    // Nothing a model reads is blank, anywhere. The agreement gate makes this check the day this arm
-    // is registered; making it here is what stops the catalogue from landing with a hole in it.
-    for name in ["meta", "session", "views", "programs", "tools", "helpers"] {
-        for entry in section(&catalogue, name) {
-            let what = text(entry, "name");
+    // Nothing a model reads is blank, anywhere, and every name it is shown is one it could type.
+    // The register and coverage gates make these checks for real over the parsed catalogue; making
+    // them here is what fails at this arm's own name rather than in a gate that reads eleven.
+    for entry in section(&catalogue, "functions") {
+        let what = text(entry, "fqn");
+        let name = text(entry, "name");
+        assert!(!text(entry, "brief").is_empty(), "`{what}` has no brief");
+        assert!(
+            !text(entry, "brief").contains('\n'),
+            "`{what}`'s brief is more than one line"
+        );
+        assert!(
+            what.starts_with("gg::") && what.ends_with(name),
+            "`{what}` is not a module-qualified name ending in the name a program calls"
+        );
+        assert!(
+            entry["call"].is_null(),
+            "on this arm the fully-qualified name IS what a program writes: {what}"
+        );
+        let shapes = entry["signatures"]
+            .as_array()
+            .expect("an entry has signatures");
+        assert!(!shapes.is_empty(), "`{what}` has no signature");
+        for shape in shapes {
+            let signature = text(shape, "signature");
             assert!(
-                !text(entry, "doc").is_empty(),
-                "`{what}` has no documentation"
+                signature.starts_with(name),
+                "`{what}`'s signature does not start with the name a program calls: {signature}"
             );
-            let shapes = entry["signatures"]
+            assert!(
+                signature.contains(") -> "),
+                "`{what}`'s signature does not say what it hands back: {signature}"
+            );
+            for parameter in shape["parameters"]
                 .as_array()
-                .expect("an entry has signatures");
-            assert!(!shapes.is_empty(), "`{what}` has no signature");
-            for shape in shapes {
-                let signature = text(shape, "signature");
+                .expect("a shape has parameters")
+            {
+                let argument = text(parameter, "name");
                 assert!(
-                    signature.starts_with(what),
-                    "`{what}`'s signature does not start with the name a program calls: {signature}"
+                    !text(parameter, "doc").is_empty(),
+                    "`{what}`'s `{argument}` has no description"
                 );
                 assert!(
-                    signature.contains(") -> "),
-                    "`{what}`'s signature does not say what it hands back: {signature}"
+                    signature.contains(argument),
+                    "`{what}` documents an argument its signature does not name: {argument}"
                 );
-                for parameter in shape["parameters"]
-                    .as_array()
-                    .expect("a shape has parameters")
-                {
-                    let argument = text(parameter, "name");
-                    assert!(
-                        !text(parameter, "doc").is_empty(),
-                        "`{what}`'s `{argument}` has no description"
-                    );
-                    assert!(
-                        signature.contains(argument),
-                        "`{what}` documents an argument its signature does not name: {argument}"
-                    );
-                    assert_eq!(
-                        parameter["kind"], "positional",
-                        "C++ has no keyword arguments; `{what}`'s `{argument}` says otherwise"
-                    );
-                }
+                assert_eq!(
+                    parameter["kind"], "positional",
+                    "C++ has no keyword arguments; `{what}`'s `{argument}` says otherwise"
+                );
             }
         }
     }
 
-    // Every type a signature mentions is declared, with its own documentation and its own members'.
+    // Every type a signature mentions is declared, under a name of its own module, with its own
+    // documentation and its own members'.
     let declared: Vec<&str> = section(&catalogue, "types")
         .iter()
-        .map(|declaration| text(declaration, "name"))
+        .map(|declaration| text(declaration, "fqn"))
         .collect();
     for declaration in section(&catalogue, "types") {
-        let name = text(declaration, "name");
+        let fqn = text(declaration, "fqn");
         assert!(
-            !text(declaration, "doc").is_empty(),
-            "`{name}` is undocumented"
+            !text(declaration, "brief").is_empty(),
+            "`{fqn}` has no brief"
         );
         assert!(
             !text(declaration, "declaration").is_empty(),
-            "`{name}` has no declaration"
+            "`{fqn}` has no declaration"
+        );
+        assert!(
+            fqn.starts_with("gg::") && fqn.ends_with(text(declaration, "name")),
+            "`{fqn}` is not a module-qualified name"
         );
         for member in declaration["members"]
             .as_array()
             .expect("members is a list")
         {
             assert!(
-                !text(member, "doc").is_empty(),
-                "`{name}::{}` is undocumented",
+                !text(member, "brief").is_empty(),
+                "`{fqn}::{}` has no brief",
                 text(member, "name")
             );
         }
     }
-    for name in ["meta", "session", "views", "programs", "tools", "helpers"] {
-        for entry in section(&catalogue, name) {
-            for referenced in entry["types"].as_array().expect("types is a list") {
-                let referenced = referenced.as_str().expect("a type name is a string");
-                assert!(
-                    declared.contains(&referenced),
-                    "`{}` refers to `{referenced}`, which nothing declares",
-                    text(entry, "name")
-                );
-            }
+    for entry in section(&catalogue, "functions") {
+        for referenced in entry["types"].as_array().expect("types is a list") {
+            let resolved = text(referenced, "fqn");
+            assert!(
+                declared.contains(&resolved),
+                "`{}` refers to `{resolved}`, which nothing declares",
+                text(entry, "fqn")
+            );
         }
     }
 
-    // The two things this arm's spelling does that no other's does, asserted so a rewrite has to
-    // mean it: a default argument written into the signature, and the one overload pair.
-    let read_file = section(&catalogue, "tools")
+    // The three things this arm's spelling does that no other's does, asserted so a rewrite has to
+    // mean it: a default argument written into the signature, the one overload pair, and a named
+    // factory listed as a member because it is how a value of that type is built.
+    let read_file = section(&catalogue, "functions")
         .iter()
-        .find(|entry| text(entry, "tool") == "read_file")
+        .find(|entry| text(entry, "operation") == "files.read_file")
         .expect("read_file is catalogued");
     assert_eq!(
         text(&read_file["signatures"][0], "signature"),
-        "read_file(std::string_view path, read_window window = {}) -> file_read"
+        "read_file(std::string_view path, files::read_window window = {}) -> files::file_read"
     );
     // A `std::variant` alias closes over its ALTERNATIVES, which is the one place a type reference
-    // is not a member of anything: a model shown `using file_read = std::variant<text_file,
-    // image_file>` and neither alternative has been shown nothing at all.
+    // is not a member of anything: a model shown `using file_read = std::variant<files::text_file,
+    // files::image_file>` and neither alternative has been shown nothing at all.
     assert_eq!(
         read_file["types"]
             .as_array()
             .expect("types is a list")
             .iter()
-            .map(|name| name.as_str().expect("a type name is a string"))
+            .map(|reference| (text(reference, "spelled"), text(reference, "fqn")))
             .collect::<Vec<_>>(),
         [
-            "read_window",
-            "file_read",
-            "tool_error",
-            "tool_error_code",
-            "text_file",
-            "image_file"
+            ("files::read_window", "gg::files::read_window"),
+            ("files::file_read", "gg::files::file_read"),
+            ("core::tool_error", "gg::core::tool_error"),
+            ("core::tool_error_code", "gg::core::tool_error_code"),
+            ("files::text_file", "gg::files::text_file"),
+            ("files::image_file", "gg::files::image_file"),
         ]
     );
 
-    let wait = section(&catalogue, "tools")
+    let wait = section(&catalogue, "functions")
         .iter()
-        .find(|entry| text(entry, "tool") == "wait_for_subagents")
+        .find(|entry| text(entry, "operation") == "delegation.wait_for_subagents")
         .expect("wait_for_subagents is catalogued");
     assert_eq!(
         wait["signatures"].as_array().map(Vec::len),
         Some(2),
         "the one function this SDK spells as an overload pair carries two signatures"
+    );
+
+    let text_edit = section(&catalogue, "types")
+        .iter()
+        .find(|declaration| text(declaration, "fqn") == "gg::tasks::text_edit")
+        .expect("text_edit is catalogued");
+    assert_eq!(
+        text_edit["members"]
+            .as_array()
+            .expect("members is a list")
+            .iter()
+            .map(|member| text(member, "name"))
+            .collect::<Vec<_>>(),
+        ["text_edit()", "clear()", "set(std::string text)"],
+        "a named factory is how a value of this type is built, so it is listed on the type rather \
+         than as a call in its own right — it binds no gg operation"
+    );
+    assert!(
+        text_edit["memberFunctions"]
+            .as_array()
+            .expect("memberFunctions is a list")
+            .is_empty(),
+        "a member function is a call that binds an operation, which a factory does not"
+    );
+
+    // The five member functions this arm offers, each a SECOND way to reach an operation some free
+    // function binds canonically — and each listed on the type it hangs off, which is the menu a
+    // model reads when it opens that type.
+    let members: Vec<(&str, &str)> = section(&catalogue, "functions")
+        .iter()
+        .filter(|entry| !entry["aliasOf"].is_null())
+        .map(|entry| (text(entry, "fqn"), text(entry, "operation")))
+        .collect();
+    assert_eq!(
+        members,
+        [
+            ("gg::board::issue_created::wait", "board.wait_for_issue"),
+            ("gg::memories::memory_hit::read", "memories.read_memory"),
+            ("gg::views::open_view::close", "views.close"),
+            (
+                "gg::delegation::subagent_handle::send",
+                "delegation.send_message"
+            ),
+            ("gg::programs::program_summary::source", "programs.get"),
+        ]
+    );
+    let handle = section(&catalogue, "types")
+        .iter()
+        .find(|declaration| text(declaration, "fqn") == "gg::delegation::subagent_handle")
+        .expect("subagent_handle is catalogued");
+    assert_eq!(
+        text(&handle["memberFunctions"][0], "fqn"),
+        "gg::delegation::subagent_handle::send"
     );
 }

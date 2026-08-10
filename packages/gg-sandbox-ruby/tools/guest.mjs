@@ -53,24 +53,23 @@ const SOURCES = process.env.GG_OPAL_SOURCES ?? path.join(BUILD_DIR, "opal-gem");
  */
 const SDK = [
   "gg/value.rb",
-  "gg/errors.rb",
-  "gg/types.rb",
+  "gg/core.rb",
+  "gg/check.rb",
+  "gg/surface.rb",
   "gg/wire.rb",
-  "gg/catalogue.rb",
+  "gg/directory.rb",
   "gg/lib.rb",
-  "gg/helpers.rb",
+  "gg/files.rb",
+  "gg/shell.rb",
+  "gg/board.rb",
+  "gg/tasks.rb",
+  "gg/memories.rb",
+  "gg/views.rb",
+  "gg/context.rb",
+  "gg/delegation.rb",
+  "gg/skills.rb",
+  "gg/programs.rb",
   "gg/session.rb",
-  "gg/tools/shell.rb",
-  "gg/tools/files.rb",
-  "gg/tools/skills.rb",
-  "gg/tools/memories.rb",
-  "gg/tools/tasks.rb",
-  "gg/tools/board.rb",
-  "gg/tools/context.rb",
-  "gg/tools/delegation.rb",
-  "gg/tools/views.rb",
-  "gg/tools/programs.rb",
-  "gg/tools/docs.rb",
   "gg/scope.rb",
 ];
 
@@ -112,7 +111,7 @@ const Compiler = opalCompiler();
  * The options match the ones the HOST compiles a model's program with, in
  * `tools/compiler.mjs`'s driver, and they have to: a program and the SDK it calls are lowered by
  * one compiler against one runtime, so a promise that holds on one side and not the other is worse
- * than no promise. `arity_check` in particular is what makes `fs.read_file()` with no argument
+ * than no promise. `arity_check` in particular is what makes `GG::Files.read_file()` with no argument
  * `ArgumentError: [GG::Files.read_file] wrong number of arguments (given 0, expected 1)` instead of
  * a `nil` path that crosses the membrane and comes back as
  * `TypeError: expected a string, received [undefined]` — a sentence about the wire, for a mistake

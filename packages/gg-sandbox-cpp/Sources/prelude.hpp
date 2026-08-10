@@ -29,6 +29,14 @@
 // sandbox has no concurrency at all, and neither an argument nor a result on this membrane is a
 // document a program assembles.
 //
+// `<filesystem>` is off the set for the same reason the Rust arm keeps `std::fs` off its own: the
+// workspace is reached through `gg::files` and `gg::shell`, which are gated, recorded in the run's
+// events and able to put what they read in front of the model, and a directory walk done behind
+// them is none of those things. It is not a compiler problem — `#include <filesystem>` beside this
+// prelude compiles and links on this target, measured — so this is the seam's answer about which
+// route the workspace has, stated once here and once to the model in
+// `crates/gg/templates/system-code.cpp.hbs`.
+//
 // WHAT THIS SET IS NOT: AN ALLOWLIST. This file decides what is put IN FRONT of a program, not
 // what a program may reach. The whole of libc++ is on clang's default include path, so a reply
 // that writes `#include <thread>` or `#include <iostream>` gets exactly that header and compiles.
@@ -42,26 +50,29 @@
 
 // **gg's surface**, which is what a program is actually written against. It is declarations only —
 // every body is in the `sdk.o` this arm links, compiled once at build time — so putting it in the
-// precompiled header costs a program nothing and puts `fs::read_file` in front of it with no
+// precompiled header costs a program nothing and puts `files::read_file` in front of it with no
 // `#include` line of gg's own.
 #include "sdk/gg.hpp"
 
-// What makes `fs::read_file(…)` reachable without writing `gg::`.
+// What makes `files::read_file(…)` reachable without writing `gg::`.
 //
-// A using-directive rather than declaring the objects at global scope, and that is forced: one of
-// them is called `system`, `<cstdlib>` declares `int system(const char *)` at global scope, and
-// `namespace system { … }` beside it is *redefinition of 'system' as different kind of symbol* —
-// measured against the wasi-libc this arm compiles to, not read from a standard. Qualified lookup
-// for `system::shell` considers only namespaces and types and never functions, so the C library's
-// `system` cannot shadow the object once the surface is in a namespace.
+// A using-directive rather than declaring the modules at global scope, and the reason is not a
+// collision — measured against this arm's own pinned `clang++`, every one of the twelve module
+// names compiles as a fresh `namespace` at global scope beside this prelude, `shell` and `core`
+// included. It is that the modules have to live inside `gg` for the fully-qualified name a program
+// writes and a search hit shows — `gg::files::read_file` — to be a real C++ path rather than a
+// label, which is what makes two modules free to each declare a `close`. The using-directive is
+// then what keeps the ordinary call site short.
 //
-// It is also what gives a program the last word, exactly as the Rust arm's glob `use` does: a name
-// a program declares itself is found before one a using-directive made visible. The one exception
-// is a NAMESPACE ALIAS, which is ambiguous rather than shadowing — `namespace fs =
-// std::filesystem;` beside `gg::fs` is *reference to 'fs' is ambiguous*, naming both candidates at
-// the model's own line. It is a compile error a model can read and fix in one line, and it is the
-// reason `<filesystem>` is not in the set below: the alias is a reflex, and an arm that invited it
-// would spend turns on gg's namespace rather than on the work.
+// WHAT A PROGRAM DECLARING ITS OWN `files` GETS. Not shadowing. A using-directive makes gg's names
+// visible *at* global scope rather than nested inside it, so a program's own global `namespace
+// files { … }` — or the reflex `namespace files = std::filesystem;` — is a second candidate and an
+// unqualified `files::` is *reference to 'files' is ambiguous*, with both candidates named at the
+// model's own line. Measured, not read from a standard: the declaration itself is accepted, the
+// unqualified use is the error, and either `::files::` or `gg::files::` resolves it. That is a
+// compile error a model can read and fix in one line, and it is the only cost of the directive.
+// Block scope is unaffected, so a local type or variable named after a module is simply the
+// program's.
 using namespace gg;
 
 // --- The standard library -----------------------------------------------------------------

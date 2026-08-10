@@ -27,10 +27,10 @@ What this shim does, and what each part is load-bearing for
    unwinding the traceback of a ``RecursionError`` it already caught — so ``except`` gives no
    protection and the turn dies as an opaque trap. The limit is clamped instead, and the program
    gets an ordinary catchable ``RecursionError``.
-3. **The scope is built from the run** (:func:`gg.scope.build_scope`): the API objects this run
-   offers, and the types they speak in. It is the *surface* rather than the enforcement — the host
-   refuses a withheld call however a program reached it — but a name a model can see is a name it
-   will use, so an object carries exactly the functions the run enables.
+3. **The scope is built from the run** (:func:`gg.scope.build_scope`): the capability modules this
+   run offers, and the types they speak in. It is the *surface* rather than the enforcement — the
+   host refuses a withheld call however a program reached it — but a name a model can see is a name
+   it will use, so a module carries exactly the functions the run enables.
 4. **The agent's code modules are evaluated first** (:func:`_load_modules`), each into its own
    namespace bound at ``lib.<name>``. A module that throws is reported and left empty rather than
    taking the program down with it: a broken skill belongs to whoever authored it.
@@ -66,7 +66,7 @@ from componentize_py_types import Err
 # `library` for the same mechanism applied to the standard library, and for why what a program can
 # import is a bake-time fact rather than a policy.
 from gg import scope as gg_scope
-from gg.errors import ToolError
+from gg.core import ToolError
 
 # Every library a program may reach for, likewise imported for its side effect. Its own docstring is
 # the authority on what the Python arm offers and what it deliberately does not.
@@ -233,7 +233,7 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
     capability this run does not offer produces in a guest that withholds the name.
 
     A failed call arrives in **two** shapes and both are that middle class. The SDK raises its own
-    :class:`gg.errors.ToolError`, which is what a program sees; a program that reached past the SDK
+    :class:`gg.core.ToolError`, which is what a program sees; a program that reached past the SDK
     into ``wit_world`` gets the generated ``Err`` wrapper. Reading only the first would classify the
     second as an ordinary exception and lose the code the host branches on.
     """
@@ -266,19 +266,21 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
 
 
 def _missing_capability(exc: BaseException) -> bool:
-    """Whether ``exc`` is a program reaching for a function its API object does not carry.
+    """Whether ``exc`` is a program reaching for a capability this run does not offer.
 
     This arm's spelling of the mistake a guest that could withhold a *name* reports as a
-    ``NameError``. An object this run offers is a real object with the run's functions on it, so
-    ``fs.read_file`` under a run with reading withheld is an ``AttributeError`` rather than an
+    ``NameError``. A module this run offers is a real namespace carrying the run's functions, so
+    ``files.read_file`` under a run with reading withheld is an ``AttributeError`` rather than an
     unknown name — the same fact, and it has to be classified the same way or gg would count a
-    withheld capability as an ordinary program bug on one arm and not on the other.
+    withheld capability as an ordinary program bug on one arm and not on the other. A module the run
+    offers *nothing* from is absent from the ``gg`` surface for the same reason, and reaching for one
+    of those is the same mistake one level up.
 
-    The check is on the object the failure happened on, not on the exception's type: an
+    The check is on the namespace the failure happened on, not on the exception's type: an
     ``AttributeError`` against anything else is exactly the ordinary program bug it looks like.
     """
     return isinstance(exc, AttributeError) and isinstance(
-        getattr(exc, "obj", None), gg_scope.ApiObject
+        getattr(exc, "obj", None), gg_scope.Bound
     )
 
 
@@ -335,7 +337,7 @@ class WitWorld(wit_world.WitWorld):
         """Evaluate one program, reporting everything it did over ``feedback``.
 
         The code modules are evaluated against the **same** scope the program gets, so a skill's
-        module may call ``fs.read_file`` exactly as a program does.
+        module may call ``files.read_file`` exactly as a program does.
         """
         stream = _FeedbackStream()
         sys.stdout = stream

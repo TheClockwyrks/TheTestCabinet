@@ -28,12 +28,12 @@ use super::*;
 /// level, an f-string carrying braces and a quote, a doubled program that must be left doubled, a
 /// comment-only reply, and a reply that is nothing but prose.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```python\nrows = fs.list_dir(\"src\")\nview.open_text(\"rows\", repr(rows))\n```\n\nThat should list the directory.",
-    "import asyncio\n\nasync def main():\n    rows = await fs.list_dir(\"src\")\n    view.open_text(\"rows\", repr(rows))\n\nasyncio.run(main())",
+    "Here is the program.\n\n```python\nrows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))\n```\n\nThat should list the directory.",
+    "import asyncio\n\nasync def main():\n    rows = await files.list_dir(\"src\")\n    views.open_text(\"rows\", repr(rows))\n\nasyncio.run(main())",
     "import json\nimport re\n\npayload = json.dumps({\"ok\": True})\nfs.write_file(\"out.json\", payload)",
     "\"\"\"Usage:\n\nimport asyncio\ntotal = 1\n\"\"\"\ntotal = 2\n",
-    "name = \"world\"\nview.open_text(\"greeting\", f\"hello {name!r}, {len(name)} letters\")",
-    "total = 1\nview.open_text(\"total\", str(total))\n\ntotal = 1\nview.open_text(\"total\", str(total))",
+    "name = \"world\"\nviews.open_text(\"greeting\", f\"hello {name!r}, {len(name)} letters\")",
+    "total = 1\nviews.open_text(\"total\", str(total))\n\ntotal = 1\nviews.open_text(\"total\", str(total))",
     "# I have already written MANIFEST.md.\n# Nothing left to do.",
     "I have finished the task. Everything works.",
 ];
@@ -66,7 +66,7 @@ fn python() -> &'static dyn Dialect {
 #[test]
 fn an_import_survives_because_this_guest_has_a_module_system() {
     let reply = "import json\nfrom math import hypot\nfrom gg import ToolError\n\n\
-                 fs.write_file(\"a.json\", json.dumps({\"d\": hypot(3, 4)}))";
+                 files.write_file(\"a.json\", json.dumps({\"d\": hypot(3, 4)}))";
     let result = healed(reply);
     assert_eq!(result.program, reply.trim());
     assert!(
@@ -95,7 +95,7 @@ fn an_import_survives_because_this_guest_has_a_module_system() {
 /// work the model literally asked to have done.
 #[test]
 fn a_repeated_program_is_not_halved() {
-    let program = "total = 1\nview.open_text(\"total\", str(total))";
+    let program = "total = 1\nviews.open_text(\"total\", str(total))";
     let result = healed(&format!("{program}\n\n{program}"));
     assert_eq!(result.program, format!("{program}\n\n{program}"));
     assert!(
@@ -114,7 +114,7 @@ fn a_repeated_program_is_not_halved() {
 /// strategy gg does not arm by default.
 #[test]
 fn a_doubled_response_is_still_halved() {
-    let program = "rows = fs.list_dir(\"src\")\nview.open_text(\"rows\", repr(rows))";
+    let program = "rows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))";
     let mut config = HealingConfig::default();
     config.set(HealingStrategy::DropDoubledResponse, true);
     let result = heal(
@@ -140,13 +140,13 @@ fn the_asyncio_wrapper_comes_off_with_its_import() {
     let result = healed(
         "import asyncio\n\n\
          async def main():\n    \
-             rows = await fs.list_dir(\"src\")\n    \
-             await view.open_text(\"rows\", repr(rows))\n\n\
+             rows = await files.list_dir(\"src\")\n    \
+             await views.open_text(\"rows\", repr(rows))\n\n\
          asyncio.run(main())",
     );
     assert_eq!(
         result.program,
-        "rows = fs.list_dir(\"src\")\nview.open_text(\"rows\", repr(rows))"
+        "rows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))"
     );
     assert_eq!(result.strategies(), vec![HealingStrategy::UnwrapAsync]);
     assert!(matches!(
@@ -170,9 +170,9 @@ fn the_asyncio_wrapper_comes_off_with_its_import() {
 #[test]
 fn a_stripped_await_leaves_no_leading_space() {
     let result = healed(
-        "async def main():\n    await system.shell(\"ls\")\n    total = await count()\n\nmain()",
+        "async def main():\n    await shell.shell(\"ls\")\n    total = await count()\n\nmain()",
     );
-    assert_eq!(result.program, "system.shell(\"ls\")\ntotal = count()");
+    assert_eq!(result.program, "shell.shell(\"ls\")\ntotal = count()");
 }
 
 /// **The three ways this dialect accepts the wrapper's invocation, and the shapes it refuses.**
@@ -198,7 +198,7 @@ fn the_wrapper_is_recognised_only_when_the_program_runs_it() {
     for tail in [
         "",
         "\nresult = asyncio.run(main())",
-        "\nasyncio.run(main())\nview.open_text(\"done\", \"yes\")",
+        "\nasyncio.run(main())\nviews.open_text(\"done\", \"yes\")",
         "\nasyncio.run(other())",
     ] {
         let reply = format!("{body}{tail}");
@@ -280,10 +280,10 @@ fn an_f_strings_substitution_is_not_code() {
 fn a_fenced_program_is_unwrapped() {
     for tag in ["python", "py", "python3", ""] {
         let result = healed(&format!(
-            "Here is the program.\n\n```{tag}\ntotal = 1\nview.open_text(\"total\", str(total))\n```"
+            "Here is the program.\n\n```{tag}\ntotal = 1\nviews.open_text(\"total\", str(total))\n```"
         ));
         assert_eq!(
-            result.program, "total = 1\nview.open_text(\"total\", str(total))",
+            result.program, "total = 1\nviews.open_text(\"total\", str(total))",
             "a block tagged `{tag}` was not unwrapped"
         );
     }
@@ -341,15 +341,15 @@ fn a_capitalised_keyword_is_prose() {
 #[test]
 fn each_code_clause_reads_its_own_shape() {
     for line in [
-        "import json",                  // a statement keyword
-        "@dataclass",                   // a decorator
-        ") -> None",                    // a closer
-        "rows = fs.list_dir(\"src\")",  // an assignment
-        "total: int = 0",               // an annotated assignment
-        "self.count += 1",              // an augmented assignment
-        "view.open_text(\"a\", \"b\")", // a call
-        "entries = [",                  // left open
-        "    \"one\",",                 // left open
+        "import json",                    // a statement keyword
+        "@dataclass",                     // a decorator
+        ") -> None",                      // a closer
+        "rows = files.list_dir(\"src\")", // an assignment
+        "total: int = 0",                 // an annotated assignment
+        "self.count += 1",                // an augmented assignment
+        "views.open_text(\"a\", \"b\")",  // a call
+        "entries = [",                    // left open
+        "    \"one\",",                   // left open
     ] {
         assert!(
             python().looks_like_code(line),
@@ -363,13 +363,13 @@ fn each_code_clause_reads_its_own_shape() {
 fn prose_around_a_bare_program_is_deleted() {
     let result = healed(
         "I will list the source directory and show myself the result.\n\
-         rows = fs.list_dir(\"src\")\n\
-         view.open_text(\"rows\", repr(rows))\n\
+         rows = files.list_dir(\"src\")\n\
+         views.open_text(\"rows\", repr(rows))\n\
          That should be everything.",
     );
     assert_eq!(
         result.program,
-        "rows = fs.list_dir(\"src\")\nview.open_text(\"rows\", repr(rows))"
+        "rows = files.list_dir(\"src\")\nviews.open_text(\"rows\", repr(rows))"
     );
     assert_eq!(result.strategies(), vec![HealingStrategy::StripProse]);
 }

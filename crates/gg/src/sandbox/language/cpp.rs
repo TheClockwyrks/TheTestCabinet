@@ -20,20 +20,27 @@
 //!   the compile inputs, the adapter, and what built them;
 //! * `guests/cpp.signatures.json` — the committed catalogue.
 //!
-//! # What the surface looks like, and the one thing that forced it
+//! # What the surface looks like, and the one thing a model has to know about it
 //!
-//! **Every API object is a `namespace` inside `namespace gg`, and the prelude ends with
-//! `using namespace gg;`** — so a program writes `fs::read_file(…)` with no import line of its own.
-//! The `gg` namespace is forced rather than chosen, and by one object's name: `<cstdlib>` declares
-//! `int system(const char *)` at global scope, and `namespace system { … }` beside it is
-//! *redefinition of 'system' as different kind of symbol*. Qualified lookup for a
-//! nested-name-specifier considers only namespaces and types and never functions, so once the
-//! surface is in a namespace the C library's `system` cannot shadow the object.
+//! **Every capability module is a `namespace` inside `namespace gg`, with the types it produces
+//! nested in it, and the prelude ends with `using namespace gg;`** — so a program writes
+//! `files::read_file(…)` with no import line of its own, and `gg::files::read_file` is the same
+//! call written in full.
+//!
+//! The nesting is what makes that full name a real C++ path rather than a label, which is the whole
+//! point of the surface being modules: it is what a search hit shows, what a documentation view is
+//! opened by, and what lets two modules each declare a `close`. The using-directive is only
+//! brevity, and it costs one surprise worth knowing — it makes gg's module names visible *at*
+//! global scope rather than nested inside it, so a program's own file-scope `namespace files { … }`
+//! or `namespace files = std::filesystem;` is a second candidate and an unqualified `files::` is
+//! *reference to 'files' is ambiguous*, naming both at the model's own line. `gg::files::` and
+//! `::files::` each resolve it, and block scope is unaffected. `Sources/prelude.hpp` records the
+//! measurement behind that and the reason `<filesystem>` is off this arm's library set.
 //!
 //! Everything else is spelling, and it is written to read like the standard library it arrives
 //! beside: `snake_case` throughout, `enum class` for a fixed choice, aggregates with public members
 //! for a record, `std::variant` for a value that is one of two things, a **default argument** for
-//! one optional part and a **designated initialiser** for several, and a thrown `gg::tool_error` —
+//! one optional part and a **designated initialiser** for several, and a thrown `gg::core::tool_error` —
 //! a `std::runtime_error` — for a call that failed.
 //!
 //! # Why this arm has no component to commit
@@ -181,11 +188,11 @@ impl ProgramLanguage for Cpp {
         GgProgramLanguage::Cpp.display_name()
     }
 
-    /// **`::`** — the second arm that does not write `.`, because here an API object is a
-    /// **namespace** and reaching a function on one is a qualified name rather than a member
+    /// **`::`** — the second arm that does not write `.`, because here a capability module is a
+    /// **namespace** and reaching a function in one is a qualified name rather than a member
     /// access.
     ///
-    /// It is the difference between a prompt full of `view::open_text` and a prompt full of
+    /// It is the difference between a prompt full of `gg::views::open_text` and a prompt full of
     /// `view.open_text`, which on this arm is *no member named 'open_text' in the global namespace*
     /// — so a model would be taught, in every sentence gg writes about a call, a spelling that
     /// cannot compile.
@@ -301,7 +308,7 @@ impl ProgramLanguage for Cpp {
         &PROMPT
     }
 
-    /// [`view::open_file("src/main.cpp");`](self::open_file_statement) — with the window as the
+    /// [`gg::views::open_file("src/main.cpp");`](self::open_file_statement) — with the window as the
     /// call's own optional second argument, written as a designated initialiser.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
@@ -377,8 +384,8 @@ pub(super) fn binding_name(name: &str) -> String {
     out
 }
 
-/// `view::open_file("src/main.cpp");`, or the same call with `{.offset = 400, .limit = 200}` for a
-/// window — with `view::open_file` already spelled by the language that asked.
+/// `gg::views::open_file("src/main.cpp");`, or the same call with `{.offset = 400, .limit = 200}`
+/// for a window — with the call itself already spelled by the language that asked.
 ///
 /// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
 /// into the agent's own transcript and read by the model as an example of its own output, so

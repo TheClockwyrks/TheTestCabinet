@@ -48,14 +48,15 @@ three-element vector reads whatever is there. gg compiles every translation unit
 
 | | |
 | --- | --- |
-| `Sources/sdk/` | **gg's surface, hand-written and idiomatic**: twelve API objects as C++ namespaces, the types they hand back, the options aggregates their optional arguments are written into, and `tool_error`. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the committed catalogue out of them — and its `//` comments are not. `sdk/wire.*` is the bridge onto the canonical ABI, which a model never reads. |
+| `Sources/sdk/gg/` | **gg's surface, hand-written and idiomatic**: one header per capability module, each a nested `namespace` under `gg` holding that module's functions and the types they hand back. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the committed catalogue out of them — and its `//` comments are not. |
+| `Sources/sdk/*.cpp` | One translation unit per module: the lowering, the call and the lift. Nothing in them is model-facing. `sdk/wire.*` is the bridge onto the canonical ABI, which a model never reads, and `sdk/runtime.hpp` holds the three declarations that belong to no module. |
 | `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the generated WIT surface as C, the declaration of the model's own entry point, and the standard-library set. One declaration, two readers — the compile, and the `headers` list in the committed manifest. |
 | `Sources/shell.cpp` | gg's shell — the two exports the sandbox world declares, the call into the model's own `main`, and the `catch` that turns an uncaught exception from `thrown Wasm exception` into the exception's own class and `what()`. Compiled **once**, at build time. |
 | `cpp-version.sh` | Every pin — the wasi-sdk release, the target triple, the C++ standard, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-wasi-sdk.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
 | `build.sh` | Compiles those bindings, the SDK and the shell for wasm, cuts the committed archive, fetches the adapter, and writes the manifest. |
 | `signatures.sh` | Dumps the SDK's comment AST with `clang++ -ast-dump=json` and writes `crates/gg/src/sandbox/guests/cpp.signatures.json`. Run by `scripts/ci/contract-drift.sh` on every CI run; writes exactly one file. |
-| `tools/catalogue.py` | The **identity** half of the catalogue — which function is which gg tool, on which object, gated by what. No prose. |
+| `tools/catalogue.py` | The twelve module identities, and the order a reader meets them in. Nothing else: a function's gg operation id is written on its own declaration. |
 | `tools/signatures.py` | The reflector: clang's comment AST in, the committed catalogue out. |
 
 ## What a C++ program looks like
@@ -66,31 +67,34 @@ point of compiling the reply verbatim:
 
 ```cpp
 int main() {
-  const auto entries = fs::list_dir("src");
+  const auto entries = files::list_dir("src");
   std::vector<std::string> sources;
   for (const auto &entry : entries) {
-    if (entry.kind == entry_kind::file) sources.push_back(entry.name);
+    if (entry.kind == files::entry_kind::file) sources.push_back(entry.name);
   }
   std::ranges::sort(sources);
 
-  const auto built = system::shell("cmake --build build", 300.0);
-  view::open_text("build", built.output);
-  harness::finish(std::format("looked at {} sources", sources.size()));
+  const auto built = shell::run("cmake --build build", 300.0);
+  views::open_text("build", built.output);
+  session::finish(std::format("looked at {} sources", sources.size()));
   return 0;
 }
 ```
 
 ## What the SDK looks like, and the two decisions behind it
 
-**Everything lives in `namespace gg`, and the prelude ends with `using namespace gg;`.** That is
-forced rather than stylistic: one API object is called `system`, `<cstdlib>` declares
-`int system(const char *)` at global scope, and `namespace system { … }` beside it is
-*redefinition of 'system' as different kind of symbol*. Qualified lookup for `system::shell`
-considers only namespaces and types and never functions, so once the surface is in a namespace the
-C library's `system` cannot shadow the object. A name a program declares itself wins over one the
-using-directive made visible — with one measured exception: a namespace **alias**
-(`namespace fs = std::filesystem;`) is *ambiguous* rather than shadowing, which is why
-`<filesystem>` is deliberately not in the prelude.
+**The surface is twelve capability modules, one header and one namespace each, under `namespace
+gg`.** `gg::files` is a namespace, a header, a translation unit and the prefix of every name the
+module declares, so `gg::files::read_file` and `gg::files::file_read` are both real C++ paths a
+program can write and two modules may each offer a `close`. The prelude ends with
+`using namespace gg;`, so a program writes `files::read_file(…)` with no import line of its own.
+The directive costs one measured surprise: it makes gg's module names visible *at* global scope
+rather than nested inside it, so a program's own file-scope `namespace files { … }` — or the reflex
+`namespace files = std::filesystem;` — is a second candidate and an unqualified `files::` is
+*reference to 'files' is ambiguous*, naming both at the model's own line. The declaration itself is
+accepted; `gg::files::` and `::files::` each resolve the use, and block scope is unaffected. No
+module name collides with anything the prelude already declares: measured against this arm's pinned
+`clang++`, all twelve compile as a fresh `namespace` at global scope beside it.
 
 **It reads like the standard library**, because it arrives in the same prelude as `<vector>` and is
 called with `std::string` arguments: `snake_case` functions, `snake_case` types, `enum class` for a
@@ -99,12 +103,13 @@ two things, **default arguments** for one optional part and a **designated initi
 several, and a thrown `gg::tool_error` — a `std::runtime_error` — for a call that failed.
 
 ```cpp
-fs::read_file("src/main.cpp", {.limit = 40});
-tasks::update_task("t1", {.description = text_edit::clear(), .status = task_status::done});
+files::read_file("src/main.cpp", {.limit = 40});
+tasks::update_task("t1", {.description = tasks::text_edit::clear(),
+                          .status = tasks::task_status::done});
 try {
-  view::open_text("notes", fs::read_text_file("notes.md"));
-} catch (const tool_error &failure) {
-  if (failure.code() != tool_error_code::not_found) throw;
+  views::open_text("notes", files::read_text_file("notes.md"));
+} catch (const core::tool_error &failure) {
+  if (failure.code() != core::tool_error_code::not_found) throw;
 }
 ```
 
@@ -113,10 +118,12 @@ try {
 `crates/gg/src/sandbox/guests/cpp.signatures.json` is reflected out of the SDK's own `///` comments
 by **clang's comment AST**, dumped as JSON. clang carries a real documentation parser — the one
 `-Wdocumentation` diagnoses against and the one `libclang`'s comment API and `clang-doc` are built
-on — and it does the two things that matter: it decides which comment belongs to which declaration,
-and it parses the Doxygen commands inside one into structure. So `\param path`'s prose arrives
-attached to the parameter called `path`, `\returns` and `\throws` arrive as their own nodes, and
-`\copydoc` arrives as a reference the reflector resolves.
+on — and it does the three things that matter: it decides which comment belongs to which declaration,
+it parses the Doxygen commands inside one into structure, and it keeps the **lines** the author
+wrote. So `\param path`'s prose arrives attached to the parameter called `path`, `\returns` and
+`\throws` arrive as their own nodes, `\copydoc` arrives as a reference the reflector resolves, and
+the first line of a comment is recoverable as a first line rather than as a sentence a rule had to
+find.
 
 That makes C++ one of the few arms here with a **real per-parameter documentation slot** rather than
 a convention standing in for one — Rust and PureScript both need a `# Arguments` list, because
@@ -128,13 +135,23 @@ exist.
 Two conventions the reflector enforces, both worth knowing before editing a header:
 
 - **`///` means model-facing and `//` does not.** A public member the bridge needs —
-  `text_edit::tag()`, `brief::is_issue()` — carries `//` and is left out of the declaration a model
-  is shown. There is no other marker.
+  `tasks::text_edit::tag()`, `delegation::brief::is_issue()` — carries `//` and is left out of the
+  declaration a model is shown, and so does `core::gg_name`, which is this SDK's own error message
+  rather than a capability. There is no other marker.
+- **The brief is the first line, and the reflector refuses anything else.** The opening paragraph of
+  a declaration's comment is its brief and everything after the blank line is its detail, with no
+  `\brief` tag anywhere. An opening paragraph that runs to two source lines fails the reflection by
+  name, at the declaration it was written on.
+- **The gg operation a declaration binds is written on it**, as a `<ggop>files.read_file</ggop>`
+  line in its own `///` comment, and a module's gg id as `<ggmodule>files</ggmodule>` on its
+  namespace. An element rather than a `\command`, because an unknown Doxygen command is a compiler
+  warning on every declaration that carries one; on the declaration rather than in a table beside
+  it, because a table is a second place to be wrong.
 - **`list()` is written once.** C++ has no protocol extension, and a comment inside a macro body is
-  gone before the macro is expanded, so the twelve `list()` declarations cannot share one written
+  gone before the macro is expanded, so the eleven `list()` declarations cannot share one written
   paragraph the way Swift's protocol default or Rust's `macro_rules!` do. They share
-  `gg::detail::api_object_list` instead, by a one-line `\copydoc`, and the reflector asserts all
-  twelve declare the same shape.
+  `gg::detail::module_directory` instead, by a one-line `\copydoc`, and the reflector asserts all
+  eleven declare the same shape — and that `gg::core`, which offers no capability, carries none.
 
 ## The library set
 
@@ -162,9 +179,10 @@ Four things are deliberately off the set, and each is a decision rather than an 
   is in with a readable ending instead of a silent one.
 - `<iostream>`, because a program's stdout is not a channel a turn is read from — `gg::log` is — and
   including it drags its static initialisation into every artifact.
-- `<filesystem>`, for the collision above: `namespace fs = std::filesystem;` is a reflex, and beside
-  `gg::fs` it is a compile error rather than a shadow. The workspace is reached through `fs`,
-  `system::shell` and `view::open_file`, which is what gg mediates anyway.
+- `<filesystem>`, for the reason the Rust arm keeps `std::fs` off its own: it compiles and links
+  here — measured — and nothing read through it is gated, recorded in the run's events or put in
+  front of the model. The workspace is reached through `files`, `shell::run` and
+  `views::open_file`, which is what gg mediates anyway.
 - **Any third-party library.** This is the one place this arm ships a set of a different *kind* from
   the Rust and Swift arms, and it is a deviation from the seam's eighth rule taken deliberately
   rather than skipped. The rule is that commonly used libraries are available by default, and what a

@@ -85,7 +85,7 @@ fn the_binding_name_is_snake_case() {
 fn the_synthesized_file_view_is_ruby() {
     assert_eq!(
         ruby().open_file_statement("src/main.rb", None),
-        r#"view.open_file("src/main.rb")"#
+        r#"GG::Views.open_file("src/main.rb")"#
     );
     assert_eq!(
         ruby().open_file_statement(
@@ -95,7 +95,7 @@ fn the_synthesized_file_view_is_ruby() {
                 limit: 200
             })
         ),
-        r#"view.open_file("src/main.rb", offset: 400, limit: 200)"#
+        r#"GG::Views.open_file("src/main.rb", offset: 400, limit: 200)"#
     );
 }
 
@@ -110,7 +110,7 @@ fn the_generated_documentation_program_is_ruby() {
     assert_eq!(
         ruby().open_docs_views_statement(&["read_file", "write_file"]),
         "functions = [\n  \"read_file\",\n  \"write_file\",\n]\n\
-         functions.each { |name| view.open_docs_view(name) }\n"
+         functions.each { |name| GG::Views.open_docs_view(name) }\n"
     );
 }
 
@@ -124,15 +124,34 @@ fn the_generated_documentation_program_is_ruby() {
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = ruby().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Ruby);
-    assert!(!catalogue.tools.is_empty());
-    // The spelling that says the reflection is Ruby's rather than an ECMAScript arm's.
-    assert!(
+    assert_eq!(catalogue.schema, crate::sandbox::SchemaVersion::V2);
+    assert!(!catalogue.functions.is_empty());
+    // The spelling that says the reflection is Ruby's rather than an ECMAScript arm's: a
+    // module-qualified constant path, with the method reached through `.` as Ruby reaches a
+    // module function.
+    let read = ruby_function("files.read_file");
+    assert_eq!(read.name, "read_file");
+    assert_eq!(read.fqn, "GG::Files.read_file");
+    assert_eq!(
         catalogue
-            .tools
+            .modules
             .iter()
-            .any(|entry| entry.tool == "read_file" && entry.name == "read_file"),
-        "the catalogue does not spell `read_file` the way this SDK does"
+            .find(|module| module.id == "files")
+            .map(|module| module.path.as_str()),
+        Some("GG::Files"),
+        "the filesystem module is spelled the way Ruby spells a namespace"
     );
+}
+
+/// The catalogued entry binding `operation`, which is gg's identity for it rather than this SDK's
+/// spelling.
+fn ruby_function(operation: &str) -> &'static crate::sandbox::signatures::FunctionSignature {
+    ruby()
+        .catalogue()
+        .functions
+        .iter()
+        .find(|entry| entry.operation == operation && entry.alias_of.is_none())
+        .unwrap_or_else(|| panic!("`{operation}` is catalogued"))
 }
 
 /// **This arm is the first registered language whose catalogue carries an entry with more than one
@@ -145,12 +164,7 @@ fn the_committed_catalogue_is_this_languages() {
 /// compared across arms.
 #[test]
 fn a_block_is_a_second_signature_rather_than_a_second_function() {
-    let open_text = ruby()
-        .catalogue()
-        .views
-        .iter()
-        .find(|entry| entry.key == "open_text")
-        .expect("`open_text` is catalogued");
+    let open_text = ruby_function("views.open_text");
     assert_eq!(
         open_text.signatures.len(),
         2,
@@ -187,24 +201,14 @@ fn a_block_is_a_second_signature_rather_than_a_second_function() {
 
     // The other overload group on this arm agrees, so this is a property of the reflector rather
     // than of one hand-written entry.
-    let write_file = ruby()
-        .catalogue()
-        .tools
-        .iter()
-        .find(|entry| entry.name == "write_file")
-        .expect("`write_file` is catalogued");
+    let write_file = ruby_function("files.write_file");
     let contents = &write_file.signatures[1].parameters[1];
     assert_eq!(contents.kind, ParameterKind::Block, "{contents:?}");
 
     // A splat stays positional, which is the distinction this variant is drawing: `*ranges` IS
     // passed by position and the `*` in the rendered signature says the rest. Only a block is a
     // second channel into the call.
-    let archive = ruby()
-        .catalogue()
-        .tools
-        .iter()
-        .find(|entry| entry.name == "archive_thread")
-        .expect("`archive_thread` is catalogued");
+    let archive = ruby_function("context.archive_thread");
     assert_eq!(
         archive.signatures[0].parameters[0].kind,
         ParameterKind::Positional,

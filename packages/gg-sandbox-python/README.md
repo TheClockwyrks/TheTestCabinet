@@ -17,7 +17,7 @@ never published. Its outputs are two committed artifacts:
 | Artifact | What it is | Made by |
 | --- | --- | --- |
 | [`crates/gg/src/sandbox/guests/python.component.wasm`](../../crates/gg/src/sandbox/guests/) | The baked component — a whole CPython 3.14, this shim, the SDK and the curated library set. **~24 MiB**; a test holds it to a 22–28 MiB band. | `build.sh`, by hand |
-| [`crates/gg/src/sandbox/guests/python.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue: every object, signature, argument, type and type member a model is told about, reflected out of the SDK's own docstrings. | `signatures.sh`, also run by CI |
+| [`crates/gg/src/sandbox/guests/python.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue: every module, signature, argument, type and type member a model is told about, reflected out of the SDK's own docstrings. | `signatures.sh`, also run by CI |
 
 ## The strategy, in one paragraph
 
@@ -36,10 +36,15 @@ transliterated. Underneath it sit the bindings `componentize-py` generates from 
 WIT, which are exactly where a generator belongs — a mechanical lowering nobody
 reads. Every difference above them is deliberate:
 
+* **Module-level functions in capability packages**, which is how Python has always
+  divided a library — `os.path.join`, `shutil.copy` — rather than a `Files` class of
+  `@staticmethod`s nobody would write. `gg.files.read_file` is both the key a
+  documentation view is opened by and a path a program can write, and the module a
+  function lives in is the module its `def` is in rather than a label attached to it.
 * **Required arguments positional, optional ones keyword arguments with real
-  defaults.** `fs.read_file(path, limit=200)`, not a trailing options object. A
+  defaults.** `files.read_file(path, limit=200)`, not a trailing options object. A
   membrane record's fields are the function's own arguments, so
-  `memory.create_memory(name, description, body, code=...)` never asks a model to
+  `memories.create_memory(name, description, body, code=...)` never asks a model to
   construct a value before it can make a call.
 * **Frozen dataclasses for results, enums for fixed choices.** `entry.kind is
   EntryKind.FILE`, never a string comparison a misspelling would turn into a branch
@@ -52,13 +57,22 @@ reads. Every difference above them is deliberate:
   out to keep it, pass `None` to empty it — because Python already spells "absent"
   as `None` and the third state needs a name.
 
-What must *not* differ from any other arm is identity: which functions exist, which
-object each hangs off, and what gates each one. That is asserted by gg's own
-agreement gate, against the committed catalogue, in
-[`python.substrate.test.rs`](../../crates/gg/src/sandbox/language/) — which also runs
-every one of the 35 tools through the real membrane and requires the JSON that
-reaches gg's dispatch to be **byte identical** to what the TypeScript arm produces
-for the same capability.
+What must *not* differ from any other arm is the **capability**: which gg operations
+this SDK offers. The shape is free — Java may hang a call off an object where this
+one declares a function — and the identity is not: every model-facing function
+carries the gg operation it binds, written on the declaration as
+`@operation("files.read_file")` and read both by `gg.scope` at run time and by the
+reflector out of the source. gg holds the set to its own operations table, and
+[`python.substrate.test.rs`](../../crates/gg/src/sandbox/language/) runs every one of
+the 35 tools through the real membrane and requires the JSON that reaches gg's
+dispatch to be **byte identical** to what the TypeScript arm produces for the same
+capability.
+
+Documentation is authored in PEP 257's own shape: a docstring's **first line is its
+brief** and everything after the blank line that follows it is its detail. The
+reflector refuses a first paragraph that runs over one line, naming the declaration,
+so the split fails where the author is standing rather than three steps later in a
+gate.
 
 ## State: registered
 
@@ -75,7 +89,7 @@ to it, because CPython is inside the component and is the first thing to read it
 | Path | What it holds |
 | --- | --- |
 | `src/shim.py` | The component's entry point: it rebinds `print` to gg's feedback channel, defuses the interpreter's one store-killing landmine, builds the program's scope from the SDK, evaluates the program and the code modules, and reports every failure at the program's own coordinates. |
-| `src/gg/` | The SDK. `catalogue.py` is the identity data (which tool is which function, on which object); `types.py` and `errors.py` are the model-facing shapes; `tools/`, `session.py` and `helpers.py` are the functions; `scope.py` builds what a program starts with. |
+| `src/gg/` | The SDK: one module per capability (`files.py`, `board.py`, `views.py`, …) holding that capability's functions **and the types it produces**, plus `core.py` for the types they all speak in. `_registry.py` is the `@operation` decorator; `catalogue.py` is the run-time binding data (what buys a call), and nothing a model reads; `scope.py` builds what a program starts with. |
 | `tools/signatures.py` | The reflector: reads the SDK statically with `griffe` and emits the catalogue. It refuses to emit one with a blank in it. |
 | `signatures.sh` | The pinned-`griffe` wrapper CI and a developer both run. |
 | `src/library.py` | Every library a program may reach for, imported for its side effect. Its docstring is the authority on what this arm offers, what it deliberately does not, and why the list has to exist at all. |
@@ -85,13 +99,16 @@ to it, because CPython is inside the component and is the first thing to read it
 
 ## What a program can reach
 
-* **The gg surface**, as the API objects `scope.py` binds — `fs`, `system`, `project`,
-  `tasks`, `memory`, `view`, `context`, `agents`, `skills`, `programs`, `harness`,
-  `review` — plus every type they speak in. The objects follow the run: a withheld
-  tool is not an attribute, and an object with nothing on it is not a name at all.
-  That is the *surface*, not the enforcement — the SDK is an ordinary package a
-  program can `import gg` and reach past, and the **host** is what refuses a call
-  outside the run's enabled set.
+* **The gg surface**, as the capability modules `scope.py` binds — `files`, `shell`,
+  `board`, `tasks`, `memories`, `views`, `context`, `delegation`, `skills`,
+  `programs`, `session` — plus every type they speak in, written bare. Each module is
+  bound twice, under its own id and on a `gg` name, and the two are the same object:
+  `gg.files.read_file` is the fully-qualified name the documentation is keyed by and
+  `files.read_file` is the short way to write it. The modules follow the run: a
+  withheld function is not an attribute, and a module with nothing on it is not a
+  name at all. That is the *surface*, not the enforcement — the SDK is an ordinary
+  package a program can `import gg` and reach past, and the **host** is what refuses
+  a call outside the run's enabled set.
 * **Everything in `src/library.py`** — around ninety modules, a *curated subset* of
   the standard library rather than all of it, plus `PyYAML` and `tomli-w`. That list
   is a **bake-time fact about the artifact**, not a policy: `componentize-py` bundles
@@ -143,7 +160,7 @@ the deadline every time, and that case has a test.
 
 **Settled with the registration, as an acceptance:** gg does not extend the timeout to a
 parked WASI call, and the bound on a parked turn stays the run-level idle watchdog. The
-behaviour underneath is not new — `system.shell("sleep 3600")` parks for an hour on every arm
+behaviour underneath is not new — `gg.shell.shell("sleep 3600")` parks for an hour on every arm
 gg has — and both closures cost more than they buy today. The full argument, and the condition
 under which it is reopened, is in
 [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).

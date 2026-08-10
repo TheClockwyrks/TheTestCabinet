@@ -16,6 +16,13 @@ and, inside it, this arm's own **SDK**: the `Gg.*` modules a model's program is
 written against, compiled into the same tree so that the surface a model is shown in
 its prompt and the surface its program is compiled against cannot be two vintages.
 
+**The surface is capability modules.** A program writes `import Gg.Files as Gg.Files`
+and then `Gg.Files.readFile "src/Main.purs" {}`, so the fully-qualified name gg
+documents is the expression the program writes — PureScript accepts a qualified alias
+that is the module's own dotted name, and an *open* import does not make such a
+reference resolve. Each module's explicit export list is what decides its public
+surface, which is a compiler-enforced protocol rather than a convention.
+
 It is not an npm workspace member and has no runtime dependents. Its output is two
 **committed artifacts** in the Rust crate, named for the language rather than for
 this package:
@@ -24,7 +31,7 @@ this package:
 | --- | --- |
 | [`crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz`](../../crates/gg/src/sandbox/checkers/) | Every package's PureScript sources beside the externs and JavaScript `purs` emitted for them, plus this package's own `src/` under `libs/gg-sdk/`. **~1.3 MB** gzipped, ~15 MB unpacked, `include_bytes!`d by the host and unpacked once per machine. |
 | [`crates/gg/src/sandbox/checkers/purescript.compiler.json`](../../crates/gg/src/sandbox/checkers/) | What that tree was built from — `purs`, `esbuild` and registry versions — and what is in it, package by package. |
-| [`crates/gg/src/sandbox/guests/purescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The **signature catalogue**: every object, function, argument and type a model is told about, reflected out of the SDK's own doc comments by [`signatures.sh`](signatures.sh). |
+| [`crates/gg/src/sandbox/guests/purescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The **signature catalogue**: every module, function, argument, field and type a model is told about, reflected out of the SDK's own doc comments by [`signatures.sh`](signatures.sh). |
 
 ## Why the tree is committed, and why the compiler is not
 
@@ -53,11 +60,11 @@ and read by another does not compile at all.
 | `purescript-version.sh` | The `purs`, `esbuild`, Spago and registry pins, sourced by `build.sh`, `containers/build.sh` and `scripts/ci/install-purescript.sh`. |
 | `spago.yaml` | The library set a program may import, and the argument for every package in it. |
 | `spago.lock` | What that resolved to, package by package, against the pinned registry set. |
-| `src/` | The hand-written, idiomatic SDK. `Gg.purs` is the one import a program writes; `Gg/<Object>.purs` is one API object each; `Gg/Types.purs` and `Gg/Error.purs` are what a signature refers to; `Gg/Internal/` is the bridge, which no model ever sees. |
+| `src/` | The hand-written, idiomatic SDK. `Gg/<Module>.purs` is one **capability module** each — `Gg.Files`, `Gg.Shell`, `Gg.Board`, … — owning the functions it binds and the types they produce; `Gg/Core.purs` binds no capability and holds the failure types every signature names; `Gg/Internal/` is the bridge, which no model ever sees. |
 | `build.sh` | Vendors the toolchain, resolves the set, stages the sources **and the SDK**, compiles, packs and writes the manifest. |
 | `signatures.sh` | Regenerates the committed catalogue: unpacks the tree, stages the working `src/` over it, compiles with `--codegen docs`, and runs `tools/signatures.mjs`. |
-| `tools/catalogue.mjs` | The identity half — which function is which gg tool, on which object, gated by what. No prose: every word a model reads is a doc comment in `src/`. |
-| `tools/signatures.mjs` | The reflector: `purs`' own `docs.json` plus that identity table, emitted as the catalogue. |
+| `tools/catalogue.mjs` | The one thing the sources cannot say: which twelve modules the surface is divided into, and in what order a reader meets them. Nothing else — a function's gg operation id is written in its own doc comment, and every word a model reads is a doc comment in `src/`. |
+| `tools/signatures.mjs` | The reflector: `purs`' own `docs.json` plus that module table, emitted as the catalogue. |
 
 ## Rebuilding
 

@@ -68,6 +68,6 @@ test -s "$WORK/ast.json"
 
 echo "==> reflecting $OUT"
 # From this package's own directory, because the paths clang records in the dump are the ones it was
-# given — and it is given `-I Sources` from here, so `Sources/sdk/objects/fs.hpp` is what a doc
+# given — and it is given `-I Sources` from here, so `Sources/sdk/gg/files.hpp` is what a doc
 # comment's source range is quoted out of.
 (cd "$HERE" && python3 tools/signatures.py "$WORK/ast.json" Sources/prelude.hpp "$OUT")

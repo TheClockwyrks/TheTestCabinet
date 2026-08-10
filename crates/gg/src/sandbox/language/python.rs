@@ -113,8 +113,8 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
 /// signature they quote is resolved from this language's committed catalogue when the template
-/// renders, so `fs.read_file` and `fs.readFile` each reach their own model without either being
-/// written down twice.
+/// renders, so `gg.files.read_file` and `fs.readFile` each reach their own model without either
+/// being written down twice.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.python.hbs"),
     system_template_name: "system-code.python",
@@ -238,7 +238,7 @@ impl ProgramLanguage for Python {
         &PROMPT
     }
 
-    /// [`view.open_file("src/main.py")`](self::open_file_statement), with the window as keyword
+    /// [`gg.views.open_file("src/main.py")`](self::open_file_statement), with the window as keyword
     /// arguments and no terminator — this language's idiom for all three of the things a
     /// synthesized statement gets to differ in.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {

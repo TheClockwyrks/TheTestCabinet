@@ -24,8 +24,8 @@
 -- |
 -- | # Why a dispatcher is fine *here*
 -- |
--- | [`call`](#v:call) takes the object and function name as data, which is precisely the shape the
--- | seam forbids a model-facing surface from having. The rule is about what the model writes: a
+-- | [`call`](#v:call) takes the namespace and the function's name as data, which is precisely the
+-- | shape the seam forbids a model-facing surface from having. The rule is about what the model writes: a
 -- | dispatcher a *model* calls moves the whole surface out of the type system and into a string it
 -- | has to remember. Below the typed functions, where nobody reads the output and the strings are
 -- | written once by hand beside the function that uses them, one bridge is one place for the
@@ -34,6 +34,7 @@ module Gg.Internal.Wire
   ( Wire
   , call
   , call_
+  , bound
   , wire
   , taken
   , lower
@@ -59,10 +60,19 @@ import Unsafe.Coerce (unsafeCoerce)
 -- | that call it.
 foreign import data Wire :: Type
 
--- | Call one function on one of the guest's API objects.
+-- | Call one function in one of the guest's namespaces.
 -- |
--- | `tool` is the gg tool name the failure is reported under when the run withheld the capability;
--- | `object` and `name` are the guest's own spellings, which are the TypeScript SDK's.
+-- | `tool` is the **gate** the failure is reported under when the run withheld the capability —
+-- | the gg tool whose absence takes the function away, which is not always the function's own name:
+-- | `Gg.Files.readTextFile` and `Gg.Views.openFile` are both spellings of a read, so both refuse
+-- | under `read_file`. Where nothing a run can withhold has a tool name at all — an ending call,
+-- | which a role decides, or a program-library call, which a capability buys — the call's own key
+-- | stands in, since naming a tool that could not have been the reason would be worse than naming
+-- | none. `namespace` is the guest's own name for the object holding the function, which is the
+-- | TypeScript SDK's; and `written` is the fully-qualified name a PureScript program writes. The guest's own
+-- | name for the function is `written`'s last segment, which is the same word on both sides — so the
+-- | one string carries the dispatch and the sentence a refusal is reported in, and a refusal names
+-- | the call the model wrote rather than the one the bridge made.
 foreign import callImpl :: String -> String -> String -> Array Wire -> Effect Wire
 
 -- | Lower a record by converting the fields a converter is given for, and passing every other
@@ -81,6 +91,9 @@ foreign import lowerImpl :: Wire -> Wire -> Wire
 -- | Read one property off a JavaScript value, without knowing anything about it.
 foreign import fieldImpl :: String -> Wire -> Wire
 
+-- | Whether this run bound the guest namespace `name` at all.
+foreign import boundImpl :: String -> Effect Boolean
+
 -- | Send a PureScript value across as it stands.
 wire :: forall a. a -> Wire
 wire = unsafeCoerce
@@ -91,11 +104,19 @@ taken = unsafeCoerce
 
 -- | Call a function that answers with something.
 call :: forall a. String -> String -> String -> Array Wire -> Effect a
-call tool object name args = taken <$> callImpl tool object name args
+call tool namespace written args = taken <$> callImpl tool namespace written args
 
 -- | Call a function whose answer is nothing worth having.
 call_ :: String -> String -> String -> Array Wire -> Effect Unit
-call_ tool object name args = void (callImpl tool object name args)
+call_ tool namespace written args = void (callImpl tool namespace written args)
+
+-- | Whether the guest bound the namespace `name` for this run.
+-- |
+-- | The one question asked of the scope rather than of a call in it, and it exists for the directory:
+-- | a module whose functions span two guest namespaces — `harness` and `review` — must ask the one
+-- | this run actually has, where calling the other would raise `Unavailable` instead of answering.
+bound :: String -> Effect Boolean
+bound = boundImpl
 
 -- | A record of optional arguments, with the fields named in `converters` converted on the way out.
 lower :: forall converters given. Record converters -> Record given -> Wire

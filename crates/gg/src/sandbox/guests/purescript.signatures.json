@@ -1,4 +1,5 @@
 {
+	"schema": 2,
 	"language": "purescript",
 	"generatedFrom": "packages/gg-sandbox-purescript/src/Gg/ + spago.yaml (purs --codegen docs)",
 	"libraries": [
@@ -270,54 +271,90 @@
 			]
 		}
 	],
-	"objects": [
+	"modules": [
 		{
-			"object": "fs",
-			"doc": "read, write, and edit workspace files"
+			"id": "files",
+			"path": "Gg.Files",
+			"brief": "Read, write, edit and list the files of the workspace.",
+			"detail": "Reading is the cheap direction of this sandbox and writing is the expensive one, so a program that reads a dozen files to decide what to change is well shaped, while one that rewrites forty large files in a single turn will exhaust its fuel budget.\n\nNothing here places anything in the agent's context window. `Gg.Views.openFile` is the call that does.",
+			"import": "import Gg.Files as Gg.Files"
 		},
 		{
-			"object": "system",
-			"doc": "run shell commands in the workspace"
+			"id": "shell",
+			"path": "Gg.Shell",
+			"brief": "Run shell commands in the workspace.",
+			"detail": "One function, and the way a program reaches everything gg has no tool for: a build, a test run, `git`, `curl`, a package manager. The workspace is the working directory.\n\nA non-zero exit is a *result* rather than a failure, because deciding whether a build or a test run passed is the single most common thing a program does with one.",
+			"import": "import Gg.Shell as Gg.Shell"
 		},
 		{
-			"object": "project",
-			"doc": "the epic/issue board — decompose work into dispatchable issues"
+			"id": "board",
+			"path": "Gg.Board",
+			"brief": "The epic and issue board: work decomposed into dispatchable units.",
+			"detail": "An issue is the heavyweight unit of work — its scope, non-scope and completion criteria are exactly what a delegated child agent is briefed from — which is why creating one asks for more than adding a task does.\n\nTwo patch fields are **three-way**, and a record with optional fields says all three without a sentinel: leaving `description` out keeps it and `Nothing` clears it; leaving `epicId` out leaves the grouping alone and `Nothing` detaches the issue from its epic.",
+			"import": "import Gg.Board as Gg.Board"
 		},
 		{
-			"object": "tasks",
-			"doc": "your task list"
+			"id": "tasks",
+			"path": "Gg.Tasks",
+			"brief": "The task list, which is a directed acyclic graph rather than a list of lines.",
+			"detail": "A task is the lightweight unit of work: an id, a title, and the tasks that must finish first. A unit heavy enough to brief a child agent from belongs on `Gg.Board` instead.\n\nOne spelling here is worth reading twice. A revision's `description` is a **three-way** edit, and a record with optional fields says all three without a sentinel: leaving the field out keeps the description, `Nothing` clears it, `Just` replaces it.",
+			"import": "import Gg.Tasks as Gg.Tasks"
 		},
 		{
-			"object": "memory",
-			"doc": "durable memories that survive context compaction"
+			"id": "memories",
+			"path": "Gg.Memories",
+			"brief": "Durable notes that survive context compaction.",
+			"detail": "A run picks one of three memory strategies and binds only that strategy's functions, so `Gg.Memories.list` is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`writeMemory` and `updateMemory`); the two file-shaped strategies keep the contents outside it (`createMemory`, `readMemory` and `editMemory`), one behind an index that is always in context and one behind `searchMemories`. Deleting is bound under all three.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
+			"import": "import Gg.Memories as Gg.Memories"
 		},
 		{
-			"object": "view",
-			"doc": "show yourself a file, a value, or a function's documentation — the only way material enters your context"
+			"id": "views",
+			"path": "Gg.Views",
+			"brief": "The only way material enters the agent's own context window.",
+			"detail": "Under responses as code a whole program's output would otherwise collapse into one anonymous blob of logs, charged to one band, attributable to nothing and closable by nothing. A view restores what tool calling gave for free: one message per view, carrying the band it is charged to and the selector it can be closed by.",
+			"import": "import Gg.Views as Gg.Views"
 		},
 		{
-			"object": "context",
-			"doc": "manage your own context window"
+			"id": "context",
+			"path": "Gg.Context",
+			"brief": "Managing the agent's own context window.",
+			"detail": "These are the only calls whose effect is on the conversation rather than on the workspace. They are worth making from a program precisely because a program can decide *when* to: read a set of files, extract what matters, then evict the views in the same turn.",
+			"import": "import Gg.Context as Gg.Context"
 		},
 		{
-			"object": "agents",
-			"doc": "delegate work to child agents"
+			"id": "delegation",
+			"path": "Gg.Delegation",
+			"brief": "Handing scoped work to child agents, and handing this session to another agent.",
+			"detail": "Waiting can dominate a turn's wall clock — it blocks while real agents run — and the run's budget keeps ticking while it does. A program is therefore best shaped to spawn broadly and wait once, rather than to spawn and wait in a loop.\n\nThe brief is where this arm's types earn their keep: a child is briefed either with a self-contained `Prompt` or with a board `Issue`, and because that choice is a sum type rather than two optional fields, \"both\" and \"neither\" are programs that do not compile.",
+			"import": "import Gg.Delegation as Gg.Delegation"
 		},
 		{
-			"object": "skills",
-			"doc": "read authored skills"
+			"id": "skills",
+			"path": "Gg.Skills",
+			"brief": "The authored skill library.",
+			"detail": "A skill name is a plain `String` rather than the arm of a sum type, because the catalogue is per run while this SDK is compiled once. The names available are listed in the system prompt, and an unknown one comes back as `NotFound` carrying the full list.",
+			"import": "import Gg.Skills as Gg.Skills"
 		},
 		{
-			"object": "programs",
-			"doc": "fetch a program you already ran, and hand a patched copy back to be run"
+			"id": "programs",
+			"path": "Gg.Programs",
+			"brief": "The library of programs this agent has already run.",
+			"detail": "Under responses as code a reply is a whole program, so a one-character mistake in a sixty-line program costs the sixty lines again. The library makes the fix proportional to the mistake: fetch what ran, patch it with ordinary string work, hand it back.\n\n```\nsource <- Gg.Programs.get {}\nGg.Programs.rerun (replaceAll (Pattern \"readfile\") (Replacement \"readFile\") source)\n```",
+			"import": "import Gg.Programs as Gg.Programs"
 		},
 		{
-			"object": "harness",
-			"doc": "end your session"
+			"id": "session",
+			"path": "Gg.Session",
+			"brief": "Ending the session, one group of calls per role.",
+			"detail": "Under responses as code every reply is a program, so there is no prose turn that could mean \"the work is done\" — a model that answers \"task complete\" has written a reply that failed to be a program, not an ending. These are the calls that mean it.\n\nExactly one group is bound. An agent whose role is to do work gets `finish`; a reviewer gets `approve` and `requestChanges` instead, because a reviewer's result has a shape of its own: not what was done, but whether it may stand.\n\nNone of them stops the program. Whatever follows still runs, so an ending belongs last, once the calls before it have confirmed the work. A program that then fails revokes the ending and earns another turn.",
+			"import": "import Gg.Session as Gg.Session"
 		},
 		{
-			"object": "review",
-			"doc": "return your verdict on the work you are reviewing"
+			"id": "core",
+			"path": "Gg.Core",
+			"brief": "The types every other module's signatures name, and the three functions that read a failure.",
+			"detail": "A capability module owns the types it produces, so `Gg.Files.FileRead` belongs to `Gg.Files` and `Gg.Board.IssueCreated` to `Gg.Board`. The three here belong to none of them because they belong to all: every call in this SDK throws a `ToolError`, and every module's `list` hands back a `FunctionSummary`.\n\n```\nimport Gg.Core as Gg.Core\nimport Gg.Files as Gg.Files\n\noutcome <- Gg.Core.attempt (Gg.Files.readTextFile \"notes.md\" {})\n```\n\nA failing call **throws** rather than handing back an `Either`. That is how effectful PureScript expresses a failure that is usually fatal to the work in hand, and it keeps the happy path unwrapped: `read <- Gg.Files.readTextFile \"main.purs\" {}` binds a `String`. An expected failure is narrowed with `attempt`, which converts one gg failure into an `Either` and re-throws anything that is not gg's.",
+			"import": "import Gg.Core as Gg.Core"
 		}
 	],
 	"meta": [
@@ -326,381 +363,34 @@
 			"name": "list",
 			"signatures": [
 				{
-					"signature": "list :: Effect (Array FunctionSummary)",
+					"signature": "list :: Effect (Array Gg.Core.FunctionSummary)",
 					"parameters": []
 				}
 			],
-			"doc": "List the functions available on this API object, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+			"doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `Gg.Views.openDocsView`.",
 			"types": [
-				"FunctionSummary"
+				{
+					"spelled": "Gg.Core.FunctionSummary",
+					"fqn": "Gg.Core.FunctionSummary"
+				}
 			]
 		}
 	],
-	"session": [
+	"functions": [
 		{
-			"key": "finish",
-			"ending": "standard",
-			"object": "harness",
-			"name": "finish",
-			"signatures": [
-				{
-					"signature": "finish :: String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "summary",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "What you did, in a sentence or two.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
-			"types": []
-		},
-		{
-			"key": "approve",
-			"ending": "review",
-			"object": "review",
-			"name": "approve",
-			"signatures": [
-				{
-					"signature": "approve :: Effect Unit",
-					"parameters": []
-				}
-			],
-			"doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session.\n\nIt does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change.",
-			"types": []
-		},
-		{
-			"key": "request_changes",
-			"ending": "review",
-			"object": "review",
-			"name": "requestChanges",
-			"signatures": [
-				{
-					"signature": "requestChanges :: Array String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "items",
-							"type": "Array String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "Every change that must be made before the work can be accepted, one per entry: what is wrong, and what to change. It may not be empty.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. This ends your session, and does not stop your program.\n\nEach item says what is wrong and what to change; the list may not be empty.\n\nRaises `ToolError`: `InvalidArgument` when the list is empty.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		}
-	],
-	"views": [
-		{
-			"key": "open_file",
-			"requires": "read_file",
-			"object": "view",
-			"name": "openFile",
-			"signatures": [
-				{
-					"signature": "openFile :: String -> { offset? :: Int, limit? :: Int } -> Effect FileRead",
-					"parameters": [
-						{
-							"name": "path",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The file to open. Relative to your workspace, or absolute.",
-							"fields": []
-						},
-						{
-							"name": "options",
-							"type": "{ offset? :: Int, limit? :: Int }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The window of lines to show; pass `{}` to show the whole file.",
-							"fields": [
-								{
-									"name": "offset",
-									"type": "Int",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The 1-based line to start at.",
-									"fields": []
-								},
-								{
-									"name": "limit",
-									"type": "Int",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "How many lines to show from `offset`.",
-									"fields": []
-								}
-							]
-						}
-					]
-				}
-			],
-			"doc": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.\n\nThe split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it.\n\nPictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); nothing is opened and nothing is shown when you pass that cap, so close one with `view.close` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.\n\nRaises `ToolError`: `LimitExceeded`, naming the cap, when opening a picture would pass your agent's image-view cap.",
-			"types": [
-				"FileRead",
-				"TextFile",
-				"ImageFile",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"key": "open_text",
-			"requires": null,
-			"object": "view",
-			"name": "openText",
-			"signatures": [
-				{
-					"signature": "openText :: String -> String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "label",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "What to file the view under. It is what `view.close` takes, and opening the same label again replaces what it showed. It may not be empty.",
-							"fields": []
-						},
-						{
-							"name": "body",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "What to show yourself. An empty body is allowed: it is how you say that something you were showing is now empty.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.\n\nThis is the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty BODY is allowed, since it is how you say that something you were showing is now empty.\n\nRaises `ToolError`: `InvalidArgument` for an empty label — a view with no selector could never be closed or attributed — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"key": "open_docs_view",
-			"requires": null,
-			"object": "view",
-			"name": "openDocsView",
-			"signatures": [
-				{
-					"signature": "openDocsView :: String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "name",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The function to document, by the name it is called on its object — `\"readFile\"` for `fs.readFile`. Every object's `list` is how you find out which names exist.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.\n\nThis is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close` closes it when you are done with it.\n\nRaises `ToolError`: `NotFound` for an unknown or unbound name.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"key": "close",
-			"requires": null,
-			"object": "view",
-			"name": "close",
-			"signatures": [
-				{
-					"signature": "close :: String -> Effect Int",
-					"parameters": [
-						{
-							"name": "selector",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Close every view carrying `selector` and hand back how many were closed, freeing the tokens they occupied.\n\nFor a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
-			"types": []
-		},
-		{
-			"key": "current",
-			"requires": null,
-			"object": "view",
-			"name": "current",
-			"signatures": [
-				{
-					"signature": "current :: Effect (Array OpenView)",
-					"parameters": []
-				}
-			],
-			"doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.\n\nIt is called `current` rather than `list` because every API object already carries a `list` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
-			"types": [
-				"OpenView",
-				"ViewKind",
-				"ViewRegion"
-			]
-		}
-	],
-	"programs": [
-		{
-			"key": "history",
-			"object": "programs",
-			"name": "history",
-			"signatures": [
-				{
-					"signature": "history :: Effect (Array ProgramSummary)",
-					"parameters": []
-				}
-			],
-			"doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.\n\nIt lists shapes, not sources: fetch the one you want with `programs.get`. The list survives a compaction, so it is also how you find a program whose text has left your context window. It is empty — never an error — for a session that has run nothing yet.",
-			"types": [
-				"ProgramSummary"
-			]
-		},
-		{
-			"key": "get",
-			"object": "programs",
-			"name": "get",
-			"signatures": [
-				{
-					"signature": "get :: { turn? :: Int } -> Effect String",
-					"parameters": [
-						{
-							"name": "options",
-							"type": "{ turn? :: Int }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "Which program to fetch; pass `{}` for your most recent one.",
-							"fields": [
-								{
-									"name": "turn",
-									"type": "Int",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The turn whose program to fetch, as `programs.history` reports it.",
-									"fields": []
-								}
-							]
-						}
-					]
-				}
-			],
-			"doc": "The exact source of one program you ran, as a string. With `{}`, your most recent one.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\nRaises `ToolError`: `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"key": "rerun",
-			"object": "programs",
-			"name": "rerun",
-			"signatures": [
-				{
-					"signature": "rerun :: String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "source",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The program to run in place of this one, as PureScript. It may not be blank.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program.\n\nUse it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice.\n\nThe first call stands, because a silently replaced program is a change you cannot see. If your program then fails, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.\n\nRaises `ToolError`: `Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		}
-	],
-	"tools": [
-		{
-			"tool": "shell",
-			"object": "system",
-			"name": "shell",
-			"signatures": [
-				{
-					"signature": "shell :: String -> { timeoutSecs? :: Int } -> Effect ShellOutput",
-					"parameters": [
-						{
-							"name": "command",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The command line, run by `sh -c` with your workspace as its working directory.",
-							"fields": []
-						},
-						{
-							"name": "options",
-							"type": "{ timeoutSecs? :: Int }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "How to run it; pass `{}` for gg's own defaults.",
-							"fields": [
-								{
-									"name": "timeoutSecs",
-									"type": "Int",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "How long to let it run, in seconds, before killing it. Leave it out for gg's default of 120, which is clamped to whatever is left of the run's wall-clock budget.",
-									"fields": []
-								}
-							]
-						}
-					]
-				}
-			],
-			"doc": "Run a command with `sh -c` in the workspace directory and hand back its merged stdout and stderr.\n\nA non-zero exit is NOT a failure — read `exitCode` on the result; only a process that could not be launched, or one the timeout killed, raises.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.\n\nRaises `ToolError`: `LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.",
-			"types": [
-				"ShellOutput",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "read_file",
-			"object": "fs",
+			"operation": "files.read_file",
+			"aliasOf": null,
+			"module": "files",
+			"kind": "function",
+			"receiver": null,
 			"name": "readFile",
+			"fqn": "Gg.Files.readFile",
+			"call": null,
+			"brief": "Read a file, as either the `TextFile` or the `ImageFile` arm of a `Gg.Files.FileRead`.",
+			"detail": "Which of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. The sum is closed, so an ordinary `case` needs no catch-all:\n\n```\nread <- Gg.Files.readFile \"logo.png\" {}\ncase read of\n  Gg.Files.TextFile text -> Gg.Views.openText \"logo\" text.contents\n  Gg.Files.ImageFile picture -> Gg.Views.openText \"logo\" picture.label\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window, and reading a picture describes it without showing it, so a file only read here is a file nobody has looked at.\n\n# Raises\n\n`NotFound` for a missing path.",
 			"signatures": [
 				{
-					"signature": "readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect FileRead",
+					"signature": "readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect Gg.Files.FileRead",
 					"parameters": [
 						{
 							"name": "path",
@@ -708,7 +398,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The file to read. Relative to your workspace, or absolute for anything else in this container.",
+							"doc": "The file to read, relative to the workspace or absolute.",
 							"fields": []
 						},
 						{
@@ -717,7 +407,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The window of lines to read; pass `{}` to read the whole file.",
+							"doc": "The window of lines to read; `{}` reads the whole file.",
 							"fields": [
 								{
 									"name": "offset",
@@ -742,19 +432,113 @@
 					]
 				}
 			],
-			"doc": "Read a file, handing back a `TextFile` or an `ImageFile` — the format is detected from the file's bytes, never its extension.\n\nThis gets bytes for your PROGRAM and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable.\n\nReading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `fs.readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.\n\nNarrow the two arms with an ordinary `case`:\n\n```\nread <- fs.readFile \"logo.png\" {}\ncase read of\n  TextFile text -> view.openText \"logo\" text.contents\n  ImageFile picture -> view.openText \"logo\" picture.label\n```\n\nRaises `ToolError`: `NotFound` for a missing path.",
 			"types": [
-				"FileRead",
-				"TextFile",
-				"ImageFile",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Files.FileRead",
+					"fqn": "Gg.Files.FileRead"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Files.TextFile",
+					"fqn": "Gg.Files.TextFile"
+				},
+				{
+					"spelled": "Gg.Files.ImageFile",
+					"fqn": "Gg.Files.ImageFile"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Files.FileRead",
+					"fqn": "Gg.Files.FileRead"
+				}
 			]
 		},
 		{
-			"tool": "write_file",
-			"object": "fs",
+			"operation": "files.read_text_file",
+			"aliasOf": null,
+			"module": "files",
+			"kind": "function",
+			"receiver": null,
+			"name": "readTextFile",
+			"fqn": "Gg.Files.readTextFile",
+			"call": null,
+			"brief": "Read a text file and hand back its contents directly.",
+			"detail": "`Gg.Files.readFile` without the narrowing, for the common case: the same read, the same window, the same cost.\n\n# Raises\n\n`InvalidArgument` when the path names a picture, which `Gg.Files.readFile` inspects instead and `Gg.Views.openFile` displays.",
+			"signatures": [
+				{
+					"signature": "readTextFile :: String -> { offset? :: Int, limit? :: Int } -> Effect String",
+					"parameters": [
+						{
+							"name": "path",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The file to read, relative to the workspace or absolute.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ offset? :: Int, limit? :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The window of lines to read; `{}` reads the whole file.",
+							"fields": [
+								{
+									"name": "offset",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+									"fields": []
+								},
+								{
+									"name": "limit",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "files.write_file",
+			"aliasOf": null,
+			"module": "files",
+			"kind": "function",
+			"receiver": null,
 			"name": "writeFile",
+			"fqn": "Gg.Files.writeFile",
+			"call": null,
+			"brief": "Write UTF-8 text to a file, creating parent directories and replacing what is there.",
+			"detail": "The number of bytes written comes back. Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.",
 			"signatures": [
 				{
 					"signature": "writeFile :: String -> String -> Effect Int",
@@ -765,7 +549,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+							"doc": "Where to write, relative to the workspace or absolute. Parent directories are created.",
 							"fields": []
 						},
 						{
@@ -780,13 +564,29 @@
 					]
 				}
 			],
-			"doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and hand back the number of bytes written.\n\nWriting is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
-			"types": []
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "edit_file",
-			"object": "fs",
+			"operation": "files.edit_file",
+			"aliasOf": null,
+			"module": "files",
+			"kind": "function",
+			"receiver": null,
 			"name": "editFile",
+			"fqn": "Gg.Files.editFile",
+			"call": null,
+			"brief": "Replace the one exact occurrence of some text in a file with something else.",
+			"detail": "Widening the surrounding context until the match is unique is the way to disambiguate; counting occurrences is not.\n\n# Raises\n\n`NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it appears more than once.",
 			"signatures": [
 				{
 					"signature": "editFile :: String -> String -> String -> Effect Unit",
@@ -806,7 +606,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The exact text to find, including its whitespace. It must appear exactly once.",
+							"doc": "The exact text to find, whitespace included. It must appear exactly once.",
 							"fields": []
 						},
 						{
@@ -821,19 +621,32 @@
 					]
 				}
 			],
-			"doc": "Replace the one exact occurrence of `oldString` in a file with `newString`.\n\nWiden the surrounding context until the match is unique rather than counting occurrences.\n\nRaises `ToolError`: `NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it appears more than once.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "list_dir",
-			"object": "fs",
+			"operation": "files.list_dir",
+			"aliasOf": null,
+			"module": "files",
+			"kind": "function",
+			"receiver": null,
 			"name": "listDir",
+			"fqn": "Gg.Files.listDir",
+			"call": null,
+			"brief": "List a directory, sorted by name; `{}` lists the workspace root.",
+			"detail": "Each entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty array, not a failure.",
 			"signatures": [
 				{
-					"signature": "listDir :: { path? :: String } -> Effect (Array DirEntry)",
+					"signature": "listDir :: { path? :: String } -> Effect (Array Gg.Files.DirEntry)",
 					"parameters": [
 						{
 							"name": "options",
@@ -841,7 +654,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "Which directory to list; pass `{}` for your workspace root.",
+							"doc": "Which directory to list; `{}` lists the workspace root.",
 							"fields": [
 								{
 									"name": "path",
@@ -849,7 +662,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "The directory to list, relative to your workspace or absolute.",
+									"doc": "The directory to list, relative to the workspace or absolute.",
 									"fields": []
 								}
 							]
@@ -857,45 +670,925 @@
 					]
 				}
 			],
-			"doc": "List a directory, sorted by name; `{}` lists your workspace.\n\nEach entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
 			"types": [
-				"DirEntry",
-				"EntryKind"
+				{
+					"spelled": "Gg.Files.DirEntry",
+					"fqn": "Gg.Files.DirEntry"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Files.EntryKind",
+					"fqn": "Gg.Files.EntryKind"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Files.DirEntry",
+					"fqn": "Gg.Files.DirEntry"
+				}
 			]
 		},
 		{
-			"tool": "read_skill",
-			"object": "skills",
-			"name": "readSkill",
+			"operation": "shell.shell",
+			"aliasOf": null,
+			"module": "shell",
+			"kind": "function",
+			"receiver": null,
+			"name": "shell",
+			"fqn": "Gg.Shell.shell",
+			"call": null,
+			"brief": "Run a command with `sh -c` in the workspace directory and collect its merged output.",
+			"detail": "A non-zero exit is not a failure: it arrives as `exitCode` on the result, and only a process that could not be launched, or one the timeout killed, raises.\n\nThis run may **offload** shell output, and the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all beyond that note, and one that failed returns the tail. Grepping the named files beats re-running the command.\n\n# Raises\n\n`LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.",
 			"signatures": [
 				{
-					"signature": "readSkill :: String -> Effect String",
+					"signature": "shell :: String -> { timeoutSecs? :: Int } -> Effect Gg.Shell.ShellOutput",
 					"parameters": [
 						{
-							"name": "name",
+							"name": "command",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The skill's name, as the system prompt lists it.",
+							"doc": "The command line, run by `sh -c` with the workspace as its working directory.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ timeoutSecs? :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "How to run it; `{}` takes gg's own defaults.",
+							"fields": [
+								{
+									"name": "timeoutSecs",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How long to let it run, in seconds, before killing it. Left out, gg's default of 120 applies, clamped to whatever is left of the run's wall-clock budget.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Shell.ShellOutput",
+					"fqn": "Gg.Shell.ShellOutput"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Shell.ShellOutput",
+					"fqn": "Gg.Shell.ShellOutput"
+				}
+			]
+		},
+		{
+			"operation": "board.create_epic",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "createEpic",
+			"fqn": "Gg.Board.createEpic",
+			"call": null,
+			"brief": "Create an epic to group related issues.",
+			"detail": "The id the prefix resolved to comes back with the board budget. A prefix is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\n# Raises\n\n`InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already holds it.",
+			"signatures": [
+				{
+					"signature": "createEpic :: { prefix :: String, title :: String, description :: String } -> Effect Gg.Board.EpicCreated",
+					"parameters": [
+						{
+							"name": "epic",
+							"type": "{ prefix :: String, title :: String, description :: String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The epic to create.",
+							"fields": [
+								{
+									"name": "prefix",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
+									"fields": []
+								},
+								{
+									"name": "title",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A short line naming the body of work.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the epic covers, for a reader who has not seen its issues.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Board.EpicCreated",
+					"fqn": "Gg.Board.EpicCreated"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Board.EpicCreated",
+					"fqn": "Gg.Board.EpicCreated"
+				}
+			]
+		},
+		{
+			"operation": "board.create_issue",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "createIssue",
+			"fqn": "Gg.Board.createIssue",
+			"call": null,
+			"brief": "Create a self-contained, dispatchable issue.",
+			"detail": "The id the board **assigned** comes back with the board budget: it is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller does not choose it — so keeping the returned id is what blocks a later issue on this one or waits for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they are written for a reader with no other context.\n\n# Raises\n\n`InvalidArgument` when `agent` or a reviewer is not one this agent may assign, and `Conflict` on a blocker edge that would close a cycle.",
+			"signatures": [
+				{
+					"signature": "createIssue :: { title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String } -> Effect Gg.Board.IssueCreated",
+					"parameters": [
+						{
+							"name": "issue",
+							"type": "{ title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to create.",
+							"fields": [
+								{
+									"name": "title",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A short line naming the work.",
+									"fields": []
+								},
+								{
+									"name": "inScope",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
+									"fields": []
+								},
+								{
+									"name": "outOfScope",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the issue deliberately does not cover, so the work stops where it was meant to.",
+									"fields": []
+								},
+								{
+									"name": "completionCriteria",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
+									"fields": []
+								},
+								{
+									"name": "agent",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The agent the issue is dispatched to. It must be one this agent may spawn.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the work is, written for a child agent with no other context.",
+									"fields": []
+								},
+								{
+									"name": "blockedBy",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The ids of every issue that must be done before this one. Defaults to none.",
+									"fields": []
+								},
+								{
+									"name": "epicId",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The id of an existing epic to group it under. Left out, the issue stays ungrouped and is numbered under `ISSUE`.",
+									"fields": []
+								},
+								{
+									"name": "reviewers",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The agents that must approve the work, from that same set. Required when this run's reviewers feature is on.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Board.IssueCreated",
+					"fqn": "Gg.Board.IssueCreated"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Board.IssueCreated",
+					"fqn": "Gg.Board.IssueCreated"
+				}
+			]
+		},
+		{
+			"operation": "board.update_issue",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "updateIssue",
+			"fqn": "Gg.Board.updateIssue",
+			"call": null,
+			"brief": "Revise an issue, changing at least one of its fields.",
+			"detail": "An omitted field is left alone, `description: Nothing` clears the description, and `epicId: Nothing` detaches the issue from its epic.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"signatures": [
+				{
+					"signature": "updateIssue :: String -> { title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: Gg.Board.IssueStatus, epicId? :: Maybe String } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to revise.",
+							"fields": []
+						},
+						{
+							"name": "patch",
+							"type": "{ title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: Gg.Board.IssueStatus, epicId? :: Maybe String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The fields to change. At least one is required; an omitted field is left alone.",
+							"fields": [
+								{
+									"name": "title",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The title to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "Maybe String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "`Just` the description to replace the old one with, or `Nothing` to clear it.",
+									"fields": []
+								},
+								{
+									"name": "inScope",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The scope statement to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "outOfScope",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The non-scope statement to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "completionCriteria",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The completion criteria to replace the old ones with.",
+									"fields": []
+								},
+								{
+									"name": "status",
+									"type": "Gg.Board.IssueStatus",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "Where the issue now stands.",
+									"fields": []
+								},
+								{
+									"name": "epicId",
+									"type": "Maybe String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "`Just` the epic to regroup it under, or `Nothing` to detach it from the one it has.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Board.IssueStatus",
+					"fqn": "Gg.Board.IssueStatus"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "board.set_issue_blocked_by",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "setIssueBlockedBy",
+			"fqn": "Gg.Board.setIssueBlockedBy",
+			"call": null,
+			"brief": "Replace an issue's whole blocker set; an empty array clears every blocker.",
+			"detail": "# Raises\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+			"signatures": [
+				{
+					"signature": "setIssueBlockedBy :: String -> Array String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue whose blockers to replace.",
+							"fields": []
+						},
+						{
+							"name": "blockedBy",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The ids of every issue that must now be done before it. An empty array clears them all.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Read a skill by name and hand back its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.\n\nA skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it exports — reach it with `Gg.Lib.lib`. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn.\n\nRaises `ToolError`: `NotFound` — listing the skills that do exist — when the name is unknown.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "board.remove_epic",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "removeEpic",
+			"fqn": "Gg.Board.removeEpic",
+			"call": null,
+			"brief": "Remove an epic, keeping its issues and ungrouping them.",
+			"detail": "# Raises\n\n`NotFound` for an unknown id.",
+			"signatures": [
+				{
+					"signature": "removeEpic :: String -> Effect Gg.Board.BoardUsage",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The epic to remove.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				}
 			]
 		},
 		{
-			"tool": "write_memory",
-			"object": "memory",
-			"name": "writeMemory",
+			"operation": "board.remove_issue",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "removeIssue",
+			"fqn": "Gg.Board.removeIssue",
+			"call": null,
+			"brief": "Remove an issue and every blocker edge pointing at it.",
+			"detail": "# Raises\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
-					"signature": "writeMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect MemoryUsage",
+					"signature": "removeIssue :: String -> Effect Gg.Board.BoardUsage",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to remove.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				}
+			]
+		},
+		{
+			"operation": "board.wait_for_issue",
+			"aliasOf": null,
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "waitForIssue",
+			"fqn": "Gg.Board.waitForIssue",
+			"call": null,
+			"brief": "Register a wait on an issue and hand back an acknowledgement.",
+			"detail": "Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest of the program still runs. Once it ends the run suspends, freeing this agent's slot for others, until the issue is terminal — done, or failed if its assigned agent could not complete it — and then resumes on the next turn. It is how the next turn's work is sequenced behind an issue this one depends on. The issue this agent was assigned to implement is not one it may wait on.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"signatures": [
+				{
+					"signature": "waitForIssue :: String -> Effect String",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to wait on. It may not be the issue this agent was assigned.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "tasks.add_task",
+			"aliasOf": null,
+			"module": "tasks",
+			"kind": "function",
+			"receiver": null,
+			"name": "addTask",
+			"fqn": "Gg.Tasks.addTask",
+			"call": null,
+			"brief": "Add a task to the task graph and hand back the task budget.",
+			"detail": "`blockedBy` names the tasks that must finish before this one and defaults to none.\n\n# Raises\n\n`Conflict` on a duplicate id or on an edge that would close a cycle.",
+			"signatures": [
+				{
+					"signature": "addTask :: { id :: String, title :: String, description? :: String, blockedBy? :: Array String } -> Effect Gg.Tasks.TaskUsage",
+					"parameters": [
+						{
+							"name": "task",
+							"type": "{ id :: String, title :: String, description? :: String, blockedBy? :: Array String }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to add.",
+							"fields": [
+								{
+									"name": "id",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "The id chosen for it. It is what every other task call takes, and no two tasks may share one.",
+									"fields": []
+								},
+								{
+									"name": "title",
+									"type": "String",
+									"optional": false,
+									"kind": "positional",
+									"default": null,
+									"doc": "A short line naming the work.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "What the work is, at whatever length is useful.",
+									"fields": []
+								},
+								{
+									"name": "blockedBy",
+									"type": "Array String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The ids of the tasks that must be done before this one. Defaults to none.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Tasks.TaskUsage",
+					"fqn": "Gg.Tasks.TaskUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Tasks.TaskUsage",
+					"fqn": "Gg.Tasks.TaskUsage"
+				}
+			]
+		},
+		{
+			"operation": "tasks.update_task",
+			"aliasOf": null,
+			"module": "tasks",
+			"kind": "function",
+			"receiver": null,
+			"name": "updateTask",
+			"fqn": "Gg.Tasks.updateTask",
+			"call": null,
+			"brief": "Revise a task's title, description or status, changing at least one of them.",
+			"detail": "An omitted `description` leaves it alone, `Nothing` clears it, and `Just` replaces it.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"signatures": [
+				{
+					"signature": "updateTask :: String -> { title? :: String, description? :: Maybe String, status? :: Gg.Tasks.TaskStatus } -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to revise.",
+							"fields": []
+						},
+						{
+							"name": "patch",
+							"type": "{ title? :: String, description? :: Maybe String, status? :: Gg.Tasks.TaskStatus }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The fields to change. At least one is required; an omitted field is left alone.",
+							"fields": [
+								{
+									"name": "title",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The title to replace the old one with.",
+									"fields": []
+								},
+								{
+									"name": "description",
+									"type": "Maybe String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "`Just` the description to replace the old one with, or `Nothing` to clear it.",
+									"fields": []
+								},
+								{
+									"name": "status",
+									"type": "Gg.Tasks.TaskStatus",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "Where the task now stands.",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Tasks.TaskStatus",
+					"fqn": "Gg.Tasks.TaskStatus"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "tasks.set_blocked_by",
+			"aliasOf": null,
+			"module": "tasks",
+			"kind": "function",
+			"receiver": null,
+			"name": "setBlockedBy",
+			"fqn": "Gg.Tasks.setBlockedBy",
+			"call": null,
+			"brief": "Replace a task's whole blocker set; an empty array clears every blocker.",
+			"detail": "# Raises\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+			"signatures": [
+				{
+					"signature": "setBlockedBy :: String -> Array String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task whose blockers to replace.",
+							"fields": []
+						},
+						{
+							"name": "blockedBy",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The ids of every task that must now be done before it. An empty array clears them all.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "tasks.complete_task",
+			"aliasOf": null,
+			"module": "tasks",
+			"kind": "function",
+			"receiver": null,
+			"name": "completeTask",
+			"fqn": "Gg.Tasks.completeTask",
+			"call": null,
+			"brief": "Mark a task done.",
+			"detail": "Tasks it was blocking become actionable once every one of their blockers is done.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"signatures": [
+				{
+					"signature": "completeTask :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to mark done.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "tasks.remove_task",
+			"aliasOf": null,
+			"module": "tasks",
+			"kind": "function",
+			"receiver": null,
+			"name": "removeTask",
+			"fqn": "Gg.Tasks.removeTask",
+			"call": null,
+			"brief": "Remove a task and every blocker edge pointing at it.",
+			"detail": "# Raises\n\n`NotFound` for an unknown id.",
+			"signatures": [
+				{
+					"signature": "removeTask :: String -> Effect Gg.Tasks.TaskUsage",
+					"parameters": [
+						{
+							"name": "id",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The task to remove.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Tasks.TaskUsage",
+					"fqn": "Gg.Tasks.TaskUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Tasks.TaskUsage",
+					"fqn": "Gg.Tasks.TaskUsage"
+				}
+			]
+		},
+		{
+			"operation": "memories.write_memory",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
+			"name": "writeMemory",
+			"fqn": "Gg.Memories.writeMemory",
+			"call": null,
+			"brief": "Record a durable memory that survives context compaction.",
+			"detail": "A memory may also carry **code**. `code` is a PureScript module whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never written again; `onUse` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context — they cost no window, are never shown back, and count against no body limit — and both are bounded on their own.\n\n# Raises\n\n`Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps — revising or deleting a memory beats accruing more.",
+			"signatures": [
+				{
+					"signature": "writeMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect Gg.Memories.MemoryUsage",
 					"parameters": [
 						{
 							"name": "memory",
@@ -920,7 +1613,7 @@
 									"optional": false,
 									"kind": "positional",
 									"default": null,
-									"doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it.",
+									"doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it.",
 									"fields": []
 								},
 								{
@@ -938,7 +1631,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "A PureScript module whose exports are bound at `lib.<name>` for the rest of your session. Leave it out for a memory that is only prose.",
+									"doc": "A PureScript module whose exports are bound at `lib.<name>` for the rest of the session. Left out for a memory that is only prose.",
 									"fields": []
 								},
 								{
@@ -947,7 +1640,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "A script gg runs the first time the memory comes into use; whatever it shows you arrives on your next turn. Leave it out for a memory that runs nothing.",
+									"doc": "A script gg runs the first time the memory comes into use, whose views arrive on the next turn. Left out for a memory that runs nothing.",
 									"fields": []
 								}
 							]
@@ -955,20 +1648,41 @@
 					]
 				}
 			],
-			"doc": "Record a durable memory that survives context compaction, and hand back how much of the memory budget is now used.\n\nA memory may also carry **code**. `code` is a PureScript module whose exports are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.\n\nRaises `ToolError`: `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more.",
 			"types": [
-				"MemoryUsage",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				}
 			]
 		},
 		{
-			"tool": "update_memory",
-			"object": "memory",
+			"operation": "memories.update_memory",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
 			"name": "updateMemory",
+			"fqn": "Gg.Memories.updateMemory",
+			"call": null,
+			"brief": "Replace an existing memory's description and body, keyed on its name.",
+			"detail": "Its `code` and `onUse` are replaced too, so leaving them out clears them.\n\n# Raises\n\n`NotFound` when no memory has that name.",
 			"signatures": [
 				{
-					"signature": "updateMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect MemoryUsage",
+					"signature": "updateMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect Gg.Memories.MemoryUsage",
 					"parameters": [
 						{
 							"name": "memory",
@@ -1028,20 +1742,41 @@
 					]
 				}
 			],
-			"doc": "Replace an existing memory's description and body, keyed on its `name`, and hand back the memory budget.\n\nIts `code` and `onUse` are replaced too — leaving them out clears them.\n\nRaises `ToolError`: `NotFound` when no memory has that name.",
 			"types": [
-				"MemoryUsage",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				}
 			]
 		},
 		{
-			"tool": "create_memory",
-			"object": "memory",
+			"operation": "memories.create_memory",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
 			"name": "createMemory",
+			"fqn": "Gg.Memories.createMemory",
+			"call": null,
+			"brief": "Record a new memory whose contents stay out of the context window until they are read.",
+			"detail": "It takes a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code`, a module bound at `lib.<name>` once the memory is read, and `onUse`, a script run on that first read.\n\n# Raises\n\n`Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would breach a limit.",
 			"signatures": [
 				{
-					"signature": "createMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect MemoryUsage",
+					"signature": "createMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect Gg.Memories.MemoryUsage",
 					"parameters": [
 						{
 							"name": "memory",
@@ -1049,7 +1784,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The memory to record. Its `body` stays out of your context window until you read it, and its name must not already be taken.",
+							"doc": "The memory to record. Its body stays out of the context window until it is read, and its name must not already be taken.",
 							"fields": [
 								{
 									"name": "name",
@@ -1084,7 +1819,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "A PureScript module whose exports are bound at `lib.<name>` once you read the memory. Leave it out for a memory that is only prose.",
+									"doc": "A PureScript module whose exports are bound at `lib.<name>` once the memory is read. Left out for a memory that is only prose.",
 									"fields": []
 								},
 								{
@@ -1093,7 +1828,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "A script gg runs on that first read. Leave it out for a memory that runs nothing.",
+									"doc": "A script gg runs on that first read. Left out for a memory that runs nothing.",
 									"fields": []
 								}
 							]
@@ -1101,17 +1836,38 @@
 					]
 				}
 			],
-			"doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and hand back the memory budget.\n\nGive it a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and `onUse` (a script run on that first read).\n\nRaises `ToolError`: `Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would breach a limit.",
 			"types": [
-				"MemoryUsage",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				}
 			]
 		},
 		{
-			"tool": "read_memory",
-			"object": "memory",
+			"operation": "memories.read_memory",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
 			"name": "readMemory",
+			"fqn": "Gg.Memories.readMemory",
+			"call": null,
+			"brief": "Read one memory's full contents by slug — the only call that brings them into the context window.",
+			"detail": "A memory that carries code loads that code as it is read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\n# Raises\n\n`NotFound` when no memory has that slug.",
 			"signatures": [
 				{
 					"signature": "readMemory :: String -> Effect String",
@@ -1128,19 +1884,32 @@
 					]
 				}
 			],
-			"doc": "Read one memory's full contents, by slug — the only thing that brings them into your context.\n\nIf the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session.\n\nRaises `ToolError`: `NotFound` when no memory has that slug.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "edit_memory",
-			"object": "memory",
+			"operation": "memories.edit_memory",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
 			"name": "editMemory",
+			"fqn": "Gg.Memories.editMemory",
+			"call": null,
+			"brief": "Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.",
+			"detail": "Appending is quoting the last line and replacing it with itself plus what is being added.\n\n# Raises\n\n`NotFound` when the text does not appear, `Conflict` when it appears more than once, `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave the memory empty — deleting it is the call for that.",
 			"signatures": [
 				{
-					"signature": "editMemory :: { name :: String, search :: String, replace :: String } -> Effect MemoryUsage",
+					"signature": "editMemory :: { name :: String, search :: String, replace :: String } -> Effect Gg.Memories.MemoryUsage",
 					"parameters": [
 						{
 							"name": "edit",
@@ -1182,20 +1951,41 @@
 					]
 				}
 			],
-			"doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and hand back the memory budget.\n\nAppend by quoting the last line and replacing it with itself plus what you are adding.\n\nRaises `ToolError`: `NotFound` when the text does not appear, `Conflict` when it appears more than once, `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave the memory empty — delete it instead.",
 			"types": [
-				"MemoryUsage",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				}
 			]
 		},
 		{
-			"tool": "search_memories",
-			"object": "memory",
+			"operation": "memories.search_memories",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
 			"name": "searchMemories",
+			"fqn": "Gg.Memories.searchMemories",
+			"call": null,
+			"brief": "Find the memories mentioning any of the given keywords, best first.",
+			"detail": "Plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of the keywords a memory mentions and then by how often. Several specific words rank better than one sentence, and the hits worth having in full are then read. A search that matches nothing is an empty array.\n\n# Raises\n\n`InvalidArgument` when every keyword is empty.",
 			"signatures": [
 				{
-					"signature": "searchMemories :: Array String -> Effect (Array MemoryHit)",
+					"signature": "searchMemories :: Array String -> Effect (Array Gg.Memories.MemoryHit)",
 					"parameters": [
 						{
 							"name": "keywords",
@@ -1209,20 +1999,41 @@
 					]
 				}
 			],
-			"doc": "Find the memories mentioning any of `keywords`, best first.\n\nPlain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `memory.readMemory` the hits worth having in full. A search that matches nothing is an empty array.\n\nRaises `ToolError`: `InvalidArgument` when every keyword is empty.",
 			"types": [
-				"MemoryHit",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Memories.MemoryHit",
+					"fqn": "Gg.Memories.MemoryHit"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Memories.MemoryHit",
+					"fqn": "Gg.Memories.MemoryHit"
+				}
 			]
 		},
 		{
-			"tool": "delete_memory",
-			"object": "memory",
+			"operation": "memories.delete_memory",
+			"aliasOf": null,
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
 			"name": "deleteMemory",
+			"fqn": "Gg.Memories.deleteMemory",
+			"call": null,
+			"brief": "Evict a memory by name, freeing room in the budget.",
+			"detail": "# Raises\n\n`NotFound` when no memory has that name.",
 			"signatures": [
 				{
-					"signature": "deleteMemory :: String -> Effect MemoryUsage",
+					"signature": "deleteMemory :: String -> Effect Gg.Memories.MemoryUsage",
 					"parameters": [
 						{
 							"name": "name",
@@ -1236,127 +2047,75 @@
 					]
 				}
 			],
-			"doc": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.\n\nRaises `ToolError`: `NotFound` when no memory has that name.",
 			"types": [
-				"MemoryUsage",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "add_task",
-			"object": "tasks",
-			"name": "addTask",
-			"signatures": [
 				{
-					"signature": "addTask :: { id :: String, title :: String, description? :: String, blockedBy? :: Array String } -> Effect TaskUsage",
-					"parameters": [
-						{
-							"name": "task",
-							"type": "{ id :: String, title :: String, description? :: String, blockedBy? :: Array String }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The task to add.",
-							"fields": [
-								{
-									"name": "id",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "The id you choose for it. It is what every other task call takes, and no two tasks may share one.",
-									"fields": []
-								},
-								{
-									"name": "title",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "A short line naming the work.",
-									"fields": []
-								},
-								{
-									"name": "description",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "What the work is, at whatever length is useful.",
-									"fields": []
-								},
-								{
-									"name": "blockedBy",
-									"type": "Array String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The ids of the tasks that must be done before this one. Defaults to none.",
-									"fields": []
-								}
-							]
-						}
-					]
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
 				}
 			],
-			"doc": "Add a task to the task DAG and hand back the task budget.\n\n`blockedBy` names the tasks that must finish before this one and defaults to none.\n\nRaises `ToolError`: `Conflict` on a duplicate id or on an edge that would close a cycle.",
-			"types": [
-				"TaskUsage",
-				"ToolError",
-				"ToolErrorCode"
+			"returns": [
+				{
+					"spelled": "Gg.Memories.MemoryUsage",
+					"fqn": "Gg.Memories.MemoryUsage"
+				}
 			]
 		},
 		{
-			"tool": "update_task",
-			"object": "tasks",
-			"name": "updateTask",
+			"operation": "views.open_file",
+			"aliasOf": null,
+			"module": "views",
+			"kind": "function",
+			"receiver": null,
+			"name": "openFile",
+			"fqn": "Gg.Views.openFile",
+			"call": null,
+			"brief": "Read a file and place it in the context window, keyed by its path.",
+			"detail": "The value handed back is exactly what `Gg.Files.readFile` returns, and the file also becomes its own context item, attributed to its path and closable by it. The split from `Gg.Files.readFile` is the point: that call gets bytes for the program, this one puts a file in front of the model, so a program that reads forty files to grep them still costs no window.\n\n`offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the same page replaces what it showed rather than piling up a duplicate. An image file is displayed as a picture, and this is the only call that displays one — reading an image describes it without showing it.",
 			"signatures": [
 				{
-					"signature": "updateTask :: String -> { title? :: String, description? :: Maybe String, status? :: TaskStatus } -> Effect Unit",
+					"signature": "openFile :: String -> { offset? :: Int, limit? :: Int } -> Effect Gg.Files.FileRead",
 					"parameters": [
 						{
-							"name": "id",
+							"name": "path",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The task to revise.",
+							"doc": "The file to open, relative to the workspace or absolute.",
 							"fields": []
 						},
 						{
-							"name": "patch",
-							"type": "{ title? :: String, description? :: Maybe String, status? :: TaskStatus }",
+							"name": "options",
+							"type": "{ offset? :: Int, limit? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The fields to change. Supply at least one; an omitted field is left alone.",
+							"doc": "The window of lines to show; `{}` shows the whole file.",
 							"fields": [
 								{
-									"name": "title",
-									"type": "String",
+									"name": "offset",
+									"type": "Int",
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "The title to replace the old one with.",
+									"doc": "The 1-based line to start at.",
 									"fields": []
 								},
 								{
-									"name": "description",
-									"type": "Maybe String",
+									"name": "limit",
+									"type": "Int",
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "`Just` the description to replace the old one with, or `Nothing` to clear it.",
-									"fields": []
-								},
-								{
-									"name": "status",
-									"type": "TaskStatus",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "Where the task now stands.",
+									"doc": "How many lines to show from `offset`.",
 									"fields": []
 								}
 							]
@@ -1364,489 +2123,221 @@
 					]
 				}
 			],
-			"doc": "Revise a task's title, description and/or status; supply at least one.\n\nAn omitted `description` leaves it alone, `Nothing` clears it, and `Just` replaces it.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
 			"types": [
-				"TaskStatus",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Files.FileRead",
+					"fqn": "Gg.Files.FileRead"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Files.TextFile",
+					"fqn": "Gg.Files.TextFile"
+				},
+				{
+					"spelled": "Gg.Files.ImageFile",
+					"fqn": "Gg.Files.ImageFile"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Files.FileRead",
+					"fqn": "Gg.Files.FileRead"
+				}
 			]
 		},
 		{
-			"tool": "set_blocked_by",
-			"object": "tasks",
-			"name": "setBlockedBy",
+			"operation": "views.open_text",
+			"aliasOf": null,
+			"module": "views",
+			"kind": "function",
+			"receiver": null,
+			"name": "openText",
+			"fqn": "Gg.Views.openText",
+			"call": null,
+			"brief": "Place a value the program computed in the context window, under a label.",
+			"detail": "A directory listing, a command's output, a child agent's answer, an assembled table: this is the channel into the window, and a value a program computes reaches the model on no other. Opening the same label again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty body is allowed, since it is how a program says that something it was showing is now empty.\n\n# Raises\n\n`InvalidArgument` for an empty label — a view with no selector could never be closed or attributed — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
 			"signatures": [
 				{
-					"signature": "setBlockedBy :: String -> Array String -> Effect Unit",
+					"signature": "openText :: String -> String -> Effect Unit",
 					"parameters": [
 						{
-							"name": "id",
+							"name": "label",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The task whose blockers to replace.",
+							"doc": "What to file the view under. It is what closes the view, and opening the same label again replaces what it showed. It may not be empty.",
 							"fields": []
 						},
 						{
-							"name": "blockedBy",
-							"type": "Array String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The ids of every task that must now be done before it. An empty array clears them all.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Replace a task's whole blocker set; an empty array clears every blocker.\n\nRaises `ToolError`: `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "complete_task",
-			"object": "tasks",
-			"name": "completeTask",
-			"signatures": [
-				{
-					"signature": "completeTask :: String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "id",
+							"name": "body",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The task to mark done.",
+							"doc": "What to show. An empty body is allowed: it is how a program says that something it was showing is now empty.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "remove_task",
-			"object": "tasks",
-			"name": "removeTask",
+			"operation": "views.open_docs_view",
+			"aliasOf": null,
+			"module": "views",
+			"kind": "function",
+			"receiver": null,
+			"name": "openDocsView",
+			"fqn": "Gg.Views.openDocsView",
+			"call": null,
+			"brief": "Place one function's full documentation in the context window.",
+			"detail": "Its signature, its description, and the declarations of any types it refers to that have not already been shown this session. This is a **view** rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives, so it is not available in the turn that asks for it. Asking in one turn and using it in the next is the shape that works. Opening the same function's documentation again replaces the view rather than adding a second copy.\n\n# Raises\n\n`NotFound` for an unknown or unbound name.",
 			"signatures": [
 				{
-					"signature": "removeTask :: String -> Effect TaskUsage",
+					"signature": "openDocsView :: String -> Effect Unit",
 					"parameters": [
 						{
-							"name": "id",
+							"name": "name",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The task to remove.",
+							"doc": "The function to document, by its fully-qualified name — `\"Gg.Files.readFile\"`. Each module's `list` is what names the functions that exist.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Remove a task and every blocker edge pointing at it, and hand back the task budget.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
 			"types": [
-				"TaskUsage",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "create_epic",
-			"object": "project",
-			"name": "createEpic",
-			"signatures": [
 				{
-					"signature": "createEpic :: { prefix :: String, title :: String, description :: String } -> Effect EpicCreated",
-					"parameters": [
-						{
-							"name": "epic",
-							"type": "{ prefix :: String, title :: String, description :: String }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The epic to create.",
-							"fields": [
-								{
-									"name": "prefix",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
-									"fields": []
-								},
-								{
-									"name": "title",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "A short line naming the body of work.",
-									"fields": []
-								},
-								{
-									"name": "description",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "What the epic covers, for a reader who has not seen its issues.",
-									"fields": []
-								}
-							]
-						}
-					]
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
 				}
 			],
-			"doc": "Create an epic to group related issues, and hand back the id its prefix resolved to together with the board budget.\n\n`prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\nRaises `ToolError`: `InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already holds it.",
-			"types": [
-				"EpicCreated",
-				"BoardUsage",
-				"ToolError",
-				"ToolErrorCode"
-			]
+			"returns": []
 		},
 		{
-			"tool": "create_issue",
-			"object": "project",
-			"name": "createIssue",
+			"operation": "views.close",
+			"aliasOf": null,
+			"module": "views",
+			"kind": "function",
+			"receiver": null,
+			"name": "close",
+			"fqn": "Gg.Views.close",
+			"call": null,
+			"brief": "Close every view carrying a selector, freeing the tokens they occupied.",
+			"detail": "How many were closed comes back. For a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard on every call. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.",
 			"signatures": [
 				{
-					"signature": "createIssue :: { title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String } -> Effect IssueCreated",
+					"signature": "close :: String -> Effect Int",
 					"parameters": [
 						{
-							"name": "issue",
-							"type": "{ title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The issue to create.",
-							"fields": [
-								{
-									"name": "title",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "A short line naming the work.",
-									"fields": []
-								},
-								{
-									"name": "inScope",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
-									"fields": []
-								},
-								{
-									"name": "outOfScope",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "What the issue deliberately does not cover, so the work stops where you meant it to.",
-									"fields": []
-								},
-								{
-									"name": "completionCriteria",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
-									"fields": []
-								},
-								{
-									"name": "agent",
-									"type": "String",
-									"optional": false,
-									"kind": "positional",
-									"default": null,
-									"doc": "The agent the issue is dispatched to. It must be one you may spawn.",
-									"fields": []
-								},
-								{
-									"name": "description",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "What the work is. Written for a child agent with no other context.",
-									"fields": []
-								},
-								{
-									"name": "blockedBy",
-									"type": "Array String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The ids of every issue that must be done before this one. Defaults to none.",
-									"fields": []
-								},
-								{
-									"name": "epicId",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The id of an existing epic to group it under. Leave it out to leave the issue ungrouped and numbered under `ISSUE`.",
-									"fields": []
-								},
-								{
-									"name": "reviewers",
-									"type": "Array String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The agents that must approve the work, from that same set. Required when this run's reviewers feature is on.",
-									"fields": []
-								}
-							]
-						}
-					]
-				}
-			],
-			"doc": "Create a self-contained, dispatchable issue, and hand back the id the board **assigned** it together with the board budget.\n\nThe id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; you do not choose it, so keep the returned one to block a later issue on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required when this run's reviewers feature is on.\n\nRaises `ToolError`: `InvalidArgument` when `agent` or a reviewer is not yours to assign, and `Conflict` on a blocker edge that would close a cycle.",
-			"types": [
-				"IssueCreated",
-				"BoardUsage",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "update_issue",
-			"object": "project",
-			"name": "updateIssue",
-			"signatures": [
-				{
-					"signature": "updateIssue :: String -> { title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: IssueStatus, epicId? :: Maybe String } -> Effect Unit",
-					"parameters": [
-						{
-							"name": "id",
+							"name": "selector",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The issue to revise.",
+							"doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
 							"fields": []
-						},
-						{
-							"name": "patch",
-							"type": "{ title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: IssueStatus, epicId? :: Maybe String }",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The fields to change. Supply at least one; an omitted field is left alone.",
-							"fields": [
-								{
-									"name": "title",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The title to replace the old one with.",
-									"fields": []
-								},
-								{
-									"name": "description",
-									"type": "Maybe String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "`Just` the description to replace the old one with, or `Nothing` to clear it.",
-									"fields": []
-								},
-								{
-									"name": "inScope",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The scope statement to replace the old one with.",
-									"fields": []
-								},
-								{
-									"name": "outOfScope",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The non-scope statement to replace the old one with.",
-									"fields": []
-								},
-								{
-									"name": "completionCriteria",
-									"type": "String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "The completion criteria to replace the old ones with.",
-									"fields": []
-								},
-								{
-									"name": "status",
-									"type": "IssueStatus",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "Where the issue now stands.",
-									"fields": []
-								},
-								{
-									"name": "epicId",
-									"type": "Maybe String",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "`Just` the epic to regroup it under, or `Nothing` to detach it from the one it has.",
-									"fields": []
-								}
-							]
 						}
 					]
 				}
 			],
-			"doc": "Revise an issue; supply at least one field.\n\nAn omitted field is left alone, `description: Nothing` clears the description, and `epicId: Nothing` detaches the issue from its epic.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
 			"types": [
-				"IssueStatus",
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "set_issue_blocked_by",
-			"object": "project",
-			"name": "setIssueBlockedBy",
+			"operation": "views.current",
+			"aliasOf": null,
+			"module": "views",
+			"kind": "function",
+			"receiver": null,
+			"name": "current",
+			"fqn": "Gg.Views.current",
+			"call": null,
+			"brief": "List what is open in the context window right now.",
+			"detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather than `list` because every module already carries a `list` of its own functions. Reading it is what informs a decision about what to close when the window is filling up.",
 			"signatures": [
 				{
-					"signature": "setIssueBlockedBy :: String -> Array String -> Effect Unit",
-					"parameters": [
-						{
-							"name": "id",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The issue whose blockers to replace.",
-							"fields": []
-						},
-						{
-							"name": "blockedBy",
-							"type": "Array String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The ids of every issue that must now be done before it. An empty array clears them all.",
-							"fields": []
-						}
-					]
+					"signature": "current :: Effect (Array Gg.Views.OpenView)",
+					"parameters": []
 				}
 			],
-			"doc": "Replace an issue's whole blocker set; an empty array clears every blocker.\n\nRaises `ToolError`: `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "remove_epic",
-			"object": "project",
-			"name": "removeEpic",
-			"signatures": [
 				{
-					"signature": "removeEpic :: String -> Effect BoardUsage",
-					"parameters": [
-						{
-							"name": "id",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The epic to remove.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
-			"types": [
-				"BoardUsage",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "remove_issue",
-			"object": "project",
-			"name": "removeIssue",
-			"signatures": [
+					"spelled": "Gg.Views.OpenView",
+					"fqn": "Gg.Views.OpenView"
+				},
 				{
-					"signature": "removeIssue :: String -> Effect BoardUsage",
-					"parameters": [
-						{
-							"name": "id",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The issue to remove.",
-							"fields": []
-						}
-					]
-				}
-			],
-			"doc": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
-			"types": [
-				"BoardUsage",
-				"ToolError",
-				"ToolErrorCode"
-			]
-		},
-		{
-			"tool": "wait_for_issue",
-			"object": "project",
-			"name": "waitForIssue",
-			"signatures": [
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
 				{
-					"signature": "waitForIssue :: String -> Effect String",
-					"parameters": [
-						{
-							"name": "id",
-							"type": "String",
-							"optional": false,
-							"kind": "positional",
-							"default": null,
-							"doc": "The issue to wait on. It may not be the issue you were assigned.",
-							"fields": []
-						}
-					]
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Views.ViewKind",
+					"fqn": "Gg.Views.ViewKind"
+				},
+				{
+					"spelled": "Gg.Views.ViewRegion",
+					"fqn": "Gg.Views.ViewRegion"
 				}
 			],
-			"doc": "Register a wait on an issue and hand back an acknowledgement.\n\nIt does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
-			"types": [
-				"ToolError",
-				"ToolErrorCode"
+			"returns": [
+				{
+					"spelled": "Gg.Views.OpenView",
+					"fqn": "Gg.Views.OpenView"
+				}
 			]
 		},
 		{
-			"tool": "evict_file_view",
-			"object": "context",
+			"operation": "context.evict_file_view",
+			"aliasOf": null,
+			"module": "context",
+			"kind": "function",
+			"receiver": null,
 			"name": "evictFileView",
+			"fqn": "Gg.Context.evictFileView",
+			"call": null,
+			"brief": "Drop the contents of files already read out of the context window, freeing the tokens they occupy.",
+			"detail": "What that reclaimed comes back. The files on disk are untouched: this forgets what was read, not what exists.",
 			"signatures": [
 				{
-					"signature": "evictFileView :: { path? :: String } -> Effect ReclaimReport",
+					"signature": "evictFileView :: { path? :: String } -> Effect Gg.Context.ReclaimReport",
 					"parameters": [
 						{
 							"name": "options",
@@ -1854,7 +2345,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "Which file's views to drop; pass `{}` to drop every file view you hold.",
+							"doc": "Which file's views to drop; `{}` drops every file view held.",
 							"fields": [
 								{
 									"name": "path",
@@ -1870,46 +2361,93 @@
 					]
 				}
 			],
-			"doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed.\n\nThe files on disk are untouched — this forgets what you read, not what exists.",
 			"types": [
-				"ReclaimReport"
+				{
+					"spelled": "Gg.Context.ReclaimReport",
+					"fqn": "Gg.Context.ReclaimReport"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Context.ReclaimReport",
+					"fqn": "Gg.Context.ReclaimReport"
+				}
 			]
 		},
 		{
-			"tool": "archive_thread",
-			"object": "context",
+			"operation": "context.archive_thread",
+			"aliasOf": null,
+			"module": "context",
+			"kind": "function",
+			"receiver": null,
 			"name": "archiveThread",
+			"fqn": "Gg.Context.archiveThread",
+			"call": null,
+			"brief": "Move whole turns out of the context window and report what that reclaimed.",
+			"detail": "Every result carries a header with its turn number and roughly what holding it costs, so the turns worth dropping can be named: a span is inclusive at both ends, so `[ { from: 4, to: 19 } ]` archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable.\n\n# Raises\n\n`InvalidArgument` for a span whose ends are not turn numbers.",
 			"signatures": [
 				{
-					"signature": "archiveThread :: Array TurnRange -> Effect ReclaimReport",
+					"signature": "archiveThread :: Array Gg.Context.TurnRange -> Effect Gg.Context.ReclaimReport",
 					"parameters": [
 						{
 							"name": "ranges",
-							"type": "Array TurnRange",
+							"type": "Array Gg.Context.TurnRange",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The inclusive spans of turn numbers to move out of your window.",
+							"doc": "The inclusive spans of turn numbers to move out of the window.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Move whole turns out of your context window and report what that reclaimed.\n\nEvery result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: a span is inclusive at both ends, and `context.archiveThread [ { from: 4, to: 19 } ]` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `context.searchArchive`.\n\nRaises `ToolError`: `InvalidArgument` for a span whose ends are not turn numbers.",
 			"types": [
-				"TurnRange",
-				"ReclaimReport",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Context.TurnRange",
+					"fqn": "Gg.Context.TurnRange"
+				},
+				{
+					"spelled": "Gg.Context.ReclaimReport",
+					"fqn": "Gg.Context.ReclaimReport"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Context.ReclaimReport",
+					"fqn": "Gg.Context.ReclaimReport"
+				}
 			]
 		},
 		{
-			"tool": "search_archive",
-			"object": "context",
+			"operation": "context.search_archive",
+			"aliasOf": null,
+			"module": "context",
+			"kind": "function",
+			"receiver": null,
 			"name": "searchArchive",
+			"fqn": "Gg.Context.searchArchive",
+			"call": null,
+			"brief": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.",
+			"detail": "`archiveEmpty` is worth checking before `hits`: it distinguishes nothing having been archived yet from a search that ran and matched nothing, so a second archive is not made in the belief that the first one failed.",
 			"signatures": [
 				{
-					"signature": "searchArchive :: String -> Effect ArchiveSearch",
+					"signature": "searchArchive :: String -> Effect Gg.Context.ArchiveSearch",
 					"parameters": [
 						{
 							"name": "query",
@@ -1923,17 +2461,46 @@
 					]
 				}
 			],
-			"doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.\n\nCheck `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
 			"types": [
-				"ArchiveSearch",
-				"ArchiveHit",
-				"MessageRole"
+				{
+					"spelled": "Gg.Context.ArchiveSearch",
+					"fqn": "Gg.Context.ArchiveSearch"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Context.ArchiveHit",
+					"fqn": "Gg.Context.ArchiveHit"
+				},
+				{
+					"spelled": "Gg.Context.MessageRole",
+					"fqn": "Gg.Context.MessageRole"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Context.ArchiveSearch",
+					"fqn": "Gg.Context.ArchiveSearch"
+				}
 			]
 		},
 		{
-			"tool": "compact",
-			"object": "context",
+			"operation": "context.compact",
+			"aliasOf": null,
+			"module": "context",
+			"kind": "function",
+			"receiver": null,
 			"name": "compact",
+			"fqn": "Gg.Context.compact",
+			"call": null,
+			"brief": "Compact the context window: the detailed thread is dropped and restarted from a summary.",
+			"detail": "Each path in `files` is read afresh into the restarted window. Skills, memories and the task list are kept as they are. gg asks for this call when the window is full, and refuses every other call until it is made.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not in `files` is gone, so the summary is written for the agent that resumes, and the files it will need in hand are named.\n\n# Raises\n\n`Refused` when a compaction is already in flight and this call is not the one it asked for.",
 			"signatures": [
 				{
 					"signature": "compact :: String -> { files? :: Array String } -> Effect Unit",
@@ -1944,7 +2511,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What your restarted window opens with. Write it for your future self: everything not in it and not re-read from `files` is gone.",
+							"doc": "What the restarted window opens with. Everything not in it and not re-read from `files` is gone.",
 							"fields": []
 						},
 						{
@@ -1953,7 +2520,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What to read back into the restarted window; pass `{}` to read nothing back.",
+							"doc": "What to read back into the restarted window; `{}` reads nothing back.",
 							"fields": [
 								{
 									"name": "files",
@@ -1969,19 +2536,32 @@
 					]
 				}
 			],
-			"doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.\n\nYour skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do.\n\nIt does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.\n\nRaises `ToolError`: `Refused` when a compaction is already in flight and this call is not the one it asked for.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "spawn_subagent",
-			"object": "agents",
+			"operation": "delegation.spawn_subagent",
+			"aliasOf": null,
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
 			"name": "spawnSubagent",
+			"fqn": "Gg.Delegation.spawnSubagent",
+			"call": null,
+			"brief": "Delegate scoped work to a child agent, which runs in parallel while this program continues.",
+			"detail": "Its handle comes back immediately. The `agent` names the profile to run it as — one of the agents this one may spawn, which the system prompt lists — and it selects the child's model, tools and instructions. The brief is either `Gg.Delegation.Prompt \"self-contained instructions\"` or `Gg.Delegation.Issue \"AUTH-1\"`. The child shares this agent's workspace.\n\n# Raises\n\n`LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this agent may spawn.",
 			"signatures": [
 				{
-					"signature": "spawnSubagent :: String -> Brief -> Effect SubagentHandle",
+					"signature": "spawnSubagent :: String -> Gg.Delegation.Brief -> Effect Gg.Delegation.SubagentHandle",
 					"parameters": [
 						{
 							"name": "agent",
@@ -1989,36 +2569,60 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The agent profile to run the child as, from the ones you may spawn. It selects the child's model, tools and instructions.",
+							"doc": "The agent profile to run the child as, from the ones this agent may spawn. It selects the child's model, tools and instructions.",
 							"fields": []
 						},
 						{
 							"name": "brief",
-							"type": "Brief",
+							"type": "Gg.Delegation.Brief",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What the child is to do: `Prompt` with self-contained instructions, or `Issue` with the id of a board issue to brief it from.",
+							"doc": "What the child is to do: `Gg.Delegation.Prompt` with self-contained instructions, or `Gg.Delegation.Issue` with the id of a board issue to brief it from.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Delegate scoped work to a child agent and hand back its handle immediately — the child runs in parallel while your program continues.\n\nName the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with either `Prompt \"self-contained instructions\"` or `Issue \"AUTH-1\"`. The child shares your workspace.\n\nRaises `ToolError`: `LimitExceeded` at the delegation depth cap, and `InvalidArgument` if `agent` is not one you may spawn.",
 			"types": [
-				"Brief",
-				"SubagentHandle",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Delegation.Brief",
+					"fqn": "Gg.Delegation.Brief"
+				},
+				{
+					"spelled": "Gg.Delegation.SubagentHandle",
+					"fqn": "Gg.Delegation.SubagentHandle"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Delegation.SubagentHandle",
+					"fqn": "Gg.Delegation.SubagentHandle"
+				}
 			]
 		},
 		{
-			"tool": "wait_for_subagents",
-			"object": "agents",
+			"operation": "delegation.wait_for_subagents",
+			"aliasOf": null,
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
 			"name": "waitForSubagents",
+			"fqn": "Gg.Delegation.waitForSubagents",
+			"call": null,
+			"brief": "Block until the named children have finished, and collect their results in dispatch order.",
+			"detail": "With `{}` it waits for every outstanding child. The run's wall-clock budget keeps running while it waits, so one wait for many children costs far less than one wait per child.\n\n# Raises\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
-					"signature": "waitForSubagents :: { ids? :: Array String } -> Effect (Array SubagentResult)",
+					"signature": "waitForSubagents :: { ids? :: Array String } -> Effect (Array Gg.Delegation.SubagentResult)",
 					"parameters": [
 						{
 							"name": "options",
@@ -2026,7 +2630,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "Which children to wait for; pass `{}` to wait for every one still outstanding.",
+							"doc": "Which children to wait for; `{}` waits for every one still outstanding.",
 							"fields": [
 								{
 									"name": "ids",
@@ -2034,7 +2638,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "The children to wait for, as `agents.spawnSubagent` returned them.",
+									"doc": "The children to wait for, as their handles named them.",
 									"fields": []
 								}
 							]
@@ -2042,18 +2646,42 @@
 					]
 				}
 			],
-			"doc": "Block until the named children have finished — or, with `{}`, until every outstanding child has — and collect their results in dispatch order.\n\nThe run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child.\n\nRaises `ToolError`: `NotFound` for an unknown id.",
 			"types": [
-				"SubagentResult",
-				"AgentEnding",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Delegation.SubagentResult",
+					"fqn": "Gg.Delegation.SubagentResult"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Delegation.AgentEnding",
+					"fqn": "Gg.Delegation.AgentEnding"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Delegation.SubagentResult",
+					"fqn": "Gg.Delegation.SubagentResult"
+				}
 			]
 		},
 		{
-			"tool": "send_message",
-			"object": "agents",
+			"operation": "delegation.send_message",
+			"aliasOf": null,
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
 			"name": "sendMessage",
+			"fqn": "Gg.Delegation.sendMessage",
+			"call": null,
+			"brief": "Deliver a message to a running child agent's inbox, which it reads at its next turn.",
+			"detail": "# Raises\n\n`NotFound` for an unknown agent id, and `Conflict` when that child has already returned.",
 			"signatures": [
 				{
 					"signature": "sendMessage :: String -> String -> Effect Unit",
@@ -2064,7 +2692,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The child to deliver to, as `agents.spawnSubagent` returned it.",
+							"doc": "The child to deliver to, as its handle named it.",
 							"fields": []
 						},
 						{
@@ -2073,22 +2701,35 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What to put in its inbox. It reads it at its next turn.",
+							"doc": "What to put in its inbox.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.\n\nRaises `ToolError`: `NotFound` for an unknown agent id, and `Conflict` when that child has already returned.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "transition_state",
-			"object": "agents",
+			"operation": "delegation.transition_state",
+			"aliasOf": null,
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
 			"name": "transitionState",
+			"fqn": "Gg.Delegation.transitionState",
+			"call": null,
+			"brief": "Move the process this session runs inside on to another of its states.",
+			"detail": "The state is named the way an agent to spawn is named. It is bound only when a state machine is driving the session and the current state has somewhere to go. Like a compaction it is registered rather than performed: the call validates the target, returns, and the program runs on to its end — the transition happens after that, because replacing the agent and its window mid-program would pull every remaining call out from under it. The first declaration in a turn is the one that stands.\n\n# Raises\n\n`InvalidArgument` for a state this session may not move to, and `Refused` for a second declaration in one turn.",
 			"signatures": [
 				{
 					"signature": "transitionState :: String -> { note? :: String } -> Effect Unit",
@@ -2099,7 +2740,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The state to move on to, named the way you name an agent to spawn.",
+							"doc": "The state to move on to, named the way an agent to spawn is named.",
 							"fields": []
 						},
 						{
@@ -2108,7 +2749,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What to tell the next state's agent; pass `{}` to tell it nothing.",
+							"doc": "What to tell the next state's agent; `{}` tells it nothing.",
 							"fields": [
 								{
 									"name": "note",
@@ -2124,16 +2765,29 @@
 					]
 				}
 			],
-			"doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn.\n\nBound only when a state machine is driving you and the state you are in has somewhere to go. Like `context.compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands.\n\nRaises `ToolError`: `InvalidArgument` for a state you may not move to, and `Refused` for a second declaration in one turn.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "exec",
-			"object": "agents",
+			"operation": "delegation.exec",
+			"aliasOf": null,
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
 			"name": "exec",
+			"fqn": "Gg.Delegation.exec",
+			"call": null,
+			"brief": "Continue this session as a different agent, from the next turn.",
+			"detail": "The named agent takes over with its own model, tools and instructions, keeping every capability the two of them share — and the whole conversation above all, so it needs no catching up. Registered rather than performed, exactly as a state transition is and for the same reason: the window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. It is bound only when this agent may make agent transitions and has agents it may become, and never while a state machine is driving the session.\n\n# Raises\n\n`InvalidArgument` for an agent this agent may not become, and `Refused` for a second succession in one turn.",
 			"signatures": [
 				{
 					"signature": "exec :: String -> { prompt? :: String } -> Effect Unit",
@@ -2144,7 +2798,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The agent to become, from the ones you may become.",
+							"doc": "The agent to become, from the ones this agent may become.",
 							"fields": []
 						},
 						{
@@ -2153,7 +2807,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What to tell it; pass `{}` to tell it nothing.",
+							"doc": "What to tell it; `{}` tells it nothing.",
 							"fields": [
 								{
 									"name": "prompt",
@@ -2161,7 +2815,7 @@
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "Its opening message. It already has your whole conversation, so this is the instruction rather than a briefing.",
+									"doc": "Its opening message. It already has the whole conversation, so this is the instruction rather than a briefing.",
 									"fields": []
 								}
 							]
@@ -2169,19 +2823,32 @@
 					]
 				}
 			],
-			"doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.\n\nRegistered rather than performed, exactly as `agents.transitionState` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you.\n\nRaises `ToolError`: `InvalidArgument` for an agent you may not become, and `Refused` for a second succession in one turn.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		},
 		{
-			"tool": "fork",
-			"object": "agents",
+			"operation": "delegation.fork",
+			"aliasOf": null,
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
 			"name": "fork",
+			"fqn": "Gg.Delegation.fork",
+			"call": null,
+			"brief": "Run a copy of this agent, in parallel, on something it will not do itself.",
+			"detail": "The copy has the same model, the same tools and a private copy of the whole conversation, so the prompt is the *difference* rather than a briefing — everything already worked out is there.\n\nIts handle comes back immediately, and the copy itself starts once this turn's results are recorded, because the conversation it inherits has to be a complete one. A wait can therefore collect it only on a later turn, never in the program that made it.\n\n# Raises\n\n`LimitExceeded` at the delegation depth cap.",
 			"signatures": [
 				{
-					"signature": "fork :: String -> Effect SubagentHandle",
+					"signature": "fork :: String -> Effect Gg.Delegation.SubagentHandle",
 					"parameters": [
 						{
 							"name": "prompt",
@@ -2189,63 +2856,140 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What the copy is to do instead of what you are doing. It has your whole conversation already, so write the difference rather than a briefing.",
+							"doc": "What the copy is to do instead. It has the whole conversation already, so this is the difference rather than a briefing.",
 							"fields": []
 						}
 					]
 				}
 			],
-			"doc": "Run a copy of yourself, in parallel, on something you will not do yourself.\n\nThe copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `agents.waitForSubagents` can only collect it on a later turn — do not wait on it in the program that made it.\n\nRaises `ToolError`: `LimitExceeded` at the delegation depth cap.",
 			"types": [
-				"SubagentHandle",
-				"ToolError",
-				"ToolErrorCode"
+				{
+					"spelled": "Gg.Delegation.SubagentHandle",
+					"fqn": "Gg.Delegation.SubagentHandle"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Delegation.SubagentHandle",
+					"fqn": "Gg.Delegation.SubagentHandle"
+				}
 			]
-		}
-	],
-	"helpers": [
+		},
 		{
-			"key": "read_text_file",
-			"requires": "read_file",
-			"object": "fs",
-			"name": "readTextFile",
+			"operation": "skills.read_skill",
+			"aliasOf": null,
+			"module": "skills",
+			"kind": "function",
+			"receiver": null,
+			"name": "readSkill",
+			"fqn": "Gg.Skills.readSkill",
+			"call": null,
+			"brief": "Read a skill by name, handing back its body with the front matter stripped.",
+			"detail": "Reading it also pins that body permanently into the context window, so a skill once read stays read. A skill may be **code** rather than prose, or as well as it: code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it exports, reachable through `Gg.Core.lib`. An on-use script runs once the program has ended, and whatever it shows arrives on the next turn.\n\n# Raises\n\n`NotFound`, listing the skills that do exist, when the name is unknown.",
 			"signatures": [
 				{
-					"signature": "readTextFile :: String -> { offset? :: Int, limit? :: Int } -> Effect String",
+					"signature": "readSkill :: String -> Effect String",
 					"parameters": [
 						{
-							"name": "path",
+							"name": "name",
 							"type": "String",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The file to read. Relative to your workspace, or absolute.",
+							"doc": "The skill's name, as the system prompt lists it.",
 							"fields": []
-						},
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "programs.history",
+			"aliasOf": null,
+			"module": "programs",
+			"kind": "function",
+			"receiver": null,
+			"name": "history",
+			"fqn": "Gg.Programs.history",
+			"call": null,
+			"brief": "The programs already run this session, oldest first.",
+			"detail": "Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes rather than sources, so the one worth having is then fetched. The list survives a compaction, which makes it the way to find a program whose text has left the context window. A session that has run nothing yet gets an empty array rather than an error.",
+			"signatures": [
+				{
+					"signature": "history :: Effect (Array Gg.Programs.ProgramSummary)",
+					"parameters": []
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Programs.ProgramSummary",
+					"fqn": "Gg.Programs.ProgramSummary"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Programs.ProgramSummary",
+					"fqn": "Gg.Programs.ProgramSummary"
+				}
+			]
+		},
+		{
+			"operation": "programs.get",
+			"aliasOf": null,
+			"module": "programs",
+			"kind": "function",
+			"receiver": null,
+			"name": "get",
+			"fqn": "Gg.Programs.get",
+			"call": null,
+			"brief": "The exact source of one program that ran, as a string. With `{}`, the most recent one.",
+			"detail": "This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result back to be run. What comes back is the program that **executed**, so when a turn's program was itself handed over, the answer is the program that ran rather than the few lines that asked for it — and fetch, patch and run compose turn after turn.\n\n# Raises\n\n`NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+			"signatures": [
+				{
+					"signature": "get :: { turn? :: Int } -> Effect String",
+					"parameters": [
 						{
 							"name": "options",
-							"type": "{ offset? :: Int, limit? :: Int }",
+							"type": "{ turn? :: Int }",
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The window of lines to read; pass `{}` to read the whole file.",
+							"doc": "Which program to fetch; `{}` fetches the most recent one.",
 							"fields": [
 								{
-									"name": "offset",
+									"name": "turn",
 									"type": "Int",
 									"optional": true,
 									"kind": "positional",
 									"default": null,
-									"doc": "The 1-based line to start at. Honoured only under a capped read policy.",
-									"fields": []
-								},
-								{
-									"name": "limit",
-									"type": "Int",
-									"optional": true,
-									"kind": "positional",
-									"default": null,
-									"doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+									"doc": "The turn whose program to fetch, as the history reports it.",
 									"fields": []
 								}
 							]
@@ -2253,738 +2997,1216 @@
 					]
 				}
 			],
-			"doc": "Read a text file and hand back its contents directly — `fs.readFile` without the narrowing, for the common case.\n\nIt takes the same window options. Reading is the cheap direction of this sandbox, so a program that reads a dozen files to decide what to change is doing the right thing.\n\nRaises `ToolError`: `InvalidArgument` when the path names a picture; use `fs.readFile` to inspect those, and `view.openFile` to look at one.",
 			"types": [
-				"ToolError",
-				"ToolErrorCode"
-			]
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "programs.rerun",
+			"aliasOf": null,
+			"module": "programs",
+			"kind": "function",
+			"receiver": null,
+			"name": "rerun",
+			"fqn": "Gg.Programs.rerun",
+			"call": null,
+			"brief": "Hand gg a program to run in place of this one.",
+			"detail": "This program finishes, then gg compiles and runs the given source as this turn's program. Paired with a fetch it fixes a program without re-emitting it. Nothing is undone: every call this program already made stands, and the program that runs next sees the world this one left behind, so handing over comes before work that should not be done twice.\n\nThe first call stands, because a silently replaced program is a change nobody can see. A program that then fails cancels the hand-over along with everything else it decided, and the turn ends as an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program does the work.\n\n# Raises\n\n`Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.",
+			"signatures": [
+				{
+					"signature": "rerun :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "source",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The program to run in place of this one, as PureScript. It may not be blank.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "session.finish",
+			"aliasOf": null,
+			"module": "session",
+			"kind": "function",
+			"receiver": null,
+			"name": "finish",
+			"fqn": "Gg.Session.finish",
+			"call": null,
+			"brief": "End the session, reporting what was done in a sentence or two.",
+			"detail": "This is the only thing that ends it. It does not stop the program — whatever follows still runs — so it belongs last, once the calls before it have confirmed the work is really done. A program that then fails cancels the ending and earns another turn.",
+			"signatures": [
+				{
+					"signature": "finish :: String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "summary",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What was done, in a sentence or two.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "session.approve",
+			"aliasOf": null,
+			"module": "session",
+			"kind": "function",
+			"receiver": null,
+			"name": "approve",
+			"fqn": "Gg.Session.approve",
+			"call": null,
+			"brief": "Accept the work under review: it meets every completion criterion and stays in scope.",
+			"detail": "This ends the session, and does not stop the program, so it belongs last — once the change has actually been read.",
+			"signatures": [
+				{
+					"signature": "approve :: Effect Unit",
+					"parameters": []
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "session.request_changes",
+			"aliasOf": null,
+			"module": "session",
+			"kind": "function",
+			"receiver": null,
+			"name": "requestChanges",
+			"fqn": "Gg.Session.requestChanges",
+			"call": null,
+			"brief": "Reject the work under review, listing every change that must be made before it can be accepted.",
+			"detail": "Each item says what is wrong and what to change. The list may not be empty. This ends the session, and does not stop the program.\n\n# Raises\n\n`InvalidArgument` when the list is empty.",
+			"signatures": [
+				{
+					"signature": "requestChanges :: Array String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "items",
+							"type": "Array String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "Every change that must be made before the work can be accepted, one per entry: what is wrong, and what to change. It may not be empty.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
 		}
 	],
 	"types": [
 		{
-			"name": "ToolError",
-			"declaration": "type ToolError = { tool :: String, code :: ToolErrorCode, message :: String }",
-			"doc": "A gg call that failed.\n\nThrown by every function in this SDK. Catch it with `attempt` when a failure is expected and branch on its `code`; let it escape when it is not, and gg reports which call failed and where your program was.\n\n```\noutcome <- attempt (fs.readTextFile \"notes.md\" {})\ncase outcome of\n  Left failure | failure.code == NotFound -> void (fs.writeFile \"notes.md\" \"\")\n  Left failure -> throwException (error failure.message)\n  Right notes -> view.openText \"notes\" notes\n```\n\n`attempt` is what turns a throwing call into an `Either`; anything that is not a gg failure — a `Partial` crash in your own code, a division you guarded wrongly — is re-thrown by it rather than caught, because it is not something a `code` can be branched on. `toolError` is the same narrowing applied to an `Error` you already caught with `Effect.Exception.try`.",
-			"members": [
-				{
-					"name": "tool",
-					"type": "String",
-					"doc": "The gg call that failed, under gg's own name for it (`read_file`, `spawn_subagent`)."
-				},
-				{
-					"name": "code",
-					"type": "ToolErrorCode",
-					"doc": "The failure class, so a catch site branches on a value rather than on prose."
-				},
-				{
-					"name": "message",
-					"type": "String",
-					"doc": "What went wrong, in gg's words. Worth showing yourself; not worth matching on."
-				}
-			]
-		},
-		{
-			"name": "ToolErrorCode",
-			"declaration": "data ToolErrorCode = InvalidArgument | NotFound | Conflict | Refused | Unavailable | LimitExceeded | IoError | OtherFailure",
-			"doc": "Why a gg call failed — the `code` on a `ToolError`, and the value a catch site branches on instead of matching on prose.",
-			"members": [
-				{
-					"name": "InvalidArgument",
-					"type": null,
-					"doc": "The arguments were malformed, ill-typed, or out of range — including a path that is absolute or climbs out of the workspace, and an agent name this run does not declare."
-				},
-				{
-					"name": "NotFound",
-					"type": null,
-					"doc": "The named file, skill, memory, task, epic, issue, subagent, stored program, or documentation entry does not exist."
-				},
-				{
-					"name": "Conflict",
-					"type": null,
-					"doc": "Well-formed, but in conflict with the current state: an ambiguous edit, a dependency cycle, a duplicate id, a subagent that already returned."
-				},
-				{
-					"name": "Refused",
-					"type": null,
-					"doc": "gg refused the call on a rule about your state: a compaction in flight that this call is not the one it asked for, a memory call while your memories are read-only, a second ending or hand-over in a turn that already declared one, or a hook that blocked it. A ceiling you ran into is `LimitExceeded`, not this."
-				},
-				{
-					"name": "Unavailable",
-					"type": null,
-					"doc": "The call exists but this run's capability set does not offer it."
-				},
-				{
-					"name": "LimitExceeded",
-					"type": null,
-					"doc": "A gg-side ceiling was hit: a shell timeout, a store cap, the delegation depth cap, one of the view caps this program spends, or the run's wall-clock budget."
-				},
-				{
-					"name": "IoError",
-					"type": null,
-					"doc": "The underlying I/O or process failed."
-				},
-				{
-					"name": "OtherFailure",
-					"type": null,
-					"doc": "The failure was not classified. Reserved for outcomes raised outside a tool implementation; nothing you call produces it."
-				}
-			]
-		},
-		{
-			"name": "ShellOutput",
-			"declaration": "type ShellOutput = { exitCode :: Maybe Int, output :: String, truncated :: Boolean }",
-			"doc": "What a command `system.shell` ran reported when it finished.",
-			"members": [
-				{
-					"name": "exitCode",
-					"type": "Maybe Int",
-					"doc": "The process's exit status; `Nothing` when a signal killed it. Zero means success."
-				},
-				{
-					"name": "output",
-					"type": "String",
-					"doc": "Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output, at the configured line/character ceiling, with a note naming the files holding the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
-				},
-				{
-					"name": "truncated",
-					"type": "Boolean",
-					"doc": "Whether the cap cut `output`, dropping the head and keeping the tail."
-				}
-			]
-		},
-		{
+			"fqn": "Gg.Files.FileRead",
+			"module": "files",
 			"name": "FileRead",
-			"declaration": "data FileRead = TextFile TextFile | ImageFile ImageFile",
-			"doc": "What `fs.readFile` returned: a text file's window, or a picture's description.\n\nA picture is a different kind of thing from text, so it is a different arm rather than a string that happens to be binary — a program that treats an image as text is caught by the `case` instead of silently writing an empty string somewhere. Image *bytes* never enter the program: gg attaches the picture to the turn so you can look at it directly, which is worth far more than base64 in a variable.",
+			"declaration": "data FileRead = TextFile Gg.Files.TextFile | ImageFile Gg.Files.ImageFile",
+			"brief": "The result of a read: a text file's window, or a picture's description.",
+			"detail": "A picture is a different kind of thing from text, so it is a different arm rather than a string that happens to be binary — a program that treats an image as text is caught by the `case` instead of quietly writing an empty string somewhere. Image bytes never enter the program: gg attaches the picture to the turn instead, which is worth more than base64 in a variable.",
 			"members": [
 				{
 					"name": "TextFile",
-					"type": "TextFile",
-					"doc": "This file is text."
+					"type": "Gg.Files.TextFile",
+					"kind": "variant",
+					"brief": "The file is text.",
+					"detail": null
 				},
 				{
 					"name": "ImageFile",
-					"type": "ImageFile",
-					"doc": "This file is a picture; gg shows it to you rather than handing you its bytes."
+					"type": "Gg.Files.ImageFile",
+					"kind": "variant",
+					"brief": "The file is a picture, described rather than handed over as bytes.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
+			"fqn": "Gg.Files.TextFile",
+			"module": "files",
 			"name": "TextFile",
 			"declaration": "type TextFile = { contents :: String, firstLine :: Int, lastLine :: Int, totalLines :: Int, byteTruncated :: Boolean }",
-			"doc": "A text file's window, as the `TextFile` arm of a read carries it.",
+			"brief": "A text file's window, as the `TextFile` arm of a read carries it.",
+			"detail": null,
 			"members": [
 				{
 					"name": "contents",
 					"type": "String",
-					"doc": "The file's text, or just the requested window under a capped read policy."
+					"kind": "field",
+					"brief": "The file's text, or the requested window alone under a capped read policy.",
+					"detail": null
 				},
 				{
 					"name": "firstLine",
 					"type": "Int",
-					"doc": "The 1-based first line returned."
+					"kind": "field",
+					"brief": "The 1-based first line returned.",
+					"detail": null
 				},
 				{
 					"name": "lastLine",
 					"type": "Int",
-					"doc": "The 1-based last line returned."
+					"kind": "field",
+					"brief": "The 1-based last line returned.",
+					"detail": null
 				},
 				{
 					"name": "totalLines",
 					"type": "Int",
-					"doc": "The file's total line count, so you know whether to page again."
+					"kind": "field",
+					"brief": "The file's total line count, which is what says whether another page is left.",
+					"detail": null
 				},
 				{
 					"name": "byteTruncated",
 					"type": "Boolean",
-					"doc": "Whether a 256 KiB byte ceiling cut the returned text."
+					"kind": "field",
+					"brief": "Whether a 256 KiB byte ceiling cut the returned text.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
+			"fqn": "Gg.Files.ImageFile",
+			"module": "files",
 			"name": "ImageFile",
 			"declaration": "type ImageFile = { mediaType :: String, label :: String, bytes :: Int, shown :: Boolean, notShownReason :: Maybe String }",
-			"doc": "A picture's description, as the `ImageFile` arm of a read carries it.",
+			"brief": "A picture's description, as the `ImageFile` arm of a read carries it.",
+			"detail": null,
 			"members": [
 				{
 					"name": "mediaType",
 					"type": "String",
-					"doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+					"kind": "field",
+					"brief": "The IANA media type: `image/png`, `image/jpeg`, `image/gif` or `image/webp`.",
+					"detail": null
 				},
 				{
 					"name": "label",
 					"type": "String",
-					"doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+					"kind": "field",
+					"brief": "The short format label: `PNG`, `JPEG`, `GIF` or `WebP`.",
+					"detail": null
 				},
 				{
 					"name": "bytes",
 					"type": "Int",
-					"doc": "The file's size in bytes."
+					"kind": "field",
+					"brief": "The file's size in bytes.",
+					"detail": null
 				},
 				{
 					"name": "shown",
 					"type": "Boolean",
-					"doc": "Whether the picture is being attached to this turn for you to look at."
+					"kind": "field",
+					"brief": "Whether the picture is being attached to this turn to be looked at.",
+					"detail": null
 				},
 				{
 					"name": "notShownReason",
 					"type": "Maybe String",
-					"doc": "Why it is not being shown; `Nothing` when `shown` is true."
+					"kind": "field",
+					"brief": "Why it is not being attached; `Nothing` when `shown` is true.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
+			"fqn": "Gg.Files.DirEntry",
+			"module": "files",
 			"name": "DirEntry",
-			"declaration": "type DirEntry = { name :: String, kind :: EntryKind }",
-			"doc": "One entry `fs.listDir` found.",
+			"declaration": "type DirEntry = { name :: String, kind :: Gg.Files.EntryKind }",
+			"brief": "One entry of a listed directory.",
+			"detail": null,
 			"members": [
 				{
 					"name": "name",
 					"type": "String",
-					"doc": "The entry's bare name, with no directory part. Join it with the directory you listed."
+					"kind": "field",
+					"brief": "The entry's bare name, with no directory part.",
+					"detail": "Joining it with the directory that was listed is what produces a path another call accepts."
 				},
 				{
 					"name": "kind",
-					"type": "EntryKind",
-					"doc": "What the entry is."
+					"type": "Gg.Files.EntryKind",
+					"kind": "field",
+					"brief": "What the entry is.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
+			"fqn": "Gg.Files.EntryKind",
+			"module": "files",
 			"name": "EntryKind",
 			"declaration": "data EntryKind = FileEntry | DirectoryEntry | OtherEntry",
-			"doc": "What a directory entry is.",
+			"brief": "What a directory entry is.",
+			"detail": null,
 			"members": [
 				{
 					"name": "FileEntry",
 					"type": null,
-					"doc": "An ordinary file."
+					"kind": "variant",
+					"brief": "An ordinary file.",
+					"detail": null
 				},
 				{
 					"name": "DirectoryEntry",
 					"type": null,
-					"doc": "A directory, which you can list in turn."
+					"kind": "variant",
+					"brief": "A directory, which can be listed in turn.",
+					"detail": null
 				},
 				{
 					"name": "OtherEntry",
 					"type": null,
-					"doc": "Everything that is neither, a symlink among them."
+					"kind": "variant",
+					"brief": "Everything that is neither, a symlink among them.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
-			"name": "MemoryUsage",
-			"declaration": "type MemoryUsage = { count :: Int, maxCount :: Maybe Int, totalChars :: Int, maxTotalChars :: Maybe Int, indexChars :: Maybe Int, maxIndexChars :: Maybe Int }",
-			"doc": "How much of the run's durable-memory budget is used, after the call that returned it.\n\nEvery maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `Nothing` means nothing bounds that axis — check before subtracting.",
+			"fqn": "Gg.Shell.ShellOutput",
+			"module": "shell",
+			"name": "ShellOutput",
+			"declaration": "type ShellOutput = { exitCode :: Maybe Int, output :: String, truncated :: Boolean }",
+			"brief": "What a command reported when it finished.",
+			"detail": null,
 			"members": [
 				{
-					"name": "count",
-					"type": "Int",
-					"doc": "Memories currently held."
-				},
-				{
-					"name": "maxCount",
+					"name": "exitCode",
 					"type": "Maybe Int",
-					"doc": "The most memories this run allows, if it limits the count."
+					"kind": "field",
+					"brief": "The process's exit status; `Nothing` when a signal killed it. Zero means success.",
+					"detail": null
 				},
 				{
-					"name": "totalChars",
-					"type": "Int",
-					"doc": "Characters of body currently held, across all memories."
-				},
-				{
-					"name": "maxTotalChars",
-					"type": "Maybe Int",
-					"doc": "The most characters of body this run allows in total, if it limits the aggregate."
-				},
-				{
-					"name": "indexChars",
-					"type": "Maybe Int",
-					"doc": "Characters the memory index occupies, under a run that keeps one."
-				},
-				{
-					"name": "maxIndexChars",
-					"type": "Maybe Int",
-					"doc": "The most characters the index may occupy, if it is limited."
-				}
-			]
-		},
-		{
-			"name": "MemoryHit",
-			"declaration": "type MemoryHit = { name :: String, description :: String, matched :: Int, occurrences :: Int, excerpt :: String }",
-			"doc": "One memory `memory.searchMemories` matched, and the numbers it was ranked by.",
-			"members": [
-				{
-					"name": "name",
+					"name": "output",
 					"type": "String",
-					"doc": "The memory's slug — what `memory.readMemory` takes."
+					"kind": "field",
+					"brief": "Merged stdout and stderr, tail-truncated at 16 KiB.",
+					"detail": "Under a run that offloads shell output the ceiling is the configured line or character limit instead, and what is kept ends with a note naming the files that hold the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
 				},
 				{
-					"name": "description",
-					"type": "String",
-					"doc": "Its description, or `\"\"` when it was created without one."
-				},
-				{
-					"name": "matched",
-					"type": "Int",
-					"doc": "How many of your distinct keywords it matched — the primary ranking."
-				},
-				{
-					"name": "occurrences",
-					"type": "Int",
-					"doc": "How many times those keywords occur in it — the tiebreak."
-				},
-				{
-					"name": "excerpt",
-					"type": "String",
-					"doc": "A short window of the memory around its first match."
+					"name": "truncated",
+					"type": "Boolean",
+					"kind": "field",
+					"brief": "Whether the cap cut `output`, dropping the head and keeping the tail.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
-			"name": "TaskStatus",
-			"declaration": "data TaskStatus = TaskPending | TaskInProgress | TaskDone",
-			"doc": "Where a task stands.",
-			"members": [
-				{
-					"name": "TaskPending",
-					"type": null,
-					"doc": "Not started. Every task begins here."
-				},
-				{
-					"name": "TaskInProgress",
-					"type": null,
-					"doc": "Being worked on now."
-				},
-				{
-					"name": "TaskDone",
-					"type": null,
-					"doc": "Finished. Tasks blocked on it become actionable once all their blockers are done."
-				}
-			]
-		},
-		{
-			"name": "TaskUsage",
-			"declaration": "type TaskUsage = { count :: Int, maxTasks :: Int }",
-			"doc": "How much of the run's task budget is used, after the call that returned it.",
-			"members": [
-				{
-					"name": "count",
-					"type": "Int",
-					"doc": "Tasks currently on the list."
-				},
-				{
-					"name": "maxTasks",
-					"type": "Int",
-					"doc": "The most tasks this run allows."
-				}
-			]
-		},
-		{
-			"name": "IssueStatus",
-			"declaration": "data IssueStatus = IssueOpen | IssueInProgress | IssueDone",
-			"doc": "Where an issue stands.",
-			"members": [
-				{
-					"name": "IssueOpen",
-					"type": null,
-					"doc": "Not started, and dispatchable once its blockers are done."
-				},
-				{
-					"name": "IssueInProgress",
-					"type": null,
-					"doc": "Dispatched, with its assigned agent working on it."
-				},
-				{
-					"name": "IssueDone",
-					"type": null,
-					"doc": "Finished and, where this run requires reviewers, approved."
-				}
-			]
-		},
-		{
+			"fqn": "Gg.Board.BoardUsage",
+			"module": "board",
 			"name": "BoardUsage",
 			"declaration": "type BoardUsage = { epics :: Int, maxEpics :: Int, issues :: Int, maxIssues :: Int }",
-			"doc": "How much of the run's board budget is used, after the call that returned it.",
+			"brief": "How much of the run's board budget is used, after the call that returned it.",
+			"detail": null,
 			"members": [
 				{
 					"name": "epics",
 					"type": "Int",
-					"doc": "Epics currently on the board."
+					"kind": "field",
+					"brief": "Epics currently on the board.",
+					"detail": null
 				},
 				{
 					"name": "maxEpics",
 					"type": "Int",
-					"doc": "The most epics this run allows."
+					"kind": "field",
+					"brief": "The most epics this run allows.",
+					"detail": null
 				},
 				{
 					"name": "issues",
 					"type": "Int",
-					"doc": "Issues currently on the board."
+					"kind": "field",
+					"brief": "Issues currently on the board.",
+					"detail": null
 				},
 				{
 					"name": "maxIssues",
 					"type": "Int",
-					"doc": "The most issues this run allows."
+					"kind": "field",
+					"brief": "The most issues this run allows.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
+			"fqn": "Gg.Board.EpicCreated",
+			"module": "board",
 			"name": "EpicCreated",
-			"declaration": "type EpicCreated = { id :: String, board :: BoardUsage }",
-			"doc": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+			"declaration": "type EpicCreated = { id :: String, board :: Gg.Board.BoardUsage }",
+			"brief": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+			"detail": null,
 			"members": [
 				{
 					"name": "id",
 					"type": "String",
-					"doc": "The epic's id — the prefix you gave, upper-cased (`auth` → `AUTH`). Group issues under it with this, and its issues are numbered from it (`AUTH-1`)."
+					"kind": "field",
+					"brief": "The epic's id: the given prefix, upper-cased, so `auth` becomes `AUTH`.",
+					"detail": "It is what groups an issue under the epic, and the stem the epic's issues are numbered from (`AUTH-1`)."
 				},
 				{
 					"name": "board",
-					"type": "BoardUsage",
-					"doc": "How much of the board budget is used."
+					"type": "Gg.Board.BoardUsage",
+					"kind": "field",
+					"brief": "How much of the board budget is used.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
+			"fqn": "Gg.Board.IssueCreated",
+			"module": "board",
 			"name": "IssueCreated",
-			"declaration": "type IssueCreated = { id :: String, board :: BoardUsage }",
-			"doc": "An issue that was just created: the id the board assigned it, and the board budget.",
+			"declaration": "type IssueCreated = { id :: String, board :: Gg.Board.BoardUsage }",
+			"brief": "An issue that was just created: the id the board assigned it, and the board budget.",
+			"detail": null,
 			"members": [
 				{
 					"name": "id",
 					"type": "String",
-					"doc": "The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on this one, or to wait for it."
+					"kind": "field",
+					"brief": "The id the board assigned, such as `AUTH-1`.",
+					"detail": "The board chooses it rather than the caller. It is what blocks a later issue on this one, and what waits for it."
 				},
 				{
 					"name": "board",
-					"type": "BoardUsage",
-					"doc": "How much of the board budget is used."
+					"type": "Gg.Board.BoardUsage",
+					"kind": "field",
+					"brief": "How much of the board budget is used.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
-			"name": "ReclaimReport",
-			"declaration": "type ReclaimReport = { items :: Int, reclaimedTokens :: Int, paths :: Array String, detail :: String }",
-			"doc": "What a context reclaim actually freed from the live context window.",
+			"fqn": "Gg.Board.IssueStatus",
+			"module": "board",
+			"name": "IssueStatus",
+			"declaration": "data IssueStatus = IssueOpen | IssueInProgress | IssueDone",
+			"brief": "Where an issue stands.",
+			"detail": null,
 			"members": [
 				{
-					"name": "items",
+					"name": "IssueOpen",
+					"type": null,
+					"kind": "variant",
+					"brief": "Not started, and dispatchable once its blockers are done.",
+					"detail": null
+				},
+				{
+					"name": "IssueInProgress",
+					"type": null,
+					"kind": "variant",
+					"brief": "Dispatched, with its assigned agent working on it.",
+					"detail": null
+				},
+				{
+					"name": "IssueDone",
+					"type": null,
+					"kind": "variant",
+					"brief": "Finished and, where this run requires reviewers, approved.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Tasks.TaskStatus",
+			"module": "tasks",
+			"name": "TaskStatus",
+			"declaration": "data TaskStatus = TaskPending | TaskInProgress | TaskDone",
+			"brief": "Where a task stands.",
+			"detail": null,
+			"members": [
+				{
+					"name": "TaskPending",
+					"type": null,
+					"kind": "variant",
+					"brief": "Not started. Every task begins here.",
+					"detail": null
+				},
+				{
+					"name": "TaskInProgress",
+					"type": null,
+					"kind": "variant",
+					"brief": "Being worked on now.",
+					"detail": null
+				},
+				{
+					"name": "TaskDone",
+					"type": null,
+					"kind": "variant",
+					"brief": "Finished. Tasks blocked on it become actionable once all their blockers are done.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Tasks.TaskUsage",
+			"module": "tasks",
+			"name": "TaskUsage",
+			"declaration": "type TaskUsage = { count :: Int, maxTasks :: Int }",
+			"brief": "How much of the run's task budget is used, after the call that returned it.",
+			"detail": null,
+			"members": [
+				{
+					"name": "count",
 					"type": "Int",
-					"doc": "Context items dropped from the live window."
+					"kind": "field",
+					"brief": "Tasks currently on the list.",
+					"detail": null
 				},
 				{
-					"name": "reclaimedTokens",
+					"name": "maxTasks",
 					"type": "Int",
-					"doc": "Approximately how many tokens that freed."
-				},
-				{
-					"name": "paths",
-					"type": "Array String",
-					"doc": "The workspace paths whose views were evicted. Empty for an archive."
-				},
-				{
-					"name": "detail",
-					"type": "String",
-					"doc": "The prose summary of what was reclaimed."
+					"kind": "field",
+					"brief": "The most tasks this run allows.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
-			"name": "TurnRange",
-			"declaration": "type TurnRange = { from :: Int, to :: Int }",
-			"doc": "An inclusive span of turn numbers, the unit `context.archiveThread` moves out of the window.\n\nThe numbers are the ones on the header of every result you are given, so `{ from: 4, to: 19 }` means exactly the turns you can see numbered 4 through 19 — both ends included.",
+			"fqn": "Gg.Memories.MemoryUsage",
+			"module": "memories",
+			"name": "MemoryUsage",
+			"declaration": "type MemoryUsage = { count :: Int, maxCount :: Maybe Int, totalChars :: Int, maxTotalChars :: Maybe Int, indexChars :: Maybe Int, maxIndexChars :: Maybe Int }",
+			"brief": "How much of the run's durable-memory budget is used, after the call that returned it.",
+			"detail": "Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `Nothing` means nothing bounds that axis and is worth checking before subtracting.",
 			"members": [
 				{
-					"name": "from",
+					"name": "count",
 					"type": "Int",
-					"doc": "The first turn in the span."
+					"kind": "field",
+					"brief": "Memories currently held.",
+					"detail": null
 				},
 				{
-					"name": "to",
+					"name": "maxCount",
+					"type": "Maybe Int",
+					"kind": "field",
+					"brief": "The most memories this run allows, if it limits the count.",
+					"detail": null
+				},
+				{
+					"name": "totalChars",
 					"type": "Int",
-					"doc": "The last turn in the span, inclusive."
+					"kind": "field",
+					"brief": "Characters of body currently held, across all memories.",
+					"detail": null
+				},
+				{
+					"name": "maxTotalChars",
+					"type": "Maybe Int",
+					"kind": "field",
+					"brief": "The most characters of body this run allows in total, if it limits the aggregate.",
+					"detail": null
+				},
+				{
+					"name": "indexChars",
+					"type": "Maybe Int",
+					"kind": "field",
+					"brief": "Characters the memory index occupies, under a run that keeps one.",
+					"detail": null
+				},
+				{
+					"name": "maxIndexChars",
+					"type": "Maybe Int",
+					"kind": "field",
+					"brief": "The most characters the index may occupy, if it is limited.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
 		},
 		{
-			"name": "ArchiveHit",
-			"declaration": "type ArchiveHit = { seq :: Int, role :: MessageRole, text :: String }",
-			"doc": "One archived message that matched a search.",
-			"members": [
-				{
-					"name": "seq",
-					"type": "Int",
-					"doc": "The archived message's sequence number."
-				},
-				{
-					"name": "role",
-					"type": "MessageRole",
-					"doc": "Who said it."
-				},
-				{
-					"name": "text",
-					"type": "String",
-					"doc": "The message text."
-				}
-			]
-		},
-		{
-			"name": "MessageRole",
-			"declaration": "data MessageRole = SystemMessage | UserMessage | AssistantMessage | ToolMessage",
-			"doc": "Who said an archived message.",
-			"members": [
-				{
-					"name": "SystemMessage",
-					"type": null,
-					"doc": "The system prompt."
-				},
-				{
-					"name": "UserMessage",
-					"type": null,
-					"doc": "A turn's input to you — a result, a view, or an operator's instruction."
-				},
-				{
-					"name": "AssistantMessage",
-					"type": null,
-					"doc": "Something you said."
-				},
-				{
-					"name": "ToolMessage",
-					"type": null,
-					"doc": "A tool result, on a session that made tool calls rather than writing programs."
-				}
-			]
-		},
-		{
-			"name": "ArchiveSearch",
-			"declaration": "type ArchiveSearch = { archiveEmpty :: Boolean, hits :: Array ArchiveHit }",
-			"doc": "What `context.searchArchive` found.",
-			"members": [
-				{
-					"name": "archiveEmpty",
-					"type": "Boolean",
-					"doc": "Nothing has been archived yet, so there was nothing to search. Deliberately distinct from a search that ran and matched nothing, so you do not archive again believing the first archive failed."
-				},
-				{
-					"name": "hits",
-					"type": "Array ArchiveHit",
-					"doc": "The matches, most recent first, at most 8."
-				}
-			]
-		},
-		{
-			"name": "ViewKind",
-			"declaration": "data ViewKind = FileView | TextView | DocsView",
-			"doc": "Which of the three kinds a view is.\n\nThe taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
-			"members": [
-				{
-					"name": "FileView",
-					"type": null,
-					"doc": "A file you opened; its selector is the path."
-				},
-				{
-					"name": "TextView",
-					"type": null,
-					"doc": "A value you showed yourself; its selector is the label you gave it. A directory listing, a command's output, a child agent's answer and a table you assembled are all this."
-				},
-				{
-					"name": "DocsView",
-					"type": null,
-					"doc": "A function's documentation; its selector is the function's name."
-				}
-			]
-		},
-		{
-			"name": "ViewRegion",
-			"declaration": "type ViewRegion = { offset :: Int, limit :: Int }",
-			"doc": "The window of lines a **paged** file view covers.",
-			"members": [
-				{
-					"name": "offset",
-					"type": "Int",
-					"doc": "The 1-based first line the view shows."
-				},
-				{
-					"name": "limit",
-					"type": "Int",
-					"doc": "How many lines it shows."
-				}
-			]
-		},
-		{
-			"name": "OpenView",
-			"declaration": "type OpenView = { kind :: ViewKind, selector :: String, tokens :: Int, region :: Maybe ViewRegion }",
-			"doc": "One view open in your context window, as `view.current` reports it.",
-			"members": [
-				{
-					"name": "kind",
-					"type": "ViewKind",
-					"doc": "Whether it is a file, text, or documentation view."
-				},
-				{
-					"name": "selector",
-					"type": "String",
-					"doc": "What `view.close` takes: a file's path, a text view's label, or a docs view's function name."
-				},
-				{
-					"name": "tokens",
-					"type": "Int",
-					"doc": "Roughly what holding it costs you, in tokens."
-				},
-				{
-					"name": "region",
-					"type": "Maybe ViewRegion",
-					"doc": "The line window a paged file view covers; `Nothing` for a whole-file view and for text views."
-				}
-			]
-		},
-		{
-			"name": "Brief",
-			"declaration": "data Brief = Prompt String | Issue String",
-			"doc": "What a child agent is briefed with.\n\nThe choice is the type rather than a pair of optional fields, so \"both\" and \"neither\" are programs that do not compile instead of calls that fail at run time.",
-			"members": [
-				{
-					"name": "Prompt",
-					"type": "String",
-					"doc": "Self-contained instructions for the child, which needs no other context."
-				},
-				{
-					"name": "Issue",
-					"type": "String",
-					"doc": "The id of a board issue to brief the child from, as `project.createIssue` returned it."
-				}
-			]
-		},
-		{
-			"name": "SubagentHandle",
-			"declaration": "type SubagentHandle = { id :: String, slot :: String, modelId :: String }",
-			"doc": "A child agent that was spawned and is now running in parallel.",
-			"members": [
-				{
-					"name": "id",
-					"type": "String",
-					"doc": "The child's id — pass it to `agents.waitForSubagents` or `agents.sendMessage`."
-				},
-				{
-					"name": "slot",
-					"type": "String",
-					"doc": "The agent profile it runs as."
-				},
-				{
-					"name": "modelId",
-					"type": "String",
-					"doc": "The model actually bound to that agent."
-				}
-			]
-		},
-		{
-			"name": "AgentEnding",
-			"declaration": "data AgentEnding = AgentCompleted | AgentExhausted | AgentTimedOut | AgentModelError | AgentAuthError | AgentLimitExceeded",
-			"doc": "How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.",
-			"members": [
-				{
-					"name": "AgentCompleted",
-					"type": null,
-					"doc": "It finished normally: it called `harness.finish`, and its summary is what it returned."
-				},
-				{
-					"name": "AgentExhausted",
-					"type": null,
-					"doc": "It hit the per-run turn ceiling."
-				},
-				{
-					"name": "AgentTimedOut",
-					"type": null,
-					"doc": "It passed its wall-clock deadline."
-				},
-				{
-					"name": "AgentModelError",
-					"type": null,
-					"doc": "A model turn failed."
-				},
-				{
-					"name": "AgentAuthError",
-					"type": null,
-					"doc": "The run's credential was refused."
-				},
-				{
-					"name": "AgentLimitExceeded",
-					"type": null,
-					"doc": "An execution ceiling stopped it — consecutive errors, error rate, or cost."
-				}
-			]
-		},
-		{
-			"name": "SubagentResult",
-			"declaration": "type SubagentResult = { id :: String, status :: Maybe AgentEnding, summary :: String }",
-			"doc": "One child agent's collected result.",
-			"members": [
-				{
-					"name": "id",
-					"type": "String",
-					"doc": "The child's id."
-				},
-				{
-					"name": "status",
-					"type": "Maybe AgentEnding",
-					"doc": "How it finished; `Nothing` when it produced no return value at all."
-				},
-				{
-					"name": "summary",
-					"type": "String",
-					"doc": "Its final message."
-				}
-			]
-		},
-		{
-			"name": "ProgramSummary",
-			"declaration": "type ProgramSummary = { turn :: Int, lines :: Int, chars :: Int, ok :: Boolean, error :: Maybe String }",
-			"doc": "One program you have already run, as `programs.history` lists it.\n\nIt describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in front of you, which is the one thing the library exists to avoid. Fetch the source you actually want with `programs.get`.",
-			"members": [
-				{
-					"name": "turn",
-					"type": "Int",
-					"doc": "The turn it ran on — what `programs.get` takes."
-				},
-				{
-					"name": "lines",
-					"type": "Int",
-					"doc": "How many lines of source it was."
-				},
-				{
-					"name": "chars",
-					"type": "Int",
-					"doc": "How many characters of source it was."
-				},
-				{
-					"name": "ok",
-					"type": "Boolean",
-					"doc": "Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it."
-				},
-				{
-					"name": "error",
-					"type": "Maybe String",
-					"doc": "The error it ended with, when it did not run to its end."
-				}
-			]
-		},
-		{
-			"name": "FunctionSummary",
-			"declaration": "type FunctionSummary = { name :: String, summary :: String }",
-			"doc": "One function in an API object's directory, as `list` returns it.\n\nThe summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `view.openDocsView`.",
+			"fqn": "Gg.Memories.MemoryHit",
+			"module": "memories",
+			"name": "MemoryHit",
+			"declaration": "type MemoryHit = { name :: String, description :: String, matched :: Int, occurrences :: Int, excerpt :: String }",
+			"brief": "One memory a search matched, and the numbers it was ranked by.",
+			"detail": null,
 			"members": [
 				{
 					"name": "name",
 					"type": "String",
-					"doc": "The function name on its object — `readFile` in `fs.readFile`."
+					"kind": "field",
+					"brief": "The memory's slug, which is what a read takes.",
+					"detail": null
+				},
+				{
+					"name": "description",
+					"type": "String",
+					"kind": "field",
+					"brief": "Its description, or `\"\"` when it was created without one.",
+					"detail": null
+				},
+				{
+					"name": "matched",
+					"type": "Int",
+					"kind": "field",
+					"brief": "How many distinct keywords of the query it matched — the primary ranking.",
+					"detail": null
+				},
+				{
+					"name": "occurrences",
+					"type": "Int",
+					"kind": "field",
+					"brief": "How many times those keywords occur in it — the tiebreak.",
+					"detail": null
+				},
+				{
+					"name": "excerpt",
+					"type": "String",
+					"kind": "field",
+					"brief": "A short window of the memory around its first match.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Views.ViewKind",
+			"module": "views",
+			"name": "ViewKind",
+			"declaration": "data ViewKind = FileView | TextView | DocsView",
+			"brief": "Which of the three kinds a view is.",
+			"detail": "The taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
+			"members": [
+				{
+					"name": "FileView",
+					"type": null,
+					"kind": "variant",
+					"brief": "A file that was opened; its selector is the path.",
+					"detail": null
+				},
+				{
+					"name": "TextView",
+					"type": null,
+					"kind": "variant",
+					"brief": "A computed value; its selector is the label it was given.",
+					"detail": "A directory listing, a command's output, a child agent's answer and an assembled table are all this."
+				},
+				{
+					"name": "DocsView",
+					"type": null,
+					"kind": "variant",
+					"brief": "A function's documentation; its selector is the function's name.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Views.ViewRegion",
+			"module": "views",
+			"name": "ViewRegion",
+			"declaration": "type ViewRegion = { offset :: Int, limit :: Int }",
+			"brief": "The window of lines a **paged** file view covers.",
+			"detail": null,
+			"members": [
+				{
+					"name": "offset",
+					"type": "Int",
+					"kind": "field",
+					"brief": "The 1-based first line the view shows.",
+					"detail": null
+				},
+				{
+					"name": "limit",
+					"type": "Int",
+					"kind": "field",
+					"brief": "How many lines it shows.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Views.OpenView",
+			"module": "views",
+			"name": "OpenView",
+			"declaration": "type OpenView = { kind :: Gg.Views.ViewKind, selector :: String, tokens :: Int, region :: Maybe Gg.Views.ViewRegion }",
+			"brief": "One view open in the context window right now.",
+			"detail": null,
+			"members": [
+				{
+					"name": "kind",
+					"type": "Gg.Views.ViewKind",
+					"kind": "field",
+					"brief": "Whether it is a file, a text or a documentation view.",
+					"detail": null
+				},
+				{
+					"name": "selector",
+					"type": "String",
+					"kind": "field",
+					"brief": "What closes it: a file's path, a text view's label, or a docs view's name.",
+					"detail": null
+				},
+				{
+					"name": "tokens",
+					"type": "Int",
+					"kind": "field",
+					"brief": "Roughly what holding it costs, in tokens.",
+					"detail": null
+				},
+				{
+					"name": "region",
+					"type": "Maybe Gg.Views.ViewRegion",
+					"kind": "field",
+					"brief": "The line window a paged file view covers.",
+					"detail": "`Nothing` for a whole-file view and for every text view."
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Context.ReclaimReport",
+			"module": "context",
+			"name": "ReclaimReport",
+			"declaration": "type ReclaimReport = { items :: Int, reclaimedTokens :: Int, paths :: Array String, detail :: String }",
+			"brief": "What a context reclaim actually freed from the live context window.",
+			"detail": null,
+			"members": [
+				{
+					"name": "items",
+					"type": "Int",
+					"kind": "field",
+					"brief": "Context items dropped from the live window.",
+					"detail": null
+				},
+				{
+					"name": "reclaimedTokens",
+					"type": "Int",
+					"kind": "field",
+					"brief": "Approximately how many tokens that freed.",
+					"detail": null
+				},
+				{
+					"name": "paths",
+					"type": "Array String",
+					"kind": "field",
+					"brief": "The workspace paths whose views were evicted. Empty for an archive.",
+					"detail": null
+				},
+				{
+					"name": "detail",
+					"type": "String",
+					"kind": "field",
+					"brief": "The prose summary of what was reclaimed.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Context.TurnRange",
+			"module": "context",
+			"name": "TurnRange",
+			"declaration": "type TurnRange = { from :: Int, to :: Int }",
+			"brief": "An inclusive span of turn numbers, the unit an archive moves out of the window.",
+			"detail": "The numbers are the ones on the header of every result the agent is given, so `{ from: 4, to: 19 }` means exactly the turns numbered 4 through 19, both ends included.",
+			"members": [
+				{
+					"name": "from",
+					"type": "Int",
+					"kind": "field",
+					"brief": "The first turn in the span.",
+					"detail": null
+				},
+				{
+					"name": "to",
+					"type": "Int",
+					"kind": "field",
+					"brief": "The last turn in the span, inclusive.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Context.ArchiveHit",
+			"module": "context",
+			"name": "ArchiveHit",
+			"declaration": "type ArchiveHit = { seq :: Int, role :: Gg.Context.MessageRole, text :: String }",
+			"brief": "One archived message that matched a search.",
+			"detail": null,
+			"members": [
+				{
+					"name": "seq",
+					"type": "Int",
+					"kind": "field",
+					"brief": "The archived message's sequence number.",
+					"detail": null
+				},
+				{
+					"name": "role",
+					"type": "Gg.Context.MessageRole",
+					"kind": "field",
+					"brief": "Who said it.",
+					"detail": null
+				},
+				{
+					"name": "text",
+					"type": "String",
+					"kind": "field",
+					"brief": "The message text.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Context.MessageRole",
+			"module": "context",
+			"name": "MessageRole",
+			"declaration": "data MessageRole = SystemMessage | UserMessage | AssistantMessage | ToolMessage",
+			"brief": "Who said an archived message.",
+			"detail": null,
+			"members": [
+				{
+					"name": "SystemMessage",
+					"type": null,
+					"kind": "variant",
+					"brief": "The system prompt.",
+					"detail": null
+				},
+				{
+					"name": "UserMessage",
+					"type": null,
+					"kind": "variant",
+					"brief": "A turn's input: a result, a view, or an operator's instruction.",
+					"detail": null
+				},
+				{
+					"name": "AssistantMessage",
+					"type": null,
+					"kind": "variant",
+					"brief": "Something the agent itself said.",
+					"detail": null
+				},
+				{
+					"name": "ToolMessage",
+					"type": null,
+					"kind": "variant",
+					"brief": "A tool result, on a session that made tool calls rather than writing programs.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Context.ArchiveSearch",
+			"module": "context",
+			"name": "ArchiveSearch",
+			"declaration": "type ArchiveSearch = { archiveEmpty :: Boolean, hits :: Array Gg.Context.ArchiveHit }",
+			"brief": "What a search of the archive found.",
+			"detail": null,
+			"members": [
+				{
+					"name": "archiveEmpty",
+					"type": "Boolean",
+					"kind": "field",
+					"brief": "Nothing has been archived yet, so there was nothing to search.",
+					"detail": "Deliberately distinct from a search that ran and matched nothing, so that a second archive is not made in the belief that the first one failed."
+				},
+				{
+					"name": "hits",
+					"type": "Array Gg.Context.ArchiveHit",
+					"kind": "field",
+					"brief": "The matches, most recent first, at most 8.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Delegation.Brief",
+			"module": "delegation",
+			"name": "Brief",
+			"declaration": "data Brief = Prompt String | Issue String",
+			"brief": "What a child agent is briefed with.",
+			"detail": "The choice is a type rather than a pair of optional fields, so \"both\" and \"neither\" are programs that do not compile instead of calls that fail at run time.",
+			"members": [
+				{
+					"name": "Prompt",
+					"type": "String",
+					"kind": "variant",
+					"brief": "Self-contained instructions for a child that needs no other context.",
+					"detail": null
+				},
+				{
+					"name": "Issue",
+					"type": "String",
+					"kind": "variant",
+					"brief": "The id of a board issue to brief the child from.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Delegation.SubagentHandle",
+			"module": "delegation",
+			"name": "SubagentHandle",
+			"declaration": "type SubagentHandle = { id :: String, slot :: String, modelId :: String }",
+			"brief": "A child agent that was spawned and is now running in parallel.",
+			"detail": null,
+			"members": [
+				{
+					"name": "id",
+					"type": "String",
+					"kind": "field",
+					"brief": "The child's id, which is what waits for it or sends it a message.",
+					"detail": null
+				},
+				{
+					"name": "slot",
+					"type": "String",
+					"kind": "field",
+					"brief": "The agent profile it runs as.",
+					"detail": null
+				},
+				{
+					"name": "modelId",
+					"type": "String",
+					"kind": "field",
+					"brief": "The model actually bound to that agent.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Delegation.AgentEnding",
+			"module": "delegation",
+			"name": "AgentEnding",
+			"declaration": "data AgentEnding = AgentCompleted | AgentExhausted | AgentTimedOut | AgentModelError | AgentAuthError | AgentLimitExceeded",
+			"brief": "How a child agent's loop ended — gg's own six words, as the tool-calling path also reports them.",
+			"detail": null,
+			"members": [
+				{
+					"name": "AgentCompleted",
+					"type": null,
+					"kind": "variant",
+					"brief": "It finished normally, and its summary is what it returned.",
+					"detail": null
+				},
+				{
+					"name": "AgentExhausted",
+					"type": null,
+					"kind": "variant",
+					"brief": "It reached the per-run turn ceiling.",
+					"detail": null
+				},
+				{
+					"name": "AgentTimedOut",
+					"type": null,
+					"kind": "variant",
+					"brief": "It passed its wall-clock deadline.",
+					"detail": null
+				},
+				{
+					"name": "AgentModelError",
+					"type": null,
+					"kind": "variant",
+					"brief": "A model turn failed.",
+					"detail": null
+				},
+				{
+					"name": "AgentAuthError",
+					"type": null,
+					"kind": "variant",
+					"brief": "The run's credential was refused.",
+					"detail": null
+				},
+				{
+					"name": "AgentLimitExceeded",
+					"type": null,
+					"kind": "variant",
+					"brief": "An execution ceiling stopped it: consecutive errors, error rate, or cost.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Delegation.SubagentResult",
+			"module": "delegation",
+			"name": "SubagentResult",
+			"declaration": "type SubagentResult = { id :: String, status :: Maybe Gg.Delegation.AgentEnding, summary :: String }",
+			"brief": "One child agent's collected result.",
+			"detail": null,
+			"members": [
+				{
+					"name": "id",
+					"type": "String",
+					"kind": "field",
+					"brief": "The child's id.",
+					"detail": null
+				},
+				{
+					"name": "status",
+					"type": "Maybe Gg.Delegation.AgentEnding",
+					"kind": "field",
+					"brief": "How it finished; `Nothing` when it produced no return value at all.",
+					"detail": null
 				},
 				{
 					"name": "summary",
 					"type": "String",
-					"doc": "One line saying what it does: the first sentence of its documentation."
+					"kind": "field",
+					"brief": "Its final message.",
+					"detail": null
 				}
-			]
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Programs.ProgramSummary",
+			"module": "programs",
+			"name": "ProgramSummary",
+			"declaration": "type ProgramSummary = { turn :: Int, lines :: Int, chars :: Int, ok :: Boolean, error :: Maybe String }",
+			"brief": "One program that has already run, as the library's directory lists it.",
+			"detail": "It describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in the context window, which is the one thing the library exists to avoid.",
+			"members": [
+				{
+					"name": "turn",
+					"type": "Int",
+					"kind": "field",
+					"brief": "The turn it ran on, which is what fetches its source.",
+					"detail": null
+				},
+				{
+					"name": "lines",
+					"type": "Int",
+					"kind": "field",
+					"brief": "How many lines of source it was.",
+					"detail": null
+				},
+				{
+					"name": "chars",
+					"type": "Int",
+					"kind": "field",
+					"brief": "How many characters of source it was.",
+					"detail": null
+				},
+				{
+					"name": "ok",
+					"type": "Boolean",
+					"kind": "field",
+					"brief": "Whether it ran to its end, with no uncaught failure and no sandbox ceiling stopping it.",
+					"detail": null
+				},
+				{
+					"name": "error",
+					"type": "Maybe String",
+					"kind": "field",
+					"brief": "The error it ended with, when it did not run to its end.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Core.ToolError",
+			"module": "core",
+			"name": "ToolError",
+			"declaration": "type ToolError = { tool :: String, code :: Gg.Core.ToolErrorCode, message :: String }",
+			"brief": "A gg call that failed, thrown by every function in this SDK.",
+			"detail": "An expected failure is caught with `attempt` and branched on its `code`; an unexpected one is left to escape, and gg reports which call failed and where the program had reached.",
+			"members": [
+				{
+					"name": "tool",
+					"type": "String",
+					"kind": "field",
+					"brief": "The gg call that failed, under gg's own name for it.",
+					"detail": "`read_file`, `spawn_subagent`: the vocabulary a run's enabled set is expressed in rather than this SDK's spelling of it."
+				},
+				{
+					"name": "code",
+					"type": "Gg.Core.ToolErrorCode",
+					"kind": "field",
+					"brief": "The failure class, so a catch site branches on a value rather than on prose.",
+					"detail": null
+				},
+				{
+					"name": "message",
+					"type": "String",
+					"kind": "field",
+					"brief": "What went wrong, in gg's words. Worth showing in a view; not worth matching on.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Core.ToolErrorCode",
+			"module": "core",
+			"name": "ToolErrorCode",
+			"declaration": "data ToolErrorCode = InvalidArgument | NotFound | Conflict | Refused | Unavailable | LimitExceeded | IoError | OtherFailure",
+			"brief": "Why a gg call failed — the `code` a catch site branches on instead of matching on prose.",
+			"detail": null,
+			"members": [
+				{
+					"name": "InvalidArgument",
+					"type": null,
+					"kind": "variant",
+					"brief": "The arguments were malformed, ill-typed, or out of range.",
+					"detail": "It covers a path that is absolute or climbs out of the workspace, and an agent name this run does not declare."
+				},
+				{
+					"name": "NotFound",
+					"type": null,
+					"kind": "variant",
+					"brief": "The named thing does not exist.",
+					"detail": "A file, a skill, a memory, a task, an epic, an issue, a subagent, a stored program, or a documentation entry."
+				},
+				{
+					"name": "Conflict",
+					"type": null,
+					"kind": "variant",
+					"brief": "Well-formed, and in conflict with the current state.",
+					"detail": "An ambiguous edit, a dependency cycle, a duplicate id, a subagent that has already returned."
+				},
+				{
+					"name": "Refused",
+					"type": null,
+					"kind": "variant",
+					"brief": "gg refused the call on a rule about the session's state.",
+					"detail": "A compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending or hand-over in a turn that already declared one, or a hook that blocked it. A ceiling that was reached is `LimitExceeded` rather than this."
+				},
+				{
+					"name": "Unavailable",
+					"type": null,
+					"kind": "variant",
+					"brief": "The call exists and this run's capability set does not offer it.",
+					"detail": "Every name in this SDK is in scope whatever a run enables, because the library is compiled once and a run's capability set is decided per run — so a withheld call arrives as this rather than as a compile error."
+				},
+				{
+					"name": "LimitExceeded",
+					"type": null,
+					"kind": "variant",
+					"brief": "A gg-side ceiling was reached.",
+					"detail": "A shell timeout, a store cap, the delegation depth cap, or the run's wall-clock budget."
+				},
+				{
+					"name": "IoError",
+					"type": null,
+					"kind": "variant",
+					"brief": "The underlying input, output or process failed.",
+					"detail": null
+				},
+				{
+					"name": "OtherFailure",
+					"type": null,
+					"kind": "variant",
+					"brief": "The failure was not classified.",
+					"detail": "Reserved for outcomes raised outside a tool implementation; no call in this SDK produces it."
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Core.FunctionSummary",
+			"module": "core",
+			"name": "FunctionSummary",
+			"declaration": "type FunctionSummary = { name :: String, summary :: String }",
+			"brief": "One function in a module's directory, as `list` hands it back.",
+			"detail": "The summary is one line. A function's whole documentation — every shape it may be called in, what each argument is for, and the types it refers to — is a view, opened with `Gg.Views.openDocsView`.",
+			"members": [
+				{
+					"name": "name",
+					"type": "String",
+					"kind": "field",
+					"brief": "The function's name in its module: `readFile` in `Gg.Files.readFile`.",
+					"detail": null
+				},
+				{
+					"name": "summary",
+					"type": "String",
+					"kind": "field",
+					"brief": "One line saying what it does.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
 		}
 	]
 }

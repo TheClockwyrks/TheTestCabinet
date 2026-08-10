@@ -1,70 +1,69 @@
-"""Ending the session — the model-facing functions that are not gg tools.
+"""End the session, with the ending that belongs to this agent's role.
 
-They live beside the tools rather than among them because nothing about them is a tool: no capability
-offers them, they dispatch nothing, and one group of them is bound into every program's scope
-including one in a run that enables no tools at all. Keeping them out of `TOOL_CATALOGUE` is what
-keeps that array in exact bijection with the gg tool vocabulary the component is checked against.
+Under responses as code every reply is a program, so there is no prose turn that could mean "the work
+is done" — a model that answers "task complete" has written a reply that failed to be a program, not
+an ending. These are the calls that mean it, and a run binds only the group its agent's role has: an
+agent doing work gets `finish`, and a reviewer gets `approve` and `request_changes` instead.
 
-**Why a session needs them at all.** Under responses-as-code every reply is a program, so there is no
-prose turn that could mean "I am done" — a model that answers "task complete" has written a reply
-that failed to be a program, not an ending.
-
-**Why there is more than one.** An ending is a *result*, and different roles produce different
-results: an agent doing work reports what it did, and a reviewer returns a verdict. Each is a
-different shape, so each is a different call whose signature carries exactly what that result is made
-of, and `gg.scope` binds one group per program. A role's ending is therefore the only ending its
-program can express — and nothing has to be read back out of prose.
-
-**Why they are one line each.** Ending is a fact about the *agent*, not about the program that
-declared it, so the flag lives in the agent's host-side context and this module holds none of it: no
-module state to reset between programs, no sentinel exception, no unwind. The host records the
-declaration, keeps it while the program runs on, and revokes it if the program then fails — decisions
-that belong where the session is owned rather than inside a sandbox the program shares a scope with.
-
-Every docstring below is **model-facing**: it is reflected into the signature catalogue and is what a
-documentation view answers with. It says what to call and when, and nothing about the harness.
+None of them stops the program. Whatever follows an ending still runs, so an ending belongs last —
+and a program that then fails has its ending revoked along with everything else it decided.
 """
 
 from __future__ import annotations
 
 from wit_world.imports import session as wire
 
-from .errors import _call, _strings
+from ._registry import operation
+from .core import _call, _strings
+
+__all__ = ["approve", "finish", "request_changes"]
 
 
+@operation("session.finish")
 def finish(summary: str) -> None:
-    """End your session, reporting what you did in a sentence or two. This is the only thing that
-    ends it.
+    """End the session, reporting what was done in a sentence or two.
 
-    It does not stop your program — whatever follows it still runs — so call it last, once the tools
-    have confirmed the work is really done. If your program then fails, the ending is cancelled and
-    you get another turn.
+    This is the only thing that ends a working agent's session. It does not stop the program —
+    whatever follows it still runs — so it belongs last, once the tools have confirmed the work is
+    really done. A program that then fails has the ending cancelled and gets another turn.
 
     Args:
-        summary: What you did, in a sentence or two.
+        summary: What was done, in a sentence or two.
+
+    Raises:
+        ToolError: `invalid-argument` for a blank summary, and `unavailable` when this agent's role
+            ends its session some other way.
     """
     _call(wire.finish, summary)
 
 
+@operation("session.approve")
 def approve() -> None:
-    """Accept the work you are reviewing: it meets every completion criterion and stays in scope.
-    This ends your session.
+    """Accept the work under review: it meets every completion criterion and stays in scope.
 
-    It does not stop your program — whatever follows it still runs — so call it last, once you have
-    actually read the change.
+    This ends the session. It does not stop the program — whatever follows it still runs — so it
+    belongs last, once the change has actually been read. It takes nothing, because an approval
+    carries no obligation beyond itself.
+
+    Raises:
+        ToolError: `unavailable` when this agent's role ends its session some other way.
     """
     _call(wire.approve)
 
 
+@operation("session.request_changes")
 def request_changes(items: list[str]) -> None:
-    """Reject the work you are reviewing, listing every change that must be made before it can be
-    accepted.
+    """Reject the work under review, listing every change that must be made before acceptance.
 
-    Each item says what is wrong and what to change; the list may not be empty. This ends your
-    session, and does not stop your program.
+    This ends the session, and does not stop the program. Each item says what is wrong and what to
+    change.
 
     Args:
         items: Every change that must be made before the work can be accepted, one per entry: what is
             wrong, and what to change. It may not be empty.
+
+    Raises:
+        ToolError: `invalid-argument` when the list is empty, and `unavailable` when this agent's
+            role ends its session some other way.
     """
     _call(wire.request_changes, _strings("request_changes", "items", items))

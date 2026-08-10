@@ -350,30 +350,30 @@ fn the_sdk_hands_a_program_values_ruby_can_read() {
     // means concretely on this arm.
     let (outcome, _log) = run_with(
         r##"
-read = fs.read_file("notes.md")
+read = GG::Files.read_file("notes.md")
 case read
-when TextFile
+when GG::Files::TextFile
   puts "#{read.contents.lines.first.strip} #{read.first_line}..#{read.last_line} of #{read.total_lines}"
   puts read.byte_truncated?
-when ImageFile
+when GG::Files::ImageFile
   puts "unexpectedly an image"
 end
 
 # A value object is a value: equality is by contents, `to_h` names its fields, and a pattern
 # destructures it.
-puts(fs.read_file("notes.md") == read)
+puts(GG::Files.read_file("notes.md") == read)
 puts read.to_h.keys.join(",")
 case read
-in TextFile[contents:, total_lines:]
+in GG::Files::TextFile[contents:, total_lines:]
   puts "pattern #{contents.lines.first.strip} #{total_lines}"
 end
 
-entries = fs.list_dir(".")
+entries = GG::Files.list_dir(".")
 puts entries.map { |entry| "#{entry.name}:#{entry.kind}" }.join(" ")
-puts(entries.first.kind == EntryKind::FILE)
+puts(entries.first.kind == GG::Files::EntryKind::FILE)
 puts entries.first.kind.inspect
 
-out = system.shell("true")
+out = GG::Shell.run("true")
 puts "#{out.exit_code} #{out.truncated?}"
 "##,
         &all_tools(),
@@ -405,14 +405,14 @@ puts "#{out.exit_code} #{out.truncated?}"
     let (outcome, _log) = run_with(
         r##"
 begin
-  fs.read_file("missing.md")
-rescue ToolError => failure
-  puts "#{failure.tool} #{failure.code} #{failure.code == ToolErrorCode::NOT_FOUND}"
+  GG::Files.read_file("missing.md")
+rescue GG::Core::ToolError => failure
+  puts "#{failure.tool} #{failure.code} #{failure.code == GG::Core::ToolErrorCode::NOT_FOUND}"
   puts failure.message
 end
 
 begin
-  tasks.update_task("t1", status: :nearly)
+  GG::Tasks.update_task("t1", status: :nearly)
 rescue => failure
   puts failure.message
 end
@@ -443,20 +443,20 @@ end
 fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     // A tool this run does not offer is not a name in the program's surface, so reaching for it
     // raises `NoMethodError` — Ruby's own answer — and the guest classifies that as the unknown name
-    // it is, listing the objects the run *did* give.
-    let outcome = run("system.shell(\"ls\")\n");
+    // it is, listing the modules the run *did* give.
+    let outcome = run("GG::Shell.run(\"ls\")\n");
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("view"),
-        "the refusal names the objects this run does offer: {}",
+        error.message.contains("GG::Views"),
+        "the refusal names the modules this run does offer: {}",
         error.message
     );
 
-    // An object that exists with the function withheld says something better than Ruby would, and
-    // points at the directory every object carries.
+    // A module that exists with the function withheld says something better than Ruby would, and
+    // points at the directory every module carries.
     let (outcome, _log) = run_with(
-        "fs.write_file(\"a\", \"b\")\n",
+        "GG::Files.write_file(\"a\", \"b\")\n",
         &["read_file".into()],
         &[],
         canned_outcome,
@@ -464,33 +464,39 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("fs.write_file") && error.message.contains("fs.list"),
+        error.message.contains("GG::Files.write_file") && error.message.contains("GG::Files.list"),
         "the refusal names the call and the directory: {}",
         error.message
     );
 
-    // The surface is not the enforcement. A program that reaches past it — into the SDK's own
-    // module, which is an ordinary Ruby constant — is refused by the HOST, with the wire's own
-    // `unavailable`, and never reaches the tool. That is the property a language whose SDK is an
-    // ordinary library cannot provide for itself.
+    // AND A WITHHELD CALL NEVER REACHES THE INVOKER. With the API object abolished, the module a
+    // program calls through IS the surface: `GG::Scope` lifts every declaration off its module at
+    // load and puts back only what this run offers, so there is no second name in Ruby through
+    // which the implementation could be reached. What the model gets is Ruby's own `NoMethodError`
+    // at the line it wrote, rather than a tool result three steps later.
+    //
+    // The host refusal is still the enforcement and still the *last* word — a program that reaches
+    // the membrane for a withheld tool is refused there, whichever guest it came from — but on this
+    // arm a Ruby program can no longer produce that case, which is the honest consequence of the
+    // surface and the library becoming one namespace. It comes back when this arm's SDK becomes
+    // static.
     let (outcome, log) = run_with(
-        r##"
-begin
-  GG::Files.read_file("notes.md")
-rescue ToolError => failure
-  puts "#{failure.tool} #{failure.code == ToolErrorCode::UNAVAILABLE}"
-end
-"##,
+        "GG::Files.read_file(\"notes.md\")\n",
         &["write_file".to_string()],
         &[],
         canned_outcome,
     );
-    assert_eq!(logs(&outcome), ["read_file true"]);
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error.message.contains("GG::Files.read_file"),
+        "the refusal names the call the model wrote: {}",
+        error.message
+    );
     assert!(
         log.calls().is_empty(),
         "a withheld tool never reaches the invoker"
     );
-    assert_eq!(outcome.refusals.len(), 1, "the refusal is recorded");
 }
 
 #[test]
@@ -542,7 +548,7 @@ end
     // A failed tool call is reported as the tool failure it is, carrying the membrane's own code, so
     // gg classifies the turn from the code rather than from what this guest made of the raise.
     let (outcome, _log) = run_with(
-        "fs.read_file(\"gone.md\")\n",
+        "GG::Files.read_file(\"gone.md\")\n",
         &all_tools(),
         &[],
         |name: &str, args: &Value| {
@@ -587,7 +593,7 @@ def double(n) = n * 2
 def greeting = "from a skill"
 
 def first_line(path)
-  fs.read_file(path).contents.lines.first.strip
+  GG::Files.read_file(path).contents.lines.first.strip
 end
 "##,
             ),
@@ -667,77 +673,77 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            program: "system.shell(\"npm test\", timeout_secs: 30)",
+            program: "GG::Shell.run(\"npm test\", timeout_secs: 30)",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            program: "fs.read_file(\"src/a.rb\", offset: 2, limit: 5)",
+            program: "GG::Files.read_file(\"src/a.rb\", offset: 2, limit: 5)",
             expected: || json!({ "path": "src/a.rb", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            program: "fs.write_file(\"out.txt\") { \"hello\" }",
+            program: "GG::Files.write_file(\"out.txt\") { \"hello\" }",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            program: "fs.edit_file(\"src/a.rb\", \"alpha\", \"beta\")",
+            program: "GG::Files.edit_file(\"src/a.rb\", \"alpha\", \"beta\")",
             expected: || json!({ "path": "src/a.rb", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            program: "fs.list_dir(\"src\")",
+            program: "GG::Files.list_dir(\"src\")",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            program: "skills.read_skill(\"testing\")",
+            program: "GG::Skills.read_skill(\"testing\")",
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            program: "memory.write_memory(\"layout\", \"d\", \"b\")",
+            program: "GG::Memories.write_memory(\"layout\", \"d\", \"b\")",
             expected: || json!({ "name": "layout", "description": "d", "body": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "update_memory",
-            program: "memory.update_memory(\"layout\", \"d2\", \"b2\")",
+            program: "GG::Memories.update_memory(\"layout\", \"d2\", \"b2\")",
             expected: || json!({ "name": "layout", "description": "d2", "body": "b2", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "create_memory",
-            program: "memory.create_memory(\"layout\", \"d\", \"b\")",
+            program: "GG::Memories.create_memory(\"layout\", \"d\", \"b\")",
             expected: || json!({ "name": "layout", "description": "d", "contents": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "read_memory",
-            program: "memory.read_memory(\"layout\")",
+            program: "GG::Memories.read_memory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            program: "memory.edit_memory(\"layout\", \"old\", \"new\")",
+            program: "GG::Memories.edit_memory(\"layout\", \"old\", \"new\")",
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            program: "memory.search_memories(\"cargo\", \"nextest\")",
+            program: "GG::Memories.search_memories(\"cargo\", \"nextest\")",
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            program: "memory.delete_memory(\"layout\")",
+            program: "GG::Memories.delete_memory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            program: "tasks.add_task(\"t1\", \"T\", description: \"D\", blocked_by: [\"t0\"])",
+            program: "GG::Tasks.add_task(\"t1\", \"T\", description: \"D\", blocked_by: [\"t0\"])",
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            program: "tasks.update_task(\"t1\", title: \"T2\", description: nil, status: :in_progress)",
+            program: "GG::Tasks.update_task(\"t1\", title: \"T2\", description: nil, status: :in_progress)",
             expected: || {
                 // `description: nil` is the sentinel that CLEARS it — the argument left out is the
                 // one that keeps it — and `in_progress` is gg's own spelling, so the membrane's
@@ -747,27 +753,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            program: "tasks.set_blocked_by(\"t1\")",
+            program: "GG::Tasks.set_blocked_by(\"t1\")",
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            program: "tasks.complete_task(\"t1\")",
+            program: "GG::Tasks.complete_task(\"t1\")",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            program: "tasks.remove_task(\"t1\")",
+            program: "GG::Tasks.remove_task(\"t1\")",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            program: "project.create_epic(\"epc\", \"E\", \"D\")",
+            program: "GG::Board.create_epic(\"epc\", \"E\", \"D\")",
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            program: "project.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers: [\"critic\"])",
+            program: "GG::Board.create_issue(\"I\", \"s\", \"o\", \"c\", \"worker\", reviewers: [\"critic\"])",
             expected: || {
                 json!({
                     "title": "I",
@@ -784,7 +790,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            program: "project.update_issue(\"i1\", status: :done, epic_id: nil)",
+            program: "GG::Board.update_issue(\"i1\", status: :done, epic_id: nil)",
             expected: || {
                 // `epic_id: nil` ungroups the issue, which gg's schema spells as the empty string;
                 // a `description` left out keeps the one it has, so its key is absent entirely.
@@ -801,74 +807,74 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            program: "project.set_issue_blocked_by(\"i1\", \"i0\")",
+            program: "GG::Board.set_issue_blocked_by(\"i1\", \"i0\")",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            program: "project.remove_epic(\"e1\")",
+            program: "GG::Board.remove_epic(\"e1\")",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            program: "project.remove_issue(\"i1\")",
+            program: "GG::Board.remove_issue(\"i1\")",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            program: "project.wait_for_issue(\"i1\")",
+            program: "GG::Board.wait_for_issue(\"i1\")",
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            program: "context.evict_file_view(\"src/a.rb\")",
+            program: "GG::Context.evict_file_view(\"src/a.rb\")",
             expected: || json!({ "path": "src/a.rb" }),
         },
         Crossing {
             tool: "archive_thread",
             // A span of turns is a Ruby `Range`, which is what a span of integers is in this
             // language — and an exclusive one means the same thing, which is why both are here.
-            program: "context.archive_thread(4..19, 30...36)",
+            program: "GG::Context.archive_thread(4..19, 30...36)",
             expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
         },
         Crossing {
             tool: "search_archive",
-            program: "context.search_archive(\"the parser\")",
+            program: "GG::Context.search_archive(\"the parser\")",
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            program: "context.compact(\"scaffolded the page\", files: [\"src/main.rb\"])",
+            program: "GG::Context.compact(\"scaffolded the page\", files: [\"src/main.rb\"])",
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/main.rb"] }),
         },
         Crossing {
             tool: "spawn_subagent",
-            program: "agents.spawn_subagent(\"subagent\", prompt: \"write the lexer\")",
+            program: "GG::Delegation.spawn_subagent(\"subagent\", prompt: \"write the lexer\")",
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            program: "agents.wait_for_subagents(\"agent-1\")",
+            program: "GG::Delegation.wait_for_subagents(\"agent-1\")",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            program: "agents.send_message(\"agent-1\", \"prefer the simpler parser\")",
+            program: "GG::Delegation.send_message(\"agent-1\", \"prefer the simpler parser\")",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            program: "agents.transition_state(\"verify\", \"the build is green\")",
+            program: "GG::Delegation.transition_state(\"verify\", \"the build is green\")",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            program: "agents.exec(\"Builder\", \"pick it up from here\")",
+            program: "GG::Delegation.exec(\"Builder\", \"pick it up from here\")",
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            program: "agents.fork(\"try the other fix\")",
+            program: "GG::Delegation.fork(\"try the other fix\")",
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -920,21 +926,21 @@ fn the_view_object_the_program_library_and_the_endings_are_reached_in_ruby_too()
     // silent bridging mistake would cost the most.
     let (outcome, _log) = run_as(
         r##"
-view.open_text("summary", "eight files, two failing")
-view.open_text("scratch") { ["a", "b"].join("\n") }
-open = view.current
-puts "#{open.size} #{open.map(&:selector).join(",")} #{open.first.kind == ViewKind::TEXT} #{open.first.tokens}"
-puts "#{view.close("scratch")} #{view.close("never opened")} #{view.current.size}"
+GG::Views.open_text("summary", "eight files, two failing")
+GG::Views.open_text("scratch") { ["a", "b"].join("\n") }
+open = GG::Views.current
+puts "#{open.size} #{open.map(&:selector).join(",")} #{open.first.kind == GG::Views::ViewKind::TEXT} #{open.first.tokens}"
+puts "#{GG::Views.close("scratch")} #{GG::Views.close("never opened")} #{GG::Views.current.size}"
 
 # The documentation of a function, named with a Symbol, with a String, and with the method itself.
-view.open_docs_view(:read_file)
-view.open_docs_view("write_file")
-view.open_docs_view(fs.method(:read_file))
+GG::Views.open_docs_view(:read_file)
+GG::Views.open_docs_view("write_file")
+GG::Views.open_docs_view(GG::Files.method(:read_file))
 
-whole = view.open_file("notes.md")
-puts "#{whole.class} #{view.current.select { |v| v.kind == ViewKind::FILE }.map(&:region).inspect}"
-puts fs.list.map { |entry| "#{entry.name}: #{entry.summary}" }.join(",")
-harness.finish("done")
+whole = GG::Views.open_file("notes.md")
+puts "#{whole.class} #{GG::Views.current.select { |v| v.kind == GG::Views::ViewKind::FILE }.map(&:region).inspect}"
+puts GG::Files.list.map { |entry| "#{entry.name}: #{entry.summary}" }.join(",")
+GG::Session.finish("done")
 "##,
         &all_tools(),
         &[],
@@ -945,16 +951,23 @@ harness.finish("done")
     let lines = logs(&outcome);
     assert_eq!(lines[0], "2 summary,scratch true 6");
     assert_eq!(lines[1], "1 0 1");
-    assert!(lines[2].starts_with("GG::TextFile"), "{:?}", lines[2]);
-    assert_eq!(lines[3], "fsFunction: a function on `fs`");
+    assert!(
+        lines[2].starts_with("GG::Files::TextFile"),
+        "{:?}",
+        lines[2]
+    );
+    assert_eq!(
+        lines[3], "GG::FilesFunction: a function on `GG::Files`",
+        "a module's directory is asked for under the module's own path, not gg's word for it"
+    );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer
     // gets the other ending group and no `finish` at all.
     let (outcome, _log) = run_as(
         r##"
-puts programs.history.size
-programs.rerun("puts 'the replacement'\n")
-review.request_changes("widen the test", "name the file")
+puts GG::Programs.history.size
+GG::Programs.rerun("puts 'the replacement'\n")
+GG::Session.request_changes("widen the test", "name the file")
 "##,
         &[],
         &[],
@@ -989,7 +1002,7 @@ review.request_changes("widen the test", "name the file")
         outcome.views_opened
     );
 
-    let outcome = run("harness.finish(\"done\")\n");
+    let outcome = run("GG::Session.finish(\"done\")\n");
     assert_eq!(
         program_error(&outcome).kind,
         ProgramErrorKind::UnknownName,
@@ -1113,20 +1126,21 @@ fn the_baked_runtime_and_sdk_are_what_make_a_turn_affordable() {
     );
 
     // One thing the threshold above is too coarse to catch, and which was measured costing ~3 ms of
-    // the reading — a third of a turn — before it was moved: the calling shape of every SDK
-    // function, which `GG::ApiObject` needs to refuse a wrong argument count or an unknown keyword.
-    // Reflecting it with `Method#parameters` when a run binds its objects is per-turn work;
-    // reflecting it at the SDK's top level puts it in the snapshot `wizer` takes. That it really is
-    // in the snapshot is asserted rather than assumed, because the two are indistinguishable from
-    // inside a program and the slow one is the one that happens by default.
-    let outcome = run("puts GG::ApiObject::SHAPES.size
-puts GG::ApiObject::SHAPES.frozen?
+    // the reading — a third of a turn — before it was moved: the implementation and the calling
+    // shape of every declaration, which `GG::Scope` needs in order to put back what a run offers
+    // and to refuse a wrong argument count or an unknown keyword. Reflecting it with
+    // `Method#parameters` when a run builds its surface is per-turn work; lifting it at the SDK's
+    // top level puts it in the snapshot `wizer` takes. That it really is in the snapshot is
+    // asserted rather than assumed, because the two are indistinguishable from inside a program and
+    // the slow one is the one that happens by default.
+    let outcome = run("puts GG::Scope::IMPLEMENTATIONS.size
+puts GG::Scope::IMPLEMENTATIONS.frozen?
 ");
     let baked = logs(&outcome);
     assert_eq!(baked[1], "true", "the table is closed once it is built");
     assert!(
         baked[0].parse::<usize>().expect("a count") >= 35,
-        "the shape table came out of the snapshot with only {} entries, so it is being built per \
+        "the lifted table came out of the snapshot with only {} entries, so it is being built per \
          turn instead",
         baked[0]
     );
@@ -1374,15 +1388,14 @@ fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
     // The first arm to carry an entry with more than one signature, which is the half of the
     // catalogue schema nothing had produced: a block is how a Ruby program passes a long body, and
     // an overload group is how that is said without changing what the function is.
-    let overloaded: Vec<&str> = document["views"]
+    let overloaded: Vec<&str> = document["functions"]
         .as_array()
-        .into_iter()
-        .chain(document["tools"].as_array())
-        .flatten()
+        .expect("the catalogue's `functions` is an array")
+        .iter()
         .filter(|entry| entry["signatures"].as_array().is_some_and(|s| s.len() > 1))
-        .map(|entry| entry["name"].as_str().expect("a name"))
+        .map(|entry| entry["fqn"].as_str().expect("a name"))
         .collect();
-    assert_eq!(overloaded, ["open_text", "write_file"]);
+    assert_eq!(overloaded, ["GG::Files.write_file", "GG::Views.open_text"]);
 }
 
 #[test]
@@ -1393,60 +1406,44 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     // that is not there.
     let catalogue: Value =
         serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
-    let named = |section: &str| -> Vec<(String, String)> {
-        catalogue[section]
-            .as_array()
-            .unwrap_or_else(|| panic!("the catalogue's `{section}` is an array"))
-            .iter()
-            .map(|entry| {
-                (
-                    entry["object"].as_str().expect("an object").to_string(),
-                    entry["name"].as_str().expect("a name").to_string(),
-                )
-            })
-            .collect()
-    };
-
-    // A standard agent that keeps a library: every tool, every helper, every view function, the
-    // whole program library, and the `harness` ending — plus the `list` every object carries, which
-    // is checked against each object the catalogue describes rather than against a section of its
-    // own, because that is how it is bound.
-    let mut expected: Vec<(String, String)> = named("tools");
-    expected.extend(named("helpers"));
-    expected.extend(named("views"));
-    expected.extend(named("programs"));
-    expected.extend(
-        catalogue["session"]
-            .as_array()
-            .expect("an array")
-            .iter()
-            .filter(|entry| entry["ending"] == json!("standard"))
-            .map(|entry| {
-                (
-                    entry["object"].as_str().expect("an object").to_string(),
-                    entry["name"].as_str().expect("a name").to_string(),
-                )
-            }),
-    );
-    let meta: Vec<String> = catalogue["meta"]
+    let functions = catalogue["functions"]
         .as_array()
-        .expect("an array")
-        .iter()
-        .map(|entry| entry["name"].as_str().expect("a name").to_string())
-        .collect();
-    for object in catalogue["objects"].as_array().expect("an array") {
-        let object = object["object"].as_str().expect("an object name");
-        // `review` is the other role's ending object, and this program is a standard agent's.
-        if object == "review" {
+        .expect("the catalogue's `functions` is an array");
+
+    // A standard agent that keeps a library is offered every operation but the reviewer's two
+    // endings, so every other entry names something the guest must really bind. The fully-qualified
+    // name says how to ask: `.` reaches a module function on its module, `#` an instance method on
+    // the class it hangs off.
+    let asked = |entry: &Value| -> Option<String> {
+        let operation = entry["operation"].as_str().expect("an operation");
+        if operation == "session.approve" || operation == "session.request_changes" {
+            return None;
+        }
+        let fqn = entry["fqn"].as_str().expect("a fully-qualified name");
+        Some(match fqn.split_once('#') {
+            Some((owner, name)) => format!("{owner}.method_defined?(:{name})"),
+            None => {
+                let (owner, name) = fqn.rsplit_once('.').expect("a module-qualified name");
+                format!("{owner}.respond_to?(:{name})")
+            }
+        })
+    };
+    let mut calls: Vec<String> = functions.iter().filter_map(asked).collect();
+
+    // Plus the directory every module that offers something carries. It is seeded onto each module
+    // rather than catalogued on one, which is why it is checked against the modules rather than
+    // found among the functions — and `core` declares no function at all, so it carries none.
+    let meta = catalogue["meta"][0]["name"]
+        .as_str()
+        .expect("the meta function is catalogued");
+    for module in catalogue["modules"].as_array().expect("an array") {
+        if module["id"] == json!("core") {
             continue;
         }
-        expected.extend(meta.iter().map(|name| (object.to_string(), name.clone())));
+        let path = module["path"].as_str().expect("a module path");
+        calls.push(format!("{path}.respond_to?(:{meta})"));
     }
 
-    let calls: Vec<String> = expected
-        .iter()
-        .map(|(object, name)| format!("{object}.respond_to?(:{name})"))
-        .collect();
     let program = format!(
         "puts [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
         calls.join(", ")
@@ -1462,21 +1459,20 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     assert_eq!(
         logs(&outcome),
         [vec!["ok"; calls.len()].join(",")],
-        "every call the catalogue describes is bound on the object it names"
+        "every call the catalogue describes is bound on the module it names"
     );
 
     // The reviewer's ending is the other group, and it is bound only for the role that produces it.
-    let review: Vec<String> = catalogue["session"]
-        .as_array()
-        .expect("an array")
+    let review: Vec<String> = functions
         .iter()
-        .filter(|entry| entry["ending"] == json!("review"))
+        .filter(|entry| {
+            entry["operation"] == json!("session.approve")
+                || entry["operation"] == json!("session.request_changes")
+        })
         .map(|entry| {
-            format!(
-                "{}.respond_to?(:{})",
-                entry["object"].as_str().expect("an object"),
-                entry["name"].as_str().expect("a name")
-            )
+            let fqn = entry["fqn"].as_str().expect("a fully-qualified name");
+            let (owner, name) = fqn.rsplit_once('.').expect("a module-qualified name");
+            format!("{owner}.respond_to?(:{name})")
         })
         .collect();
     let (outcome, _log) = run_as(
@@ -1492,24 +1488,19 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     );
     assert_eq!(logs(&outcome), [vec!["ok"; review.len()].join(",")]);
 
-    // And every TYPE it declares is a name a program can write, because a signature that mentions
-    // one a program cannot name is a signature a model cannot act on: `4..19` is an argument,
-    // `ToolError` is what a `rescue` clause catches, and `TaskStatus::DONE` is a status.
-    let types: Vec<String> = catalogue["types"]
+    // And every TYPE it declares is a name a program can write, under the fully-qualified name the
+    // catalogue advertises — because a signature that mentions one a program cannot name is a
+    // signature a model cannot act on: `4..19` is an argument, `GG::Core::ToolError` is what a
+    // `rescue` clause catches, and `GG::Tasks::TaskStatus::DONE` is a status. Named as constants
+    // rather than asked for by string, so an absent one is a `NameError` on the line that wrote it.
+    let types: Vec<&str> = catalogue["types"]
         .as_array()
         .expect("an array")
         .iter()
-        .map(|entry| entry["name"].as_str().expect("a name").to_string())
+        .map(|entry| entry["fqn"].as_str().expect("a fully-qualified name"))
         .collect();
-    let outcome = run(&format!(
-        "puts [{}].map {{ |name| Object.const_defined?(name) ? \"ok\" : \"missing\" }}.join(\",\")\n",
-        types
-            .iter()
-            .map(|name| format!("{name:?}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    ));
-    assert_eq!(logs(&outcome), [vec!["ok"; types.len()].join(",")]);
+    let outcome = run(&format!("puts [{}].size\n", types.join(", ")));
+    assert_eq!(logs(&outcome), [types.len().to_string()]);
 }
 
 #[test]
@@ -1519,11 +1510,11 @@ fn an_argument_mistake_is_an_argument_error_rather_than_silence() {
     // JavaScript `undefined` and carried on. `def two(a, b)` called with one argument did not
     // raise; it died further down with `can't access property "$inspect", b is undefined`, a
     // message naming a variable of the COMPILED JavaScript, which is the one leak the source map
-    // exists to prevent. `tasks.add_task("id")` reached the membrane and came back as
+    // exists to prevent. `GG::Tasks.add_task("id")` reached the membrane and came back as
     // `TypeError: expected a string, received [undefined]` — a sentence about the wire, for a
     // mistake in the program.
     //
-    // gg now compiles both halves with `arity_check`, and `GG::ApiObject` checks the surface it
+    // gg now compiles both halves with `arity_check`, and `GG::Scope` checks the surface it
     // binds before the call is made. All of what follows is measured through the real compiler and
     // the real membrane, because the claim is about the committed artifacts and nothing else can
     // say it.
@@ -1592,7 +1583,7 @@ puts "carried on"
     );
     assert_eq!(logged[1], "carried on");
 
-    // THE SDK, positional. Every refusal names the call THE MODEL WROTE — `fs.read_file`, not the
+    // THE SDK, positional. Every refusal names the call THE MODEL WROTE — `GG::Files.read_file`, not the
     // internal `GG::Files.read_file` — which is why the forwarder checks as well as the compiler:
     // the model has no idea `GG::Files` exists, and Opal's own message would also have rendered
     // Ruby's negative arity encoding (`expected -3`), a number no CRuby message ever prints.
@@ -1605,11 +1596,11 @@ rescue ArgumentError => failure
   puts failure.message
 end
 
-why { fs.read_file }
-why { tasks.add_task("just-an-id") }
-why { fs.write_file("a.rb", "b", "c") }
-why { tasks.set_blocked_by }
-why { fs.edit_file("a.rb", "old") }
+why { GG::Files.read_file }
+why { GG::Tasks.add_task("just-an-id") }
+why { GG::Files.write_file("a.rb", "b", "c") }
+why { GG::Tasks.set_blocked_by }
+why { GG::Files.edit_file("a.rb", "old") }
 "##,
         &all_tools(),
         &[],
@@ -1618,13 +1609,13 @@ why { fs.edit_file("a.rb", "old") }
     assert_eq!(
         logs(&outcome),
         [
-            "wrong number of arguments (given 0, expected 1) — `fs.read_file`",
-            "wrong number of arguments (given 1, expected 2) — `tasks.add_task`",
+            "wrong number of arguments (given 0, expected 1) — `GG::Files.read_file`",
+            "wrong number of arguments (given 1, expected 2) — `GG::Tasks.add_task`",
             // An optional positional widens the accepted count rather than defeating the check.
-            "wrong number of arguments (given 3, expected 1..2) — `fs.write_file`",
+            "wrong number of arguments (given 3, expected 1..2) — `GG::Files.write_file`",
             // A splat removes the ceiling without removing the floor.
-            "wrong number of arguments (given 0, expected 1+) — `tasks.set_blocked_by`",
-            "wrong number of arguments (given 2, expected 3) — `fs.edit_file`",
+            "wrong number of arguments (given 0, expected 1+) — `GG::Tasks.set_blocked_by`",
+            "wrong number of arguments (given 2, expected 3) — `GG::Files.edit_file`",
         ]
     );
     assert!(
@@ -1648,11 +1639,11 @@ rescue ArgumentError => failure
   puts failure.message
 end
 
-why { project.create_issue("t", "in", "out", "done", "worker", reviewer: ["r1"]) }
-why { tasks.add_task("id", "t", desc: "oops") }
-why { fs.read_file("a.rb", start: 3) }
-why { fs.list_dir("src", deep: true) }
-why { view.list(deep: true) }
+why { GG::Board.create_issue("t", "in", "out", "done", "worker", reviewer: ["r1"]) }
+why { GG::Tasks.add_task("id", "t", desc: "oops") }
+why { GG::Files.read_file("a.rb", start: 3) }
+why { GG::Files.list_dir("src", deep: true) }
+why { GG::Views.list(deep: true) }
 "##,
         &all_tools(),
         &[],
@@ -1662,7 +1653,7 @@ why { view.list(deep: true) }
     assert!(
         refusals[0].contains("unknown keyword: :reviewer")
             && refusals[0].contains(":reviewers")
-            && refusals[0].contains("`project.create_issue`"),
+            && refusals[0].contains("`GG::Board.create_issue`"),
         "the typo is refused and the accepted set is named: {refusals:?}"
     );
     assert!(
@@ -1693,9 +1684,9 @@ why { view.list(deep: true) }
     // body, and a splat.
     let (outcome, log) = run_with(
         r##"
-fs.write_file("out/a.rb") { "from a block" }
-tasks.add_task("t1", "title", description: "d", blocked_by: ["t0"])
-tasks.set_blocked_by("t1", "t0", "t2")
+GG::Files.write_file("out/a.rb") { "from a block" }
+GG::Tasks.add_task("t1", "title", description: "d", blocked_by: ["t0"])
+GG::Tasks.set_blocked_by("t1", "t0", "t2")
 puts "clean"
 "##,
         &all_tools(),
