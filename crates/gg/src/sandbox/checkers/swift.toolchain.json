@@ -29,23 +29,23 @@
     },
     {
       "name": "gg.o",
-      "bytes": 176391
+      "bytes": 185739
     },
     {
       "name": "gg.swiftmodule",
-      "bytes": 359640
+      "bytes": 369236
     },
     {
       "name": "sandbox.h",
-      "bytes": 73545
+      "bytes": 79331
     },
     {
       "name": "sandbox.o",
-      "bytes": 33351
+      "bytes": 35234
     },
     {
       "name": "sandbox_component_type.o",
-      "bytes": 5419
+      "bytes": 5642
     },
     {
       "name": "shell.swift",

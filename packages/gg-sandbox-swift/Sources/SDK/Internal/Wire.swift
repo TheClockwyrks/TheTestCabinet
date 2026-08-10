@@ -85,7 +85,7 @@ final class Scratch {
     }
 
     /// `edit`, lowered as the wire's three-way variant.
-    func textEdit(_ edit: TextEdit) -> test_cabinet_gg_types_text_edit_t {
+    func textEdit(_ edit: core.TextEdit) -> test_cabinet_gg_types_text_edit_t {
         var lowered = test_cabinet_gg_types_text_edit_t()
         switch edit {
         case .keep:
@@ -100,7 +100,7 @@ final class Scratch {
     }
 
     /// `assignment`, lowered as the wire's three-way variant.
-    func epicAssignment(_ assignment: EpicAssignment) -> test_cabinet_gg_board_epic_assignment_t {
+    func epicAssignment(_ assignment: board.EpicAssignment) -> test_cabinet_gg_board_epic_assignment_t {
         var lowered = test_cabinet_gg_board_epic_assignment_t()
         switch assignment {
         case .keep:
@@ -115,7 +115,7 @@ final class Scratch {
     }
 
     /// `brief`, lowered as the wire's two-case variant.
-    func brief(_ brief: Brief) -> test_cabinet_gg_delegation_subagent_brief_t {
+    func brief(_ brief: delegation.Brief) -> test_cabinet_gg_delegation_subagent_brief_t {
         var lowered = test_cabinet_gg_delegation_subagent_brief_t()
         switch brief {
         case .prompt(let text):
@@ -192,9 +192,9 @@ func lift<T, R>(_ pointer: UnsafeMutablePointer<T>?, _ count: Int, _ each: (T) -
 ///
 /// It takes the record `inout` because freeing it is half the job: what comes back is guest-owned
 /// memory, and the strings are copied into Swift values first.
-func lift(failure: inout test_cabinet_gg_types_tool_error_t) -> ToolError {
-    let error = ToolError(
-        code: ToolErrorCode(wire: failure.code),
+func lift(failure: inout test_cabinet_gg_types_tool_error_t) -> core.ToolError {
+    let error = core.ToolError(
+        code: core.ToolErrorCode(wire: failure.code),
         tool: lift(failure.tool),
         message: lift(failure.message))
     test_cabinet_gg_types_tool_error_free(&failure)

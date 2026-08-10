@@ -334,12 +334,32 @@ fn string_literals(line: &str) -> Vec<&str> {
 /// So the rule is about the ingredient rather than the product: an API object's name has no business
 /// being a constant in this crate at all. gg names a call by
 /// [identity](crate::sandbox::SurfaceCall), which carries the object already.
+///
+/// # Where the vocabulary comes from, and why it moved
+///
+/// The names were read out of the registered arms' catalogues until the eleventh arm was converted,
+/// at which point every one of them declared **no** API objects — the
+/// [normalized schema](crate::sandbox::SchemaVersion::V2) groups a call under a module path instead
+/// — and this rule quietly had nothing to search for. It was measured vacuous rather than reasoned
+/// so: a `const PROBE_OBJECT: &str = "fs";` planted in this crate passed it.
+///
+/// The subject never went anywhere, though. gg's own API-object vocabulary is
+/// [`SurfaceCall::object`](crate::sandbox::SurfaceCall::object) — still on the wire, still what the
+/// console groups by, still what a `format!` could join a function name onto — so the needles are
+/// now read from gg's side, off the [operations table](crate::sandbox::OPERATIONS), where they are
+/// stated once and cannot be emptied by an arm being reshaped.
 #[test]
 fn no_object_name_is_a_constant_waiting_to_be_joined() {
-    let objects: Vec<&str> = crate::sandbox::all_languages()
-        .flat_map(crate::sandbox::catalogue_objects)
-        .map(|object| object.object.as_str())
+    let mut objects: Vec<&str> = crate::sandbox::OPERATIONS
+        .iter()
+        .map(|operation| operation.call.object)
         .collect();
+    objects.sort_unstable();
+    objects.dedup();
+    assert!(
+        !objects.is_empty(),
+        "gg's operations table names no API object, so this rule has nothing to search for"
+    );
 
     fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<(String, String)>) {
         for entry in std::fs::read_dir(dir).expect("gg's source tree is readable") {

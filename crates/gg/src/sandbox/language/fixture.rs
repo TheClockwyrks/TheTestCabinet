@@ -24,22 +24,29 @@
 //! A stand-in for the *shape* a second language would take, deliberately not an imitation of any
 //! particular one:
 //!
-//! * **Its spellings are snake_case.** They are derived, at test time, from **Swift's** own
-//!   committed catalogue by re-spelling every entry's `name` and the head of its `signature`, and
-//!   changing nothing else — not a `key`, not an `object`, not a gate, not an `ending`. So the
-//!   fixture is by construction *the same capability surface under different spellings*, which is
-//!   exactly what an A/B study across languages needs both arms to be, and what the agreement gate
-//!   must therefore accept. Deriving it also means it cannot rot: a tool added to gg appears in
-//!   both catalogues on the same day.
+//! * **Its spellings are snake_case.** They are derived, at test time, from the
+//!   [frozen v1 surface](FIXTURE_SIGNATURES) beside this file by re-spelling every entry's `name`
+//!   and the head of its `signature`, and changing nothing else — not a `key`, not an `object`, not
+//!   a gate, not an `ending`. So the fixture is by construction *the same capability surface under
+//!   different spellings*, which is exactly what an A/B study across languages needs both arms to
+//!   be, and what the agreement gate must therefore accept.
 //!
-//!   It is cut from Swift because Swift is the arm the [agreement gate](super::agreement) can still
-//!   *read*: that gate's comparative half compares the five-part identity a
-//!   [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under, and it runs over the
-//!   v1 arms alone — so a fixture cut from a converted arm would be a second surface the comparison
-//!   skips, and the teeth tests below it would assert nothing. It was TypeScript's until TypeScript
-//!   was converted. **This goes where the split in [`is_v1`](super::agreement) goes**: when the last
-//!   v1 catalogue does, and the gate is re-founded on the normalized model, the fixture is cut from
-//!   whichever arm the re-founded gate reads.
+//!   It used to be cut from a registered arm's own committed catalogue — TypeScript's, then
+//!   Swift's — and deriving it that way is what kept it from rotting. **That is no longer
+//!   possible**, and the reason is a milestone rather than a regression: the
+//!   [agreement gate](super::agreement)'s comparative half reads the five-part identity a
+//!   [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under and runs over the v1
+//!   arms alone, and with Swift's conversion **there is no v1 arm left**. A fixture cut from a
+//!   converted arm would be a second surface the comparison skips, and every teeth test below it
+//!   would assert nothing while still passing. So the last v1-shaped surface is frozen beside this
+//!   file and the comparison is made between two fixtures cut from it.
+//!
+//!   The cost of freezing is stated rather than hidden: a gg tool added after the freeze fails the
+//!   fixture's own tool bijection, by name, because the frozen surface will not carry it. That is
+//!   the correct failure — it says the transitional surface is stale — and its remedy is the stage
+//!   that removes both. **This goes where the split in [`is_v1`](super::agreement) goes**: when the
+//!   gate is re-founded on the normalized model, the frozen file and the comparative half go
+//!   together and the fixture is cut from whichever arm the re-founded gate reads.
 //! * **Its syntax is line-oriented**: `#` starts a comment, `use x` imports, `def f` declares, and
 //!   `??` is not a token. Nothing evaluates it — no component is ever compiled from
 //!   [`guest_component`](ProgramLanguage::guest_component) — because everything under test here
@@ -75,10 +82,31 @@ use super::{
     PreparedProgram, ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// Swift's committed catalogue, read a second time rather than reached for through
-/// [`Swift::catalogue`](super::swift) — the fixture re-spells the *file*, and taking it from the
-/// file keeps this module from needing anything of another language's module to be public.
-const SWIFT_SIGNATURES: &str = include_str!("../guests/swift.signatures.json");
+/// **The last surface written in the first schema**, frozen here so that the transitional half of
+/// the [agreement gate](super::agreement) keeps a subject after the eleventh arm was converted.
+///
+/// It is the Swift arm's catalogue as it stood before that conversion, byte for byte, and it is a
+/// *test fixture* rather than an arm: nothing loads it at run time, no run resolves it, and its
+/// `language` field names Swift only because that is who wrote it. It is not
+/// `guests/swift.signatures.json`, which is now a [`V2`](crate::sandbox::SchemaVersion::V2)
+/// catalogue and which the comparative half would silently skip.
+///
+/// See this module's header for what freezing costs and which stage un-freezes it.
+const FIXTURE_SIGNATURES: &str = include_str!("fixture.signatures.json");
+
+/// **A surface written in the second schema**, for the half of the
+/// [agreement gate](super::agreement) that reads one.
+///
+/// Swift's committed catalogue, read a second time as a *file* rather than reached for through
+/// [`Swift::catalogue`](super::swift), on the same terms the frozen v1 surface above is read: taking
+/// it from the file keeps this module from needing anything of another language's module to be
+/// public.
+///
+/// It is here because [`usable_spellings`](super::agreement) — the one check every converted arm is
+/// still held to — had no damaged subject anywhere in the tree, and a gate whose failure nobody has
+/// watched is a gate nobody knows works. Which arm it is cut from does not matter and is not
+/// asserted: what is exercised is the *shape*, and every converted arm has the same one.
+const CONVERTED_SIGNATURES: &str = include_str!("../guests/swift.signatures.json");
 
 /// The stub that stands where a real language's component would be.
 ///
@@ -343,11 +371,31 @@ impl FixtureLanguage {
     }
 }
 
-/// The one agreeing fixture: TypeScript's surface, re-spelled, and nothing else changed.
+/// The one agreeing fixture: the frozen surface, re-spelled, and nothing else changed.
 pub(crate) fn fixture_language() -> &'static FixtureLanguage {
     static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
     FIXTURE.get_or_init(|| FixtureLanguage {
         catalogue: leak(respelled_catalogue(|_| {})),
+        checker: Some(FIXTURE_CHECKER),
+    })
+}
+
+/// **The reference surface every comparative assertion is made against** — the frozen v1 surface
+/// with nothing re-spelled at all.
+///
+/// It exists because the comparison needs two v1 languages and the registry no longer has one. Until
+/// Swift's conversion this role was a *registered arm*, which was better: comparing a real
+/// catalogue against a re-spelling of it is what made "the gate compares identity rather than names"
+/// an observation about something that ships. With every arm converted the comparative half has no
+/// registered subject left, so the reference and the re-spelling are now cut from the same frozen
+/// file — which keeps every teeth test below able to *fail*, and is honest about no longer being a
+/// statement about a shipped surface.
+///
+/// It goes with the frozen file, in the stage that re-founds the gate.
+pub(crate) fn a_language_spelling_it_verbatim() -> &'static FixtureLanguage {
+    static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
+    FIXTURE.get_or_init(|| FixtureLanguage {
+        catalogue: leak(verbatim_catalogue()),
         checker: Some(FIXTURE_CHECKER),
     })
 }
@@ -382,6 +430,28 @@ pub(crate) fn a_language_whose_catalogue(
     }))
 }
 
+/// A fixture whose **[`V2`](crate::sandbox::SchemaVersion::V2)** catalogue has been damaged by
+/// `edit` — the input to every assertion that
+/// [`usable_spellings`](super::agreement) has teeth.
+///
+/// The v1 fixture next door cannot stand in for it. A catalogue in the first schema is answered by
+/// `internally_consistent`, which is a *separate implementation* of nearly the same rules with
+/// nearly the same complaint strings — so a row damaged there proves nothing about the branch a
+/// converted arm is actually read by, however alike the two failures look.
+///
+/// Leaks one catalogue per call, for the reason [`a_language_whose_catalogue`] does.
+pub(crate) fn a_converted_language_whose_catalogue(
+    edit: impl FnOnce(&mut Value),
+) -> &'static FixtureLanguage {
+    let mut document: Value = serde_json::from_str(CONVERTED_SIGNATURES)
+        .expect("the committed converted catalogue is valid JSON");
+    edit(&mut document);
+    Box::leak(Box::new(FixtureLanguage {
+        catalogue: leak(document.to_string()),
+        checker: Some(FIXTURE_CHECKER),
+    }))
+}
+
 /// Every fixture language, for the `#[cfg(test)]` consumers that must know about them — today, the
 /// prompt engine, which cannot render a template it never registered.
 pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {
@@ -392,7 +462,13 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 // The catalogue
 // ---------------------------------------------------------------------------------------------
 
-/// Swift's catalogue with every spelling converted to snake_case and `edit` applied, as JSON.
+/// The frozen v1 surface exactly as it was written, as JSON — the reference every comparison is
+/// made against.
+fn verbatim_catalogue() -> String {
+    FIXTURE_SIGNATURES.to_string()
+}
+
+/// The frozen v1 surface with every spelling converted to snake_case and `edit` applied, as JSON.
 ///
 /// Only two fields move: an entry's `name`, and the head of each of its `signatures`, which by the
 /// catalogue's own rule begins with that name. Identity — `key`, `tool`, `object`, `requires`,
@@ -411,8 +487,8 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 /// the fixture has no value in it. That is why catalogue provenance is asserted over *registered*
 /// languages only.
 fn respelled_catalogue(edit: impl FnOnce(&mut Value)) -> String {
-    let mut document: Value = serde_json::from_str(SWIFT_SIGNATURES)
-        .expect("the committed Swift catalogue is valid JSON");
+    let mut document: Value =
+        serde_json::from_str(FIXTURE_SIGNATURES).expect("the frozen v1 surface is valid JSON");
     for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
         let entries = document[section]
             .as_array_mut()

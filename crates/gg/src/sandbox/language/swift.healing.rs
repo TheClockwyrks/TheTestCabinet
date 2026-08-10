@@ -224,7 +224,7 @@ const CODE_ENDINGS: [&str; 12] = [
 /// [Kotlin's](super::super::kotlin::healing), and it is a closer call here because Swift really does
 /// quote an identifier with backticks (`` let `class` = 1 ``). It is still the right call: an escaped
 /// identifier is a rarity a model writes approximately never, while a lead-in written with an inline
-/// code span (`` Use `view.openText` to show yourself a value ``) is the single most common prose
+/// code span (`` Use `views.openText` to show yourself a value ``) is the single most common prose
 /// line there is, and one that could never be deleted would cost a repair on almost every fenced
 /// reply.
 ///
@@ -698,7 +698,7 @@ fn looks_like_code(line: &str) -> bool {
 /// not see past one would say nothing about the most common line on this arm. It also opens an
 /// English sentence — "try the following" — and listing it as a keyword would make that lead-in
 /// un-deletable as prose, which costs a repair on a great many replies. Consuming it *only* in front
-/// of something that is then shaped like a call gets both: `try view.openText(…)` is code and `try
+/// of something that is then shaped like a call gets both: `try views.openText(…)` is code and `try
 /// the following:` is not.
 fn past_try(line: &str) -> &str {
     let mut rest = line;
@@ -744,7 +744,7 @@ fn carries_an_assignment(line: &str) -> bool {
     })
 }
 
-/// Whether `line` opens with `name(`, `a.b(` or `name {` — `view.openText(`, `entries.map {`.
+/// Whether `line` opens with `name(`, `a.b(` or `name {` — `views.openText(`, `entries.map {`.
 fn opens_with_call(line: &str) -> bool {
     let line = past_try(line);
     let mut chars = line.char_indices().peekable();

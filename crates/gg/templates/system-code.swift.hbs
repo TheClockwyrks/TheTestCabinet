@@ -47,7 +47,7 @@ through something you cared about. Three consequences worth knowing:
 
 - every call **throws**, so `try` is the whole of the ceremony and a failure you
   do not catch ends the turn with the failed call named. A failure you *expect*
-  is an ordinary Swift `Error`: `catch let failure as ToolError` gives you a
+  is an ordinary Swift `Error`: `catch let failure as core.ToolError` gives you a
   `code` that is an `enum` rather than free text;
 - a **runtime failure** is a bug rather than an interface. An index out of range,
   a force-unwrapped `nil`, an arithmetic overflow and a `fatalError` all end the
@@ -69,11 +69,14 @@ declaration Swift has is legal beside them: `import`, `struct`, `class`, `enum`,
 work where you put them. Write the `import` lines you would normally write —
 they resolve exactly where they stand.
 
-**gg's own surface needs no import.** The whole SDK is already in scope, so `fs`,
-`view`, `system` and every type they hand back are names you can write on line 1.
-Each API object is a caseless `enum`, which is Swift's own namespace, so nothing
-is constructed first. If you declare something of your own with the same name, it
-wins — gg's surface lives in a separate module and yours shadows it.
+**gg's own surface needs no import.** The whole SDK is already in scope, so the
+module names below and every type they hand back are names you can write on line
+1. Each module is a caseless `enum`, which is Swift's own namespace, so nothing is
+constructed first, and each owns the types it produces — `files.FileRead`,
+`tasks.TaskStatus`, `delegation.Brief` — so two modules are free to declare a type
+of the same name. If you declare something of your own called `files`, yours wins:
+gg's surface lives in a module called `gg`, and the fully qualified form —
+`{{api.fs.read_file.call}}(path)` — still reaches it.
 
 The signatures below are written the way Swift writes them. Required arguments
 are positional; optional ones have **default values**, so you pass only what you
@@ -95,7 +98,7 @@ you which call failed:
 do {
     let notes = try {{api.fs.read_text_file.call}}("notes.md")
     try {{api.view.open_text.call}}("notes", body: notes)
-} catch let failure as ToolError where failure.code == .notFound {
+} catch let failure as core.ToolError where failure.code == .notFound {
     _ = try {{api.fs.write_file.call}}("notes.md", contents: "")
 }
 ```
@@ -117,7 +120,7 @@ no manifest to edit and nothing to fetch, and a module you do not import costs
 your program nothing. Two absences are worth knowing before you spend a turn on
 one: there is no concurrency runtime that will run anything for you, and no
 `FileManager` or `URLSession` you can usefully reach — the workspace and the
-outside world are reached through the `fs` and `system` objects below.
+outside world are reached through the `gg.files` and `gg.shell` modules below.
 {{/if}}
 
 ### Ending your session
@@ -139,22 +142,22 @@ Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
 
 ### Your APIs
 
-Your program is given these objects, each grouping the functions of one
-capability. Each is a namespace, so you call one with
-`try <object>.<function>(args...)`. They are in scope already, with no `import`
-line of your own.
+Your program is given these modules, each grouping the functions of one
+capability. A call is a path — `try <module>.<function>(args...)` — and the
+module's last segment is what you write, since the whole surface is in scope with
+no `import` line of your own.
 
 {{#each apis}}
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what an object holds, and they reach you by different routes.
+Two calls tell you what a module holds, and they reach you by different routes.
 
-`<object>.{{meta.list.name}}()` — for example `fs.{{meta.list.name}}()` — **returns** an object's
-functions to your program, each as a `FunctionSummary`. It is an ordinary return
-value, so it puts nothing in front of you on its own: to read it yourself you
-must open a view of it, exactly as you would any other value your program
-computed — `try {{api.view.open_text.call}}("fs", body: fs.{{meta.list.name}}().map(\.summary).joined(separator: "\n"))`.
+`<module>.{{meta.list.name}}()` — for example `files.{{meta.list.name}}()` — **returns** a module's
+functions to your program, each as a `core.FunctionSummary`. It is an ordinary
+return value, so it puts nothing in front of you on its own: to read it yourself
+you must open a view of it, exactly as you would any other value your program
+computed — `try {{api.view.open_text.call}}("files", body: files.{{meta.list.name}}().map(\.summary).joined(separator: "\n"))`.
 
 `{{api.view.open_docs_view.signature}}` **opens a view**
 directly, of one function's full signature, documentation, and the types it uses.
@@ -293,7 +296,7 @@ A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{#if tasks}}
 ## Tasks
 
-You have access to a task list on the `tasks` object. Use `{{api.tasks.add_task.call}}` to add
+You have access to a task list in the `tasks` module. Use `{{api.tasks.add_task.call}}` to add
 work, `{{api.tasks.update_task.call}}` to update a task's data, `{{api.tasks.complete_task.call}}` to mark a
 task as completed, and `{{api.tasks.remove_task.call}}` to drop a task. At most
 {{tasks.maxTasks}} may be recorded.
@@ -307,7 +310,8 @@ automatically rejected.
 ## Subagents
 
 Use `{{api.agents.spawn_subagent.call}}` to delegate work to another agent. Its second
-argument is a `Brief`, which is an enum with associated values: `.prompt("…")` or
+argument is a `delegation.Brief`, which is an enum with associated values:
+`.prompt("…")` or
 `.issue("…")` — so naming both, or neither, is a program that does not compile.
 You have the following agents available to you:
 
@@ -322,7 +326,7 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-You have access to a shared project board, reached through the `project` object,
+You have access to a shared project board, reached through the `board` module,
 that you and other agents may use. This board is shared across the entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational

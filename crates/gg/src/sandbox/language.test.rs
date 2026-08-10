@@ -717,9 +717,12 @@ fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
         .iter()
         .map(|operation| operation.call)
     {
-        // Resolved through the operation and quoted with the entry's OWN grouping, for the reason
-        // the registry's version next door is: the fixture is cut from a converted arm, which files
-        // gg's `(object, key)` pair nowhere and groups the call under a module path instead.
+        // Resolved through the operation and quoted with the entry's OWN grouping — which is how
+        // this assertion is written once against both shapes of catalogue. The fixture is cut from
+        // `fixture::FIXTURE_SIGNATURES`, the frozen v1 surface, and is therefore the ONE place left
+        // in the tree where a catalogue filing gg's `(object, key)` pair on every entry is read end
+        // to end; the registry's version next door reads eleven that file it nowhere. Going through
+        // the operation is what makes both of those the same lookup. It goes with the frozen file.
         let entry = functions.iter().find(|function| {
             function.alias_of.is_none()
                 && crate::sandbox::operation_of(function).is_some_and(|resolved| {

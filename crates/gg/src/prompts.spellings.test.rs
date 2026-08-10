@@ -94,32 +94,93 @@ fn backticked(text: &str) -> Vec<&str> {
     out
 }
 
-/// The `object.name` head of a backticked span, when it has one: `fs.readFile(path)` → `("fs",
-/// "readFile")`.
+/// Every **grouping** `language` presents its surface under — the string that stands before the
+/// member separator in a spelling gg quotes.
 ///
-/// Only the head, because what follows it is the call's *arguments*, which are the template's own
-/// worked example and are written in that language's syntax. A span that does not begin with two
-/// identifiers separated by a dot is not naming a call and is answered with `None`.
-fn call_head<'a>(span: &'a str, separator: &str) -> Option<(&'a str, &'a str)> {
-    let ident = |text: &str| -> usize {
-        text.char_indices()
-            .take_while(|(index, character)| {
-                character.is_ascii_alphanumeric()
-                    || *character == '_'
-                    || (*character == '$' && *index == 0)
+/// It is one function because the two rendered rules ask the same question and because the answer
+/// has two shapes. A [`V1`](crate::sandbox::SchemaVersion::V1) catalogue's grouping is its API
+/// object, a single identifier (`fs`); a converted arm's is its **module path**, which is several
+/// (`gg.files`, `GG::Board`, `Gg.Files`). Both are read here, so a rule written over this covers the
+/// registered arms and the seam's frozen fixture with one implementation.
+fn groupings_of(language: &'static dyn ProgramLanguage) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = catalogue_objects(language)
+        .iter()
+        .map(|object| object.object.as_str())
+        .chain(catalogue_functions(language).into_iter().map(|f| f.object))
+        .collect();
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
+/// The **first** `grouping.name` a backticked span writes, with whatever follows it:
+/// `fs.readFile(path)` → `("fs", "readFile", "(path)")`, and `try gg.files.readFile(path)` →
+/// `("gg.files", "readFile", "(path)")`.
+///
+/// The head and the remainder, because the remainder is the call's *arguments* — which one caller
+/// judges and the other ignores. A span that names no grouping at all is not naming gg's surface —
+/// `source.replace(…)`, `JSON.stringify(…)` — and is answered with `None`.
+///
+/// # Why the grouping is matched rather than parsed
+///
+/// It used to read exactly one leading identifier, which was right while every arm grouped its calls
+/// under a single-identifier API object and became **wrong for all eleven** when the last was
+/// converted: a rendered `gg.files.readFile` has the head `gg.files`, so reading one identifier
+/// yields `gg` and every span in every shipped template fell through the caller's lookup. That was
+/// measured rather than reasoned: a hand-typed `` `gg.files.thisCallDoesNotExist(x)` `` planted in a
+/// shipped template passed both rendered rules. So the head is matched against the groupings the
+/// language really publishes, **longest first**, which is a question with one answer whatever
+/// punctuation an arm's module path is written with.
+///
+/// # Why it scans rather than anchoring at the start
+///
+/// Because a call is not always the first thing in the span it is written in: Swift's every fallible
+/// call is quoted `` `try gg.views.openFile(path)` ``, and eight of that template's spans are shaped
+/// that way — four of them quoting real argument names. Anchoring would leave every one of them
+/// unjudged on the arm whose idiom it is. The scan takes the **first** grouping written at a token
+/// boundary, so a nested call in an argument list is not mistaken for the call being quoted, and a
+/// grouping that is merely the tail of a longer qualified name is not matched at all.
+fn call_head<'a>(
+    span: &'a str,
+    separator: &str,
+    groupings: &[&'static str],
+) -> Option<(&'static str, &'a str, &'a str)> {
+    let identifier =
+        |character: char| character.is_ascii_alphanumeric() || character == '_' || character == '$';
+    for start in 0..span.len() {
+        if !span.is_char_boundary(start) {
+            continue;
+        }
+        let before = &span[..start];
+        // A grouping written as the tail of something longer — the `gg.files` inside
+        // `mygg.files`, or the `files` inside `gg.files` — is not this span's head.
+        if before.ends_with(identifier) || before.ends_with(separator) {
+            continue;
+        }
+        let rest = &span[start..];
+        // Longest first, so a module path that is a prefix of another — `gg` beside `gg.files`, were
+        // an arm ever to publish both — is answered with the one the span really writes.
+        let mut candidates: Vec<&'static str> = groupings
+            .iter()
+            .copied()
+            .filter(|grouping| {
+                rest.starts_with(grouping) && rest[grouping.len()..].starts_with(separator)
             })
-            .count()
-    };
-    let object_len = ident(span);
-    if object_len == 0 || !span[object_len..].starts_with(separator) {
-        return None;
+            .collect();
+        candidates.sort_unstable_by_key(|grouping| std::cmp::Reverse(grouping.len()));
+        let Some(object) = candidates.first().copied() else {
+            continue;
+        };
+        let after = &rest[object.len() + separator.len()..];
+        let name_len = after
+            .find(|character| !identifier(character))
+            .unwrap_or(after.len());
+        if name_len == 0 {
+            continue;
+        }
+        return Some((object, &after[..name_len], &after[name_len..]));
     }
-    let after = &span[object_len + separator.len()..];
-    let name_len = ident(after);
-    if name_len == 0 {
-        return None;
-    }
-    Some((&span[..object_len], &after[..name_len]))
+    None
 }
 
 /// **No template spells an SDK call by hand.**
@@ -275,18 +336,20 @@ fn no_code_reachable_template_names_a_bare_gg_tool() {
 /// through the *context* rather than through the template — an `{{#each}}` over something gg
 /// computed — is only visible once it has been rendered.
 ///
-/// Only spans whose object is a catalogued object are judged. That is deliberate: an example
-/// program legitimately writes `source.replace(...)`, `console.log()` and `JSON.stringify(...)`, and
-/// none of those is gg's surface. A span that *does* begin with an API object is a claim about that
-/// object, and the claim has to be true.
+/// Only spans whose head is one of the [groupings](groupings_of) the language publishes are judged.
+/// That is deliberate: an example program legitimately writes `source.replace(...)`,
+/// `console.log()` and `JSON.stringify(...)`, and none of those is gg's surface. A span that *does*
+/// begin with one of gg's groupings is a claim about that grouping, and the claim has to be true.
+///
+/// A **type** the grouping declares satisfies it too, because on a converted arm a module's own
+/// types are qualified by the same path its functions are — `gg.files.FileRead` beside
+/// `gg.files.readFile` — and a template naming one is quoting a real name rather than inventing a
+/// call. What is refused either way is a name the arm does not carry at all.
 #[test]
 fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
     let mut offenders = Vec::new();
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
-        let objects: Vec<&str> = catalogue_objects(language)
-            .iter()
-            .map(|object| object.object.as_str())
-            .collect();
+        let groupings = groupings_of(language);
         let bound: Vec<(&str, &str)> = catalogue_functions(language)
             .into_iter()
             .map(|function| (function.object, function.name))
@@ -297,6 +360,26 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
             .iter()
             .map(|entry| entry.name.as_str())
             .collect();
+        // What the arm's own TYPES contribute to a module's vocabulary, which on a converted arm is
+        // qualified by the same path its calls are. Two shapes: the type itself
+        // (`gg.files.FileRead`), and — on a language whose union arms are qualified by the module
+        // rather than by the type — each arm. `Gg.Delegation.Prompt` is a real, correct,
+        // reflected name in PureScript's prompt and is neither a function nor a type.
+        let mut published: Vec<String> = Vec::new();
+        for declaration in &language.catalogue().types {
+            let Some(fqn) = declaration.fqn.as_deref() else {
+                continue;
+            };
+            published.push(fqn.to_string());
+            let Some(prefix) = fqn.strip_suffix(declaration.name.as_str()) else {
+                continue;
+            };
+            for member in &declaration.members {
+                if member.kind() == crate::sandbox::MemberKind::Variant {
+                    published.push(format!("{prefix}{}", member.name));
+                }
+            }
+        }
 
         let rendered = format!(
             "{}\n{}",
@@ -304,15 +387,17 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
             render_code_nothing_shown_for(language),
         );
         for span in backticked(&rendered) {
-            let Some((object, name)) = call_head(span, language.member_separator()) else {
+            let Some((object, name, _)) = call_head(span, language.member_separator(), &groupings)
+            else {
                 continue;
             };
-            if !objects.contains(&object) {
-                continue;
-            }
-            if !bound.contains(&(object, name)) && !meta.contains(&name) {
+            let qualified = format!("{object}{}{name}", language.member_separator());
+            if !bound.contains(&(object, name))
+                && !meta.contains(&name)
+                && !published.contains(&qualified)
+            {
                 offenders.push(format!(
-                    "{}: `{span}` — `{object}` binds no `{name}`",
+                    "{}: `{span}` — `{object}` publishes no `{name}`",
                     language.display_name()
                 ));
             }
@@ -351,10 +436,16 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
 /// The names are matched as a **prefix** of some signature's parameters, so quoting the required
 /// arguments and leaving the optional ones off — which is what every one of these does — is correct,
 /// and quoting them in the wrong order is not.
+///
+/// A **fenced block** is not judged either, and for the same reason: a several-line program between
+/// triple backticks is the longest form of worked example a template writes, and the literals in it
+/// are its own. Rust's `gg::programs::get(None)` is the measured case — a legitimate example whose
+/// one argument is a literal that happens to be spelled like an identifier.
 #[test]
 fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
     let mut offenders = Vec::new();
     for language in all_languages().chain(crate::sandbox::fixture_languages()) {
+        let groupings = groupings_of(language);
         let bound = catalogue_functions(language);
         let rendered = format!(
             "{}\n{}",
@@ -362,7 +453,12 @@ fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
             render_code_nothing_shown_for(language),
         );
         for span in backticked(&rendered) {
-            let Some((object, name)) = call_head(span, language.member_separator()) else {
+            if span.contains('\n') {
+                continue;
+            }
+            let Some((object, name, arguments)) =
+                call_head(span, language.member_separator(), &groupings)
+            else {
                 continue;
             };
             let Some(function) = bound
@@ -374,9 +470,7 @@ fn every_argument_a_rendered_prompt_names_is_one_that_signature_takes() {
                 // defect in two sentences.
                 continue;
             };
-            let Some(quoted) = quoted_arguments(
-                &span[object.len() + language.member_separator().len() + name.len()..],
-            ) else {
+            let Some(quoted) = quoted_arguments(arguments) else {
                 continue;
             };
             let takes = function.signatures.iter().any(|entry| {

@@ -57,8 +57,8 @@ mkdir -p "$GRAPH"
 	-import-objc-header "$BINDINGS/sandbox.h" \
 	-emit-module -emit-module-path "$GRAPH/gg.swiftmodule" \
 	-emit-symbol-graph -emit-symbol-graph-dir "$GRAPH" \
-	"$HERE"/Sources/SDK/*.swift "$HERE"/Sources/SDK/Objects/*.swift
+	"$HERE"/Sources/SDK/Modules/*.swift "$HERE"/Sources/SDK/Internal/*.swift
 test -s "$GRAPH/gg.symbols.json"
 
 echo "==> reflecting $OUT"
-python3 "$HERE/tools/signatures.py" "$GRAPH/gg.symbols.json" "$HERE/libraries.txt" "$OUT"
+python3 "$HERE/tools/signatures.py" "$GRAPH/gg.symbols.json" "$HERE/libraries.txt" "$HERE" "$OUT"

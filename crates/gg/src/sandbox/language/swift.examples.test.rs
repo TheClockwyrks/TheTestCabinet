@@ -32,7 +32,7 @@
 //! **Inline spans are not gathered**, and that is this arm's own answer rather than an omission.
 //! Rust's gate takes them because a Rust call in a backtick is an expression it can compile as a
 //! statement. A Swift call is not: every function on this surface `throws`, so a bare
-//! `` `view.openText(label, body)` `` is not a statement any Swift file accepts, and wrapping each
+//! `` `views.openText(label, body:)` `` is not a statement any Swift file accepts, and wrapping each
 //! span in a `try` inside a throwing function would be this gate rewriting the thing it is meant to
 //! be reading. What is *already* checked about those spans is what a compiler would have told us
 //! anyway: [`prompts`](crate::prompts) resolves each name against the catalogue and refuses a
@@ -75,8 +75,8 @@ fn everything_on() -> SystemContext {
         language: Some(GgProgramLanguage::Swift),
         program_library: true,
         apis: vec![ApiView {
-            object: "fs".to_string(),
-            description: "read, write, and edit workspace files".to_string(),
+            object: "gg.files".to_string(),
+            description: "Read, write, edit and list the files of the workspace.".to_string(),
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),

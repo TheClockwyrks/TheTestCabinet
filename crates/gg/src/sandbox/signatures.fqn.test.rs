@@ -1,21 +1,31 @@
 //! Tests for [the name rule](super) — the one scheme eleven disagreeing spellings are held to.
 //!
-//! The centre of this file is [`the_rule_accepts_every_arms_own_spelling`], a table of the
-//! fully-qualified names each registered arm will emit once it is converted. It is written from the
-//! design's own per-arm table rather than derived from anything, and that is the point: the rule has
-//! to be shown to accept `gg.files.Workspace#readFile(String)` and `GgFiles.readFile(_:offset:limit:)`
-//! *before* an arm commits one, because discovering it does not is a redesign rather than a fix.
+//! The centre of this file is [`the_rule_accepts_every_arms_own_spelling`], a table of the **name
+//! shapes** the rule must accept, one family per arm that motivated it. It was written before any
+//! arm had committed a name, because the rule had to be shown to accept
+//! `gg.files.Workspace#readFile(String)` and a labelled Swift selector *in advance* — discovering
+//! it does not is a redesign rather than a fix.
+//!
+//! **That prediction phase is over**: all eleven arms are converted, and what each of them really
+//! emits is held against the committed artifacts by
+//! [`every_registered_arms_names_are_whole`]. So the table is no longer a claim about what any arm
+//! spells — several rows predate the module vocabulary settling on `files`, `delegation` and the
+//! rest, and one row is a shape no arm ships at all. It is kept, and re-titled, because the shapes
+//! are the subject: a scheme that stops accepting `#`-separated members or a `/` inside a module
+//! prefix has been narrowed, and narrowing it is what this table is here to notice.
 
 use serde_json::Value;
 
 use super::*;
 use crate::sandbox::signatures::fixture;
 
-/// One row of the per-arm table: a name, the module it hangs off, what a program calls it, its
+/// One row of the shape table: a name, the module it hangs off, what a program calls it, its
 /// receiver where it has one, and which of the three shapes it is.
 struct Row {
-    /// Which arm spells names this way — quoted in the failure, since the whole table's value is
-    /// telling you *which* language the rule broke on.
+    /// Which arm's *syntax family* the row is drawn from — quoted in the failure, since the whole
+    /// table's value is telling you which shape the rule broke on. It is not an assertion that the
+    /// arm spells this name; [`every_registered_arms_names_are_whole`] is what holds the arms to
+    /// their committed ones.
     arm: &'static str,
     /// The fully-qualified name as that arm's reflector emits it.
     fqn: &'static str,
@@ -29,13 +39,19 @@ struct Row {
     shape: Shape,
 }
 
-/// **The rule accepts every arm's own spelling**, across all three shapes and all eleven arms.
+/// **The rule accepts every name shape an arm's syntax can produce**, across all three shapes.
 ///
-/// Every row is a name from the design's per-arm table, including the four that are not obviously
-/// the same syntax as any other: Swift's labelled selector (whose labels are part of the identity
-/// and must not be read as segments), Java's `#`-separated member with a parameter list, Ruby's
-/// `::`-then-`#` mix, and TypeScript's `gg/fs` module path — whose `/` sits *inside* the module
-/// prefix and would split a name that was parsed instead of prefix-matched.
+/// Every row is a shape from the design's per-arm table, including the four that are not obviously
+/// the same syntax as any other: a **labelled selector**, whose labels are part of the identity and
+/// must not be read as segments; Java's `#`-separated member with a parameter list; Ruby's
+/// `::`-then-`#` mix; and a `gg/fs` module path whose `/` sits *inside* the module prefix and would
+/// split a name that was parsed instead of prefix-matched.
+///
+/// The rows that carry an arm's **committed** spelling say so; the rest are shapes the rule must
+/// keep accepting whether or not an arm writes one today. The labelled selector is the clearest
+/// case of the second kind: Swift's reflector deliberately emits `gg.files.readFile` and files the
+/// selector nowhere, and the shape is kept because a scheme that stopped accepting it would have to
+/// be redesigned rather than fixed if a future arm reflected DocC's own spelling.
 #[test]
 fn the_rule_accepts_every_arms_own_spelling() {
     let table = [
@@ -89,30 +105,43 @@ fn the_rule_accepts_every_arms_own_spelling() {
             receiver: Some("subagent_handle"),
             shape: Shape::Member,
         },
-        // Swift — the argument labels are part of the identity and are not segments.
+        // Swift — the arm's real committed names, measured from
+        // `guests/swift.signatures.json`: a caseless enum per module, and no argument labels in a
+        // name anywhere.
         Row {
             arm: "Swift",
-            fqn: "GgFiles.readFile(_:offset:limit:)",
-            module: "GgFiles",
+            fqn: "gg.files.readFile",
+            module: "gg.files",
             name: "readFile",
             receiver: None,
             shape: Shape::Standalone,
         },
         Row {
             arm: "Swift",
-            fqn: "GgFiles.FileRead",
-            module: "GgFiles",
+            fqn: "gg.files.FileRead",
+            module: "gg.files",
             name: "FileRead",
             receiver: None,
             shape: Shape::Type,
         },
         Row {
             arm: "Swift",
-            fqn: "GgAgents.SubagentHandle.send(_:)",
-            module: "GgAgents",
+            fqn: "gg.delegation.SubagentHandle.send",
+            module: "gg.delegation",
             name: "send",
             receiver: Some("SubagentHandle"),
             shape: Shape::Member,
+        },
+        // A **labelled selector**, which is DocC's own spelling of the row above it and which no
+        // arm emits — see this test's doc for why the shape is kept anyway. The labels are part of
+        // the identity and must not be read as segments.
+        Row {
+            arm: "a labelled selector",
+            fqn: "GgFiles.readFile(_:offset:limit:)",
+            module: "GgFiles",
+            name: "readFile",
+            receiver: None,
+            shape: Shape::Standalone,
         },
         // C# — a static class that *is* the module, so a standalone function has no receiver. The
         // three rows below are the arm's real committed names rather than anticipated ones: this is

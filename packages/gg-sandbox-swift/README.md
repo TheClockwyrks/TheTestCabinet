@@ -44,55 +44,70 @@ which is what gets both the message and the model's own line and column out.
 
 | | |
 | --- | --- |
-| `Sources/SDK/` | **The SDK a model writes against.** One file per API object under `Objects/`, plus the model-facing types, the error, the `list` every object carries, and the wire bridge. Compiled ahead of time into a module called `gg`. |
+| `Sources/SDK/` | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge, the `list` every module carries, and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`. |
 | `Sources/shell.swift` | gg's shell — the `@_exported import` that puts the SDK in the model's scope, the two exports the sandbox world declares, and the call into the model's own top-level code. Compiled beside every program, once per turn. |
 | `Sources/gg-shell.h` | The bridging header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point). |
 | `libraries.txt` | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them. |
 | `swift-version.sh` | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
 | `build.sh` | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two committed archives, fetches the adapter, and writes the manifest. |
-| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out. `tools/catalogue.py` is the identity half — which function is which gg tool, on which object, gated by what — and `tools/signatures.py` is everything else. |
+| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out. `tools/catalogue.py` is the module table — gg's twelve ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
 
 ## What a Swift program looks like
 
 An ordinary top-level Swift file with gg's whole surface already in scope:
 
 ```swift
-let entries = try fs.listDir("src")
+let entries = try files.listDir("src")
 let sources = entries.filter { $0.kind == .file }
-let built = try system.shell("swift build")
-try view.openText("build", body: built.output)
-try harness.finish("looked at \(sources.count) sources")
+let built = try shell.run("swift build")
+try views.openText("build", body: built.output)
+try session.finish("looked at \(sources.count) sources")
 ```
 
-Every API object — `fs`, `system`, `project`, `tasks`, `memory`, `view`, `context`, `agents`,
-`skills`, `programs`, `harness`, `review` — is a caseless `enum`, which is Swift's own namespace, so
-a call is a call on a namespace and nothing is constructed first. The object names are gg's
-**identity** rather than this SDK's spelling: they are on the wire and in the console's grouping, and
-no language may rename them, which is the one place this SDK departs from Swift's UpperCamelCase
-convention for types and the reason it does.
+Every capability module — `files`, `shell`, `board`, `tasks`, `memories`, `views`, `context`,
+`delegation`, `skills`, `programs`, `session`, and `core` for the types the rest share — is a
+caseless `enum`, which is Swift's own namespace, so a call is a call on a namespace and nothing is
+constructed first. Each owns the types it produces (`files.FileRead`, `board.IssueCreated`), so two
+modules are free to declare a type of one name. The module names are gg's **identity** rather than
+this SDK's spelling: they are the vocabulary every arm shares, and no language may rename them,
+which is the one place this SDK departs from Swift's UpperCamelCase convention for types and the
+reason it does.
+
+A caseless `enum` rather than thirteen real Swift modules behind an `@_exported` umbrella. The
+umbrella was measured and does re-export transitively, so that was not what decided it: a module of
+its own would have to be called `GgFiles` where the vocabulary is `files`, and a program that
+declares its own `files` shadows either shape equally. What answers the shadowing is the fully
+qualified form — `gg.files.readFile(…)`, a real path in the module the SDK is compiled into, which
+still resolves in a file that has taken the short name for itself. That is why it is the name the
+catalogue publishes.
 
 Everything else is Swift's own idiom:
 
-- **Every call `throws`**, so `try` is the whole of the ceremony and `ToolError` is an ordinary
-  `Error`. Catch what you expect (`catch let failure as ToolError where failure.code == .notFound`)
-  and let the rest out.
+- **Every call `throws`**, so `try` is the whole of the ceremony and `core.ToolError` is an
+  ordinary `Error`. Catch what you expect
+  (`catch let failure as core.ToolError where failure.code == .notFound`) and let the rest out.
 - **Required arguments are positional; optional ones are default values.** There is no options
-  record anywhere in this surface — `fs.readFile("a.swift", limit: 40)` skips `offset:` because
+  record anywhere in this surface — `files.readFile("a.swift", limit: 40)` skips `offset:` because
   Swift lets it.
-- **Argument labels carry the roles the function's name does not**: `fs.editFile("a", replacing: "x",
-  with: "y")`, `agents.sendMessage("note", to: id)`, `tasks.setBlockedBy("t1", to: ["t0"])`.
+- **Argument labels carry the roles the function's name does not**: `files.editFile("a",
+  replacing: "x", with: "y")`, `delegation.sendMessage("note", to: id)`,
+  `tasks.setBlockedBy("t1", to: ["t0"])`.
 - **A fixed choice is an `enum`**, never a string: `.done`, `.inProgress`, `.file`. A choice that
   carries something is an `enum` with an associated value, so a child's brief is `.prompt("…")` or
   `.issue("AUTH-1")` and "both" and "neither" are programs that do not compile.
-- **A three-way field is `TextEdit`** — `.keep`, `.clear`, `.set("…")` — with `.keep` as the default,
-  so leaving an argument out is what leaves the field alone.
+- **A three-way field is `core.TextEdit`** — `.keep`, `.clear`, `.set("…")` — with `.keep` as the
+  default, so leaving an argument out is what leaves the field alone.
+- **A value carries the call that belongs to it**, through an `extension` in its own module:
+  `handle.send(…)`, `view.close()`, `hit.read()`, `summary.source()`, `issue.wait()`. Each is a
+  second spelling of a function the module also offers, and is catalogued as an alias of it.
 - **A span of turns is a `ClosedRange`**: `try context.archiveThread([4...19])`.
-- **`gg.log` reaches the run's operator**, and `view.openText` reaches you. `print` works and goes
+- **`gg.log` reaches the run's operator**, and `views.openText` reaches you. `print` works and goes
   where `gg.log` goes; neither reaches your next prompt.
 
-A program's own declarations **shadow** gg's, because the SDK is a different module: `struct
-DirEntry { … }` in a program is that program's, not a redeclaration error.
+A program's own declarations **shadow** gg's, because the SDK is a different module: `enum files
+{ … }` in a program is that program's, not a redeclaration error — and `gg.files.readFile(…)` is
+how the same program still reaches the SDK it shadowed.
 
 ## The curated library set
 
@@ -149,7 +164,8 @@ nothing), and reached from Swift through the bridging header. Hand-writing the l
 would have been a second implementation of a specification that drifts from `crates/gg/wit` on
 its own schedule.
 
-`Sources/SDK/Wire.swift` is the one file that touches it, and the one file a model never reads.
+`Sources/SDK/Internal/Wire.swift` is the one file that touches it, and the one file a model never
+reads.
 
 ## Why the catalogue comes out of a symbol graph
 
@@ -163,6 +179,16 @@ the syntax (`- Parameter path:`, or a `- Parameters:` block), so `tools/signatur
 convention and holds it to being a contract: a function that takes N arguments must document N, in
 order, under the names a **call site** writes — which for a labelled argument is the label, because
 that is what a model has to type.
+
+**gg's identity for a call is written on the declaration, in the same comment.** Swift has no
+user-defined declaration attribute short of a macro, so a function names the gg operation it binds
+with a `- ggop: files.read_file` line, a second spelling of one with `- ggop-alias:`, and a namespace
+says which of gg's modules it is with `- ggmodule:`. Measured against the pinned toolchain rather
+than assumed: `swiftc` emits each as its own line of the symbol graph's `docComment`, unsplit, and
+warns about nothing. The reflector strips them before any prose reaches a model, refuses a public
+module function that names no operation, and `crates/gg/src/sandbox/language/register.rs` refuses an
+id gg's own operations table has no row for — so the check runs in both directions and a capability
+cannot be silently absent from a model's surface.
 
 ## Rebuilding
 

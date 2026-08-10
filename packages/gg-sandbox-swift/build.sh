@@ -214,7 +214,7 @@ echo "==> compiling the SDK as the module a program's scope is re-exported from"
 	-file-prefix-map "$HERE=/gg/sdk" \
 	-module-name gg -import-objc-header "$STAGE/sandbox.h" \
 	-emit-module -emit-module-path "$STAGE/gg.swiftmodule" -c -o "$STAGE/gg.o" \
-	"$HERE"/Sources/SDK/*.swift "$HERE"/Sources/SDK/Objects/*.swift)
+	"$HERE"/Sources/SDK/Modules/*.swift "$HERE"/Sources/SDK/Internal/*.swift)
 test -s "$STAGE/gg.o"
 test -s "$STAGE/gg.swiftmodule"
 

@@ -83,34 +83,34 @@ struct Crossing {
 /// and all of them are visible here.
 ///
 /// What differs from every other arm's table is the **argument labels**, which is Swift's defining
-/// feature and the one this SDK leans on hardest: `fs.editFile("a", replacing: "x", with: "y")` and
-/// `agents.sendMessage("note", to: id)` read as sentences, and the label is part of the function's
+/// feature and the one this SDK leans on hardest: `files.editFile("a", replacing: "x", with: "y")` and
+/// `delegation.sendMessage("note", to: id)` read as sentences, and the label is part of the function's
 /// name rather than a way of reordering a call.
 fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: r#"try system.shell("npm test", timeout: 30)"#,
+            statement: r#"try shell.run("npm test", timeout: 30)"#,
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: r#"_ = try fs.readFile("src/a.swift", offset: 2, limit: 5)"#,
+            statement: r#"_ = try files.readFile("src/a.swift", offset: 2, limit: 5)"#,
             expected: || json!({ "path": "src/a.swift", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: r#"try fs.writeFile("out.txt", contents: "hello")"#,
+            statement: r#"try files.writeFile("out.txt", contents: "hello")"#,
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: r#"try fs.editFile("src/a.swift", replacing: "alpha", with: "beta")"#,
+            statement: r#"try files.editFile("src/a.swift", replacing: "alpha", with: "beta")"#,
             expected: || json!({ "path": "src/a.swift", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: r#"_ = try fs.listDir("src")"#,
+            statement: r#"_ = try files.listDir("src")"#,
             expected: || json!({ "path": "src" }),
         },
         Crossing {
@@ -120,7 +120,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "write_memory",
-            statement: r#"try memory.writeMemory("layout", description: "d", body: "b")"#,
+            statement: r#"try memories.writeMemory("layout", description: "d", body: "b")"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -128,7 +128,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: r#"try memory.updateMemory("layout", description: "d2", body: "b2")"#,
+            statement: r#"try memories.updateMemory("layout", description: "d2", body: "b2")"#,
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -139,7 +139,7 @@ fn crossings() -> Vec<Crossing> {
             // The one crossing that carries a memory's CODE, and the one that skips a default
             // argument between two it names — which is what a Swift author does instead of filling
             // in a record.
-            statement: r#"try memory.createMemory(
+            statement: r#"try memories.createMemory(
                 "layout", description: "d", body: "b", code: "public func one() -> Int { 1 }")"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "contents": "b",
@@ -148,22 +148,22 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "read_memory",
-            statement: r#"_ = try memory.readMemory("layout")"#,
+            statement: r#"_ = try memories.readMemory("layout")"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: r#"try memory.editMemory("layout", replacing: "old", with: "new")"#,
+            statement: r#"try memories.editMemory("layout", replacing: "old", with: "new")"#,
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: r#"_ = try memory.searchMemories(["cargo", "nextest"])"#,
+            statement: r#"_ = try memories.searchMemories(["cargo", "nextest"])"#,
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: r#"try memory.deleteMemory("layout")"#,
+            statement: r#"try memories.deleteMemory("layout")"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
@@ -198,12 +198,12 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "create_epic",
-            statement: r#"try project.createEpic(prefix: "epc", title: "E", description: "D")"#,
+            statement: r#"try board.createEpic(prefix: "epc", title: "E", description: "D")"#,
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: r#"try project.createIssue(
+            statement: r#"try board.createIssue(
                 title: "I", inScope: "s", outOfScope: "o", completionCriteria: "c",
                 agent: "worker", reviewers: ["critic"])"#,
             expected: || {
@@ -222,7 +222,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: r#"try project.updateIssue("i1", status: .done, epic: .ungroup)"#,
+            statement: r#"try board.updateIssue("i1", status: .done, epic: .ungroup)"#,
             expected: || {
                 // `.ungroup` ungroups the issue, which gg's schema spells as the empty string; a
                 // description the call left at its `.keep` default keeps the one it has, so its key
@@ -240,22 +240,22 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: r#"try project.setIssueBlockedBy("i1", to: ["i0"])"#,
+            statement: r#"try board.setIssueBlockedBy("i1", to: ["i0"])"#,
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: r#"try project.removeEpic("e1")"#,
+            statement: r#"try board.removeEpic("e1")"#,
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: r#"try project.removeIssue("i1")"#,
+            statement: r#"try board.removeIssue("i1")"#,
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: r#"try project.waitForIssue("i1")"#,
+            statement: r#"try board.waitForIssue("i1")"#,
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
@@ -284,32 +284,32 @@ fn crossings() -> Vec<Crossing> {
             tool: "spawn_subagent",
             // The brief is a typed value rather than one of two optional arguments, so "both" and
             // "neither" are programs that do not compile.
-            statement: r#"try agents.spawnSubagent("subagent", task: .prompt("write the lexer"))"#,
+            statement: r#"try delegation.spawnSubagent("subagent", task: .prompt("write the lexer"))"#,
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            statement: r#"_ = try agents.waitForSubagents(["agent-1"])"#,
+            statement: r#"_ = try delegation.waitForSubagents(["agent-1"])"#,
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: r#"try agents.sendMessage("prefer the simpler parser", to: "agent-1")"#,
+            statement: r#"try delegation.sendMessage("prefer the simpler parser", to: "agent-1")"#,
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: r#"try agents.transitionState(to: "verify", note: "the build is green")"#,
+            statement: r#"try delegation.transitionState(to: "verify", note: "the build is green")"#,
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: r#"try agents.exec("Builder", prompt: "pick it up from here")"#,
+            statement: r#"try delegation.exec("Builder", prompt: "pick it up from here")"#,
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: r#"try agents.fork("try the other fix")"#,
+            statement: r#"try delegation.fork("try the other fix")"#,
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -369,22 +369,26 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_swift_too()
     let (outcome, log) = evaluate(
         &prepare(
             r####"
-let text = try fs.readTextFile("notes.md", offset: 1, limit: 2)
-let read = try view.openFile("notes.md", offset: 1, limit: 2)
-try view.openText("summary", body: text)
-try view.openDocsView("readFile")
-let closed = try view.close("summary")
-let missing = try view.close("never opened")
-let open = view.current()
-let directory = fs.list()
+let text = try files.readTextFile("notes.md", offset: 1, limit: 2)
+let read = try views.openFile("notes.md", offset: 1, limit: 2)
+try views.openText("summary", body: text)
+try views.openDocsView("readFile")
+let closed = try views.close("summary")
+let missing = try views.close("never opened")
+let open = views.current()
 gg.log("\(open[0].selector) \(open[0].kind)")
 gg.log("\(closed) \(missing)")
 switch read {
 case .text(let file): gg.log(file.contents.split(separator: "\n").first.map(String.init) ?? "")
 case .image(let picture): gg.log(picture.label)
 }
-gg.log(directory.map(\.name).joined(separator: ","))
-try harness.finish("read the file and showed myself the result")
+let directories = [
+    files.list(), shell.list(), board.list(), tasks.list(), memories.list(),
+    views.list(), context.list(), delegation.list(), skills.list(), programs.list(),
+    session.list(),
+]
+gg.log(directories.flatMap { $0 }.map(\.name).joined(separator: ","))
+try session.finish("read the file and showed myself the result")
 "####,
         ),
         &all_tools(),
@@ -401,7 +405,18 @@ try harness.finish("read the file and showed myself the result")
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "fsFunction");
+    // EVERY MODULE ASKS ITS DIRECTORY UNDER THE PATH THIS ARM PUBLISHES.
+    // The double echoes the grouping it was asked about, so this line is the one place the
+    // `ggModule` constant each namespace declares is observed crossing the membrane. It is the one
+    // fact `signatures.py` cannot read off a symbol graph — a `let`'s initializer is not in one — and
+    // the one whose failure is silent, since the host filters the directory on the string and a
+    // namespace answering under a neighbour's path would hand a program the wrong functions.
+    assert_eq!(
+        lines[3],
+        "gg.filesFunction,gg.shellFunction,gg.boardFunction,gg.tasksFunction,\
+         gg.memoriesFunction,gg.viewsFunction,gg.contextFunction,gg.delegationFunction,\
+         gg.skillsFunction,gg.programsFunction,gg.sessionFunction"
+    );
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -421,13 +436,32 @@ try harness.finish("read the file and showed myself the result")
     );
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
+    // `views.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
     // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
     );
+
+    // THE FULLY-QUALIFIED NAME IS WHAT A PROGRAM WRITES, AND IT SURVIVES BEING SHADOWED.
+    // Every entry in this arm's catalogue is keyed by `gg.<module>.<name>` and carries no separate
+    // `call`, which is a claim that the key compiles. Here it is compiled — in the one file where
+    // the short form does not, because the program declared a `files` of its own. Top-level Swift
+    // is one scope for the whole file, so the shadowing reaches back over the line above it; the
+    // qualified form goes through the module the SDK is compiled into and is unaffected. This is the
+    // measurement behind the sentence the prompt and the SDK's own header make.
+    let (outcome, log) = run_with(
+        r####"
+let files = ["a", "b"]
+gg.log("\(files.count)")
+gg.log(try gg.files.readTextFile("notes.md"))
+"####,
+        &all_tools(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["2", "contents of notes.md\nline two\n"]);
+    assert_eq!(log.names(), ["read_file"]);
 }
 
 #[test]
@@ -442,11 +476,11 @@ let history = try programs.history()
 gg.log("\(history.count)")
 do {
     gg.log(try programs.get(turn: 2))
-} catch let failure as ToolError {
+} catch let failure as core.ToolError {
     gg.log("\(failure.code)")
 }
 try programs.rerun("gg.log(\"again\")")
-try review.requestChanges(["widen the test", "name the file"])
+try session.requestChanges(["widen the test", "name the file"])
 "####,
         ),
         &[],
@@ -470,7 +504,7 @@ try review.requestChanges(["widen the test", "name the file"])
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare("try review.approve()\n"),
+        &prepare("try session.approve()\n"),
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -498,8 +532,8 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
     let (outcome, _log) = run_with(
         r####"
 do {
-    gg.log(try fs.readTextFile("gone.swift"))
-} catch let failure as ToolError where failure.code == .notFound {
+    gg.log(try files.readTextFile("gone.swift"))
+} catch let failure as core.ToolError where failure.code == .notFound {
     gg.log("\(failure.code) on \(failure.tool)")
 }
 gg.log("carried on")
@@ -522,7 +556,7 @@ gg.log("carried on")
     let (outcome, _log) = run_with(
         r####"
 gg.log("before")
-_ = try fs.readTextFile("gone.swift")
+_ = try files.readTextFile("gone.swift")
 gg.log("after")
 "####,
         &all_tools(),
@@ -572,9 +606,9 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     let (outcome, log) = run_with(
         r####"
 do {
-    _ = try system.shell("swift build")
+    _ = try shell.run("swift build")
     gg.log("ran")
-} catch let failure as ToolError {
+} catch let failure as core.ToolError {
     gg.log("\(failure.code)")
 }
 "####,
@@ -773,44 +807,72 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         test_cabinet_core::gg::GgProgramLanguage::Swift,
     );
 
-    // Identity: the objects, in the order the surface is presented in, and every gg tool spelled the
-    // way this arm spells it. This is the half the agreement gate compares against the other eight,
-    // and it is compared against gg's own vocabulary here as well, so the catalogue cannot ship
-    // describing a surface nobody has.
-    let objects: Vec<&str> = section(&catalogue, "objects")
+    // Identity: the modules, in the order the surface is presented in, each under the Swift path a
+    // program writes and a fully-qualified name is prefixed with. `core` is last and carries no
+    // capability, which is why it is the one module with no directory.
+    let modules: Vec<(&str, &str)> = section(&catalogue, "modules")
         .iter()
-        .map(|object| text(object, "object"))
+        .map(|module| (text(module, "id"), text(module, "path")))
         .collect();
     assert_eq!(
-        objects,
+        modules,
         [
-            "fs", "system", "project", "tasks", "memory", "view", "context", "agents", "skills",
-            "programs", "harness", "review"
+            ("files", "gg.files"),
+            ("shell", "gg.shell"),
+            ("board", "gg.board"),
+            ("tasks", "gg.tasks"),
+            ("memories", "gg.memories"),
+            ("views", "gg.views"),
+            ("context", "gg.context"),
+            ("delegation", "gg.delegation"),
+            ("skills", "gg.skills"),
+            ("programs", "gg.programs"),
+            ("session", "gg.session"),
+            ("core", "gg.core"),
         ],
-        "the objects, or their order, are not the surface's"
+        "the modules, their order, or their Swift paths are not the surface's"
     );
 
-    let mut catalogued: Vec<&str> = section(&catalogue, "tools")
+    // Every gg operation is bound exactly once, and nothing that is not one is claimed. This is the
+    // v2 shape of the tool bijection: an arm asserts which operation each function binds, and gg's
+    // own table is what says whether that operation exists — see `language/register.rs`, which fails
+    // an id gg has no row for.
+    let mut canonical: Vec<String> = section(&catalogue, "functions")
         .iter()
-        .map(|tool| text(tool, "tool"))
+        .filter(|entry| entry["aliasOf"].is_null())
+        .map(|entry| text(entry, "operation").to_string())
         .collect();
-    catalogued.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
-    vocabulary.sort_unstable();
+    canonical.sort();
+    let mut offered: Vec<String> = crate::sandbox::operations::OPERATIONS
+        .iter()
+        .map(|operation| operation.id.to_string())
+        .collect();
+    offered.sort();
     assert_eq!(
-        catalogued, vocabulary,
-        "the catalogue and gg's tool vocabulary have drifted apart"
+        canonical, offered,
+        "the catalogue and gg's operation vocabulary have drifted apart"
     );
 
     // Spelling: `camelCase`, because that is what Swift spells a function in. gg's vocabulary is
-    // `snake_case`, so on this arm the two differ for every tool whose name is more than one word —
-    // which is what the `key` exists for, and what a catalogue that quietly used gg's spelling would
-    // hide.
-    for tool in section(&catalogue, "tools") {
-        let name = text(tool, "name");
+    // `snake_case`, so on this arm the two differ for every operation whose name is more than one
+    // word — which is what the operation id exists for, and what a catalogue that quietly used gg's
+    // spelling would hide.
+    for entry in section(&catalogue, "functions") {
+        let name = text(entry, "name");
         assert!(
             !name.contains('_'),
             "`{name}` is not how Swift spells a function"
+        );
+        // And the fully-qualified name is a real Swift path a program may write: the module's own,
+        // then the name, with the receiver in between where a value carries the call.
+        let fqn = text(entry, "fqn");
+        assert!(
+            fqn.starts_with("gg.") && fqn.ends_with(name),
+            "`{fqn}` is not this arm's own spelling of `{name}`"
+        );
+        assert!(
+            entry["call"].is_null(),
+            "`{fqn}` is what a program writes, so there is no second spelling to record"
         );
     }
 
@@ -819,11 +881,11 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     // as DEFAULT VALUES rather than as a record, argument labels on everything whose role the
     // function's name does not carry, `throws` on the way out, and a closed range where the wire has
     // a record.
-    let signature = |tool: &str| {
-        let entry = section(&catalogue, "tools")
+    let signature = |operation: &str| {
+        let entry = section(&catalogue, "functions")
             .iter()
-            .find(|entry| text(entry, "tool") == tool)
-            .unwrap_or_else(|| panic!("`{tool}` is catalogued"));
+            .find(|entry| text(entry, "operation") == operation && entry["aliasOf"].is_null())
+            .unwrap_or_else(|| panic!("`{operation}` is catalogued"));
         let shapes = entry["signatures"].as_array().expect("an entry has shapes");
         assert_eq!(
             shapes.len(),
@@ -834,34 +896,40 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         text(&shapes[0], "signature").to_string()
     };
     assert_eq!(
-        signature("read_file"),
-        "readFile(_ path: String, offset: Int? = nil, limit: Int? = nil) throws -> FileRead"
+        signature("files.read_file"),
+        "readFile(_ path: String, offset: Int? = nil, limit: Int? = nil) throws -> files.FileRead"
     );
     assert_eq!(
-        signature("shell"),
-        "shell(_ command: String, timeout: Double? = nil) throws -> ShellOutput"
+        signature("shell.shell"),
+        "run(_ command: String, timeout: Double? = nil) throws -> shell.ShellOutput"
     );
     assert_eq!(
-        signature("edit_file"),
+        signature("files.edit_file"),
         "editFile(_ path: String, replacing oldString: String, with newString: String) throws"
     );
     assert_eq!(
-        signature("archive_thread"),
-        "archiveThread(_ ranges: [ClosedRange<Int>]) throws -> ReclaimReport"
+        signature("context.archive_thread"),
+        "archiveThread(_ ranges: [ClosedRange<Int>]) throws -> context.ReclaimReport"
     );
     assert_eq!(
-        signature("create_issue"),
+        signature("board.create_issue"),
         "createIssue(title: String, inScope: String, outOfScope: String, \
          completionCriteria: String, agent: String, description: String? = nil, \
          blockedBy: [String] = [], epic: String? = nil, reviewers: [String] = []) \
-         throws -> IssueCreated"
+         throws -> board.IssueCreated"
+    );
+    // A member function is the one place the receiver is what a program already holds, so its
+    // signature starts at the name and says nothing about the value it hangs off.
+    assert_eq!(
+        signature("delegation.send_message"),
+        "sendMessage(_ message: String, to agentId: String) throws"
     );
 
     // A default value is what makes an argument optional in Swift, so the catalogue's two fields
     // must say the same thing about every argument of every shape — a `default` on a required
     // argument, or an optional one without a default, would be a catalogue describing a call a model
     // could not write.
-    for name in ["session", "views", "programs", "tools", "helpers", "meta"] {
+    for name in ["functions", "meta"] {
         for entry in section(&catalogue, name) {
             for shape in entry["signatures"].as_array().expect("an entry has shapes") {
                 for parameter in shape["parameters"]
@@ -889,11 +957,17 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     // argument a signature names, and a member documented for every member of every type. The
     // reflector refuses to emit a catalogue that breaks this, and this is the second reading of it —
     // over the emitted JSON, where it is the same check for every language there will ever be.
-    for name in ["session", "views", "programs", "tools", "helpers", "meta"] {
+    for name in ["functions", "meta"] {
         for entry in section(&catalogue, name) {
             let called = text(entry, "name");
+            // A `functions` entry authors a `brief`; the `meta` section still carries the one
+            // paragraph its own schema has, which is why the two are read differently.
+            let documented = match name {
+                "meta" => text(entry, "doc"),
+                _ => text(entry, "brief"),
+            };
             assert!(
-                !text(entry, "doc").trim().is_empty(),
+                !documented.trim().is_empty(),
                 "`{called}` has no documentation"
             );
             for shape in entry["signatures"].as_array().expect("an entry has shapes") {
@@ -916,10 +990,14 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         }
     }
     for declaration in section(&catalogue, "types") {
-        let named = text(declaration, "name");
+        let named = text(declaration, "fqn");
         assert!(
-            !text(declaration, "doc").trim().is_empty(),
+            !text(declaration, "brief").trim().is_empty(),
             "the type `{named}` has no documentation"
+        );
+        assert!(
+            named.starts_with("gg.") && named.ends_with(text(declaration, "name")),
+            "`{named}` is not this arm's own spelling of a type"
         );
         let members = declaration["members"]
             .as_array()
@@ -931,7 +1009,7 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         for member in members {
             let member_name = text(member, "name");
             assert!(
-                !text(member, "doc").trim().is_empty(),
+                !text(member, "brief").trim().is_empty(),
                 "`{named}.{member_name}` has no documentation"
             );
         }

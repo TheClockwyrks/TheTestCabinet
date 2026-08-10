@@ -149,7 +149,7 @@
           ]
         }
       ],
-      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `GG::Views.open_docs_view`.",
+      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `GG::Views.open_docs_view`.\n\nReturns: every function this module offers, one line each",
       "types": [
         "GG::Core::FunctionSummary"
       ]
@@ -166,7 +166,7 @@
       "fqn": "GG::Files.read_file",
       "call": null,
       "brief": "Read a file, as either a `GG::Files::TextFile` or a `GG::Files::ImageFile`.",
-      "detail": "Which of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. Both are classes, so an ordinary `case` narrows them:\n\n```ruby\ncase GG::Files.read_file(\"logo.png\")\nwhen GG::Files::TextFile then …\nwhen GG::Files::ImageFile then …\nend\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window; reading a picture describes it and shows nothing, so a file only read here is a file nobody has looked at.\n\n# Errors\n\n`:not_found` for a missing path.",
+      "detail": "Which of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. Both are classes, so an ordinary `case` narrows them:\n\n```ruby\ncase GG::Files.read_file(\"logo.png\")\nwhen GG::Files::TextFile then …\nwhen GG::Files::ImageFile then …\nend\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window; reading a picture describes it and shows nothing, so a file only read here is a file nobody has looked at.\n\nReturns: the file's window of text, or the picture's description\n\n# Errors\n\n`:not_found` for a missing path.",
       "signatures": [
         {
           "signature": "read_file(path, offset: nil, limit: nil) -> GG::Files::TextFile or GG::Files::ImageFile",
@@ -228,7 +228,7 @@
       "fqn": "GG::Files.read_text_file",
       "call": null,
       "brief": "Read a text file and hand back its contents directly.",
-      "detail": "`GG::Files.read_file` without the narrowing, for the common case: the same read, the same window, the same cost.\n\n# Errors\n\n`:invalid_argument` when the path names a picture, which `GG::Files.read_file` inspects instead and `GG::Views.open_file` displays.",
+      "detail": "`GG::Files.read_file` without the narrowing, for the common case: the same read, the same window, the same cost.\n\nReturns: the file's text, or just the requested window\n\n# Errors\n\n`:invalid_argument` when the path names a picture, which `GG::Files.read_file` inspects instead and `GG::Views.open_file` displays.",
       "signatures": [
         {
           "signature": "read_text_file(path, offset: nil, limit: nil) -> String",
@@ -287,7 +287,7 @@
       "fqn": "GG::Files.write_file",
       "call": null,
       "brief": "Write UTF-8 text to a file, creating parent directories and replacing what is there.",
-      "detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nThe contents may be given as a block, which is what a Ruby program reaches for when the text is assembled rather than held: `GG::Files.write_file(\"notes.md\") { rows.join(\"\\n\") }`.\n\n# Errors\n\n`:invalid_argument` when neither a `contents` argument nor a block was given.",
+      "detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nThe contents may be given as a block, which is what a Ruby program reaches for when the text is assembled rather than held: `GG::Files.write_file(\"notes.md\") { rows.join(\"\\n\") }`.\n\nReturns: how many bytes were written\n\n# Errors\n\n`:invalid_argument` when neither a `contents` argument nor a block was given.",
       "signatures": [
         {
           "signature": "write_file(path, contents) -> Integer",
@@ -362,7 +362,7 @@
       "fqn": "GG::Files.edit_file",
       "call": null,
       "brief": "Replace the one exact occurrence of some text in a file with something else.",
-      "detail": "Widening the surrounding context until the match is unique is the way to disambiguate; counting occurrences is not.\n\n# Errors\n\n`:not_found` when the text does not appear, and `:conflict` — with the number of matches — when it appears more than once.",
+      "detail": "Widening the surrounding context until the match is unique is the way to disambiguate; counting occurrences is not.\n\nReturns: nothing; the edit either happened or raised\n\n# Errors\n\n`:not_found` when the text does not appear, and `:conflict` — with the number of matches — when it appears more than once.",
       "signatures": [
         {
           "signature": "edit_file(path, old_string, new_string) -> nil",
@@ -421,7 +421,7 @@
       "fqn": "GG::Files.list_dir",
       "call": null,
       "brief": "List a directory, sorted by name; no argument lists the workspace root.",
-      "detail": "Each entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty array, not a failure.\n\n# Errors\n\n`:not_found` for a missing directory.",
+      "detail": "Each entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty array, not a failure.\n\nReturns: what the directory holds, sorted by name\n\n# Errors\n\n`:not_found` for a missing directory.",
       "signatures": [
         {
           "signature": "list_dir(path = nil) -> Array<GG::Files::DirEntry>",
@@ -460,7 +460,7 @@
       "fqn": "GG::Shell.run",
       "call": null,
       "brief": "Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.",
-      "detail": "A non-zero exit is not a failure: read `exit_code` on the result. Only a process that could not be launched, or one the timeout killed, raises.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all, only that note, and one that failed returns the tail. Grepping the named files is cheaper than re-running the command.\n\n# Errors\n\n`:limit_exceeded` when the timeout killed the process, and `:io_error` when it could not be launched.",
+      "detail": "A non-zero exit is not a failure: read `exit_code` on the result. Only a process that could not be launched, or one the timeout killed, raises.\n\nThis run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all, only that note, and one that failed returns the tail. Grepping the named files is cheaper than re-running the command.\n\nReturns: what the process reported when it finished\n\n# Errors\n\n`:limit_exceeded` when the timeout killed the process, and `:io_error` when it could not be launched.",
       "signatures": [
         {
           "signature": "run(command, timeout_secs: nil) -> GG::Shell::ShellOutput",
@@ -509,7 +509,7 @@
       "fqn": "GG::Board.create_epic",
       "call": null,
       "brief": "Create an epic to group related issues, and hand back the id it took.",
-      "detail": "`prefix` is upper-cased and becomes the epic's id, which is also the stem its issues are numbered from: a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\n# Errors\n\n`:invalid_argument` when the prefix is not three to six letters, and `:conflict` when another epic already holds it.",
+      "detail": "`prefix` is upper-cased and becomes the epic's id, which is also the stem its issues are numbered from: a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\nReturns: the id the prefix resolved to, and the board budget\n\n# Errors\n\n`:invalid_argument` when the prefix is not three to six letters, and `:conflict` when another epic already holds it.",
       "signatures": [
         {
           "signature": "create_epic(prefix, title, description) -> GG::Board::EpicCreated",
@@ -570,7 +570,7 @@
       "fqn": "GG::Board.create_issue",
       "call": null,
       "brief": "Create a self-contained, dispatchable issue, and hand back the id the board **assigned** it.",
-      "detail": "The id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; it is the board's to choose, so the returned one is what blocks a later issue on this one or waits for it. The scope, non-scope and completion criteria are what a child agent is briefed from, so they are written for a reader with no other context.\n\n# Errors\n\n`:invalid_argument` when `agent` or a reviewer is not one to assign, and `:conflict` on a blocker edge that would close a cycle.",
+      "detail": "The id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic; it is the board's to choose, so the returned one is what blocks a later issue on this one or waits for it. The scope, non-scope and completion criteria are what a child agent is briefed from, so they are written for a reader with no other context.\n\nReturns: the id the board assigned, and the board budget\n\n# Errors\n\n`:invalid_argument` when `agent` or a reviewer is not one to assign, and `:conflict` on a blocker edge that would close a cycle.",
       "signatures": [
         {
           "signature": "create_issue(title, in_scope, out_of_scope, completion_criteria, agent, description: nil, blocked_by: [], epic_id: nil, reviewers: []) -> GG::Board::IssueCreated",
@@ -697,7 +697,7 @@
       "fqn": "GG::Board.update_issue",
       "call": null,
       "brief": "Revise an issue; at least one field is required.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "Returns: nothing; the revision either happened or raised\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "update_issue(id, title: nil, description: Core::UNCHANGED, in_scope: nil, out_of_scope: nil, completion_criteria: nil, status: nil, epic_id: Core::UNCHANGED) -> nil",
@@ -813,7 +813,7 @@
       "fqn": "GG::Board.set_issue_blocked_by",
       "call": null,
       "brief": "Replace an issue's whole blocker set; passing no blockers clears every one of them.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id, and `:conflict` when an edge would close a cycle.",
+      "detail": "Returns: nothing; the replacement either happened or raised\n\n# Errors\n\n`:not_found` for an unknown id, and `:conflict` when an edge would close a cycle.",
       "signatures": [
         {
           "signature": "set_issue_blocked_by(id, *blocked_by) -> nil",
@@ -861,7 +861,7 @@
       "fqn": "GG::Board.remove_epic",
       "call": null,
       "brief": "Remove an epic, keeping its issues and ungrouping them.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "Returns: how much of the board budget is still used\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "remove_epic(id) -> GG::Board::BoardUsage",
@@ -899,7 +899,7 @@
       "fqn": "GG::Board.remove_issue",
       "call": null,
       "brief": "Remove an issue and every blocker edge pointing at it.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "Returns: how much of the board budget is still used\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "remove_issue(id) -> GG::Board::BoardUsage",
@@ -937,7 +937,7 @@
       "fqn": "GG::Board.wait_for_issue",
       "call": null,
       "brief": "Register a wait on an issue and hand back an acknowledgement.",
-      "detail": "It does not block inside the program — it records the wait and returns at once, so the rest of the program still runs; the suspension happens after the program ends, between turns. The run then suspends, freeing this agent's slot for others, until the issue is terminal — done, or failed if its assigned agent could not complete it — and resumes on the next turn. It is how the next turn's work is sequenced behind an issue this session depends on.\n\n# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "It does not block inside the program — it records the wait and returns at once, so the rest of the program still runs; the suspension happens after the program ends, between turns. The run then suspends, freeing this agent's slot for others, until the issue is terminal — done, or failed if its assigned agent could not complete it — and resumes on the next turn. It is how the next turn's work is sequenced behind an issue this session depends on.\n\nReturns: the acknowledgement, which says what happens once the program ends\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "wait_for_issue(id) -> String",
@@ -974,7 +974,7 @@
       "fqn": "GG::Board::IssueCreated#wait",
       "call": null,
       "brief": "Register a wait on this issue, which suspends the agent between turns until it is terminal.",
-      "detail": "`GG::Board.wait_for_issue` with the id already supplied, for the common case where the issue was just created and the next turn's work is sequenced behind it.\n\n# Errors\n\n`:not_found` when the issue has since been removed.",
+      "detail": "`GG::Board.wait_for_issue` with the id already supplied, for the common case where the issue was just created and the next turn's work is sequenced behind it.\n\nReturns: the acknowledgement, which says what happens once the program ends\n\n# Errors\n\n`:not_found` when the issue has since been removed.",
       "signatures": [
         {
           "signature": "wait() -> String",
@@ -1001,7 +1001,7 @@
       "fqn": "GG::Tasks.add_task",
       "call": null,
       "brief": "Add a task to the task list and hand back the task budget.",
-      "detail": "# Errors\n\n`:conflict` on a duplicate id or on an edge that would close a cycle.",
+      "detail": "Returns: how much of the task budget is now used\n\n# Errors\n\n`:conflict` on a duplicate id or on an edge that would close a cycle.",
       "signatures": [
         {
           "signature": "add_task(id, title, description: nil, blocked_by: []) -> GG::Tasks::TaskUsage",
@@ -1072,7 +1072,7 @@
       "fqn": "GG::Tasks.update_task",
       "call": null,
       "brief": "Revise a task's title, description or status; at least one of them is required.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "Returns: nothing; the revision either happened or raised\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "update_task(id, title: nil, description: Core::UNCHANGED, status: nil) -> nil",
@@ -1144,7 +1144,7 @@
       "fqn": "GG::Tasks.set_blocked_by",
       "call": null,
       "brief": "Replace a task's whole blocker set; passing no blockers clears every one of them.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id, and `:conflict` when an edge would close a cycle.",
+      "detail": "Returns: nothing; the replacement either happened or raised\n\n# Errors\n\n`:not_found` for an unknown id, and `:conflict` when an edge would close a cycle.",
       "signatures": [
         {
           "signature": "set_blocked_by(id, *blocked_by) -> nil",
@@ -1192,7 +1192,7 @@
       "fqn": "GG::Tasks.complete_task",
       "call": null,
       "brief": "Mark a task done.",
-      "detail": "Tasks it was blocking become actionable once every one of their blockers is done.\n\n# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "Tasks it was blocking become actionable once every one of their blockers is done.\n\nReturns: nothing; the task either moved or raised\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "complete_task(id) -> nil",
@@ -1229,7 +1229,7 @@
       "fqn": "GG::Tasks.remove_task",
       "call": null,
       "brief": "Remove a task and every blocker edge pointing at it, and hand back the task budget.",
-      "detail": "# Errors\n\n`:not_found` for an unknown id.",
+      "detail": "Returns: how much of the task budget is still used\n\n# Errors\n\n`:not_found` for an unknown id.",
       "signatures": [
         {
           "signature": "remove_task(id) -> GG::Tasks::TaskUsage",
@@ -1267,7 +1267,7 @@
       "fqn": "GG::Memories.write_memory",
       "call": null,
       "brief": "Record a durable memory that survives a context compaction.",
-      "detail": "A memory may also carry **code**. `code` is a Ruby module whose methods are bound at `lib.<name>` in every later program this session writes, so a helper got right once is never written again; `on_use` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context: they cost no window, are never shown back, and count against no body limit.\n\n# Errors\n\n`:conflict` on a duplicate name, and `:limit_exceeded` when the body would breach the run's caps — revising or deleting a memory is the way out, rather than accruing more.",
+      "detail": "A memory may also carry **code**. `code` is a Ruby module whose methods are bound at `lib.<name>` in every later program this session writes, so a helper got right once is never written again; `on_use` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context: they cost no window, are never shown back, and count against no body limit.\n\nReturns: how much of the memory budget is now used\n\n# Errors\n\n`:conflict` on a duplicate name, and `:limit_exceeded` when the body would breach the run's caps — revising or deleting a memory is the way out, rather than accruing more.",
       "signatures": [
         {
           "signature": "write_memory(name, description, body, code: nil, on_use: nil) -> GG::Memories::MemoryUsage",
@@ -1349,7 +1349,7 @@
       "fqn": "GG::Memories.update_memory",
       "call": null,
       "brief": "Replace an existing memory's description and body, keyed on its slug.",
-      "detail": "Its code and on-use script are replaced too — leaving them out clears them.\n\n# Errors\n\n`:not_found` when no memory has that name.",
+      "detail": "Its code and on-use script are replaced too — leaving them out clears them.\n\nReturns: how much of the memory budget is now used\n\n# Errors\n\n`:not_found` when no memory has that name.",
       "signatures": [
         {
           "signature": "update_memory(name, description, body, code: nil, on_use: nil) -> GG::Memories::MemoryUsage",
@@ -1431,7 +1431,7 @@
       "fqn": "GG::Memories.create_memory",
       "call": null,
       "brief": "Record a new memory whose contents stay out of the context window until they are read.",
-      "detail": "# Errors\n\n`:conflict` on a duplicate slug, and `:limit_exceeded` when the contents, or the index entry, would breach a limit.",
+      "detail": "Returns: how much of the memory budget is now used\n\n# Errors\n\n`:conflict` on a duplicate slug, and `:limit_exceeded` when the contents, or the index entry, would breach a limit.",
       "signatures": [
         {
           "signature": "create_memory(name, description, body, code: nil, on_use: nil) -> GG::Memories::MemoryUsage",
@@ -1513,7 +1513,7 @@
       "fqn": "GG::Memories.read_memory",
       "call": null,
       "brief": "Read one memory's full contents by slug, which is the only thing that brings them into context.",
-      "detail": "A memory that carries code loads that code on being read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\n# Errors\n\n`:not_found` when no memory has that slug.",
+      "detail": "A memory that carries code loads that code on being read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\nReturns: the memory's contents\n\n# Errors\n\n`:not_found` when no memory has that slug.",
       "signatures": [
         {
           "signature": "read_memory(name) -> String",
@@ -1550,7 +1550,7 @@
       "fqn": "GG::Memories.edit_memory",
       "call": null,
       "brief": "Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.",
-      "detail": "Appending is done by quoting the last line and replacing it with itself plus what is being added.\n\n# Errors\n\n`:not_found` when the text does not appear, `:conflict` when it appears more than once, `:limit_exceeded` when the result would be too long, and `:invalid_argument` when the edit would leave the memory empty — deleting it is the way to do that.",
+      "detail": "Appending is done by quoting the last line and replacing it with itself plus what is being added.\n\nReturns: how much of the memory budget is now used\n\n# Errors\n\n`:not_found` when the text does not appear, `:conflict` when it appears more than once, `:limit_exceeded` when the result would be too long, and `:invalid_argument` when the edit would leave the memory empty — deleting it is the way to do that.",
       "signatures": [
         {
           "signature": "edit_memory(name, search, replace) -> GG::Memories::MemoryUsage",
@@ -1610,7 +1610,7 @@
       "fqn": "GG::Memories.search_memories",
       "call": null,
       "brief": "Find the memories mentioning any of `keywords`, best first.",
-      "detail": "Plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many distinct keywords a memory mentions and then by how often. Several specific words rank better than one sentence; `GG::Memories.read_memory` is what fetches a hit worth having in full. A search that matches nothing is an empty array.\n\n# Errors\n\n`:invalid_argument` when every keyword is empty.",
+      "detail": "Plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many distinct keywords a memory mentions and then by how often. Several specific words rank better than one sentence; `GG::Memories.read_memory` is what fetches a hit worth having in full. A search that matches nothing is an empty array.\n\nReturns: the memories that matched, best first\n\n# Errors\n\n`:invalid_argument` when every keyword is empty.",
       "signatures": [
         {
           "signature": "search_memories(*keywords) -> Array<GG::Memories::MemoryHit>",
@@ -1648,7 +1648,7 @@
       "fqn": "GG::Memories.delete_memory",
       "call": null,
       "brief": "Evict a memory by name, freeing room in the budget.",
-      "detail": "# Errors\n\n`:not_found` when no memory has that name.",
+      "detail": "Returns: how much of the memory budget is still used\n\n# Errors\n\n`:not_found` when no memory has that name.",
       "signatures": [
         {
           "signature": "delete_memory(name) -> GG::Memories::MemoryUsage",
@@ -1686,7 +1686,7 @@
       "fqn": "GG::Memories::MemoryHit#read",
       "call": null,
       "brief": "Read this memory's full contents, which a search hit does not carry.",
-      "detail": "`GG::Memories.read_memory` with the slug already supplied, for the common case where the hit is in hand.\n\n# Errors\n\n`:not_found` when the memory has since been deleted.",
+      "detail": "`GG::Memories.read_memory` with the slug already supplied, for the common case where the hit is in hand.\n\nReturns: the memory's contents\n\n# Errors\n\n`:not_found` when the memory has since been deleted.",
       "signatures": [
         {
           "signature": "read() -> String",
@@ -1713,7 +1713,7 @@
       "fqn": "GG::Views.open_file",
       "call": null,
       "brief": "Read a file and place it in the context window, attributed to its path and closable by it.",
-      "detail": "What comes back is exactly what `GG::Files.read_file` returns; the difference is the view. That split is the point: reading gets bytes for the program, opening shows the file to the agent, so a program that reads forty files to grep them puts nothing in the window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the same page replaces what it showed rather than piling up a duplicate. An image is shown as a picture, and this is the only call that shows one.\n\nRe-opening a picture that is already open replaces it rather than adding a second copy, which is the same rule a page of a file follows.\n\n# Errors\n\n`:not_found` for a missing path, and `:invalid_argument` for an offset past the end of the file. The read is what fails; nothing is opened when it does.",
+      "detail": "What comes back is exactly what `GG::Files.read_file` returns; the difference is the view. That split is the point: reading gets bytes for the program, opening shows the file to the agent, so a program that reads forty files to grep them puts nothing in the window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the same page replaces what it showed rather than piling up a duplicate. An image is shown as a picture, and this is the only call that shows one.\n\nRe-opening a picture that is already open replaces it rather than adding a second copy, which is the same rule a page of a file follows.\n\nReturns: the same thing `GG::Files.read_file` returns\n\n# Errors\n\n`:not_found` for a missing path, and `:invalid_argument` for an offset past the end of the file. The read is what fails; nothing is opened when it does.",
       "signatures": [
         {
           "signature": "open_file(path, offset: nil, limit: nil) -> GG::Files::TextFile or GG::Files::ImageFile",
@@ -1775,7 +1775,7 @@
       "fqn": "GG::Views.open_text",
       "call": null,
       "brief": "Place a value the program computed into the context window, under `label`.",
-      "detail": "A directory listing, a command's output, a child agent's answer, a table the program assembled. This is how the result of a program reaches the model that wrote it, and the only way it does. Opening the same label again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration.\n\nThe body may be given as a block, which is what a Ruby program reaches for when the text is built rather than held:\n\n```ruby\nGG::Views.open_text(\"failing tests\") do\n  failures.map { |name| \"- #{name}\" }.join(\"\\n\")\nend\n```\n\n# Errors\n\n`:invalid_argument` for an empty label — a view with no selector could never be closed or attributed — and for neither a `body` argument nor a block, and `:limit_exceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever silently truncated.",
+      "detail": "A directory listing, a command's output, a child agent's answer, a table the program assembled. This is how the result of a program reaches the model that wrote it, and the only way it does. Opening the same label again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration.\n\nThe body may be given as a block, which is what a Ruby program reaches for when the text is built rather than held:\n\n```ruby\nGG::Views.open_text(\"failing tests\") do\n  failures.map { |name| \"- #{name}\" }.join(\"\\n\")\nend\n```\n\nReturns: nothing; the view arrives in the next prompt\n\n# Errors\n\n`:invalid_argument` for an empty label — a view with no selector could never be closed or attributed — and for neither a `body` argument nor a block, and `:limit_exceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever silently truncated.",
       "signatures": [
         {
           "signature": "open_text(label, body) -> nil",
@@ -1850,7 +1850,7 @@
       "fqn": "GG::Views.open_docs_view",
       "call": null,
       "brief": "Place one function's full documentation into the context window.",
-      "detail": "Its signature, its description, and the declarations of any types it refers to that have not already been shown this session. This is how a function is read. It is a **view**, not a return value — the documentation arrives in the next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn it is asked for. Ask in one turn, use it in the next. Opening the same function's documentation again replaces the view rather than adding a second copy, and `GG::Views.close` closes it.\n\n# Errors\n\n`:not_found` for an unknown or unbound name.",
+      "detail": "Its signature, its description, and the declarations of any types it refers to that have not already been shown this session. This is how a function is read. It is a **view**, not a return value — the documentation arrives in the next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn it is asked for. Ask in one turn, use it in the next. Opening the same function's documentation again replaces the view rather than adding a second copy, and `GG::Views.close` closes it.\n\nReturns: nothing; the documentation arrives in the next prompt\n\n# Errors\n\n`:not_found` for an unknown or unbound name.",
       "signatures": [
         {
           "signature": "open_docs_view(target) -> nil",
@@ -1887,7 +1887,7 @@
       "fqn": "GG::Views.close",
       "call": null,
       "brief": "Close every view carrying `selector`, freeing the tokens they occupied.",
-      "detail": "For a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally need not guard every call. Closing a file view forgets what was read, not what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.",
+      "detail": "For a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally need not guard every call. Closing a file view forgets what was read, not what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.\n\nReturns: how many views were closed",
       "signatures": [
         {
           "signature": "close(selector) -> Integer",
@@ -1924,7 +1924,7 @@
       "fqn": "GG::Views.current",
       "call": null,
       "brief": "List what is open in the context window right now.",
-      "detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. Reading it is what decides what to close when the window is filling up. It is called `current` rather than `list` because every module already carries a `list` that lists that module's own functions.",
+      "detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. Reading it is what decides what to close when the window is filling up. It is called `current` rather than `list` because every module already carries a `list` that lists that module's own functions.\n\nReturns: every view open in the context window",
       "signatures": [
         {
           "signature": "current() -> Array<GG::Views::OpenView>",
@@ -1954,7 +1954,7 @@
       "fqn": "GG::Views::OpenView#close",
       "call": null,
       "brief": "Close this view, freeing the tokens it occupied.",
-      "detail": "`GG::Views.close` with the selector already supplied, which is what makes tidying a window read as ordinary Ruby: `GG::Views.current.each(&:close)`.",
+      "detail": "`GG::Views.close` with the selector already supplied, which is what makes tidying a window read as ordinary Ruby: `GG::Views.current.each(&:close)`.\n\nReturns: how many views were closed, counting every page of one file",
       "signatures": [
         {
           "signature": "close() -> Integer",
@@ -1981,7 +1981,7 @@
       "fqn": "GG::Context.evict_file_view",
       "call": null,
       "brief": "Drop the contents of files that were read out of the context window, freeing their tokens.",
-      "detail": "The files on disk are untouched: this forgets what was read, not what exists.\n\n# Errors\n\n`:not_found` when the named path has no view open.",
+      "detail": "The files on disk are untouched: this forgets what was read, not what exists.\n\nReturns: what the eviction freed\n\n# Errors\n\n`:not_found` when the named path has no view open.",
       "signatures": [
         {
           "signature": "evict_file_view(path = nil) -> GG::Context::ReclaimReport",
@@ -2019,7 +2019,7 @@
       "fqn": "GG::Context.archive_thread",
       "call": null,
       "brief": "Move whole turns out of the context window and report what that reclaimed.",
-      "detail": "Every result carries a header with its turn number and roughly what holding it costs, which is what names the turns worth dropping. A span is a Ruby `Range` and both ends are included, so `GG::Context.archive_thread(4..19)` archives turns 4 through 19; an exclusive range means the same thing and is read the same way. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable with `GG::Context.search_archive`.\n\n# Errors\n\n`:invalid_argument` for anything that is not a range of turn numbers, for an empty list, and for too many spans at once.",
+      "detail": "Every result carries a header with its turn number and roughly what holding it costs, which is what names the turns worth dropping. A span is a Ruby `Range` and both ends are included, so `GG::Context.archive_thread(4..19)` archives turns 4 through 19; an exclusive range means the same thing and is read the same way. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable with `GG::Context.search_archive`.\n\nReturns: what the archive freed\n\n# Errors\n\n`:invalid_argument` for anything that is not a range of turn numbers, for an empty list, and for too many spans at once.",
       "signatures": [
         {
           "signature": "archive_thread(*ranges) -> GG::Context::ReclaimReport",
@@ -2058,7 +2058,7 @@
       "fqn": "GG::Context.search_archive",
       "call": null,
       "brief": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.",
-      "detail": "`archive_empty?` is worth checking before `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so a program does not archive again believing the first archive failed.\n\n# Errors\n\n`:invalid_argument` for a blank query.",
+      "detail": "`archive_empty?` is worth checking before `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so a program does not archive again believing the first archive failed.\n\nReturns: whether anything is archived at all, and what matched\n\n# Errors\n\n`:invalid_argument` for a blank query.",
       "signatures": [
         {
           "signature": "search_archive(query) -> GG::Context::ArchiveSearch",
@@ -2098,7 +2098,7 @@
       "fqn": "GG::Context.compact",
       "call": null,
       "brief": "Compact the context window: the detailed thread is dropped and restarted from `summary`.",
-      "detail": "A fresh read of each path in `files` is added to the restarted window. Skills, memories and the task list are kept as they are. gg asks for this call when the window is full, and refuses every other call until it arrives.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not in `files` is gone, so the summary is written for the agent that comes after and `files` names what it will need in hand.\n\n# Errors\n\n`:invalid_argument` for a blank summary.",
+      "detail": "A fresh read of each path in `files` is added to the restarted window. Skills, memories and the task list are kept as they are. gg asks for this call when the window is full, and refuses every other call until it arrives.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not in `files` is gone, so the summary is written for the agent that comes after and `files` names what it will need in hand.\n\nReturns: nothing; the request is registered and the program runs on\n\n# Errors\n\n`:invalid_argument` for a blank summary.",
       "signatures": [
         {
           "signature": "compact(summary, files: []) -> nil",
@@ -2146,7 +2146,7 @@
       "fqn": "GG::Delegation.spawn_subagent",
       "call": null,
       "brief": "Delegate scoped work to a child agent and hand back its handle immediately.",
-      "detail": "The child runs in parallel while the program continues, and shares the workspace. `agent` names one of the agent profiles this agent may spawn — the system prompt lists them, and the profile selects the child's model, tools and instructions. The brief is exactly one of `prompt` and `issue_id`.\n\n# Errors\n\n`:limit_exceeded` at the delegation depth cap, and `:invalid_argument` when `agent` is not one this agent may spawn.",
+      "detail": "The child runs in parallel while the program continues, and shares the workspace. `agent` names one of the agent profiles this agent may spawn — the system prompt lists them, and the profile selects the child's model, tools and instructions. The brief is exactly one of `prompt` and `issue_id`.\n\nReturns: the child that is now running\n\n# Errors\n\n`:limit_exceeded` at the delegation depth cap, and `:invalid_argument` when `agent` is not one this agent may spawn.",
       "signatures": [
         {
           "signature": "spawn_subagent(agent, prompt: nil, issue_id: nil) -> GG::Delegation::SubagentHandle",
@@ -2206,7 +2206,7 @@
       "fqn": "GG::Delegation.wait_for_subagents",
       "call": null,
       "brief": "Block until the named children have finished and collect their results in dispatch order.",
-      "detail": "With no arguments it waits for every outstanding child. The run's wall-clock budget keeps running throughout, so one wait for many children costs far less than one wait per child.\n\n# Errors\n\n`:not_found` for an id this agent did not spawn.",
+      "detail": "With no arguments it waits for every outstanding child. The run's wall-clock budget keeps running throughout, so one wait for many children costs far less than one wait per child.\n\nReturns: what each child finished with, in dispatch order\n\n# Errors\n\n`:not_found` for an id this agent did not spawn.",
       "signatures": [
         {
           "signature": "wait_for_subagents(*ids) -> Array<GG::Delegation::SubagentResult>",
@@ -2245,7 +2245,7 @@
       "fqn": "GG::Delegation.send_message",
       "call": null,
       "brief": "Deliver a message to a running child agent's inbox, which it reads at its next turn.",
-      "detail": "`GG::Delegation::SubagentHandle#send_message` is the same call with the id already supplied, for the common case where the handle is in hand.\n\n# Errors\n\n`:not_found` for an unknown agent id, and `:conflict` when that child has already returned.",
+      "detail": "`GG::Delegation::SubagentHandle#send_message` is the same call with the id already supplied, for the common case where the handle is in hand.\n\nReturns: nothing; the message either landed or raised\n\n# Errors\n\n`:not_found` for an unknown agent id, and `:conflict` when that child has already returned.",
       "signatures": [
         {
           "signature": "send_message(agent_id, message) -> nil",
@@ -2293,7 +2293,7 @@
       "fqn": "GG::Delegation.transition_state",
       "call": null,
       "brief": "Move the process this session is running inside on to another of its states.",
-      "detail": "The state is named the way an agent to spawn is named. It is bound only when a state machine is driving the session and the current state has somewhere to go. Like `GG::Context.compact` it is registered rather than performed: the call validates the target, returns, and the program runs on to its end, because replacing the agent — and its window — mid-program would pull every remaining call out from under it. The first declaration in a turn is the one that stands.\n\n# Errors\n\n`:invalid_argument` for a state this session may not move to, and `:refused` for a second declaration in one turn.",
+      "detail": "The state is named the way an agent to spawn is named. It is bound only when a state machine is driving the session and the current state has somewhere to go. Like `GG::Context.compact` it is registered rather than performed: the call validates the target, returns, and the program runs on to its end, because replacing the agent — and its window — mid-program would pull every remaining call out from under it. The first declaration in a turn is the one that stands.\n\nReturns: nothing; the declaration is recorded and the program runs on\n\n# Errors\n\n`:invalid_argument` for a state this session may not move to, and `:refused` for a second declaration in one turn.",
       "signatures": [
         {
           "signature": "transition_state(state, note = nil) -> nil",
@@ -2341,7 +2341,7 @@
       "fqn": "GG::Delegation.exec",
       "call": null,
       "brief": "Continue this session as a different agent, from the next turn.",
-      "detail": "The named agent takes over with its own model, tools and instructions, keeping every capability the two of them share — the whole conversation above all, so it needs no catching up. Registered rather than performed, exactly as `GG::Delegation.transition_state` is and for the same reason: the window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn.\n\n# Errors\n\n`:refused` for a second succession in one turn or one after a state transition, and `:invalid_argument` for an agent this session may not become.",
+      "detail": "The named agent takes over with its own model, tools and instructions, keeping every capability the two of them share — the whole conversation above all, so it needs no catching up. Registered rather than performed, exactly as `GG::Delegation.transition_state` is and for the same reason: the window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn.\n\nReturns: nothing; the succession is recorded and the program runs on\n\n# Errors\n\n`:refused` for a second succession in one turn or one after a state transition, and `:invalid_argument` for an agent this session may not become.",
       "signatures": [
         {
           "signature": "exec(agent, prompt = nil) -> nil",
@@ -2389,7 +2389,7 @@
       "fqn": "GG::Delegation.fork",
       "call": null,
       "brief": "Run a copy of this agent, in parallel, on something it will not do itself.",
-      "detail": "The copy has the same model, the same tools and a private copy of the whole conversation, so `prompt` is the *difference* rather than a briefing — everything already worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded, because the conversation it inherits has to be a complete one. So `GG::Delegation.wait_for_subagents` can only collect it on a later turn, and waiting on it in the program that made it never returns it.\n\n# Errors\n\n`:limit_exceeded` at the delegation depth cap, and `:invalid_argument` for a blank prompt.",
+      "detail": "The copy has the same model, the same tools and a private copy of the whole conversation, so `prompt` is the *difference* rather than a briefing — everything already worked out is already there.\n\nIts handle comes back immediately, but the copy itself starts once this turn's tool results are recorded, because the conversation it inherits has to be a complete one. So `GG::Delegation.wait_for_subagents` can only collect it on a later turn, and waiting on it in the program that made it never returns it.\n\nReturns: the copy that starts once this turn is recorded\n\n# Errors\n\n`:limit_exceeded` at the delegation depth cap, and `:invalid_argument` for a blank prompt.",
       "signatures": [
         {
           "signature": "fork(prompt) -> GG::Delegation::SubagentHandle",
@@ -2427,7 +2427,7 @@
       "fqn": "GG::Delegation::SubagentHandle#send_message",
       "call": null,
       "brief": "Deliver a message to this child's inbox, which it reads at its next turn.",
-      "detail": "`GG::Delegation.send_message` with the id already supplied, for the common case where the handle is in hand. It is spelled in full rather than as `send`, which every Ruby object already answers to as the dynamic-dispatch method.\n\n# Errors\n\n`:conflict` when this child has already returned.",
+      "detail": "`GG::Delegation.send_message` with the id already supplied, for the common case where the handle is in hand. It is spelled in full rather than as `send`, which every Ruby object already answers to as the dynamic-dispatch method.\n\nReturns: nothing; the message either landed or raised\n\n# Errors\n\n`:conflict` when this child has already returned.",
       "signatures": [
         {
           "signature": "send_message(message) -> nil",
@@ -2464,7 +2464,7 @@
       "fqn": "GG::Skills.read_skill",
       "call": null,
       "brief": "Read a skill by name and hand back its body with the front matter stripped.",
-      "detail": "Reading it also pins that body permanently into context, so a skill that has been read stays read.\n\nA skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it offers. An on-use script runs once the calling program has ended, and whatever it shows arrives on the next turn.\n\n# Errors\n\n`:not_found`, listing the skills that do exist, when the name is unknown.",
+      "detail": "Reading it also pins that body permanently into context, so a skill that has been read stays read.\n\nA skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it offers. An on-use script runs once the calling program has ended, and whatever it shows arrives on the next turn.\n\nReturns: the skill's body, with its front matter stripped\n\n# Errors\n\n`:not_found`, listing the skills that do exist, when the name is unknown.",
       "signatures": [
         {
           "signature": "read_skill(name) -> String",
@@ -2501,7 +2501,7 @@
       "fqn": "GG::Programs.history",
       "call": null,
       "brief": "List the programs this session has already run, oldest first.",
-      "detail": "Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: `GG::Programs.get` is what fetches one. The list survives a compaction, so it is also how a program whose text has left the context window is found again. A session that has run nothing yet gets an empty array rather than an error.\n\n# Errors\n\n`:unavailable` when this agent keeps no program library, which is a different fact from an empty one.",
+      "detail": "Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: `GG::Programs.get` is what fetches one. The list survives a compaction, so it is also how a program whose text has left the context window is found again. A session that has run nothing yet gets an empty array rather than an error.\n\nReturns: every program this session has run, oldest first\n\n# Errors\n\n`:unavailable` when this agent keeps no program library, which is a different fact from an empty one.",
       "signatures": [
         {
           "signature": "history() -> Array<GG::Programs::ProgramSummary>",
@@ -2529,7 +2529,7 @@
       "fqn": "GG::Programs.get",
       "call": null,
       "brief": "Fetch the exact source of one program that ran, as a string; no argument fetches the most recent.",
-      "detail": "This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work — `sub`, an interpolation, a regexp — and hand the result to `GG::Programs.rerun`. What comes back is the program that **executed**, so when a turn's program was itself handed over by `GG::Programs.rerun`, the program that ran is what arrives rather than the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\n# Errors\n\n`:not_found`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+      "detail": "This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work — `sub`, an interpolation, a regexp — and hand the result to `GG::Programs.rerun`. What comes back is the program that **executed**, so when a turn's program was itself handed over by `GG::Programs.rerun`, the program that ran is what arrives rather than the few lines that asked for it, and fetch-patch-run composes turn after turn.\n\nReturns: the program's source, exactly as it ran\n\n# Errors\n\n`:not_found`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
       "signatures": [
         {
           "signature": "get(turn = nil) -> String",
@@ -2566,7 +2566,7 @@
       "fqn": "GG::Programs.rerun",
       "call": null,
       "brief": "Hand gg a program to run in place of this one.",
-      "detail": "The calling program finishes, then gg compiles and runs `source` as this turn's program. Used with `GG::Programs.get` it fixes a program without re-emitting it. Nothing is undone: every call the calling program already made stands, and the program that runs next sees the world it left behind — so the hand-over belongs before work that should not happen twice.\n\nThe first call stands, because a silently replaced program is a change nobody can see. If the calling program then fails, the hand-over is cancelled along with everything else that program decided, and the turn ends in an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program is the one that does the work.\n\n# Errors\n\n`:refused` for a second hand-over in one turn, and `:invalid_argument` for a blank source.",
+      "detail": "The calling program finishes, then gg compiles and runs `source` as this turn's program. Used with `GG::Programs.get` it fixes a program without re-emitting it. Nothing is undone: every call the calling program already made stands, and the program that runs next sees the world it left behind — so the hand-over belongs before work that should not happen twice.\n\nThe first call stands, because a silently replaced program is a change nobody can see. If the calling program then fails, the hand-over is cancelled along with everything else that program decided, and the turn ends in an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program is the one that does the work.\n\nReturns: nothing; the hand-over happens once the program has ended\n\n# Errors\n\n`:refused` for a second hand-over in one turn, and `:invalid_argument` for a blank source.",
       "signatures": [
         {
           "signature": "rerun(source) -> nil",
@@ -2603,7 +2603,7 @@
       "fqn": "GG::Programs::ProgramSummary#source",
       "call": null,
       "brief": "Fetch this program's source, which a summary does not carry.",
-      "detail": "`GG::Programs.get` with the turn already supplied, for the common case where the summary is in hand.\n\n# Errors\n\n`:not_found` when the library has since dropped that turn.",
+      "detail": "`GG::Programs.get` with the turn already supplied, for the common case where the summary is in hand.\n\nReturns: the program's source, exactly as it ran\n\n# Errors\n\n`:not_found` when the library has since dropped that turn.",
       "signatures": [
         {
           "signature": "source() -> String",
@@ -2630,7 +2630,7 @@
       "fqn": "GG::Session.finish",
       "call": null,
       "brief": "End the session, reporting what was done in a sentence or two.",
-      "detail": "This is the only thing that ends a working agent's session. It does not stop the program — whatever follows it still runs — so it belongs last, once the tools have confirmed the work is really done. A program that then fails has the ending cancelled and gets another turn.\n\n# Errors\n\n`:invalid_argument` for a blank summary.",
+      "detail": "This is the only thing that ends a working agent's session. It does not stop the program — whatever follows it still runs — so it belongs last, once the tools have confirmed the work is really done. A program that then fails has the ending cancelled and gets another turn.\n\nReturns: nothing; the program runs on\n\n# Errors\n\n`:invalid_argument` for a blank summary.",
       "signatures": [
         {
           "signature": "finish(summary) -> nil",
@@ -2667,7 +2667,7 @@
       "fqn": "GG::Session.approve",
       "call": null,
       "brief": "Accept the work under review: it meets every completion criterion and stays in scope.",
-      "detail": "This ends the session. It does not stop the program — whatever follows it still runs — so it belongs last, once the change has actually been read. It takes nothing, because an approval carries no obligation beyond itself.",
+      "detail": "This ends the session. It does not stop the program — whatever follows it still runs — so it belongs last, once the change has actually been read. It takes nothing, because an approval carries no obligation beyond itself.\n\nReturns: nothing; the program runs on",
       "signatures": [
         {
           "signature": "approve() -> nil",
@@ -2694,7 +2694,7 @@
       "fqn": "GG::Session.request_changes",
       "call": null,
       "brief": "Reject the work under review, listing every change that must be made before it can be accepted.",
-      "detail": "This ends the session, and does not stop the program. Each item says what is wrong and what to change.\n\n# Errors\n\n`:invalid_argument` when the list is empty.",
+      "detail": "This ends the session, and does not stop the program. Each item says what is wrong and what to change.\n\nReturns: nothing; the program runs on\n\n# Errors\n\n`:invalid_argument` when the list is empty.",
       "signatures": [
         {
           "signature": "request_changes(*items) -> nil",

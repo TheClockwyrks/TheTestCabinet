@@ -2900,22 +2900,39 @@ An idiomatic Swift SDK is not the Rust one with `try` in it. Swift's defining fe
 is part of the function's name rather than a way of reordering a call.
 
 ```swift
-let entries = try fs.listDir("src")
+let entries = try files.listDir("src")
 let sources = entries.filter { $0.kind == .file }
-try fs.editFile("src/main.swift", replacing: "old", with: "new")
-let built = try system.shell("swift build", timeout: 300)
-try view.openText("build", body: built.output)
-try harness.finish("looked at \(sources.count) sources")
+try files.editFile("src/main.swift", replacing: "old", with: "new")
+let built = try shell.run("swift build", timeout: 300)
+try views.openText("build", body: built.output)
+try session.finish("looked at \(sources.count) sources")
 ```
 
 Every difference below is a spelling rather than an identity, and the
 [agreement gate](#the-agreement-gate) accepts each of them:
 
-- **An API object is a caseless `enum`**, which is Swift's own namespace, so `fs.readFile(…)` is a
-  call on a namespace and nothing is constructed first. The object's *name* is gg's identity rather
-  than this SDK's spelling — `fs`, `view`, `harness` are on the wire and in the console's grouping —
-  so this is the one place the SDK departs from Swift's UpperCamelCase convention for types, and it
-  is a departure the surface's own rules force.
+- **A capability module is a caseless `enum`**, which is Swift's own namespace inside a module, so
+  `files.readFile(…)` is a call on a namespace and nothing is constructed first. There are eleven of
+  them — `files`, `shell`, `board`, `tasks`, `memories`, `views`, `context`, `delegation`, `skills`,
+  `programs`, `session` — plus a twelfth, `core`, which declares no function and holds the types
+  every other module's signatures name. The module's *name* is gg's identity rather than this SDK's
+  spelling, so this is the one place the SDK departs from Swift's UpperCamelCase convention for
+  types, and it is a departure the surface's own rules force.
+- **Not thirteen real Swift modules behind an `@_exported` umbrella**, which was the shape the
+  design expected and the one measurement replaced. The umbrella *does* re-export transitively —
+  compiled and checked, rather than read — so that was not what decided it. A module of its own
+  would have to be called `GgFiles` where the vocabulary every arm shares is `files`, and a program
+  that declares its own `files` shadows either shape identically. What answers the shadowing is the
+  **fully qualified** form: `gg.files.readFile(…)` is a real path in the module the SDK is compiled
+  into, it still resolves in a file that has taken the short name for itself, and it is therefore
+  the name the catalogue publishes. Thirteen compilations bought nothing a model could see.
+- **Each module owns the types it produces**, nested inside its own namespace: `files.FileRead`,
+  `board.IssueCreated`, `core.ToolError` — so two modules are free to declare a type of one name and
+  neither has to be renamed.
+- **A value carries the call that belongs to it**, added by an `extension` in the owning module:
+  `handle.send(…)`, `view.close()`, `hit.read()`, `summary.source()`, `issue.wait()`. Each is a
+  second spelling of a function the module also offers, catalogued as an alias of it, so offering a
+  capability twice counts as offering it once.
 - **The surface is in scope with no import line**, and that is what keeps a reply *verbatim*. The
   SDK is compiled ahead of time into a module called `gg`, and gg's shell — a second file of the
   model's own module — writes `@_exported import gg`. A plain `import` is **file-scoped** and would
@@ -2923,16 +2940,17 @@ Every difference below is a spelling rather than an identity, and the
   alternative was making a model write `import gg` on line 1 and paying a line offset on every
   diagnostic and every located trap for the rest of the arm's life.
 - **A program's own declarations shadow gg's.** Because the SDK is a different *module*, a program
-  that writes `struct DirEntry { … }` gets its own — where an SDK compiled into the program's module
+  that writes `enum files { … }` gets its own — where an SDK compiled into the program's module
   would have made that a redeclaration error on the model's own line. It is the same property
-  [Rust](#what-rusts-sdk-looks-like) gets from glob-importing its prelude, reached a different way.
+  [Rust](#what-rusts-sdk-looks-like) gets from glob-importing its prelude, reached a different way,
+  and `gg.files.readFile(…)` is how that same program still reaches what it shadowed.
 - **A failure is thrown, and `try` is the whole of the ceremony.** Every call is `throws` and
-  `ToolError` is an ordinary Swift `Error`, so a failure a program *expects* is
-  `catch let failure as ToolError where failure.code == .notFound` — an ordinary `catch` with a
+  `core.ToolError` is an ordinary Swift `Error`, so a failure a program *expects* is
+  `catch let failure as core.ToolError where failure.code == .notFound` — an ordinary `catch` with a
   `where` clause, not an SDK-specific combinator.
 - **Optional arguments are default values**, which is Swift's own idiom and the reason this surface
-  has no options record anywhere in it: `fs.readFile("a.swift", limit: 40)` skips `offset:` because
-  Swift lets it, where [Rust](#what-rusts-sdk-looks-like) has to fill in a struct and
+  has no options record anywhere in it: `files.readFile("a.swift", limit: 40)` skips `offset:`
+  because Swift lets it, where [Rust](#what-rusts-sdk-looks-like) has to fill in a struct and
   [Java](#what-javas-sdk-looks-like) has to declare an overload.
 - **A three-way patch field is an `enum` with `.keep` as its default**: `try tasks.updateTask("t1",
   description: .clear)` clears the description and leaves the title and the status alone, and the
@@ -2947,7 +2965,7 @@ Every difference below is a spelling rather than an identity, and the
   type, narrowed with a `switch` that needs no `default`.
 - **`gg.log` is the operator's channel.** `print` works here — this arm's guest has a real WASI
   stdout, unlike [Rust](#what-rusts-sdk-looks-like)'s — and goes to the same place, but `gg.log` is
-  the name that says where the line goes, and `view.openText` is what reaches the model.
+  the name that says where the line goes, and `views.openText` is what reaches the model.
 
 Its catalogue is reflected from a **DocC symbol graph** (`swiftc -emit-symbol-graph`, driven by
 `packages/gg-sandbox-swift/signatures.sh` and regenerated by the [drift gate](#the-catalogue)),
@@ -2965,7 +2983,17 @@ identifier saying which module each came from, which is how the reflector tells 
   to type and the internal name is one it never sees.
 - **`- Returns:` and `- Throws:` stay in the description** rather than being stripped as metadata,
   because what a call hands back and which failures to expect are half of what a model needs — the
-  same reading [Rust's](#what-rusts-sdk-looks-like) reflector gives `# Errors`.
+  same reading [Rust's](#what-rusts-sdk-looks-like) reflector gives `# Errors`. They land in the
+  **detail** rather than the brief, since the brief is the first line and nothing else.
+- **gg's identity for a call is a doc-comment line too.** Swift has no user-defined declaration
+  attribute short of a macro, so a function names the operation it binds with `- ggop:
+  files.read_file`, a second spelling of one with `- ggop-alias:`, and a namespace says which of
+  gg's modules it is with `- ggmodule:`. Measured against the pinned toolchain rather than assumed:
+  each arrives as its own unsplit line of the graph's `docComment` and warns about nothing. The
+  reflector strips them before any prose reaches a model and refuses a public module function that
+  names none; gg's own operations table refuses an id it has no row for. The check therefore runs in
+  **both** directions, which is what keeps a capability from being silently absent from a model's
+  surface.
 
 The **library set** is the Swift standard library, the modules the Swift SDK for WebAssembly ships
 beside it (Foundation and its companions, `RegexBuilder`, `Synchronization`, `Observation`,

@@ -21,19 +21,28 @@
 //!
 //! # What a Swift program calls, and how it is in scope
 //!
-//! Every API object is a caseless `enum` — Swift's own namespace — so `fs.readFile("src/main.swift")`
-//! is a call on a namespace and nothing is constructed first. Every call **throws**, so `try` is the
-//! whole of the ceremony and a failure is an ordinary Swift `Error` a `catch` branches on. Optional
-//! arguments are **default values**, required ones are positional, and everything whose role the
-//! function's name does not already carry has an **argument label** — `fs.editFile("a", replacing:
-//! "x", with: "y")`, `agents.sendMessage("note", to: id)`.
+//! The surface is divided into **twelve capability modules**, and each is a caseless `enum` — Swift's
+//! own namespace inside a module — so `files.readFile("src/main.swift")` is a call on a namespace and
+//! nothing is constructed first. A caseless `enum` rather than thirteen real Swift modules behind an
+//! `@_exported` umbrella: the umbrella was measured and does re-export transitively, but a module of
+//! its own would have to be called `GgFiles` where the whole scheme's vocabulary is `files`, and a
+//! program whose own `let files` shadowed it would be shadowing the same name either way. The fully
+//! qualified `gg.files.readFile` is the escape from that shadowing, and it is a real path a program
+//! may write, which is why it is the name this arm catalogues.
+//!
+//! Every call **throws**, so `try` is the whole of the ceremony and a failure is an ordinary Swift
+//! `Error` a `catch` branches on. Optional arguments are **default values**, required ones are
+//! positional, and everything whose role the function's name does not already carry has an
+//! **argument label** — `files.editFile("a", replacing: "x", with: "y")`,
+//! `delegation.sendMessage("note", to: id)`. A value a call hands back may carry the call that
+//! belongs to it: `handle.send(…)`, `view.close()`, `hit.read()`.
 //!
 //! It is in scope with **no import line**, and that is what lets the reply stay verbatim. The SDK is
 //! compiled ahead of time into a module called `gg`, and gg's shell — a second file of the model's
 //! own module — writes `@_exported import gg`. A plain `import` is file-scoped and would put nothing
 //! in `main.swift`; a re-export is module-scoped, so the model's file opens with the whole surface
 //! already there. A separate module is also what makes the SDK **shadowable**: a program that
-//! declares its own `fs` or its own `DirEntry` wins, where source compiled into the program's own
+//! declares its own `files` or its own `DirEntry` wins, where source compiled into the program's own
 //! module would be a redeclaration error on the model's own line.
 //!
 //! The library set is the Swift standard library, the modules the Swift SDK for WebAssembly ships
@@ -274,7 +283,7 @@ impl ProgramLanguage for Swift {
         &PROMPT
     }
 
-    /// [`try view.openFile("src/main.swift")`](self::open_file_statement) — with the window as the
+    /// [`try views.openFile("src/main.swift")`](self::open_file_statement) — with the window as the
     /// call's own two optional arguments, passed by label.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
@@ -349,8 +358,8 @@ pub(super) fn binding_name(name: &str) -> String {
     out
 }
 
-/// `try view.openFile("src/main.swift")`, or the same call with `offset:` and `limit:` for a window
-/// — with `view.openFile` already spelled by the language that asked.
+/// `try views.openFile("src/main.swift")`, or the same call with `offset:` and `limit:` for a window
+/// — with `views.openFile` already spelled by the language that asked.
 ///
 /// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
 /// into the agent's own transcript and read by the model as an example of its own output, so anything

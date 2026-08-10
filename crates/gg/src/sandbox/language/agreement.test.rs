@@ -8,24 +8,28 @@
 //! the language. So every check the gate makes is exercised here against a catalogue that breaks it.
 
 use serde_json::{Value, json};
-use test_cabinet_core::gg::GgProgramLanguage;
 
-use super::super::fixture::{a_language_whose_catalogue, fixture_language};
+use super::super::fixture::{
+    a_converted_language_whose_catalogue, a_language_spelling_it_verbatim,
+    a_language_whose_catalogue, fixture_language,
+};
 use super::*;
-use crate::sandbox::language::{all_languages, language};
+use crate::sandbox::language::all_languages;
 
-/// The language every comparison is made against — named explicitly, because these assertions are
-/// about *Swift's committed catalogue* and not about whichever language happens to be gg's default.
+/// The surface every comparison is made against — named explicitly, because these assertions are
+/// about *one particular catalogue* and not about whichever language happens to be gg's default.
 ///
-/// It is Swift because the comparative half of this gate reads the five-part identity a
-/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under, and runs over the v1
-/// arms alone (see [`is_v1`](super::is_v1)). Swift is the one arm still written that way, so it is
-/// the one arm the comparison can be made *against*; a reference cut from a converted arm would make
-/// every row below assert nothing. It was TypeScript until TypeScript was converted, and it moves
-/// again — to nothing, because the split goes with it — when the gate is re-founded on the
+/// It is a [fixture](super::super::fixture::a_language_spelling_it_verbatim) rather than a
+/// registered arm, and that is a consequence of the conversion finishing. The comparative half of
+/// this gate reads the five-part identity a [`V1`](crate::sandbox::SchemaVersion::V1) catalogue
+/// files an entry under and runs over the v1 arms alone (see [`is_v1`](super::is_v1)); with Swift
+/// converted there is **no v1 arm left**, and a reference cut from a converted arm would make every
+/// row below pass while asserting nothing. So the reference is the frozen v1 surface written
+/// verbatim, and the fixture is that same surface re-spelled. It was TypeScript, then Swift, and it
+/// moves again — to nothing, because the split goes with it — when the gate is re-founded on the
 /// normalized model.
 fn reference_arm() -> &'static dyn ProgramLanguage {
-    language(GgProgramLanguage::Swift)
+    a_language_spelling_it_verbatim()
 }
 
 /// Every registered language, as the gate takes them.
@@ -51,15 +55,25 @@ fn report(found: &[Disagreement]) -> String {
 /// vocabularies — the tool bijection, the ending calls, the ending roles, the gates, the spellings
 /// and the type closure — which holds per language and needs no second one.
 ///
-/// The comparative half runs over the registry too, and what that is worth has changed with the
-/// registry. It was written when the registry held **one pair** — TypeScript and JavaScript, whose
-/// catalogues are one set of declarations reflected twice and could hardly disagree — and the
-/// [fixture](super::super::fixture) was what made the comparison mean anything at all. Today it
-/// compares **eleven** catalogues written by hand in eleven languages and reflected by nine
-/// different documentation tools, which is the comparison this gate was built for rather than a
-/// stand-in for it. The fixture stays because it is the half that can be made to *fail*: a
-/// registered arm that agrees proves the arms agree, and only a deliberately damaged surface proves
-/// the gate would have said so if they did not.
+/// The comparative half no longer runs over the registry at all, and that is the conversion
+/// finishing rather than a hole. It reads the five-part identity a
+/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under, and **every registered
+/// arm is now written in the second schema** — where a gate is gg's to state, in the
+/// [operations table](crate::sandbox::operations), rather than a field an arm asserts about itself.
+/// What the comparison used to prove is proved more strongly elsewhere and against gg rather than
+/// against a reference arm: capability coverage and gating in `operations.test.rs`, every brief and
+/// parameter description in the register gate, and every fully-qualified name and type reference in
+/// the name rule. What runs here over the eleven is
+/// [`usable_spellings`](super::usable_spellings) — that every name a model is shown is one a
+/// program can write, and that each is spelled once.
+///
+/// The comparative half keeps its teeth against the [fixture](super::super::fixture) pair below,
+/// which is what stops it from being a gate that has only ever been observed to pass, and it goes
+/// with the split in [`is_v1`](super::is_v1) when the gate is re-founded. `usable_spellings` — the
+/// branch every registered arm is now read by — keeps its own, against a **converted** surface
+/// damaged five ways in
+/// [`a_converted_catalogue_whose_spellings_are_unusable_is_caught`]. The two need separate rows
+/// because they are separate implementations, however alike their complaints read.
 #[test]
 fn every_registered_language_describes_one_capability_surface() {
     let found = disagreements(&registered());
@@ -378,7 +392,7 @@ fn a_second_language_that_disagrees_is_caught() {
                     }
                 }
             }),
-            "documents no arguments for `fs.read_file`, where Swift documents some",
+            "documents no arguments for `fs.read_file`, where Fixture documents some",
         ),
         (
             "a FIELD of a structured argument with no description",
@@ -535,6 +549,111 @@ fn a_second_language_that_disagrees_is_caught() {
             report(&found)
         );
     }
+}
+
+/// **Each way a converted catalogue's spellings can be unusable is caught, and named.**
+///
+/// The row of teeth above is inflicted on a [`V1`](crate::sandbox::SchemaVersion::V1) surface and is
+/// therefore answered by `internally_consistent`. That is the wrong branch for every arm gg ships:
+/// with the conversion finished, `disagreements` reads all eleven through
+/// [`usable_spellings`](super::usable_spellings) instead — a *separate implementation* of nearly the
+/// same rules, with nearly the same complaint strings, which until this test had never been observed
+/// to fail at all.
+///
+/// So the damage here is inflicted on a **converted** surface, one row per check that branch makes.
+/// Each row is the shape a real SDK's reflector would emit it in: two functions one module binds
+/// under one name, an entry offered in no callable shape, a signature that does not begin with the
+/// name a program writes, an argument list documented nowhere, and an argument with no description.
+#[test]
+fn a_converted_catalogue_whose_spellings_are_unusable_is_caught() {
+    /// One row: what the damage is called, the edit that inflicts it on a copy of a committed
+    /// converted catalogue, and a fragment the gate's complaint must contain.
+    type Case = (&'static str, Box<dyn FnOnce(&mut Value)>, &'static str);
+
+    /// The index of the entry each row damages, found by its fully-qualified name so that a
+    /// reflector re-ordering its output does not silently move a row onto a different function.
+    fn entry<'a>(document: &'a mut Value, fqn: &str) -> &'a mut Value {
+        document["functions"]
+            .as_array_mut()
+            .expect("a converted catalogue files every call in `functions`")
+            .iter_mut()
+            .find(|entry| entry["fqn"] == json!(fqn))
+            .unwrap_or_else(|| panic!("the converted catalogue carries `{fqn}`"))
+    }
+
+    let cases: Vec<Case> = vec![
+        (
+            "two functions one module binds under one name",
+            Box::new(|document: &mut Value| {
+                let mut shadowing = entry(document, "gg.files.readTextFile").clone();
+                shadowing["name"] = json!("readFile");
+                shadowing["fqn"] = json!("gg.files.readFile");
+                shadowing["signatures"][0]["signature"] =
+                    json!("readFile(_ path: String) -> String");
+                document["functions"]
+                    .as_array_mut()
+                    .expect("an array")
+                    .push(shadowing);
+            }),
+            "two functions on `gg.files` are both spelled `readFile`",
+        ),
+        (
+            "an entry offered in no callable shape at all",
+            Box::new(|document: &mut Value| {
+                entry(document, "gg.files.readFile")["signatures"] = json!([]);
+            }),
+            "`gg.files.readFile` has no signature",
+        ),
+        (
+            "a signature that does not start with the name a program calls",
+            Box::new(|document: &mut Value| {
+                entry(document, "gg.files.readFile")["signatures"][0]["signature"] =
+                    json!("static func readFile(_ path: String) throws -> files.FileRead");
+            }),
+            "does not start with the name a program calls",
+        ),
+        (
+            "an argument list documented nowhere",
+            Box::new(|document: &mut Value| {
+                entry(document, "gg.files.readFile")["signatures"][0]["parameters"] = json!([]);
+            }),
+            "`gg.files.readFile` takes arguments and documents none",
+        ),
+        (
+            "an argument with no description",
+            Box::new(|document: &mut Value| {
+                entry(document, "gg.files.readFile")["signatures"][0]["parameters"][0]["doc"] =
+                    json!("");
+            }),
+            "`gg.files.readFile`'s `path` has no documentation",
+        ),
+    ];
+
+    for (name, edit, expected) in cases {
+        let damaged = a_converted_language_whose_catalogue(edit);
+        let found = disagreements(&[damaged]);
+        assert!(
+            found
+                .iter()
+                .any(|disagreement| disagreement.detail.contains(expected)),
+            "{name}: the gate did not complain that `{expected}`. It said:{}",
+            report(&found)
+        );
+    }
+}
+
+/// **An undamaged converted catalogue is passed** — the negative control for the row above.
+///
+/// Without it, five rows that all complain would be indistinguishable from a branch that complains
+/// about everything, which would make a converted arm impossible to register.
+#[test]
+fn a_converted_catalogue_as_committed_is_not_a_disagreement() {
+    let found = disagreements(&[a_converted_language_whose_catalogue(|_| {})]);
+    assert!(
+        found.is_empty(),
+        "a committed converted catalogue was rejected unedited:{}",
+        report(&found)
+    );
 }
 
 /// **Spelling alone is never a disagreement.**

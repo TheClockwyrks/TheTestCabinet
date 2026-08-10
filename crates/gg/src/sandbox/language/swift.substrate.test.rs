@@ -45,7 +45,7 @@
 //! runs here at all.
 //!
 //! The programs below do call the SDK, and that is deliberate rather than incidental: `gg.log` and
-//! `fs.readTextFile` are what a model writes, so a substrate proven with them is a substrate proven
+//! `files.readTextFile` are what a model writes, so a substrate proven with them is a substrate proven
 //! through the prebuilt `gg` module, the `@_exported import` in the shell and the `-I` that resolves
 //! it — every part of the arrangement that puts a surface in a model's scope with no import line.
 //!
@@ -254,15 +254,15 @@ gg.log("short \(short.joined(separator: ","))")
 
 #[test]
 fn a_swift_program_dispatches_a_real_call_through_the_membrane() {
-    // `fs.readTextFile` takes a string and hands one back, which is the shortest round trip this arm
+    // `files.readTextFile` takes a string and hands one back, which is the shortest round trip this arm
     // has through the membrane. What it proves is that a Swift program's arguments are lowered, that
     // gg's host dispatches the tool, and that what comes back is a value the program can compute
     // with — through the SDK a model really writes against, with no import line in front of it.
     let program = r#"do {
-    let contents = try fs.readTextFile("notes.md")
+    let contents = try files.readTextFile("notes.md")
     let firstLine = contents.split(separator: "\n").first.map(String.init) ?? ""
     gg.log("read \(firstLine.uppercased())")
-} catch let failure as ToolError where failure.code == .notFound {
+} catch let failure as core.ToolError where failure.code == .notFound {
     gg.log("no file")
 }
 "#;

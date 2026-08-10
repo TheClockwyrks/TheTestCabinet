@@ -160,19 +160,31 @@ def split(text, what, cap: BRIEF_CAP)
   [brief, (detail.strip.empty? ? nil : detail.strip)]
 end
 
-# A declaration's `[brief, detail]`, with what it raises folded into the detail.
+# A declaration's `[brief, detail]`, with what it hands back and what it raises folded into the
+# detail.
 #
 # `@raise` is folded in rather than dropped because what a call fails with is part of what it does,
 # and a program that does not know which failures to expect writes no `rescue` at all. It reads as
 # part of the description under its own heading, which is where every other arm puts it.
+#
+# `@return`'s prose is folded in for the same reason and was not, which is a defect this arm
+# shipped: the tag was read for its TYPES and its text had no destination, so fifty authored
+# sentences about what a call hands back reached no model. Most of them restate the brief and some
+# do not — `create_epic`'s says the call hands back the board budget as well as the id, which its
+# brief and its detail both leave out. The line is written `Returns: …`, which is the shape the
+# five arms that carry one already write.
 def documented(object, what)
   brief, detail = split(markdown(object.docstring.to_s), what)
+  returned = object.tags(:return).map { |tag| markdown(tag.text.to_s) }
+                   .reject { |text| text.strip.empty? }
   raised = object.tags(:raise).reject { |tag| tag.text.to_s.strip.empty? }
                  .map { |tag| markdown(tag.text.to_s) }
-  return [brief, detail] if raised.empty?
+  return [brief, detail] if returned.empty? && raised.empty?
 
-  parts = [detail, "# Errors\n\n#{raised.join("\n\n")}"].compact
-  [brief, parts.join("\n\n")]
+  parts = [detail]
+  parts << "Returns: #{returned.join(' ')}" unless returned.empty?
+  parts << "# Errors\n\n#{raised.join("\n\n")}" unless raised.empty?
+  [brief, parts.compact.join("\n\n")]
 end
 
 # YARD's type list as one readable type: `[Integer, nil]` reads `Integer or nil`, which is how

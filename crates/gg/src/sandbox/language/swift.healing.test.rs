@@ -25,19 +25,19 @@ use crate::healing::{
 /// program, an apostrophe in a line of English, a `#` line that is prose here, and two replies that
 /// are no program at all.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```swift\nlet rows = try fs.listDir(\"src\")\ntry view.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n```\n\nThat lists the directory.",
-    "Task {\n    try view.openText(\"note\", \"done\")\n}",
-    "import Collections\n\nTask {\n    let rows = try fs.listDir(\"src\")\n    try view.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n}",
-    "let work = Task {\n    try view.openText(\"note\", \"done\")\n}\n_ = await work.value",
-    "Task {\n    let notes = try await fs.readTextFile(\"notes.md\")\n    try view.openText(\"notes\", notes)\n}",
-    "import Foundation\n\nlet stamp = Date().timeIntervalSince1970\ntry view.openText(\"stamp\", \"\\(stamp)\")",
-    "let total = 1\ntry view.openText(\"n\", \"\\(total)\")\nlet total = 1\ntry view.openText(\"n\", \"\\(total)\")",
-    "func helper() -> Int { 1 }\ntry view.openText(\"n\", \"\\(helper())\")\nfunc helper() -> Int { 1 }\ntry view.openText(\"n\", \"\\(helper())\")",
-    "let usage = #\"\"\"\n    Example:\n\n    Task {\n        let total = 1\n    }\n\"\"\"#\ntry view.openText(\"usage\", usage)",
-    "let rows = [\"a\": 1]\ntry view.openText(\"n\", \"total: \\(rows[\"a\"] ?? 0)\")",
-    "protocol Named {\n    var label: String { get }\n}\n\nextension DirEntry: Named {\n    var label: String { name }\n}\n\nlet rows = try fs.listDir(\"src\")\ntry view.openText(\"rows\", rows.map(\\.label).joined(separator: \"\\n\"))",
-    "I couldn't finish that.\n\n```swift\ntry view.openText(\"note\", \"partial\")\n```",
-    "# Plan\n\nlet total = 1\ntry view.openText(\"total\", \"\\(total)\")",
+    "Here is the program.\n\n```swift\nlet rows = try files.listDir(\"src\")\ntry views.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n```\n\nThat lists the directory.",
+    "Task {\n    try views.openText(\"note\", \"done\")\n}",
+    "import Collections\n\nTask {\n    let rows = try files.listDir(\"src\")\n    try views.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n}",
+    "let work = Task {\n    try views.openText(\"note\", \"done\")\n}\n_ = await work.value",
+    "Task {\n    let notes = try await files.readTextFile(\"notes.md\")\n    try views.openText(\"notes\", notes)\n}",
+    "import Foundation\n\nlet stamp = Date().timeIntervalSince1970\ntry views.openText(\"stamp\", \"\\(stamp)\")",
+    "let total = 1\ntry views.openText(\"n\", \"\\(total)\")\nlet total = 1\ntry views.openText(\"n\", \"\\(total)\")",
+    "func helper() -> Int { 1 }\ntry views.openText(\"n\", \"\\(helper())\")\nfunc helper() -> Int { 1 }\ntry views.openText(\"n\", \"\\(helper())\")",
+    "let usage = #\"\"\"\n    Example:\n\n    Task {\n        let total = 1\n    }\n\"\"\"#\ntry views.openText(\"usage\", usage)",
+    "let rows = [\"a\": 1]\ntry views.openText(\"n\", \"total: \\(rows[\"a\"] ?? 0)\")",
+    "protocol Named {\n    var label: String { get }\n}\n\nextension files.DirEntry: Named {\n    var label: String { name }\n}\n\nlet rows = try files.listDir(\"src\")\ntry views.openText(\"rows\", rows.map(\\.label).joined(separator: \"\\n\"))",
+    "I couldn't finish that.\n\n```swift\ntry views.openText(\"note\", \"partial\")\n```",
+    "# Plan\n\nlet total = 1\ntry views.openText(\"total\", \"\\(total)\")",
     "I have finished the task. Everything works.",
 ];
 
@@ -96,15 +96,15 @@ fn the_task_wrapper_comes_off_and_the_import_stays() {
     let result = healed(
         "import Collections\n\n\
          Task {\n    \
-             let rows = try fs.listDir(\"src\")\n    \
-             try view.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n\
+             let rows = try files.listDir(\"src\")\n    \
+             try views.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))\n\
          }",
     );
     assert_eq!(
         result.program,
         "import Collections\n\n\
-         let rows = try fs.listDir(\"src\")\n\
-         try view.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))",
+         let rows = try files.listDir(\"src\")\n\
+         try views.openText(\"rows\", rows.map(\\.name).joined(separator: \"\\n\"))",
     );
     assert!(
         result
@@ -125,9 +125,9 @@ fn the_task_wrapper_comes_off_and_the_import_stays() {
 #[test]
 fn a_declared_task_and_the_wait_on_it_both_come_off() {
     let result = healed(
-        "let work = Task {\n    try view.openText(\"note\", \"done\")\n}\n_ = await work.value",
+        "let work = Task {\n    try views.openText(\"note\", \"done\")\n}\n_ = await work.value",
     );
-    assert_eq!(result.program, "try view.openText(\"note\", \"done\")");
+    assert_eq!(result.program, "try views.openText(\"note\", \"done\")");
     let wrapper = result
         .applied
         .iter()
@@ -146,11 +146,11 @@ fn a_declared_task_and_the_wait_on_it_both_come_off() {
 #[test]
 fn the_awaits_inside_the_wrapper_are_deleted_from_the_front() {
     let result = healed(
-        "Task {\n    let notes = try await fs.readTextFile(\"notes.md\")\n    try view.openText(\"notes\", notes)\n}",
+        "Task {\n    let notes = try await files.readTextFile(\"notes.md\")\n    try views.openText(\"notes\", notes)\n}",
     );
     assert_eq!(
         result.program,
-        "let notes = try fs.readTextFile(\"notes.md\")\ntry view.openText(\"notes\", notes)",
+        "let notes = try files.readTextFile(\"notes.md\")\ntry views.openText(\"notes\", notes)",
     );
     let awaits = result
         .applied
@@ -168,7 +168,7 @@ fn the_awaits_inside_the_wrapper_are_deleted_from_the_front() {
 /// trailing closure from having every statement above it deleted.
 #[test]
 fn an_ordinary_trailing_closure_is_not_a_wrapper() {
-    let reply = "let rows = try fs.listDir(\"src\")\nrows.forEach {\n    _ = $0.name\n}";
+    let reply = "let rows = try files.listDir(\"src\")\nrows.forEach {\n    _ = $0.name\n}";
     let result = healed(reply);
     assert_eq!(result.program, reply);
 }
@@ -176,7 +176,7 @@ fn an_ordinary_trailing_closure_is_not_a_wrapper() {
 /// **A `Task` with work after it is not the whole program, so nothing is unwrapped.**
 #[test]
 fn a_task_with_a_statement_after_it_declines() {
-    let reply = "Task {\n    _ = 1\n}\ntry view.openText(\"note\", \"done\")";
+    let reply = "Task {\n    _ = 1\n}\ntry views.openText(\"note\", \"done\")";
     assert_eq!(healed(reply).program, reply);
 }
 
@@ -192,7 +192,7 @@ fn a_task_with_a_statement_after_it_declines() {
 /// provably dead code here and might have run there.
 #[test]
 fn a_repeated_let_is_a_redeclaration_here_and_not_in_rust() {
-    let reply = "let total = 1\ntry view.openText(\"n\", \"\\(total)\")\nlet total = 1\ntry view.openText(\"n\", \"\\(total)\")";
+    let reply = "let total = 1\ntry views.openText(\"n\", \"\\(total)\")\nlet total = 1\ntry views.openText(\"n\", \"\\(total)\")";
     let source = "let total = 1\n";
     assert!(
         swift().declares_a_redeclarable_binding(source, &mask(source), 0),
@@ -209,7 +209,7 @@ fn a_repeated_let_is_a_redeclaration_here_and_not_in_rust() {
     let result = healed(reply);
     assert_eq!(
         result.program,
-        "let total = 1\ntry view.openText(\"n\", \"\\(total)\")",
+        "let total = 1\ntry views.openText(\"n\", \"\\(total)\")",
     );
     assert!(
         result
@@ -274,7 +274,7 @@ fn an_apostrophe_in_prose_lexes_here_and_not_in_kotlin() {
 /// wrong text.
 #[test]
 fn an_interpolation_is_followed_through_with_its_nested_quotes() {
-    let src = "try view.openText(\"n\", \"total: \\(rows[\"a\"] ?? 0)\")\nlet after = 1\n";
+    let src = "try views.openText(\"n\", \"total: \\(rows[\"a\"] ?? 0)\")\nlet after = 1\n";
     assert!(read_as_code(src, "rows["), "the splice is code");
     assert!(read_as_code(src, "let after"), "and the scan came back out");
     assert!(!mask(src).is_code(src.find("total: ").expect("the literal is there")));
@@ -323,7 +323,7 @@ fn block_comments_nest() {
 fn an_import_is_never_deleted() {
     assert!(!swift().is_import_statement("import Foundation"));
     assert!(!swift().is_import_statement("import struct Foundation.Data"));
-    let reply = "import Collections\n\nlet rows = Deque<Int>()\ntry view.openText(\"n\", \"\\(rows.count)\")";
+    let reply = "import Collections\n\nlet rows = Deque<Int>()\ntry views.openText(\"n\", \"\\(rows.count)\")";
     assert_eq!(healed(reply).program, reply);
 }
 
@@ -331,8 +331,8 @@ fn an_import_is_never_deleted() {
 /// first and this one does not have.
 #[test]
 fn a_call_with_no_semicolon_is_code() {
-    assert!(swift().looks_like_code("try view.openText(\"n\", body)"));
-    assert!(swift().looks_like_code("let rows = try fs.listDir(\"src\")"));
+    assert!(swift().looks_like_code("try views.openText(\"n\", body)"));
+    assert!(swift().looks_like_code("let rows = try files.listDir(\"src\")"));
     assert!(swift().looks_like_code("rows.forEach {"));
 }
 

@@ -396,24 +396,16 @@ fn the_catalogue_tells_the_truth_about_pictures() {
          reading the call meets it: {reachable}"
     );
 
-    // THE IMAGE-VIEW CAP IS GONE, AND ONE ARM STILL PROMISES IT.
-    // `SandboxLimits::image_view_cap` and its per-agent `imageViewCap` param were deleted —
-    // nothing refuses an image view for being the n-th one — but a catalogue cannot be hand-edited
-    // (contract-drift regenerates it from SDK source), so retiring the promise is a change to each
-    // SDK source tree in turn. Every arm but Swift has made it; Swift has not, and its
-    // `view.openFile` still names a cap the host no longer has. The same sentence sits in
-    // `crates/backend/src/gg_reference.json`, which is likewise regenerated rather than authored.
-    //
-    // What is asserted is therefore the direction rather than the state: **an arm that has been
-    // converted may not carry it**. Swift is the last unconverted arm, so this loop and this comment
-    // both go with its conversion — retiring the promise is part of that work, and once it is done
-    // there is no arm left for the assertion to exempt.
+    // THE IMAGE-VIEW CAP IS GONE, AND NO ARM MAY STILL PROMISE IT.
+    // `SandboxLimits::image_view_cap` and its per-agent `imageViewCap` param were deleted — nothing
+    // refuses an image view for being the n-th one — but a catalogue cannot be hand-edited
+    // (contract-drift regenerates it from SDK source), so retiring the promise was a change to each
+    // SDK source tree in turn. Swift was the last one carrying it and made the change with its
+    // conversion, so there is no arm left to exempt and none may reintroduce it: a sentence
+    // promising a refusal that cannot happen teaches a model to guard against nothing.
     for language in crate::sandbox::all_languages() {
-        let catalogue = language.catalogue();
-        if catalogue.schema < SchemaVersion::V2 {
-            continue;
-        }
-        let open_file = catalogue
+        let open_file = language
+            .catalogue()
             .functions
             .iter()
             .find(|entry| entry.operation == "views.open_file")
@@ -452,7 +444,7 @@ use super::fixture;
 /// It fails in both directions, which is the point. Converting an arm and forgetting to name it
 /// here leaves the tree quietly holding a v2 catalogue to no v2 gate; naming one that has not been
 /// converted claims a coverage nothing provides.
-const CONVERTED: [GgProgramLanguage; 10] = [
+const CONVERTED: [GgProgramLanguage; 11] = [
     GgProgramLanguage::Cpp,
     GgProgramLanguage::CSharp,
     GgProgramLanguage::Java,
@@ -462,6 +454,7 @@ const CONVERTED: [GgProgramLanguage; 10] = [
     GgProgramLanguage::Python,
     GgProgramLanguage::Ruby,
     GgProgramLanguage::Rust,
+    GgProgramLanguage::Swift,
     GgProgramLanguage::TypeScript,
 ];
 

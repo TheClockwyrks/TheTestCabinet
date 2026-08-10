@@ -37,15 +37,15 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
     assert!(swift().compiles_component());
 }
 
-/// **An object is joined to its function with a `.`**, which is the seam's default and is what
-/// Swift writes: an API object here is a caseless `enum`, so a call is a member access on a type
-/// rather than a path through a module.
+/// **A module is joined to its function with a `.`**, which is the seam's default and is what
+/// Swift writes: a capability module here is a caseless `enum` inside the `gg` module, so a call is
+/// a member access on a type rather than a path through a module of its own.
 #[test]
-fn an_object_is_reached_with_a_dot() {
+fn a_module_is_reached_with_a_dot() {
     assert_eq!(swift().member_separator(), ".");
     assert_eq!(
         spell(swift(), crate::sandbox::VIEW_OPEN_TEXT),
-        "view.openText",
+        "gg.views.openText",
     );
 }
 
@@ -89,7 +89,7 @@ fn a_binding_key_is_a_swift_identifier() {
 fn the_file_view_statement_reads_as_swift() {
     assert_eq!(
         swift().open_file_statement("src/main.swift", None),
-        "try view.openFile(\"src/main.swift\")",
+        "try gg.views.openFile(\"src/main.swift\")",
     );
     assert_eq!(
         swift().open_file_statement(
@@ -99,7 +99,7 @@ fn the_file_view_statement_reads_as_swift() {
                 limit: 200
             })
         ),
-        "try view.openFile(\"src/main.swift\", offset: 400, limit: 200)",
+        "try gg.views.openFile(\"src/main.swift\", offset: 400, limit: 200)",
     );
 }
 
@@ -109,7 +109,7 @@ fn the_file_view_statement_reads_as_swift() {
 fn a_quoted_path_is_escaped() {
     assert_eq!(
         swift().open_file_statement("a\"b.swift", None),
-        "try view.openFile(\"a\\\"b.swift\")",
+        "try gg.views.openFile(\"a\\\"b.swift\")",
     );
 }
 
@@ -119,11 +119,11 @@ fn a_quoted_path_is_escaped() {
 fn the_documentation_program_is_an_array_and_a_loop() {
     assert_eq!(
         swift().open_docs_views_statement(&["openText", "openFile"]),
-        "let functions = [\n    \"openText\",\n    \"openFile\",\n]\nfor name in functions {\n    try view.openDocsView(name)\n}\n",
+        "let functions = [\n    \"openText\",\n    \"openFile\",\n]\nfor name in functions {\n    try gg.views.openDocsView(name)\n}\n",
     );
     assert_eq!(
         swift().open_docs_views_statement(&[]),
-        "let functions: [String] = []\nfor name in functions {\n    try view.openDocsView(name)\n}\n",
+        "let functions: [String] = []\nfor name in functions {\n    try gg.views.openDocsView(name)\n}\n",
     );
 }
 
