@@ -152,7 +152,7 @@ async fn a_withheld_tool_is_absent_from_the_surface_and_from_its_api_object() {
         false,
         GgProgramLanguage::TypeScript,
     );
-    let names: Vec<String> = functions_on(&apis, "fs")
+    let names: Vec<String> = functions_on(&apis, "gg.files")
         .into_iter()
         .map(|(name, _)| name)
         .collect();
@@ -233,30 +233,34 @@ fn each_objects_description_and_its_place_come_from_the_catalogue() {
         GgProgramLanguage::TypeScript,
     );
 
+    // Read through the normalized reading of the two schemas, which is what `api_surface` itself
+    // reads: this arm groups its surface into capability modules, so the grouping the surface names
+    // is the module path and the sentence introducing it is the module's authored brief and detail.
     let catalogue =
-        crate::sandbox::catalogue_objects(crate::sandbox::language(GgProgramLanguage::TypeScript));
+        crate::sandbox::catalogue_modules(crate::sandbox::language(GgProgramLanguage::TypeScript));
     for api in &apis {
         let described = catalogue
             .iter()
-            .find(|entry| entry.object == api.object)
+            .find(|entry| entry.path == api.object)
             .unwrap_or_else(|| panic!("`{}` is described by the catalogue", api.object));
         assert_eq!(
-            api.description, described.doc,
+            api.description,
+            described.prose.rendered(),
             "`{}`'s description is the catalogue's, verbatim",
             api.object
         );
     }
 
     // Presentation order, not alphabetical and not the order the functions happen to be catalogued
-    // in. `fs` leads because nearly every run has it.
+    // in. `gg.files` leads because nearly every run has it.
     let order: Vec<&str> = apis.iter().map(|api| api.object.as_str()).collect();
     let expected: Vec<&str> = catalogue
         .iter()
-        .map(|entry| entry.object.as_str())
+        .map(|entry| entry.path)
         .filter(|object| order.contains(object))
         .collect();
     assert_eq!(order, expected, "the surface keeps the catalogue's order");
-    assert_eq!(order.first(), Some(&"fs"));
+    assert_eq!(order.first(), Some(&"gg.files"));
 }
 
 /// The code-mode surface: one object per family the agent binds, each carrying the functions
@@ -275,23 +279,23 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
     );
 
     assert_eq!(
-        functions_on(&apis, "fs"),
+        functions_on(&apis, "gg.files"),
         vec![
             ("readFile".to_string(), "read_file".to_string()),
-            ("writeFile".to_string(), "write_file".to_string()),
-            ("editFile".to_string(), "edit_file".to_string()),
-            ("listDir".to_string(), "list_dir".to_string()),
             // The helper's key is its own, not the `read_file` it shares a core with: two API
             // functions over one core are two functions, and each is counted as itself.
             ("readTextFile".to_string(), "read_text_file".to_string()),
+            ("writeFile".to_string(), "write_file".to_string()),
+            ("editFile".to_string(), "edit_file".to_string()),
+            ("listDir".to_string(), "list_dir".to_string()),
             ("list".to_string(), "list".to_string()),
         ],
-        "every bound `fs` call carries its own identity"
+        "every bound `gg.files` call carries its own identity, in the order its SDK declares them"
     );
     // The view channel is the case the old tool-keyed join could not express: `openFile` runs a
     // `read_file` and the other four run nothing at all, and all five are counted as themselves.
     assert_eq!(
-        functions_on(&apis, "view"),
+        functions_on(&apis, "gg.views"),
         vec![
             ("openFile".to_string(), "open_file".to_string()),
             ("openText".to_string(), "open_text".to_string()),
@@ -303,7 +307,7 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         "the view channel is counted per function, tool or no tool"
     );
     assert_eq!(
-        functions_on(&apis, "harness"),
+        functions_on(&apis, "gg.session"),
         vec![
             ("finish".to_string(), "finish".to_string()),
             ("list".to_string(), "list".to_string()),
@@ -318,12 +322,14 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         "no bound function reaches a console with nothing to join on"
     );
 
-    // An object appears exactly when something on it is bound: this role has no verdict to return,
-    // and this profile keeps no program library.
+    // A grouping appears exactly when something in it is bound: this profile keeps no program
+    // library, so its module is absent rather than empty. This arm groups all three ending calls in
+    // one module, so *which* ending a role holds is asserted on that module's contents — above for
+    // the worker, below for the reviewer — rather than on which grouping exists.
     let objects: Vec<&str> = apis.iter().map(|api| api.object.as_str()).collect();
     assert!(
-        !objects.contains(&"review") && !objects.contains(&"programs"),
-        "an object with nothing bound is absent rather than empty: {objects:?}"
+        !objects.contains(&"gg.programs"),
+        "a module with nothing bound is absent rather than empty: {objects:?}"
     );
     // Stated against the *catalogued* functions rather than the whole list, because every object
     // carries `list`: an object with nothing else bound would be reported as a one-function object
@@ -341,8 +347,9 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         false,
         GgProgramLanguage::TypeScript,
     );
+    let verdicts = functions_on(&reviewer, "gg.session");
     assert_eq!(
-        functions_on(&reviewer, "review"),
+        verdicts,
         vec![
             ("approve".to_string(), "approve".to_string()),
             ("requestChanges".to_string(), "request_changes".to_string()),
@@ -350,7 +357,7 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         ]
     );
     assert!(
-        !reviewer.iter().any(|api| api.object == "harness"),
+        !verdicts.iter().any(|(name, _)| name == "finish"),
         "a reviewer is not offered `finish`"
     );
 }
@@ -390,7 +397,7 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
     // The library is the one family a capability gates rather than a tool or a role, so it is the
     // one whose presence proves the flag is threaded through both consumers.
     assert!(
-        surface.iter().any(|api| api.object == "programs"),
+        surface.iter().any(|api| api.object == "gg.programs"),
         "an enabled program library binds its object"
     );
     assert!(
@@ -401,7 +408,7 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
             GgProgramLanguage::TypeScript
         )
         .iter()
-        .all(|api| api.object != "programs"),
+        .all(|api| api.object != "gg.programs"),
         "and a run without one does not"
     );
 }

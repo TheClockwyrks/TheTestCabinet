@@ -9,7 +9,7 @@ The **Kotlin** program language's toolchain pin and its hand-written SDK.
 | [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
 | [`build.sh`](build.sh) | compiles the SDK to `crates/gg/src/sandbox/checkers/kotlin.sdk.jar` |
 | [`signatures.sh`](signatures.sh) | reflects `crates/gg/src/sandbox/guests/kotlin.signatures.json` out of the SDK's own KDoc |
-| [`tools/`](tools/) | the reflector `signatures.sh` runs, and the identity table it reads |
+| [`tools/`](tools/) | the reflector `signatures.sh` runs, and the module table it reads |
 
 ## Why the pin lives here
 
@@ -45,23 +45,51 @@ the installer lays one out. Without it every program on this arm fails with
 `SCRIPTING_ERROR: Unable to evaluate script, no scripting plugin loaded` — a sentence about
 gg's packaging wearing the shape of a diagnostic about the model's program.
 
-## The SDK is in the root package, and that is the decision
+## The surface is twelve packages, and a program writes a name in full
 
-Every other arm's SDK sits in a namespace a program reaches through an import — `gg.*`,
-`import Gg`, `from gg import …`. This one has none, and the reason is what it buys.
+Every function, every type and every member is reached by a **module-qualified** name:
+`gg.files.readFile`, `gg.files.FileRead`, `gg.delegation.SubagentHandle.send`. Twelve packages
+carry them — `gg.files`, `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.views`,
+`gg.context`, `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session`, plus `gg.core` for the
+failure type and the values every other module speaks in — and each owns the types it produces,
+so two of them are free to declare a `Usage` and neither has to be renamed.
 
-Kotlin **forbids importing from the root package** into a named one, and resolves a name in the
-*same* package with no import at all. A model's program has no `package` line, so it is itself
-in the root package — which means `fs.readFile("main.kt")` resolves with nothing written above
-it. That is what keeps the substrate's headline property intact now that there is a surface to
-reach: **a reply with no `import` in it is still compiled byte for byte, with a shift of zero**,
-where every other compiled arm has to write a header and move every diagnostic back over it.
+Idiomatic Kotlin is a **top-level function in a package**, which is the closest thing any arm
+has to a free function, so that is what these are. There is no holder object, no static class,
+and nothing that has to be in scope before anything can be reached.
 
-The bridge is still out of a program's reach, and by a stronger fence than a package would give
-it. Everything in [`src/internal/`](src/internal/) is `internal`, which in Kotlin means *visible
-inside this module* — and a model's program is compiled as its own module against this one's
-jar, so it cannot name `ggCall` at all. The reflector never reads that directory either, so
+**gg writes no import header, and a program still needs none.** A fully-qualified Kotlin name
+resolves from the root package with nothing above it — a model's program has no `package` line,
+so it is itself in the root one — and `gg.files.readFile("main.kt")` is therefore a call a reply
+can write as it stands. That keeps the substrate's headline property intact: *a reply with no
+`import` in it is compiled byte for byte, with a shift of zero*, where every other compiled arm
+writes a header and moves every diagnostic back over it.
+
+Twelve star imports were the alternative and they are **not available**, which was measured
+rather than assumed: every module declares a `list`, so `import gg.files.*` beside
+`import gg.tasks.*` makes a bare `list()` an overload-resolution ambiguity. A program that wants
+the short form still writes its own import — gg hoists it — and picks which names it is
+importing.
+
+The bridge is out of a program's reach, and by a stronger fence than a package alone would give
+it. Everything in [`src/gg/internal/`](src/gg/internal/) is `internal`, which in Kotlin means
+*visible inside this module* — and a model's program is compiled as its own module against this
+one's jar, so it cannot name `ggCall` at all. The reflector skips that package by name, so
 nothing there can reach a model as prose.
+
+## Where the identity of a call is written
+
+On the declaration, in its own KDoc, as `@ggop files.read_file` — never in a table beside it,
+because a table is a second place to be wrong. A declaration that is a *second* way to reach an
+operation some other declaration binds carries `@ggalias` instead, and a package says which of
+gg's modules it is with a `@ggmodule` tag in the file-level KDoc above its `package` line.
+
+Those tags are written **first**, before `@param`, and that is a measured constraint. KDoc's
+parser starts a new tag at an `@` it does not know, so an `@ggop` after a `@param` or a `@return`
+arrives as its own tag — but it does *not* after a `@throws`: that tag's content swallows every
+following line to the end of the comment, blank lines included. The reflector detects the
+swallowed case and names it, rather than reporting a declaration that plainly names an operation
+as one that names none.
 
 ## Three artifacts, shipped three ways
 
@@ -87,8 +115,8 @@ Each of them can only go one way, and where each goes is the argument:
 One detail of that jar is a measured trap rather than a preference: it carries
 `META-INF/gg.kotlin_module` as well as its class files. That file is what tells the compiler
 which facade class a package's **top-level** declarations live in, and a jar built without it
-compiles, ships, and answers every `fs.readFile` in every program with
-`Unresolved reference 'fs'`.
+compiles, ships, and answers every `gg.files.readFile` in every program with
+`Unresolved reference 'files'`.
 
 ## Which documentation tool this is, and why it is not Dokka
 
@@ -119,9 +147,10 @@ Both scripts are gates as much as they are builds. `build.sh` compiles under
 `-Xexplicit-api=strict -Werror`, which is Kotlin's own public-API completeness check — every
 declaration a model can see states its visibility and its return type; `signatures.sh` reads the
 same comments through the compiler's front end and refuses to emit a catalogue with a blank in
-it, or one whose identity table names a function no class declares, or one that leaves a public
-function of an API object unnamed. Between them, prose a model would have been shown as an empty
-line fails on the author instead.
+it, one whose opening paragraph is more than one line where a brief belongs, one whose module
+table and packages disagree in either direction, or one that leaves a public top-level function
+naming no gg operation. Between them, prose a model would have been shown as an empty line — or
+as a paragraph where it expected a summary — fails on the author instead.
 
 ## Where the rest of this arm is
 

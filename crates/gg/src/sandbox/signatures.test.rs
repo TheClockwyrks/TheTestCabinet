@@ -32,6 +32,25 @@ fn catalogue() -> &'static SignatureCatalogue {
     typescript().catalogue()
 }
 
+/// TypeScript's surface as every consumer reads it — the normalized projection of the one shape its
+/// catalogue is written in.
+///
+/// The expectations below are about spellings, and a spelling is a property of an *entry*; which
+/// section of the artifact that entry arrived in is the thing the two schemas disagree about and the
+/// thing [`catalogue_functions`] exists to hide. So the lookups here go through the projection, and
+/// a reshaping of the arm's SDK moves what they say rather than which field they read.
+fn functions() -> Vec<CatalogueFunction> {
+    catalogue_functions(typescript())
+}
+
+/// One projected function by the name a program calls it by.
+fn function(name: &str) -> CatalogueFunction {
+    functions()
+        .into_iter()
+        .find(|function| function.name == name)
+        .unwrap_or_else(|| panic!("`{name}` is catalogued"))
+}
+
 /// The one way a TypeScript function may be called.
 ///
 /// TypeScript spells every optional argument with `?`, so each of its entries carries exactly one
@@ -48,7 +67,7 @@ fn sole(signatures: &[SignatureEntry]) -> &str {
 #[test]
 fn the_committed_catalogue_parses() {
     let catalogue = catalogue();
-    assert!(!catalogue.tools.is_empty());
+    assert!(!functions().is_empty());
     assert!(!catalogue.types.is_empty());
     assert!(
         !catalogue.generated_from.is_empty(),
@@ -68,40 +87,30 @@ fn the_committed_catalogue_parses() {
 /// that says a second language's `request_changes` and this one's `requestChanges` are one function.
 /// Without it the surfaces of two languages could only be compared by spelling, which is precisely
 /// the thing a cross-language study leaves free to differ.
+///
+/// Asked of every projected function rather than of the sections a carve-out used to arrive in: this
+/// arm files every call in one array now, and the identity rule was never about which section an
+/// entry sat in.
 #[test]
 fn every_carve_out_entry_carries_an_identity() {
-    let catalogue = catalogue();
-    let keys = catalogue
-        .session
-        .iter()
-        .map(|entry| (entry.key.as_str(), entry.name.as_str()))
-        .chain(
-            catalogue
-                .views
-                .iter()
-                .map(|entry| (entry.key.as_str(), entry.name.as_str())),
-        )
-        .chain(
-            catalogue
-                .programs
-                .iter()
-                .map(|entry| (entry.key.as_str(), entry.name.as_str())),
-        )
-        .chain(
-            catalogue
-                .helpers
-                .iter()
-                .map(|entry| (entry.key.as_str(), entry.name.as_str())),
-        );
-
     let mut seen: Vec<&str> = Vec::new();
-    for (key, name) in keys {
-        assert!(!key.is_empty(), "`{name}` has no identity of its own");
+    for function in functions() {
         assert!(
-            !seen.contains(&key),
-            "two functions claim the identity `{key}`"
+            !function.key.is_empty(),
+            "`{}` has no identity of its own",
+            function.name
         );
-        seen.push(key);
+        // An alias is a second binding of one identity, which is exactly what it is for, so it is
+        // the canonical bindings that must be distinct.
+        if function.alias_of.is_some() {
+            continue;
+        }
+        assert!(
+            !seen.contains(&function.key),
+            "two functions claim the identity `{}`",
+            function.key
+        );
+        seen.push(function.key);
     }
 
     // The projection the docs runtime reads carries a tool's identity too — its own gg tool name,
@@ -123,20 +132,15 @@ fn every_carve_out_entry_carries_an_identity() {
 /// listing it among the tools would put a name in the model's head that no capability controls.
 #[test]
 fn read_text_file_is_a_helper_not_a_tool() {
+    let helper = function("readTextFile");
     assert!(
-        catalogue()
-            .tools
-            .iter()
-            .all(|entry| entry.name != "readTextFile"),
-        "the helper is listed as a tool"
+        !ALL_TOOL_NAMES.contains(&helper.key),
+        "the helper claims the identity of a gg tool: `{}`",
+        helper.key
     );
-    let helper = catalogue()
-        .helpers
-        .iter()
-        .find(|helper| helper.name == "readTextFile")
-        .expect("the helper is catalogued");
     assert_eq!(
-        helper.requires, "read_file",
+        helper.gate,
+        Some("read_file"),
         "the helper is bound only when the tool it wraps is"
     );
 }
@@ -154,86 +158,81 @@ fn read_text_file_is_a_helper_not_a_tool() {
 /// like any other, so what follows it still runs.
 #[test]
 fn typescript_spells_its_ending_calls_as_its_sdk_declares_them() {
-    let by_name = |name: &str| {
-        catalogue()
-            .session
-            .iter()
-            .find(|entry| entry.name == name)
-            .unwrap_or_else(|| panic!("`{name}` is catalogued"))
-    };
+    let finish = function(FINISH_FUNCTION);
+    assert_eq!(finish.object, "gg.session");
+    assert_eq!(finish.ending, Some("standard"));
+    assert_eq!(sole(finish.signatures), "finish(summary: string): void");
 
-    let finish = by_name(FINISH_FUNCTION);
-    assert_eq!(finish.object, "harness");
-    assert_eq!(finish.ending, "standard");
-    assert_eq!(sole(&finish.signatures), "finish(summary: string): void");
+    let approve = function("approve");
+    assert_eq!(approve.object, "gg.session");
+    assert_eq!(approve.ending, Some("review"));
+    assert_eq!(sole(approve.signatures), "approve(): void");
 
-    let approve = by_name("approve");
-    assert_eq!(approve.object, "review");
-    assert_eq!(approve.ending, "review");
-    assert_eq!(sole(&approve.signatures), "approve(): void");
-
-    let request_changes = by_name("requestChanges");
-    assert_eq!(request_changes.object, "review");
-    assert_eq!(request_changes.ending, "review");
+    let request_changes = function("requestChanges");
+    assert_eq!(request_changes.object, "gg.session");
+    assert_eq!(request_changes.ending, Some("review"));
     assert_eq!(
-        sole(&request_changes.signatures),
+        sole(request_changes.signatures),
         "requestChanges(items: string[]): void"
     );
 
-    // Every entry documents itself: the doc is what a `.docs()` lookup renders verbatim.
-    for entry in &catalogue().session {
+    // Every ending documents itself as one: the prose is what a `.docs()` lookup renders verbatim,
+    // and an ending call that does not say it ends the session is the one sentence a model must not
+    // have to infer. It is read as brief-and-detail together, because which of the two carries the
+    // sentence is the SDK author's choice and not a property of the call.
+    for function in functions() {
+        if function.ending.is_none() {
+            continue;
+        }
+        let prose = function.prose.rendered();
         assert!(
-            entry.doc.contains("ends your session") || entry.doc.contains("End your session"),
-            "`{}` does not say that it ends the session: {}",
-            entry.name,
-            entry.doc
+            prose.contains("ends your session")
+                || prose.contains("End the session")
+                || prose.contains("This ends the session"),
+            "`{}` does not say that it ends the session: {prose}",
+            function.name
         );
     }
 }
 
-/// **TypeScript's `view` object is the five functions its SDK declares, spelled as it declares
+/// **TypeScript's views module is the five functions its SDK declares, spelled as it declares
 /// them.**
 ///
-/// Which functions the object carries and what gates them is identity — a file view is a read
+/// Which functions the grouping carries and what gates them is identity — a file view is a read
 /// whatever language asks for it — and the [agreement gate](crate::sandbox::language) asserts that
 /// for every language, including the ones with no committed component yet. What stays here is
 /// TypeScript's own spelling of them, and the count, which is this SDK's surface rather than a rule
 /// about surfaces.
 #[test]
 fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
-    let by_name = |name: &str| {
-        catalogue()
-            .views
-            .iter()
-            .find(|entry| entry.name == name)
-            .unwrap_or_else(|| panic!("`{name}` is catalogued"))
-    };
-
-    let open_file = by_name("openFile");
-    assert_eq!(open_file.object, "view");
+    let open_file = function("openFile");
+    assert_eq!(open_file.object, "gg.views");
     assert_eq!(
-        open_file.requires.as_deref(),
+        open_file.gate,
         Some("read_file"),
         "opening a file view is a read, and closes with reading"
     );
 
     for name in ["openText", "openDocsView", "close", "current"] {
-        let entry = by_name(name);
-        assert_eq!(entry.object, "view");
+        let entry = function(name);
+        assert_eq!(entry.object, "gg.views");
         assert!(
-            entry.requires.is_none(),
+            entry.gate.is_none() && entry.ending.is_none() && entry.capability.is_none(),
             "`{name}` is bound whatever a run enables"
         );
     }
 
     assert_eq!(
-        catalogue().views.len(),
+        functions()
+            .iter()
+            .filter(|function| function.object == "gg.views")
+            .count(),
         5,
         "the view surface is the five functions and nothing else"
     );
 
     // The projection the docs runtime reads carries the same gates, which is what makes a withheld
-    // `read_file` withhold `view.openFile`'s *documentation* as well as the function.
+    // `read_file` withhold `gg.views.openFile`'s *documentation* as well as the function.
     let functions = catalogue_functions(typescript());
     let projected = |name: &str| {
         functions
@@ -242,7 +241,7 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
             .unwrap_or_else(|| panic!("`{name}` is documented"))
     };
     assert_eq!(projected("openFile").gate, Some("read_file"));
-    assert_eq!(projected("openFile").object, "view");
+    assert_eq!(projected("openFile").object, "gg.views");
     assert!(projected("openText").gate.is_none());
     assert!(projected("openText").ending.is_none());
     assert!(!projected("current").prose.brief.is_empty());
@@ -260,17 +259,17 @@ fn no_gg_tool_binds_the_name_finish() {
         !ALL_TOOL_NAMES.contains(&FINISH_FUNCTION),
         "`{FINISH_FUNCTION}` is not a gg tool: no capability offers it and nothing dispatches it"
     );
-    for entry in &catalogue().tools {
+    // No catalogued call that is *not* the ending itself binds the name, whichever grouping it sits
+    // under: the collision this rules out is in one scope, and everything a program can call is in
+    // that one scope.
+    for function in functions() {
+        if function.ending.is_some() {
+            continue;
+        }
         assert_ne!(
-            entry.name, FINISH_FUNCTION,
-            "the gg tool `{}` binds the name the session function needs",
-            entry.tool
-        );
-    }
-    for helper in &catalogue().helpers {
-        assert_ne!(
-            helper.name, FINISH_FUNCTION,
-            "a helper binds the name the session function needs"
+            function.name, FINISH_FUNCTION,
+            "`{}` binds the name the session function needs",
+            function.key
         );
     }
 }
@@ -280,35 +279,35 @@ fn no_gg_tool_binds_the_name_finish() {
 fn catalogue_functions_carry_object_and_gate() {
     let functions = catalogue_functions(typescript());
 
-    // `finish` is always bound (no gate) and lives on `harness`.
+    // `finish` is always bound (no gate) and lives in the session module.
     let finish = functions
         .iter()
         .find(|function| function.name == "finish")
         .expect("finish is documented");
-    assert_eq!(finish.object, "harness");
+    assert_eq!(finish.object, "gg.session");
     assert!(
         finish.gate.is_none(),
         "finish is not gated by any capability"
     );
 
-    // A tool is gated by its own gg tool name and grouped under its object.
+    // A tool is gated by its own gg tool name and grouped under the module it is declared in.
     let read = functions
         .iter()
         .find(|function| function.name == "readFile")
         .expect("readFile is documented");
-    assert_eq!(read.object, "fs");
+    assert_eq!(read.object, "gg.files");
     assert_eq!(read.gate, Some("read_file"));
     assert!(
         !read.prose.brief.is_empty(),
         "every function carries a brief"
     );
 
-    // The helper is gated by the tool it wraps, and lives on that tool's object.
+    // The helper is gated by the tool it wraps, and lives in that tool's module.
     let helper = functions
         .iter()
         .find(|function| function.name == "readTextFile")
         .expect("readTextFile is documented");
-    assert_eq!(helper.object, "fs");
+    assert_eq!(helper.object, "gg.files");
     assert_eq!(helper.gate, Some("read_file"));
 }
 
@@ -319,8 +318,10 @@ fn type_declaration_returns_the_sdks_own_declaration() {
     let dir_entry = type_declaration(typescript(), "DirEntry").expect("DirEntry is declared");
     assert!(dir_entry.declaration.contains("interface DirEntry"));
     // And it arrives explained, member by member: a declaration alone says what fields a value has
-    // and nothing about what any of them means.
-    assert!(!dir_entry.doc.trim().is_empty());
+    // and nothing about what any of them means. Read through `prose`, which is the accessor that
+    // answers whichever schema the arm committed — the raw `doc` field is the shape this arm no
+    // longer writes, and reaching for it would assert that a documented type is undocumented.
+    assert!(!dir_entry.prose().rendered().trim().is_empty());
     assert_eq!(
         dir_entry
             .members
@@ -331,7 +332,7 @@ fn type_declaration_returns_the_sdks_own_declaration() {
     );
     for member in &dir_entry.members {
         assert!(
-            !member.doc.trim().is_empty(),
+            !member.prose().rendered().trim().is_empty(),
             "`DirEntry.{}` came out undocumented",
             member.name
         );
@@ -350,41 +351,63 @@ fn type_declaration_returns_the_sdks_own_declaration() {
 ///
 /// A doc string cannot be type-checked against behaviour, so this pins the two claims that matter:
 /// a bare read does not show, and a view can be refused.
+///
+/// The first claim is asked of the read's **own** paragraph, because a promise that a bare read
+/// shows a picture is a lie wherever it is written and a model reading only the call must not meet
+/// one. The second is asked of the read's paragraph *and the types it hands back*, because those are
+/// one block: a documentation view of the call lists the types its signature names, each openable by
+/// name, and the arm of the union a program reaches by narrowing `kind === "image"` is where a
+/// remedy is most useful. Demanding the sentence in one particular paragraph would be demanding a
+/// layout rather than a fact.
 #[test]
 fn the_catalogue_tells_the_truth_about_pictures() {
-    let read = catalogue()
-        .tools
-        .iter()
-        .find(|entry| entry.name == "readFile")
-        .expect("readFile is catalogued");
+    let read = function("readFile");
+    let own = read.prose.rendered().into_owned();
     assert!(
-        !read.doc.contains("pixels are shown to you"),
-        "`fs.readFile` must not promise a picture it does not show: {}",
-        read.doc
+        !own.contains("pixels are shown to you"),
+        "`{}` must not promise a picture it does not show: {own}",
+        read.fqn.unwrap_or(read.name)
     );
     assert!(
-        read.doc.contains("does not show it to YOU"),
-        "`fs.readFile` must say plainly that reading an image does not show it: {}",
-        read.doc
-    );
-    assert!(
-        read.doc.contains("view.openFile"),
-        "`fs.readFile` must name the call that does show it: {}",
-        read.doc
+        own.contains("shows nothing") || own.contains("does not show"),
+        "`{}` must say plainly that reading an image does not show it: {own}",
+        read.fqn.unwrap_or(read.name)
     );
 
-    // THE IMAGE-VIEW CAP IS GONE, AND FIVE ARMS STILL PROMISE IT.
+    // The call that DOES show one, quoted as this arm's own catalogue spells it rather than typed
+    // here — a hand-written spelling in a test is the same defect the prompt gate exists for.
+    let shows = functions()
+        .into_iter()
+        .find(|function| function.operation == Some("views.open_file"))
+        .expect("this arm binds the call that shows a file");
+    let spelled = shows.fqn.unwrap_or(shows.name);
+    let reachable = read
+        .types
+        .iter()
+        .filter_map(|reference| type_declaration(typescript(), reference.fqn()))
+        .fold(own.clone(), |mut text, declared| {
+            text.push('\n');
+            text.push_str(&declared.prose().rendered());
+            text
+        });
+    assert!(
+        reachable.contains(spelled),
+        "reading a file must name `{spelled}`, the call that does show one, somewhere a model \
+         reading the call meets it: {reachable}"
+    );
+
+    // THE IMAGE-VIEW CAP IS GONE, AND ONE ARM STILL PROMISES IT.
     // `SandboxLimits::image_view_cap` and its per-agent `imageViewCap` param were deleted —
     // nothing refuses an image view for being the n-th one — but a catalogue cannot be hand-edited
     // (contract-drift regenerates it from SDK source), so retiring the promise is a change to each
-    // SDK source tree in turn. C++, C#, PureScript, Python, Ruby and Rust have made it; java,
-    // javascript, kotlin, swift and typescript have not, and their `view.openFile` still names a cap
-    // the host no longer has. The same sentence sits in `crates/backend/src/gg_reference.json`,
-    // which is likewise regenerated rather than authored.
+    // SDK source tree in turn. Every arm but Swift has made it; Swift has not, and its
+    // `view.openFile` still names a cap the host no longer has. The same sentence sits in
+    // `crates/backend/src/gg_reference.json`, which is likewise regenerated rather than authored.
     //
     // What is asserted is therefore the direction rather than the state: **an arm that has been
-    // converted may not carry it**. That tightens by itself as each arm lands, and it never holds an
-    // arm to a promise gg does not keep. This comment goes with the last unconverted arm.
+    // converted may not carry it**. Swift is the last unconverted arm, so this loop and this comment
+    // both go with its conversion — retiring the promise is part of that work, and once it is done
+    // there is no arm left for the assertion to exempt.
     for language in crate::sandbox::all_languages() {
         let catalogue = language.catalogue();
         if catalogue.schema < SchemaVersion::V2 {
@@ -429,13 +452,17 @@ use super::fixture;
 /// It fails in both directions, which is the point. Converting an arm and forgetting to name it
 /// here leaves the tree quietly holding a v2 catalogue to no v2 gate; naming one that has not been
 /// converted claims a coverage nothing provides.
-const CONVERTED: [GgProgramLanguage; 6] = [
+const CONVERTED: [GgProgramLanguage; 10] = [
     GgProgramLanguage::Cpp,
     GgProgramLanguage::CSharp,
+    GgProgramLanguage::Java,
+    GgProgramLanguage::JavaScript,
+    GgProgramLanguage::Kotlin,
     GgProgramLanguage::PureScript,
     GgProgramLanguage::Python,
     GgProgramLanguage::Ruby,
     GgProgramLanguage::Rust,
+    GgProgramLanguage::TypeScript,
 ];
 
 #[test]

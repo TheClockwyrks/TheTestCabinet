@@ -1514,11 +1514,19 @@ fn spellings_of(catalogue: &'static SignatureCatalogue) -> Vec<&'static TypeRefe
 }
 
 /// Every **API object** `language`'s catalogue describes, in the order a program's surface is
-/// presented in.
+/// presented in — the [`V1`](SchemaVersion::V1) half of what [`catalogue_modules`] normalizes, and
+/// empty on a [`V2`](SchemaVersion::V2) arm, which has modules instead.
 ///
-/// The order is the catalogue's, not a sort: it is what the system prompt's API list and the run's
-/// [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) both render, so re-ordering
-/// it here would change what a model reads.
+/// The order is the catalogue's, not a sort: it is the order the surface was authored in, so
+/// re-ordering it here would change what a reader of an unconverted arm sees.
+#[allow(
+    dead_code,
+    reason = "read only by the gates that hold an arm to the vocabulary it declares \
+              (`lib.test.rs`, `prompts.spellings.test.rs`), which are `#[cfg(test)]`, so it is \
+              genuinely unread in a build. Every reader that must answer for both schemas has \
+              moved onto `catalogue_modules`; this stays for the ones whose subject is an API \
+              object specifically, and goes with the last v1 arm."
+)]
 pub fn catalogue_objects(language: &dyn ProgramLanguage) -> &'static [ObjectDoc] {
     language.catalogue().objects.as_slice()
 }

@@ -48,7 +48,7 @@ fn a_code_skills_module_is_spelled_java() {
 /// **The `lib.<key>` binding is camelCase**, and is a valid Java identifier whatever the author
 /// called their skill.
 ///
-/// This arm reaches a module by *string* — `lib.text("csvTools", "parse", …)` — because a code
+/// This arm reaches a module by *string* — `Lib.text("csvTools", "parse", …)` — because a code
 /// module is compiled separately and there is no `import` for javac to check a program against. The
 /// key is still a name the model has to type out from memory in every program that uses it, so it is
 /// held to what a Java author would have written.
@@ -84,7 +84,7 @@ fn the_binding_name_is_a_camel_case_java_identifier() {
 fn the_synthesized_file_view_is_java() {
     assert_eq!(
         java().open_file_statement("src/Main.java", None),
-        r#"view.openFile("src/Main.java");"#
+        r#"gg.views.Views.openFile("src/Main.java");"#
     );
     assert_eq!(
         java().open_file_statement(
@@ -94,7 +94,7 @@ fn the_synthesized_file_view_is_java() {
                 limit: 200
             })
         ),
-        r#"view.openFile("src/Main.java", 400, 200);"#
+        r#"gg.views.Views.openFile("src/Main.java", 400, 200);"#
     );
 }
 
@@ -114,7 +114,7 @@ fn the_generated_documentation_program_is_java_statements() {
              \"writeFile\"\n\
          );\n\
          for (String name : functions) {\n    \
-             view.openDocsView(name);\n\
+             gg.views.Views.openDocsView(name);\n\
          }\n"
     );
 
@@ -124,7 +124,7 @@ fn the_generated_documentation_program_is_java_statements() {
         java().open_docs_views_statement(&[]),
         "List<String> functions = List.of();\n\
          for (String name : functions) {\n    \
-             view.openDocsView(name);\n\
+             gg.views.Views.openDocsView(name);\n\
          }\n"
     );
 
@@ -148,18 +148,20 @@ fn the_generated_documentation_program_is_java_statements() {
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = java().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Java);
-    assert!(!catalogue.tools.is_empty());
+    assert!(!catalogue.functions.is_empty());
 
     let read_file = catalogue
-        .tools
+        .functions
         .iter()
-        .find(|entry| entry.tool == "read_file")
-        .expect("`read_file` is catalogued");
+        .find(|entry| entry.operation == "files.read_file")
+        .expect("`files.read_file` is catalogued");
     assert_eq!(read_file.name, "readFile");
     // The shape that says the reflection is Java's: a return type after the arguments rather than
     // before them, and an **overload** where every other arm has an optional argument.
     assert!(
-        read_file.signatures[0].signature.contains("-> FileRead"),
+        read_file.signatures[0]
+            .signature
+            .contains("-> Files.FileRead"),
         "the catalogue is not in Java's notation: {:?}",
         read_file.signatures[0]
     );
@@ -168,6 +170,56 @@ fn the_committed_catalogue_is_this_languages() {
         2,
         "the window is a second overload rather than an optional argument: {:?}",
         read_file.signatures
+    );
+}
+
+/// **A module here is a class, so the name a program writes is the module and then the call.**
+///
+/// Java has no free functions, so the operation every other arm spells as one is a `static` method
+/// on the class that *is* the module — which is why the module's own path ends in a class name
+/// rather than in the package holding it. A path of `gg.files` would name something no call site can
+/// mention, and gg quotes these names back at a model in sentences it acts on.
+#[test]
+fn a_module_is_a_class_and_a_call_is_qualified_by_it() {
+    assert_eq!(java().member_separator(), ".");
+    assert_eq!(
+        crate::sandbox::spell(java(), crate::sandbox::VIEW_OPEN_TEXT),
+        "gg.views.Views.openText"
+    );
+    assert_eq!(
+        crate::sandbox::spell(java(), crate::sandbox::REVIEW_REQUEST_CHANGES),
+        "gg.session.Session.requestChanges"
+    );
+}
+
+/// **Every model-facing name is qualified by its module, and a member function names its receiver.**
+///
+/// The two shapes this arm emits, and the one place they are written down beside each other: a
+/// module's own call is `<module>.<name>`, and a call on a value the module handed back is
+/// `<module>.<Type>#<name>` — javadoc's own spelling of a member, which is also what a `{@link}` in
+/// this SDK writes and what doclint therefore checks resolves.
+#[test]
+fn a_name_is_qualified_by_its_module_and_a_member_names_its_receiver() {
+    let catalogue = java().catalogue();
+    let by_fqn = |fqn: &str| {
+        catalogue
+            .functions
+            .iter()
+            .find(|entry| entry.fqn == fqn)
+            .unwrap_or_else(|| panic!("`{fqn}` is catalogued"))
+    };
+
+    let read = by_fqn("gg.files.Files.readFile");
+    assert_eq!(read.module, "files");
+    assert_eq!(read.receiver, None);
+
+    let send = by_fqn("gg.delegation.Delegation.SubagentHandle#send");
+    assert_eq!(send.module, "delegation");
+    assert_eq!(send.receiver.as_deref(), Some("SubagentHandle"));
+    assert_eq!(
+        send.alias_of.as_deref(),
+        Some("delegation.send_message"),
+        "a member function is a second way to reach an operation rather than a second operation"
     );
 }
 

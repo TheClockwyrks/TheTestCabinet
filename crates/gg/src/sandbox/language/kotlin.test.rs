@@ -40,8 +40,8 @@ fn this_arm_names_the_compiler_that_judges_a_program() {
 /// **`.kt`, and nothing else — not `.kts`, even though a *program* here is a script.**
 ///
 /// The two shapes are genuinely different on this arm: a program is compiled as a script, and a code
-/// module is compiled as an ordinary file, because what `lib.<key>` binds is a namespace of public
-/// top-level functions and a script's declarations are members of an instance. Offering `skill.kts`
+/// module is compiled as an ordinary file, because what `gg.core.lib.<key>` binds is a namespace
+/// of public top-level functions and a script's declarations are members of an instance. Offering `skill.kts`
 /// would name a shape this arm does not compile.
 #[test]
 fn a_code_skills_module_is_spelled_kt_and_not_kts() {
@@ -49,11 +49,11 @@ fn a_code_skills_module_is_spelled_kt_and_not_kts() {
     assert_eq!(kotlin().module_file_extension(), "kt");
 }
 
-/// **The `lib.<key>` binding is camelCase**, and is a valid Kotlin identifier whatever the author
-/// called their skill.
+/// **The `gg.core.lib.<key>` binding is camelCase**, and is a valid Kotlin identifier whatever the
+/// author called their skill.
 ///
-/// This arm reaches a module by *string* — `lib.text("csvTools", "parse", …)` — because a code module
-/// is compiled separately and there is no `import` for the compiler to check a program against. The
+/// This arm reaches a module by *string* — `gg.core.lib.text("csvTools", "parse", …)` — because a
+/// code module is compiled separately and there is no `import` for the compiler to check a program against. The
 /// key is still a name the model has to type out from memory in every program that uses it, so it is
 /// held to what a Kotlin author would have written — ASCII, even though this language would accept a
 /// Unicode or a backquoted name.
@@ -90,7 +90,7 @@ fn the_binding_name_is_a_camel_case_kotlin_identifier() {
 fn the_synthesized_file_view_is_kotlin_and_not_javas() {
     assert_eq!(
         kotlin().open_file_statement("src/Main.kt", None),
-        r#"view.openFile("src/Main.kt")"#
+        r#"gg.views.openFile("src/Main.kt")"#
     );
     let window = Some(FileWindow {
         offset: 400,
@@ -98,15 +98,22 @@ fn the_synthesized_file_view_is_kotlin_and_not_javas() {
     });
     assert_eq!(
         kotlin().open_file_statement("src/Main.kt", window),
-        r#"view.openFile("src/Main.kt", offset = 400, limit = 200)"#
+        r#"gg.views.openFile("src/Main.kt", offset = 400, limit = 200)"#
     );
 
     // The comparison, stated rather than implied: the same window, on the arm that shares this one's
-    // compiler, is positional and terminated.
-    assert_eq!(
-        crate::sandbox::language(GgProgramLanguage::Java)
-            .open_file_statement("src/Main.java", window),
-        r#"view.openFile("src/Main.java", 400, 200);"#
+    // compiler, is positional and terminated. Asserted as the two properties rather than as Java's
+    // literal, because what this case is about is the divergence — quoting the other arm's spelling
+    // would make a Kotlin test fail whenever Java renamed something.
+    let java = crate::sandbox::language(GgProgramLanguage::Java)
+        .open_file_statement("src/Main.java", window);
+    assert!(
+        java.ends_with(';'),
+        "Java terminates a statement and Kotlin does not: {java}"
+    );
+    assert!(
+        !java.contains("offset ="),
+        "Java writes the window positionally, as a second overload: {java}"
     );
 }
 
@@ -126,7 +133,7 @@ fn the_generated_documentation_program_is_a_kotlin_script() {
              \"writeFile\"\n\
          )\n\
          for (name in functions) {\n    \
-             view.openDocsView(name)\n\
+             gg.views.openDocsView(name)\n\
          }\n"
     );
 
@@ -136,7 +143,7 @@ fn the_generated_documentation_program_is_a_kotlin_script() {
         kotlin().open_docs_views_statement(&[]),
         "val functions = listOf<String>()\n\
          for (name in functions) {\n    \
-             view.openDocsView(name)\n\
+             gg.views.openDocsView(name)\n\
          }\n"
     );
 
@@ -161,19 +168,30 @@ fn the_generated_documentation_program_is_a_kotlin_script() {
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = kotlin().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Kotlin);
-    assert!(!catalogue.tools.is_empty());
+    assert_eq!(
+        catalogue.schema,
+        crate::sandbox::SchemaVersion::V2,
+        "this arm is written in the normalized doc model"
+    );
+    assert!(!catalogue.functions.is_empty());
 
-    let read_file = catalogue
-        .tools
-        .iter()
-        .find(|entry| entry.tool == "read_file")
+    let read_file = crate::sandbox::catalogue_functions(kotlin())
+        .into_iter()
+        .find(|entry| entry.key == "read_file")
         .expect("`read_file` is catalogued");
     assert_eq!(read_file.name, "readFile");
+    assert_eq!(
+        read_file.fqn,
+        Some("gg.files.readFile"),
+        "the name a documentation view is opened by is the path a program writes"
+    );
     // The two shapes that say the reflection is Kotlin's rather than Java's: a return type after a
     // colon, and **one** signature whose optional half is a default — where the other JVM arm
     // carries an overload group for exactly the same call.
     assert!(
-        read_file.signatures[0].signature.ends_with(": FileRead"),
+        read_file.signatures[0]
+            .signature
+            .ends_with(": gg.files.FileRead"),
         "the catalogue is not in Kotlin's notation: {:?}",
         read_file.signatures[0]
     );
@@ -184,11 +202,9 @@ fn the_committed_catalogue_is_this_languages() {
         read_file.signatures
     );
     assert_eq!(
-        crate::sandbox::language(GgProgramLanguage::Java)
-            .catalogue()
-            .tools
-            .iter()
-            .find(|entry| entry.tool == "read_file")
+        crate::sandbox::catalogue_functions(crate::sandbox::language(GgProgramLanguage::Java))
+            .into_iter()
+            .find(|entry| entry.key == "read_file")
             .expect("`read_file` is catalogued there too")
             .signatures
             .len(),

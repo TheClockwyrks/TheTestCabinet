@@ -126,8 +126,17 @@ fn a_type_lookup_declares_the_type_and_explains_its_members() {
         .read_type("FileRead")
         .expect("FileRead is in the catalogue");
     assert!(file_read.contains("FileRead"), "{file_read}");
+    // Explained, not merely declared — and the explanation asked for is the SDK's own, read out of
+    // the catalogue rather than quoted here. The regression this catches is a renderer that shows
+    // the declaration and drops the paragraph under it, which is the half a model cannot infer and
+    // which is exactly what reaching for a field one schema does not carry produces.
+    let declared = crate::sandbox::type_declaration(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        "FileRead",
+    )
+    .expect("FileRead is declared");
     assert!(
-        file_read.contains("What `readFile` returned"),
+        file_read.contains(declared.prose().rendered().as_ref()),
         "the type is explained, not just declared: {file_read}"
     );
     assert!(docs.read_type("NotAType").is_none());
@@ -208,13 +217,15 @@ fn a_lookup_explains_every_argument_and_every_field() {
         "{read_file}"
     );
 
-    // The referenced type's own members are explained in ITS view, not in this one.
-    let file_read = docs
-        .read_type("FileRead")
-        .expect("FileRead is in the catalogue");
+    // The referenced type's own members are explained in ITS view, not in this one. `FileRead` is
+    // this arm's union of two named records, so the fields live on the arm that declares them —
+    // which a lookup reaches because the type closure carries it.
+    let text_file = docs
+        .read_type("TextFile")
+        .expect("TextFile is in the catalogue");
     assert!(
-        file_read.contains("\n  totalLines: number — "),
-        "{file_read}"
+        text_file.contains("\n  totalLines: number — "),
+        "{text_file}"
     );
 }
 
@@ -302,8 +313,13 @@ fn read_documents_the_list_meta_function() {
     let list = docs.read("list").expect("list is a meta function");
     // Its signature and its paragraph both come from the SDK declaration the guest binds it from.
     assert!(list.contains("list(): FunctionSummary[]"), "{list}");
-    // And it points at the call that opens a function's full documentation.
-    assert!(list.contains("view.openDocsView"), "{list}");
+    // And it points at the call that opens a function's full documentation, quoted as this arm's
+    // own catalogue spells it rather than typed out here.
+    let open_docs_view = crate::sandbox::spell(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        crate::sandbox::VIEW_OPEN_DOCS_VIEW,
+    );
+    assert!(list.contains(&open_docs_view), "{list}");
     assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
     // The type it names is a view of its own, reachable by that name.
     assert!(
@@ -323,8 +339,18 @@ fn a_miss_suggests_the_bound_names_nearest_it() {
         &[],
         GgProgramLanguage::TypeScript,
     );
-    assert_eq!(docs.suggest("write_file"), vec!["writeFile"]);
-    assert_eq!(docs.suggest("write"), vec!["writeFile"]);
+    // Both strings a lookup accepts are offered: the name a signature writes, and the
+    // fully-qualified name a documentation view is keyed by. On an arm reshaped into capability
+    // modules those are two spellings of one function, and hinting only one of them would send a
+    // model that copied the other back to the same miss.
+    assert_eq!(
+        docs.suggest("write_file"),
+        vec!["writeFile", "gg.files.writeFile"]
+    );
+    assert_eq!(
+        docs.suggest("write"),
+        vec!["writeFile", "gg.files.writeFile"]
+    );
     // The meta function is a candidate like any other: it is bound on every object, and `read`
     // answers it.
     assert_eq!(docs.suggest("lists"), vec!["list"]);
@@ -349,8 +375,11 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
         "`writeFile` is not bound, so it is not offered: {:?}",
         docs.suggest("write_file")
     );
-    // What *is* bound is still offered, on the same query shape.
-    assert_eq!(docs.suggest("read_file"), vec!["readFile"]);
+    // What *is* bound is still offered, on the same query shape and under both its keys.
+    assert_eq!(
+        docs.suggest("read_file"),
+        vec!["readFile", "gg.files.readFile"]
+    );
 
     // The ending gate is a scope like any other: a reviewer's verdicts are not suggested to an
     // agent doing work, and `finish` is not suggested to a reviewer.
@@ -367,7 +396,10 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
         &[],
         GgProgramLanguage::TypeScript,
     );
-    assert_eq!(reviewer.suggest("request_changes"), vec!["requestChanges"]);
+    assert_eq!(
+        reviewer.suggest("request_changes"),
+        vec!["requestChanges", "gg.session.requestChanges"]
+    );
     assert!(reviewer.suggest("finsih").is_empty());
 }
 

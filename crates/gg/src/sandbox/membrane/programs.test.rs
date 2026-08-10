@@ -85,7 +85,7 @@ fn every_library_call_is_refused_without_the_capability() {
         // ...and the sentence names the call the way the program would have written it, object and
         // all, rather than under the bare key gg files it by.
         assert!(
-            refused.message.contains(&format!("`programs.{call}`")),
+            refused.message.contains(&format!("`gg.programs.{call}`")),
             "`{call}`: {}",
             refused.message
         );

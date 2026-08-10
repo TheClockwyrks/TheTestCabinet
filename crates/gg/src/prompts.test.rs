@@ -220,8 +220,8 @@ fn code_mode_names_objects_and_teaches_discovery() {
         "`system`",
         "run shell commands in the workspace",
         "`harness`",
-        "<object>.list()",
-        "view.openDocsView",
+        "<module>.list()",
+        "gg.views.openDocsView",
         "finish",
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
@@ -290,8 +290,8 @@ fn code_mode_teaches_views_rather_than_logging() {
     // [another test](code_mode_names_the_argument_shapes_a_program_starts_from)'s subject; what is
     // asserted here is that the call is named at all, and named under the right gate.
     assert!(flat_reads.contains("next turn"), "{with_reads}");
-    assert!(flat_reads.contains("view.openText"), "{with_reads}");
-    assert!(flat_reads.contains("view.openFile"), "{with_reads}");
+    assert!(flat_reads.contains("gg.views.openText"), "{with_reads}");
+    assert!(flat_reads.contains("gg.views.openFile"), "{with_reads}");
     // Logging is named, as the thing that does NOT reach the model — never as an instruction.
     assert!(flat_reads.contains("the only way"), "{with_reads}");
     assert!(flat_reads.contains("console.log"), "{with_reads}");
@@ -318,8 +318,8 @@ fn code_mode_teaches_views_rather_than_logging() {
         },
         None,
     );
-    assert!(no_reads.contains("view.openText"), "{no_reads}");
-    assert!(!no_reads.contains("view.openFile"), "{no_reads}");
+    assert!(no_reads.contains("gg.views.openText"), "{no_reads}");
+    assert!(!no_reads.contains("gg.views.openFile"), "{no_reads}");
     assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
 }
 
@@ -340,11 +340,36 @@ fn catalogued_call_in(
     object: &str,
     key: &str,
 ) -> String {
-    let function = crate::sandbox::catalogue_functions(language)
+    let function = catalogued_in(language, object, key);
+    format!(
+        "{}{}{}",
+        function.object,
+        language.member_separator(),
+        function.name
+    )
+}
+
+/// The catalogue entry gg's own `(object, key)` pair names, in `language`'s catalogue.
+///
+/// Resolved through the [operation](crate::sandbox::operation_of) rather than by looking for gg's
+/// pair in the entry, because an arm reshaped into capability modules files that pair nowhere: it
+/// groups the same call under a module path and names the operation on the declaration. The
+/// canonical binding is what a prompt quotes, so an alias is skipped here exactly as
+/// [`spell`](crate::sandbox::spell) skips it.
+fn catalogued_in(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+    object: &str,
+    key: &str,
+) -> crate::sandbox::CatalogueFunction {
+    crate::sandbox::catalogue_functions(language)
         .into_iter()
-        .find(|function| function.object == object && function.key == key)
-        .unwrap_or_else(|| panic!("`{object}.{key}` is catalogued"));
-    format!("{object}.{}", function.name)
+        .find(|function| {
+            function.alias_of.is_none()
+                && crate::sandbox::operation_of(function).is_some_and(|resolved| {
+                    resolved.call.object == object && resolved.call.key == key
+                })
+        })
+        .unwrap_or_else(|| panic!("`{object}.{key}` is catalogued"))
 }
 
 /// The same, for any language the seam registers — including the
@@ -359,12 +384,11 @@ fn catalogued_signature_in(
     object: &str,
     key: &str,
 ) -> String {
-    let function = crate::sandbox::catalogue_functions(language)
-        .into_iter()
-        .find(|function| function.object == object && function.key == key)
-        .unwrap_or_else(|| panic!("`{object}.{key}` is catalogued"));
+    let function = catalogued_in(language, object, key);
     format!(
-        "{object}.{}",
+        "{}{}{}",
+        function.object,
+        language.member_separator(),
         function
             .signatures
             .first()
@@ -417,7 +441,7 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
     );
     let flat_capped = flat(&capped);
     assert!(
-        flat_capped.contains("view.openFile(path, { offset: 400, limit: 200 })"),
+        flat_capped.contains("gg.views.openFile(path, { offset: 400, limit: 200 })"),
         "{capped}"
     );
     assert!(
@@ -433,7 +457,7 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
         },
         ShellView::default(),
     );
-    assert!(uncapped.contains("view.openFile(path)"), "{uncapped}");
+    assert!(uncapped.contains("gg.views.openFile(path)"), "{uncapped}");
     assert!(!uncapped.contains("offset"), "{uncapped}");
     assert!(!uncapped.contains("limit"), "{uncapped}");
 
@@ -495,14 +519,14 @@ fn code_mode_distinguishes_a_returned_directory_from_an_opened_view() {
     let flat = plain(&prompt);
     // `list()` hands its answer to the PROGRAM, and the prompt shows the one call that forwards it
     // to the model.
-    assert!(flat.contains("`<object>.list()` returns"), "{prompt}");
+    assert!(flat.contains("`<module>.list()` returns"), "{prompt}");
     assert!(flat.contains("to your program"), "{prompt}");
     assert!(
-        flat.contains("view.openText") && flat.contains("fs.list()"),
+        flat.contains("gg.views.openText") && flat.contains("gg.files.list()"),
         "the worked example that forwards a directory to a view is gone:\n{prompt}"
     );
     // `openDocsView` is the one that opens a view directly.
-    assert!(flat.contains("view.openDocsView"), "{prompt}");
+    assert!(flat.contains("gg.views.openDocsView"), "{prompt}");
     assert!(flat.contains("opens a view"), "{prompt}");
     // And whichever route was taken, the material lands on the next turn.
     assert!(flat.contains("next turn"), "{prompt}");
@@ -780,9 +804,9 @@ fn the_two_modes_name_calls_in_their_own_form() {
         );
     }
     for grouped in [
-        "tasks.addTask",
-        "agents.spawnSubagent",
-        "project.createEpic",
+        "gg.tasks.addTask",
+        "gg.delegation.spawnSubagent",
+        "gg.board.createEpic",
     ] {
         assert!(
             !tools.contains(grouped),
@@ -793,11 +817,11 @@ fn the_two_modes_name_calls_in_their_own_form() {
     // Responses-as-code: the grouped methods, and none of the free-standing tool names.
     let code = flat(&render_system(&every_section_on(true), None));
     for grouped in [
-        "`tasks.addTask`",
-        "`tasks.setBlockedBy`",
-        "`agents.spawnSubagent`",
-        "`project.createEpic`",
-        "`project.createIssue`",
+        "`gg.tasks.addTask`",
+        "`gg.tasks.setBlockedBy`",
+        "`gg.delegation.spawnSubagent`",
+        "`gg.board.createEpic`",
+        "`gg.board.createIssue`",
     ] {
         assert!(
             code.contains(grouped),
@@ -1018,8 +1042,8 @@ fn the_code_turn_has_no_result_template_to_render() {
 #[test]
 fn the_nothing_shown_notice_names_the_calls_that_would_have_shown_something() {
     let rendered = render_code_nothing_shown(GgProgramLanguage::TypeScript);
-    assert!(rendered.contains("view.openText"), "{rendered}");
-    assert!(rendered.contains("view.openFile"), "{rendered}");
+    assert!(rendered.contains("gg.views.openText"), "{rendered}");
+    assert!(rendered.contains("gg.views.openFile"), "{rendered}");
     assert!(
         rendered.contains("console.log"),
         "a model whose output vanished must be told where it went: {rendered}"

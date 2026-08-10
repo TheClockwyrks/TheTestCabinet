@@ -2289,7 +2289,7 @@
       "fqn": "Gg.Delegation.WaitForSubagents",
       "call": null,
       "brief": "Wait for every outstanding child, and collect their results.",
-      "detail": "This blocks while it waits, and the run\u0027s wall-clock budget keeps running while it does.\n\nReturns: one result per child, in the order they were collected.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for an id this agent never spawned, when ids are named.",
+      "detail": "This blocks while it waits, and the run\u0027s wall-clock budget keeps running while it does, so one wait for many children costs far less than one wait per child.\n\nReturns: one result per child, in the order they were collected.\n\n\u0060WaitForSubagents(params string[] ids)\u0060 \u2014 Wait for the named children, and collect their results.\n\nReturns: one result per named child, in the order they were collected.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for an id this agent never spawned.",
       "signatures": [
         {
           "signature": "WaitForSubagents() -\u003E IReadOnlyList\u003CDelegation.SubagentResult\u003E",

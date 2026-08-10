@@ -1,29 +1,25 @@
 package gg;
 
 /**
- * A gg call that failed.
+ * The exception every gg call throws when it fails.
  *
- * <p>Thrown by every function in this SDK. Catch it when a failure is expected and branch on
- * {@link #code()}; let it escape when it is not, and gg reports which call failed and where your
- * program was.
+ * <p>A failure is thrown rather than returned because Java is an exception language: the common path
+ * reads as a straight line, and only the calls expected to fail are wrapped. It is unchecked for the
+ * same reason — a checked exception would put a {@code try} around every line of a composed program.
  *
  * <pre>{@code
  * try {
- *     String notes = fs.readTextFile("notes.md");
- *     view.openText("notes", notes);
+ *     Views.openText("notes", Files.readTextFile("NOTES.md"));
  * } catch (ToolError failure) {
- *     if (failure.code() == ToolErrorCode.NOT_FOUND) {
- *         fs.writeFile("notes.md", "");
- *     } else {
+ *     if (failure.code() != ToolErrorCode.NOT_FOUND) {
  *         throw failure;
  *     }
+ *     Views.openText("notes", "there are no notes yet");
  * }
  * }</pre>
  *
- * <p>It is <b>unchecked</b>, which is the Java answer to a failure that is usually fatal to what
- * you were doing: a checked exception would force a {@code try} around every line and make a
- * composed program unwritable, and a surface where every call returned a result object would do
- * the same with an {@code if}.
+ * <p>An unexpected one is best left to escape: gg reports which call failed, with the stack, and the
+ * turn is recoverable.
  */
 public final class ToolError extends RuntimeException {
     private static final long serialVersionUID = 1L;
@@ -32,10 +28,10 @@ public final class ToolError extends RuntimeException {
     private final ToolErrorCode code;
 
     /**
-     * Build one. gg's own SDK raises these; a program catches them.
+     * Build one, which is what this SDK's bridge does when a call comes back a failure.
      *
-     * @param tool the gg call that failed, under gg's own name for it
-     * @param code the failure class
+     * @param tool the gg tool that failed, under gg's own name for it
+     * @param code the class of failure
      * @param message what went wrong, in gg's words
      */
     public ToolError(String tool, ToolErrorCode code, String message) {
@@ -45,10 +41,9 @@ public final class ToolError extends RuntimeException {
     }
 
     /**
-     * The gg call that failed, under gg's own name for it ({@code read_file},
-     * {@code spawn_subagent}).
+     * The gg tool that failed — {@code read_file}, {@code spawn_subagent}.
      *
-     * @return gg's name for the call
+     * @return gg's own name for the call
      */
     public String tool() {
         return tool;

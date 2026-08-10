@@ -94,7 +94,7 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
         "a built-in exposes no importable code"
     );
     let script = fs.on_use(language).expect("the code arm carries a script");
-    assert!(script.contains("view.openDocsView(name)"), "{script}");
+    assert!(script.contains("gg.views.openDocsView(name)"), "{script}");
     assert!(script.contains("\"readFile\""), "{script}");
     // `list` documents itself and is on every object; eleven identical blocks would be eleven too
     // many.

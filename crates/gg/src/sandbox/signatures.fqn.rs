@@ -5,7 +5,7 @@
 //!
 //! A fully-qualified name is **the arm's own spelling**, emitted by that arm's reflector out of that
 //! arm's own compiler or documentation tool. gg never assembles one, and could not: `gg::fs::read_file`,
-//! `Gg.Files.ReadFile`, `gg.files.Workspace#readFile(String)` and `GgFiles.readFile(_:offset:limit:)`
+//! `Gg.Files.ReadFile`, `gg.files.Files.readFile` and `GgFiles.readFile(_:offset:limit:)`
 //! are four correct answers to one question, and a scheme that flattened them into a shared syntax
 //! would hand a model a key its own language has no way to write.
 //!
@@ -33,11 +33,15 @@
 //!   [static method](super::EntryKind::StaticMethod) whose owning class **is** the module path. It
 //!   has no [receiver](super::FunctionSignature::receiver), and its name is therefore the
 //!   `module ∘ function` shape — one segment after the module, exactly like Rust's.
-//! * **Java** makes it an instance method on a capability object, so `gg.files.Workspace#readFile`
-//!   is a [method](super::EntryKind::Method) with the receiver `Workspace` and is the
-//!   `module ∘ Type ∘ member` shape — two segments after the module.
+//! * **Java** does the same thing with the same shape: `gg.files.Files.readFile` is a
+//!   [static method](super::EntryKind::StaticMethod) on the class `gg.files.Files`, whose
+//!   package-and-class path **is** the module path, so it too has no receiver and takes one segment
+//!   after the module. What Java adds is a second kind of entry rather than another answer to this
+//!   question: a value a call hands back may carry an instance
+//!   [method](super::EntryKind::Method), and that one — `gg.board.Board.IssueCreated#await`, with
+//!   the receiver `IssueCreated` — is the `module ∘ Type ∘ member` shape.
 //!
-//! So the rule is stated once as *a receiver adds a segment*, and the two languages differ in
+//! So the rule is stated once as *a receiver adds a segment*, and an arm's entries differ in
 //! whether they have one rather than in what they are held to. An arm that declares a method and
 //! names no receiver, or names a receiver the name does not contain, is a defect this catches.
 //!
@@ -48,8 +52,9 @@
 //! — and a rule that enumerated them would be a rule that fails on the twelfth language. Instead the
 //! module path is matched as a **literal prefix**, whatever it contains, and the tail is split on
 //! runs of anything that cannot continue an identifier. The one thing that is treated specially is a
-//! trailing **signature suffix** — Swift's argument labels `(_:offset:limit:)` and Java's parameter
-//! list `(String)` — which is part of the name's identity on those arms and is not a segment.
+//! trailing **signature suffix** — Swift's argument labels `(_:offset:limit:)`, or a parameter list
+//! or generic argument list on any arm that needs one to tell two entries apart — which is part of
+//! the name's identity where it appears and is not a segment.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -217,8 +222,8 @@ fn is_identifier(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-/// Where a name's trailing **signature suffix** begins — Swift's argument labels, Java's parameter
-/// list, a generic argument list — or the end of the string.
+/// Where a name's trailing **signature suffix** begins — Swift's argument labels, a parameter list,
+/// a generic argument list — or the end of the string.
 ///
 /// These are part of a name's identity on the arms that emit them (`editFile(_:replacing:with:)` and
 /// `editFile(_:old:new:)` are two functions in Swift and a label-stripped key could not tell them
@@ -317,9 +322,9 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
             ));
             continue;
         };
-        // A receiver is what decides the shape, not the kind: C# spells a standalone function as a
-        // static method with no receiver, and Java spells one as a method with one. See this
-        // module's header.
+        // A receiver is what decides the shape, not the kind: C# and Java both spell a standalone
+        // function as a static method with no receiver, and on every arm a receiver is what adds the
+        // extra segment. See this module's header.
         let shape = match (function.kind, function.receiver.as_deref()) {
             (EntryKind::Method, None) => {
                 out.push(

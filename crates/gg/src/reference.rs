@@ -168,12 +168,35 @@ fn category_of_tool(name: &str) -> String {
 
 /// The category id an API object belongs to — the family whose `objects` list names it. Answers
 /// like [`category_of_tool`] for an object no family claims, and for the same reason.
+///
+/// It is the answer for a **v1** arm only, and the fallback rather than the rule: `objects` is gg's
+/// own vocabulary for the API object a function used to hang off (`fs`, `view`, `harness`), and an
+/// arm reshaped into capability modules groups the same function under `gg.files`, which no family
+/// claims. See [`category_of_function`] for the join that survives both shapes.
 fn category_of_object(object: &str) -> String {
     FAMILIES
         .iter()
         .find(|family| family.objects.contains(&object))
         .map(|family| family.id.to_string())
         .unwrap_or_default()
+}
+
+/// The category id one catalogued function belongs to, whichever
+/// [schema](crate::sandbox::SchemaVersion) its arm committed.
+///
+/// Resolved through the [operation](crate::sandbox::operation_of), which is gg's own identity for
+/// the call and carries the family on it, rather than through the grouping the arm filed it under.
+/// The grouping is *spelling*: it is `fs` on an arm whose surface is API objects and `gg.files` on
+/// one whose surface is modules, so a lookup by it answers nothing on a converted arm and every
+/// entry lands in a category the console does not render. This is the same join
+/// [`DocsRuntime::family`](crate::docs::DocsRuntime::family) makes, for the same reason.
+///
+/// [`category_of_object`] remains the fallback for the one thing an operation cannot name — a call
+/// gg has no row for — and answers empty there exactly as [`category_of_tool`] does.
+fn category_of_function(function: &crate::sandbox::CatalogueFunction) -> String {
+    crate::sandbox::operation_of(function)
+        .map(|operation| operation.family.to_string())
+        .unwrap_or_else(|| category_of_object(function.object))
 }
 
 /// Every tool gg can offer, in [`ALL_TOOL_NAMES`] order, each carrying its default rendering, its
@@ -516,21 +539,43 @@ fn placeholder_position() -> FsmPosition {
 /// to) and the type declarations, which the catalogue carries by name so that a run's prompt can
 /// declare only the types its own tools use.
 ///
-/// The [meta](crate::docs::LIST_FUNCTION) section is folded in **once per object**, at the end, and
-/// that is not a duplication of one function: `list` is bound onto every object the guest creates,
-/// so an object's entry in this projection is incomplete without it. It is the same answer the two
-/// other readouts of the surface give — the directory a program gets from `object.list()` and the
-/// [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) event — and the reason it
-/// is appended rather than found in [`catalogue_functions`](crate::sandbox::catalogue_functions) is
-/// that a meta entry names no object of its own to be grouped under.
+/// The [meta](crate::docs::LIST_FUNCTION) section is folded in **once per grouping**, at the end,
+/// and that is not a duplication of one function: `list` is bound onto every object the guest
+/// creates, so a grouping's entry in this projection is incomplete without it. It is the same answer
+/// the two other readouts of the surface give — the directory a program gets from `<module>.list()`
+/// and the [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) event — and the
+/// reason it is appended rather than found in
+/// [`catalogue_functions`](crate::sandbox::catalogue_functions) is that a meta entry names no
+/// grouping of its own to be filed under.
+///
+/// The groupings are read through [`catalogue_modules`](crate::sandbox::catalogue_modules) — the
+/// normalized reading of an arm's API objects and its capability modules alike — and a grouping that
+/// carries no call of its own is left out, exactly as the agent surface leaves it out. That is not a
+/// filter on v1, where every API object binds something; it is the honest answer on a converted arm,
+/// which declares a module holding only the types every other module raises (`gg.core`) and no
+/// function for a directory to list.
 fn functions() -> Vec<GgApiFunction> {
     let language = crate::sandbox::language(reference_language());
-    let mut out: Vec<GgApiFunction> = crate::sandbox::catalogue_functions(language)
-        .into_iter()
+    let catalogued = crate::sandbox::catalogue_functions(language);
+    // Each grouping's category, taken from the calls filed under it, so that the directory appended
+    // below lands in the same family as everything it lists. Read off the entries rather than looked
+    // up from the grouping's name, because a module path is this arm's spelling and no family claims
+    // one — the same reason `category_of_function` resolves through the operation.
+    let category_of_group: Vec<(&str, String)> = crate::sandbox::catalogue_modules(language)
+        .iter()
+        .filter_map(|module| {
+            catalogued
+                .iter()
+                .find(|function| function.object == module.path)
+                .map(|function| (module.path, category_of_function(function)))
+        })
+        .collect();
+    let mut out: Vec<GgApiFunction> = catalogued
+        .iter()
         .map(|function| GgApiFunction {
             object: function.object.to_string(),
             name: function.name.to_string(),
-            category: category_of_object(function.object),
+            category: category_of_function(function),
             summary: function.prose.brief.to_string(),
             signatures: signatures(function.signatures),
             doc: function.prose.rendered().into_owned(),
@@ -545,25 +590,23 @@ fn functions() -> Vec<GgApiFunction> {
         })
         .collect();
     if let Some(list) = crate::sandbox::meta_function(language, crate::docs::LIST_FUNCTION) {
-        out.extend(
-            crate::sandbox::catalogue_objects(language)
-                .iter()
-                .map(|described| GgApiFunction {
-                    object: described.object.clone(),
-                    name: list.name.clone(),
-                    category: category_of_object(described.object.as_str()),
-                    summary: crate::sandbox::Prose::from_paragraph(&list.doc)
-                        .brief
-                        .to_string(),
-                    signatures: signatures(&list.signatures),
-                    doc: list.doc.clone(),
-                    // Nothing gates the directory: an object that exists carries it.
-                    gate: None,
-                    ending: None,
-                    library: false,
-                    types: types(language, &list.types),
-                }),
-        );
+        out.extend(category_of_group.into_iter().map(|(path, category)| {
+            GgApiFunction {
+                object: path.to_string(),
+                name: list.name.clone(),
+                category,
+                summary: crate::sandbox::Prose::from_paragraph(&list.doc)
+                    .brief
+                    .to_string(),
+                signatures: signatures(&list.signatures),
+                doc: list.doc.clone(),
+                // Nothing gates the directory: a grouping that exists carries it.
+                gate: None,
+                ending: None,
+                library: false,
+                types: types(language, &list.types),
+            }
+        }));
     }
     out
 }

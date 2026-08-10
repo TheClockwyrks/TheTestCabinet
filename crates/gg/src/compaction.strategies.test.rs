@@ -340,12 +340,15 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
     assert!(tool_calling.contains("Call `compact`"), "{tool_calling}");
     let code =
         PendingCompaction::CompactCall.instruction(code_language(true), scratchpad_calls(true));
-    assert!(code.contains("`context.compact(summary, files)`"), "{code}");
+    assert!(
+        code.contains("`gg.context.compact(summary, files)`"),
+        "{code}"
+    );
 
     let memories_code =
         PendingCompaction::MemoryWrites.instruction(code_language(true), scratchpad_calls(true));
     assert!(
-        memories_code.contains("memory.writeMemory"),
+        memories_code.contains("gg.memories.writeMemory"),
         "{memories_code}"
     );
     let memories_tools = PendingCompaction::MemoryWrites.instruction(None, scratchpad_calls(false));
@@ -358,7 +361,7 @@ fn each_instruction_names_the_call_for_its_execution_mode() {
     let summary_code =
         PendingCompaction::Summary.instruction(code_language(true), scratchpad_calls(true));
     assert!(
-        summary_code.contains("`context.compact(summary)`"),
+        summary_code.contains("`gg.context.compact(summary)`"),
         "{summary_code}"
     );
     for forbidden in ["NOT write a program", "plain text"] {

@@ -171,9 +171,10 @@ fn the_gate_table_covers_exactly_the_tool_vocabulary() {
 /// Every function the committed signature catalogue documents reaches the reference, with its
 /// signature and documentation intact.
 ///
-/// The count is the object-bearing sections' plus one `list` per object: the directory is bound onto
-/// every object the guest creates, so an object's entry on the page is one function short without
-/// it — the same completeness the run's own agent-surface readout has.
+/// The count is the catalogued functions' plus one `list` per grouping that binds something: the
+/// directory is bound onto every object the guest creates, so a grouping's entry on the page is one
+/// function short without it — the same completeness the run's own agent-surface readout has, which
+/// leaves out a grouping that binds nothing for the same reason.
 #[test]
 fn every_catalogued_function_appears() {
     let reference = reference();
@@ -184,20 +185,26 @@ fn every_catalogued_function_appears() {
         .collect();
 
     let catalogued = crate::sandbox::catalogue_functions(projected_language());
-    let objects = crate::sandbox::catalogue_objects(projected_language());
+    // The groupings read through the normalized reading of the two schemas, and narrowed to the ones
+    // that actually carry a call: a converted arm declares a module holding only the types every
+    // other module raises, and a directory of nothing is not a function the page should invent.
+    let objects: Vec<&str> = crate::sandbox::catalogue_modules(projected_language())
+        .iter()
+        .map(|module| module.path)
+        .filter(|path| catalogued.iter().any(|function| function.object == *path))
+        .collect();
     assert_eq!(
         emitted.len(),
         catalogued.len() + objects.len(),
         "the reference must carry one entry per catalogued function, plus the directory every \
-         object binds"
+         grouping binds"
     );
     let list = crate::sandbox::meta_function(projected_language(), crate::docs::LIST_FUNCTION)
         .expect("`list` is catalogued");
-    for described in objects {
+    for described in &objects {
         assert!(
-            emitted.contains(&(described.object.clone(), list.name.clone())),
-            "`{}` is on the page without the directory it binds",
-            described.object
+            emitted.contains(&((*described).to_string(), list.name.clone())),
+            "`{described}` is on the page without the directory it binds"
         );
     }
     for function in &catalogued {

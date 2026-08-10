@@ -32,7 +32,7 @@
  *
  * What this file deliberately does **not** do is carry a program's return value anywhere. The value
  * is discarded and the model is told once ({@link feedback.noteReturn}) that it was: a program shows
- * itself material by opening a **view** (`view.openText`, `view.openFile`) and tells the run's
+ * itself material by opening a **view** (`gg.views.openText`, `gg.views.openFile`) and tells the run's
  * operator things with `console.log`, which is why there is no serialisation to fail, no depth limit
  * to explain, and no rule about what a program may hand back. Ending the run is likewise not this
  * file's business —
@@ -42,40 +42,46 @@
 
 import * as feedback from "test-cabinet:gg/feedback";
 import type { ProgramError } from "test-cabinet:gg/feedback";
-import type { EndingKind } from "./catalogue.js";
+import type { EndingKind, ModuleId } from "./catalogue.js";
 import {
+  ALWAYS_BOUND,
   DOCS_NAME,
-  HELPER_CATALOGUE,
+  ENDING_BOUND,
+  GG_TOOLS,
+  LEGACY_GROUPING,
+  LEGACY_REVIEW_ENDING,
+  LEGACY_STANDARD_ENDING,
+  LIBRARY_BOUND,
   LIB_OBJECT,
-  OBJECT_FOR_MODULE,
-  PROGRAM_ENTRIES,
-  PROGRAM_MODULE,
-  SESSION_ENTRIES,
-  TOOL_CATALOGUE,
-  VIEW_ENTRIES,
-  VIEW_MODULE,
+  LIST_FUNCTION,
+  MODULE_ORDER,
+  SURFACE,
+  TOOL_BOUND,
+  TOOL_ERROR,
+  exportedName,
+  keyOf,
+  moduleOf,
 } from "./catalogue.js";
+import * as boardMod from "./gg/board.js";
+import * as contextMod from "./gg/context.js";
+import { ToolError } from "./gg/core.js";
+import * as delegationMod from "./gg/delegation.js";
+import * as filesMod from "./gg/files.js";
+import * as memoriesMod from "./gg/memories.js";
+import * as programsMod from "./gg/programs.js";
+import * as sessionMod from "./gg/session.js";
+import * as shellMod from "./gg/shell.js";
+import * as skillsMod from "./gg/skills.js";
+import * as tasksMod from "./gg/tasks.js";
+import * as viewsMod from "./gg/views.js";
+import { listFunctions } from "./internal/docs.js";
 import {
-  ToolError,
   asToolError,
   describeThrown,
   errorMessage,
   errorName,
   isErrorLike,
-} from "./errors.js";
-import * as helpers from "./helpers.js";
-import * as sessionMod from "./session.js";
-import * as boardMod from "./tools/board.js";
-import * as contextMod from "./tools/context.js";
-import * as delegationMod from "./tools/delegation.js";
-import * as docsMod from "./tools/docs.js";
-import * as filesMod from "./tools/files.js";
-import * as memoriesMod from "./tools/memories.js";
-import * as programsMod from "./tools/programs.js";
-import * as shellMod from "./tools/shell.js";
-import * as skillsMod from "./tools/skills.js";
-import * as tasksMod from "./tools/tasks.js";
-import * as viewsMod from "./tools/views.js";
+} from "./internal/errors.js";
 
 /** A bound tool or helper, as the shim handles it: names and arities are the SDK's business. */
 type ToolFn = (...args: unknown[]) => unknown;
@@ -92,53 +98,53 @@ interface CodeModule {
 }
 
 /**
- * The SDK modules, keyed by the `module` field of {@link TOOL_CATALOGUE} — plus
- * {@link VIEW_MODULE}, whose functions are catalogued separately because none of them is a gg tool.
+ * The capability modules, by the gg module id each one implements.
  *
- * Every module is imported unconditionally — the component is baked once, so there is nothing to
- * gain by importing lazily, and a static import is what lets `componentize-js` resolve the membrane
- * specifiers at build time.
- *
- * {@link boundTools} iterates {@link TOOL_CATALOGUE} rather than this map's keys, so the `views` and
- * `programs` entries cannot perturb the `boundTools() == ALL_TOOL_NAMES` bijection: no tool names
- * either module.
+ * Every module is imported unconditionally — the component is baked once, so there is nothing to gain
+ * by importing lazily, and a static import is what lets `componentize-js` resolve the membrane
+ * specifiers at build time. `core` is absent because it declares types and no function; the one value
+ * it carries is bound by {@link buildScope} directly.
  */
-const MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
-  shell: shellMod,
+const MODULES: Readonly<Partial<Record<ModuleId, Readonly<Record<string, unknown>>>>> = {
   files: filesMod,
-  skills: skillsMod,
-  memories: memoriesMod,
-  tasks: tasksMod,
+  shell: shellMod,
   board: boardMod,
+  tasks: tasksMod,
+  memories: memoriesMod,
+  views: viewsMod,
   context: contextMod,
   delegation: delegationMod,
-  views: viewsMod,
+  skills: skillsMod,
   programs: programsMod,
+  session: sessionMod,
 };
 
-/** The helper module, looked up the same way the tool modules are. */
-const HELPERS: Readonly<Record<string, unknown>> = helpers;
-
-/** The exported function for a catalogue entry, or `undefined` if the module does not export it. */
-function lookup(exports: Readonly<Record<string, unknown>>, js: string): ToolFn | undefined {
-  const candidate = exports[js];
+/** The exported function one gg operation is implemented by, or `undefined` when it is absent. */
+function implementation(operation: string): ToolFn | undefined {
+  const exports = MODULES[moduleOf(operation)] ?? {};
+  const candidate = exports[exportedName(keyOf(operation))];
   return typeof candidate === "function" ? (candidate as ToolFn) : undefined;
 }
 
 /**
  * The gg tool names this component can bind.
  *
- * gg calls this export in a unit test and asserts set-equality with its own tool vocabulary minus
- * the three turn-level transitions. It is the one drift gate that inspects the **committed
- * artifact** rather than a source file, so it catches the failure no compiler can: a tool added,
- * renamed or removed in gg, with a stale `.wasm` still checked in. The catalogue is filtered by
- * whether the module really exports the function, so a catalogue entry pointing at a name that does
- * not exist is a missing name here rather than a runtime `undefined`.
+ * gg calls this export in a unit test and asserts set-equality with its own tool vocabulary. It is
+ * the one drift gate that inspects the **committed artifact** rather than a source file, so it
+ * catches the failure no compiler can: a tool added, renamed or removed in gg, with a stale `.wasm`
+ * still checked in.
+ *
+ * A tool is reported only when some operation it buys really resolves to an exported function, so a
+ * gating table naming a function this SDK does not have is a missing name here rather than a runtime
+ * `undefined`.
  */
 export function boundTools(): string[] {
-  return TOOL_CATALOGUE.filter((entry) => lookup(MODULES[entry.module] ?? {}, entry.js)).map(
-    (entry) => entry.tool,
+  const bought = new Set(
+    Object.entries(TOOL_BOUND)
+      .filter(([operation]) => implementation(operation))
+      .map(([, tool]) => tool),
   );
+  return GG_TOOLS.filter((tool) => bought.has(tool));
 }
 
 /**
@@ -390,20 +396,40 @@ function documented(fn: ToolFn, name: string): ToolFn {
 }
 
 /**
- * The API objects a program may use, each bound to the functions behind it.
+ * The names a program is given: the capability modules, under every spelling that reaches them.
  *
- * A program does not receive flat identifiers. It receives a small set of namespaced objects — `fs`,
- * `project`, `system`, `harness`, … — one per {@link OBJECT_FOR_MODULE} namespace that has at least
- * one bound function, and each function is reached as `object.name(...)`. These object names become
- * the evaluated function's *parameters*, which shadow any global of the same name, so this map is
- * both the capability set and its enforcement: a withheld tool is a missing method, and a namespace
- * with nothing enabled is a missing object.
+ * A program does not receive flat identifiers. It receives `gg`, carrying one object per module that
+ * this run offers at least one function of, so `gg.files.readFile` — the fully-qualified name the
+ * documentation is keyed by — is a path a program can write.
  *
- * Every object also carries a `list()` (the directory of its own functions), routed to the
- * {@link docsMod} carve-out. The `view` object is present whatever a run enables: it is the only way
- * material reaches the model's context window at all, documentation included. The session-ending calls are bound
- * from `ending`, one group per role, so a program has exactly the ending its role produces — a
- * reviewer gets a `review` object and no `finish`.
+ * These names become the evaluated function's *parameters*, which shadow any global of the same
+ * name, so this map is both the capability set and its enforcement: a withheld operation is a missing
+ * property, and a module with nothing enabled is absent from `gg` entirely.
+ *
+ * **A module is deliberately not bound under its bare id.** `files`, `shell` and `memories` are
+ * among the most ordinary variable names a program writes, and a parameter of that name makes
+ * `const files = …` a `SyntaxError` about a redeclared formal parameter — a failure whose message
+ * says nothing about what the program did wrong. One qualified path costs nothing to write and
+ * collides with nothing.
+ *
+ * Three further bindings are not modules and are here anyway:
+ *
+ * - **`ToolError`**, bound bare, because `catch (error) { if (error instanceof ToolError) … }` is the
+ *   shape the prompt teaches and a qualified name in a `catch` reads as ceremony;
+ * - each module's **`list`**, the directory of its own functions, seeded with the grouping name gg
+ *   files that module's documentation under;
+ * - the **legacy grouping names** ({@link LEGACY_GROUPING}) — `fs`, `view`, `harness` — which the
+ *   PureScript, Java and Kotlin arms' compiled bundles resolve as free identifiers against this same
+ *   scope. They are in no catalogue, so nothing puts them in front of a model.
+ *
+ * The last of those three **qualifies the paragraph above it**, and the prompt says so rather than
+ * leaving a model to find out: four modules' grouping names are their own ids (`tasks`, `context`,
+ * `skills`, `programs`), so those four *are* seeded bare after all, and `const context = …` is the
+ * very `SyntaxError` this design was meant to avoid. They cannot simply be dropped — the three
+ * sibling arms above resolve them by name out of compiled bundles gg does not rewrite — so the
+ * honest fix is the one taken: each arm's prompt names the reserved set outright, and a model that
+ * reads it wants for nothing.
+ *
  * Everything goes through {@link guard}, so a call made from deferred work — which lands after the
  * turn is over — is reported.
  */
@@ -411,68 +437,76 @@ function buildScope(
   enabled: readonly string[],
   ending: EndingKind,
   library: boolean,
-): Record<string, Record<string, unknown>> {
+): Record<string, unknown> {
   const on = new Set(enabled);
-  const objects = new Map<string, Record<string, unknown>>();
-  // Fetch (creating on first use) the object for a namespace, seeding it with the `list()` directory
-  // every object shares.
-  const objectFor = (name: string): Record<string, unknown> => {
-    let object = objects.get(name);
-    if (!object) {
-      object = { list: documented(guard("list", () => docsMod.listFunctions(name)), "list") };
-      objects.set(name, object);
+  const modules = new Map<ModuleId, Record<string, unknown>>();
+  // Fetch (creating on first use) the object for a module, seeding it with the `list` directory
+  // every module carries. The grouping the directory is asked for is gg's own filing name for the
+  // module rather than the module's path, because the two other arms that share this component build
+  // their objects under that name and gg answers to it on every arm.
+  const moduleFor = (id: ModuleId, grouping: string): Record<string, unknown> => {
+    let module = modules.get(id);
+    if (!module) {
+      module = {
+        [LIST_FUNCTION]: documented(
+          guard(LIST_FUNCTION, () => listFunctions(grouping)),
+          LIST_FUNCTION,
+        ),
+      };
+      modules.set(id, module);
     }
-    return object;
+    return module;
+  };
+  // The grouping name gg files one module's documentation under, and the name the PureScript arm
+  // reaches the module by. The ending group is the one module whose grouping depends on the role.
+  const groupingFor = (id: ModuleId): string =>
+    id === "session"
+      ? ending === "review"
+        ? LEGACY_REVIEW_ENDING
+        : LEGACY_STANDARD_ENDING
+      : (LEGACY_GROUPING[id] ?? id);
+
+  const bind = (operation: string): void => {
+    const fn = implementation(operation);
+    if (!fn) return;
+    const id = moduleOf(operation);
+    const name = exportedName(keyOf(operation));
+    moduleFor(id, groupingFor(id))[name] = documented(guard(name, fn), name);
   };
 
-  for (const entry of TOOL_CATALOGUE) {
-    if (!on.has(entry.tool)) continue;
-    const fn = lookup(MODULES[entry.module] ?? {}, entry.js);
-    const object = OBJECT_FOR_MODULE[entry.module];
-    if (fn && object) objectFor(object)[entry.js] = documented(guard(entry.js, fn), entry.js);
+  for (const [operation, tool] of Object.entries(TOOL_BOUND)) {
+    if (on.has(tool)) bind(operation);
   }
-  for (const helper of HELPER_CATALOGUE) {
-    if (!on.has(helper.requires)) continue;
-    const fn = lookup(HELPERS, helper.js);
-    // A helper lives on the object of the tool it is built on.
-    const required = TOOL_CATALOGUE.find((entry) => entry.tool === helper.requires);
-    const object = required ? OBJECT_FOR_MODULE[required.module] : undefined;
-    if (fn && object) objectFor(object)[helper.js] = documented(guard(helper.js, fn), helper.js);
-  }
-
-  // `view`: always present, on the same carve-out `harness` has — a run that enables no tools at all
-  // must still be able to show its model something, and a view is the only channel that reaches it.
-  // `openFile` is the one exception: it is a read, so it is bound exactly when `read_file` is, and a
-  // run with reading withheld gets a `view` object without it rather than a side door into the
-  // workspace.
-  const view = objectFor(OBJECT_FOR_MODULE[VIEW_MODULE] ?? "view");
-  for (const entry of VIEW_ENTRIES) {
-    if (entry.requires !== undefined && !on.has(entry.requires)) continue;
-    const fn = lookup(MODULES[VIEW_MODULE] ?? {}, entry.js);
-    if (fn) view[entry.js] = documented(guard(entry.js, fn), entry.js);
-  }
-
-  // `programs`: the whole object, or no object at all. It is the one family a *capability* gates
-  // rather than a tool or a role, so the host says so with a flag instead of a name in `enabled` —
-  // but the enforcement is identical to every other family's: a run without the program library has
-  // no `programs` in scope, not a `programs` whose calls are refused.
+  // Bound whatever a run enables, on the same carve-out the endings have: a run that offers no tools
+  // at all must still be able to show its model something, and a view is the only channel that
+  // reaches it.
+  for (const operation of ALWAYS_BOUND) bind(operation);
+  // The program library is the one family a *capability* gates rather than a tool or a role, so the
+  // host says so with a flag instead of a name in `enabled` — but the enforcement is identical to
+  // every other family's: a run without it has no `programs` in scope, not a `programs` whose calls
+  // are refused.
   if (library) {
-    const programs = objectFor(OBJECT_FOR_MODULE[PROGRAM_MODULE] ?? "programs");
-    for (const js of PROGRAM_ENTRIES) {
-      const fn = lookup(MODULES[PROGRAM_MODULE] ?? {}, js);
-      if (fn) programs[js] = documented(guard(js, fn), js);
-    }
+    for (const operation of LIBRARY_BOUND) bind(operation);
   }
-
   // The one ending group this role produces. Bound by the same rule the tools are: what is not this
   // role's ending is not a name in the program's scope.
-  for (const entry of SESSION_ENTRIES) {
-    if (entry.ending !== ending) continue;
-    const fn = lookup(sessionMod as Readonly<Record<string, unknown>>, entry.js);
-    if (fn) objectFor(entry.object)[entry.js] = documented(guard(entry.js, fn), entry.js);
+  for (const [operation, role] of Object.entries(ENDING_BOUND)) {
+    if (role === ending) bind(operation);
   }
 
-  return Object.fromEntries(objects);
+  const surface: Record<string, unknown> = {};
+  const scope: Record<string, unknown> = { [SURFACE]: surface };
+  // `core` carries no function and is therefore never created by `bind`; it is a module all the same,
+  // because `gg.core.ToolError` is the name a documentation view of the error type is opened by.
+  surface["core"] = { [TOOL_ERROR]: ToolError };
+  scope[TOOL_ERROR] = ToolError;
+  for (const id of MODULE_ORDER) {
+    const module = modules.get(id);
+    if (!module) continue;
+    surface[id] = module;
+    scope[groupingFor(id)] = module;
+  }
+  return scope;
 }
 
 /**
@@ -549,19 +583,16 @@ export function run(
   deferredNoted = false;
 
   const scope: Record<string, unknown> = buildScope(enabled, ending, library);
-  // Captured BEFORE `lib` and `ToolError` join the scope: the unknown-name hint lists the API
-  // OBJECTS a program may reach (`fs`, `project`, `harness`, …). `lib` is not one — it holds no gg
-  // functions and has no directory — so it is named separately rather than folded into a list that
-  // would be false about it. A model offered `ToolError` there would likewise be pointed at a class
-  // as though it were an API object.
-  const callable = Object.keys(scope);
-  // Built against the tool scope alone, then added to it: a module sees the same objects the program
+  // The unknown-name hint names the MODULES a program may reach, qualified as the documentation
+  // qualifies them (`gg.files`, `gg.views`): one spelling in the message, and the one every other
+  // thing the model reads uses. `lib` is not a module — it holds no gg function and has no directory
+  // — so it is named separately rather than folded into a list that would be false about it.
+  const surface = scope[SURFACE] as Record<string, unknown>;
+  const offered = MODULE_ORDER.filter((id) => id in surface).map((id) => `${SURFACE}.${id}`);
+  // Built against the module scope alone, then added to it: a module sees the same names the program
   // does, and nothing sees a half-built `lib`.
   const lib = buildLib(modules, scope);
   if (lib) scope[LIB_OBJECT] = lib;
-  // Bound so `catch (e) { if (e instanceof ToolError) … }` — the shape the system prompt teaches —
-  // works inside a program.
-  scope["ToolError"] = ToolError;
   const names = Object.keys(scope);
 
   try {
@@ -583,7 +614,7 @@ export function run(
     if (value !== undefined) feedback.noteReturn();
   } catch (thrown) {
     ended = true;
-    feedback.reportError(describe(thrown, callable, lib !== undefined));
+    feedback.reportError(describe(thrown, offered, lib !== undefined));
   }
 }
 
@@ -626,13 +657,13 @@ function describe(
     const message = errorMessage(err);
     if (name === "ReferenceError") {
       // The most common cause is a program reaching for a flat name (`readFile`) instead of the
-      // object form (`fs.readFile`), so answer the question it is about to ask: which objects does
-      // it have? Each object's `list()` then names that object's functions.
+      // qualified one (`gg.files.readFile`), so answer the question it is about to ask: which
+      // modules does it have? Each module's `list` then names that module's functions.
       return {
         kind: "unknown-name",
         code: undefined,
         message:
-          `${message}; API objects this run: ${names.join(", ")}` +
+          `${message}; modules this run: ${names.join(", ")}` +
           (lib ? `, plus \`${LIB_OBJECT}\` for loaded skill and memory code` : ""),
         location,
       };

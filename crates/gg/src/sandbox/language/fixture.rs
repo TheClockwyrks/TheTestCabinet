@@ -24,13 +24,22 @@
 //! A stand-in for the *shape* a second language would take, deliberately not an imitation of any
 //! particular one:
 //!
-//! * **Its spellings are snake_case.** They are derived, at test time, from TypeScript's own
+//! * **Its spellings are snake_case.** They are derived, at test time, from **Swift's** own
 //!   committed catalogue by re-spelling every entry's `name` and the head of its `signature`, and
 //!   changing nothing else — not a `key`, not an `object`, not a gate, not an `ending`. So the
 //!   fixture is by construction *the same capability surface under different spellings*, which is
 //!   exactly what an A/B study across languages needs both arms to be, and what the agreement gate
 //!   must therefore accept. Deriving it also means it cannot rot: a tool added to gg appears in
 //!   both catalogues on the same day.
+//!
+//!   It is cut from Swift because Swift is the arm the [agreement gate](super::agreement) can still
+//!   *read*: that gate's comparative half compares the five-part identity a
+//!   [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under, and it runs over the
+//!   v1 arms alone — so a fixture cut from a converted arm would be a second surface the comparison
+//!   skips, and the teeth tests below it would assert nothing. It was TypeScript's until TypeScript
+//!   was converted. **This goes where the split in [`is_v1`](super::agreement) goes**: when the last
+//!   v1 catalogue does, and the gate is re-founded on the normalized model, the fixture is cut from
+//!   whichever arm the re-founded gate reads.
 //! * **Its syntax is line-oriented**: `#` starts a comment, `use x` imports, `def f` declares, and
 //!   `??` is not a token. Nothing evaluates it — no component is ever compiled from
 //!   [`guest_component`](ProgramLanguage::guest_component) — because everything under test here
@@ -66,10 +75,10 @@ use super::{
     PreparedProgram, ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// TypeScript's committed catalogue, read a second time rather than reached for through
-/// [`TypeScript::catalogue`](super::typescript) — the fixture re-spells the *file*, and taking it
-/// from the file keeps this module from needing anything of another language's module to be public.
-const TYPESCRIPT_SIGNATURES: &str = include_str!("../guests/typescript.signatures.json");
+/// Swift's committed catalogue, read a second time rather than reached for through
+/// [`Swift::catalogue`](super::swift) — the fixture re-spells the *file*, and taking it from the
+/// file keeps this module from needing anything of another language's module to be public.
+const SWIFT_SIGNATURES: &str = include_str!("../guests/swift.signatures.json");
 
 /// The stub that stands where a real language's component would be.
 ///
@@ -383,7 +392,7 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 // The catalogue
 // ---------------------------------------------------------------------------------------------
 
-/// TypeScript's catalogue with every spelling converted to snake_case and `edit` applied, as JSON.
+/// Swift's catalogue with every spelling converted to snake_case and `edit` applied, as JSON.
 ///
 /// Only two fields move: an entry's `name`, and the head of each of its `signatures`, which by the
 /// catalogue's own rule begins with that name. Identity — `key`, `tool`, `object`, `requires`,
@@ -402,8 +411,8 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 /// the fixture has no value in it. That is why catalogue provenance is asserted over *registered*
 /// languages only.
 fn respelled_catalogue(edit: impl FnOnce(&mut Value)) -> String {
-    let mut document: Value = serde_json::from_str(TYPESCRIPT_SIGNATURES)
-        .expect("the committed TypeScript catalogue is valid JSON");
+    let mut document: Value = serde_json::from_str(SWIFT_SIGNATURES)
+        .expect("the committed Swift catalogue is valid JSON");
     for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
         let entries = document[section]
             .as_array_mut()

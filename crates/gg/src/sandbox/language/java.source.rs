@@ -69,8 +69,7 @@ pub(super) const ENTRY_CLASS: &str = "GgEntry";
 /// a model spending its reply on ceremony no Java author would type — every one of these is in the
 /// first import block of ordinary Java. Anything outside them is still reachable, fully qualified or
 /// through an `import` the model writes itself, which [`hoist`] lifts into this same header.
-const DEFAULT_IMPORTS: [&str; 9] = [
-    "gg.*",
+const DEFAULT_IMPORTS: [&str; 8] = [
     "java.util.*",
     "java.util.function.*",
     "java.util.stream.*",
@@ -81,21 +80,41 @@ const DEFAULT_IMPORTS: [&str; 9] = [
     "java.util.regex.*",
 ];
 
-/// How gg's own **API objects** reach a program: as a static import of the fields that hold them.
+/// How gg's own **modules** reach a program: one on-demand import per capability module, plus the
+/// package holding the exception and the types the rest of them name.
 ///
-/// This is what makes `fs.readFile("main.java")` an ordinary method call on an ordinary object,
-/// which is [the seam's first rule](https://docs.testcabinet.ai/gg/program-languages/) — a
-/// namespaced binding rather than a dispatcher — spelled the way Java spells reaching a library:
-/// an `import`, resolved by javac against a jar on the classpath.
+/// This is what makes `Files.readFile("main.java")` an ordinary call on an ordinary class, which is
+/// [the seam's first rule](https://docs.testcabinet.ai/gg/program-languages/) — a namespaced binding
+/// rather than a dispatcher — spelled the way Java spells reaching a library: an `import`, resolved
+/// by javac against a jar on the classpath. A model writes no import line of its own for any of it.
 ///
-/// A static import rather than fields gg declares in the wrapper, because a **code module** is a
-/// class body and a field gg wrote into it would be a member the author did not write — and would
-/// shadow, or be shadowed by, one they did. An import is outside the body in both shapes.
+/// **Imports rather than a static import of everything**, which is what this arm's surface used to
+/// be. `import static gg.Gg.*` put twelve *values* into scope, so `fs` was a name that had to be
+/// known before anything could be reached and shadowing one was a program that silently called
+/// something else. A module is a class here, so what arrives is twelve *types* — `Files`, `Views`,
+/// `Board` — each of which a search can hand back and none of which a local variable can quietly
+/// replace.
 ///
-/// Its names are gg's, not the classlib's, so a program that declares its own `view` shadows it
-/// exactly as it would shadow any other static import — which is Java's own rule and not one gg
-/// invented for this.
-const SURFACE_IMPORT: &str = "import static gg.Gg.*;";
+/// Type-import-on-demand rather than one single-type import per module, because the second would be
+/// twelve lines that mean the same thing and would still have to grow by hand when a module is
+/// added. The one thing it costs is that a program declaring its own `Files` makes that name
+/// ambiguous — which is javac's own rule for on-demand imports, is a located compile error rather
+/// than a silent substitution, and is the reason a single-type import would be worse rather than
+/// better: that one would shadow the model's own class instead.
+const SURFACE_IMPORTS: [&str; 12] = [
+    "gg.*",
+    "gg.files.*",
+    "gg.shell.*",
+    "gg.board.*",
+    "gg.tasks.*",
+    "gg.memories.*",
+    "gg.views.*",
+    "gg.context.*",
+    "gg.delegation.*",
+    "gg.skills.*",
+    "gg.programs.*",
+    "gg.session.*",
+];
 
 /// A model's source, wrapped into a compilation unit javac will read.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,9 +194,9 @@ fn terminated(body: &str) -> String {
 fn header_lines(hoisted: &[String]) -> Vec<String> {
     let mut header: Vec<String> = DEFAULT_IMPORTS
         .iter()
+        .chain(SURFACE_IMPORTS.iter())
         .map(|name| format!("import {name};"))
         .collect();
-    header.push(SURFACE_IMPORT.to_string());
     header.extend(hoisted.iter().cloned());
     header
 }

@@ -66,9 +66,12 @@ mapfile -t SOURCES < <(find "$HERE/src" -name '*.java' | sort)
 #
 # `gg.internal` is deliberately outside it: nothing there is model-facing, and it is resolved from
 # the class files the pass above produced rather than from source, which is what keeps doclint off
-# it. `-d` throws the second pass's output away; the jar is built from the first.
+# it. The file list is found rather than globbed, because the model-facing surface is twelve
+# packages deep and a flat `src/gg/*.java` would have quietly stopped checking eleven of them.
+# `-d` throws the second pass's output away; the jar is built from the first.
+mapfile -t DOCUMENTED < <(find "$HERE/src/gg" -name '*.java' -not -path "$HERE/src/gg/internal/*" | sort)
 "$JAVAC" -Xdoclint:all/protected -Werror -g --release 21 \
-	-cp "$CLASSPATH:$WORK/classes" -d "$WORK/lint" "$HERE"/src/gg/*.java
+	-cp "$CLASSPATH:$WORK/classes" -d "$WORK/lint" "${DOCUMENTED[@]}"
 
 # A fixed timestamp and a sorted entry list: two builds of the same sources are the same bytes.
 mapfile -t ENTRIES < <(cd "$WORK/classes" && find . -name '*.class' | sed 's|^\./||' | sort)

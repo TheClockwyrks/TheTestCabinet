@@ -121,8 +121,8 @@ pub use language::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, ResolvedProgramLanguage, Workspace, daemon, meta_spelling, place, place_tree,
-    shared_toolchain_dir,
+    PromptDialect, ResolvedProgramLanguage, VIEW_OPEN_DOCS_VIEW, Workspace, daemon, meta_spelling,
+    place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -169,8 +169,8 @@ pub use {
     invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened, invoker::ViewOpenOutcome,
     invoker::ViewRefusal, limits::resolve_sandbox_limits, membrane::RunEnding,
     signatures::CatalogueFunction, signatures::Parameter, signatures::ParameterKind,
-    signatures::TypeDeclaration, signatures::catalogue_functions, signatures::catalogue_objects,
-    signatures::meta_function, signatures::type_declaration,
+    signatures::TypeDeclaration, signatures::catalogue_functions, signatures::meta_function,
+    signatures::type_declaration,
 };
 
 // The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are
@@ -185,10 +185,16 @@ pub use {
 // `ModuleView` and `catalogue_modules` are the module half of the projection, `Prose` is every
 // piece of documentation in it, and `EntryKind`, `MemberKind`, `MemberFunction`, `ModuleDoc` and
 // `TypeReference` are its fields.
+//
+// `catalogue_objects` is here for the opposite reason: every reader that must answer for both
+// schemas has already moved onto `catalogue_modules`, and what is left of it is the gates whose
+// subject is an API object specifically. Those are `#[cfg(test)]`, so a build genuinely has no
+// caller for it, and it goes with the last v1 arm rather than being kept alive by a new one.
 #[allow(unused_imports)]
 pub use signatures::{
     EntryKind, LibraryGroup, MemberFunction, MemberKind, MetaSignature, ModuleDoc, ModuleView,
     ObjectDoc, Prose, SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
+    catalogue_objects,
 };
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source

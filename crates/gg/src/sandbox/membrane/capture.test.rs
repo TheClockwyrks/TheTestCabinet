@@ -241,7 +241,7 @@ fn a_bare_read_of_a_picture_shows_nothing_and_names_the_view_that_would() {
     assert!(!image.shown, "a bare read shows the model nothing");
     let why = image.not_shown_reason.expect("a withheld picture says why");
     assert!(
-        why.contains("view.openFile"),
+        why.contains("gg.views.openFile"),
         "the reason must name the way to actually see it: {why}"
     );
 }

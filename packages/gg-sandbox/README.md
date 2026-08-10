@@ -10,10 +10,13 @@ it, and the build that bakes both into the artifacts the Rust host embeds.
 
 **One guest, not the guest.** The language a program is written in is a first-class
 axis of gg — it is what a cross-language A/B study compares arms on — so gg
-registers a *set* of program languages and each one has a guest of its own.
-TypeScript is the first, the default, and today the only registered one; a second
-is a **sibling directory**, not a change here. What every guest shares, and what a
-new one has to satisfy, is in [Another language](#another-language) below and in
+registers a *set* of program languages and most of them have a guest of their own.
+TypeScript is the first and the default; a further language is normally a **sibling
+directory**, not a change here. This one is the exception in one direction: it
+serves **two** registered arms, because `javascript` is this arm with the type
+check removed, and its component is also what the compiled PureScript arm is
+evaluated by. What every guest shares, and what a new one has to satisfy, is in
+[Another language](#another-language) below and in
 [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
 
 It is not published and has no runtime dependents. Its output is a set of **committed
@@ -35,14 +38,11 @@ for this package:
 | Path | What it holds |
 | --- | --- |
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
-| `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
-| `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
-| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES`, `VIEW_ENTRIES`, `PROGRAM_ENTRIES` and `META_ENTRIES` — each carrying the `key` that identifies it across languages — and the `OBJECT_*` constants whose doc comments are the API objects' own model-facing descriptions. |
-| `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the on-demand directory call (`listFunctions`, which is every object's `list()`) and the five `view` functions. |
-| `src/helpers.ts` | The one helper, `readTextFile`. |
-| `src/session.ts` | `finish(summary)` and the two verdict endings — model-facing functions that are not gg tools. |
-| `src/shim.ts` | The component's entry point: `run(program, tools)` and `boundTools()`. |
-| `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files. |
+| `src/gg/*.ts` | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ToolError` above all. `src/gg/docs.ts` declares the directory every module carries. |
+| `src/internal/*.ts` | Everything the modules are built out of and no model reads: the argument validators, the failure normaliser, the membrane lowerings shared by two modules, and the one-argument directory call the shim closes a module's name over. It is outside `src/gg/` because that is exactly what the reflector walks. |
+| `src/catalogue.ts` | The one thing a declaration cannot state: **what buys a call at run time**. The module order, and the four tables that map a gg operation onto the tool, capability or role that binds it. No name, no description and no operation id lives here. |
+| `src/shim.ts` | The component's entry point: `run(program, …)` and `boundTools()`. It builds a program's scope by deriving each module's exports from the operations this run bought. |
+| `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`. |
 | `tools/checker.mjs` | Cuts the committed `tsc` and its standard library out of the pinned `typescript`. |
 | `tools/program-globals.d.ts` | `console`, `lib`, `performance`, `crypto` — declared for the checker, beside the shim that installs them. |
 | `build.sh` | Refreshes every committed artifact. |
@@ -50,47 +50,48 @@ for this package:
 There is deliberately **one** copy of the WIT, and it lives in the Rust crate that
 embeds the component (`crates/gg/wit/`); `build.sh` points `componentize-js` at it.
 
-`src/session.ts` sits **beside** `src/tools/` rather than inside it for the mirror
-reason. `finish(summary)` is model-facing — it is the only thing that ends a
-responses-as-code session, and the system prompt teaches it — but it is not a gg
-tool: no capability offers it, nothing dispatches it, and the shim binds it into
-**every** program's scope, including one in a run that enables no tools at all. It
-therefore gets its own `interface session` in the WIT, its own `SESSION_ENTRIES`
-array in the catalogue, and its own top-level `session` object in
-`signatures.json`, so that the bijection gg's `bound-tools` gate checks —
-`boundTools() == ALL_TOOL_NAMES` — is not perturbed by it.
+## What a model reads, and where it is written
 
-`src/tools/views.ts` is the same carve-out, one level further out. The `view`
-object — `openFile`, `openText`, `openDocsView`, `close`, `current` — is how a program puts
-material into its own **context window**, which is the only channel material has
-into the model: `console.*` reaches the run's operator, a view reaches the model
-on its next turn. None of the five is a gg tool either, so they get their own
-`interface views` in the WIT, their own `VIEW_ENTRIES` array, and their own
-top-level `views` array in `signatures.json`. Four of them are bound whatever a
-run enables, for the same reason `finish` is; `openFile` carries
-`requires: "read_file"`, because it is a read and a run with reading withheld must
-not get one through a side door.
+Every word of it is on the declaration it describes. A module's own header
+introduces the module; a function's JSDoc is its documentation, with its **first
+line the brief and everything after the blank line that follows the detail**; a
+`@param` describes one argument, and `@param options.offset` one field of an
+argument written inline; a type's and each member's doc comment travel with the
+declaration. `tools/signatures.mjs` refuses to emit a catalogue with a blank in it,
+so an undocumented declaration is a build error rather than a gap in front of a
+model.
 
-`src/tools/docs.ts` carries the third carve-out, and the odd one: `list`, the directory
-every API object holds. It is bound onto *every* object rather than declared on one — the
-shim seeds it from `listFunctions` with that object's name closed over — so its bound arity
-is zero and it belongs to no object at all. It is catalogued anyway, in a `meta` section
-whose entries carry no `object` field, because its signature and its description are read by
-a model and **nothing a model reads about this SDK is written anywhere but on the declaration
-it describes**. `export declare function list()` in `src/tools/docs.ts` is that declaration:
-it has no implementation because it is never imported, and it exists so the bound shape is
-reflected rather than described in a constant on gg's side that no gate could check.
+The gg **operation** each function binds is written on the declaration too, as
+`@ggop <namespace>.<key>`, and never in a table beside it — a table is a second
+place to be wrong. The reflector fails in both directions: an exported function of
+`src/gg/` that names no operation is refused, and so is an operation
+`src/catalogue.ts` says this arm offers that no declaration binds. The operation's
+key also has to *name* its function (`files.read_file` is `readFile` and nothing
+else), because that derivation is how `src/shim.ts` binds an operation without a
+second table to keep in step.
 
-That makes **five** of the WIT's interfaces non-tool ones — `feedback` (the shim's
-private channel back to gg, never model-facing), `session`, `docs`, `views` and
-`programs` (the [program library](../../apps/docs/src/content/docs/gg/program-library.md),
-which a capability rather than a tool decides) —
-against **eight** tool interfaces whose functions stand in exact one-to-one
-correspondence with `ALL_TOOL_NAMES`. Adding a sixth `view` function means editing
-four places (`crates/gg/wit/gg-sandbox.wit`, `src/membrane.d.ts`,
-`src/tools/views.ts`, `VIEW_ENTRIES` in `src/catalogue.ts`) and then rebuilding both
-artifacts; a gg test asserts the catalogue carries exactly the five, so the SDK and
-the catalogue cannot disagree quietly.
+The name a documentation view is opened by is `gg.<module>.<name>`, and it is a
+path a program can really write: the shim binds `gg` with one object per module
+this run offers, and binds each module under its bare id as well, so
+`gg.files.readFile` and `files.readFile` are one function. Types are bound bare,
+as `ToolError` is, and filed under their module's name, so `gg.files.FileRead` is
+where the declaration lives and `FileRead` is what a signature writes.
+
+Three families are model-facing and are **not** gg tools, so no `ALL_TOOL_NAMES`
+entry stands for one: the ending calls of `src/gg/session.ts`, which a role buys;
+the view calls of `src/gg/views.ts`, four of which nothing gates at all; and the
+program library of `src/gg/programs.ts`, which a capability buys. Keeping them out
+of the tool vocabulary is what keeps `boundTools() == ALL_TOOL_NAMES` — the one
+drift gate that inspects the committed `.wasm` rather than a source file — in exact
+bijection.
+
+`src/gg/docs.ts` carries the odd one out. `list` is the directory every module
+holds, bound onto *every* module rather than declared on one — the shim seeds it
+with that module's own grouping name closed over — so its bound arity is zero and
+it belongs to no module at all. It is catalogued anyway, in a `meta` section, and
+`export declare function list()` is the declaration its signature and its
+documentation are read from: no implementation, because it is never imported, and
+no second copy on gg's side that no gate could check.
 
 ## Refreshing the artifacts
 
@@ -131,17 +132,17 @@ gate for the catalogue.
 | gg's instantiation test | a WIT change with no artifact refresh — the committed component's imports no longer match the host's linker |
 | gg's `bound-tools` test | a tool added, renamed or removed in gg with a **stale committed `.wasm`** |
 | `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating the committed catalogues |
-| `tools/signatures.mjs` exiting non-zero | a catalogued export that does not exist, lives in the wrong module, or has no doc comment |
-| `tools/signatures.mjs` exiting non-zero | an **argument**, an inline argument **field**, a **type**, a type **member** or an **API object** with no doc comment — or an `@param` naming something the signature does not declare |
-| gg's agreement gate | the same completeness rules, read off the emitted catalogue rather than off TypeScript's AST, so every language is held to them |
+| `tools/signatures.mjs` exiting non-zero | an exported function of `src/gg/` naming no gg operation, an operation `src/catalogue.ts` lists that nothing binds, an operation whose key does not name its function, or two functions claiming one operation |
+| `tools/signatures.mjs` exiting non-zero | a **module**, a **function**, an **argument**, an inline argument **field**, a **type** or a type **member** with no doc comment — an `@param` naming something the signature does not declare — a first paragraph that wraps onto a second line, so there is no brief in it — or a declared type nothing refers to |
+| gg's register gate | prose that has a brief and gets its register wrong: a paragraph in the brief field, a second-person instruction, emphasis by capitals, an unclosed code span |
+| gg's name rule and agreement gate | a fully-qualified name that is not module-qualified or does not end in the name a program writes, and the completeness rules read off the emitted catalogue rather than off TypeScript's AST, so every language is held to them |
 
 Every one of those is the same rule under a different subject: **nothing a model reads
 about this SDK may be written anywhere but on the declaration it describes.** The JSDoc on
-a wrapper is the sentence a model reads beside that function's signature; the `@param` on
-an argument is the line it reads under it; the comment above an interface member is what
-tells it what the field means; and the doc comment on an `OBJECT_*` constant in
-`src/catalogue.ts` is how the system prompt introduces that object. Write all of them for
-that reader.
+a function is what a model reads beside that function's signature; the `@param` on an
+argument is the line it reads under it; the comment above an interface member is what tells
+it what the field means; and a module's own file header is how the surface introduces that
+module. Write all of them for that reader.
 
 ## Why the component is committed raw, at ~13 MB
 
@@ -190,17 +191,17 @@ binds the WIT itself; it does not go through this package.
 
 **2. The catalogue schema.** It emits
 `crates/gg/src/sandbox/guests/<language-id>.signatures.json` in the same shape, with
-`language: "<language-id>"` and the same `key`s — the `objects` section in presentation
-order, one entry per function carrying a `signatures` array (one entry per shape that
-language offers the function in, each with its own documented arguments), and every type
-with its own description and its members'. It need not use
-`tools/signatures.mjs` — only the emitted JSON is contractual, and a Python guest
-would reflect its own docstrings and type hints with its own script. The `key` is
-what makes two catalogues comparable: gg asserts that every registered language
-offers the same functions, on the same objects, under the same gates, and that the
-only thing free to differ between them is **spelling**. If one language were missing
-`edit_file`, or gated a view function on nothing, an A/B between the two would be
-measuring the surfaces rather than the languages.
+`language: "<language-id>"`, `schema: 2`, a `modules` section in presentation order, one
+flat `functions` array whose entries name a gg **operation** and carry a module-qualified
+`fqn` and a `signatures` array (one entry per shape that language offers the function in,
+each with its own documented arguments), and every type with its own brief, its members'
+and the module it belongs to. It need not use `tools/signatures.mjs` — only the emitted
+JSON is contractual, and a Python guest reflects its own docstrings and type hints with its
+own script. The **operation** is what makes two catalogues comparable: gg asserts that
+every registered language offers the same operations, and that what is free to differ
+between them is the **shape** each language gives them. If one language were missing
+`files.edit_file`, an A/B between the two would be measuring the surfaces rather than the
+languages.
 
 **3. The artifact convention.**
 `crates/gg/src/sandbox/guests/<language-id>.{component.wasm,signatures.json}`, both

@@ -20,28 +20,31 @@ fn diagnostics(source: &str) -> Option<String> {
 #[test]
 fn a_program_that_uses_the_sdk_correctly_checks_clean() {
     // Every shape the surface offers at once: a positional argument, a trailing options object, a
-    // discriminated return, a caught `ToolError`, the `list` every object carries, an ending call,
+    // discriminated return, a caught `ToolError`, the `list` every module carries, an ending call,
     // and a top-level `return` — which is legal only because the guest evaluates a program as a
-    // function body, and is therefore the one thing a naive `tsc` invocation would reject.
+    // function body, and is therefore the one thing a naive `tsc` invocation would reject. The
+    // undocumented grouping aliases are exercised too, because the shim really binds them.
     let clean = r#"
-const entries = fs.listDir("src");
+const entries: gg.files.DirEntry[] = gg.files.listDir("src");
 if (entries.length === 0) return;
 const names: string[] = [];
 for (const entry of entries) {
   if (entry.kind === "file") names.push(entry.name);
 }
-const read = fs.readFile("src/main.ts", { offset: 1, limit: 40 });
-if (read.kind === "text") view.openText("main", read.contents);
-const out = system.shell("ls", { timeoutSecs: 5 });
-view.openText("ls", out.output);
+const read = gg.files.readFile("src/main.ts", { offset: 1, limit: 40 });
+if (read.kind === "text") gg.views.openText("main", read.contents);
+const out = fs.readTextFile("notes.md");
+gg.views.openText("notes", out);
+const ran = gg.shell.shell("ls", { timeoutSecs: 5 });
+view.openText("ls", ran.output);
 try {
-  fs.writeFile("notes.md", "hello");
+  gg.files.writeFile("notes.md", "hello");
 } catch (error) {
   if (error instanceof ToolError) console.log(error.tool, error.code);
 }
-view.openText("fs", JSON.stringify(fs.list()));
+gg.views.openText("files", JSON.stringify(gg.files.list()));
 lib.anything.at.all(1, 2, 3);
-harness.finish(`saw ${names.length} files`);
+gg.session.finish(`saw ${names.length} files`);
 "#;
     assert_eq!(diagnostics(clean), None, "the program type-checks");
 }
@@ -51,10 +54,10 @@ fn a_type_error_is_the_compilers_own_diagnostic_at_the_programs_own_line() {
     // Line 3 of the program, column 20. The wrapper `tsc` needs in order to allow a top-level
     // `return` is one line long, so an unshifted rendering would say line 4 — pointing a model at
     // text one line past the one it has to change.
-    let source = "const one = 1;\nconst n: number = 2;\nview.openText(\"x\", n);\n";
+    let source = "const one = 1;\nconst n: number = 2;\ngg.views.openText(\"x\", n);\n";
     let text = diagnostics(source).expect("a number is not a string");
     assert!(
-        text.starts_with("program.ts(3,20): error TS2345:"),
+        text.starts_with("program.ts(3,24): error TS2345:"),
         "the diagnostic is tsc's own, located in the program's coordinates: {text}"
     );
     assert!(
@@ -68,7 +71,7 @@ fn every_line_of_a_multi_part_diagnostic_survives_the_shift() {
     // A structural mismatch renders as a located first line followed by indented continuations. The
     // shift must move the located line and leave the continuations exactly as tsc wrote them —
     // including any parenthesised line numbers inside their prose, which are not coordinates.
-    let source = "const r: number = fs.readFile(\"a.ts\");\n";
+    let source = "const r: number = gg.files.readFile(\"a.ts\");\n";
     let text = diagnostics(source).expect("a FileRead is not a number");
     let mut lines = text.lines();
     assert!(
@@ -89,21 +92,21 @@ fn the_whole_surface_is_declared_whatever_a_run_offers() {
     // the turn records `program_unknown_name`, which is the measurement a toolset ablation takes. If
     // the checker refused these programs the same event would be recorded as a compile error in a
     // checked language and as a missing name in an unchecked one.
-    let across_every_object = r#"
-tasks.addTask({ id: "one", title: "one" });
-memory.createMemory({ name: "n", description: "d", body: "b" });
-project.createEpic({ prefix: "p", title: "t", description: "d" });
-skills.readSkill("s");
-context.compact("done so far");
-agents.spawnSubagent({ agent: "coder", prompt: "do it" });
-programs.history();
-review.approve();
-harness.finish("done");
+    let across_every_module = r#"
+gg.tasks.addTask({ id: "one", title: "one" });
+gg.memories.createMemory({ name: "n", description: "d", body: "b" });
+gg.board.createEpic({ prefix: "p", title: "t", description: "d" });
+gg.skills.readSkill("s");
+gg.context.compact("done so far");
+gg.delegation.spawnSubagent({ agent: "coder", prompt: "do it" });
+gg.programs.history();
+gg.session.approve();
+gg.session.finish("done");
 "#;
     assert_eq!(
-        diagnostics(across_every_object),
+        diagnostics(across_every_module),
         None,
-        "every object is declared, including the ones a given run withholds"
+        "every module is declared, including the ones a given run withholds"
     );
 }
 
@@ -111,14 +114,14 @@ harness.finish("done");
 fn a_module_is_checked_in_its_own_coordinates() {
     // A code skill or memory is source a model wrote too, and it is checked as what it is — a module
     // with exports — so nothing is wrapped around it and nothing is shifted.
-    let clean = "export function rows(path: string): string[] {\n  const r = fs.readFile(path);\n  \
+    let clean = "export function rows(path: string): string[] {\n  const r = gg.files.readFile(path);\n  \
                  return r.kind === \"text\" ? r.contents.split(\"\\n\") : [];\n}\n";
     assert!(
         matches!(check_module(clean, &PrepareContext::new()), Ok(())),
         "the module type-checks"
     );
 
-    let broken = "export const total: number = fs.listDir(\"src\");\n";
+    let broken = "export const total: number = gg.files.listDir(\"src\");\n";
     let Err(PrepareFailure::Program(PrepareError::Compile(text))) =
         check_module(broken, &PrepareContext::new())
     else {
@@ -165,7 +168,7 @@ fn a_checker_that_cannot_run_is_not_the_models_failure() {
     let restore = std::env::var(NODE_ENV).ok();
     // SAFETY: single-threaded test, and the variable is restored before it returns.
     unsafe { std::env::set_var(NODE_ENV, "gg-no-such-interpreter") };
-    let failure = check_program("harness.finish(\"x\");", &PrepareContext::new());
+    let failure = check_program("gg.session.finish(\"x\");", &PrepareContext::new());
     match restore {
         // SAFETY: as above.
         Some(value) => unsafe { std::env::set_var(NODE_ENV, value) },
@@ -181,47 +184,79 @@ fn a_checker_that_cannot_run_is_not_the_models_failure() {
 }
 
 #[test]
-fn a_declaration_arrives_as_a_declaration_file_states_it() {
-    // An interface is ambient already; a class is not, and a `class` without `declare` in a `.d.ts`
-    // is a compiler error rather than a declaration.
-    assert_eq!(
-        declare("interface A { b: string; }"),
-        "interface A { b: string; }"
-    );
-    assert_eq!(declare("type A = \"b\" | \"c\""), "type A = \"b\" | \"c\"");
-    assert_eq!(
-        declare("class ToolError extends Error { }"),
-        "declare class ToolError extends Error { }"
-    );
-}
-
-#[test]
-fn the_generated_surface_declares_every_object_the_catalogue_carries() {
+fn the_generated_surface_declares_every_module_the_catalogue_carries() {
     let catalogue = super::super::TYPESCRIPT.catalogue();
     let surface = surface(catalogue);
-    for object in &catalogue.objects {
+    for module in &catalogue.modules {
         assert!(
-            surface.contains(&format!("declare const {}: {{", object.object)),
+            surface.contains(&format!("  namespace {} {{", module.id)),
             "`{}` is declared",
-            object.object
+            module.id
         );
     }
+    // The shim binds no module under its bare id, so neither does the surface: a parameter called
+    // `files` would make `const files = …` a redeclaration error in a program that is otherwise
+    // correct.
+    assert!(
+        !surface.contains("import files = gg.files;"),
+        "a module is reached through `gg`, never under a name a program would want for a variable"
+    );
+    // Four modules' groupings *are* their own id, and those are declared, because the shim binds
+    // them: skipping one as redundant would leave a bound name the checker refuses.
+    assert!(surface.contains("import tasks = gg.tasks;"));
+    // What it does alias is what the shim really binds: the grouping gg files each module's
+    // documentation under, which is what the PureScript arm's compiled bundle resolves.
+    for alias in [
+        "import fs = gg.files;",
+        "import view = gg.views;",
+        "import harness = gg.session;",
+    ] {
+        assert!(surface.contains(alias), "the surface declares `{alias}`");
+    }
     for declaration in &catalogue.types {
+        let module = declaration
+            .module
+            .as_deref()
+            .expect("a v2 type has a module");
         assert!(
-            surface.contains(&declaration.name),
-            "the type `{}` is declared",
+            surface.contains(&format!(
+                "import {} = gg.{module}.{};",
+                declaration.name, declaration.name
+            )),
+            "the type `{}` is declared and aliased bare",
             declaration.name
         );
     }
-    for tool in &catalogue.tools {
-        for entry in &tool.signatures {
+    for function in &catalogue.functions {
+        for entry in &function.signatures {
             assert!(
-                surface.contains(&entry.signature),
+                surface.contains(&format!("function {};", entry.signature)),
                 "the catalogue's own signature for `{}` is what a program is checked against",
-                tool.name
+                function.fqn
             );
         }
     }
+}
+
+#[test]
+fn only_a_module_that_binds_something_carries_a_directory() {
+    // `core` declares the types every other module speaks in and binds no function, so the shim
+    // builds it no directory. A checker that accepted `gg.core.list()` would wave through a call
+    // that fails at run time, which is the one thing it must never do.
+    let surface = surface(super::super::TYPESCRIPT.catalogue());
+    let core = surface
+        .split("  namespace core {")
+        .nth(1)
+        .and_then(|rest| rest.split("  }").next())
+        .expect("the surface declares `core`");
+    assert!(
+        !core.contains("function list("),
+        "`core` binds no function, so it carries no directory: {core}"
+    );
+    assert!(
+        surface.contains("function list(): FunctionSummary[];"),
+        "and the modules that do bind something carry one"
+    );
 }
 
 /// A finished `tsc` invocation that refused a program, carrying `stdout` verbatim.

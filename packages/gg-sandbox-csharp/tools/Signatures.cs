@@ -118,8 +118,9 @@ internal static class Signatures
     /// One catalogued call: the operation it binds, and the declarations it was reflected from.
     ///
     /// An overload group is ONE entry with several shapes, because two overloads are one capability
-    /// written twice. The documentation is the first shape's, which is what a reader wants: a second
-    /// paragraph explaining the same thing is a second place for it to drift.
+    /// written twice. Its BRIEF is the first shape's, which is therefore written to describe the
+    /// whole group rather than only its own declaration; its DETAIL carries every shape's own words,
+    /// each under the call form it was written on.
     private sealed record Call(
         string Operation,
         bool IsAlias,
@@ -440,7 +441,7 @@ internal static class Signatures
             // a call site to need. A member function is written on the value instead, and that is
             // the receiver rather than a different name.
             writer.WriteNull("call");
-            WriteProse(writer, first, $"`{qualified}`");
+            WriteProse(writer, call.Overloads, $"`{qualified}`");
             WriteSignatures(writer, call.Overloads);
             WriteTypeReferences(writer, "returns", ReturnTypesOf(call.Overloads));
             WriteTypeReferences(writer, "types", ClosureOf(call.Overloads));
@@ -558,11 +559,16 @@ internal static class Signatures
     // The name comes first and the return type last, which is not how C# declares a method — but a
     // catalogue entry's signature must begin with the name a program calls, and every other arm of
     // this seam whose language puts the type first renders it the same way.
-    private static string Render(IMethodSymbol method)
-    {
-        var parameters = string.Join(", ", method.Parameters.Select(RenderParameter));
-        return $"{method.Name}({parameters}) -> {TypeName(method.ReturnType)}";
-    }
+    private static string Render(IMethodSymbol method) =>
+        $"{CallForm(method)} -> {TypeName(method.ReturnType)}";
+
+    /// One overload written the way a program writes it, and nothing else.
+    ///
+    /// This is what labels an overload's own words inside an entry's detail, and it is deliberately
+    /// the signature row minus its return type — so a reader matching the prose to the shape it was
+    /// written about matches two strings that begin identically.
+    private static string CallForm(IMethodSymbol method) =>
+        $"{method.Name}({string.Join(", ", method.Parameters.Select(RenderParameter))})";
 
     private static string RenderParameter(IParameterSymbol parameter)
     {
@@ -1139,26 +1145,63 @@ internal static class Signatures
     /// earns its place, and a mandatory element cannot be.
     private static void WriteProse(Utf8JsonWriter writer, ISymbol symbol, string what)
     {
-        var target = InheritDocTarget(symbol) ?? symbol;
-        writer.WriteString("brief", Brief(Require(Summary(target), what), what));
-
+        var documented = Documentation(symbol, what);
         var parts = new List<string>();
-        var detail = Remarks(target);
-        if (detail is not null)
+        if (documented.Body is not null)
         {
-            parts.Add(detail);
+            parts.Add(documented.Body);
         }
-        var comment = Comment(target);
-        var returns = comment?.Element("returns");
-        if (returns is not null)
+        parts.AddRange(documented.Tags);
+        WriteProse(writer, documented.Brief, parts);
+    }
+
+    /// The documentation an OVERLOAD GROUP is shown under: the first shape's, with every later
+    /// shape's own words folded in beneath the call form they were written on.
+    ///
+    /// C# writes an optional argument two ways, and both are in this SDK: a default on one
+    /// declaration, and a second declaration. Where it is a second declaration, that declaration
+    /// carries its own `<summary>`, its own `<returns>` and its own `<exception>` — prose an author
+    /// wrote about a shape a model can call. Emitting only the first shape's threw all of it away:
+    /// a model shown `WaitForSubagents(params string[] ids)` was never told what naming ids does,
+    /// because only the no-argument shape's words survived.
+    ///
+    /// A later shape's `<returns>` and `<exception>` lines are UNIONED rather than repeated — an
+    /// optional argument usually hands back and fails the same way the shape beside it does, and a
+    /// second identical sentence is one a model pays for and learns nothing from. Its `<remarks>` is
+    /// always kept, because remarks written under a second declaration were written about it.
+    private static void WriteProse(Utf8JsonWriter writer, IMethodSymbol[] overloads, string what)
+    {
+        var lead = Documentation(overloads[0], what);
+        var parts = new List<string>();
+        if (lead.Body is not null)
         {
-            parts.Add($"Returns: {Text(returns)}");
+            parts.Add(lead.Body);
         }
-        var throws = comment?.Elements("exception").Select(Text).Where(text => text.Length > 0).ToArray();
-        if (throws is { Length: > 0 })
+        parts.AddRange(lead.Tags);
+        var said = new HashSet<string>(lead.Tags, StringComparer.Ordinal);
+        foreach (var method in overloads.Skip(1))
         {
-            parts.Add($"Throws `ToolException`: {string.Join(" ", throws)}");
+            var more = Documentation(method, what);
+            parts.Add($"`{CallForm(method)}` — {more.Brief}");
+            if (more.Body is not null)
+            {
+                parts.Add(more.Body);
+            }
+            foreach (var tag in more.Tags)
+            {
+                if (said.Add(tag))
+                {
+                    parts.Add(tag);
+                }
+            }
         }
+        WriteProse(writer, lead.Brief, parts);
+    }
+
+    /// The two fields every catalogue entry carries, from parts already in the order they are read.
+    private static void WriteProse(Utf8JsonWriter writer, string brief, List<string> parts)
+    {
+        writer.WriteString("brief", brief);
         if (parts.Count == 0)
         {
             writer.WriteNull("detail");
@@ -1167,6 +1210,38 @@ internal static class Signatures
         {
             writer.WriteString("detail", string.Join("\n\n", parts));
         }
+    }
+
+    /// One declaration's documentation with its three parts still apart: the brief, the remarks
+    /// under it, and the lines its `<returns>` and `<exception>` elements produced.
+    ///
+    /// They are joined for almost everything and kept apart for the overload merge, which unions the
+    /// tag lines while keeping every remark — a distinction it cannot make once the three are one
+    /// string.
+    private sealed record Documented(string Brief, string? Body, List<string> Tags);
+
+    /// One declaration read, through `<inheritdoc>` where it points somewhere.
+    ///
+    /// A missing `<summary>` fails here rather than reaching a model as a blank, and `<returns>` and
+    /// `<exception>` become the two lines gg's catalogue renders them as on every arm — the C#
+    /// convention keeps them in their own elements, and they are prose about the call rather than
+    /// about one of its arguments, so the detail is where they belong.
+    private static Documented Documentation(ISymbol symbol, string what)
+    {
+        var target = InheritDocTarget(symbol) ?? symbol;
+        var comment = Comment(target);
+        var tags = new List<string>();
+        var returns = comment?.Element("returns");
+        if (returns is not null)
+        {
+            tags.Add($"Returns: {Text(returns)}");
+        }
+        var throws = comment?.Elements("exception").Select(Text).Where(text => text.Length > 0).ToArray();
+        if (throws is { Length: > 0 })
+        {
+            tags.Add($"Throws `ToolException`: {string.Join(" ", throws)}");
+        }
+        return new Documented(Brief(Require(Summary(target), what), what), Remarks(target), tags);
     }
 
     /// The whole of a `<summary>` and `<remarks>` as one paragraph, which is the shape the

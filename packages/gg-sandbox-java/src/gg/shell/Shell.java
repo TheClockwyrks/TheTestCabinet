@@ -1,0 +1,95 @@
+package gg.shell;
+
+import gg.FunctionSummary;
+import gg.ToolError;
+import gg.ToolErrorCode;
+import gg.internal.Read;
+import gg.internal.Wire;
+import java.util.List;
+import java.util.OptionalInt;
+import org.teavm.jso.JSObject;
+
+/**
+ * Run shell commands in the workspace.
+ *
+ * <p>One call, and the way a program reaches everything gg has no tool for: a build, a test run,
+ * {@code git}, {@code curl}, a package manager. The workspace is the working directory.
+ *
+ * @ggmodule shell
+ */
+public final class Shell {
+    private Shell() {
+    }
+
+    /**
+     * List the functions this module offers, each with a one-line summary.
+     *
+     * <p>Only the functions this run actually bound are returned, so the directory never names a
+     * call a program cannot make. One function's full signature, argument descriptions and types
+     * are opened as a view with {@code Views.openDocsView}.
+     *
+     * @return the functions this module really bound, each with its one-line summary
+     * @ggmeta list
+     */
+    public static List<FunctionSummary> list() {
+        return Read.functionSummaries(
+                Wire.call("list", Wire.system(), "system", "list", Wire.args()));
+    }
+
+    /**
+     * Run a command with {@code sh -c} in the workspace and hand back what it printed.
+     *
+     * <p>A non-zero exit is not a failure: it arrives as {@code exitCode} on the result. Only a
+     * process that could not be launched, or one the timeout killed, throws.
+     *
+     * <p>This run may offload shell output, and the {@code shell} tool's own description says which
+     * mode is in force. Under {@code offload}, {@code output} holds the tail that fits and ends with
+     * a note naming the two files the whole of stdout and stderr went to. Under {@code adaptive},
+     * the default, a command that succeeded returns only that note and one that failed returns the
+     * tail. Grepping the named files beats running the command again.
+     *
+     * @param command The command line, run by {@code sh -c} with the workspace as its working
+     *     directory.
+     * @return what the command printed, and how it exited
+     * @throws ToolError {@link ToolErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
+     *     and {@link ToolErrorCode#IO_ERROR} when it could not be launched.
+     * @ggop shell.shell
+     */
+    public static ShellOutput shell(String command) {
+        return Read.shellOutput(Wire.call("shell", Wire.system(), "system", "shell",
+                Wire.args(Wire.text(command))));
+    }
+
+    /**
+     * Run a command with a deadline of the program's own rather than gg's default of 120 seconds.
+     *
+     * @param command The command line, run by {@code sh -c} with the workspace as its working
+     *     directory.
+     * @param timeoutSecs How long to let it run before killing it, in seconds. It is clamped to
+     *     whatever is left of the run's wall-clock budget.
+     * @return what the command printed, and how it exited
+     * @throws ToolError {@link ToolErrorCode#LIMIT_EXCEEDED} when the timeout killed the process,
+     *     and {@link ToolErrorCode#IO_ERROR} when it could not be launched.
+     * @ggop shell.shell
+     */
+    public static ShellOutput shell(String command, int timeoutSecs) {
+        JSObject options = Wire.object();
+        Wire.set(options, "timeoutSecs", Wire.number(timeoutSecs));
+        return Read.shellOutput(Wire.call("shell", Wire.system(), "system", "shell",
+                Wire.args(Wire.text(command), options)));
+    }
+
+    // -------------------------------------------------------------------------------------------
+    // The type a command hands back
+    // -------------------------------------------------------------------------------------------
+
+    /**
+     * What a command reported when it finished.
+     *
+     * @param exitCode The process's exit status; empty when a signal killed it. Zero means success.
+     * @param output Merged stdout then stderr, tail-truncated at this run's own ceiling.
+     * @param truncated Whether the cap cut {@code output}, dropping the head and keeping the tail.
+     */
+    public record ShellOutput(OptionalInt exitCode, String output, boolean truncated) {
+    }
+}

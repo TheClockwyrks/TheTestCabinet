@@ -238,7 +238,7 @@ impl ProgramLanguage for TypeScript {
         &PROMPT
     }
 
-    /// [`view.openFile("src/main.ts");`](self::open_file_statement), with the call's name resolved
+    /// [`gg.views.openFile("src/main.ts");`](self::open_file_statement), with the call's name resolved
     /// from this language's own catalogue rather than written out here.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)

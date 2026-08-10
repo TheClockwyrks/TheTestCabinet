@@ -9,7 +9,27 @@ The **Java** program language's toolchain pin and its hand-written SDK.
 | [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
 | [`build.sh`](build.sh) | compiles the SDK to `crates/gg/src/sandbox/checkers/java.sdk.jar` |
 | [`signatures.sh`](signatures.sh) | reflects `crates/gg/src/sandbox/guests/java.signatures.json` out of the SDK's Javadoc |
-| [`tools/`](tools/) | the doclet `signatures.sh` runs, and the identity table it reads |
+| [`tools/`](tools/) | the doclet `signatures.sh` runs, and the module table it reads |
+
+## What the surface is shaped like
+
+One **package per capability module**, and in each of them one class that *is* the module:
+`gg.files.Files`, `gg.views.Views`, `gg.board.Board`. Java has no free functions, so an
+operation every other arm spells as one is a `static` method here — `Files.readFile(path)`
+— and the types a module hands back are nested in it, so `Files.FileRead` and
+`Views.OpenView` are names a program can write without either module having to give up a
+short one. `gg` itself is the twelfth module: the exception and the types every other
+module's signatures name.
+
+Nothing is reached through a value that has to be in scope already. What gg writes into a
+program's header is one on-demand `import` per module, so every name a model reads in a
+signature is a name it can type, and every name is qualified by the module a search filed
+it under.
+
+Where a value carries an operation of its own, it carries the method too:
+`handle.send(text)` beside `Delegation.sendMessage(id, text)`, `view.close()` beside
+`Views.close(selector)`. Those are the same operation reached a second way rather than a
+second operation, and the catalogue says so.
 
 ## Why the pin lives here
 
@@ -77,10 +97,19 @@ cargo nextest run -p test-cabinet-gg sandbox::language::java
 ```
 
 Both scripts are gates as much as they are builds. `build.sh` compiles the model-facing
-package a second time under `-Xdoclint:all/protected -Werror`, so an undocumented parameter
+packages a second time under `-Xdoclint:all/protected -Werror`, so an undocumented parameter
 or a broken `{@link}` is an error; `signatures.sh` reads the same comments through the
-doclet API and refuses to emit a catalogue with a blank in it. Between them, prose a model
-would have been shown as an empty line fails on the author instead.
+doclet API and refuses to emit a catalogue with a blank in it — a method that names no gg
+operation, a module class the table does not name, and an opening paragraph of more than one
+line included. Between them, prose a model would have been shown as an empty line fails on
+the author instead.
+
+Two block tags carry what a doc comment cannot say in prose: `@ggop files.read_file` on
+every model-facing method, and `@ggmodule files` on the class that is the module.
+**Measured, with the build's own `-Xdoclint:all/protected -Werror`:** an unknown block tag
+passes silently and arrives whole as one node, while the `<ggop>` element the C++ arm uses
+is two errors here (`unknown tag: ggop`). The two arms therefore mark the same thing in
+opposite ways, and each is the way its own documentation tool accepts.
 
 ## Where the rest of this arm is
 

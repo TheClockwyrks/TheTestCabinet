@@ -22,6 +22,22 @@ fn set_with(params: serde_json::Value) -> GgAgentConfig {
     }
 }
 
+/// The string a documentation view of the type spelled `name` is **opened by** on this arm — its
+/// fully-qualified name where the arm's catalogue resolves one, and the bare spelling where it does
+/// not.
+///
+/// `types_to_open` answers in keys rather than in the spelling a signature writes, and on an arm
+/// reshaped into capability modules those are two different strings. Resolved out of the catalogue
+/// so that nothing here is a second copy of how this arm spells its module paths.
+fn opened_as(name: &str) -> String {
+    crate::sandbox::type_declaration(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        name,
+    )
+    .map(|declared| declared.key().to_string())
+    .unwrap_or_else(|| name.to_string())
+}
+
 /// A runtime over the TypeScript catalogue with the tools these assertions need bound.
 fn runtime() -> DocsRuntime {
     DocsRuntime::new(
@@ -120,11 +136,11 @@ fn a_returned_type_is_opened_by_both_type_modes() {
     let docs = runtime();
     assert_eq!(
         docs.types_to_open("readFile", DocViewTypes::ReturnOnly),
-        vec!["FileRead"]
+        vec![opened_as("FileRead")]
     );
     assert_eq!(
         docs.types_to_open("readFile", DocViewTypes::ReturnAndParameters),
-        vec!["FileRead"]
+        vec![opened_as("FileRead")]
     );
 }
 
@@ -144,7 +160,7 @@ fn only_the_wider_arm_opens_a_type_an_argument_names() {
     );
     assert_eq!(
         docs.types_to_open("updateIssue", DocViewTypes::ReturnAndParameters),
-        vec!["IssueStatus"]
+        vec![opened_as("IssueStatus")]
     );
 }
 

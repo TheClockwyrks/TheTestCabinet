@@ -560,7 +560,7 @@ fn the_named_calls_follow_the_strategy_and_the_mode() {
     // table here, which is why a second language spells them its own way with nothing to edit.
     let typescript = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript);
     let code = MemoryStrategy::KeywordSearch.calls(Some(typescript));
-    assert_eq!(code.create, "`memory.createMemory`");
-    assert_eq!(code.revise, "`memory.editMemory`");
-    assert_eq!(code.delete, "`memory.deleteMemory`");
+    assert_eq!(code.create, "`gg.memories.createMemory`");
+    assert_eq!(code.revise, "`gg.memories.editMemory`");
+    assert_eq!(code.delete, "`gg.memories.deleteMemory`");
 }

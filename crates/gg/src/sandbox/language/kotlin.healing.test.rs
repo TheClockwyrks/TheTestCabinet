@@ -24,16 +24,16 @@ use crate::healing::{
 /// whose repeat redeclares a `fun` rather than a `val`, a `#` line that is prose here, and two replies
 /// that are no program at all.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```kotlin\nval rows = fs.listDir(\"src\")\nview.openText(\"rows\", rows.toString())\n```\n\nThat lists the directory.",
-    "import kotlinx.coroutines.runBlocking\n\nrunBlocking {\n    val rows = fs.listDir(\"src\")\n    view.openText(\"rows\", rows.toString())\n}",
-    "import kotlin.concurrent.thread\n\nthread {\n    view.openText(\"note\", \"done\")\n}.join()",
-    "val worker = Thread {\n    view.openText(\"note\", \"done\")\n}\nworker.start()\nworker.join()",
-    "runBlocking {\n    suspend fun gather(): String = fs.readTextFile(\"notes.md\")\n    view.openText(\"notes\", gather())\n}",
-    "import kotlin.math.abs\n\nval drift = abs(fs.listDir(\"src\").size - 3)\nview.openText(\"drift\", drift.toString())",
+    "Here is the program.\n\n```kotlin\nval rows = gg.files.listDir(\"src\")\ngg.views.openText(\"rows\", rows.toString())\n```\n\nThat lists the directory.",
+    "import kotlinx.coroutines.runBlocking\n\nrunBlocking {\n    val rows = gg.files.listDir(\"src\")\n    gg.views.openText(\"rows\", rows.toString())\n}",
+    "import kotlin.concurrent.thread\n\nthread {\n    gg.views.openText(\"note\", \"done\")\n}.join()",
+    "val worker = Thread {\n    gg.views.openText(\"note\", \"done\")\n}\nworker.start()\nworker.join()",
+    "runBlocking {\n    suspend fun gather(): String = gg.files.readTextFile(\"notes.md\")\n    gg.views.openText(\"notes\", gather())\n}",
+    "import kotlin.math.abs\n\nval drift = abs(gg.files.listDir(\"src\").size - 3)\ngg.views.openText(\"drift\", drift.toString())",
     "val usage = \"\"\"\n    Example:\n\n    runBlocking {\n        val total = 1\n    }\n    \"\"\"\nval total = 2\n",
-    "val rows = mapOf(\"n\" to 1)\nview.openText(\"n\", \"total: ${rows[\"n\"]}\")\n",
-    "fun helper(): Int = 1\nview.openText(\"n\", helper().toString())\n\nfun helper(): Int = 1\nview.openText(\"n\", helper().toString())",
-    "# Plan\n\nval total = 1\nview.openText(\"total\", total.toString())",
+    "val rows = mapOf(\"n\" to 1)\ngg.views.openText(\"n\", \"total: ${rows[\"n\"]}\")\n",
+    "fun helper(): Int = 1\ngg.views.openText(\"n\", helper().toString())\n\nfun helper(): Int = 1\ngg.views.openText(\"n\", helper().toString())",
+    "# Plan\n\nval total = 1\ngg.views.openText(\"total\", total.toString())",
     "I have finished the task. Everything works.",
 ];
 
@@ -71,13 +71,13 @@ fn the_run_blocking_wrapper_comes_off_with_its_import() {
     let result = healed(
         "import kotlinx.coroutines.runBlocking\n\n\
          runBlocking {\n    \
-             val rows = fs.listDir(\"src\")\n    \
-             view.openText(\"rows\", rows.toString())\n\
+             val rows = gg.files.listDir(\"src\")\n    \
+             gg.views.openText(\"rows\", rows.toString())\n\
          }",
     );
     assert_eq!(
         result.program,
-        "val rows = fs.listDir(\"src\")\nview.openText(\"rows\", rows.toString())"
+        "val rows = gg.files.listDir(\"src\")\ngg.views.openText(\"rows\", rows.toString())"
     );
     assert_eq!(result.strategies(), vec![HealingStrategy::UnwrapAsync]);
     assert!(
@@ -106,14 +106,14 @@ fn the_run_blocking_wrapper_comes_off_with_its_import() {
 #[test]
 fn the_wrappers_import_is_deleted_here_and_kept_on_the_other_jvm_arm() {
     let kotlin = healed(
-        "import kotlinx.coroutines.*\n\nrunBlocking {\n    view.openText(\"note\", \"done\")\n}",
+        "import kotlinx.coroutines.*\n\nrunBlocking {\n    gg.views.openText(\"note\", \"done\")\n}",
     );
-    assert_eq!(kotlin.program, "view.openText(\"note\", \"done\")");
+    assert_eq!(kotlin.program, "gg.views.openText(\"note\", \"done\")");
 
     let java = heal(
         "import java.util.concurrent.CompletableFuture;\n\n\
          CompletableFuture.runAsync(() -> {\n    \
-             view.openText(\"note\", \"done\");\n\
+             gg.views.openText(\"note\", \"done\");\n\
          }).join();",
         &HealingConfig::default(),
         java(),
@@ -132,8 +132,7 @@ fn the_wrappers_import_is_deleted_here_and_kept_on_the_other_jvm_arm() {
 /// and `import kotlin.math.abs` is a line the body below may well depend on.
 #[test]
 fn an_unrelated_import_above_the_wrapper_declines_the_repair() {
-    let reply =
-        "import kotlin.math.abs\n\nrunBlocking {\n    view.openText(\"n\", abs(-1).toString())\n}";
+    let reply = "import kotlin.math.abs\n\nrunBlocking {\n    gg.views.openText(\"n\", abs(-1).toString())\n}";
     assert_eq!(healed(reply).program, reply);
 }
 
@@ -144,18 +143,18 @@ fn an_unrelated_import_above_the_wrapper_declines_the_repair() {
 /// so unwrapping it would execute statements the response never asked to execute.
 #[test]
 fn a_thread_that_starts_itself_needs_no_runner_and_one_that_does_not_does() {
-    let started = healed("thread {\n    view.openText(\"note\", \"done\")\n}");
-    assert_eq!(started.program, "view.openText(\"note\", \"done\")");
+    let started = healed("thread {\n    gg.views.openText(\"note\", \"done\")\n}");
+    assert_eq!(started.program, "gg.views.openText(\"note\", \"done\")");
 
     let joined =
-        healed("kotlin.concurrent.thread {\n    view.openText(\"note\", \"done\")\n}.join()");
-    assert_eq!(joined.program, "view.openText(\"note\", \"done\")");
+        healed("kotlin.concurrent.thread {\n    gg.views.openText(\"note\", \"done\")\n}.join()");
+    assert_eq!(joined.program, "gg.views.openText(\"note\", \"done\")");
 
-    let unstarted = "Thread {\n    view.openText(\"note\", \"done\")\n}";
+    let unstarted = "Thread {\n    gg.views.openText(\"note\", \"done\")\n}";
     assert_eq!(healed(unstarted).program, unstarted);
 
-    let running = healed("Thread {\n    view.openText(\"note\", \"done\")\n}.start()");
-    assert_eq!(running.program, "view.openText(\"note\", \"done\")");
+    let running = healed("Thread {\n    gg.views.openText(\"note\", \"done\")\n}.start()");
+    assert_eq!(running.program, "gg.views.openText(\"note\", \"done\")");
 }
 
 /// **The declared shape comes off too**, and only when something actually starts it.
@@ -163,12 +162,12 @@ fn a_thread_that_starts_itself_needs_no_runner_and_one_that_does_not_does() {
 fn the_declared_thread_wrapper_comes_off_only_when_it_is_started() {
     let started = healed(
         "val worker = Thread {\n    \
-             view.openText(\"note\", \"done\")\n\
+             gg.views.openText(\"note\", \"done\")\n\
          }\n\
          worker.start()\n\
          worker.join()",
     );
-    assert_eq!(started.program, "view.openText(\"note\", \"done\")");
+    assert_eq!(started.program, "gg.views.openText(\"note\", \"done\")");
     assert!(matches!(
         started
             .applied
@@ -180,7 +179,7 @@ fn the_declared_thread_wrapper_comes_off_only_when_it_is_started() {
         })
     ));
 
-    let unstarted = "val worker = Thread {\n    view.openText(\"note\", \"done\")\n}";
+    let unstarted = "val worker = Thread {\n    gg.views.openText(\"note\", \"done\")\n}";
     assert_eq!(healed(unstarted).program, unstarted);
 }
 
@@ -195,19 +194,19 @@ fn an_argument_list_between_the_head_and_the_lambda_is_still_the_wrapper() {
     let result = healed(
         "import kotlinx.coroutines.*\n\n\
          runBlocking(Dispatchers.Default) {\n    \
-             view.openText(\"note\", \"done\")\n\
+             gg.views.openText(\"note\", \"done\")\n\
          }",
     );
-    assert_eq!(result.program, "view.openText(\"note\", \"done\")");
+    assert_eq!(result.program, "gg.views.openText(\"note\", \"done\")");
 
     let declared = healed(
         "import kotlin.concurrent.thread\n\n\
          val worker = thread(start = false) {\n    \
-             view.openText(\"note\", \"done\")\n\
+             gg.views.openText(\"note\", \"done\")\n\
          }\n\
          worker.start()",
     );
-    assert_eq!(declared.program, "view.openText(\"note\", \"done\")");
+    assert_eq!(declared.program, "gg.views.openText(\"note\", \"done\")");
 }
 
 /// **The `suspend` modifier goes with the wrapper, and is counted** — the one arm whose suspension
@@ -222,13 +221,13 @@ fn an_argument_list_between_the_head_and_the_lambda_is_still_the_wrapper() {
 fn a_suspend_modifier_comes_off_with_the_wrapper_and_is_counted() {
     let result = healed(
         "runBlocking {\n    \
-             suspend fun gather(): String = fs.readTextFile(\"notes.md\")\n    \
-             view.openText(\"notes\", gather())\n\
+             suspend fun gather(): String = gg.files.readTextFile(\"notes.md\")\n    \
+             gg.views.openText(\"notes\", gather())\n\
          }",
     );
     assert_eq!(
         result.program,
-        "fun gather(): String = fs.readTextFile(\"notes.md\")\nview.openText(\"notes\", gather())"
+        "fun gather(): String = gg.files.readTextFile(\"notes.md\")\ngg.views.openText(\"notes\", gather())"
     );
     assert!(
         matches!(
@@ -246,10 +245,10 @@ fn a_suspend_modifier_comes_off_with_the_wrapper_and_is_counted() {
     );
 
     // And the word inside a string is not a modifier: the mask is what tells the two apart.
-    let quoted = healed("runBlocking {\n    view.openText(\"note\", \"suspend nothing\")\n}");
+    let quoted = healed("runBlocking {\n    gg.views.openText(\"note\", \"suspend nothing\")\n}");
     assert_eq!(
         quoted.program,
-        "view.openText(\"note\", \"suspend nothing\")"
+        "gg.views.openText(\"note\", \"suspend nothing\")"
     );
 }
 
@@ -262,8 +261,8 @@ fn a_suspend_modifier_comes_off_with_the_wrapper_and_is_counted() {
 #[test]
 fn a_wrapper_that_is_not_the_whole_program_is_left_alone() {
     for reply in [
-        "fs.writeFile(\"out.txt\", \"hello\")\nrunBlocking {\n    view.openText(\"note\", \"done\")\n}",
-        "val rows = fs.listDir(\"src\")\nrows.forEach {\n    view.openText(it.name, it.name)\n}",
+        "gg.files.writeFile(\"out.txt\", \"hello\")\nrunBlocking {\n    gg.views.openText(\"note\", \"done\")\n}",
+        "val rows = gg.files.listDir(\"src\")\nrows.forEach {\n    gg.views.openText(it.name, it.name)\n}",
     ] {
         assert_eq!(healed(reply).program, reply);
     }
@@ -289,8 +288,8 @@ fn an_import_is_a_working_line_and_is_never_deleted() {
     }
 
     let reply = "import kotlin.math.abs\n\n\
-                 val drift = abs(fs.listDir(\"src\").size - 3)\n\
-                 view.openText(\"drift\", drift.toString())";
+                 val drift = abs(gg.files.listDir(\"src\").size - 3)\n\
+                 gg.views.openText(\"drift\", drift.toString())";
     let result = healed(reply);
     assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
@@ -308,7 +307,7 @@ fn an_import_is_a_working_line_and_is_never_deleted() {
 /// so that arm's proof is a local variable and nothing else.
 #[test]
 fn a_doubled_program_that_redeclares_a_function_is_halved() {
-    let half = "fun helper(): Int = 1\nview.openText(\"n\", helper().toString())";
+    let half = "fun helper(): Int = 1\ngg.views.openText(\"n\", helper().toString())";
     let result = healed(&format!("{half}\n\n{half}"));
     assert_eq!(result.program, half);
     assert!(
@@ -360,7 +359,7 @@ fn a_declaration_is_told_from_everything_that_merely_looks_like_one() {
         "throw failure",
         "import kotlin.math.abs",
         "println(\"hi\")",
-        "fs.writeFile(\"out.txt\", body)",
+        "gg.files.writeFile(\"out.txt\", body)",
         "total = 1",
         "if (left < right) {",
         // A modifier that is really an identifier: `data.load()` is a call, not a `data class`.
@@ -413,10 +412,10 @@ fn a_hash_line_is_prose_and_a_slash_line_is_not() {
     assert!(!kotlin().is_prose_line("// the plan"));
     assert!(!kotlin().is_prose_line("/* the plan */"));
 
-    let result = healed("# Plan\n\nval total = 1\nview.openText(\"total\", total.toString())");
+    let result = healed("# Plan\n\nval total = 1\ngg.views.openText(\"total\", total.toString())");
     assert_eq!(
         result.program,
-        "val total = 1\nview.openText(\"total\", total.toString())"
+        "val total = 1\ngg.views.openText(\"total\", total.toString())"
     );
 }
 
@@ -429,12 +428,12 @@ fn a_hash_line_is_prose_and_a_slash_line_is_not() {
 fn the_two_predicates_point_their_errors_in_the_safe_direction() {
     for line in [
         "val total = 1",
-        "view.openText(\"note\", body)",
+        "gg.views.openText(\"note\", body)",
         "}",
         "// a note",
         "@JvmStatic",
         "    .map { it.name }",
-        "?.let { view.openText(\"it\", it) }",
+        "?.let { gg.views.openText(\"it\", it) }",
         "rows.forEach { entry ->",
         "for (name in names) {",
         "total += 1",
@@ -468,7 +467,7 @@ fn the_two_predicates_point_their_errors_in_the_safe_direction() {
     let reply = "/**\n\
                   * Reads the manifest and shows what is in it.\n\
                   */\n\
-                 view.openText(\"manifest\", fs.readTextFile(\"manifest.json\"))\n";
+                 gg.views.openText(\"manifest\", gg.files.readTextFile(\"manifest.json\"))\n";
     assert_eq!(healed(reply).program, reply.trim_end());
 }
 
@@ -509,7 +508,7 @@ fn a_raw_string_carries_data_rather_than_code() {
 /// the line as code, and the `}` inside it as a brace.
 #[test]
 fn the_lexer_reads_the_three_shapes_kotlin_has_and_java_does_not() {
-    let template = "view.openText(\"n\", \"total: ${rows[\"n\"]}\")\nval after = 1\n";
+    let template = "gg.views.openText(\"n\", \"total: ${rows[\"n\"]}\")\nval after = 1\n";
     let mask = kotlin().code_mask(template).expect("it lexes");
     // The template's own contents are code, because they are.
     let inside = template.find("rows[").expect("the template holds one");
@@ -533,7 +532,7 @@ fn the_lexer_reads_the_three_shapes_kotlin_has_and_java_does_not() {
         "the comparison this test is about no longer holds"
     );
 
-    let backquoted = "val `total count` = 1\nview.openText(\"n\", `total count`.toString())\n";
+    let backquoted = "val `total count` = 1\ngg.views.openText(\"n\", `total count`.toString())\n";
     let mask = kotlin().code_mask(backquoted).expect("it lexes");
     assert!(!mask.is_code(backquoted.find("total count").expect("it is there")));
 }
@@ -587,7 +586,7 @@ fn a_reply_that_is_not_ascii_is_read_rather_than_crashed_on() {
     // that could make the reading below true.
     let reply = "// a cömment: don\u{2019}t lose the place\n\
                  println('é')\n\
-                 view.openText(\"grüße — wörld ✅\", \"\"\"\n    \
+                 gg.views.openText(\"grüße — wörld ✅\", \"\"\"\n    \
                      Beispiel — über alles:\n    \
                      val total = 1\n    \
                      \"\"\")\n";

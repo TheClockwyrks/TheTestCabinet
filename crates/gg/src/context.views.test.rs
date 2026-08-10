@@ -878,7 +878,7 @@ fn the_context_usage_signal_names_the_text_view_band_and_the_call_that_closes_it
         "the signal must name the band the agent can act on: {text}"
     );
     assert!(
-        text.contains("`view.close`"),
+        text.contains("`gg.views.close`"),
         "the signal must name the only call that reclaims that band: {text}"
     );
 }

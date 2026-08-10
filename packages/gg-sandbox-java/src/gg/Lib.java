@@ -6,21 +6,20 @@ import org.teavm.jso.JSObject;
 import org.teavm.jso.core.JSArray;
 
 /**
- * <b>Reaching the code a skill or a memory carried.</b>
+ * The code a skill or a memory carried, bound at {@code lib.<key>} for the rest of the session.
  *
- * <p>A skill or a memory may carry a Java class body as well as prose. Reading it compiles that
- * body and binds its {@code public static} methods at {@code lib.<key>} for the rest of your
- * session, and the reply that answered the read names the key and what it exports.
+ * <p>A skill or a memory may carry a Java class body as well as prose. Reading it compiles that body
+ * and binds its {@code public static} methods, and the reply that answered the read names the key
+ * and what it exports.
  *
- * <p>{@code lib} is how a program reaches one, and it is deliberately the one place in this SDK
- * where <b>you</b> say what type you expect. A code module is compiled separately from your
- * program, so there is no {@code import} for javac to check the two against — the same position a
- * Java author is in when they reach something with reflection, and the same answer: name the shape
- * you want.
+ * <p>This is deliberately the one place in this SDK where the caller says what type it expects. A
+ * code module is compiled separately from the program that uses it, so there is no {@code import}
+ * for javac to check the two against — the same position a Java author is in when reaching something
+ * by reflection, and the same answer: name the shape wanted.
  *
  * <pre>{@code
- * if (lib.has("helpers", "slugify")) {
- *     view.openText("slug", lib.text("helpers", "slugify", "Some Title"));
+ * if (Lib.has("helpers", "slugify")) {
+ *     Views.openText("slug", Lib.text("helpers", "slugify", "Some Title"));
  * }
  * }</pre>
  *
@@ -28,17 +27,17 @@ import org.teavm.jso.core.JSArray;
  * {@link Boolean} — and anything else is passed as its {@code toString()}.
  */
 public final class Lib {
-    Lib() {
+    private Lib() {
     }
 
     /**
-     * Whether this session has a module bound at {@code key} offering {@code name}.
+     * Whether this session has a module bound at a key offering an export.
      *
      * @param key The module's key, as the read that loaded it named.
      * @param name The export to look for.
      * @return whether calling it would find anything
      */
-    public boolean has(String key, String name) {
+    public static boolean has(String key, String name) {
         return exported(Wire.lib(), key, name) != null;
     }
 
@@ -49,9 +48,10 @@ public final class Lib {
      * @param name The export to call.
      * @param arguments What to pass it.
      * @return whatever it returned, as text
-     * @throws ToolError {@code NOT_FOUND} when this session has no such module or export.
+     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when this session has no such module or
+     *     export.
      */
-    public String text(String key, String name, Object... arguments) {
+    public static String text(String key, String name, Object... arguments) {
         return Wire.asString(invoke(key, name, arguments));
     }
 
@@ -62,9 +62,10 @@ public final class Lib {
      * @param name The export to call.
      * @param arguments What to pass it.
      * @return whatever it returned, as a whole number
-     * @throws ToolError {@code NOT_FOUND} when this session has no such module or export.
+     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when this session has no such module or
+     *     export.
      */
-    public int number(String key, String name, Object... arguments) {
+    public static int number(String key, String name, Object... arguments) {
         return Wire.asInteger(invoke(key, name, arguments));
     }
 
@@ -75,9 +76,10 @@ public final class Lib {
      * @param name The export to call.
      * @param arguments What to pass it.
      * @return whatever it returned, as a flag
-     * @throws ToolError {@code NOT_FOUND} when this session has no such module or export.
+     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when this session has no such module or
+     *     export.
      */
-    public boolean flag(String key, String name, Object... arguments) {
+    public static boolean flag(String key, String name, Object... arguments) {
         return truthy(invoke(key, name, arguments));
     }
 
@@ -87,14 +89,15 @@ public final class Lib {
      * @param key The module's key.
      * @param name The export to call.
      * @param arguments What to pass it.
-     * @throws ToolError {@code NOT_FOUND} when this session has no such module or export.
+     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} when this session has no such module or
+     *     export.
      */
-    public void run(String key, String name, Object... arguments) {
+    public static void run(String key, String name, Object... arguments) {
         invoke(key, name, arguments);
     }
 
     /** One export, called with the arguments lowered. */
-    private JSObject invoke(String key, String name, Object[] arguments) {
+    private static JSObject invoke(String key, String name, Object[] arguments) {
         JSObject exported = exported(Wire.lib(), key, name);
         if (exported == null) {
             throw new ToolError("read_skill", ToolErrorCode.NOT_FOUND,

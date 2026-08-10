@@ -19,7 +19,8 @@
 //! This file is the substrate: that a whole Kotlin program compiles, converts, instantiates and
 //! runs; that what it prints reaches the host through the real membrane's `feedback` interface; that
 //! an uncaught failure is reported **with its class, its message and the model's own line** rather
-//! than trapping; that a code module becomes a namespace at `lib.<key>`; what this toolchain is not;
+//! than trapping; that a code module becomes a namespace at `gg.core.lib.<key>`; what this
+//! toolchain is not;
 //! and that all of it stays isolated at sixteen-way concurrency across a pool of four warm JVMs.
 //!
 //! What the **SDK** puts on top of it — every gg tool driven through the real membrane from its
@@ -84,7 +85,7 @@ fn prepare(source: &str) -> String {
 }
 
 /// Evaluate already-compiled JavaScript through the real membrane, with `enabled`'s gg tools offered
-/// and `modules` bound at `lib.<name>`.
+/// and `modules` bound at `gg.core.lib.<name>`.
 ///
 /// A near-copy of [`run_program`](crate::sandbox::run_program) with one thing left out, because it
 /// is an optimisation rather than a behaviour: the per-language component cache.
@@ -480,8 +481,8 @@ internal fun alsoHidden(): String = "not offered either"
 
     // And the namespace really answers, through the guest, from a program written in a language that
     // knows nothing about it. Reached from JavaScript deliberately: what is asserted here is that the
-    // GUEST binds `lib.<key>` to what compiling this module left behind, which is a claim about the
-    // module half of this arm's preparation and holds whether or not an SDK exists to reach it.
+    // GUEST binds `lib.<key>` — the name that guest's own scope holds — to what compiling this
+    // module left behind, which is a claim about the module half of this arm's preparation and holds whether or not an SDK exists to reach it.
     // Kotlin's own `Lib` reaching the same namespace is the separate claim
     // [the surface file makes](super::surface).
     let (outcome, _log) = evaluate(

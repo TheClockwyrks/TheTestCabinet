@@ -80,44 +80,44 @@ struct Crossing {
 /// Python, Ruby, PureScript and Java arms drive theirs with, down to the arguments and the expected
 /// JSON — because the expected JSON is the point. gg's dispatch is language-independent: seven arms
 /// writing the same call in their own idioms must produce **byte-identical** arguments, or they are
-/// not running the same experiment. A named argument bound to the wrong wire field, a `Patch.Clear`
+/// not running the same experiment. A named argument bound to the wrong wire field, a `gg.core.Patch.Clear`
 /// read as "leave it alone" instead of "clear it", an enum entry whose wire word did not translate —
 /// none of them is a compile error in any of the seven, and all of them are visible here.
 fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: "system.shell(\"npm test\", timeoutSecs = 30)",
+            statement: "gg.shell.run(\"npm test\", timeoutSecs = 30)",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: "fs.readFile(\"src/a.kt\", offset = 2, limit = 5)",
+            statement: "gg.files.readFile(\"src/a.kt\", offset = 2, limit = 5)",
             expected: || json!({ "path": "src/a.kt", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: "fs.writeFile(\"out.txt\", \"hello\")",
+            statement: "gg.files.writeFile(\"out.txt\", \"hello\")",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: "fs.editFile(\"src/a.kt\", \"alpha\", \"beta\")",
+            statement: "gg.files.editFile(\"src/a.kt\", \"alpha\", \"beta\")",
             expected: || json!({ "path": "src/a.kt", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: "fs.listDir(\"src\")",
+            statement: "gg.files.listDir(\"src\")",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            statement: "skills.readSkill(\"testing\")",
+            statement: "gg.skills.readSkill(\"testing\")",
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            statement: "memory.writeMemory(\"layout\", \"d\", \"b\")",
+            statement: "gg.memories.writeMemory(\"layout\", \"d\", \"b\")",
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -125,7 +125,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: "memory.updateMemory(\"layout\", \"d2\", \"b2\")",
+            statement: "gg.memories.updateMemory(\"layout\", \"d2\", \"b2\")",
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -137,45 +137,45 @@ fn crossings() -> Vec<Crossing> {
             // company with Java's: the two halves are the write's own optional arguments rather than
             // a value to build first, so "an on-use script and no module" is `onUse = …` and nothing
             // else — which is what a keyword argument with a real default buys.
-            statement: "memory.createMemory(\"layout\", \"d\", \"b\", \
-                        code = \"fun one() = 1\", onUse = \"view.openText(\\\"n\\\", \\\"1\\\")\")",
+            statement: "gg.memories.createMemory(\"layout\", \"d\", \"b\", \
+                        code = \"fun one() = 1\", onUse = \"gg.views.openText(\\\"n\\\", \\\"1\\\")\")",
             expected: || {
                 json!({ "name": "layout", "description": "d", "contents": "b",
                         "code": "fun one() = 1",
-                        "onUse": "view.openText(\"n\", \"1\")" })
+                        "onUse": "gg.views.openText(\"n\", \"1\")" })
             },
         },
         Crossing {
             tool: "read_memory",
-            statement: "memory.readMemory(\"layout\")",
+            statement: "gg.memories.readMemory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: "memory.editMemory(\"layout\", \"old\", \"new\")",
+            statement: "gg.memories.editMemory(\"layout\", \"old\", \"new\")",
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: "memory.searchMemories(\"cargo\", \"nextest\")",
+            statement: "gg.memories.searchMemories(\"cargo\", \"nextest\")",
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: "memory.deleteMemory(\"layout\")",
+            statement: "gg.memories.deleteMemory(\"layout\")",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            statement: "tasks.addTask(\"t1\", \"T\", \"D\", listOf(\"t0\"))",
+            statement: "gg.tasks.addTask(\"t1\", \"T\", \"D\", listOf(\"t0\"))",
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            statement: "tasks.updateTask(\"t1\", title = \"T2\", \
-                        description = Patch.Clear, status = TaskStatus.IN_PROGRESS)",
+            statement: "gg.tasks.updateTask(\"t1\", title = \"T2\", \
+                        description = gg.core.Patch.Clear, status = gg.tasks.TaskStatus.IN_PROGRESS)",
             expected: || {
-                // `Patch.Clear` is what CLEARS it — a field the call never names is the one that
+                // `gg.core.Patch.Clear` is what CLEARS it — a field the call never names is the one that
                 // keeps it — and `in_progress` is gg's own spelling, so the membrane's `in-progress`
                 // reaches neither a model nor a tool.
                 json!({ "id": "t1", "title": "T2", "status": "in_progress", "description": "" })
@@ -183,27 +183,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            statement: "tasks.setBlockedBy(\"t1\")",
+            statement: "gg.tasks.setBlockedBy(\"t1\")",
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            statement: "tasks.completeTask(\"t1\")",
+            statement: "gg.tasks.completeTask(\"t1\")",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            statement: "tasks.removeTask(\"t1\")",
+            statement: "gg.tasks.removeTask(\"t1\")",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            statement: "project.createEpic(\"epc\", \"E\", \"D\")",
+            statement: "gg.board.createEpic(\"epc\", \"E\", \"D\")",
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: "project.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\", \
+            statement: "gg.board.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\", \
                         reviewers = listOf(\"critic\"))",
             expected: || {
                 json!({
@@ -221,10 +221,10 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: "project.updateIssue(\"i1\", status = IssueStatus.DONE, \
-                        epicId = Patch.Clear)",
+            statement: "gg.board.updateIssue(\"i1\", status = gg.board.IssueStatus.DONE, \
+                        epicId = gg.core.Patch.Clear)",
             expected: || {
-                // `Patch.Clear` on the epic ungroups the issue, which gg's schema spells as the
+                // `gg.core.Patch.Clear` on the epic ungroups the issue, which gg's schema spells as the
                 // empty string; a description the call never mentions keeps the one it has, so its
                 // key is absent.
                 json!({
@@ -240,27 +240,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: "project.setIssueBlockedBy(\"i1\", \"i0\")",
+            statement: "gg.board.setIssueBlockedBy(\"i1\", \"i0\")",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: "project.removeEpic(\"e1\")",
+            statement: "gg.board.removeEpic(\"e1\")",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: "project.removeIssue(\"i1\")",
+            statement: "gg.board.removeIssue(\"i1\")",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: "project.waitForIssue(\"i1\")",
+            statement: "gg.board.waitForIssue(\"i1\")",
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            statement: "context.evictFileView(\"src/a.kt\")",
+            statement: "gg.context.evictFileView(\"src/a.kt\")",
             expected: || json!({ "path": "src/a.kt" }),
         },
         Crossing {
@@ -268,49 +268,49 @@ fn crossings() -> Vec<Crossing> {
             // A span of turns is a **range**, because that is what a span of integers is in this
             // language — and `..<` says the same span the other way, which is the shape a model
             // reaching for an exclusive end writes.
-            statement: "context.archiveThread(4..19, 30..<36)",
+            statement: "gg.context.archiveThread(4..19, 30..<36)",
             expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
         },
         Crossing {
             tool: "search_archive",
-            statement: "context.searchArchive(\"the parser\")",
+            statement: "gg.context.searchArchive(\"the parser\")",
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            statement: "context.compact(\"scaffolded the page\", \"src/Main.kt\")",
+            statement: "gg.context.compact(\"scaffolded the page\", \"src/Main.kt\")",
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/Main.kt"] }),
         },
         Crossing {
             tool: "spawn_subagent",
             // The brief is a sealed type rather than one of two optional arguments, so "both" and
             // "neither" are programs that do not compile.
-            statement: "agents.spawnSubagent(\"subagent\", Brief.Prompt(\"write the lexer\"))",
+            statement: "gg.delegation.spawnSubagent(\"subagent\", gg.delegation.Brief.Prompt(\"write the lexer\"))",
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            statement: "agents.waitForSubagents(\"agent-1\")",
+            statement: "gg.delegation.waitForSubagents(\"agent-1\")",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: "agents.sendMessage(\"agent-1\", \"prefer the simpler parser\")",
+            statement: "gg.delegation.sendMessage(\"agent-1\", \"prefer the simpler parser\")",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: "agents.transitionState(\"verify\", note = \"the build is green\")",
+            statement: "gg.delegation.transitionState(\"verify\", note = \"the build is green\")",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: "agents.exec(\"Builder\", prompt = \"pick it up from here\")",
+            statement: "gg.delegation.exec(\"Builder\", prompt = \"pick it up from here\")",
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: "agents.fork(\"try the other fix\")",
+            statement: "gg.delegation.fork(\"try the other fix\")",
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -367,25 +367,26 @@ fn every_tool_crosses_the_membrane_from_its_kotlin_spelling() {
 fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in_kotlin_too() {
     // The four families that are NOT gg tools, so none of them appears in the crossing table above —
     // and two of them are where a program puts something in front of the model, which makes them the
-    // ones a silent bridging mistake would cost the most. Between this and the table, every function
-    // this arm's catalogue describes has been driven through the real membrane.
+    // ones a silent bridging mistake would cost the most. Between this, the table, and the member
+    // functions driven at the end of this function, every entry this arm's catalogue describes has
+    // been driven through the real membrane.
     let (outcome, log) = run_as(
-        "val text = fs.readTextFile(\"notes.md\", offset = 1, limit = 2)\n\
-         val read = view.openFile(\"notes.md\", offset = 1, limit = 2)\n\
-         view.openText(\"summary\", text)\n\
-         view.openDocsView(\"readFile\")\n\
-         val closed = view.close(\"summary\")\n\
-         val missing = view.close(\"never opened\")\n\
-         val open = view.current()\n\
-         val directory = fs.list()\n\
+        "val text = gg.files.readTextFile(\"notes.md\", offset = 1, limit = 2)\n\
+         val read = gg.views.openFile(\"notes.md\", offset = 1, limit = 2)\n\
+         gg.views.openText(\"summary\", text)\n\
+         gg.views.openDocsView(\"readFile\")\n\
+         val closed = gg.views.close(\"summary\")\n\
+         val missing = gg.views.close(\"never opened\")\n\
+         val open = gg.views.current()\n\
+         val directory = gg.files.list()\n\
          println(open[0].selector + \" \" + open[0].kind)\n\
          println(\"$closed $missing\")\n\
          println(when (read) {\n\
-         \x20   is TextFile -> read.contents.lines()[0]\n\
-         \x20   is ImageFile -> read.label\n\
+         \x20   is gg.files.TextFile -> read.contents.lines()[0]\n\
+         \x20   is gg.files.ImageFile -> read.label\n\
          })\n\
          println(directory.joinToString(\",\") { it.name })\n\
-         harness.finish(\"read the file and showed myself the result\")\n",
+         gg.session.finish(\"read the file and showed myself the result\")\n",
         &all_tools(),
         RunEnding::Role(EndingRole::Standard),
         false,
@@ -420,7 +421,7 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     );
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
+    // `gg.views.openFile` performs. Neither has a tool name of its own, which is exactly the point — a
     // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
@@ -429,17 +430,17 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     );
 
     // The program library is bound from the capability rather than from a tool name, and a reviewer
-    // gets the other ending group and no `harness.finish` at all.
+    // gets the other ending group and no `gg.session.finish` at all.
     let (outcome, _log) = run_as(
-        "val history = programs.history()\n\
+        "val history = gg.programs.history()\n\
          println(history.size.toString())\n\
          try {\n\
-         \x20   programs.get(2)\n\
-         } catch (failure: ToolError) {\n\
+         \x20   gg.programs.get(2)\n\
+         } catch (failure: gg.core.ToolError) {\n\
          \x20   println(failure.code.toString())\n\
          }\n\
-         programs.rerun(\"println(\\\"again\\\")\")\n\
-         review.requestChanges(\"widen the test\", \"name the file\")\n",
+         gg.programs.rerun(\"println(\\\"again\\\")\")\n\
+         gg.session.requestChanges(\"widen the test\", \"name the file\")\n",
         &[],
         RunEnding::Role(EndingRole::Review),
         true,
@@ -460,7 +461,7 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
 
     // The other verdict, which is the same role's other ending.
     let (outcome, _log) = run_as(
-        "review.approve()\n",
+        "gg.session.approve()\n",
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -482,19 +483,96 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
         "{:?}",
         outcome.completion
     );
+
+    // THE MEMBER FUNCTIONS, each called the way its catalogue entry says it is written: on the value
+    // the call before it handed back, with no `import` line anywhere in the program.
+    //
+    // This is the assertion that has to be made by COMPILING rather than by reading. These five were
+    // written as top-level extension functions, which reads as the same thing and is not: an
+    // extension is in scope only where it has been imported, so every one of these five statements
+    // was `unresolved reference` — and nothing else in the suite would have said so, because the
+    // crossing table drives the module-level spelling of the same five operations and passes either
+    // way. What is asserted below is therefore two things at once: that the program compiles at all,
+    // and that each call reaches gg's dispatch under the tool its entry names, with the argument the
+    // receiver was carrying.
+    let (outcome, log) = run_as(
+        "val created = gg.board.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\")\n\
+         println(created.wait())\n\
+         val hits = gg.memories.searchMemories(\"build\")\n\
+         println(hits[0].read())\n\
+         val child = gg.delegation.spawnSubagent(\"subagent\", gg.delegation.Brief.Prompt(\"go\"))\n\
+         child.send(\"prefer the simpler parser\")\n\
+         gg.views.openText(\"scratch\", \"body\")\n\
+         println(gg.views.current()[0].close().toString())\n\
+         try {\n\
+         \x20   gg.programs.ProgramSummary(2, 1, 1, true, null).source()\n\
+         } catch (failure: gg.core.ToolError) {\n\
+         \x20   println(failure.code.toString())\n\
+         }\n",
+        &all_tools(),
+        RunEnding::None,
+        true,
+        canned_outcome,
+    );
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "the member functions did not compile or did not run: {:?}",
+        outcome.result
+    );
+    // Each member carried the receiver's own field across: the issue's id, the hit's slug, the
+    // child's id, and the view's selector. `close` answers `1` because the view it was called on is
+    // the one the line above opened.
+    assert_eq!(
+        logs(&outcome),
+        ["wait registered", "the memory contents", "1", "NOT_FOUND"]
+    );
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" }))
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+
+    // Exhaustive by construction, the way the crossing table is: a sixth member function added to
+    // this arm's SDK fails here rather than shipping as a name nothing has ever called.
+    let kotlin =
+        crate::sandbox::language::language(test_cabinet_core::gg::GgProgramLanguage::Kotlin);
+    let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(kotlin)
+        .iter()
+        .filter(|function| function.receiver.is_some())
+        .filter_map(|function| function.fqn)
+        .collect();
+    catalogued.sort_unstable();
+    assert_eq!(
+        catalogued,
+        [
+            "gg.board.IssueCreated.wait",
+            "gg.delegation.SubagentHandle.send",
+            "gg.memories.MemoryHit.read",
+            "gg.programs.ProgramSummary.source",
+            "gg.views.OpenView.close",
+        ],
+        "every member function this arm catalogues needs a call in the program above"
+    );
 }
 
 #[test]
 fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // The whole of this arm's failure story, and the half of it that is the toolchain's rather than
     // gg's. TeaVM wraps a JavaScript exception crossing into the JVM world in a `RuntimeException` it
-    // prefixes with `(JavaScript) `, so a `catch (failure: ToolError)` would catch NOTHING if the SDK
+    // prefixes with `(JavaScript) `, so a `catch (failure: gg.core.ToolError)` would catch NOTHING if the SDK
     // let the guest's throw propagate. It catches the throw in JavaScript instead and raises a real
     // Kotlin exception, which is what makes the clause below work at all.
     let (outcome, _log) = run_with(
         "try {\n\
-         \x20   fs.readTextFile(\"gone.kt\")\n\
-         } catch (failure: ToolError) {\n\
+         \x20   gg.files.readTextFile(\"gone.kt\")\n\
+         } catch (failure: gg.core.ToolError) {\n\
          \x20   println(\"${failure.code} on ${failure.tool}\")\n\
          }\n\
          println(\"carried on\")\n",
@@ -514,7 +592,7 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // bundle's tail throws those instead of the exception object.
     let (outcome, _log) = run_with(
         "println(\"before\")\n\
-         fs.readTextFile(\"gone.kt\")\n\
+         gg.files.readTextFile(\"gone.kt\")\n\
          println(\"after\")\n",
         &all_tools(),
         |_name: &str, _args: &Value| {
@@ -536,8 +614,8 @@ fn a_failure_is_a_kotlin_exception_whether_it_is_caught_or_not() {
     // A `runCatching` is the other way a Kotlin author reaches a failure, and it works for the same
     // reason: what the SDK raises is an ordinary exception rather than something the bridge wrapped.
     let (outcome, _log) = run_with(
-        "val read = runCatching { fs.readTextFile(\"gone.kt\") }\n\
-         println(read.exceptionOrNull().let { it is ToolError }.toString())\n",
+        "val read = runCatching { gg.files.readTextFile(\"gone.kt\") }\n\
+         println(read.exceptionOrNull().let { it is gg.core.ToolError }.toString())\n",
         &all_tools(),
         |_name: &str, _args: &Value| {
             ToolOutcome::failed(
@@ -556,13 +634,17 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // than a missing name. It carries the code the HOST refuses an out-of-set call with, because gg
     // classifies a turn's error from the code: a capability nobody granted must not be recorded as a
     // name the model got wrong.
-    let (outcome, log) = run_with("fs.readTextFile(\"src/Main.kt\")\n", &[], canned_outcome);
+    let (outcome, log) = run_with(
+        "gg.files.readTextFile(\"src/Main.kt\")\n",
+        &[],
+        canned_outcome,
+    );
     let error = program_error(&outcome);
     // `UnknownName` is what gg makes of an `unavailable` code, whichever side raised it: the two are
     // one fact and one recovery — this run does not offer that call.
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
     assert!(
-        error.message.contains("fs.readTextFile"),
+        error.message.contains("gg.files.readTextFile"),
         "the refusal names the call the model wrote: {}",
         error.message
     );
@@ -572,8 +654,8 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // rather than crash on it.
     let (outcome, _log) = run_with(
         "try {\n\
-         \x20   agents.fork(\"a copy\")\n\
-         } catch (failure: ToolError) {\n\
+         \x20   gg.delegation.fork(\"a copy\")\n\
+         } catch (failure: gg.core.ToolError) {\n\
          \x20   println(failure.code.wireName)\n\
          }\n",
         &[],
@@ -597,7 +679,9 @@ fn the_catalogue_carries_the_defaults_this_arm_expresses_an_optional_argument_as
 
     let mut defaults = 0usize;
     let mut varargs = 0usize;
-    for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
+    // Two arrays rather than six sections: this arm is written in the normalized doc model, where
+    // every model-facing call is one entry and the directory is the one thing beside them.
+    for section in ["functions", "meta"] {
         for entry in document[section].as_array().expect("an array") {
             let shapes = entry["signatures"].as_array().expect("an array");
             assert_eq!(
@@ -614,7 +698,7 @@ fn the_catalogue_carries_the_defaults_this_arm_expresses_an_optional_argument_as
                     .starts_with("vararg ");
                 if vararg {
                     // A `vararg` is optional because naming none is legal, and it is passed by
-                    // POSITION: `memory.searchMemories("a", "b")` names no parameter.
+                    // POSITION: `gg.memories.searchMemories("a", "b")` names no parameter.
                     varargs += 1;
                     assert!(optional, "a vararg may always be given no values");
                     assert_eq!(parameter["kind"], json!("positional"));
@@ -842,7 +926,7 @@ fn a_code_module_is_reached_from_kotlin_rather_than_only_from_javascript() {
     // the lowering each Kotlin value goes through on the way across.
     //
     // [The substrate's own module test](super::substrate) reaches the same namespace from
-    // JavaScript, which is the claim that the guest binds `lib.<key>` at all. This is the different
+    // JavaScript, which is the claim that the guest binds `gg.core.lib.<key>` at all. This is the different
     // claim that Kotlin's own `Lib` reaches it — and it is the claim the study rests on, because
     // `lib` is the surface where [Java's arm](super::super::java) and this one are deliberately
     // alike, so a difference in what a model can do with it would be a difference in the harness
@@ -877,18 +961,18 @@ fun recalled(): String = seen.joinToString("+")
 
     let (outcome, _log) = evaluate_as(
         &match compile_program(
-            r#"println(lib.text("helpers", "greet", "gg"))
-println(lib.number("helpers", "add", 40, 2))
-println(lib.flag("helpers", "negated", false))
-println(lib.text("helpers", "describe", 1.5, listOf(1, 2)))
-println(lib.has("helpers", "greet"))
-println(lib.has("helpers", "absent"))
-lib.run("helpers", "remember", "one")
-lib.run("helpers", "remember", "two")
-println(lib.text("helpers", "recalled"))
+            r#"println(gg.core.lib.text("helpers", "greet", "gg"))
+println(gg.core.lib.number("helpers", "add", 40, 2))
+println(gg.core.lib.flag("helpers", "negated", false))
+println(gg.core.lib.text("helpers", "describe", 1.5, listOf(1, 2)))
+println(gg.core.lib.has("helpers", "greet"))
+println(gg.core.lib.has("helpers", "absent"))
+gg.core.lib.run("helpers", "remember", "one")
+gg.core.lib.run("helpers", "remember", "two")
+println(gg.core.lib.text("helpers", "recalled"))
 try {
-    lib.run("helpers", "absent")
-} catch (failure: ToolError) {
+    gg.core.lib.run("helpers", "absent")
+} catch (failure: gg.core.ToolError) {
     println(failure.code.wireName)
 }
 "#,

@@ -15,10 +15,17 @@ use super::*;
 use crate::sandbox::language::{all_languages, language};
 
 /// The language every comparison is made against — named explicitly, because these assertions are
-/// about *TypeScript's committed catalogue* and not about whichever language happens to be gg's
-/// default.
-fn typescript() -> &'static dyn ProgramLanguage {
-    language(GgProgramLanguage::TypeScript)
+/// about *Swift's committed catalogue* and not about whichever language happens to be gg's default.
+///
+/// It is Swift because the comparative half of this gate reads the five-part identity a
+/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under, and runs over the v1
+/// arms alone (see [`is_v1`](super::is_v1)). Swift is the one arm still written that way, so it is
+/// the one arm the comparison can be made *against*; a reference cut from a converted arm would make
+/// every row below assert nothing. It was TypeScript until TypeScript was converted, and it moves
+/// again — to nothing, because the split goes with it — when the gate is re-founded on the
+/// normalized model.
+fn reference_arm() -> &'static dyn ProgramLanguage {
+    language(GgProgramLanguage::Swift)
 }
 
 /// Every registered language, as the gate takes them.
@@ -141,7 +148,7 @@ fn every_registered_language_names_itself_in_its_catalogue() {
 
 /// **Two languages that differ only in spelling agree.**
 ///
-/// The [fixture](super::super::fixture) is TypeScript's own surface with every name re-spelled in
+/// The [fixture](super::super::fixture) is the reference arm's own surface with every name re-spelled in
 /// snake_case and nothing else touched — the shape a real second arm takes. That the gate passes it
 /// is the assertion that the gate compares *identity*: a gate that compared names would reject this,
 /// and a study could never have two arms at all.
@@ -152,7 +159,7 @@ fn every_registered_language_names_itself_in_its_catalogue() {
 #[test]
 fn a_second_language_that_only_respells_agrees() {
     let fixture = fixture_language();
-    let found = disagreements(&[typescript(), fixture]);
+    let found = disagreements(&[reference_arm(), fixture]);
     assert!(
         found.is_empty(),
         "a re-spelling of the same surface was rejected:{}",
@@ -160,12 +167,12 @@ fn a_second_language_that_only_respells_agrees() {
     );
 
     assert_eq!(
-        identities(typescript()),
+        identities(reference_arm()),
         identities(fixture),
         "the fixture is meant to be the same surface"
     );
 
-    let theirs: Vec<&str> = typescript()
+    let theirs: Vec<&str> = reference_arm()
         .catalogue()
         .tools
         .iter()
@@ -194,11 +201,11 @@ fn a_second_language_that_only_respells_agrees() {
 /// both an incomplete bijection and an identity the other arm has — and pinning the count would make
 /// the test brittle without making it stricter.
 ///
-/// **This is the test that answers "what would fail if a second language's SDK disagreed with
-/// TypeScript's".** Each row is one such disagreement, in the shape a real SDK would produce it.
+/// **This is the test that answers "what would fail if a second language's SDK disagreed with the
+/// reference arm's".** Each row is one such disagreement, in the shape a real SDK would produce it.
 #[test]
 fn a_second_language_that_disagrees_is_caught() {
-    /// One row: what the damage is called, the edit that inflicts it on a copy of TypeScript's
+    /// One row: what the damage is called, the edit that inflicts it on a copy of the reference arm's
     /// catalogue, and a fragment the gate's complaint must contain.
     type Case = (&'static str, Box<dyn FnOnce(&mut Value)>, &'static str);
 
@@ -371,18 +378,32 @@ fn a_second_language_that_disagrees_is_caught() {
                     }
                 }
             }),
-            "documents no arguments for `fs.read_file`, where TypeScript documents some",
+            "documents no arguments for `fs.read_file`, where Swift documents some",
         ),
         (
             "a FIELD of a structured argument with no description",
             Box::new(|document: &mut Value| {
                 for entry in document["tools"].as_array_mut().expect("an array") {
                     if entry["tool"] == json!("read_file") {
-                        entry["signatures"][0]["parameters"][1]["fields"][0]["doc"] = json!("");
+                        // The reference arm spells its read window as two flat optional arguments
+                        // rather than as one record, so the structured shape this row is about is
+                        // built before it is damaged. That is the shape an arm passing a record
+                        // emits, and the rule is that a field of one is documented like any other
+                        // argument — which is a claim about the field, not about whose idiom
+                        // produced it.
+                        entry["signatures"][0]["parameters"][1]["fields"] = json!([{
+                            "name": "limit",
+                            "type": "Int",
+                            "optional": true,
+                            "kind": "keyword",
+                            "default": null,
+                            "doc": "",
+                            "fields": [],
+                        }]);
                     }
                 }
             }),
-            "`offset` has no documentation",
+            "`limit` has no documentation",
         ),
         (
             "an argument the signature does not name",
@@ -397,7 +418,7 @@ fn a_second_language_that_disagrees_is_caught() {
             Box::new(|document: &mut Value| {
                 document["types"][0]["doc"] = json!("");
             }),
-            "the type `ToolError` has no documentation",
+            "the type `AgentStatus` has no documentation",
         ),
         (
             "a type member with no description",
@@ -505,7 +526,7 @@ fn a_second_language_that_disagrees_is_caught() {
 
     for (name, edit, expected) in cases {
         let damaged = a_language_whose_catalogue(edit);
-        let found = disagreements(&[typescript(), damaged]);
+        let found = disagreements(&[reference_arm(), damaged]);
         assert!(
             found
                 .iter()
@@ -548,7 +569,7 @@ fn a_difference_in_spelling_alone_is_never_a_disagreement() {
             }
         }
     });
-    let found = disagreements(&[typescript(), respelled]);
+    let found = disagreements(&[reference_arm(), respelled]);
     assert!(
         found.is_empty(),
         "a re-spelling was reported as a difference in capability:{}",
@@ -568,7 +589,7 @@ fn a_difference_in_spelling_alone_is_never_a_disagreement() {
 /// * renames every argument, the way a language with its own naming convention would; and
 /// * passes them **by name** with a stated default, the way Python and Kotlin do
 ///
-/// must agree with TypeScript's exactly, because it offers the same functions on the same objects
+/// must agree with the reference arm's exactly, because it offers the same functions on the same objects
 /// under the same gates. A gate that rejected this would make an overloading language impossible to
 /// register, which is the failure that matters more than any it prevents.
 #[test]
@@ -589,7 +610,7 @@ fn a_language_that_offers_the_same_capability_in_another_shape_agrees() {
                 ]);
             }
             // Renamed, passed by name, with a default stated in the signature — three idioms
-            // TypeScript has no way to express, and none of them a difference in capability.
+            // Swift has no way to express, and none of them a difference in capability.
             // Only the argument list is rewritten: the head is the function's own name, which is
             // the one part of a signature the gate does read.
             for shape in entry["signatures"].as_array_mut().expect("an array") {
@@ -614,7 +635,7 @@ fn a_language_that_offers_the_same_capability_in_another_shape_agrees() {
         }
     });
 
-    let found = disagreements(&[typescript(), idiomatic]);
+    let found = disagreements(&[reference_arm(), idiomatic]);
     assert!(
         found.is_empty(),
         "a language offering the same capabilities in its own shape was rejected:{}",
@@ -633,8 +654,18 @@ fn a_language_that_offers_the_same_capability_in_another_shape_agrees() {
         2,
         "the overload group must actually carry two shapes"
     );
-    assert_eq!(read_file.signatures[0].parameters.len(), 1);
-    assert_eq!(read_file.signatures[1].parameters.len(), 2);
+    assert_eq!(
+        read_file.signatures[0].parameters.len(),
+        1,
+        "the shape without the window takes the path alone"
+    );
+    // How many arguments the window itself is — one record, or a pair of flat optionals — is the
+    // spelling this whole test says an arm is free to choose, so what is asserted is that the second
+    // shape takes more than the first rather than a count that would pin one arm's idiom.
+    assert!(
+        read_file.signatures[1].parameters.len() > 1,
+        "the shape with the window takes the window's arguments too"
+    );
 }
 
 /// **A language that writes its signatures in ML notation is read correctly, in both directions.**
@@ -670,7 +701,7 @@ fn a_language_that_writes_ml_signatures_is_read_by_its_own_notation() {
             }
         }
     });
-    let found = disagreements(&[typescript(), ml]);
+    let found = disagreements(&[reference_arm(), ml]);
     assert!(
         found.is_empty(),
         "a language whose signatures name no arguments was rejected:{}",
@@ -691,7 +722,7 @@ fn a_language_that_writes_ml_signatures_is_read_by_its_own_notation() {
             }]);
         }
     });
-    let found = disagreements(&[typescript(), silent]);
+    let found = disagreements(&[reference_arm(), silent]);
     assert!(
         found.iter().any(|disagreement| disagreement
             .detail
@@ -710,7 +741,7 @@ fn a_language_that_writes_ml_signatures_is_read_by_its_own_notation() {
             }]);
         }
     });
-    let found = disagreements(&[typescript(), nullary]);
+    let found = disagreements(&[reference_arm(), nullary]);
     assert!(
         found.is_empty(),
         "a nullary ML signature was read as taking an argument:{}",
@@ -725,8 +756,8 @@ fn a_language_that_writes_ml_signatures_is_read_by_its_own_notation() {
 #[test]
 fn the_order_of_the_arms_does_not_decide_the_verdict() {
     let fixture = fixture_language();
-    assert!(disagreements(&[typescript(), fixture]).is_empty());
-    assert!(disagreements(&[fixture, typescript()]).is_empty());
+    assert!(disagreements(&[reference_arm(), fixture]).is_empty());
+    assert!(disagreements(&[fixture, reference_arm()]).is_empty());
 
     let damaged = a_language_whose_catalogue(|document| {
         document["views"]
@@ -734,8 +765,8 @@ fn the_order_of_the_arms_does_not_decide_the_verdict() {
             .expect("an array")
             .truncate(2);
     });
-    assert!(!disagreements(&[typescript(), damaged]).is_empty());
-    assert!(!disagreements(&[damaged, typescript()]).is_empty());
+    assert!(!disagreements(&[reference_arm(), damaged]).is_empty());
+    assert!(!disagreements(&[damaged, reference_arm()]).is_empty());
 }
 
 /// **The gate reads a catalogue, not a component**: it can be run over a surface that has no guest

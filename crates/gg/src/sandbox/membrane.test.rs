@@ -46,13 +46,20 @@ fn the_container_root_is_preopenable_for_every_program() {
 /// Together with its sibling below this is the drift gate on the *source* side. The gate on the
 /// **committed artifact** is `the_component_binds_exactly_the_tools_gg_offers` in `sandbox.test.rs`,
 /// which asks the guest itself; nothing here can catch a stale `.wasm`.
+///
+/// The tools a catalogue offers are read as *the gates its entries carry*, which is the question in
+/// both schemas: an arm that files its calls in a `tools` section and one that files them all in a
+/// flat array agree that a call bought by a gg tool is gated on that tool's own name.
 #[test]
 fn every_bound_tool_is_a_gg_tool_name() {
-    for entry in &crate::sandbox::fake::typescript().catalogue().tools {
+    for function in crate::sandbox::catalogue_functions(crate::sandbox::fake::typescript()) {
+        let Some(tool) = function.gate else {
+            continue;
+        };
         assert!(
-            ALL_TOOL_NAMES.contains(&entry.tool.as_str()),
-            "`{}` is in the sandbox catalogue but is not a gg tool",
-            entry.tool
+            ALL_TOOL_NAMES.contains(&tool),
+            "`{}` is gated on `{tool}`, which is not a gg tool",
+            function.name
         );
     }
 }
@@ -61,15 +68,13 @@ fn every_bound_tool_is_a_gg_tool_name() {
 /// invisible in code mode, which is the drift this catches.
 #[test]
 fn every_gg_tool_name_is_bound() {
-    let catalogue: Vec<&str> = crate::sandbox::fake::typescript()
-        .catalogue()
-        .tools
+    let gated: Vec<&str> = crate::sandbox::catalogue_functions(crate::sandbox::fake::typescript())
         .iter()
-        .map(|entry| entry.tool.as_str())
+        .filter_map(|function| function.gate)
         .collect();
     for name in crate::sandbox::signatures::sandbox_tool_names() {
         assert!(
-            catalogue.contains(&name),
+            gated.contains(&name),
             "`{name}` is a gg tool but the sandbox binds no typed function for it"
         );
     }

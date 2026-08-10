@@ -669,13 +669,14 @@ fn no_language_serves_another_languages_artifacts() {
         "both languages report the same name"
     );
 
+    // Resolved through the normalized projection rather than out of a section, because which
+    // section a call arrives in is what the two schemas disagree about — and the question here is
+    // only whose *spelling* of one call came back.
     let spelling = |language: &'static dyn ProgramLanguage| {
-        language
-            .catalogue()
-            .tools
-            .iter()
-            .find(|entry| entry.tool == "read_file")
-            .map(|entry| entry.name.clone())
+        crate::sandbox::catalogue_functions(language)
+            .into_iter()
+            .find(|function| function.key == "read_file" && function.alias_of.is_none())
+            .map(|function| function.name.to_string())
             .expect("`read_file` is catalogued")
     };
     assert_eq!(spelling(ts), "readFile");
@@ -716,14 +717,25 @@ fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
         .iter()
         .map(|operation| operation.call)
     {
-        let name = functions
-            .iter()
-            .find(|function| function.object == call.object && function.key == call.key)
-            .map(|function| function.name);
+        // Resolved through the operation and quoted with the entry's OWN grouping, for the reason
+        // the registry's version next door is: the fixture is cut from a converted arm, which files
+        // gg's `(object, key)` pair nowhere and groups the call under a module path instead.
+        let entry = functions.iter().find(|function| {
+            function.alias_of.is_none()
+                && crate::sandbox::operation_of(function).is_some_and(|resolved| {
+                    resolved.call.object == call.object && resolved.call.key == call.key
+                })
+        });
         let qualified = crate::sandbox::spell(fixture, call);
         assert_eq!(
             Some(qualified.as_str()),
-            name.map(|name| format!("{}.{name}", call.object))
+            entry
+                .map(|entry| format!(
+                    "{}{}{}",
+                    entry.object,
+                    fixture.member_separator(),
+                    entry.name
+                ))
                 .as_deref(),
             "the fixture quotes `{qualified}`, which its catalogue does not carry"
         );
@@ -749,11 +761,11 @@ fn the_synthesized_file_view_statement_is_the_languages_own() {
 
     assert_eq!(
         typescript().open_file_statement("src/main.ts", None),
-        r#"view.openFile("src/main.ts");"#
+        r#"gg.views.openFile("src/main.ts");"#
     );
     assert_eq!(
         typescript().open_file_statement("src/main.ts", Some(window)),
-        r#"view.openFile("src/main.ts", { offset: 400, limit: 200 });"#
+        r#"gg.views.openFile("src/main.ts", { offset: 400, limit: 200 });"#
     );
 
     let fixture = fixture_language();

@@ -559,8 +559,9 @@ const FOREIGN_MARKER: &str = "(JavaScript) ";
 /// because gg classifies a turn's error from the host's own code. The SDK catches a refusal in
 /// JavaScript and raises a real Kotlin exception so that `catch (failure: ToolError)` works at all;
 /// this records the same three fields on the way past, and the bundle's tail throws that record
-/// instead of the exception object. `ToolError` is named with no package, because this SDK declares
-/// its surface in the root one — which is what makes a program need no `import` at all.
+/// instead of the exception object. `ToolError` is imported from `gg.core`, which is where this SDK
+/// declares the failure every other module raises — an ordinary Java import of a Kotlin class,
+/// because what the classpath holds by then is bytecode.
 ///
 /// Written in Java rather than in Kotlin, which is worth saying because the program it starts is
 /// Kotlin. A Kotlin entry class would have to be compiled by the compiler this class exists to
@@ -576,7 +577,8 @@ fn entry_for_program() -> String {
         })
         .collect();
     format!(
-        "import org.teavm.jso.JSBody;\n\
+        "import gg.core.ToolError;\n\
+         import org.teavm.jso.JSBody;\n\
          \n\
          public final class {entry} {{\n\
          \x20   @JSBody(params = {{\"text\"}}, script = \"$ggMessage = text;\")\n\

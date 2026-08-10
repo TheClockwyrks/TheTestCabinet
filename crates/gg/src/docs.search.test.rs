@@ -43,16 +43,48 @@ fn keys(found: &DocSearch) -> Vec<&str> {
     found.hits.iter().map(|hit| hit.key.as_str()).collect()
 }
 
+/// The key a hit for the function or type **spelled** `name` is filed under.
+///
+/// A query is words and a key is a name, and on an arm reshaped into capability modules those are
+/// two different strings: a model searches for `listDir` and the hit that comes back is keyed
+/// `gg.files.listDir`, which is what a documentation view is opened by. So every expectation below
+/// says which function it means and asks this what that arm files it under.
+///
+/// Resolved out of the same catalogue the search reads rather than written out, so no test here
+/// carries a second copy of how this arm spells its module paths — which is the copy that would
+/// drift the next time an arm is reshaped.
+fn key_of(name: &str) -> String {
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    if let Some(function) = crate::sandbox::catalogue_functions(language)
+        .into_iter()
+        .find(|function| function.name == name)
+    {
+        return function.fqn.unwrap_or(function.name).to_string();
+    }
+    crate::sandbox::type_declaration(language, name)
+        .map(|declared| declared.key().to_string())
+        .unwrap_or_else(|| name.to_string())
+}
+
 /// **A term matches a name as a case-insensitive substring**, which is the requirement in the brief
 /// spelled with the brief's own example: `foobar` finds `getFoobar`.
 #[test]
 fn a_substring_of_a_name_finds_it() {
     let docs = full();
     let found = docs.search(ask("dir")).expect("a usable query");
-    assert!(keys(&found).contains(&"listDir"), "{:?}", keys(&found));
+    let list_dir = key_of("listDir");
+    assert!(
+        keys(&found).contains(&list_dir.as_str()),
+        "{:?}",
+        keys(&found)
+    );
     // Case is not part of the question.
     let shouted = docs.search(ask("LISTDIR")).expect("a usable query");
-    assert!(keys(&shouted).contains(&"listDir"), "{:?}", keys(&shouted));
+    assert!(
+        keys(&shouted).contains(&list_dir.as_str()),
+        "{:?}",
+        keys(&shouted)
+    );
 }
 
 /// A name is matched **folded**, so one query finds the same function under a gg tool name, a
@@ -64,7 +96,7 @@ fn a_name_is_matched_through_its_spelling() {
         let found = docs.search(ask(spelling)).expect("a usable query");
         assert_eq!(
             found.hits.first().map(|hit| hit.key.as_str()),
-            Some("writeFile"),
+            Some(key_of("writeFile").as_str()),
             "`{spelling}` should land on writeFile: {:?}",
             keys(&found)
         );
@@ -79,7 +111,7 @@ fn an_identifier_match_outranks_a_description_match() {
     let found = docs.search(ask("readFile")).expect("a usable query");
     assert_eq!(
         found.hits.first().map(|hit| hit.key.as_str()),
-        Some("readFile"),
+        Some(key_of("readFile").as_str()),
         "an exact name is the surest evidence there is: {:?}",
         keys(&found)
     );
@@ -94,7 +126,10 @@ fn the_tiers_are_ordered_name_then_prefix_then_text() {
     let docs = full();
     let found = docs.search(ask("read")).expect("a usable query");
     let ranked = keys(&found);
-    let at = |name: &str| ranked.iter().position(|key| *key == name);
+    let at = |name: &str| {
+        let key = key_of(name);
+        ranked.iter().position(|found| *found == key)
+    };
     let (prefix, contains) = (
         at("readFile").expect("readFile matched"),
         at("openFile").expect("openFile's documentation mentions reading"),
@@ -115,7 +150,7 @@ fn matching_more_of_the_query_ranks_higher() {
         .expect("a usable query");
     assert_eq!(
         found.hits.first().map(|hit| hit.key.as_str()),
-        Some("searchMemories"),
+        Some(key_of("searchMemories").as_str()),
         "{:?}",
         keys(&found)
     );
@@ -138,9 +173,10 @@ fn a_withheld_function_is_not_findable() {
     let docs = runtime(&["read_file"]);
     let found = docs.search(ask("file")).expect("a usable query");
     let keys = keys(&found);
-    assert!(keys.contains(&"readFile"), "{keys:?}");
+    assert!(keys.contains(&key_of("readFile").as_str()), "{keys:?}");
     assert!(
-        !keys.contains(&"writeFile") && !keys.contains(&"editFile"),
+        !keys.contains(&key_of("writeFile").as_str())
+            && !keys.contains(&key_of("editFile").as_str()),
         "a run that enabled only `read_file` must not advertise the others: {keys:?}"
     );
 }
@@ -152,7 +188,7 @@ fn a_capability_family_is_filtered_by_the_same_predicate() {
     let without = runtime(&[]);
     let found = without.search(ask("program")).expect("a usable query");
     assert!(
-        !keys(&found).contains(&"rerun"),
+        !keys(&found).contains(&key_of("rerun").as_str()),
         "an agent with no program library must not find its calls: {:?}",
         keys(&found)
     );
@@ -163,7 +199,11 @@ fn a_capability_family_is_filtered_by_the_same_predicate() {
         GgProgramLanguage::TypeScript,
     );
     let found = with.search(ask("program")).expect("a usable query");
-    assert!(keys(&found).contains(&"rerun"), "{:?}", keys(&found));
+    assert!(
+        keys(&found).contains(&key_of("rerun").as_str()),
+        "{:?}",
+        keys(&found)
+    );
 }
 
 /// An **ending** call belongs to one role, and a search answers per role like everything else.
@@ -181,7 +221,11 @@ fn an_ending_call_is_findable_only_by_the_role_that_has_it() {
         GgProgramLanguage::TypeScript,
     );
     let found = reviewer.search(ask("approve")).expect("a usable query");
-    assert!(keys(&found).contains(&"approve"), "{:?}", keys(&found));
+    assert!(
+        keys(&found).contains(&key_of("approve").as_str()),
+        "{:?}",
+        keys(&found)
+    );
 }
 
 /// **A type is visible when a function that mentions it is** — and invisible when none is, because
@@ -193,14 +237,18 @@ fn a_type_is_visible_through_the_functions_that_use_it() {
     let found = with_shell
         .search(ask("ShellOutput"))
         .expect("a usable query");
-    assert!(keys(&found).contains(&"ShellOutput"), "{:?}", keys(&found));
+    assert!(
+        keys(&found).contains(&key_of("ShellOutput").as_str()),
+        "{:?}",
+        keys(&found)
+    );
 
     let without_shell = runtime(&["read_file"]);
     let found = without_shell
         .search(ask("ShellOutput"))
         .expect("a usable query");
     assert!(
-        !keys(&found).contains(&"ShellOutput"),
+        !keys(&found).contains(&key_of("ShellOutput").as_str()),
         "no bound function mentions it: {:?}",
         keys(&found)
     );
@@ -321,7 +369,7 @@ fn the_module_filter_accepts_ggs_id_and_this_languages_spelling() {
     let by_path = docs
         .search(DocQuery {
             query: "",
-            module: Some("fs"),
+            module: Some("gg.files"),
             ..DocQuery::default()
         })
         .expect("an empty query with a filter is a directory");
@@ -333,9 +381,13 @@ fn the_module_filter_accepts_ggs_id_and_this_languages_spelling() {
         })
         .expect("an empty query with a filter is a directory");
     assert_eq!(keys(&by_path), keys(&by_id));
-    assert!(keys(&by_path).contains(&"readFile"), "{:?}", keys(&by_path));
     assert!(
-        !keys(&by_path).contains(&"shell"),
+        keys(&by_path).contains(&key_of("readFile").as_str()),
+        "{:?}",
+        keys(&by_path)
+    );
+    assert!(
+        !keys(&by_path).contains(&key_of("shell").as_str()),
         "the filter is exact: {:?}",
         keys(&by_path)
     );
@@ -349,13 +401,28 @@ fn an_empty_query_with_a_filter_is_a_directory() {
     let directory = docs
         .search(DocQuery {
             query: "   ",
-            module: Some("tasks"),
+            module: Some("gg.tasks"),
             limit: Some(MAX_SEARCH_LIMIT),
             ..DocQuery::default()
         })
         .expect("a filter is something to look for");
     assert!(directory.total >= 5, "{:?}", keys(&directory));
-    assert!(directory.hits.iter().all(|hit| hit.module == "tasks"));
+    // Every entry it holds really lives in the module that was asked for. A *function* lives in
+    // exactly one, so for those this is equality; a **type** is attributed to every module whose
+    // calls hand it back, and the two shared error types are raised by all of them — so the claim is
+    // membership in the reported list, which is the same claim for both kinds.
+    assert!(
+        directory
+            .hits
+            .iter()
+            .all(|hit| hit.module.split(", ").any(|module| module == "gg.tasks")),
+        "{:?}",
+        directory
+            .hits
+            .iter()
+            .map(|hit| (hit.key.as_str(), hit.module.as_str()))
+            .collect::<Vec<_>>()
+    );
     assert!(
         directory.hits.iter().any(|hit| hit.kind == DocKind::Type)
             && directory
@@ -388,10 +455,10 @@ fn the_type_filter_returns_the_type_and_what_uses_it() {
         })
         .expect("a filter is something to look for");
     let keys = keys(&found);
-    assert!(keys.contains(&"FileRead"), "{keys:?}");
-    assert!(keys.contains(&"readFile"), "{keys:?}");
+    assert!(keys.contains(&key_of("FileRead").as_str()), "{keys:?}");
+    assert!(keys.contains(&key_of("readFile").as_str()), "{keys:?}");
     assert!(
-        !keys.contains(&"shell"),
+        !keys.contains(&key_of("shell").as_str()),
         "nothing about a shell call mentions it: {keys:?}"
     );
 }

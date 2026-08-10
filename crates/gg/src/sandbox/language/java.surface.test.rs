@@ -89,37 +89,37 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: "system.shell(\"npm test\", 30);",
+            statement: "Shell.shell(\"npm test\", 30);",
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: "fs.readFile(\"src/a.java\", 2, 5);",
+            statement: "Files.readFile(\"src/a.java\", 2, 5);",
             expected: || json!({ "path": "src/a.java", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: "fs.writeFile(\"out.txt\", \"hello\");",
+            statement: "Files.writeFile(\"out.txt\", \"hello\");",
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: "fs.editFile(\"src/a.java\", \"alpha\", \"beta\");",
+            statement: "Files.editFile(\"src/a.java\", \"alpha\", \"beta\");",
             expected: || json!({ "path": "src/a.java", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: "fs.listDir(\"src\");",
+            statement: "Files.listDir(\"src\");",
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            statement: "skills.readSkill(\"testing\");",
+            statement: "Skills.readSkill(\"testing\");",
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            statement: "memory.writeMemory(\"layout\", \"d\", \"b\");",
+            statement: "Memories.writeMemory(\"layout\", \"d\", \"b\");",
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -127,7 +127,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: "memory.updateMemory(\"layout\", \"d2\", \"b2\");",
+            statement: "Memories.updateMemory(\"layout\", \"d2\", \"b2\");",
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -136,46 +136,46 @@ fn crossings() -> Vec<Crossing> {
         Crossing {
             tool: "create_memory",
             // The one crossing that carries a memory's CODE, because Java is the arm where the two
-            // code halves are a typed value rather than two optional arguments: `MemoryCode.of`
+            // code halves are a typed value rather than two optional arguments: `Memories.MemoryCode.of`
             // makes "an on-use script and no module" expressible, which a telescoping overload
             // chain could not have said at all.
-            statement: "memory.createMemory(\"layout\", \"d\", \"b\", \
-                        MemoryCode.of(\"static int one() { return 1; }\", \"view.openText(1);\"));",
+            statement: "Memories.createMemory(\"layout\", \"d\", \"b\", \
+                        Memories.MemoryCode.of(\"static int one() { return 1; }\", \"Views.openText(1);\"));",
             expected: || {
                 json!({ "name": "layout", "description": "d", "contents": "b",
                         "code": "static int one() { return 1; }",
-                        "onUse": "view.openText(1);" })
+                        "onUse": "Views.openText(1);" })
             },
         },
         Crossing {
             tool: "read_memory",
-            statement: "memory.readMemory(\"layout\");",
+            statement: "Memories.readMemory(\"layout\");",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: "memory.editMemory(\"layout\", \"old\", \"new\");",
+            statement: "Memories.editMemory(\"layout\", \"old\", \"new\");",
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: "memory.searchMemories(\"cargo\", \"nextest\");",
+            statement: "Memories.searchMemories(\"cargo\", \"nextest\");",
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: "memory.deleteMemory(\"layout\");",
+            statement: "Memories.deleteMemory(\"layout\");",
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            statement: "tasks.addTask(\"t1\", \"T\", \"D\", List.of(\"t0\"));",
+            statement: "Tasks.addTask(\"t1\", \"T\", \"D\", List.of(\"t0\"));",
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            statement: "tasks.updateTask(\"t1\", new TaskPatch().title(\"T2\")\
-                        .clearDescription().status(TaskStatus.IN_PROGRESS));",
+            statement: "Tasks.updateTask(\"t1\", new Tasks.TaskPatch().title(\"T2\")\
+                        .clearDescription().status(Tasks.TaskStatus.IN_PROGRESS));",
             expected: || {
                 // `clearDescription()` is what CLEARS it — a field the patch was never asked about
                 // is the one that keeps it — and `in_progress` is gg's own spelling, so the
@@ -185,28 +185,28 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            statement: "tasks.setBlockedBy(\"t1\");",
+            statement: "Tasks.setBlockedBy(\"t1\");",
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            statement: "tasks.completeTask(\"t1\");",
+            statement: "Tasks.completeTask(\"t1\");",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            statement: "tasks.removeTask(\"t1\");",
+            statement: "Tasks.removeTask(\"t1\");",
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            statement: "project.createEpic(\"epc\", \"E\", \"D\");",
+            statement: "Board.createEpic(\"epc\", \"E\", \"D\");",
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: "project.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\", \
-                        new IssueOptions().reviewers(\"critic\"));",
+            statement: "Board.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\", \
+                        new Board.IssueOptions().reviewers(\"critic\"));",
             expected: || {
                 json!({
                     "title": "I",
@@ -223,8 +223,8 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: "project.updateIssue(\"i1\", \
-                        new IssuePatch().status(IssueStatus.DONE).clearEpic());",
+            statement: "Board.updateIssue(\"i1\", \
+                        new Board.IssuePatch().status(Board.IssueStatus.DONE).clearEpic());",
             expected: || {
                 // `clearEpic()` ungroups the issue, which gg's schema spells as the empty string; a
                 // description the patch never mentions keeps the one it has, so its key is absent.
@@ -241,27 +241,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: "project.setIssueBlockedBy(\"i1\", \"i0\");",
+            statement: "Board.setIssueBlockedBy(\"i1\", \"i0\");",
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: "project.removeEpic(\"e1\");",
+            statement: "Board.removeEpic(\"e1\");",
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: "project.removeIssue(\"i1\");",
+            statement: "Board.removeIssue(\"i1\");",
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: "project.waitForIssue(\"i1\");",
+            statement: "Board.waitForIssue(\"i1\");",
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            statement: "context.evictFileView(\"src/a.java\");",
+            statement: "Context.evictFileView(\"src/a.java\");",
             expected: || json!({ "path": "src/a.java" }),
         },
         Crossing {
@@ -269,49 +269,49 @@ fn crossings() -> Vec<Crossing> {
             // A span of turns is a record of the two fields the header of every result carries,
             // constructed and passed variadically — which is what a list of spans is in a language
             // with no range literal and a `...` for the trailing one.
-            statement: "context.archiveThread(new TurnRange(4, 19), new TurnRange(30, 35));",
+            statement: "Context.archiveThread(new Context.TurnRange(4, 19), new Context.TurnRange(30, 35));",
             expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
         },
         Crossing {
             tool: "search_archive",
-            statement: "context.searchArchive(\"the parser\");",
+            statement: "Context.searchArchive(\"the parser\");",
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            statement: "context.compact(\"scaffolded the page\", \"src/Main.java\");",
+            statement: "Context.compact(\"scaffolded the page\", \"src/Main.java\");",
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/Main.java"] }),
         },
         Crossing {
             tool: "spawn_subagent",
             // The brief is a typed value rather than one of two optional arguments, so "both" and
             // "neither" are programs that do not compile.
-            statement: "agents.spawnSubagent(\"subagent\", Brief.prompt(\"write the lexer\"));",
+            statement: "Delegation.spawnSubagent(\"subagent\", Delegation.Brief.prompt(\"write the lexer\"));",
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            statement: "agents.waitForSubagents(\"agent-1\");",
+            statement: "Delegation.waitForSubagents(\"agent-1\");",
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: "agents.sendMessage(\"agent-1\", \"prefer the simpler parser\");",
+            statement: "Delegation.sendMessage(\"agent-1\", \"prefer the simpler parser\");",
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: "agents.transitionState(\"verify\", \"the build is green\");",
+            statement: "Delegation.transitionState(\"verify\", \"the build is green\");",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: "agents.exec(\"Builder\", \"pick it up from here\");",
+            statement: "Delegation.exec(\"Builder\", \"pick it up from here\");",
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: "agents.fork(\"try the other fix\");",
+            statement: "Delegation.fork(\"try the other fix\");",
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -368,26 +368,27 @@ fn every_tool_crosses_the_membrane_from_its_java_spelling() {
 fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in_java_too() {
     // The four families that are NOT gg tools, so none of them appears in the crossing table above —
     // and two of them are where a program puts something in front of the model, which makes them the
-    // ones a silent bridging mistake would cost the most. Between this and the table, every function
-    // this arm's catalogue describes has been driven through the real membrane.
+    // ones a silent bridging mistake would cost the most. Between this, the table, and the member
+    // functions driven at the end of this function, every entry this arm's catalogue describes has
+    // been driven through the real membrane.
     let (outcome, log) = run_as(
-        "String text = fs.readTextFile(\"notes.md\", 1, 2);\n\
-         FileRead read = view.openFile(\"notes.md\", 1, 2);\n\
-         view.openText(\"summary\", text);\n\
-         view.openDocsView(\"readFile\");\n\
-         int closed = view.close(\"summary\");\n\
-         int missing = view.close(\"never opened\");\n\
-         List<OpenView> open = view.current();\n\
-         List<FunctionSummary> directory = fs.list();\n\
+        "String text = Files.readTextFile(\"notes.md\", 1, 2);\n\
+         Files.FileRead read = Views.openFile(\"notes.md\", 1, 2);\n\
+         Views.openText(\"summary\", text);\n\
+         Views.openDocsView(\"readFile\");\n\
+         int closed = Views.close(\"summary\");\n\
+         int missing = Views.close(\"never opened\");\n\
+         List<Views.OpenView> open = Views.current();\n\
+         List<FunctionSummary> directory = Files.list();\n\
          System.out.println(open.get(0).selector() + \" \" + open.get(0).kind());\n\
          System.out.println(closed + \" \" + missing);\n\
          System.out.println(switch (read) {\n\
-         \x20   case TextFile file -> file.contents().split(\"\\n\")[0];\n\
-         \x20   case ImageFile picture -> picture.label();\n\
+         \x20   case Files.TextFile file -> file.contents().split(\"\\n\")[0];\n\
+         \x20   case Files.ImageFile picture -> picture.label();\n\
          });\n\
          System.out.println(directory.stream().map(FunctionSummary::name)\n\
          \x20       .collect(Collectors.joining(\",\")));\n\
-         harness.finish(\"read the file and showed myself the result\");\n",
+         Session.finish(\"read the file and showed myself the result\");\n",
         &all_tools(),
         RunEnding::Role(EndingRole::Standard),
         false,
@@ -433,12 +434,12 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     // The program library is bound from the capability rather than from a tool name, and a reviewer
     // gets the other ending group and no `harness.finish` at all.
     let (outcome, _log) = run_as(
-        "List<ProgramSummary> history = programs.history();\n\
+        "List<Programs.ProgramSummary> history = Programs.history();\n\
          System.out.println(String.valueOf(history.size()));\n\
-         try { programs.get(2); }\n\
+         try { Programs.get(2); }\n\
          catch (ToolError failure) { System.out.println(failure.code().toString()); }\n\
-         programs.rerun(\"System.out.println(\\\"again\\\");\");\n\
-         review.requestChanges(\"widen the test\", \"name the file\");\n",
+         Programs.rerun(\"System.out.println(\\\"again\\\");\");\n\
+         Session.requestChanges(\"widen the test\", \"name the file\");\n",
         &[],
         RunEnding::Role(EndingRole::Review),
         true,
@@ -459,7 +460,7 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
 
     // The other verdict, which is the same role's other ending.
     let (outcome, _log) = run_as(
-        "review.approve();\n",
+        "Session.approve();\n",
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -481,6 +482,75 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
         "{:?}",
         outcome.completion
     );
+
+    // THE MEMBER FUNCTIONS, each called the way its catalogue entry says it is written: on the value
+    // the call before it handed back. They are the five entries the crossing table cannot reach,
+    // because each is an ALIAS of a tool the table already drives from its module spelling — so
+    // without this, the five names a model is shown would be the five nothing ever executed.
+    let (outcome, log) = run_as(
+        "Board.IssueCreated created = Board.createIssue(\"I\", \"s\", \"o\", \"c\", \"worker\");\n\
+         System.out.println(created.await());\n\
+         List<Memories.MemoryHit> hits = Memories.searchMemories(\"build\");\n\
+         System.out.println(hits.get(0).read());\n\
+         Delegation.SubagentHandle child =\n\
+         \x20       Delegation.spawnSubagent(\"subagent\", Delegation.Brief.prompt(\"go\"));\n\
+         child.send(\"prefer the simpler parser\");\n\
+         Views.openText(\"scratch\", \"body\");\n\
+         System.out.println(Views.current().get(0).close());\n\
+         try {\n\
+         \x20   new Programs.ProgramSummary(2, 1, 1, true, Optional.empty()).source();\n\
+         } catch (ToolError failure) {\n\
+         \x20   System.out.println(failure.code());\n\
+         }\n",
+        &all_tools(),
+        RunEnding::None,
+        true,
+        canned_outcome,
+    );
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "the member functions did not compile or did not run: {:?}",
+        outcome.result
+    );
+    // Each member carried the receiver's own component across: the issue's id, the hit's slug, the
+    // child's id, and the view's selector. `close` answers `1` because the view it was called on is
+    // the one the line above opened.
+    assert_eq!(
+        logs(&outcome),
+        ["wait registered", "the memory contents", "1", "NOT_FOUND"]
+    );
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" }))
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+
+    // Exhaustive by construction, the way the crossing table is: a sixth member function added to
+    // this arm's SDK fails here rather than shipping as a name nothing has ever called.
+    let mut catalogued: Vec<&str> = crate::sandbox::catalogue_functions(java_language())
+        .iter()
+        .filter(|function| function.receiver.is_some())
+        .filter_map(|function| function.fqn)
+        .collect();
+    catalogued.sort_unstable();
+    assert_eq!(
+        catalogued,
+        [
+            "gg.board.Board.IssueCreated#await",
+            "gg.delegation.Delegation.SubagentHandle#send",
+            "gg.memories.Memories.MemoryHit#read",
+            "gg.programs.Programs.ProgramSummary#source",
+            "gg.views.Views.OpenView#close",
+        ],
+        "every member function this arm catalogues needs a call in the program above"
+    );
 }
 
 #[test]
@@ -492,7 +562,7 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
     // exception, which is what makes the clause below work at all.
     let (outcome, _log) = run_with(
         "try {\n\
-         \x20   fs.readTextFile(\"gone.java\");\n\
+         \x20   Files.readTextFile(\"gone.java\");\n\
          } catch (ToolError failure) {\n\
          \x20   System.out.println(failure.code() + \" on \" + failure.tool());\n\
          }\n\
@@ -513,7 +583,7 @@ fn a_failure_is_a_java_exception_whether_it_is_caught_or_not() {
     // bundle's tail throws those instead of the Java object.
     let (outcome, _log) = run_with(
         "System.out.println(\"before\");\n\
-         fs.readTextFile(\"gone.java\");\n\
+         Files.readTextFile(\"gone.java\");\n\
          System.out.println(\"after\");\n",
         &all_tools(),
         |_name: &str, _args: &Value| {
@@ -540,7 +610,11 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // rather than a missing name. It carries the code the HOST refuses an out-of-set call with,
     // because gg classifies a turn's error from the code: a capability nobody granted must not be
     // recorded as a name the model got wrong.
-    let (outcome, log) = run_with("fs.readTextFile(\"src/Main.java\");\n", &[], canned_outcome);
+    let (outcome, log) = run_with(
+        "Files.readTextFile(\"src/Main.java\");\n",
+        &[],
+        canned_outcome,
+    );
     let error = program_error(&outcome);
     // `UnknownName` is what gg makes of an `unavailable` code, whichever side raised it: the two are
     // one fact and one recovery — this run does not offer that call.
@@ -555,7 +629,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // The same refusal is catchable, which is what makes a program able to probe its own surface
     // rather than crash on it.
     let (outcome, _log) = run_with(
-        "try { agents.fork(\"a copy\"); }\n\
+        "try { Delegation.fork(\"a copy\"); }\n\
          catch (ToolError failure) { System.out.println(failure.code().wireName()); }\n",
         &[],
         canned_outcome,
@@ -599,7 +673,7 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         serde_json::from_str(SIGNATURES).expect("the committed Java catalogue is valid JSON");
 
     let mut groups = 0usize;
-    for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
+    for section in ["meta", "functions"] {
         for entry in document[section].as_array().expect("an array") {
             let shapes = entry["signatures"].as_array().expect("an array");
             if shapes.len() < 2 {
@@ -629,7 +703,7 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
     // And not one argument on this arm is passed by NAME: Java has no keyword arguments, so every
     // one of them is positional, and a `kind` of `keyword` here would mean the reflector had
     // invented a shape the language does not have.
-    for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
+    for section in ["meta", "functions"] {
         for entry in document[section].as_array().expect("an array") {
             for shape in entry["signatures"].as_array().expect("an array") {
                 for parameter in shape["parameters"].as_array().expect("an array") {
@@ -879,11 +953,11 @@ fn a_code_module_is_reached_from_java_rather_than_only_from_javascript() {
 
     let (outcome, _log) = evaluate_as(
         &match compile_program(
-            "System.out.println(lib.text(\"helpers\", \"greet\", \"gg\"));\n\
-             System.out.println(String.valueOf(lib.number(\"helpers\", \"add\", 40, 2)));\n\
-             System.out.println(String.valueOf(lib.has(\"helpers\", \"greet\")));\n\
-             System.out.println(String.valueOf(lib.has(\"helpers\", \"absent\")));\n\
-             try { lib.run(\"helpers\", \"absent\"); }\n\
+            "System.out.println(Lib.text(\"helpers\", \"greet\", \"gg\"));\n\
+             System.out.println(String.valueOf(Lib.number(\"helpers\", \"add\", 40, 2)));\n\
+             System.out.println(String.valueOf(Lib.has(\"helpers\", \"greet\")));\n\
+             System.out.println(String.valueOf(Lib.has(\"helpers\", \"absent\")));\n\
+             try { Lib.run(\"helpers\", \"absent\"); }\n\
              catch (ToolError failure) { System.out.println(failure.code().wireName()); }\n",
             &PrepareContext::new(),
         ) {

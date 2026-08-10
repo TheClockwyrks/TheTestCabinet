@@ -54,7 +54,8 @@ CLASSPATH="$(find "$LIBS" -name '*.jar' | sort | tr '\n' ':')"
 	-quiet \
 	-o "$WORK/java.signatures.json" \
 	--libraries "$HERE/libraries.txt" \
-	gg
+	-subpackages gg \
+	-exclude gg.internal
 
 mv "$WORK/java.signatures.json" "$OUT"
 echo "wrote $OUT ($(wc -c <"$OUT") bytes)"

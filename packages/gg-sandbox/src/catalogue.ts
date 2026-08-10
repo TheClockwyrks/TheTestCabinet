@@ -1,237 +1,230 @@
 /**
- * The map from gg's tool names to this SDK's functions — pure data, with no membrane imports.
+ * What this guest needs in order to build a program's surface — and nothing a model ever reads.
  *
- * Three consumers read it, which is why it is data rather than a `switch` somewhere:
+ * It is deliberately much smaller than it was. Every fact about what a function is *called*, what it
+ * *does*, which module it lives in and which gg operation it binds is now written on the declaration
+ * itself — the module it is declared in, its export, its JSDoc, its `@ggop` — so none of that is
+ * here. What is left is the one thing a declaration cannot state, because it is not a fact about this
+ * SDK at all: **what buys a call at run time**.
  *
- * 1. **The shim**, to bind a scope. Only the entries whose gg tool name is enabled for the run
- *    become names in the evaluated program, so a withheld tool is an undefined identifier rather
- *    than a call that travels to the host to be refused.
- * 2. **`boundTools()`**, the component's second export, which gg calls in a unit test to prove the
- *    *committed artifact* still covers every tool gg offers. That is the one drift check that
- *    catches a stale `.wasm` rather than a stale source file.
- * 3. **`tools/signatures.mjs`**, which reflects each entry's declaration and JSDoc out of the
- *    emitted `.d.ts` into `crates/gg/src/sandbox/guests/typescript.signatures.json` — the catalogue
- *    gg renders the system prompt from for *this* language.
+ * gg owns that. Its operations table says whether an operation is bought by a gg tool, by a
+ * capability, by a role's ending, or by nothing. The guest is told only the three run facts the host
+ * passes to `run` — the enabled tool names, the ending role, and whether this agent keeps a program
+ * library — so it needs its own reading of the same question to decide which functions a program is
+ * given. That reading is below.
  *
- * It holds one entry per name in `ALL_TOOL_NAMES` (`crates/gg/src/tools/mod.rs`) — there is no
- * class of gg tool a program is denied — and gg asserts exactly that:
- * `boundTools() == ALL_TOOL_NAMES`.
- *
- * The order is `ALL_TOOL_NAMES`' order, so the prompt lists tools in the same sequence gg documents
- * them everywhere else.
- *
- * The model-facing functions that **end a session** ({@link SESSION_ENTRIES}), the ones that put
- * material into the agent's own **context window** ({@link VIEW_ENTRIES}) and the ones that reach
- * back into the **program library** ({@link PROGRAM_ENTRIES}) are deliberately in none of these
- * arrays. None of them is a gg tool, and cataloguing them as ones would break the very bijection
- * consumer 2 exists to check. What they carry instead is a `key`.
- *
- * ## `key`: identity, as against spelling
- *
- * A gg tool carries its own identity — `tool` is its name in `ALL_TOOL_NAMES`, and every language's
- * guest catalogues the same set of them. The model-facing functions that are **not** gg tools have
- * no such name, so each of them carries a `key` instead: a stable, language-independent identity
- * that a sibling guest for another language uses for the same function, however that language
- * spells it. `requestChanges` and `request_changes` are one function under two spellings, and `key`
- * is what says so — which is what lets gg assert that two registered languages offer the *same*
- * surface and differ only in how a program writes it.
- *
- * The keys are `snake_case` because they are gg's own vocabulary, the casing its tool names, its
- * capability ids and its telemetry values already use — deliberately not any one SDK's spelling.
+ * It is **not** the enforcement, and it is not asserted in the signature catalogue either. The host
+ * refuses a withheld call whichever name a program used to reach it, and the committed catalogue
+ * carries no gate at all, because a gate an arm asserted would be an arm asserting something only gg
+ * can be held to. What is here decides the *surface* a model is shown, which is a different and much
+ * weaker claim.
  */
 
-/** One tool: gg's name for it, this SDK's function name, and the module that exports it. */
-export interface CatalogueEntry {
-  /** The gg tool name, as it appears in `ALL_TOOL_NAMES` and in a run's enabled-tool set. */
-  tool: string;
-  /** The exported function name a program calls. */
-  js: string;
-  /** The `src/tools/` module that exports it, without the extension. */
-  module: string;
-}
-
-// The API objects a program's surface is divided into, each declared with the one sentence a model
-// is told about it.
-//
-// The name is the identifier a program calls through; the doc comment above it is the object's
-// MODEL-FACING description, reflected into the catalogue's `objects` section by
-// `tools/signatures.mjs` and rendered into the system prompt's API list. It is written HERE, on the
-// declaration, for the same reason every function's description is written on the function: a
-// description kept in a table somewhere else is a description that drifts from the thing it
-// describes, and nothing would catch it.
-//
-// They are constants rather than string literals inside `OBJECT_FOR_MODULE` so that the declaration
-// a doc comment hangs on and the value the catalogue is keyed by are the same thing. The sentences
-// are lower-case fragments because of where they land: `- \`fs\` — read, write, and edit workspace
-// files`.
-
-/** read, write, and edit workspace files */
-export const OBJECT_FS = "fs";
-
-/** run shell commands in the workspace */
-export const OBJECT_SYSTEM = "system";
-
-/** the epic/issue board — decompose work into dispatchable issues */
-export const OBJECT_PROJECT = "project";
-
-/** your task list */
-export const OBJECT_TASKS = "tasks";
-
-/** durable memories that survive context compaction */
-export const OBJECT_MEMORY = "memory";
+/** The gg module ids this SDK is divided into, in the order the surface is presented in. */
+export type ModuleId =
+  | "files"
+  | "shell"
+  | "board"
+  | "tasks"
+  | "memories"
+  | "views"
+  | "context"
+  | "delegation"
+  | "skills"
+  | "programs"
+  | "session"
+  | "core";
 
 /**
- * show yourself a file, a value, or a function's documentation — the only way material enters your
- * context
+ * Every capability module, in the order a program's surface is presented in.
+ *
+ * The ids are gg's own module vocabulary — the same namespaces its operation ids are built on — so
+ * this tuple is the join between `gg.files` the TypeScript module and `files.read_file` the gg
+ * operation. The order is model-facing: it is the sequence the system prompt lists modules in and the
+ * sequence the run's agent surface reports, running from the modules almost every run has to the ones
+ * a particular shape of agent has.
+ *
+ * `core` is last and carries no function at all: it holds the types every other module's signatures
+ * name, so it is a module for the sake of the names its types are qualified by.
  */
-export const OBJECT_VIEW = "view";
-
-/** manage your own context window */
-export const OBJECT_CONTEXT = "context";
-
-/** delegate work to child agents */
-export const OBJECT_AGENTS = "agents";
-
-/** read authored skills */
-export const OBJECT_SKILLS = "skills";
-
-/** fetch a program you already ran, and hand a patched copy back to be run */
-export const OBJECT_PROGRAMS = "programs";
-
-/** end your session */
-export const OBJECT_HARNESS = "harness";
-
-/** return your verdict on the work you are reviewing */
-export const OBJECT_REVIEW = "review";
+export const MODULE_ORDER: readonly ModuleId[] = [
+  "files",
+  "shell",
+  "board",
+  "tasks",
+  "memories",
+  "views",
+  "context",
+  "delegation",
+  "skills",
+  "programs",
+  "session",
+  "core",
+];
 
 /**
- * The **API object** each module's functions are grouped under in a program's scope.
+ * The object a program reaches every module through, and therefore the stem of every fully-qualified
+ * name.
  *
- * A program does not receive flat identifiers (`readFile`, `createIssue`, …). It receives a small
- * set of namespaced objects — `fs.readFile`, `project.createIssue` — one per module that offers at
- * least one enabled function, so the surface a model has to reason about is a handful of objects
- * rather than thirty loose names. The shim ({@link "./shim.js"}) builds those objects from this map;
- * a module absent here would have its functions dropped, so every module in {@link TOOL_CATALOGUE}
- * (plus `session`, which carries `finish`) must appear.
- *
- * The names are model-facing product surface, chosen for what a model already expects the object to
- * mean: `fs` for the workspace filesystem, `system` for running commands, `project` for the
- * epic/issue board, `agents` for delegation, `harness` for the calls that are about the session
- * itself rather than the workspace (today just `finish`).
- *
- * The role-shaped ending object — `review` — is named on {@link SESSION_ENTRIES}
- * instead, because they are grouped by *role* rather than by module: all three groups are exported
- * by the one `session` module.
- *
- * `views` maps to the singular `view` for the same reason `files` maps to `fs`: the object name is
- * read at a call site, and `view.openText(...)` states an intent about one thing where
- * `views.openText(...)` would read like a collection being mutated. `programs` keeps its plural for
- * the mirror reason: it *is* a collection, and `programs.get(12)` reads as reaching into one.
+ * `gg.files.readFile` is both the key a documentation view is opened by and a path a program can
+ * write, which is the whole reason the modules are real TypeScript modules bound under one namespace
+ * rather than a set of objects assembled at run time.
  */
-export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
-  shell: OBJECT_SYSTEM,
-  files: OBJECT_FS,
-  skills: OBJECT_SKILLS,
-  memories: OBJECT_MEMORY,
-  tasks: OBJECT_TASKS,
-  board: OBJECT_PROJECT,
-  context: OBJECT_CONTEXT,
-  delegation: OBJECT_AGENTS,
-  session: OBJECT_HARNESS,
-  views: OBJECT_VIEW,
-  programs: OBJECT_PROGRAMS,
+export const SURFACE = "gg";
+
+/**
+ * The **API object** each module's functions used to hang off, kept for two readers and no third.
+ *
+ * The first is gg's own documentation directory: the host answers `list` under either the module path
+ * or this name, and the guest asks with this one because it is the only name the *other* arms sharing
+ * this component build their objects under.
+ *
+ * The second is the PureScript arm, which compiles to a bundle this same component evaluates and
+ * resolves these as free identifiers. Its SDK is its own — `Gg.Files`, `Gg.Views` — and the names
+ * below are the lowering it was written against, so removing one would break an arm this package does
+ * not own.
+ *
+ * `session` maps to whichever object the bound ending group belongs to, which is decided per program
+ * rather than here, so it is deliberately absent.
+ */
+export const LEGACY_GROUPING: Readonly<Partial<Record<ModuleId, string>>> = {
+  files: "fs",
+  shell: "system",
+  board: "project",
+  tasks: "tasks",
+  memories: "memory",
+  views: "view",
+  context: "context",
+  delegation: "agents",
+  skills: "skills",
+  programs: "programs",
+};
+
+/** The legacy grouping the `standard` ending group hangs off, for the two readers above. */
+export const LEGACY_STANDARD_ENDING = "harness";
+
+/** The legacy grouping the `review` ending group hangs off, for the two readers above. */
+export const LEGACY_REVIEW_ENDING = "review";
+
+/**
+ * Every gg tool, in `ALL_TOOL_NAMES` order.
+ *
+ * This is gg's tool vocabulary rather than this SDK's, and the guest carries it for exactly one
+ * reason: `boundTools` answers the component's second export with it, and gg compares that answer
+ * against its own `ALL_TOOL_NAMES` on the **committed artifact**. It is the one drift check that
+ * catches a stale `.wasm` rather than a stale source file, so a tool added, renamed or removed in gg
+ * fails against the binary that would otherwise silently not implement it.
+ */
+export const GG_TOOLS: readonly string[] = [
+  "shell",
+  "read_file",
+  "write_file",
+  "edit_file",
+  "list_dir",
+  "read_skill",
+  "write_memory",
+  "update_memory",
+  "create_memory",
+  "read_memory",
+  "edit_memory",
+  "search_memories",
+  "delete_memory",
+  "add_task",
+  "update_task",
+  "set_blocked_by",
+  "complete_task",
+  "remove_task",
+  "create_epic",
+  "create_issue",
+  "update_issue",
+  "set_issue_blocked_by",
+  "remove_epic",
+  "remove_issue",
+  "wait_for_issue",
+  "evict_file_view",
+  "archive_thread",
+  "search_archive",
+  "compact",
+  "spawn_subagent",
+  "wait_for_subagents",
+  "send_message",
+  "transition_state",
+  "exec",
+  "fork",
+];
+
+/**
+ * Every operation a gg **tool** buys, and which tool buys it.
+ *
+ * Three of these are not one-to-one, and each says something real. `files.read_text_file` is a helper
+ * rather than a tool of its own, so it is bought by the read it is built on; `views.open_file`
+ * performs that same read on the way to showing the file, so a run with reading withheld must not get
+ * one through a side door. Everything else names the tool that shares its key.
+ */
+export const TOOL_BOUND: Readonly<Record<string, string>> = {
+  "shell.shell": "shell",
+  "files.read_file": "read_file",
+  "files.read_text_file": "read_file",
+  "files.write_file": "write_file",
+  "files.edit_file": "edit_file",
+  "files.list_dir": "list_dir",
+  "skills.read_skill": "read_skill",
+  "memories.write_memory": "write_memory",
+  "memories.update_memory": "update_memory",
+  "memories.create_memory": "create_memory",
+  "memories.read_memory": "read_memory",
+  "memories.edit_memory": "edit_memory",
+  "memories.search_memories": "search_memories",
+  "memories.delete_memory": "delete_memory",
+  "tasks.add_task": "add_task",
+  "tasks.update_task": "update_task",
+  "tasks.set_blocked_by": "set_blocked_by",
+  "tasks.complete_task": "complete_task",
+  "tasks.remove_task": "remove_task",
+  "board.create_epic": "create_epic",
+  "board.create_issue": "create_issue",
+  "board.update_issue": "update_issue",
+  "board.set_issue_blocked_by": "set_issue_blocked_by",
+  "board.remove_epic": "remove_epic",
+  "board.remove_issue": "remove_issue",
+  "board.wait_for_issue": "wait_for_issue",
+  "context.evict_file_view": "evict_file_view",
+  "context.archive_thread": "archive_thread",
+  "context.search_archive": "search_archive",
+  "context.compact": "compact",
+  "delegation.spawn_subagent": "spawn_subagent",
+  "delegation.wait_for_subagents": "wait_for_subagents",
+  "delegation.send_message": "send_message",
+  "delegation.transition_state": "transition_state",
+  "delegation.exec": "exec",
+  "delegation.fork": "fork",
+  "views.open_file": "read_file",
 };
 
 /**
- * Every API object, in the order a program's surface is listed in.
+ * The operations nothing gates, bound into every program whatever a run enables.
  *
- * The order is model-facing: it is the sequence the system prompt's API list renders in, and the
- * sequence the run's [agent surface](https://docs.testcabinet.ai/gg/agent-surface/) reports. It runs
- * from the objects almost every run has (`fs`, `system`) to the ones a particular shape of agent has
- * (`programs`, `harness`, `review`), because a model reads a list from the top.
- *
- * `tools/signatures.mjs` walks it to emit the catalogue's `objects` section, taking each object's
- * description from the doc comment on the constant above rather than from a table of prose — so the
- * sentence a model reads about `fs` is written where `fs` is declared, and there is nowhere else for
- * a second copy of it to live.
+ * The same carve-out the endings have, and for the same reason: a run that offers no tools at all
+ * must still be able to show its model something, and must always be able to read what the functions
+ * it does have do.
  */
-export const OBJECT_ORDER: readonly string[] = [
-  OBJECT_FS,
-  OBJECT_SYSTEM,
-  OBJECT_PROJECT,
-  OBJECT_TASKS,
-  OBJECT_MEMORY,
-  OBJECT_VIEW,
-  OBJECT_CONTEXT,
-  OBJECT_AGENTS,
-  OBJECT_SKILLS,
-  OBJECT_PROGRAMS,
-  OBJECT_HARNESS,
-  OBJECT_REVIEW,
+export const ALWAYS_BOUND: readonly string[] = [
+  "views.open_text",
+  "views.open_docs_view",
+  "views.close",
+  "views.current",
 ];
 
 /**
- * A helper bound alongside a tool: not a tool itself, so it can never perturb the
- * `ALL_TOOL_NAMES` bijection, but bound into scope and catalogued for the prompt whenever the tool
- * it is built on is enabled.
- */
-export interface HelperEntry {
-  /** This helper's language-independent identity, as every guest catalogues it. */
-  key: string;
-  /** The exported function name a program calls. */
-  js: string;
-  /** The gg tool it is built on; the helper is bound only when that tool is enabled. */
-  requires: string;
-}
-
-/** Every gg tool a program can call, in `ALL_TOOL_NAMES` order. */
-export const TOOL_CATALOGUE: readonly CatalogueEntry[] = [
-  { tool: "shell", js: "shell", module: "shell" },
-  { tool: "read_file", js: "readFile", module: "files" },
-  { tool: "write_file", js: "writeFile", module: "files" },
-  { tool: "edit_file", js: "editFile", module: "files" },
-  { tool: "list_dir", js: "listDir", module: "files" },
-  { tool: "read_skill", js: "readSkill", module: "skills" },
-  { tool: "write_memory", js: "writeMemory", module: "memories" },
-  { tool: "update_memory", js: "updateMemory", module: "memories" },
-  { tool: "create_memory", js: "createMemory", module: "memories" },
-  { tool: "read_memory", js: "readMemory", module: "memories" },
-  { tool: "edit_memory", js: "editMemory", module: "memories" },
-  { tool: "search_memories", js: "searchMemories", module: "memories" },
-  { tool: "delete_memory", js: "deleteMemory", module: "memories" },
-  { tool: "add_task", js: "addTask", module: "tasks" },
-  { tool: "update_task", js: "updateTask", module: "tasks" },
-  { tool: "set_blocked_by", js: "setBlockedBy", module: "tasks" },
-  { tool: "complete_task", js: "completeTask", module: "tasks" },
-  { tool: "remove_task", js: "removeTask", module: "tasks" },
-  { tool: "create_epic", js: "createEpic", module: "board" },
-  { tool: "create_issue", js: "createIssue", module: "board" },
-  { tool: "update_issue", js: "updateIssue", module: "board" },
-  { tool: "set_issue_blocked_by", js: "setIssueBlockedBy", module: "board" },
-  { tool: "remove_epic", js: "removeEpic", module: "board" },
-  { tool: "remove_issue", js: "removeIssue", module: "board" },
-  { tool: "wait_for_issue", js: "waitForIssue", module: "board" },
-  { tool: "evict_file_view", js: "evictFileView", module: "context" },
-  { tool: "archive_thread", js: "archiveThread", module: "context" },
-  { tool: "search_archive", js: "searchArchive", module: "context" },
-  { tool: "compact", js: "compact", module: "context" },
-  { tool: "spawn_subagent", js: "spawnSubagent", module: "delegation" },
-  { tool: "wait_for_subagents", js: "waitForSubagents", module: "delegation" },
-  { tool: "send_message", js: "sendMessage", module: "delegation" },
-  { tool: "transition_state", js: "transitionState", module: "delegation" },
-  { tool: "exec", js: "exec", module: "delegation" },
-  { tool: "fork", js: "fork", module: "delegation" },
-];
-
-/**
- * Every helper bound alongside a tool.
+ * The operations the program-library **capability** buys, all together or not at all.
  *
- * Deliberately one entry. Reading a file's text is the single most common thing a program does, and
- * forcing a variant narrowing on it is friction on the hot path; everything else a "standard
- * library" might add is another name in the prompt and another thing for a model to get wrong.
+ * No tool name stands for this family, which is why the host passes a flag rather than a name in the
+ * enabled set.
  */
-export const HELPER_CATALOGUE: readonly HelperEntry[] = [
-  { key: "read_text_file", js: "readTextFile", requires: "read_file" },
+export const LIBRARY_BOUND: readonly string[] = [
+  "programs.history",
+  "programs.get",
+  "programs.rerun",
 ];
 
 /**
@@ -240,174 +233,79 @@ export const HELPER_CATALOGUE: readonly HelperEntry[] = [
  * `"none"` is the arm an **on-use script** runs under — the code a skill or a memory runs when the
  * agent first reads it. That script is not the agent's turn, so it must not be able to declare the
  * session over, and the way that is made true is the way every withheld call is: the name is not in
- * its scope. No {@link SESSION_ENTRIES} entry carries it, so the loop that binds them binds nothing.
+ * its scope.
  */
 export type EndingKind = "standard" | "review" | "none";
 
-/** One model-facing ending function: what it is called, where it is grouped, and which role has it. */
-export interface SessionEntry {
-  /** This ending's language-independent identity, as every guest catalogues it. */
-  key: string;
-  /** The exported function name a program calls. */
-  js: string;
-  /** The API object it is grouped under in a program's scope. */
-  object: string;
-  /** The role whose programs it is bound for. Exactly one group is bound per program. */
-  ending: EndingKind;
-}
-
 /**
- * Every model-facing function that ends a session — none of them a gg tool.
+ * The operations a **role's ending** buys, by the role whose programs get them.
  *
- * They are here rather than in {@link TOOL_CATALOGUE} because they have no gg tool names: putting
- * them there would break the bijection `boundTools() == ALL_TOOL_NAMES` that the committed
- * component is checked against.
- *
- * An ending is a **result**, and a role's result has a shape: work reports what was done, a review
- * returns a verdict. So there is one function per shape, each carrying
- * exactly what that result is made of, and the shim binds only the group matching the `ending` the
- * host passed to `run`. A reviewer's program has no `finish` in scope at all — not a `finish` the
- * host refuses — which is the same capability model the tools use.
- *
- * Two consumers, the same two the catalogue has: the shim binds these into a program's scope, and
- * `tools/signatures.mjs` reflects each declaration and its JSDoc out of `session`'s emitted `.d.ts`
- * so the prompt can teach a model the ending it is actually held to.
+ * Exactly one role's group is bound per program, because an ending is a result and a role's result
+ * has a shape: work reports what was done, a review returns a verdict.
  */
-export const SESSION_ENTRIES: readonly SessionEntry[] = [
-  { key: "finish", js: "finish", object: OBJECT_HARNESS, ending: "standard" },
-  { key: "approve", js: "approve", object: OBJECT_REVIEW, ending: "review" },
-  { key: "request_changes", js: "requestChanges", object: OBJECT_REVIEW, ending: "review" },
-];
-
-/** The module every {@link SESSION_ENTRIES} function is exported by. */
-export const SESSION_MODULE = "session";
-
-/** One model-facing view function: what it is called, and the gg tool (if any) that gates it. */
-export interface ViewEntry {
-  /** This view function's language-independent identity, as every guest catalogues it. */
-  key: string;
-  /** The exported function name a program calls. */
-  js: string;
-  /**
-   * The gg tool whose being enabled binds it, or `undefined` when nothing gates it.
-   *
-   * Deliberately the same shape {@link HelperEntry.requires} has, and read the same way by the shim:
-   * a gated view function is bound exactly when its tool is, an ungated one always.
-   */
-  requires?: string;
-}
-
-/**
- * Every model-facing view function — the calls that put material into the agent's own context
- * window. None of them is a gg tool.
- *
- * They are here rather than in {@link TOOL_CATALOGUE} for the same reason {@link SESSION_ENTRIES}
- * are: they have no gg tool names, so cataloguing them as tools would break the bijection
- * `boundTools() == ALL_TOOL_NAMES` that the committed component is checked against — and *making*
- * them tools would hand a native tool-calling session an `open_file_view` that duplicates
- * `read_file`, which on that path already arrives as an attributable message.
- *
- * `openText`, `openDocsView`, `close` and `current` are **ungated**, the carve-out `harness` has and
- * for the same reason: a run that enables no tools at all must still be able to show its model
- * something — and must always be able to read what the functions it does have do.
- * `openFile` is a read, so it carries `requires: "read_file"` — a run with reading withheld must not
- * get a read through a side door.
- *
- * The same two consumers the other arrays have: the shim binds these into a program's scope, and
- * `tools/signatures.mjs` reflects each declaration and its JSDoc out of `views`' emitted `.d.ts` so
- * the prompt and `fn.docs()` describe the surface the component really exports.
- */
-export const VIEW_ENTRIES: readonly ViewEntry[] = [
-  { key: "open_file", js: "openFile", requires: "read_file" },
-  { key: "open_text", js: "openText" },
-  { key: "open_docs_view", js: "openDocsView" },
-  { key: "close", js: "close" },
-  { key: "current", js: "current" },
-];
-
-/** The module every {@link VIEW_ENTRIES} function is exported by. */
-export const VIEW_MODULE = "views";
-
-/**
- * Every model-facing function on the **program library** — the object a program reaches back through
- * for the source of a program it already ran. None of them is a gg tool.
- *
- * They are here rather than in {@link TOOL_CATALOGUE} for the reason {@link SESSION_ENTRIES} and
- * {@link VIEW_ENTRIES} are: they have no gg tool names, so cataloguing them as tools would break the
- * `boundTools() == ALL_TOOL_NAMES` bijection the committed component is checked against.
- *
- * They carry no gate at all, unlike {@link VIEW_ENTRIES}, because the whole object is bound or
- * absent together, from the `library` flag the host passes to {@link "./shim.js".run}: a *capability*
- * decides this family, and no tool name stands for it.
- */
-export const PROGRAM_ENTRIES: readonly string[] = ["history", "get", "rerun"];
-
-/** The module every {@link PROGRAM_ENTRIES} function is exported by. */
-export const PROGRAM_MODULE = "programs";
-
-/**
- * Each {@link PROGRAM_ENTRIES} function's language-independent `key`, by the name this SDK calls it.
- *
- * A **side table** rather than a property on the entries, unlike {@link SESSION_ENTRIES},
- * {@link VIEW_ENTRIES} and {@link HELPER_CATALOGUE}, and the reason is mechanical rather than
- * aesthetic. {@link "./shim.js".run} iterates `PROGRAM_ENTRIES` to bind the object, and the shim is
- * compiled into the **committed** `typescript.component.wasm`. Adding a property to entries the shim
- * only reads by name costs nothing; changing the *shape* of what it iterates would leave the
- * committed binary unreproducible from its own sources until someone hand-ran `build.sh`. Nothing
- * gates that, so the catalogue's own metadata stays out of the shim's way.
- *
- * Read only by `tools/signatures.mjs`.
- */
-export const PROGRAM_KEYS: Readonly<Record<string, string>> = {
-  history: "history",
-  get: "get",
-  rerun: "rerun",
+export const ENDING_BOUND: Readonly<Record<string, EndingKind>> = {
+  "session.finish": "standard",
+  "session.approve": "review",
+  "session.request_changes": "review",
 };
 
-/** One model-facing **meta** function: what it is called, and the identity every guest shares. */
-export interface MetaEntry {
-  /** This function's language-independent identity, as every guest catalogues it. */
-  key: string;
-  /** The exported declaration whose signature and JSDoc describe the bound form. */
-  js: string;
-}
-
 /**
- * Every model-facing function that belongs to **no API object** — because it belongs to all of them.
+ * The name every module's directory function is bound under.
  *
- * `list` is the whole of it: {@link "./shim.js".buildScope} seeds it onto every object it creates,
- * bound from {@link "./tools/docs.js".listFunctions} with that object's name closed over, so its
- * bound arity is zero and there is no one object it hangs off. That is why it is a section of its
- * own rather than an entry in {@link VIEW_ENTRIES} or {@link TOOL_CATALOGUE}: an entry there carries
- * an `object`, and any object this one named would be a lie about the other eleven.
- *
- * It is catalogued all the same, and that is the point. Its signature and its documentation are what
- * a model reads when it looks the function up, and everything a model reads about this SDK is
- * reflected from the declaration it describes — a meta function documented in a `const` on the host
- * side would be the one description in the surface that no gate could compare against the code.
+ * It is the one model-facing call with no gg operation behind it: the shim seeds it onto each module
+ * object with that module's own name closed over, so it belongs to all of them and to none.
  */
-export const META_ENTRIES: readonly MetaEntry[] = [{ key: "list", js: "list" }];
-
-/** The module every {@link META_ENTRIES} declaration lives in. */
-export const META_MODULE = "docs";
+export const LIST_FUNCTION = "list";
 
 /**
  * The scope object a program reaches its loaded **code modules** through: the code of a skill or a
  * memory it has read, bound at `lib.<name>`.
  *
- * It is not an API object and carries no `list()`: nothing here is a gg function, the members are
- * whatever the skill or memory exported, and the host already told the model which key each one got
- * and what it exports when it answered the read. It is bound only when at least one module was
- * handed over, so a run with none has no `lib` identifier at all.
+ * It is not a capability module and carries no `list`: nothing there is a gg function, the members
+ * are whatever the skill or memory exported, and the host already said which key each one got and
+ * what it exports when it answered the read. It is bound only when at least one module was handed
+ * over, so a run with none has no `lib` identifier at all.
  */
 export const LIB_OBJECT = "lib";
 
 /**
+ * The name the shared `ToolError` class is bound under, beside its qualified `gg.core.ToolError`.
+ *
+ * Both, because `catch (error) { if (error instanceof ToolError) … }` is the shape the prompt teaches
+ * and a qualified name in a `catch` reads as ceremony, while the qualified one is what a
+ * documentation view is keyed by.
+ */
+export const TOOL_ERROR = "ToolError";
+
+/**
  * The non-enumerable key every bound function carries the name gg knows it by under, so
- * `view.openDocsView(fs.readFile)` can be spelled with the function rather than with a string.
+ * `gg.views.openDocsView(gg.files.readFile)` can be spelled with the function rather than a string.
  *
  * A `Symbol` rather than a property name so it is invisible to a model iterating an object, and here
- * rather than in the shim because both the shim (which writes it) and `tools/views.ts` (which reads
- * it) need the identical symbol.
+ * rather than in the shim because both the shim (which writes it) and `gg/views.ts` (which reads it)
+ * need the identical symbol.
  */
 export const DOCS_NAME = Symbol("gg.docsName");
+
+/**
+ * The exported name that implements one gg operation, derived from the operation's own key.
+ *
+ * Deriving rather than tabulating is what keeps the operation id written in exactly one place. gg's
+ * keys are `snake_case` because they are gg's vocabulary; this SDK's exports are `camelCase` because
+ * they are TypeScript's, and the two are one transformation apart. `tools/signatures.mjs` checks the
+ * derivation against every declaration's own `@ggop`, so a key that does not name its function is a
+ * build failure rather than a call that quietly fails to bind.
+ */
+export function exportedName(key: string): string {
+  return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
+/** The module half of an operation id, which is the module the function is declared in. */
+export function moduleOf(operation: string): ModuleId {
+  return operation.slice(0, operation.indexOf(".")) as ModuleId;
+}
+
+/** The key half of an operation id, which is what {@link exportedName} turns into an export. */
+export function keyOf(operation: string): string {
+  return operation.slice(operation.indexOf(".") + 1);
+}

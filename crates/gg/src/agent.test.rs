@@ -1598,11 +1598,11 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
     });
     // The file and shell objects are present (the minimal set binds their tools); the harness object
     // always is. The prompt teaches discovery, not a tool list.
-    assert!(full.contains("`fs`"), "{full}");
-    assert!(full.contains("`system`"), "{full}");
-    assert!(full.contains("`harness`"), "{full}");
+    assert!(full.contains("`gg.files`"), "{full}");
+    assert!(full.contains("`gg.shell`"), "{full}");
+    assert!(full.contains("`gg.session`"), "{full}");
     assert!(full.contains(".list()"), "{full}");
-    assert!(full.contains("view.openDocsView"), "{full}");
+    assert!(full.contains("gg.views.openDocsView"), "{full}");
     // No tool function is spelled out in the prompt.
     assert!(!full.contains("writeFile"), "{full}");
     assert!(!full.contains("write_file"), "{full}");
@@ -1617,9 +1617,9 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
         program_language: Some(GgProgramLanguage::TypeScript),
         ..runtimes.inputs(&empty_registry)
     });
-    assert!(empty.contains("`harness`"), "{empty}");
-    assert!(!empty.contains("`fs`"), "{empty}");
-    assert!(!empty.contains("`system`"), "{empty}");
+    assert!(empty.contains("`gg.session`"), "{empty}");
+    assert!(!empty.contains("`gg.files`"), "{empty}");
+    assert!(!empty.contains("`gg.shell`"), "{empty}");
 }
 
 /// **An unowned module says nothing in the system prompt.**
@@ -1812,7 +1812,10 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
         .collect();
     assert_eq!(
         assistant,
-        vec!["view.openFile(\"SPEC.md\");\nview.openFile(\"reference/title.png\");".to_string()],
+        vec![
+            "gg.views.openFile(\"SPEC.md\");\ngg.views.openFile(\"reference/title.png\");"
+                .to_string()
+        ],
         "one program opens every spec, in order"
     );
 

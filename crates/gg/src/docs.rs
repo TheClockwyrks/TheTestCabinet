@@ -784,12 +784,25 @@ fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
 /// The declaration alone says what fields a record has and nothing about what any of them *means*,
 /// and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm carries no type
 /// of its own — the arm is the value — so it is rendered as the bare literal.
+///
+/// Both the type's paragraph and each member's line are read through [`Prose`] rather than off the
+/// `doc` field they used to be, because that field is the shape a
+/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue writes and a
+/// [`V2`](crate::sandbox::SchemaVersion::V2) one omits entirely. Reaching for it directly renders a
+/// converted arm's every type view as a declaration with nothing under it — the one half of a type
+/// view a model cannot reconstruct for itself.
 fn declare(declaration: &'static TypeDeclaration) -> String {
-    let mut text = format!("{}\n{}", declaration.declaration, declaration.doc);
+    let mut text = format!(
+        "{}\n{}",
+        declaration.declaration,
+        declaration.prose().rendered()
+    );
     for member in &declaration.members {
+        let prose = member.prose();
+        let documented = prose.rendered();
         match &member.r#type {
-            Some(kind) => text.push_str(&format!("\n  {}: {kind} — {}", member.name, member.doc)),
-            None => text.push_str(&format!("\n  {} — {}", member.name, member.doc)),
+            Some(kind) => text.push_str(&format!("\n  {}: {kind} — {documented}", member.name)),
+            None => text.push_str(&format!("\n  {} — {documented}", member.name)),
         }
     }
     text

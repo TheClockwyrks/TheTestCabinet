@@ -145,8 +145,8 @@ fn program_faults_are_reported_not_trapped() {
         error.message
     );
     assert!(
-        error.message.contains("system") && error.message.contains("harness"),
-        "the model must be told which objects it does have: {}",
+        error.message.contains("gg.shell") && error.message.contains("gg.session"),
+        "the model must be told which modules it does have: {}",
         error.message
     );
     assert!(

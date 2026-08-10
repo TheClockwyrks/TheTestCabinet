@@ -52,22 +52,16 @@ public static partial class Delegation
 
     /// <summary>Wait for every outstanding child, and collect their results.</summary>
     /// <remarks>
-    /// This blocks while it waits, and the run's wall-clock budget keeps running while it does.
+    /// This blocks while it waits, and the run's wall-clock budget keeps running while it does, so
+    /// one wait for many children costs far less than one wait per child.
     /// </remarks>
     /// <returns>one result per child, in the order they were collected.</returns>
-    /// <exception cref="ToolException">
-    /// <see cref="ToolErrorCode.NotFound"/> for an id this agent never spawned, when ids are named.
-    /// </exception>
     /// <ggop>delegation.wait_for_subagents</ggop>
     public static IReadOnlyList<SubagentResult> WaitForSubagents() => Collect(null);
 
     /// <summary>Wait for the named children, and collect their results.</summary>
-    /// <remarks>
-    /// This blocks while it waits, and the run's wall-clock budget keeps running while it does.
-    /// Called with no ids at all, it waits for every outstanding child instead.
-    /// </remarks>
     /// <param name="ids">The child ids to wait for, as <see cref="SpawnSubagent"/> handed them back.</param>
-    /// <returns>one result per named child.</returns>
+    /// <returns>one result per named child, in the order they were collected.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.NotFound"/> for an id this agent never spawned.
     /// </exception>

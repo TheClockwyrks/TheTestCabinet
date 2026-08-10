@@ -1,0 +1,77 @@
+/**
+ * Run shell commands in the workspace.
+ *
+ * One function, and the way a program reaches everything gg has no tool for: a build, a test run,
+ * `git`, `curl`, a package manager. The workspace is the working directory.
+ *
+ * A non-zero exit is a result rather than a failure, because deciding whether a build or a test run
+ * passed is the single most common thing a program does with one.
+ *
+ * @ggmodule shell
+ */
+package gg.shell
+
+import gg.core.FunctionSummary
+import gg.core.ToolError
+import gg.internal.Read
+import gg.internal.ggArgs
+import gg.internal.ggCall
+import gg.internal.ggNumber
+import gg.internal.ggRecord
+import gg.internal.ggSet
+import gg.internal.ggText
+import gg.internal.systemObject
+
+/**
+ * List the functions this module offers, each with a one-line summary.
+ *
+ * Only the functions this run actually bound are returned, so the directory never names a call the
+ * program cannot make. One function's full signature, argument descriptions and types are opened as a
+ * view with `gg.views.openDocsView`.
+ *
+ * @return every function this module really bound, each with one line saying what it does
+ */
+public fun list(): List<FunctionSummary> =
+    Read.functionSummaries(ggCall("list", systemObject(), "gg.shell", "list", ggArgs()))
+
+/**
+ * Run a command with `sh -c` in the workspace and hand back its merged output.
+ *
+ * A non-zero exit is not a failure: [ShellOutput.exitCode] carries it. Only a process that could not
+ * be launched, or one the timeout killed, raises.
+ *
+ * This run may offload shell output, and the `shell` tool's own description says which mode is in
+ * force. Under `offload`, [ShellOutput.output] holds only the tail that fits and ends with a note
+ * naming the two files the command's full standard output and standard error were written to. Under
+ * `adaptive`, the default, a command that succeeded returns no output at all beyond that note, and
+ * one that failed returns the tail. Grepping the named files is cheaper than running the command
+ * again.
+ *
+ * @ggop shell.shell
+ * @param command The command line, run by `sh -c` with the workspace as its working directory.
+ * @param timeoutSecs How long to let it run, in seconds, before killing it, clamped to whatever is
+ *   left of the run's wall-clock budget. Left out, gg's default of 120 applies.
+ * @return what the command printed, and how it exited
+ * @throws ToolError `LIMIT_EXCEEDED` when the timeout killed the process, and `IO_ERROR` when it
+ *   could not be launched.
+ */
+public fun run(command: String, timeoutSecs: Int? = null): ShellOutput {
+    val args =
+        if (timeoutSecs == null) {
+            ggArgs(ggText(command))
+        } else {
+            val options = ggRecord()
+            ggSet(options, "timeoutSecs", ggNumber(timeoutSecs))
+            ggArgs(ggText(command), options)
+        }
+    return Read.shellOutput(ggCall("shell", systemObject(), "gg.shell", "shell", args))
+}
+
+/**
+ * What a command reported when it finished.
+ *
+ * @property exitCode The process's exit status; `null` when a signal killed it. Zero means success.
+ * @property output Merged standard output then standard error, tail-truncated at 16 KiB.
+ * @property truncated Whether the cap cut `output`, dropping the head and keeping the tail.
+ */
+public data class ShellOutput(val exitCode: Int?, val output: String, val truncated: Boolean)

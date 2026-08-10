@@ -270,7 +270,7 @@ fn read_file_returns_image_metadata_without_showing_the_picture() {
     assert!(
         image
             .not_shown_reason
-            .is_some_and(|why| why.contains("view.openFile")),
+            .is_some_and(|why| why.contains("gg.views.openFile")),
         "the descriptor has to name the call that would show it"
     );
 }

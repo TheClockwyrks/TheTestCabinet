@@ -64,20 +64,38 @@ Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
 
 ### Your APIs
 
-Your program is given these objects, each grouping the functions of one
-capability. Call a function using `<object>.<function>(args...)`.
+Your program is given these modules, each grouping the functions and the types of
+one capability. Call one with `<module>.<function>(args...)`.
 
 {{#each apis}}
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what an object holds, and they reach you by different routes.
+**gg's own surface needs no import.** Every module above is already bound in your
+program's scope under `gg`, so `{{api.fs.read_file.call}}(path)` is a call you can
+write as it stands, and that path is also the name the documentation is keyed by.
+A module is reachable only through `gg`, which is deliberate: `files` and `board`
+are names you will want for your own variables, and they are yours.
 
-`<object>.{{meta.list.name}}()` **returns** an object's functions to your program, each as
+gg does seed a few short names of its own into that scope — `gg`, `ToolError` and
+`lib` among them — and your program is evaluated as the body of a function whose
+parameters those names are, so redeclaring one is a `SyntaxError` that ends the
+turn before a line of it runs. A top-level `const` named for what it holds, rather
+than for a bare capability word, will not hit one.
+
+Each module owns the types it produces, so a type belongs to the module that
+hands it back — `gg.files.FileRead`, `gg.tasks.TaskStatus`, `gg.views.OpenView` —
+and two modules are free to declare a type of the same name. Every type is
+aliased bare for the type checker too, so a signature that writes `FileRead` is
+one you can copy.
+
+Two calls tell you what a module holds, and they reach you by different routes.
+
+`<module>.{{meta.list.name}}()` **returns** a module's functions to your program, each as
 `{ name, summary }`. It is an ordinary return value, so it puts nothing in front
 of you on its own: to read it yourself you must open a view of it, exactly as you
 would any other value your program computed —
-`{{api.view.open_text.call}}("fs", JSON.stringify(fs.{{meta.list.name}}()))`.
+`{{api.view.open_text.call}}("files", JSON.stringify(gg.files.{{meta.list.name}}()))`.
 
 `{{api.view.open_docs_view.signature}}` **opens a view** directly, of one function's full
 signature, documentation, and the types it uses. Pass the function itself
@@ -213,7 +231,7 @@ A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{#if tasks}}
 ## Tasks
 
-You have access to a task list on the `tasks` object. Use `{{api.tasks.add_task.call}}` to add
+You have access to a task list in the `gg.tasks` module. Use `{{api.tasks.add_task.call}}` to add
 work, `{{api.tasks.update_task.call}}` to update a task's data, `{{api.tasks.complete_task.call}}` to mark a
 task as completed, and `{{api.tasks.remove_task.call}}` to drop a task. At most
 {{tasks.maxTasks}} may be recorded.
@@ -240,8 +258,9 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-You have access to a shared project board, reached through the `project` object,
-that you and other agents may use. This board is shared across the entire run.
+You have access to a shared project board, reached through the `gg.board`
+module, that you and other agents may use. This board is shared across the entire
+run.
 
 Use epics to group related issues. Epics are used exclusively for organizational
 purposes and can be created using `{{api.project.create_epic.call}}`. Issues represent units

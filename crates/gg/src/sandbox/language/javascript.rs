@@ -184,7 +184,7 @@ impl ProgramLanguage for JavaScript {
         &PROMPT
     }
 
-    /// [`view.openFile("src/main.js");`](super::typescript::open_file_statement), with the name
+    /// [`gg.views.openFile("src/main.js");`](super::typescript::open_file_statement), with the name
     /// resolved from **this** language's catalogue.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         typescript::open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)

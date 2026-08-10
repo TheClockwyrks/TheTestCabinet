@@ -187,4 +187,84 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "and the throw stopped the program, so the line after it never ran: {:?}",
         outcome.logs
     );
+
+    // 4. THE DOCUMENTED SPELLING, which is the one nothing above uses. `fs` and `view` are legacy
+    // grouping names that appear in no catalogue and that no model is ever shown; they are bound for
+    // the sibling arms whose compiled bundles resolve them as free identifiers. What a model reads is
+    // `gg.<module>.<function>`, and until this ran, the surface every test executed was the one no
+    // model is shown and the surface every model is shown was the one nothing executed — so a
+    // regression in the shim's module wiring would have left this suite green and every real program
+    // dead with a `ReferenceError`.
+    //
+    // One call per bound module, the module directory every module carries, and the one gg name
+    // bound bare.
+    let (outcome, log) = run(concat!(
+        "gg.views.openText(\"scratch\", gg.files.readTextFile(\"notes.md\"));\n",
+        "gg.shell.shell(\"ls\");\n",
+        "gg.board.createEpic({ prefix: \"epc\", title: \"E\", description: \"D\" });\n",
+        "gg.tasks.addTask({ id: \"t1\", title: \"T\" });\n",
+        "gg.memories.readMemory(\"layout\");\n",
+        "gg.context.compact(\"done\");\n",
+        "gg.delegation.sendMessage(\"agent-1\", \"more\");\n",
+        "gg.skills.readSkill(\"testing\");\n",
+        "console.log(gg.files.list().map((f) => f.name).join(\",\"));\n",
+        "try {\n",
+        "  gg.files.readTextFile(42);\n",
+        "} catch (error) {\n",
+        "  console.log(String(error instanceof ToolError));\n",
+        "}\n",
+        "gg.session.finish(\"drove the documented spelling\");\n",
+    ));
+    assert!(
+        matches!(&outcome.result, Ok(result) if result.error.is_none()),
+        "the documented spelling did not run: {:?}",
+        outcome.result
+    );
+    assert_eq!(
+        log.names(),
+        [
+            "read_file",
+            "shell",
+            "create_epic",
+            "add_task",
+            "read_memory",
+            "compact",
+            "send_message",
+            "read_skill",
+        ],
+        "every module reached gg's dispatch from its `gg.`-qualified spelling"
+    );
+    // A view is not a tool call, so `gg.views.openText` shows up here rather than in the log above.
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| view.selector.as_str())
+            .collect::<Vec<_>>(),
+        ["scratch"],
+        "`gg.views.openText` opened the view its documented spelling names"
+    );
+    // The directory a module hands its own program, and the bare `ToolError` a `catch` narrows on —
+    // the two things the prompt teaches that are not a tool call.
+    let lines = logs(&outcome);
+    assert_eq!(
+        lines[0], "fsFunction",
+        "`gg.files.list()` answered with this module's own directory, which the host keys by the \
+         grouping the module was seeded with"
+    );
+    assert_eq!(
+        lines[1], "true",
+        "`ToolError` is bound bare, so `instanceof` narrows a caught failure"
+    );
+    assert!(
+        matches!(
+            outcome
+                .completion
+                .as_ref()
+                .map(|completion| &completion.ending),
+            Some(crate::ending::Ending::Finished { .. })
+        ),
+        "the ending group is reached by its documented spelling too: {:?}",
+        outcome.completion
+    );
 }

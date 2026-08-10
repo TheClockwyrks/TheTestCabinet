@@ -328,7 +328,7 @@ fn a_rejection_with_no_changes_is_refused() {
             "the identity field is gg's own name for the call, as it is for every bound tool"
         );
         assert!(
-            refused.message.contains("`review.approve`"),
+            refused.message.contains("`gg.session.approve`"),
             "the instruction is TypeScript's spelling: {}",
             refused.message
         );
@@ -365,7 +365,7 @@ fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
     ] {
         assert_eq!(refused.code, ErrorCode::Unavailable);
         assert!(
-            refused.message.contains("harness.finish"),
+            refused.message.contains("gg.session.finish"),
             "it is told which ending it does have: {}",
             refused.message
         );
@@ -385,8 +385,8 @@ fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
     assert_eq!(refused.code, ErrorCode::Unavailable);
     assert_eq!(refused.tool, FINISH_FUNCTION);
     assert!(
-        refused.message.contains("review.approve")
-            && refused.message.contains("review.requestChanges"),
+        refused.message.contains("gg.session.approve")
+            && refused.message.contains("gg.session.requestChanges"),
         "it is told which endings it does have: {}",
         refused.message
     );
@@ -412,10 +412,10 @@ fn a_refusal_names_the_endings_the_way_this_program_would_write_them() {
         .expect_err("a reviewer does not finish");
 
     assert!(
-        refused.message.contains("harness.finish")
-            && refused.message.contains("review.approve")
-            && refused.message.contains("review.requestChanges"),
-        "TypeScript's own spellings, qualified by object: {}",
+        refused.message.contains("gg.session.finish")
+            && refused.message.contains("gg.session.approve")
+            && refused.message.contains("gg.session.requestChanges"),
+        "TypeScript's own spellings, qualified by the module it groups them under: {}",
         refused.message
     );
     assert!(

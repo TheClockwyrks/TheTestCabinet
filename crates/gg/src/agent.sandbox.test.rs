@@ -299,8 +299,8 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     );
     let fs = apis
         .iter()
-        .find(|api| api.object == "fs")
-        .expect("the `fs` object the program composed its calls on");
+        .find(|api| api.object == "gg.files")
+        .expect("the `gg.files` module the program composed its calls on");
     assert_eq!(
         fs.functions
             .iter()
