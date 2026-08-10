@@ -1,7 +1,6 @@
 //! Thin **git helpers** backing gg's isolated workspace copies and their merge-back: the
 //! per-[issue](https://docs.testcabinet.ai/gg/project-management/) worktree every dispatched issue
-//! agent works in, and the per-attempt worktrees a
-//! [speculation](https://docs.testcabinet.ai/gg/speculative-execution/) fans out.
+//! agent works in, its reviewers read, and its merge agent folds back.
 //!
 //! gg runs inside the run container next to the seeded workspace, so rather than reimplement
 //! git it **shells out** to the `git` binary already present in the run image. This module wraps
@@ -10,15 +9,14 @@
 //! - [`ensure_baseline`] makes the workspace a git repository (if it is not one already) and
 //!   returns the **baseline commit** — the seeded workspace committed verbatim;
 //! - [`add_worktree`] creates a fresh worktree on a new branch (an isolated copy the agents working
-//!   that issue — or that speculation attempt — mutate on their own);
+//!   that issue mutate on their own);
 //! - [`commit_worktree`] stages and commits whatever an agent produced onto its branch;
-//! - [`diff_since`] renders the full patch a speculation's judge scores, and [`diff_stat_since`] the
-//!   per-file summary a reviewer is pointed at its own worktree with;
-//! - [`merge_branch`] merges that branch back into the main tree, either **aborting** a conflict
-//!   (the speculation path, where a losing attempt is simply dropped) or **leaving it in the tree**
-//!   for the [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) to resolve
-//!   (the issue path), with [`merge_in_progress`] and [`abort_merge`] to check on and undo that
-//!   resolution; and
+//! - [`diff_stat_since`] renders the per-file summary a reviewer is pointed at its own worktree
+//!   with — deliberately the map and not the patch;
+//! - [`merge_branch`] merges that branch back into the main tree, either **aborting** a conflict or
+//!   — as the issue path chooses — **leaving it in the tree** for the
+//!   [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) to resolve, with
+//!   [`merge_in_progress`] and [`abort_merge`] to check on and undo that resolution; and
 //! - [`remove_worktree`] tears the worktree and its branch down — run in **every** case (merge,
 //!   conflict, or discard), so no isolated copy is ever left behind.
 //!
@@ -36,7 +34,7 @@
 //!
 //! And git takes real time here, because these commands walk the whole workspace. A run whose model
 //! has done an `npm install` has tens of thousands of untracked files in the tree, and the
-//! `git add -A` behind [`commit_worktree`], [`diff_since`] and [`diff_stat_since`] must hash every
+//! `git add -A` behind [`commit_worktree`] and [`diff_stat_since`] must hash every
 //! one of them: **5.7 s measured** on a 33,000-file / 600 MB tree, with `git worktree add` checking
 //! the same tree out again at 1.8 s. Left on the runtime thread those seconds landed wherever the
 //! other agents happened to be, and the [phase accounting](crate::turn_timing) charged them to
@@ -104,8 +102,8 @@ const GG_COMMIT_DATE: &str = "1970-01-01T00:00:00Z";
 /// A `git` invocation here is gg's bookkeeping rather than anything the model asked for, which is
 /// why it bypasses tool dispatch — and bypassing dispatch is exactly why it has to be captured
 /// here. Its *result* is what explains a session that went wrong: a merge that conflicted changes
-/// the run, and a speculation judge scores whatever `git diff` printed. A run that ended in a
-/// conflict and recorded nothing leaves no trace of the conflict.
+/// the run, and a reviewer's verdict is rendered against whatever `git diff --stat` printed. A run
+/// that ended in a conflict and recorded nothing leaves no trace of the conflict.
 #[derive(Clone, Default)]
 pub struct GitCapture {
     /// The run's recorder, or `None` for a capture that records nothing.
@@ -233,8 +231,8 @@ pub enum MergeOutcome {
 /// What [`merge_branch`] does with a merge it could not apply cleanly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConflictPolicy {
-    /// **Abort** the merge, restoring the main tree exactly as it was. Used where the branch is
-    /// disposable — a losing speculation attempt — so a clash costs nothing but the attempt.
+    /// **Abort** the merge, restoring the main tree exactly as it was. For a branch that is
+    /// disposable, where a clash costs nothing but the work on that branch.
     Abort,
     /// **Leave** the conflicted merge in the working tree (`MERGE_HEAD` set, conflict markers in
     /// the files) so the [merge agent](test_cabinet_core::gg::PROJECT_MANAGEMENT_PARAM_MERGE_AGENT)
@@ -386,8 +384,8 @@ pub async fn head_commit(capture: &GitCapture, dir: &Path) -> Result<String, Git
 /// few hundred tokens and one that carries every generated lockfile line in the diff — and the patch
 /// crowded out the reviewer's own reading of the code besides.
 ///
-/// Staged and restored exactly like [`diff_since`] (so untracked additions count), and serialized by
-/// the caller on the same git lock.
+/// The tree is staged and then reset around the diff, so untracked additions count; the caller
+/// serializes that transient index on the shared git lock.
 pub async fn diff_stat_since(
     capture: &GitCapture,
     dir: &Path,

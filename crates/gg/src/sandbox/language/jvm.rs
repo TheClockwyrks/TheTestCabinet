@@ -6,6 +6,11 @@
 //! guest evaluates it. What differs is the *front* of that road: which compiler reads the model's
 //! source, and what its diagnostics look like. This module is the rest of it.
 //!
+//! It is not a language and it is not registered anywhere: no
+//! [`ProgramLanguage`](super::ProgramLanguage) is implemented here and
+//! [the lookup](super::language()) never answers with it. It is the road two registered arms drive
+//! down.
+//!
 //! # Why the sharing is real rather than a pair of copies
 //!
 //! Two of TeaVM's settings are not optional, and one of them fails **silently** when it is missing:
@@ -209,7 +214,7 @@ pub(super) fn placed_dir(arm: &str, version: &str, contents: &[&[u8]]) -> Result
 /// * `$ggBase` — how far the stack's line numbers are from the bundle's. Part of it is known
 ///   (this prelude's own length); part is the engine's `Function` wrapper, which is calibrated at run
 ///   time exactly as the guest's own shim calibrates it, so an engine update costs nothing.
-const PRELUDE: &str = r#"var $ggMessage = "";
+pub(super) const PRELUDE: &str = r#"var $ggMessage = "";
 var $ggFailure = null;
 var $ggLines = __GG_LINES__;
 var $ggBase = __GG_BASE__;

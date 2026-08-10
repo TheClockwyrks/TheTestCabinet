@@ -7663,8 +7663,6 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
         "every created issue was completed in this scripted run"
     );
 
-    // No speculation in this run.
-
     // Per-slot rollup matches the SlotUsage rollups the run streamed.
     let slot_keys = slot_usage_keys(&events);
     assert_eq!(
@@ -7680,10 +7678,6 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
         "the run spent on more than one slot (worker + reviewer)"
     );
 }
-
-// ---------------------------------------------------------------------------
-// Phase 5c: speculative execution — best-of-K over isolated worktrees + a judge
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Replay capture (Phase 7a) — recording the non-deterministic inputs

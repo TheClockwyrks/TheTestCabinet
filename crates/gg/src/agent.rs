@@ -12,13 +12,14 @@
 //! each tool, append the results, and repeat until the model stops calling tools — emitting
 //! [agent-tagged telemetry](crate::telemetry::Emitter::for_agent) throughout.
 //!
-//! Today a run is a single agent — the **root** (id [`ROOT_AGENT_ID`], depth `0`, on the
-//! [`primary`](PRIMARY_SLOT) slot), created from the invocation. The structure is deliberately
-//! multi-agent-ready: [`run`] owns the [orchestration](SlotAccounting) — resolving each agent's
-//! client **by slot** (honoring the [multi-model](CAPABILITY_MULTI_MODEL) toggle), accounting
-//! usage/cost **per slot**, and streaming the agent tree — so Phase 4B attaches spawning by
-//! constructing a child [`Agent`], resolving its slot's client, and driving it exactly as the
-//! root is driven here (see the seam noted on [`Agent::drive`]).
+//! Every run starts from the **root** agent (id [`ROOT_AGENT_ID`], depth `0`, running under the
+//! set's [root profile](test_cabinet_core::gg::GgCapabilitySet::root)), created from the
+//! invocation, and grows a tree from there: an agent spawns a child **by profile name**, and the
+//! child is constructed, resourced and driven exactly as the root is. What is per-run rather than
+//! per-agent lives on the [`Orchestrator`] — the [scheduler](Scheduler) that decides which agents
+//! hold a running slot, the [per-profile accounting](SlotAccounting) usage and cost fold into, and
+//! the shared [`ClientFactory`] every agent resolves its profile's model through — so [`run`] owns
+//! the session frame and nothing about a single agent (see the seam noted on [`Agent::drive`]).
 //!
 //! # Control flow
 //!
@@ -26,18 +27,20 @@
 //!
 //! 1. scope the emitter to the [root agent](ROOT_AGENT_ID) and emit
 //!    [`SessionStarted`](GgTelemetryKind::SessionStarted);
-//! 2. [validate the slot bindings](validate_slots) and resolve the root agent's
-//!    [`primary`](PRIMARY_SLOT) slot to a concrete [`ModelClient`] (mock or OpenRouter). A
-//!    missing/invalid slot or an unresolvable client is a **launch failure**: it emits a
+//! 2. run the three launch checks — [the agent profiles are well-formed and there is a root to
+//!    run](validate_agents), [every bound model declares a context window](validate_model_windows),
+//!    and the root's [profile binding](profile_binding) resolves to a concrete [`ModelClient`]
+//!    (mock or OpenRouter). Failing any of the three is a **launch failure**: it emits a
 //!    [`Log`](GgTelemetryKind::Log)`(error)` and
 //!    [`SessionEnded`](GgTelemetryKind::SessionEnded)`{status:"error"}` and returns
-//!    [`SessionOutcome::LaunchFailed`] so the process exits non-zero;
+//!    [`SessionOutcome::LaunchFailed`] so the process exits non-zero. A *subagent's* client is
+//!    resolved at spawn time instead, where the failure belongs to that agent and not the run;
 //! 3. emit [`AgentSpawned`](GgTelemetryKind::AgentSpawned) for the root, assemble the offered
-//!    [toolset](ToolRegistry) from the run's enabled capabilities, and drive the root agent's
-//!    [turn loop](Agent::drive) against the client;
-//! 4. fold the agent's usage into the [per-slot accounting](SlotAccounting), emit the
-//!    [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, a summary
-//!    [`Log`](GgTelemetryKind::Log), and the terminal
+//!    [toolset](ToolRegistry) from the root profile's enabled capabilities, and drive the root
+//!    agent's [turn loop](Agent::drive) against the client;
+//! 4. join every subagent the run spawned, fold each agent's usage into the [per-profile
+//!    accounting](SlotAccounting), emit the [`SlotUsage`](GgTelemetryKind::SlotUsage) rollups, a
+//!    summary [`Log`](GgTelemetryKind::Log), and the terminal
 //!    [`SessionEnded`](GgTelemetryKind::SessionEnded).
 //!
 //! Each turn the loop emits [`TurnStarted`](GgTelemetryKind::TurnStarted), calls the
@@ -48,7 +51,7 @@
 //! session ([`"completed"`](Agent::drive)). Under
 //! [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) the turn is a **program** instead
 //! ([`run_code_turn`]), and the ending rule is different in kind: every reply is a program, so no
-//! shape of reply means "finished" and only a program calling [`finish`](FINISH_FUNCTION) ends the
+//! shape of reply means "finished" and only a program calling [`finish`](crate::sandbox::FINISH_FUNCTION) ends the
 //! session.
 //!
 //! # Termination and error surfacing
@@ -58,7 +61,7 @@
 //!
 //! - `"completed"` — the model said it was done: it stopped calling tools, or — under
 //!   [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), where every reply is a program and no
-//!   shape of reply means "finished" — a program called [`finish`](FINISH_FUNCTION);
+//!   shape of reply means "finished" — a program called [`finish`](crate::sandbox::FINISH_FUNCTION);
 //! - `"exhausted"` — the per-agent turn ceiling was reached;
 //! - `"timed_out"` — the optional wall-clock deadline was passed;
 //! - `"limit_exceeded"` — one of the three configurable [execution ceilings](crate::limits) was
@@ -184,7 +187,7 @@ const PARAM_WINDOW_LIMIT: &str = "windowLimit";
 /// given. When absent, [`DEFAULT_SKILLS_DIR`] under the workspace is used.
 const PARAM_SKILLS_DIR: &str = "dir";
 
-/// The [slot](GgSlotBinding) name a [handoff compaction](CompactionStrategy::is_handoff)'s second
+/// The [slot](GgSlotBinding) name a [handoff compaction](crate::compaction::CompactionStrategy::is_handoff)'s second
 /// client is bound under, so the tokens it spends are attributed to the compaction model rather
 /// than to the agent profile whose thread it condensed.
 const COMPACTION_SLOT: &str = "compaction";
@@ -192,7 +195,7 @@ const COMPACTION_SLOT: &str = "compaction";
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session that ended because the
 /// **model** said it was done — a tool-calling turn that requested no tools, or, under
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), a program that called
-/// [`finish`](FINISH_FUNCTION).
+/// [`finish`](crate::sandbox::FINISH_FUNCTION).
 ///
 /// Named rather than spelled out at each of its sites because it is also what the issue-review
 /// verdict tests a child agent against: one string with several readers is one string that must not
@@ -270,7 +273,7 @@ pub enum SessionOutcome {
     /// process exits `0`; the session's status is in the telemetry.
     Ran,
     /// No session could be run against a working model: the invocation could not launch
-    /// one (no bound `primary` slot, or the client could not be resolved), or every
+    /// one (no root profile, no model bound to it, or a client that could not be resolved), or every
     /// model call was refused because the run's credential was rejected
     /// ([`STATUS_AUTH_ERROR`]). The process exits non-zero, so `core` records a harness
     /// error rather than a scoreable run — a rejected key is our fault, not the
@@ -280,8 +283,8 @@ pub enum SessionOutcome {
 
 /// The stable id of the **root** agent — the top of the [subagent
 /// tree](https://docs.testcabinet.ai/gg/subagents/), created from the run invocation. A
-/// single-agent run has only this agent; Phase 4B gives spawned subagents generated ids
-/// beneath it.
+/// single-agent run has only this agent; a spawned subagent gets a generated id beneath it, and a
+/// [successor](Agent::succeeding) a fresh one at the same depth.
 pub const ROOT_AGENT_ID: &str = "root";
 
 /// One node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/): the unit the
@@ -296,7 +299,7 @@ pub const ROOT_AGENT_ID: &str = "root";
 /// on the struct.
 ///
 /// The agent's *resources* — its [context model](ContextModel), its [toolset](ToolRegistry),
-/// and the capability [runtimes](RuntimeSet) — are constructed **per agent** by the
+/// and its [module set](crate::modules::ModuleSet) — are constructed **per agent** by the
 /// [orchestrator](Orchestrator) and handed to [`drive`](Self::drive) by [`run_agent`]. Keeping
 /// resource construction in the orchestrator (rather than the struct) is the multi-agent seam: a
 /// spawn builds a child agent's context/toolset/runtimes the same way the root's are built, then
@@ -330,7 +333,7 @@ pub struct Agent {
 impl Agent {
     /// The **root** agent for a run: [`ROOT_AGENT_ID`], no parent, depth `0`, running under
     /// `profile` — the set's [root profile](GgCapabilitySet::root), passed in rather than
-    /// assumed to be called [`ROOT_AGENT`] so a renamed root still resolves its own model,
+    /// assumed to be called [`ROOT_AGENT`](test_cabinet_core::gg::ROOT_AGENT) so a renamed root still resolves its own model,
     /// capabilities, and prompt.
     pub fn root(profile: &str) -> Self {
         Self {
@@ -477,7 +480,7 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
 
 /// The launch warnings a capability set earns for naming a capability gg **no longer implements**.
 ///
-/// A capability id is an open string on the wire ([`GgCapabilityConfig::id`]), so a set written
+/// A capability id is an open string on the wire ([`GgCapabilityConfig::id`](test_cabinet_core::gg::GgCapabilityConfig::id)), so a set written
 /// against an older gg deserializes cleanly and its stale entry simply contributes nothing: no
 /// tools, no prompt section, no telemetry. That silence is the problem. An ablation arm whose whole
 /// identity is "planning on" would be recorded, scored and compared as a configured run rather than
@@ -1329,8 +1332,8 @@ struct Orchestrator {
     merge_agent: Option<String>,
     /// The **root agent's** code setup: whether its turns are conducted as
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), the per-program sandbox ceilings, and the
-    /// armed [healing](crate::healing) strategies. Since responses-as-code is now a **per-agent**
-    /// capability, each agent's own setup is resolved from its profile at run time (see
+    /// armed [healing] strategies. Since responses-as-code is now a **per-agent** capability, each
+    /// agent's own setup is resolved from its profile at run time (see
     /// [`code_setup`](Self::code_setup)); this field carries the root's, used for the run-level
     /// launch log and the sandbox warm-up decision.
     code: CodeSetup,
@@ -1399,10 +1402,10 @@ struct Orchestrator {
     /// `.git` and the main working tree. See [`merge_lock`](Self::merge_lock) for the multi-step
     /// half, which spans a dispatched merge agent's whole session.
     ///
-    /// An **async** lock, because what it guards is slow: every [git](crate::git) call runs on the
-    /// blocking pool and is awaited, and the commands here walk the whole workspace (seconds, on a
-    /// tree an `npm install` has filled). A `std` mutex would make an agent waiting its turn *block
-    /// gg's single runtime thread* for as long as the agent ahead of it takes — reintroducing, in the
+    /// An **async** lock, because what it guards is slow: every [git] call runs on the blocking
+    /// pool and is awaited, and the commands here walk the whole workspace (seconds, on a tree an
+    /// `npm install` has filled). A `std` mutex would make an agent waiting its turn *block gg's
+    /// single runtime thread* for as long as the agent ahead of it takes — reintroducing, in the
     /// wait, exactly the stall that moving git off the runtime thread removed.
     git_lock: tokio::sync::Mutex<()>,
     /// Serializes the **merge** of an accepted issue's branch back into the main tree.
@@ -1436,7 +1439,7 @@ struct Orchestrator {
     /// the one runner the session was launched with.
     ///
     /// It is the **base** runner: when the run is capturing, each agent's tool context gets it
-    /// wrapped in a [`RecordingShellRunner`] rooted at that agent's own workspace — see
+    /// wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) rooted at that agent's own workspace — see
     /// [`shell_for`](Self::shell_for).
     shell: Arc<dyn ShellRunner>,
     /// The shared skills library (loaded once), cloned into each agent's own skills runtime.
@@ -1518,9 +1521,10 @@ struct Orchestrator {
     /// counter would say nothing about where the agent came from.
     ordinals: Mutex<BTreeMap<String, u32>>,
     /// The shared [session recorder](GgRecorder) every agent's model I/O, tool results and prompt
-    /// frames are pinned into. Present on **every** run — capture is not a capability any more, only
-    /// its [fidelity](GgSessionFidelity) is — so `None` means the journal could not be opened, which
-    /// the launch warnings say out loud.
+    /// frames are pinned into. Present on **every** run — capture is not a capability any more, and
+    /// no setting turns it up or down ([`CAPABILITY_REPLAY`](test_cabinet_core::gg::CAPABILITY_REPLAY)
+    /// is retained only so an old set round-trips) — so `None` means the journal could not be
+    /// opened, which the launch warnings say out loud.
     ///
     /// Shared (`Arc`) so the root and every subagent stream into one globally-ordered
     /// [journal](test_cabinet_core::gg_session_journal), which the host folds into the run tree's
@@ -1530,8 +1534,8 @@ struct Orchestrator {
 }
 
 impl Orchestrator {
-    /// The [session capture](crate::capture) gg's own [`git`](crate::git) invocations are reported
-    /// through, stamped with `agent_id`.
+    /// The [session capture](crate::capture) gg's own [`git`] invocations are reported through,
+    /// stamped with `agent_id`.
     ///
     /// Orchestration git is the run's bookkeeping rather than any one agent's turn — a worktree is
     /// created for an issue before the agent that will work in it exists, and torn down after it
@@ -1540,7 +1544,7 @@ impl Orchestrator {
     /// session is their [`seq`](test_cabinet_core::gg_session_record::GgSessionEntry::seq), which is minted
     /// from the same global counter as every other input.
     /// The [shell seam](ShellRunner) an agent rooted at `workspace` runs its commands through: the
-    /// run's, wrapped in a [`RecordingShellRunner`] whenever the run is capturing.
+    /// run's, wrapped in a [`RecordingShellRunner`](crate::capture::RecordingShellRunner) whenever the run is capturing.
     ///
     /// **Per agent, not per run**, because the wrapper measures a command's working directory
     /// against a root and an agent's root is its own — an [issue worktree](crate::board), or the
@@ -1976,8 +1980,8 @@ impl Orchestrator {
     }
 
     /// The per-agent [code setup](CodeSetup) for `profile`: whether its turns run as
-    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings and
-    /// [healing](crate::healing) strategies its own responses-as-code config resolves to.
+    /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), and the sandbox ceilings and [healing]
+    /// strategies its own responses-as-code config resolves to.
     fn code_setup(&self, profile: &GgAgentConfig) -> CodeSetup {
         CodeSetup {
             enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
@@ -2450,12 +2454,12 @@ async fn handle_wait_for_issue(
 }
 
 /// Suspend this agent until `issue_id` is terminal, then report which — the core of
-/// [`handle_wait_for_issue`](handle_wait_for_issue) once the id is in hand.
+/// [`handle_wait_for_issue`] once the id is in hand.
 ///
 /// It is a function of its own because two paths reach the same wait: the native tool-calling loop,
 /// which parses the id off a `wait_for_issue` [`ToolCall`] and calls it through
 /// [`handle_wait_for_issue`]; and the responses-as-code loop, which performs the *deferred* waits a
-/// program [registered](LoopToolApi::register_issue_wait) once that program has ended, calling this
+/// program [registered](code::LoopToolApi::register_issue_wait) once that program has ended, calling this
 /// directly for each recorded id. Both share the self-issue guard, the not-found check, the
 /// already-terminal short-circuit, and the slot-freeing block, so neither can drift from the other.
 async fn wait_for_issue_by_id(
@@ -2681,7 +2685,7 @@ struct ProjectContext {
 ///
 /// This is the one path every agent goes through, the root and each spawned subagent alike, so
 /// the tree is uniform: recursion is just a subagent whose own loop spawns more agents that come
-/// back through here. `client` is resolved by the caller (the root's in [`run_with_factory`], a
+/// back through here. `client` is resolved by the caller (the root's in `run_with_factory`, a
 /// child's at spawn time) so a resolution failure is surfaced where it belongs.
 ///
 /// `origin` is how this agent came to exist, supplied by the caller because only the caller knows
@@ -3320,8 +3324,8 @@ async fn run_agent(
         // records each tool result too. The wrapping is invisible to the loop (`model_id` and
         // errors pass through).
         //
-        // Capture is **always on**: the `replay` capability is not what turns it on, it is what
-        // escalates the [fidelity](GgSessionFidelity) the recorder was built at. So `None` here does
+        // Capture is **always on**: no capability turns it on, off, or up — every run records the
+        // same session record. So `None` here does
         // not mean "the operator did not ask for a record" — it means
         // [`start_session_capture`] could not open the journal and warned about it, which is the one
         // case a run proceeds unrecorded.
@@ -3881,9 +3885,10 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
 struct DispatchedChild {
     /// The child's minted id (also the `wait`/`collect` handle in the spawner's children).
     id: String,
-    /// The [effective slot](effective_slot) the child runs on.
+    /// The [agent profile](ChildSpec::profile) the child runs under — the name its spawner asked
+    /// for, echoed back so the tool result and the `spawnSubagent` sidecar agree with the tree.
     slot: String,
-    /// The concrete model the slot resolved to.
+    /// The concrete model the profile's [binding](profile_binding) resolved to.
     model_id: String,
 }
 
@@ -3892,9 +3897,9 @@ struct DispatchedChild {
 ///
 /// The class exists because a [code program](crate::sandbox) catches a typed `ToolError` and asks
 /// `e.code === "limit-exceeded"`. Every one of these failures is raised in the loop rather than in
-/// a [`Tool`](crate::tools::Tool), so nothing else would classify them, and an unclassified refusal
-/// reaches a program as the useless `other`. [`Display`](std::fmt::Display) renders the message
-/// alone, so the many places that only quote the reason read exactly as they did before.
+/// a [`Tool`], so nothing else would classify them, and an unclassified refusal reaches a program
+/// as the useless `other`. [`Display`](std::fmt::Display) renders the message alone, so the many
+/// places that only quote the reason read exactly as they did before.
 struct DispatchError {
     /// Why the dispatch was refused, in the vocabulary a program's `catch` reads.
     failure: ToolFailure,
@@ -3973,17 +3978,18 @@ fn resolve_delegation_target(
     }
 }
 
-/// Dispatch one child agent — the spawn path behind `spawn_subagent` and every review
-/// dispatch.
+/// Dispatch one child agent — the spawn path behind `spawn_subagent` and
+/// [`fork`](handle_fork).
 ///
 /// Enforces the [depth cap](SubagentConfig::max_depth) (a structural ceiling, not a queue — it
-/// fails as a [limit](ToolFailure::LimitExceeded) rather than a refusal),
-/// resolves the child's [effective slot](effective_slot) and client, optionally creates an isolated
-/// [worktree](make_worktree) (refused with guidance when the capability is off or git is
-/// unavailable), then builds the child's identity/wiring/role, schedules its task on the scheduler,
-/// and registers it in the spawner's [children](AgentCtx::children) so it can be waited on and
-/// messaged. Returns the [dispatched child](DispatchedChild) or a model-facing error. Every child
-/// reaches [`run_agent`] through here, so every dispatch path stays uniform.
+/// fails as a [limit](ToolFailure::LimitExceeded) rather than a refusal), resolves the named
+/// [agent profile](ChildSpec::profile) to a [binding](profile_binding) and a client, then builds
+/// the child's identity/wiring/role, schedules its task on the scheduler, and registers it in the
+/// spawner's [children](AgentCtx::children) so it can be waited on and messaged. An isolated
+/// [worktree](Worktree) is *not* opened here — one arrives already open on the
+/// [spec](ChildSpec::worktree), because isolation belongs to a board issue, which owns a worktree's
+/// whole lifecycle. Returns the [dispatched child](DispatchedChild) or a model-facing error, so
+/// both spawn kinds share one set of refusals.
 fn dispatch_child(
     sub: &mut SubagentContext,
     spawner: &Agent,
@@ -7441,7 +7447,7 @@ struct AutoloadSetup {
     /// with only the build prompt and reads what it needs itself.
     enabled: bool,
     /// Whether the autoloaded views are **locked** — [pinned](Retention::Pinned) into the window,
-    /// kept verbatim across every [compaction](crate::compaction) boundary and immune to
+    /// kept verbatim across every [compaction] boundary and immune to
     /// [eviction](ContextModel::evict_file_views). Off, they are ordinary ephemeral file reads that
     /// compaction may summarize and agent-managed context may evict.
     locked: bool,
@@ -7465,8 +7471,8 @@ impl AutoloadSetup {
 }
 
 /// How a run conducts its turns when [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) is on: the
-/// run-wide mode flag, the per-program [sandbox ceilings](SandboxLimits), and which
-/// [healing](crate::healing) strategies are armed.
+/// run-wide mode flag, the per-program [sandbox ceilings](SandboxLimits), and which [healing]
+/// strategies are armed.
 ///
 /// Resolved once on the [orchestrator](Orchestrator) and handed to every agent, because all three
 /// are properties of *how a turn is conducted*, not of one agent — and grouped into one struct
@@ -7487,12 +7493,12 @@ struct CodeSetup {
     /// The execution timeout and linear-memory cap one program runs under, resolved from the
     /// capability's `timeoutSecs` / `maxMemoryBytes` params with their defaults.
     limits: SandboxLimits,
-    /// The [healing](crate::healing) strategies armed for this run — the ablation lever that decides
-    /// which malformations of a reply gg repairs before compiling it, and which it lets fail.
+    /// The [healing] strategies armed for this run — the ablation lever that decides which
+    /// malformations of a reply gg repairs before compiling it, and which it lets fail.
     healing: HealingConfig,
-    /// How the assistant message this run *records* is derived from the model's reply — the reply as
-    /// sent, or the healed program that ran. Governs only what the next turn re-reads, never whether a
-    /// reply is healed before it runs. See [`AssistantMessageMode`](crate::healing::AssistantMessageMode).
+    /// How the assistant message this run *records* is derived from the model's reply — the reply
+    /// as sent, or the healed program that ran. Governs only what the next turn re-reads, never
+    /// whether a reply is healed before it runs. See [`AssistantMessageMode`].
     assistant_messages: AssistantMessageMode,
     /// Which SDK types an [`openDocsView`](crate::docs::DocsRuntime) of a function opens beside it —
     /// its return position, that plus its arguments, or none at all.
@@ -7852,15 +7858,15 @@ struct DriveSetup {
     /// Whether the test case's provided specifications seed the opening context, and whether they
     /// are pinned across compaction.
     autoload: AutoloadSetup,
-    /// This agent's [persistence](crate::persistence): whether its instances are serialized and
-    /// carry their open file views between them.
+    /// This agent's [persistence]: whether its instances are serialized and carry their open file
+    /// views between them.
     persistence: PersistenceSetup,
     /// How much of a file one `read_file` returns.
     read_policy: ReadPolicy,
     /// How much of a command's output one `shell` call returns.
     shell_offload: OffloadPolicy,
     /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
-    /// and [healing](crate::healing) behind that.
+    /// and [healing] behind that.
     code: CodeSetup,
     /// The run's [hooks](crate::hooks), and who this agent is to them.
     ///
@@ -8193,11 +8199,10 @@ pub(crate) fn resolve_window_limit(
 /// Check that every model `set` binds has a [context window](GgInvocation::model_windows) —
 /// the launch check that makes gg's lack of a fallback safe.
 ///
-/// The window is the denominator of every fullness figure, the basis of the
-/// [compaction](crate::compaction) trigger, and part of the fullness signal the agent itself
-/// reads. Running without it would mean inventing one, so a session that cannot measure its
-/// own window does not start: the run fails loudly here rather than producing a run whose
-/// context accounting is quietly wrong.
+/// The window is the denominator of every fullness figure, the basis of the [compaction] trigger,
+/// and part of the fullness signal the agent itself reads. Running without it would mean inventing
+/// one, so a session that cannot measure its own window does not start: the run fails loudly here
+/// rather than producing a run whose context accounting is quietly wrong.
 ///
 /// This is the last of three lines of defence — the backend refuses to enqueue such a run and
 /// `core` refuses to launch one — and the one that also covers an invocation written by hand.
@@ -8257,9 +8262,9 @@ fn resolve_skills_dir(set: &GgCapabilitySet, workspace_dir: &Path) -> PathBuf {
 }
 
 /// Build the run's [`MemoriesRuntime`] from the capability set: when the
-/// [`memories`](CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an empty store
+/// [`memories`](test_cabinet_core::gg::CAPABILITY_MEMORIES) capability is enabled, an enabled runtime with an empty store
 /// organized by the [strategy](MemoryStrategy::resolve) its `implementation` names and bounded by
-/// the [limits resolved](MemoryCaps::resolve) from the capability's params; otherwise a
+/// the [limits resolved](crate::memories::MemoryCaps::resolve) from the capability's params; otherwise a
 /// [disabled](MemoriesRuntime::disabled) runtime (an ablation's off arm) that offers nothing.
 /// The startup log line describing a run's memory configuration: which
 /// [strategy](MemoryStrategy) it runs, and the limits that are actually in force.
@@ -8299,8 +8304,8 @@ fn memories_startup_note(memories: &MemoriesRuntime) -> String {
 }
 
 /// Build the run's [`TasksRuntime`] from the capability set: when the
-/// [`tasks`](CAPABILITY_TASKS) capability is enabled, an enabled runtime with an empty task
-/// DAG holding at most the [count resolved](resolve_max_tasks) from the capability's params;
+/// [`tasks`](test_cabinet_core::gg::CAPABILITY_TASKS) capability is enabled, an enabled runtime with an empty task
+/// DAG holding at most the [count resolved](crate::tasks::resolve_max_tasks) from the capability's params;
 /// otherwise a [disabled](TasksRuntime::disabled) runtime (an ablation's off arm) that
 /// offers nothing.
 /// The [agent profile](GgAgentConfig) whose [project-management](CAPABILITY_PROJECT_MANAGEMENT)
@@ -8510,9 +8515,9 @@ struct PromptInputs<'a> {
     /// brief describes the work, not the protocol, and the board-authoring section it would have
     /// read the protocol from is (rightly) not rendered for a profile that may not author the board.
     assigned_issue: Option<&'a str>,
-    /// Whether [healing](crate::healing)'s fence-stripping strategy is armed, which decides how the
-    /// prompt states the no-code-fence rule — as a repair gg will make and disclose, or as a syntax
-    /// error the model will be handed.
+    /// Whether [healing]'s fence-stripping strategy is armed, which decides how the prompt states
+    /// the no-code-fence rule — as a repair gg will make and disclose, or as a syntax error the
+    /// model will be handed.
     fences_are_stripped: bool,
 }
 
@@ -9255,7 +9260,7 @@ async fn apply_pending_compaction(
 ///   produced and then the [`MemoryState`](GgTelemetryKind::MemoryState) the store is left in,
 ///   so the console has both the record of what was done and the set as it now stands; the
 ///   pinned [`Memory`](GgContextSource::Memory) block itself is rebuilt only at a compaction
-///   boundary ([`refresh_memory_block`]). Its confirmation is ordinary ephemeral tool output;
+///   boundary ([`refresh_boundary_blocks`]). Its confirmation is ordinary ephemeral tool output;
 /// - a successful `add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`
 ///   likewise re-emits the [`TasksState`](GgTelemetryKind::TasksState); the pinned
 ///   [`TaskList`](GgContextSource::TaskList) block is rebuilt at the next turn boundary;
@@ -9282,7 +9287,7 @@ fn record_tool_result(
     // are the append-only record — including of a memory that was just deleted, which the
     // snapshot that follows can no longer show. The pinned memory block is not touched here, nor
     // at the next turn boundary; it is rebuilt at a compaction boundary (see
-    // `refresh_memory_block`).
+    // `refresh_boundary_blocks`).
     if is_memory_tool(&call.name) && outcome.ok {
         for event in modules.memories_mut().drain_events() {
             emitter.emit(event);
@@ -9534,27 +9539,14 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
     }
 }
 
-/// The [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) execution path: healing the reply into a
-/// program, the sandbox run, the servicing seam, and the turn feedback.
-///
-/// Split out under the repo's `foo.<concern>.rs` convention rather than left inline: it is one
-/// self-contained concern of some size, and this file is already the largest in the crate. Its items
-/// are `use`d back into this module so the loop calls them unqualified, exactly as it did when they
-/// lived here.
 #[path = "agent.code.rs"]
 mod code;
 use code::CodeFeedback;
 
 use code::{CodeTurn, CodeTurnOutcome, CodeTurnState, run_code_turn};
 
-/// **Succession**: the vocabulary and the judging behind `transition_state`, `exec` and `fork` —
-/// how one agent instance becomes another.
-///
-/// Split out under the repo's `foo.<concern>.rs` convention for the same reason the code path is:
-/// it is one self-contained concern of some size, and this file is already the largest in the
-/// crate. Its items are `use`d back into this module so the loop names them unqualified.
 #[path = "agent.transitions.rs"]
-mod transitions;
+pub(crate) mod transitions;
 
 use transitions::{
     Handoff, Opening, PendingFork, Succession, handle_exec, handle_fork, handle_transition,

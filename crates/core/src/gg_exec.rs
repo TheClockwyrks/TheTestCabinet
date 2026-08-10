@@ -357,7 +357,7 @@ fn release_download_command(repo: &str, version: &str, target: &str, dest: &str)
 /// the seeded `workspace_dir`, the run's `max_runtime` (which bounds the release
 /// download), the `run_id` (used as the gg session id), the `provided_files` the test
 /// case seeded (workspace-relative spec and reference paths, for the
-/// [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS)
+/// [autoload-specifications](crate::gg::CAPABILITY_AUTOLOAD_SPECS)
 /// capability), and the run's `events` sink.
 ///
 /// The caller bounds this whole future by the run's maximum runtime exactly as a

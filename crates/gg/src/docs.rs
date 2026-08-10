@@ -63,8 +63,8 @@
 //!
 //! A lookup that finds nothing is answered by [`suggest`](DocsRuntime::suggest) as well as by
 //! `None`: the same scope that decided the name is unbound is the only thing that knows which bound
-//! names it is nearly. See [`suggest`](self::suggest) for what "nearly" means and why the candidates
-//! are the bound ones alone.
+//! names it is nearly. See [`suggest`] for what "nearly" means and why the candidates are the bound
+//! ones alone.
 
 use std::collections::BTreeSet;
 
@@ -474,8 +474,8 @@ impl DocsRuntime {
     /// call. The `list` meta function is a candidate like any other, since it is bound on every
     /// object and answerable by [`read`](Self::read).
     ///
-    /// What counts as *near* is [`suggest`](self::suggest)'s to decide; what is *available* to be
-    /// near is this method's.
+    /// What counts as *near* is [`suggest`]'s to decide; what is *available* to be near is this
+    /// method's.
     pub fn suggest(&self, name: &str) -> Vec<String> {
         let bound: Vec<&'static str> = catalogue_functions(self.language)
             .into_iter()

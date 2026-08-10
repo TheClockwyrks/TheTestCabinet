@@ -462,7 +462,7 @@ impl CreateIssueTool {
     /// [reviewers-required](IssuePolicy::require_reviewers) agent must name at least one.
     ///
     /// The id the store assigned is both stated in the confirmation and carried structurally on the
-    /// [`IssueCreated`](ToolData::IssueCreated) sidecar, so a program that files an issue can go on to
+    /// [`BoardNode`](ToolData::BoardNode) sidecar, so a program that files an issue can go on to
     /// reference it (as a blocker, or in a `wait_for_issue`) without parsing prose.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn create_issue(

@@ -71,7 +71,7 @@ pub struct Controller {
     total_fuel: u64,
 }
 
-/// Per-store host state. wasmtime calls back into [`ResourceLimiter`] before each
+/// Per-store host state. wasmtime calls back into [`ResourceLimiter`](wasmtime::ResourceLimiter) before each
 /// memory growth, so the cap is enforced at the point of `memory.grow` rather than
 /// observed after the fact.
 struct StoreState {

@@ -3,13 +3,13 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side `csc`, what it costs, what it refuses, and the two
-//!   failures it tells apart;
-//! * [`sdk`](self::sdk) — the SDK's sources, carried in gg's binary and compiled with the program;
-//! * [`source`](self::source) — what gg writes around a **code module**, and the lexer that lets it
-//!   look at C# without parsing it;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of, whose lexer is [`source`]'s;
+//! * [`compile`] — the host-side `csc`, what it costs, what it refuses, and the two failures it
+//!   tells apart;
+//! * [`sdk`] — the SDK's sources, carried in gg's binary and compiled with the program;
+//! * [`source`] — what gg writes around a **code module**, and the lexer that lets it look at C#
+//!   without parsing it;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of, whose lexer is [`source`]'s;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in C#'s syntax;
 //! * `packages/gg-sandbox-csharp/src/Gg/` — that SDK, and the XML documentation comments every word
@@ -66,9 +66,9 @@
 //!
 //! What puts gg's surface in front of it without touching a byte of it is a **`global using`**,
 //! declared by the SDK rather than by gg: the SDK is compiled in the same compilation as the
-//! program (see [`sdk`](self::sdk)), so `global using Gg;` in one of its own files applies to the
-//! model's file too. It is the same mechanism .NET's implicit usings use, and it is why this arm
-//! needs neither a prologue nor a `using` a model has to remember.
+//! program (see [`sdk`]), so `global using Gg;` in one of its own files applies to the model's file
+//! too. It is the same mechanism .NET's implicit usings use, and it is why this arm needs neither a
+//! prologue nor a `using` a model has to remember.
 //!
 //! # What this arm has that the other compiled arms do not
 //!
@@ -95,12 +95,12 @@
 //! optional arguments a call names, real `enum`s, nullable reference types, `record`s for results
 //! and a thrown `ToolException` for the error arm. It is compiled **with** the model's program
 //! rather than referenced as a built assembly, which is what makes gg's surface reachable without
-//! the committed guest having to carry it — see [`sdk`](self::sdk) for the argument and the cost
-//! (~70 ms on a ~210 ms compile).
+//! the committed guest having to carry it — see [`sdk`] for the argument and the cost (~70 ms on a
+//! ~210 ms compile).
 //!
 //! The one place it departs from C#'s naming conventions is the **object names**, which are
 //! lower-case: `fs`, `system`, `view`. That is not a choice — an object's name is
-//! [identity](super::agreement), shared with every other arm, and it is what the console groups by
+//! identity (`language/agreement.rs`), shared with every other arm, and it is what the console groups by
 //! and what a documentation lookup routes on. Everything a language is free to spell is spelled the
 //! way C# spells it.
 //!
@@ -121,21 +121,22 @@
 //! `lib.<key>` is therefore a **`static class`** in `namespace lib`, and a module is that class's
 //! body — which is the shape a C# author already writes when they write a file of helpers, and the
 //! answer [Java](super::java)'s arm reached for the same reason. It compiles in the **same
-//! invocation** as the program and the SDK, so there is no second assembly for the committed guest to
-//! find, and `#line` keeps every diagnostic in the author's own coordinates. See
-//! [`source`](self::source) for the wrap, the `using` hoist and the two refusals.
+//! invocation** as the program and the SDK, so there is no second assembly for the committed guest
+//! to find, and `#line` keeps every diagnostic in the author's own coordinates. See [`source`] for
+//! the wrap, the `using` hoist and the two refusals.
 //!
 //! # Why there is nothing to warm
 //!
 //! This arm is the only registered one whose [prepare step](ProgramLanguage::prepare_program)
-//! compiles and whose [`warm_prepare`](ProgramLanguage::warm_prepare) does nothing, and the reason is
-//! worth stating rather than leaving as an empty method. There is no archive to unpack — the guest is
-//! one committed component the sandbox already compiles at launch — and no prelude to build, because
-//! a C# compilation has no precompiled-header equivalent to hold across preparations. What is left is
-//! the ~2 s the *first* `csc` on a machine spends paging Roslyn in, and gg cannot pay that here: a
-//! compiler is spawned through a [`PrepareContext`](super::PrepareContext) that a warm-up is not
-//! handed, which is the same wall the [C++](super::cpp) arm's prelude ran into. It is a one-off per
-//! process and it lands in the first turn's recorded compile, where it is visible rather than hidden.
+//! compiles and whose [`warm_prepare`](ProgramLanguage::warm_prepare) does nothing, and the reason
+//! is worth stating rather than leaving as an empty method. There is no archive to unpack — the
+//! guest is one committed component the sandbox already compiles at launch — and no prelude to
+//! build, because a C# compilation has no precompiled-header equivalent to hold across
+//! preparations. What is left is the ~2 s the *first* `csc` on a machine spends paging Roslyn in,
+//! and gg cannot pay that here: a compiler is spawned through a [`PrepareContext`] that a warm-up
+//! is not handed, which is the same wall the [C++](super::cpp) arm's prelude ran into. It is a
+//! one-off per process and it lands in the first turn's recorded compile, where it is visible
+//! rather than hidden.
 
 use std::sync::OnceLock;
 
@@ -148,22 +149,15 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The Roslyn compile: the host-side step that turns a model's C# into the IL its guest interprets.
 #[path = "csharp.compile.rs"]
 pub(super) mod compile;
 
-/// **The SDK a program is compiled against**, carried as source and written into the preparation's
-/// own workspace beside `program.cs`.
 #[path = "csharp.sdk.rs"]
 pub(super) mod sdk;
 
-/// **What gg writes around a code module**, and the lexer that lets it look at C# without parsing
-/// it. A model's *program* is not here at all: this arm compiles a reply verbatim.
 #[path = "csharp.source.rs"]
 pub(super) mod source;
 
-/// The lexical reading of a reply — C#'s answers to healing's questions, over the one scan
-/// [`source`] shares with it.
 #[path = "csharp.healing.rs"]
 pub(super) mod healing;
 

@@ -251,7 +251,7 @@ struct FrameHeader {
     /// The number of `rig.json` bytes that follow the glb body, for a skinned run —
     /// the rig the live viewer deforms the glb with. `0`/absent for every other kind.
     /// When set, the glb body is the skin-preserving whole-body mesh (kept raw, not
-    /// decoded to a plain [`Mesh`]). A skinned frame is the one case that carries two
+    /// decoded to a plain mesh). A skinned frame is the one case that carries two
     /// bodies (glb + rig); every other kind carries at most one (mesh, system, or audio).
     #[serde(default)]
     rig_length: usize,

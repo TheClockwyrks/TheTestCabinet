@@ -4,14 +4,14 @@
 //! Under the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) capability a
 //! model answers a turn by writing a whole **program**, and every gg tool is a distinct, typed
 //! function in that program's scope. This module is the host: it prepares the program for its
-//! guest through the run's [program language](language), evaluates it inside that language's
+//! guest through the run's [program language](mod@language), evaluates it inside that language's
 //! committed [interpreter component](engine) under an execution-timeout and linear-memory ceiling,
 //! and bridges each typed call across the [membrane] to gg's real toolset.
 //!
 //! ## Which language, and what that means here
 //!
 //! The language is a per-agent configuration knob rather than a fact about gg — the axis a
-//! cross-language study compares its arms on. [`language`] is the seam: it owns how a reply becomes
+//! cross-language study compares its arms on. [`language`](mod@language) is the seam: it owns how a reply becomes
 //! evaluable source, which committed component evaluates it, and how its SDK spells the surface.
 //! Everything in *this* module is written against that seam, so nothing here knows which language is
 //! running.
@@ -100,7 +100,7 @@ mod limits;
 mod membrane;
 mod operations;
 mod outcome;
-mod signatures;
+pub(crate) mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
@@ -231,7 +231,7 @@ pub struct ProgramScope<'a> {
     /// [memory](crate::memories). The guest evaluates each one before the program and binds its
     /// exports at `lib.<name>`; an empty list binds no `lib` at all.
     pub modules: &'a [CodeModule],
-    /// Which group of ending calls is bound: an agent's own [role](EndingRole), or
+    /// Which group of ending calls is bound: an agent's own [role](crate::ending::EndingRole), or
     /// [none at all](RunEnding::None) for an on-use script.
     pub ending: RunEnding,
     /// Whether this agent keeps a [program library](crate::programs), which binds the `programs`

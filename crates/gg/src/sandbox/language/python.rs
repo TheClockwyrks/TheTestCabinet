@@ -5,11 +5,11 @@
 //!
 //! * [`prepare_program`](Python::prepare_program) — nothing at all, deliberately: the source crosses
 //!   the membrane as the model wrote it and CPython is the first thing to read it;
-//! * [`modules`](self::modules) — reading a code [skill](crate::skills)'s or
-//!   [memory](crate::memories)'s own top level to say what its namespace offers;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of: the fence tags, the two predicates, the mask, and the three-part
-//!   `asyncio` wrapper;
+//! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
+//!   level to say what its namespace offers;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of: the fence tags, the two predicates, the mask, and the three-part `asyncio`
+//!   wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Python's syntax;
 //! * `guests/python.component.wasm` — the committed `componentize-py` guest, CPython 3.14 linked
@@ -84,12 +84,9 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// Reading a module's own top level for the names it leaves behind.
 #[path = "python.modules.rs"]
 mod modules;
 
-/// The lexical reading of a reply — Python's answers to healing's questions, which differ from the
-/// ECMAScript arm's in three places for reasons its own module documentation gives.
 #[path = "python.healing.rs"]
 pub(super) mod healing;
 
@@ -153,7 +150,7 @@ impl ProgramLanguage for Python {
     ///
     /// It takes no [context](PrepareContext) because it opens nothing: this arm creates no
     /// workspace and spawns no process, so the seam's per-preparation ground costs it not one
-    /// syscall and the [isolation gate](super::isolation) has nothing to catch it doing.
+    /// syscall and the isolation gate (`language/isolation.rs`) has nothing to catch it doing.
     fn prepare_program(
         &self,
         source: &str,
@@ -182,8 +179,8 @@ impl ProgramLanguage for Python {
     ///
     /// A Python module's namespace **is** its exports — there is no `export` keyword to read and
     /// nothing for gg to append — so the source crosses untouched and the shim binds whatever the
-    /// module body defined. See [`modules`](self::modules) for what is read out of it and for the
-    /// one name it deliberately does not report.
+    /// module body defined. See [`modules`] for what is read out of it and for the one name it
+    /// deliberately does not report.
     fn prepare_module(
         &self,
         source: &str,

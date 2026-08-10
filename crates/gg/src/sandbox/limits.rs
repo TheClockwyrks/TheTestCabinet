@@ -46,7 +46,7 @@
 //! This was unreachable before the linker went ambient, because the only way for a program to block
 //! at all was a bridged tool call, which the epoch callback accounts for explicitly. It is
 //! unreachable from the ECMAScript guest too: the timers are shadowed and the JS engine exposes no
-//! filesystem or socket API. It is **reachable today** from the [Python](super::language) arm, where
+//! filesystem or socket API. It is **reachable today** from the [Python](super::language()) arm, where
 //! `time.sleep(60)` is an ordinary thing for a model to write.
 //!
 //! What that costs was measured, and the measurement says the overrun is bounded by the longest

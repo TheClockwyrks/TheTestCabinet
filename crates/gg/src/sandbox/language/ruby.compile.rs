@@ -48,9 +48,8 @@
 //!   that starts with Opal already loaded; a compile through it measures **90–95 ms**, and the
 //!   output is byte-identical (checked). It costs 321 ms to build once and it is specific to the
 //!   Node build and architecture that made it, so it belongs in a
-//!   [shared toolchain directory](crate::sandbox::shared_toolchain_dir) written at
-//!   [warm](warm) time — which needs a binary [`place`](crate::sandbox::place), where today's takes
-//!   text.
+//!   [shared toolchain directory](crate::sandbox::shared_toolchain_dir) written at [warm] time —
+//!   which needs a binary [`place`], where today's takes text.
 //! * **A pooled warm process.** [`CompilerPool`](crate::sandbox::CompilerPool) is the seam's
 //!   sanctioned answer for a compiler whose cost is in starting up, and a resident `node` speaking a
 //!   framed protocol would pay only the ~50 ms compile. It needs the seam to be able to spawn a
@@ -149,7 +148,7 @@ struct CompilerManifest {
     /// The `RUBY_VERSION` that Opal reports (`3.2.0`) — the language level a program is written in,
     /// which is not the same fact as which compiler read it and is the one a model needs.
     ///
-    /// Read only by [`ruby_version`], which is a gate rather than a runtime need and says why.
+    /// Read only by `ruby_version`, which is a gate rather than a runtime need and says why.
     #[cfg_attr(
         not(test),
         allow(dead_code, reason = "read by the prompt's own drift gate")
@@ -317,7 +316,7 @@ pub(super) fn compile(
 /// reporting a broken compiler as a broken program is the misattribution this whole split is for.
 ///
 /// **Unbounded, and this is the one arm where that is the answer rather than an omission.** Every
-/// other compiled arm caps what it hands a model through the [shared bound](super::diagnostics),
+/// other compiled arm caps what it hands a model through the [shared bound](super::super::diagnostics),
 /// because a compiler that reports one problem per call site can say the same sentence fifty times.
 /// Opal cannot: the driver catches a *single* thrown `SyntaxError` and prints it, so a rejection here
 /// is structurally one diagnostic and there is no list to cap. A bound would be a cap of eight on a

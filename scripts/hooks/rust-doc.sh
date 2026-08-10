@@ -8,6 +8,19 @@
 # `cargo doc`. Nothing did before this hook, which is how the workspace
 # accumulated 135 of them across 25 crates unnoticed.
 #
+# `--document-private-items` is why it now sees the crates that need it most.
+# Without it rustdoc walks only a crate's *public* surface, so the gate is as
+# small as a crate's exports: `crates/gg` exposes exactly one `pub` item
+# (`run_from_args`) and declares every module as private `mod`, so this hook
+# passed vacuously over ~44k doc-comment lines. Measured, not theorised — a
+# deliberately broken link planted in `crates/gg/src/sandbox/operations.rs`
+# produced no warning and exit 0. With the flag that crate reported 304
+# unresolved links, including ones naming items deleted with the multi-model
+# feature (`PRIMARY_SLOT`, `CAPABILITY_MULTI_MODEL`, `validate_slots`).
+#
+# It is applied workspace-wide, matching scripts/ci/rust-lint.sh exactly (change
+# the two together, or the hook and CI stop agreeing about what a clean tree is).
+#
 # Note this is NOT doctests. `cargo test --doc` compiles and runs the ``` code
 # examples inside doc comments; it says nothing about whether the links in those
 # comments resolve. The two gates catch disjoint problems, and doctests are the
@@ -16,12 +29,15 @@
 # still runs it (scripts/ci/rust-test.sh) as the backstop for when that changes.
 #
 # `--no-deps` documents only workspace crates, not the dependency graph, which is
-# what makes this cheap enough to sit on every commit: ~5s warm, ~11s after
-# touching test-cabinet-core (the crate with the most dependents) — comparable to
-# the clippy gate beside it, and reusing the same `cargo check` artifacts clippy
-# just built. Like clippy, it excludes only the Tauri desktop shell
-# (crates/desktop) so committing does not require the desktop app's heavy GUI
-# system libraries; rustdoc has to compile a crate before it can document it.
+# what makes this cheap enough to sit on every commit even with private items in
+# scope. Re-measured on one machine with and without the flag, so the delta is the
+# part to trust: no-op 1s → 2s, and 38s → 61s after touching test-cabinet-core
+# (the crate with the most dependents); touching crates/gg, the crate the flag
+# actually unlocks, costs 13s. Still comparable to the clippy gate beside it, and
+# it reuses the same `cargo check` artifacts clippy just built. Like clippy, it
+# excludes only the Tauri desktop shell (crates/desktop) so committing does not
+# require the desktop app's heavy GUI system libraries; rustdoc has to compile a
+# crate before it can document it.
 #
 # Invoked by pre-commit (see .pre-commit-config.yaml); also runnable by hand.
 set -euo pipefail
@@ -30,7 +46,7 @@ set -euo pipefail
 # working directory.
 cd "$(git rev-parse --show-toplevel)"
 
-if ! cargo doc --locked --workspace --exclude test-cabinet-desktop --no-deps; then
+if ! cargo doc --locked --workspace --exclude test-cabinet-desktop --no-deps --document-private-items; then
 	echo >&2
 	echo "rustdoc found issues. Fix them, then commit again." >&2
 	echo "(If a commit is genuinely fine, 'git commit --no-verify' bypasses the hook; CI remains the backstop.)" >&2

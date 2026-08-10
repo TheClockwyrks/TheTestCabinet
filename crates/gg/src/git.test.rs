@@ -239,8 +239,8 @@ async fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
 /// [`abort_merge`] then restores the tree exactly as it was.
 ///
 /// This is the whole reason the policy exists: an issue's branch that conflicts is not disposable
-/// (it holds accepted work), so gg hands the conflicted tree to an agent rather than dropping the
-/// work the way a losing speculation attempt is dropped.
+/// (it holds accepted work), so gg hands the conflicted tree to an agent rather than
+/// [aborting](ConflictPolicy::Abort) the merge and dropping the work.
 #[tokio::test]
 async fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
     let main = TempDir::new().unwrap();
@@ -399,11 +399,11 @@ async fn a_git_call_leaves_the_runtime_thread_free_for_other_agents() {
 /// gg's own commits are a **pure function of their content**: two separate workspaces seeded with
 /// the same bytes produce the same baseline commit sha, however far apart in time they are made.
 ///
-/// This is not a tidiness property, it is what makes an issue-worktree run reconstructable. A commit
-/// id hashes the timestamps as well as the tree, and gg puts a commit sha into a *prompt* — an
-/// issue review brief names the commit the work is measured against — so a clock-derived date makes
-/// the reviewer's very first request differ between a run and its
-/// [playback](crate::playback) for a reason that has nothing to do with the run. It showed up
+/// This is not a tidiness property, it is what makes an issue-worktree run comparable to another.
+/// A commit id hashes the timestamps as well as the tree, and gg puts a commit sha into a
+/// *prompt* — an issue review brief names the commit the work is measured against — so a
+/// clock-derived date makes the reviewer's very first request differ between two runs of the same
+/// work for a reason that has nothing to do with the work. It showed up
 /// exactly as one would expect if nobody had thought about it: the multi-agent round trip passed
 /// whenever the two baselines happened to land in the same second.
 #[tokio::test]

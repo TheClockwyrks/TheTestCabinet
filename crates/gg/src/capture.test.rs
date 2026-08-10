@@ -1391,8 +1391,8 @@ fn a_recorded_git_invocation_interns_both_of_its_streams() {
 
 /// One payload recorded from two different seams occupies **one** text-pool entry.
 ///
-/// This is what the text pool is for: a speculation's `git diff` patch is recorded as a `git`
-/// invocation's stdout *and* quoted into the material its judge is dispatched with, and a tool's
+/// This is what the text pool is for: an issue's `git diff --stat` is recorded as a `git`
+/// invocation's stdout *and* quoted into the brief its reviewer is dispatched with, and a tool's
 /// output is recorded as an outcome *and* quoted into the `tool` message that carries it into the
 /// window. Interning against one content-addressed table collapses each pair to a single copy.
 #[test]

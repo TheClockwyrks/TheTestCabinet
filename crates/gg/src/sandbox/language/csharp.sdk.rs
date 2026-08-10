@@ -19,7 +19,7 @@
 //! # What holds this list to the directory
 //!
 //! Nothing about `include_str!` notices a file nobody added to the array, so
-//! [`its test`](self::tests) reads `packages/gg-sandbox-csharp/src/Gg/` and requires the two to be
+//! its test (`csharp.sdk.test.rs`) reads `packages/gg-sandbox-csharp/src/Gg/` and requires the two to be
 //! equal. A new SDK file that is not embedded would otherwise be a file the reflector documents and
 //! the compiler never sees — a catalogue describing functions a program cannot call.
 //!

@@ -54,9 +54,9 @@
 //!
 //! # None of these is a parser
 //!
-//! Not one predicate here parses, for the reason [TypeScript's dialect](super::typescript::healing)
+//! Not one predicate here parses, for the reason [TypeScript's dialect](super::super::typescript::healing)
 //! gives: healing runs on text that is not yet known to be a program. Unlike that arm, gg has no
-//! Python parser to decline to use — [preparing a Python program](super::python) hands the source
+//! Python parser to decline to use — [preparing a Python program](super) hands the source
 //! across untouched and CPython itself is the first thing to read it — so every answer below is a
 //! lexical shape test, and each declines rather than guessing.
 
@@ -111,7 +111,7 @@ impl Dialect for PythonDialect {
     ///
     /// # Why the `await` token takes its whitespace with it
     ///
-    /// [TypeScript's arm](super::typescript::healing) deletes the token and leaves the space, which
+    /// [TypeScript's arm](super::super::typescript::healing) deletes the token and leaves the space, which
     /// is what makes its healed output carry the odd double space. Python cannot: a body line
     /// `    await work()` dedents to `await work()`, and deleting the token alone would leave
     /// ` work()` — a line beginning with a space, which is an `IndentationError` rather than a
@@ -129,7 +129,7 @@ impl Dialect for PythonDialect {
 
 /// The info-string tags gg reads as "this block is the program", lower-cased.
 ///
-/// A closed, recognised list, on the same terms [TypeScript's](super::typescript::healing) is: a
+/// A closed, recognised list, on the same terms [TypeScript's](super::super::typescript::healing) is: a
 /// block tagged `json`, `text` or `bash` is context the model showed rather than the program, and
 /// tier 3 of the candidacy ladder is what keeps the closed list from being a trap.
 ///
@@ -187,7 +187,7 @@ const NON_PROSE_CHARS: [char; 16] = [
 // ---------------------------------------------------------------------------------------------
 
 /// Whether `line` is **certainly** a line of Python — this dialect's answer to
-/// [`Dialect::looks_like_code`](crate::healing::Dialect::looks_like_code).
+/// [`Dialect::looks_like_code`].
 ///
 /// Its errors are asymmetric on purpose: a false positive costs a fence that could have been
 /// unwrapped (one turn, one located diagnostic), while a false negative deletes a line of the
@@ -319,8 +319,7 @@ fn opens_with_call(line: &str) -> bool {
 }
 
 /// Whether `line` is **certainly** prose rather than Python — this dialect's answer to
-/// [`Dialect::is_prose_line`](crate::healing::Dialect::is_prose_line), and the test `strip-prose`
-/// uses to *delete* a line.
+/// [`Dialect::is_prose_line`], and the test `strip-prose` uses to *delete* a line.
 ///
 /// The mirror image of [`looks_like_code`], with the asymmetry the other way round: a false positive
 /// here deletes the model's code, so every clause is a shape only English has. The two are
@@ -398,8 +397,7 @@ enum Mode {
     Str { quote: u8, triple: bool },
 }
 
-/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to
-/// [`Dialect::code_mask`](crate::healing::Dialect::code_mask).
+/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
 /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
 /// it. Two states end a scan uncleanly: a **triple-quoted** string still open at the end of input,

@@ -63,9 +63,8 @@
 //! here is the opposite one, in three layers:
 //!
 //! 1. **The shared tree is never written.** It is unpacked once per machine into a content-keyed
-//!    [shared toolchain directory](crate::sandbox::shared_toolchain_dir) through
-//!    [`place_tree`](crate::sandbox::place_tree), which renames a finished tree into place and seals
-//!    every file and directory in it read-only.
+//!    [shared toolchain directory](crate::sandbox::shared_toolchain_dir) through [`place_tree`],
+//!    which renames a finished tree into place and seals every file and directory in it read-only.
 //! 2. **Each preparation compiles in its own tree**, hard-linked from that one in ~19 ms. Hard links
 //!    are what make a private tree affordable — and they are also what makes the sealing bite, since
 //!    a link to a read-only inode is read-only too. The two files `purs` rewrites whatever else it
@@ -78,7 +77,7 @@
 //!    `purs` and `esbuild` write that this module never thought about.
 //!
 //! It is **verified by mutation** rather than only by passing. Pointed at one shared output tree —
-//! the measured shape — the seam's own [isolation gate](super::super::isolation) failed this arm
+//! the measured shape — the seam's own isolation gate (`language/isolation.rs`) failed this arm
 //! three independent ways at sixteen-way: artifacts that did not carry their own marker, artifacts
 //! that carried *another preparation's program*, and one preparation reading a `package.json` another
 //! was halfway through writing. Reverted, it is green.

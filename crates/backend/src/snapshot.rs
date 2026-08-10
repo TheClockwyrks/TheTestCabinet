@@ -696,7 +696,7 @@ impl SnapshotBuilder {
     /// `.webm` a run captures natively (see [`transcode_webm_to_mp4`]) so the public
     /// gallery plays on every browser — webm/VP8 does not on iOS/Safari. An **image**
     /// proof is published under its recorded extension unchanged. Either way the
-    /// published name matches [`proof_published_extension`], which the gallery keys
+    /// published name matches [`proof_published_extension`](test_cabinet_core::playable::proof_published_extension), which the gallery keys
     /// its snapshot lookup off. If the clip is already `.mp4` in the store (a legacy
     /// capture, or a re-run snapshot) it is used as-is; only a raw `.webm` is
     /// transcoded, and a transcode that fails falls back to serving the webm so the

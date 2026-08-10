@@ -88,7 +88,7 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
 /// That is the property the whole subsystem rests on, and it has to be re-earned per language rather
 /// than inherited: a dialect whose [`is_prose_line`](Self::is_prose_line) were too generous would
 /// delete a line of a model's program, and no amount of correctness in the skeleton would notice. So
-/// the trait carries [`fixtures`](Self::fixtures) — replies in this language that the delete-only
+/// the trait carries `fixtures` — replies in this language that the delete-only
 /// harness runs the whole pipeline over, under every configuration — and a language cannot be
 /// registered without contributing them.
 ///
@@ -846,7 +846,7 @@ fn contains_code(source: &str, dialect: &dyn Dialect) -> bool {
 /// delete, or it leaves the text exactly as it was. There is no third answer, because "this is not
 /// a program" is not healing's question to answer — the language's prepare step answers it, with a
 /// diagnostic.
-enum StrategyOutcome {
+pub(crate) enum StrategyOutcome {
     /// The strategy does not apply — the text is untouched and nothing is recorded.
     Declined,
     /// The strategy rewrote the text.
@@ -1592,7 +1592,7 @@ fn drop_imports(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
 ///
 /// The deletion invariant still binds across the seam: whatever a dialect hands back must be the
 /// body with text removed and leading whitespace stripped, never text of its own.
-fn unwrap_async(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
+pub(crate) fn unwrap_async(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
     let Some(mask) = dialect.code_mask(text) else {
         return StrategyOutcome::Declined;
     };

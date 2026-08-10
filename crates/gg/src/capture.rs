@@ -691,8 +691,7 @@ impl GgRecorder {
         );
     }
 
-    /// The ceiling a **subprocess stream** is interned under. See
-    /// [`GG_SESSION_STREAM_MAX_BYTES`](test_cabinet_core::gg_session_record::GG_SESSION_STREAM_MAX_BYTES).
+    /// The ceiling a **subprocess stream** is interned under. See [`GG_SESSION_STREAM_MAX_BYTES`].
     fn stream_max_bytes(&self) -> Option<usize> {
         Some(GG_SESSION_STREAM_MAX_BYTES)
     }
@@ -700,8 +699,7 @@ impl GgRecorder {
     /// The ceiling a **tool payload** is interned under, which is eight times the stream ceiling
     /// and for a reason worth restating at the seam: what a tool returns *is* what the model was
     /// shown, so clipping it below the tool layer's own cap would record a file the model read in
-    /// full as a tail of itself. See
-    /// [`GG_SESSION_TOOL_MAX_BYTES`](test_cabinet_core::gg_session_record::GG_SESSION_TOOL_MAX_BYTES).
+    /// full as a tail of itself. See [`GG_SESSION_TOOL_MAX_BYTES`].
     fn tool_max_bytes(&self) -> Option<usize> {
         Some(GG_SESSION_TOOL_MAX_BYTES)
     }
@@ -732,7 +730,8 @@ impl GgRecorder {
     ///
     /// In v1 these bypassed tool dispatch entirely and were captured nowhere, which mattered
     /// because they are not bookkeeping a reader can take for granted: a merge that
-    /// conflicts changes the run, and a speculation judge scores whatever `git diff` printed.
+    /// conflicts changes the run, and a reviewer's verdict is rendered against whatever
+    /// `git diff --stat` printed.
     pub fn record_git(&self, agent_id: &str, command: RecordedCommand<'_>) {
         self.record_command(
             agent_id,
@@ -1232,8 +1231,9 @@ impl ModelClient for RecordingClient {
 /// [hook's](crate::hooks) commands — and for the whole of format v2's
 /// first milestones only the third of them was recorded, because it was the only one with a call
 /// site that happened to hold the recorder. A record of a session that used the shell tool
-/// therefore had no answer for a single one of its commands, and a
-/// [reading](crate::reading) of it reported every command as a miss.
+/// therefore had no answer for a single one of its commands, and anything reading the
+/// [record](test_cabinet_core::gg_session_record::GgSessionRecord) back found a hole where every
+/// one of them should have been.
 ///
 /// The seam is where all three meet, so the capture belongs here: one decorator, and the
 /// [origin](ShellRequest::origin) the caller stamped says which path it came from. Recording at the
@@ -1252,9 +1252,10 @@ impl ModelClient for RecordingClient {
 /// [hook](crate::hooks) ran somewhere else is relativized against the agent's root
 /// exactly as its own [`ToolContext`](crate::tools::ToolContext) was derived from it.
 pub struct RecordingShellRunner {
-    /// The runner that actually answers — [`RealShellRunner`](crate::tools::real_shell) in a live
-    /// run, and a [reading](crate::reading)'s recorded runner when a reader is
-    /// re-recording itself.
+    /// The runner that actually answers — whatever the session's
+    /// [shell seam](crate::agent::SessionSeams::shell) supplied:
+    /// [`RealShellRunner`](crate::tools::real_shell) in a live run, and gg's own suite's substitute
+    /// under test.
     inner: std::sync::Arc<dyn ShellRunner>,
     /// The shared recorder every command is streamed into.
     recorder: std::sync::Arc<GgRecorder>,

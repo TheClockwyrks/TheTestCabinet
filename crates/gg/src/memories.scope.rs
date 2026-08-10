@@ -227,7 +227,7 @@ fn strategy_of(profile: &GgAgentConfig) -> MemoryStrategy {
     )
 }
 
-/// The [notice](MemoriesRuntime::notice) lines `fresh` deserves, from the point of view of the
+/// The [notice](super::MemoriesRuntime::notice) lines `fresh` deserves, from the point of view of the
 /// holder `holder`: every entry another holder authored, **one line per memory** rather than one
 /// per write.
 ///

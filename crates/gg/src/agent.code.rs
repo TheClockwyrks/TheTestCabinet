@@ -4,17 +4,20 @@
 //!
 //! It is a module of [`agent`](super) rather than a file of it because it is one self-contained
 //! concern — healing, execution, servicing, feedback — whose only couplings to the turn loop are the
-//! [`CodeTurn`] it is handed and the [`CodeTurnOutcome`] it hands back. Splitting it out keeps
-//! `agent.rs` about the turn loop and this file about what a *program turn* is.
+//! [`CodeTurn`] it is handed and the [`CodeTurnOutcome`] it hands back. Splitting it out — under
+//! the repo's `foo.<concern>.rs` convention, `agent.rs` already being the largest file in the
+//! crate — keeps `agent.rs` about the turn loop and this file about what a *program turn* is. Its
+//! items are `use`d back into [`agent`](super), so the loop calls them unqualified exactly as it
+//! did when they lived there.
 //!
 //! # Two questions this file does not answer
 //!
-//! **What counts as a program** is [healing](crate::healing)'s question, and **what counts as
-//! finished** is an [ending call](crate::ending)'s. Neither is decided here, and neither
-//! has a second, quieter answer hiding in this module: there is no shape of reply this file reads as
-//! a conclusion, and no ending it invents. That is the whole of the protocol change this design
-//! carries — under the protocol this replaces, both questions were answered here, by an extractor
-//! whose silence about what it discarded cost a real session its deliverable.
+//! **What counts as a program** is [healing]'s question, and **what counts as finished** is an
+//! [ending call](crate::ending)'s. Neither is decided here, and neither has a second, quieter
+//! answer hiding in this module: there is no shape of reply this file reads as a conclusion, and no
+//! ending it invents. That is the whole of the protocol change this design carries — under the
+//! protocol this replaces, both questions were answered here, by an extractor whose silence about
+//! what it discarded cost a real session its deliverable.
 //!
 //! # What lives here
 //!
@@ -23,8 +26,9 @@
 //! * [`run_code_program`] — the `spawn_blocking` offload plus the servicing loop, which is where
 //!   every must-survive loop behaviour (gating, scheduler routing, telemetry, session capture,
 //!   knowledge-state re-emission, context reclaim, skill pinning) is preserved for a composed call.
-//! * [`dispatch_code_tool_call`] — the per-call counterpart of the tool-calling loop's dispatch, so
-//!   the two paths gate and route identically.
+//! * [`LoopToolApi`] — the production [`ToolApi`], holding the loop's own state and servicing each
+//!   typed call the guest makes inline, so a composed call and a native tool call gate and route
+//!   identically.
 //! * The feedback builders, which turn what happened into the compiler diagnostic, runtime fault or
 //!   notice the turn earned.
 //!
@@ -157,8 +161,7 @@ pub(super) enum CodeTurnOutcome {
 pub(super) struct CodeFeedback {
     /// Which of the three bands this message belongs to.
     pub(super) source: GgContextSource,
-    /// The message body, unheaded — [`ContextModel`](crate::context::ContextModel) prefixes the
-    /// heading when it is pushed.
+    /// The message body, unheaded — [`ContextModel`] prefixes the heading when it is pushed.
     pub(super) body: String,
 }
 
@@ -228,11 +231,10 @@ impl CodeTurnOutcome {
 ///
 /// Classification and feedback are decided at the *same* match, rather than by a separate
 /// classifier the feedback then re-derives: the two decisions read the same facts, and splitting
-/// them is how they drift.
-/// `healed` is the reply already run through [healing](healing::heal) by the caller — done there, not
-/// here, because the loop needs the healed program *before* this turn runs to decide what assistant
-/// message to record (see [`AssistantMessageMode`](crate::healing::AssistantMessageMode)), and healing
-/// the same reply twice would be the kind of duplicated decision that drifts.
+/// them is how they drift. `healed` is the reply already run through [healing](healing::heal) by
+/// the caller — done there, not here, because the loop needs the healed program *before* this turn
+/// runs to decide what assistant message to record (see [`AssistantMessageMode`]), and healing the
+/// same reply twice would be the kind of duplicated decision that drifts.
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn run_code_turn(
     healed: Healed,
@@ -995,10 +997,9 @@ pub(super) struct CodeTurn<'a> {
     pub(super) emitter: &'a Emitter,
     /// The session recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
-    /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
-    /// is in flight. While it is set the program's calls are narrowed to the one family that
-    /// satisfies it — everything else is refused, because everything else adds to a window that is
-    /// already full.
+    /// The [compaction] the loop is waiting for this agent to perform, when one is in flight. While
+    /// it is set the program's calls are narrowed to the one family that satisfies it — everything
+    /// else is refused, because everything else adds to a window that is already full.
     pub(super) pending_compaction: Option<PendingCompaction>,
     /// Which [ending calls](EndingRole) this agent's programs are given, and what the sandbox will
     /// accept from them.
@@ -1046,10 +1047,10 @@ pub(super) struct CodeTurnState {
     /// it requested none, or never ran a program). The loop suspends the agent on each — after the
     /// turn's feedback is recorded — before taking the next turn.
     pub(super) issue_waits: Vec<String>,
-    /// The [compaction](crate::compaction) this turn's program declared with `context.compact(…)`,
-    /// deferred to the loop exactly as an issue wait is: rewriting the window a program is running
-    /// in would pull it out from under the turn still using it. The **last** call stands, so a
-    /// program that compacts twice compacts once, from its final summary.
+    /// The [compaction] this turn's program declared with `context.compact(…)`, deferred to the
+    /// loop exactly as an issue wait is: rewriting the window a program is running in would pull it
+    /// out from under the turn still using it. The **last** call stands, so a program that compacts
+    /// twice compacts once, from its final summary.
     pub(super) compact_requested: Option<CompactionRequest>,
     /// The [succession](crate::agent::transitions) this turn's program declared — with
     /// `agents.transitionState(…)` or `agents.exec(…)`, which are the same handoff — deferred to
@@ -2099,14 +2100,14 @@ impl LoopToolApi {
     /// Validate a `wait_for_issue` request and record it for the loop to honour after the program
     /// ends — the non-blocking near half of the deferred wait.
     ///
-    /// It runs the same checks the native [`handle_wait_for_issue`](super::handle_wait_for_issue)
-    /// runs before it blocks — a non-empty id, the project capability, not the agent's own assigned
-    /// issue, and an issue that is actually on the board — so a program learns of a bad id *as a
-    /// throw on the call*, in the turn it made it, rather than at the between-turns suspension where
-    /// it has no program to catch it. What it does not do is block: it appends the id to
+    /// It runs the same checks the native [`handle_wait_for_issue`] runs before it blocks — a
+    /// non-empty id, the project capability, not the agent's own assigned issue, and an issue that
+    /// is actually on the board — so a program learns of a bad id *as a throw on the call*, in the
+    /// turn it made it, rather than at the between-turns suspension where it has no program to
+    /// catch it. What it does not do is block: it appends the id to
     /// [`issue_waits_requested`](LoopToolApi::issue_waits_requested) (deduplicated) and returns an
     /// acknowledgement, and the loop suspends on it once the whole program has run.
-    fn register_issue_wait(&mut self, id: String) -> ToolOutcome {
+    pub(super) fn register_issue_wait(&mut self, id: String) -> ToolOutcome {
         let issue_id = id.trim();
         if issue_id.is_empty() {
             return ToolOutcome::failed(

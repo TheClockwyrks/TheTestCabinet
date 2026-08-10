@@ -3,7 +3,7 @@
 //! OpenRouter reports, per model, which input modalities it accepts (`text`,
 //! `image`, `file`, …). That fact belongs in the catalog for the same reason the
 //! context window does: the catalog is the single store of model facts, and a
-//! [gg](test_cabinet_core::gg) run is *told* what it needs about its models at
+//! gg run is *told* what it needs about its models at
 //! launch rather than querying for it from inside the run container. Knowing a
 //! model is text-only is what keeps gg from putting a reference image in a prompt
 //! that model cannot accept.

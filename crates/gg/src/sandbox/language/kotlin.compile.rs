@@ -31,11 +31,11 @@
 //!
 //! # What a Kotlin program is: a script
 //!
-//! The one deep difference from the Java arm, and it is [`source`](super::source)'s to explain. A
-//! reply is compiled as a Kotlin **script** rather than as the body of a function gg declares,
-//! because Kotlin refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as
-//! *local* declarations — five things a Kotlin author writes without thinking. In a script they are
-//! all legal, statements and declarations sit side by side, and a reply with no `import` in it is
+//! The one deep difference from the Java arm, and it is [`source`]'s to explain. A reply is
+//! compiled as a Kotlin **script** rather than as the body of a function gg declares, because
+//! Kotlin refuses `object`, `interface`, `enum class`, `typealias` and `private fun` as *local*
+//! declarations — five things a Kotlin author writes without thinking. In a script they are all
+//! legal, statements and declarations sit side by side, and a reply with no `import` in it is
 //! compiled **byte for byte as the model wrote it**.
 //!
 //! What that costs is here rather than there: four scripting jars in the toolchain, one experimental
@@ -115,7 +115,7 @@ const MAX_BUILDS: usize = 64;
 
 /// How many warm JVMs may exist at once.
 ///
-/// Not [`WIDTH`](super::super::isolation::WIDTH), for the reason
+/// Not `WIDTH` in `language/isolation.rs`, for the reason
 /// [Java's pool](super::super::java::compile) is not either: a JVM holding the Kotlin compiler *and*
 /// TeaVM holds several hundred megabytes, so sixteen of them is a container that swaps rather than an
 /// arm that is four times faster. A preparation that arrives when all four are out waits, which costs
@@ -548,7 +548,7 @@ const CAUGHT: [&str; 14] = [
 /// number would — so the trade is deliberate and not this arm's alone: it follows from the shared
 /// [JVM road](super::super::jvm) and [Java's arm](super::super::java::compile) is on exactly the same
 /// terms. `a_refusal_raised_under_the_program_rather_than_by_it_is_passed_through_undescribed` in
-/// [the substrate tests](super::substrate) holds it, so a future reader finds the exception rather
+/// the substrate tests (`kotlin.substrate.test.rs`) holds it, so a future reader finds the exception rather
 /// than the unqualified claim.
 const FOREIGN_MARKER: &str = "(JavaScript) ";
 
@@ -756,7 +756,7 @@ fn handshake(greeting: &str) -> Result<(), String> {
 ///
 /// The seam's one sanctioned share, taken under the seam's discipline: the directory's key folds in
 /// the pinned Kotlin release, a digest of the assembled driver's own bytes **and** one of the
-/// [SDK](SDK), so a gg carrying either a different driver or a different surface reads a different
+/// [SDK], so a gg carrying either a different driver or a different surface reads a different
 /// directory rather than another build's files; each write goes through [`place`], which renames a
 /// complete file into place. Nothing ever writes to it again — a JVM only reads it.
 fn placed() -> Result<&'static Placed, String> {
@@ -811,8 +811,8 @@ struct Toolchain {
     /// `UNRESOLVED_IMPORT` at the model's own line rather than forty-five TeaVM errors inside
     /// somebody else's file.
     ///
-    /// This arm's [SDK](SDK) is appended to it as the daemon starts, because that jar is placed
-    /// rather than installed and its path is not known until then.
+    /// This arm's [SDK] is appended to it as the daemon starts, because that jar is placed rather
+    /// than installed and its path is not known until then.
     program_path: String,
     /// What a code **module** is compiled against: the above plus TeaVM's `@JSExport`, which gg
     /// writes into a module and an author never types.

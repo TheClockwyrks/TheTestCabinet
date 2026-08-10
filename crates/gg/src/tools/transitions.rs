@@ -12,7 +12,7 @@
 //! tears an agent instance down (or stands a second one up) against the scheduler, the emitter and
 //! the module set, none of which a [`Tool`] can see. So the implementations here exist only to
 //! **declare** the calls to the model, and their [`invoke`](Tool::invoke) is a defensive fallback
-//! that never runs in a correctly wired session — the [loop](crate::transitions) judges and applies
+//! that never runs in a correctly wired session — the [loop](crate::agent::transitions) judges and applies
 //! every one of them.
 //!
 //! # Why each is offered

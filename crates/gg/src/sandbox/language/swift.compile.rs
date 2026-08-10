@@ -8,7 +8,7 @@
 //! in-process [`wit_component`] encode with the pinned preview1 adapter — and what crosses the
 //! membrane is not source at all but the artifact gg's engine instantiates.
 //!
-//! It is the second arm of that shape, after [Rust](super::rust), and it inherits the seam Rust
+//! It is the second arm of that shape, after [Rust](super::super::rust), and it inherits the seam Rust
 //! grew: [`PreparedProgram::component`] carries the bytes, `guest_component` answers `None`, and
 //! `engine::program_component` is where the two shapes meet.
 //!
@@ -52,7 +52,7 @@
 //! It is still the weakest error surface of any arm here, and that is a fact about the language
 //! rather than a gap in the implementation: Swift's unrecoverable failures are unrecoverable **by
 //! design**, no guest-side shell can catch one, and what reaches the model is a *report about* a
-//! failure rather than a caught error it could have branched on. The [Rust](super::rust) arm has
+//! failure rather than a caught error it could have branched on. The [Rust](super::super::rust) arm has
 //! the same problem and a way out this one does not — a panic *hook* runs on a live guest before
 //! the abort and completes a real `feedback.report-error` first. Swift has no equivalent.
 //!
@@ -102,7 +102,7 @@
 //! none of them links an artifact byte for byte the size of one built without the archive on the
 //! command line at all.
 //!
-//! The artifact is two orders of magnitude larger than the [Rust](super::rust) arm's ~25 KB, and
+//! The artifact is two orders of magnitude larger than the [Rust](super::super::rust) arm's ~25 KB, and
 //! the reason is the standard library rather than the program: Swift's is statically linked, its
 //! `String` and its reflection metadata are reachable from anything, and `--gc-sections` cannot
 //! strip what a metadata table names. That is a real per-turn cost — the engine compiles those
@@ -266,7 +266,7 @@ const PREPARATION_PREFIX: &str = "/gg";
 /// measured and rejected (`-file-prefix-map` rewrites the paths but not the hashes;
 /// `-gline-tables-only` still carries them; `-Xcc -Xclang -fdisable-module-hash` still leaves the
 /// PCH name; a shared warm module cache still hashes the working directory). It costs the seam's
-/// [isolation gate](crate::sandbox::language::isolation) nothing, because that gate searches an
+/// isolation gate (`language/isolation.rs`) nothing, because that gate searches an
 /// artifact for its own program's marker rather than comparing two artifacts — the marker lives in
 /// the data section and the debug sections are beside the point. It did cost that gate a great deal
 /// while it also compared bytes, which is one of the three reasons that comparison was deleted.
@@ -295,8 +295,8 @@ struct Manifest {
     /// bump is visible in a diff of one line rather than only in three megabytes of binary.
     #[allow(dead_code)]
     packages: std::collections::BTreeMap<String, String>,
-    /// Every module a program may `import` out of the library set, which is what
-    /// [`libraries`](self::libraries) unpacks and what `libraries.txt` claims.
+    /// Every module a program may `import` out of the library set, which is what [`libraries`]
+    /// unpacks and what `libraries.txt` claims.
     modules: Vec<String>,
     /// Every file in the guest archive.
     files: Vec<GuestFile>,

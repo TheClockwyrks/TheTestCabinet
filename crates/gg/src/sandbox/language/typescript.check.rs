@@ -10,6 +10,10 @@
 //! declarations, and a program that does not type-check never reaches the guest: the model is handed
 //! the compiler's diagnostics, at the coordinates of the text it wrote, and writes another program.
 //!
+//! It is the one part of this arm that is **not** shared with
+//! [gg's JavaScript arm](super::super::javascript) — [the type-strip](super::prepare) is — and it
+//! is therefore the whole of what the two arms differ in.
+//!
 //! # Why a subprocess, and why this one
 //!
 //! The check runs **inside the run container**, on gg's own blocking thread, on every code turn.
@@ -186,9 +190,9 @@ pub(super) fn checker_version() -> &'static str {
 
 /// Materialise the checker now, so the first check does not.
 ///
-/// The whole of [`ProgramLanguage::warm_prepare`](super::ProgramLanguage::warm_prepare) for this
-/// language. The result is dropped: a failure here is the same failure the first check will make,
-/// and there it is classified, counted and reported.
+/// The whole of [`ProgramLanguage::warm_prepare`] for this language. The result is dropped: a
+/// failure here is the same failure the first check will make, and there it is classified, counted
+/// and reported.
 pub(super) fn warm() {
     let _ = checker();
 }

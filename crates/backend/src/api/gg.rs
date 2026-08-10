@@ -12,7 +12,7 @@
 //! [`GgRunRequest`] onto a [`LaunchBody`] with the harness fixed to
 //! [`HarnessSlug::Gg`] and the capability set carried in
 //! [`LaunchBody::gg_capability_set`], then enqueues it through the same
-//! [`build_new_job`](super::jobs::build_new_job) path every run takes. The
+//! [`build_new_job`] path every run takes. The
 //! dispatcher claims it, the driver rebuilds the gg [`RunRequest`] from the stored
 //! launch body, and core takes its gg branch — so a gg run is observed through the
 //! very same live monitor (`GET /jobs/{id}/live`), status, and active-run list.
@@ -98,7 +98,7 @@ impl GgRunRequest {
     ///
     /// Returns the human-readable reason when the capability set does not bind a
     /// model to its root agent — the one gg-specific precondition the flat
-    /// [`build_new_job`](super::jobs::build_new_job) validation cannot express.
+    /// [`build_new_job`] validation cannot express.
     fn into_launch_body(self) -> Result<LaunchBody, String> {
         // Every [model slot](test_cabinet_core::gg::GgModelSlot) a configuration declares
         // is filled in by the launch form, so a set arriving here with an agent still

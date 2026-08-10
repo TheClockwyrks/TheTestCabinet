@@ -2782,7 +2782,7 @@ fn rating_rank_expr() -> SimpleExpr {
 /// timed-out, and harness-error — the slice every failures-only
 /// query and publish gate filters on.
 ///
-/// Derived from [`RunState::is_publishable_failure`] rather than written out, so a
+/// Derived from [`RunState::is_publishable_failure`](test_cabinet_core::run_record::RunState::is_publishable_failure) rather than written out, so a
 /// new failure tier cannot be added to the contract and silently missed here.
 /// `publishable_failure_states_match_the_contract` pins the two together.
 fn publishable_failure_states() -> Vec<&'static str> {
@@ -2811,7 +2811,7 @@ fn run_state_str(state: test_cabinet_core::run_record::RunState) -> &'static str
 /// infrastructure failure (our fault, not a model result) and an operator-canceled
 /// run (a deliberate stop, not an outcome). Both are retained for inspection only.
 ///
-/// Derived from [`RunState::is_publishable`] rather than written out, for the same
+/// Derived from [`RunState::is_publishable`](test_cabinet_core::run_record::RunState::is_publishable) rather than written out, for the same
 /// reason [`publishable_failure_states`] is: a new never-publishable state cannot be
 /// added to the contract and silently slip through the publish gate.
 fn never_publishable_states() -> Vec<&'static str> {

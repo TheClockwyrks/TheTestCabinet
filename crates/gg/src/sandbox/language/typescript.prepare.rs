@@ -8,6 +8,10 @@
 //! into a run container that has no reason to contain one. `oxc` strips a representative program in
 //! ~0.2 ms.
 //!
+//! This step is shared with [gg's JavaScript arm](super::super::javascript), which is why it is
+//! visible to the whole [`language`](super::super) module rather than only to
+//! [TypeScript's](super): that arm is this step with the [check](super::check) removed.
+//!
 //! # Stripped, not checked — but early errors are still caught here
 //!
 //! Nothing here type-*checks*. `interface Entry { … }` is erased, `const x: Entry[] = …` becomes
@@ -307,10 +311,11 @@ pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
 /// **unconditional** and a direct child of the program body — a `return` inside an `if`, a loop or a
 /// block is a conditional exit and says nothing about what follows it.
 ///
-/// A top-level [`finish`](super::FINISH_FUNCTION) call is deliberately **not** one, and used to be. It sets
-/// a flag in the agent's context and returns like any other call, so the statements after it run
-/// exactly as written; calling them unreachable would be false, and telling a model its `finish`
-/// killed the rest of its program would teach it a rule this sandbox no longer has.
+/// A top-level [`finish`](crate::sandbox::FINISH_FUNCTION) call is deliberately **not** one, and
+/// used to be. It sets a flag in the agent's context and returns like any other call, so the
+/// statements after it run exactly as written; calling them unreachable would be false, and telling
+/// a model its `finish` killed the rest of its program would teach it a rule this sandbox no longer
+/// has.
 ///
 /// # What counts as not running
 ///
@@ -637,7 +642,7 @@ fn excerpt(line: &str) -> String {
 }
 
 #[path = "typescript.modules.rs"]
-mod modules;
+pub(super) mod modules;
 
 pub(in crate::sandbox::language) use modules::prepare_module;
 

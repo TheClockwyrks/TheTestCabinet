@@ -3,14 +3,14 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side `clang++`, the precompiled prelude that makes it
-//!   affordable, the in-process component encode with the preview1 adapter, what they cost, what
-//!   they share, and the two failures they tell apart;
-//! * [`source`](self::source) — the one thing gg reads out of a reply, which is whether it defines
-//!   `main`, and the one thing it writes, which is the namespace a **code module**'s declarations
-//!   are opened inside;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of, whose lexer is also the one [`source`] reads a reply with;
+//! * [`compile`] — the host-side `clang++`, the precompiled prelude that makes it affordable, the
+//!   in-process component encode with the preview1 adapter, what they cost, what they share, and
+//!   the two failures they tell apart;
+//! * [`source`] — the one thing gg reads out of a reply, which is whether it defines `main`, and
+//!   the one thing it writes, which is the namespace a **code module**'s declarations are opened
+//!   inside;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of, whose lexer is also the one [`source`] reads a reply with;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in C++'s syntax;
 //! * `packages/gg-sandbox-cpp/Sources/sdk/` — the SDK, hand-written and idiomatic, whose `///`
@@ -64,17 +64,17 @@
 //! nothing to run — and gg refuses it by name, at prepare time, rather than letting it link. That
 //! `wasm-ld` links one at all is the surprising half and is measured rather than assumed: wasi-libc
 //! references `main` **weakly**, so the missing entry point resolves to a stub that traps and the
-//! compiler exits zero. See [`source`](self::source) for why no linker flag asks the question and
-//! why gg's lexical answer can only be wrong in the safe direction.
+//! compiler exits zero. See [`source`] for why no linker flag asks the question and why gg's
+//! lexical answer can only be wrong in the safe direction.
 //!
 //! # What this arm has that no other does
 //!
 //! **A real exception mechanism.** [Rust](super::rust) aborts and reaches for a panic hook;
 //! [Swift](super::swift) traps and has no hook at all. C++ here has `throw`, `try` and `catch`, and
 //! they work — `-fwasm-exceptions` with the standardised encoding, against a wasmtime configured to
-//! accept it. What that cost the workspace is written down in [`compile`](self::compile) rather than
-//! quietly absorbed: wasmtime's exception support is behind a build feature that the two other wasm
-//! hosts in this repository now also build with, and both pin their own validation surface back
+//! accept it. What that cost the workspace is written down in [`compile`] rather than quietly
+//! absorbed: wasmtime's exception support is behind a build feature that the two other wasm hosts
+//! in this repository now also build with, and both pin their own validation surface back
 //! explicitly rather than inheriting a wider one.
 //!
 //! # What this arm has that is worse than any other, and cannot be engineered away
@@ -111,8 +111,8 @@
 //! inside `namespace lib::<key>` **where they stand**. It is the plainest shape of the three
 //! compiled arms — C++ has a real nested namespace, so nothing has to be moved, re-synthesized or
 //! declared twice — and the one thing that had to be decided is what happens to a `#include` at a
-//! module's top level, which is refused by name. See [`source`](self::source) for the shape, the
-//! refusal and the argument.
+//! module's top level, which is refused by name. See [`source`] for the shape, the refusal and the
+//! argument.
 //!
 //! What a model can see of the difference is that `lib::csv_tools::parse` is a **name the compiler
 //! resolves** rather than a property looked up on a value: a key that does not exist is a diagnostic
@@ -135,18 +135,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The `clang++` build and the in-process component encode: the host-side step that turns a model's
-/// C++ into the component that evaluates it.
 #[path = "cpp.compile.rs"]
 pub(super) mod compile;
 
-/// What gg reads out of a model's C++ — whether it defines `main` — and the namespace a code
-/// module's declarations are opened inside.
 #[path = "cpp.source.rs"]
 pub(super) mod source;
 
-/// The lexical reading of a reply — C++'s answers to healing's questions, and the one lexer
-/// [`source`] shares.
 #[path = "cpp.healing.rs"]
 pub(super) mod healing;
 

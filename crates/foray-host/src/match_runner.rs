@@ -189,7 +189,7 @@ fn record_header(setup: &MatchSetup) -> RecordHeader {
 
 /// Load both controllers under a fresh engine and run the match. The engine has
 /// fuel metering enabled (so per-tick fuel can be set) and is shared by both
-/// controllers; each controller still gets its own [`Store`]/[`Instance`], so
+/// controllers; each controller still gets its own [`Store`](wasmtime::Store)/[`Instance`](wasmtime::Instance), so
 /// their working memory is isolated.
 pub fn run_with_modules(
     red_wasm: &[u8],
@@ -220,7 +220,7 @@ pub fn run_with_modules(
 }
 
 /// Build the shared wasm engine with fuel metering on. Fuel consumption must be
-/// enabled at engine-construction time for [`Store::set_fuel`] to work each tick.
+/// enabled at engine-construction time for [`Store::set_fuel`](wasmtime::Store::set_fuel) to work each tick.
 ///
 /// GC support is turned back **off**, and that line is here because of a change
 /// this crate did not ask for. The workspace's `wasmtime` is built with the `gc`

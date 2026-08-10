@@ -397,7 +397,7 @@ impl Target {
 ///   instruction.
 /// * `-deterministic` — Roslyn stamps a build with an MVID derived from its inputs rather than from
 ///   the clock, so two preparations of one program produce byte-identical assemblies. Nothing in the
-///   seam demands that (the [isolation gate](crate::sandbox::language::isolation) searches artifacts
+///   seam demands that (the isolation gate in `language/isolation.rs` searches artifacts
 ///   for markers and never compares two of them), and it is passed anyway: an artifact that is a
 ///   function of its program is one a study can re-prepare from a recorded program and get back what
 ///   ran.

@@ -307,7 +307,7 @@ impl SessionSummaryTracker {
     /// [finalizing](Self::finalize). Recording
     /// the *resolved* toolset — a capability's tools only when enabled and, for the stateful ones,
     /// only when their store is non-empty, minus any individually
-    /// [withheld](test_cabinet_core::gg::GgCapabilitySet::disabled_tools) tool — makes the toolset a
+    /// withheld tool — makes the toolset a
     /// first-class, slice-by ablation variable rather than something a query must re-derive from the
     /// capability set.
     pub fn record_effective_tools(&self, tools: Vec<String>) {

@@ -1,5 +1,4 @@
-//! The **briefs gg generates for the agents it delegates to** — the reviewer, the fix agent, the
-//! speculation attempts, and the judge.
+//! The **briefs gg generates for the agents it delegates to** — the reviewer and the fix agent.
 //!
 //! A brief is model-facing product text like the system prompt, and its prose is a
 //! [template](crate::prompts) like the system prompt's. What is tested *here* rather than beside the

@@ -5,7 +5,7 @@
 //!
 //! A Python module's namespace *is* its exports. There is no `export` keyword, nothing for gg to
 //! append, and the shim binds `lib.<key>` straight from the names the module body left behind — so
-//! [preparing one](super::Python::prepare_module) hands the source across untouched. What it cannot
+//! [preparing one](super::super::ProgramLanguage::prepare_module) hands the source across untouched. What it cannot
 //! hand across untouched is the **list**, because that list is model-facing: the reply that binds a
 //! code skill names the key and says what it offers, and a model that is told nothing spends a turn
 //! finding out.

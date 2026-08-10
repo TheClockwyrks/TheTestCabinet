@@ -900,8 +900,8 @@ async fn every_turn_records_exactly_one_outcome() {
 /// **A subagent's error ceiling ends that subagent, not the run.**
 ///
 /// "Consecutive" and "the last N turns" are only definable within one agent's turn sequence, so the
-/// error ceilings are per agent; it is also substantively right, because a speculation fans out K
-/// attempts precisely so that some may fail. A stopped child hands back its status line, the run
+/// error ceilings are per agent; it is also substantively right, because work is delegated to a
+/// child precisely so that its failures are its own. A stopped child hands back its status line, the run
 /// carries on, and the run's own outcome is the parent's.
 #[tokio::test]
 async fn a_subagents_error_ceiling_ends_it_alone() {

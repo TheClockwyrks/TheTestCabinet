@@ -611,7 +611,7 @@ fn pick<'a>(files: &'a CodeFiles, language: &dyn ProgramLanguage) -> Option<&'a 
 /// name.
 ///
 /// Derived from the registry rather than listed, so a language added to the seam is read out of a
-/// skills directory without anything here being edited. The [fixture](crate::sandbox::fixture)
+/// skills directory without anything here being edited. The fixture (`sandbox/language/fixture.rs`)
 /// languages join it under test for the same reason they join every other iteration of the seam: a
 /// mechanism exercised against one spelling is a mechanism nobody has watched choose.
 fn code_extensions() -> BTreeSet<&'static str> {

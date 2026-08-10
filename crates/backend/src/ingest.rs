@@ -312,7 +312,7 @@ impl<'a> Ingestor<'a> {
     }
 
     /// Store every reference view (common + per-variant) of a resolved version into
-    /// `dest`'s reference sidecar (a staging directory; see [`build_version`]). An
+    /// `dest`'s reference sidecar (a staging directory; see [`build_version`](Self::build_version)). An
     /// HTML mockup is rendered to a screenshot; a static image/video is copied as-is.
     /// A failure aborts the version's ingest, since serving a version with a missing
     /// baseline would let a runner validate against a hole. Returns the number of
@@ -661,7 +661,7 @@ fn stored_proof(proof: &test_cabinet_core::ProofFile) -> StoredProof {
     }
 }
 
-/// Build a `StoredSpec` from a resolved [`SpecFile`], deriving the store-relative
+/// Build a `StoredSpec` from a resolved [`SpecFile`](test_cabinet_core::SpecFile), deriving the store-relative
 /// `source` key and the `template` flag (a `.hbs` source) and carrying its `kind`.
 fn stored_spec(root: &Path, spec: &test_cabinet_core::SpecFile) -> Result<StoredSpec> {
     let source = relative_key(root, &spec.source_path)?;
@@ -695,9 +695,9 @@ fn stored_workspace(
 /// Build a [`StoredCase`] from a resolved performance case: the held-out `input`
 /// scenario and `expected` oracle state, each keyed by its **store-relative** path
 /// exactly as specs, workspace files, and assets are. The runner fetches both like
-/// any other definition file and the [`PerformanceValidator`] scores against them;
+/// any other definition file and the [`PerformanceValidator`](test_cabinet_core::PerformanceValidator) scores against them;
 /// they are never seeded into a run. Keying them absolutely (as this once did)
-/// leaves the driver's [`materialize_version`] unable to fetch or locate them, so
+/// leaves the driver's [`materialize_version`](test_cabinet_core::backend_client::materialize_version) unable to fetch or locate them, so
 /// every backend-driven performance run resolves an empty scored set and aborts.
 fn stored_case(
     root: &Path,

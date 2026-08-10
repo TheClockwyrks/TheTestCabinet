@@ -15,7 +15,7 @@
 //! the [`ContextModel`](crate::context::ContextModel) (removing the items, moving archived ones
 //! into the shared [`ArchiveStore`], rewriting the window around a summary) and rewrites the tool
 //! result with what was reclaimed. The shared argument parsers ([`parse_evict_path`],
-//! [`parse_archive_keep_recent`], [`parse_compact_request`]) are the single source of truth both
+//! [`parse_archive_ranges`], [`parse_compact_request`]) are the single source of truth both
 //! sides use. `search_archive`, by contrast, is a self-contained store-backed tool (like the memory
 //! tools): it reads the shared archive directly and needs nothing from the live window.
 

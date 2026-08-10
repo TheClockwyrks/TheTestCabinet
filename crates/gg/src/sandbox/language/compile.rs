@@ -46,11 +46,11 @@
 //!
 //! What is *not* enforced by construction, because Rust cannot: a language may still declare a
 //! `static Mutex<Compiler>` and share it. That is what [`CompilerPool`] is the sanctioned answer to
-//! and what the [isolation harness](super::isolation) exists to catch — it drives any preparation
-//! 16-way with distinguishable inputs and fails the one whose results do not each belong to their own
-//! input. A source-level gate in that harness's tests also refuses a direct
-//! [`Command`](std::process::Command) or [`temp_dir`](std::env::temp_dir) anywhere in a language
-//! module, so a compiler that never went through here is a failing test rather than a discovery.
+//! and what the isolation harness (`language/isolation.rs`) exists to catch — it drives any preparation
+//! 16-way with distinguishable inputs and fails the one whose results do not each belong to their
+//! own input. A source-level gate in that harness's tests also refuses a direct [`Command`] or
+//! [`temp_dir`](std::env::temp_dir) anywhere in a language module, so a compiler that never went
+//! through here is a failing test rather than a discovery.
 //!
 //! # What this is *not* protecting against
 //!
@@ -148,7 +148,7 @@ impl PrepareContext {
 
     /// The workspace path, **only if this preparation actually asked for one**.
     ///
-    /// For the [isolation harness](super::isolation), which collects the path each of its sixteen
+    /// For the isolation harness (`language/isolation.rs`), which collects the path each of its sixteen
     /// preparations was handed and fails if two of them are the same — the precondition of the
     /// measured `purs` corruption, caught directly rather than through its consequences. The
     /// `Option` is the whole point: a preparation that never asked for a workspace has no path to
@@ -694,7 +694,7 @@ fn remove_sealed(root: &Path) -> Result<(), String> {
 ///
 /// * **It is lent exclusively.** One of these belongs in a [`CompilerPool`], so at most one
 ///   preparation is talking to it at any moment. A `static CompilerDaemon` shared by every
-///   preparation is the measured TeaVM bug with extra steps, and the [isolation gate](super::isolation)
+///   preparation is the measured TeaVM bug with extra steps, and the isolation gate (`language/isolation.rs`)
 ///   catches its consequence.
 /// * **It is told where to write, per request.** A daemon has no memory of where the last request's
 ///   output went; a language passes this preparation's own [`Workspace`] path in the request, so what

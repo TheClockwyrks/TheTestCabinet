@@ -3036,7 +3036,7 @@ pub const MOCK_REVIEW_FIX_SENTINEL: &str = "REVIEW-FIX-APPLIED";
 const MOCK_REVIEW_FIX_BRIEF_MARKER: &str = "## Requested changes";
 
 /// The heading every auto-dispatched issue agent's brief opens with (`BoardStore::issue_brief`'s
-/// `# Issue \`<id>\`: …`), by which the offline issue-review parent mock tells a dispatched issue
+/// `` # Issue `<id>`: … ``), by which the offline issue-review parent mock tells a dispatched issue
 /// agent (or a fix agent, which carries this too) from the root that files the issue.
 const MOCK_ISSUE_BRIEF_HEADING: &str = "# Issue `";
 

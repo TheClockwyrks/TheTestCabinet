@@ -387,12 +387,14 @@ fn built_in_code(family: &Family, docs: &crate::docs::DocsRuntime) -> Option<Ski
     ))
 }
 
-/// A [`Skill`] for `family` with the given body and on-use script, marked
-/// [built in](super::SkillOrigin::BuiltIn).
+/// A [`Skill`] for `family` with the given body and on-use script.
 ///
 /// It goes through [`parse_skill`] rather than constructing a `Skill` directly so a built-in is
 /// assembled by exactly the code an authored skill is, front matter included — there is one parser,
-/// and no second way for a skill to come into being.
+/// and no second way for a skill to come into being. Nothing on the result marks it as gg's, and
+/// nothing needs to: being built in is a fact about *how a catalogue was assembled*
+/// ([`with_builtins`](super::SkillLibrary::with_builtins)), not a property of the skill, and an
+/// authored skill of the same name simply keeps the name.
 fn skill(family: &Family, body: String, on_use: Option<(&'static str, String)>) -> Skill {
     let raw = format!(
         "---\nname: {}\ndescription: {}\n---\n{body}",

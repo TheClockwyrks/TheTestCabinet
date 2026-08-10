@@ -1084,7 +1084,7 @@ fn parse_usage(output: &ExecOutput, shape: UsageShape) -> Usage {
 /// The usage mapping for a harness output format, so a per-turn usage slice is
 /// mapped onto the normalized token classes the same way the session total is.
 /// `Generic` (Antigravity, gg) reports no usage. This keeps the per-turn
-/// [`EventKind::Usage`](crate::event::EventKind::Usage) and the run-level total
+/// [`EventKind::Usage`] and the run-level total
 /// (see [`parse_usage`]) reading from one source of truth — the harness's
 /// [`AdapterSpec::usage`] — rather than two mappings that could drift apart.
 fn usage_shape_for_format(format: EventFormat) -> UsageShape {
@@ -1108,7 +1108,7 @@ fn usage_shape_for_format(format: EventFormat) -> UsageShape {
 ///
 /// The [event parser](crate::event::EventParser) calls this to turn a per-turn
 /// usage record (Pi's `message_end`, Kilo/OpenCode's `step_finish`) into an
-/// [`EventKind::Usage`](crate::event::EventKind::Usage). The parser is already
+/// [`EventKind::Usage`]. The parser is already
 /// positioned on the usage-carrying event, so — unlike [`parse_usage`] — no
 /// `usage_events` line filtering is applied here.
 pub(crate) fn per_turn_usage(

@@ -95,7 +95,7 @@ impl ArchiveEntry {
 /// its whole purpose is to be the durable, out-of-window record — so it only grows.
 ///
 /// [`Clone`] is a **deep copy that carries [`next_seq`](Self::next_seq) forward**, which is what an
-/// [archive module](crate::modules::ArchiveRuntime)'s fork needs: restarting the ordinal would make
+/// [archive module](crate::archive::ArchiveRuntime)'s fork needs: restarting the ordinal would make
 /// two different entries both print as `#0`, and the ordinal is the only handle a model has on
 /// where an archived item sat in its thread.
 #[derive(Debug, Default, Clone)]

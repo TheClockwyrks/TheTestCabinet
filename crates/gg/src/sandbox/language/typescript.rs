@@ -4,17 +4,17 @@
 //! Everything that used to be "what the sandbox does" and is really "what TypeScript does" lives
 //! here or in one of this module's siblings:
 //!
-//! * [`prepare`](self::prepare) — the `oxc` type-strip, the early-error check, the refusals for
-//!   module syntax and top-level `await`, and the stack sizing an unguarded recursive-descent parser
-//!   forces on untrusted input;
-//! * [`check`](self::check) — the `tsc` pass that reads the whole program against the SDK's own
-//!   declarations and rejects it if the types do not hold;
-//! * [`modules`](self::modules) — turning a file with `export`s into a function body that returns
+//! * [`prepare`] — the `oxc` type-strip, the early-error check, the refusals for module syntax and
+//!   top-level `await`, and the stack sizing an unguarded recursive-descent parser forces on
+//!   untrusted input;
+//! * [`check`] — the `tsc` pass that reads the whole program against the SDK's own declarations and
+//!   rejects it if the types do not hold;
+//! * [`modules`](self::prepare::modules) — turning a file with `export`s into a function body that returns
 //!   its namespace, which is what a code [skill](crate::skills) or [memory](crate::memories) is
 //!   bound from;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of: the fence tags, the two predicates, the mask, the import shapes and the
-//!   `async` wrapper;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of: the fence tags, the two predicates, the mask, the import shapes and the `async`
+//!   wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in this language's syntax;
 //! * `guests/typescript.component.wasm` — the committed `componentize-js` guest;
@@ -23,10 +23,10 @@
 //!   two globals no SDK declaration covers.
 //!
 //! Most of that is **not TypeScript's alone**. gg's [JavaScript](super::javascript) arm is this
-//! language with [`check`](self::check) removed and nothing else changed, so it serves this module's
-//! component, its type-strip and its healing dialect, and its catalogue is these same declarations
-//! reflected under a second id. The check is the only thing between them, which is the whole point
-//! of the pair: an A/B across them measures what checking a program before it runs is worth.
+//! language with [`check`] removed and nothing else changed, so it serves this module's component,
+//! its type-strip and its healing dialect, and its catalogue is these same declarations reflected
+//! under a second id. The check is the only thing between them, which is the whole point of the
+//! pair: an A/B across them measures what checking a program before it runs is worth.
 //!
 //! # Why the guest is a componentized JavaScript engine
 //!
@@ -43,15 +43,15 @@
 //!
 //! Two passes, in this order, and each does something the other cannot:
 //!
-//! 1. [`prepare`](self::prepare) parses with `oxc` and erases the types, in ~0.2 ms. It is what
-//!    produces the JavaScript the guest evaluates, what catches a syntax error and an ECMAScript
-//!    early error in gg's own located rendering, what refuses module syntax and top-level `await`,
-//!    and what notices the statements a program wrote after the one that ends it.
-//! 2. [`check`](self::check) runs `tsc` over the **unstripped** source against the SDK's own
-//!    declarations. It is what turns the signatures the system prompt shows from a contract the SDK
-//!    enforces at run time — an options object that arrived as a bare number, a misspelled function
-//!    — into one the model is told about before its program does any work. Measured end to end, the
-//!    two passes together take ~91 ms against a representative program.
+//! 1. [`prepare`] parses with `oxc` and erases the types, in ~0.2 ms. It is what produces the
+//!    JavaScript the guest evaluates, what catches a syntax error and an ECMAScript early error in
+//!    gg's own located rendering, what refuses module syntax and top-level `await`, and what
+//!    notices the statements a program wrote after the one that ends it.
+//! 2. [`check`] runs `tsc` over the **unstripped** source against the SDK's own declarations. It is
+//!    what turns the signatures the system prompt shows from a contract the SDK enforces at run
+//!    time — an options object that arrived as a bare number, a misspelled function — into one the
+//!    model is told about before its program does any work. Measured end to end, the two passes
+//!    together take ~91 ms against a representative program.
 //!
 //! The cheap pass runs first, so a program with a syntax error costs a parse rather than a compiler,
 //! and every failure lands in the kind that names its cause: a typo is
@@ -74,19 +74,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The type-strip, shared with [`JavaScript`](super::javascript): visible to the whole language
-/// module rather than to this one, because that arm is this step with the [check](self::check)
-/// removed.
 #[path = "typescript.prepare.rs"]
 pub(super) mod prepare;
 
-/// The `tsc` pass. **Not** shared: it is the one thing the JavaScript arm does without, and the
-/// whole of what the two arms differ in.
 #[path = "typescript.check.rs"]
 mod check;
 
-/// The lexical reading of a reply, shared with [`JavaScript`](super::javascript) for the reason its
-/// own module documentation gives: the two arms are one syntax.
 #[path = "typescript.healing.rs"]
 pub(super) mod healing;
 

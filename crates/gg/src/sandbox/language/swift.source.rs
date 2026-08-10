@@ -243,8 +243,8 @@ struct Namespaced {
 /// Every top-level declaration `source` makes, in order — or `None` when the source did not lex.
 ///
 /// "Top level" is read as *brace depth zero in code context*, which is what the seam's own lexer
-/// already answers: [`code_mask`](super::healing::code_mask) is the same reading response healing
-/// makes of a reply, so a module and a program are read by one lexer rather than two.
+/// already answers: [`code_mask`] is the same reading response healing makes of a reply, so a
+/// module and a program are read by one lexer rather than two.
 fn declarations(source: &str) -> Result<Option<Vec<Item>>, PrepareError> {
     let Some(mask) = code_mask(source) else {
         return Ok(None);

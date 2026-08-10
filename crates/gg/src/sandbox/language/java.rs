@@ -3,13 +3,13 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side `javac` and TeaVM build, what it costs, what it
-//!   shares, and the two failures it tells apart;
-//! * [`source`](self::source) — what gg does to a model's Java before javac sees it: the wrapper,
-//!   the import hoist and the export scan, all line-preserving;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of: the fence tags, the two predicates, the text-block lexer, the
-//!   redeclaration proof, and the thread wrapper — four of whose answers are this arm's alone;
+//! * [`compile`] — the host-side `javac` and TeaVM build, what it costs, what it shares, and the
+//!   two failures it tells apart;
+//! * [`source`] — what gg does to a model's Java before javac sees it: the wrapper, the import
+//!   hoist and the export scan, all line-preserving;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of: the fence tags, the two predicates, the text-block lexer, the redeclaration
+//!   proof, and the thread wrapper — four of whose answers are this arm's alone;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Java's syntax;
 //! * `packages/gg-sandbox-java/src/gg/` — the SDK, and every word of prose a model reads about it;
@@ -41,17 +41,16 @@
 //! share, so a component carrying one would carry the wrong 600 KB for every program that was not
 //! the one it was built from. What a component of this arm's own would hold is therefore nothing,
 //! and a second 20 MB artifact holding nothing is a second artifact to keep in step with the WIT.
-//! The cost is real and is [measured rather than hidden](super::substrate): ~9 ms of evaluation per
+//! The cost is real and is measured rather than hidden (`java.substrate.test.rs`): ~9 ms of evaluation per
 //! turn against ~2 ms for the equivalent JavaScript on the same artifact.
 //!
 //! # What a Java program is, here
 //!
-//! A **sequence of statements**, as on every arm but PureScript — put into the body of a method of a
-//! class gg declares, because Java has nowhere else for a statement to live. See
-//! [`source`](self::source) for the wrapper, the import hoist that lets a model write the `import`
-//! lines a Java author writes without them landing inside a method body, and the one thing this
-//! shape costs: a helper type declared in a program is a *local* declaration, and a local
-//! declaration may not be `public`.
+//! A **sequence of statements**, as on every arm but PureScript — put into the body of a method of
+//! a class gg declares, because Java has nowhere else for a statement to live. See [`source`] for
+//! the wrapper, the import hoist that lets a model write the `import` lines a Java author writes
+//! without them landing inside a method body, and the one thing this shape costs: a helper type
+//! declared in a program is a *local* declaration, and a local declaration may not be `public`.
 //!
 //! The library set is **TeaVM's classlib** — a large subset of `java.base` — and what is missing
 //! from it is a located compile error rather than a run-time surprise, which is the most valuable
@@ -64,13 +63,13 @@
 //! Three things. It is the only arm whose **compiler is kept warm**, the only one whose program
 //! passes through **two compilers** before it runs, and the only one whose **SDK reaches a program
 //! the way that language reaches any library** — a jar on the classpath, imported by the header gg
-//! writes. The first two are stated in [`compile`](self::compile): the warmth is a
+//! writes. The first two are stated in [`compile`]: the warmth is a
 //! [`CompilerPool`](crate::sandbox::CompilerPool) of processes rather than a shared builder — the
 //! shape the study measured silently producing no output for three of four concurrent builds — and
 //! the two compilers are why a diagnostic here can be javac's *or* TeaVM's, which are different
-//! bands of the same recoverable, model-facing error. The third is [`source`](self::source)'s: the
-//! wrapper's header carries `import gg.*;` and `import static gg.Gg.*;`, which is what makes
-//! `fs.readFile` an ordinary method call on an ordinary object.
+//! bands of the same recoverable, model-facing error. The third is [`source`]'s: the wrapper's
+//! header carries `import gg.*;` and `import static gg.Gg.*;`, which is what makes `fs.readFile` an
+//! ordinary method call on an ordinary object.
 
 use std::sync::OnceLock;
 
@@ -83,18 +82,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The `javac` and TeaVM build: the host-side step that turns a model's Java into the guest's
-/// JavaScript.
 #[path = "java.compile.rs"]
 pub(super) mod compile;
 
-/// The wrapper, the import hoist and the export scan — what gg does to a model's Java before javac
-/// sees it.
 #[path = "java.source.rs"]
 pub(super) mod source;
 
-/// The lexical reading of a reply — Java's answers to healing's questions, four of which differ from
-/// every other arm's for reasons its own module documentation gives.
 #[path = "java.healing.rs"]
 pub(super) mod healing;
 
@@ -175,10 +168,10 @@ impl ProgramLanguage for Java {
     /// The same two compilers a program gets, pointed at a class body rather than a statement
     /// sequence — and the names the resulting namespace offers.
     ///
-    /// The names are read from the model's own source by [`source`](self::source)'s export scan
-    /// rather than out of the compiled bundle, because they are what the skill's author is *told*
-    /// the namespace holds; the arm's own tests assert that the scan and the compiler agree on the
-    /// answer, which is what keeps one reading from being a second chance to differ.
+    /// The names are read from the model's own source by [`source`]'s export scan rather than out
+    /// of the compiled bundle, because they are what the skill's author is *told* the namespace
+    /// holds; the arm's own tests assert that the scan and the compiler agree on the answer, which
+    /// is what keeps one reading from being a second chance to differ.
     fn prepare_module(
         &self,
         source: &str,

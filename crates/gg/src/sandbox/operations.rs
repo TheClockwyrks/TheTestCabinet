@@ -3,7 +3,7 @@
 //!
 //! An operation is a *capability a program can exercise*, named once, on gg's side, in gg's own
 //! words. It is deliberately not a function: a function is a spelling, and every registered
-//! [language](super::language) spells the same operation its own way. `request_changes` and
+//! [language](mod@super::language) spells the same operation its own way. `request_changes` and
 //! `requestChanges` are one operation; so are a free function and the method some arm hangs off the
 //! type it operates on.
 //!
@@ -105,8 +105,7 @@ impl fmt::Display for OperationId {
 /// beside the gate it could not be expressed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Binding {
-    /// Bound when the run enables this gg tool — a member of
-    /// [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES), exactly.
+    /// Bound when the run enables this gg tool — a member of [`ALL_TOOL_NAMES`], exactly.
     ///
     /// More than one operation may name the same tool, and three do: `files.read_file`,
     /// `files.read_text_file` and `views.open_file` are three operations over one read. They are

@@ -876,7 +876,7 @@ impl CapabilityModules {
     }
 
     /// Five disabled modules: the shape a test that is about the loop rather than about state
-    /// drives an agent with, and the shape [`ToolRegistry::new`](crate::tools::ToolRegistry::new)
+    /// drives an agent with, and the shape [`ToolRegistry::from_capabilities`](crate::tools::ToolRegistry::from_capabilities)
     /// assembles a toolset against — a capability whose module is disabled offers no tools, because
     /// its tools would have nothing to act on.
     pub fn inert() -> Self {

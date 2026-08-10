@@ -1,5 +1,5 @@
 //! The process-wide wasm engine and one compiled copy of each registered
-//! [language](super::language)'s interpreter component — the statics that make a code turn cost
+//! [language](mod@super::language)'s interpreter component — the statics that make a code turn cost
 //! microseconds instead of a second.
 
 use std::sync::OnceLock;

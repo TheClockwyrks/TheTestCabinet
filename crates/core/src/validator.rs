@@ -502,7 +502,7 @@ struct DriveUnit<'a> {
     category_title: String,
     /// Whether this unit is scored: `true` for an ordinary point, `false` when the
     /// backing review point is excluded from scoring for the version (see
-    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`]). Carried onto the
+    /// [`ReviewItem::scored`] / [`SubReviewItem::scored`](crate::test_case::SubReviewItem::scored)). Carried onto the
     /// [`DebugScriptResult`], where an excluded point costs nothing when it fails to
     /// run because it is not scored at all.
     gates: bool,

@@ -237,7 +237,7 @@ fn point_segment_dist2(p: [f32; 3], a: [f32; 3], b: [f32; 3]) -> f32 {
 
 /// Build the equivalent `model-core` [`Rig`] whose **parts are this rig's bones**
 /// (name and parent), so the shared [`pose_rig`] resolves one world matrix per bone.
-/// The joints — whose [`Part`](test_cabinet_model_core::rig::Part)-shaped `part` field
+/// The joints — whose [`Part`]-shaped `part` field
 /// names the bone they drive — and the animations carry over unchanged.
 fn to_bone_rig(rig: &SkinnedRig) -> Rig {
     Rig {

@@ -181,7 +181,7 @@ pub struct World {
     /// run moves forward as a single rigid block — the frozen-belt property the
     /// spec requires. Perpendicular connections (curves / side-loads) are *not*
     /// part of a run; they merge across runs by forcing. Derived once from the
-    /// static layout. See [`crate::tick::World::advance_belts`].
+    /// static layout. See [`World::advance_belts`].
     pub(crate) runs: Vec<Vec<usize>>,
 }
 

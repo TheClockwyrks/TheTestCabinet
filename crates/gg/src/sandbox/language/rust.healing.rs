@@ -20,7 +20,7 @@
 //! arms). Rust needs neither: a program here is a function body, Rust admits an **item** wherever a
 //! statement may stand, and `use std::collections::HashMap;` therefore resolves exactly where the
 //! model wrote it against the same extern prelude the program is compiled with. This is the one arm
-//! where [`is_import_statement`] answers `false` because the line *works*, rather than because gg
+//! where [`is_import_statement`](crate::healing::Dialect::is_import_statement) answers `false` because the line *works*, rather than because gg
 //! moved it.
 //!
 //! **The lexer has to tell a character literal from a lifetime.** `'a'` is a `char` and `'a` is a
@@ -587,7 +587,7 @@ fn without_await(body: &str) -> (String, usize) {
 // ---------------------------------------------------------------------------------------------
 
 /// Whether `line` is **certainly** a line of Rust — this dialect's answer to
-/// [`Dialect::looks_like_code`](crate::healing::Dialect::looks_like_code).
+/// [`Dialect::looks_like_code`].
 ///
 /// Its errors are asymmetric on purpose. A false positive costs a fence that could have been
 /// unwrapped (one turn, one located diagnostic); a false negative deletes a line of the model's
@@ -742,8 +742,7 @@ fn opens_with_call(line: &str) -> bool {
 }
 
 /// Whether `line` is **certainly** prose rather than Rust — this dialect's answer to
-/// [`Dialect::is_prose_line`](crate::healing::Dialect::is_prose_line), and the test `strip-prose`
-/// uses to delete a line.
+/// [`Dialect::is_prose_line`], and the test `strip-prose` uses to delete a line.
 ///
 /// The mirror image of [`looks_like_code`]: here a false positive deletes the model's code, so every
 /// clause is a shape that only English has. The two predicates are **not** complements and are not
@@ -837,8 +836,7 @@ fn is_ident_char(c: char) -> bool {
 // The lexer
 // ---------------------------------------------------------------------------------------------
 
-/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to
-/// [`Dialect::code_mask`](crate::healing::Dialect::code_mask).
+/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
 /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
 /// it. Two states end a scan uncleanly, and both are an unterminated *opener*: a block comment or a

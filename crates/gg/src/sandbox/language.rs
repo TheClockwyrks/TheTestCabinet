@@ -60,13 +60,6 @@ use crate::limits::TurnErrorType;
 use super::CodeModule;
 use super::signatures::SignatureCatalogue;
 
-/// The **ground a prepare step compiles on** — the private per-preparation workspace, the isolated
-/// compiler invocation, the exclusive-checkout pool for a warm compiler, and the one sanctioned
-/// shared directory.
-///
-/// Not a language's own module because the isolation it provides is not any one language's business:
-/// two silent-corruption bugs of exactly this shape were measured on real toolchains before a single
-/// compiler was wired up here, so the seam owns the answer and every language is handed it.
 #[path = "language/compile.rs"]
 pub mod compile;
 
@@ -75,14 +68,6 @@ pub use compile::{
     daemon, place, place_tree, shared_toolchain_dir,
 };
 
-/// The **bound on what a compiler says to a model** — the shared capping every arm's verdict puts
-/// its diagnostics through before they become context the model pays for.
-///
-/// Not a language's own module for the same reason [`compile`] is not: nothing downstream of an arm
-/// shortens a diagnostic, so each arm was deciding the size of its own compiler's opinion, and the
-/// eight arms that run a compiler over the model's own text answered one measured mistake with
-/// anything from 475 bytes to 11614. Its module documentation carries that measurement, says why the
-/// C++ arm keeps a cap of its own, and says why the three arms absent from it need none.
 #[path = "language/diagnostics.rs"]
 mod diagnostics;
 
@@ -93,7 +78,7 @@ mod typescript;
 mod javascript;
 
 #[path = "language/python.rs"]
-mod python;
+pub(super) mod python;
 
 #[path = "language/ruby.rs"]
 mod ruby;
@@ -101,13 +86,6 @@ mod ruby;
 #[path = "language/purescript.rs"]
 mod purescript;
 
-/// What the two **JVM** arms share: the JDK and TeaVM they both compile through, and the half of
-/// gg's compiler driver that is the same whatever language the program was written in.
-///
-/// Not a language and not registered anywhere. It exists because [Java](java) and
-/// [Kotlin](kotlin) reach the same guest by the same road, and one of TeaVM's two mandatory
-/// settings fails *silently* when it goes missing — so a second copy of the code that sets it
-/// would be a standing chance for one arm to lose it and for nobody to notice.
 #[path = "language/jvm.rs"]
 mod jvm;
 
@@ -121,7 +99,7 @@ mod kotlin;
 mod rust;
 
 #[path = "language/swift.rs"]
-mod swift;
+pub(super) mod swift;
 
 #[path = "language/cpp.rs"]
 mod cpp;
@@ -272,7 +250,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// into the user's cache is isolated without its language having thought about it. A warm
     /// compiler that must outlive one preparation belongs in a [`CompilerPool`], which lends an
     /// instance exclusively rather than sharing it. See [`compile`] for the whole contract, and the
-    /// [isolation gate](isolation) for what enforces it.
+    /// isolation gate (`language/isolation.rs`) for what enforces it.
     ///
     /// One thing this is *not*: a stall risk. This runs on a blocking task, so a compiler that takes
     /// seconds does not hold up the loop or any sibling agent. The hazard is contention and shared
@@ -332,7 +310,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// that module's namespace, bound at `lib.<key>`.
     ///
     /// A module compiles exactly as a program does, so `context` means what it means there and the
-    /// [isolation rule](Self::prepare_program#concurrency-a-compiler-here-must-be-isolated-per-invocation-by-construction)
+    /// [isolation rule](Self::prepare_program)
     /// is the same rule. It is not a lesser path: a turn that reads three code skills compiles three
     /// modules beside its own program, and every one of those compilations is concurrent with every
     /// other agent's.
@@ -479,7 +457,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     }
 
     /// A **code module** in this language's own syntax, carrying `name` somewhere its prepared
-    /// artifact will still hold it — the subject the [isolation gate](isolation) drives this
+    /// artifact will still hold it — the subject the isolation gate (`language/isolation.rs`) drives this
     /// language's [module step](Self::prepare_module) with.
     ///
     /// That gate drives *both* preparation steps sixteen ways, so it needs a source valid for each,
@@ -504,8 +482,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.open_docs_views_statement(&[name])
     }
 
-    /// This arm's prepared artifact **made readable for the [isolation gate](isolation)'s marker
-    /// search**: with any transport encoding taken back off, and nothing else done to it.
+    /// This arm's prepared artifact **made readable for the isolation gate's marker search**
+    /// (`language/isolation.rs`): with any transport encoding taken back off, and nothing else done
+    /// to it.
     ///
     /// Identity by default, and identity is what every arm but one wants: an interpreted arm's
     /// artifact is the source it hands the guest, and the arms whose compilers emit wasm keep the
@@ -532,7 +511,7 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         artifact
     }
 
-    /// Every way the [isolation gate](isolation)'s marker may be **spelled inside** this arm's
+    /// Every way the isolation gate's marker (`language/isolation.rs`) may be **spelled inside** this arm's
     /// prepared program — the forms it accepts as "this artifact carries its own input", and rejects
     /// as "this artifact carries somebody else's".
     ///
@@ -856,7 +835,7 @@ pub fn language(id: GgProgramLanguage) -> &'static dyn ProgramLanguage {
 /// gate that iterates languages covers it without being edited.
 ///
 /// It is exactly the registered set, under test as in production: the
-/// [fixture language](fixture) the seam's own tests are written against is deliberately **not** here,
+/// fixture language (`language/fixture.rs`) the seam's own tests are written against is deliberately **not** here,
 /// so nothing that iterates this pays for it and nothing that reads it can be handed a language an
 /// operator could not have configured.
 pub fn all_languages() -> impl Iterator<Item = &'static dyn ProgramLanguage> {

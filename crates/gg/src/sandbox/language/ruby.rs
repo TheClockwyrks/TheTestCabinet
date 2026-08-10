@@ -3,12 +3,12 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side Opal compile that turns a model's Ruby into the
-//!   JavaScript the guest evaluates, the two failures it tells apart, and what it costs;
-//! * [`modules`](self::modules) — reading a code [skill](crate::skills)'s or
-//!   [memory](crate::memories)'s own top level to say what its namespace offers;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of: the fence tags, the two predicates, the six-shape lexer, and the `Thread`
+//! * [`compile`] — the host-side Opal compile that turns a model's Ruby into the JavaScript the
+//!   guest evaluates, the two failures it tells apart, and what it costs;
+//! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own top
+//!   level to say what its namespace offers;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of: the fence tags, the two predicates, the six-shape lexer, and the `Thread`
 //!   wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Ruby's syntax;
@@ -98,16 +98,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The Opal compile: the host-side step that turns a model's Ruby into the guest's JavaScript.
 #[path = "ruby.compile.rs"]
 pub(super) mod compile;
 
-/// Reading a module's own top level for the names it leaves behind.
 #[path = "ruby.modules.rs"]
 mod modules;
 
-/// The lexical reading of a reply — Ruby's answers to healing's questions, which differ from every
-/// other arm's in two places for reasons its own module documentation gives.
 #[path = "ruby.healing.rs"]
 pub(super) mod healing;
 
@@ -194,7 +190,7 @@ impl ProgramLanguage for Ruby {
     /// The wrapping is the one thing that differs, and [`compile_module`](compile::compile_module)
     /// owns it, including moving a diagnostic's line number back over the wrapper so a skill's
     /// author reads their own. What the namespace offers is read here rather than in the guest,
-    /// because it is what the model is *told*: see [`modules`](self::modules).
+    /// because it is what the model is *told*: see [`modules`].
     fn prepare_module(
         &self,
         source: &str,

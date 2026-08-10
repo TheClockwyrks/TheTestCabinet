@@ -574,7 +574,7 @@ impl World {
 
     /// Consume every item that has flowed onto a belt feeding a sink. An inbound
     /// belt facing into the sink hands its edge items to the sink; the sink also
-    /// directly absorbs anything dropped onto it (handled in [`try_drop`]).
+    /// directly absorbs anything dropped onto it (handled in [`try_drop`](Self::try_drop)).
     fn advance_sinks(&mut self) {
         for index in 0..self.machines.len() {
             let Machine::Sink(sink) = &self.machines[index] else {

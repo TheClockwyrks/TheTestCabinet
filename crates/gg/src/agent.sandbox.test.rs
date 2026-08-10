@@ -1575,8 +1575,8 @@ async fn a_session_that_never_finishes_is_exhausted_not_completed() {
 ///
 /// Under this protocol every assistant message is a page of TypeScript, so a subagent that is
 /// stopped before it can `finish` would otherwise return its last program to whoever asked for the
-/// work — and that return value is what a Code Review verdict, a speculation judge's brief and the
-/// run record are all read out of.
+/// work — and that return value is what an issue review's verdict and the run record are both read
+/// out of.
 #[tokio::test]
 async fn a_stopped_subagent_returns_a_status_line_not_its_program_source() {
     let dir = TempDir::new().unwrap();

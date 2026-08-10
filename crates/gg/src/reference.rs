@@ -40,7 +40,7 @@
 //! rather than partition — both offer `create_memory`, `read_memory`, `edit_memory` and
 //! `delete_memory` — and two of those four are worded and shaped differently by each, so which
 //! registry a name is taken from decides which rendering the page carries. That is handled the same
-//! way every other configurable rendering is: as [variants](variants).
+//! way every other configurable rendering is: as [variants].
 //!
 //! # Run data, and the placeholders that stand in for it
 //!
@@ -207,8 +207,8 @@ fn tools() -> Vec<GgToolReference> {
 ///
 /// The union runs over the two axes no single registry can cover — the three
 /// [memory strategies](MemoryStrategy) and standing in a machine or not — with every *policy* left
-/// at its default, since a policy's alternatives are emitted as [variants](variants) rather than
-/// folded into the union.
+/// at its default, since a policy's alternatives are emitted as [variants] rather than folded into
+/// the union.
 ///
 /// For almost every tool "first seen" is not a choice at all: the registries that offer it offer it
 /// identically. The exception is the pair of memory calls whose wording turns on whether the
@@ -342,7 +342,7 @@ fn variants(tool: &str) -> Vec<GgToolVariant> {
 }
 
 /// One configuration a reference registry is built under: the policies whose alternatives become
-/// [variants](variants), plus the two axes the [union](maximal_definitions) runs over.
+/// [variants], plus the two axes the [union](maximal_definitions) runs over.
 ///
 /// Every field names a *configurable* choice. Everything else about a reference registry — which
 /// capabilities are on, which modules are bound — is maximal and therefore not a variable.

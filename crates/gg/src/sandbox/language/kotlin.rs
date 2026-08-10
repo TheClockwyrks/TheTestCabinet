@@ -3,13 +3,13 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side build, what it costs, what it shares, and the two
-//!   failures it tells apart;
-//! * [`source`](self::source) — what gg does to a model's Kotlin before the compiler sees it, which
-//!   for a program is almost nothing;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of: the fence tags, the two predicates, the template-aware lexer, the
-//!   redeclaration proof and the three concurrency wrappers — five of whose answers differ from
+//! * [`compile`] — the host-side build, what it costs, what it shares, and the two failures it
+//!   tells apart;
+//! * [`source`] — what gg does to a model's Kotlin before the compiler sees it, which for a program
+//!   is almost nothing;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of: the fence tags, the two predicates, the template-aware lexer, the redeclaration
+//!   proof and the three concurrency wrappers — five of whose answers differ from
 //!   [Java's](super::java::healing), on the arm that shares a compiler with it;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Kotlin's syntax;
@@ -42,11 +42,11 @@
 //! Because the obvious shape does not work in this language, and that was found by building it. A
 //! reply wrapped in the body of a function gg declares — [Java's](super::java::source) shape — puts
 //! every declaration the model wrote in a *local* position, and Kotlin refuses five things there
-//! that a Kotlin author writes without thinking: `object`, `interface` (and therefore
-//! `sealed interface`), `enum class`, `typealias` and `private fun`. [`source`](self::source) has
-//! the measured table. In a script they are all legal, statements and declarations sit side by side
-//! in whatever order the model wrote them, and a reply with no `import` in it is compiled **byte for
-//! byte** — which no other arm can say.
+//! that a Kotlin author writes without thinking: `object`, `interface` (and therefore `sealed
+//! interface`), `enum class`, `typealias` and `private fun`. [`source`] has the measured table. In
+//! a script they are all legal, statements and declarations sit side by side in whatever order the
+//! model wrote them, and a reply with no `import` in it is compiled **byte for byte** — which no
+//! other arm can say.
 //!
 //! # What this arm has that no other does
 //!
@@ -54,7 +54,7 @@
 //! a script against the standard library, a module as an ordinary file against that plus the one
 //! annotation gg writes into it. [Java](super::java) is the only other arm whose two preparation
 //! shapes differ at all, and it is why the seam's
-//! [isolation gate](super::isolation) lets a language answer with a module of its own shape.
+//! isolation gate (`language/isolation.rs`) lets a language answer with a module of its own shape.
 //!
 //! And its **SDK is declared in the root package**, which is what no other arm's could be. Kotlin
 //! forbids importing from the root package into a named one and resolves a name in the *same* package
@@ -76,18 +76,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The Kotlin and TeaVM build: the host-side step that turns a model's Kotlin into the guest's
-/// JavaScript.
 #[path = "kotlin.compile.rs"]
 pub(super) mod compile;
 
-/// The import hoist and the export scan — what gg does to a model's Kotlin before the compiler sees
-/// it, and why a program needs so little of it.
 #[path = "kotlin.source.rs"]
 pub(super) mod source;
 
-/// The lexical reading of a reply — Kotlin's answers to healing's questions, five of which differ
-/// from the other JVM arm's for reasons its own module documentation gives.
 #[path = "kotlin.healing.rs"]
 pub(super) mod healing;
 
@@ -169,9 +163,9 @@ impl ProgramLanguage for Kotlin {
     /// The same two compilers a program gets, pointed at an ordinary Kotlin **file** rather than a
     /// script — and the names the resulting namespace offers.
     ///
-    /// The names are read from the model's own source by [`source`](self::source)'s export scan
-    /// rather than out of the compiled bundle, because they are what the skill's author is *told*
-    /// the namespace holds.
+    /// The names are read from the model's own source by [`source`]'s export scan rather than out
+    /// of the compiled bundle, because they are what the skill's author is *told* the namespace
+    /// holds.
     fn prepare_module(
         &self,
         source: &str,

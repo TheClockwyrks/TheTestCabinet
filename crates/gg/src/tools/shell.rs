@@ -47,7 +47,7 @@ use super::{
 use crate::model::ToolDefinition;
 
 #[path = "shell.runner.rs"]
-mod runner;
+pub(super) mod runner;
 
 /// The seam's [test double](runner::StubShellRunner), re-exported for the modules on the other two
 /// command-line paths — a [responses-as-code](crate::sandbox) program's and a
@@ -146,7 +146,7 @@ impl OffloadPolicy {
     /// unrecognized one, which is a misconfiguration rather than an instruction and so falls back to
     /// the same mode a config that said nothing would have got. `inline` and `offload` are the two
     /// explicit alternatives.
-    /// This policy under an explicit `mode` — one of [`SHELL_OUTPUT_MODES`] — keeping whatever
+    /// This policy under an explicit `mode` — one of [`SHELL_OUTPUT_MODES`](test_cabinet_core::gg::SHELL_OUTPUT_MODES) — keeping whatever
     /// [limits](OffloadLimits) `fallback` carries.
     ///
     /// What a [hook](crate::hooks) reads its own `output` override through. The limits come from
@@ -394,7 +394,7 @@ pub(crate) async fn run_command(
     origin: GgShellOrigin,
 ) -> ToolOutcome {
     // The one place a command line becomes a process — behind the context's
-    // [seam](ShellRunner), so a reconstruction answers it from a record while everything below
+    // [seam](ShellRunner), so a substituted runner answers it while everything below
     // (the output policy, gg's notes, the outcome's shape) stays this build of gg's.
     let ShellExecution {
         status,

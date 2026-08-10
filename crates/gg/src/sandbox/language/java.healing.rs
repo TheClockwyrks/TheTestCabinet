@@ -630,7 +630,7 @@ fn dedented(text: &str, mask: &CodeMask, body: std::ops::Range<usize>) -> String
 // ---------------------------------------------------------------------------------------------
 
 /// Whether `line` is **certainly** a line of Java — this dialect's answer to
-/// [`Dialect::looks_like_code`](crate::healing::Dialect::looks_like_code).
+/// [`Dialect::looks_like_code`].
 ///
 /// Its errors are asymmetric on purpose. A false positive costs a fence that could have been
 /// unwrapped (one turn, one located diagnostic); a false negative deletes a line of the model's
@@ -723,8 +723,7 @@ fn opens_with_call(line: &str) -> bool {
 }
 
 /// Whether `line` is **certainly** prose rather than Java — this dialect's answer to
-/// [`Dialect::is_prose_line`](crate::healing::Dialect::is_prose_line), and the test `strip-prose`
-/// uses to delete a line.
+/// [`Dialect::is_prose_line`], and the test `strip-prose` uses to delete a line.
 ///
 /// The mirror image of [`looks_like_code`]: here a false positive deletes the model's code, so every
 /// clause is a shape that only English has. The two predicates are **not** complements and are not
@@ -791,8 +790,7 @@ fn is_ident_char(c: char) -> bool {
 // The lexer
 // ---------------------------------------------------------------------------------------------
 
-/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to
-/// [`Dialect::code_mask`](crate::healing::Dialect::code_mask).
+/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
 /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
 /// it. Four states end a scan uncleanly: an unterminated block comment, an unterminated text block,

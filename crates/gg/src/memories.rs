@@ -41,7 +41,7 @@
 //!   capability's params with documented defaults.
 //! - [`MemoryStore`] — the mutable, limit-enforcing set of memories, shared (`Arc<Mutex>`) between
 //!   the loop and the memory tools. It also keeps what the live set cannot show: the
-//!   [revision log](MemoryStore::drain_revisions) of every mutation (so a memory written and later
+//!   [revision log](MemoryStore::log_from) of every mutation (so a memory written and later
 //!   deleted is still in the record) and the [peaks](MemoryPeak) the run reached.
 //! - [`MemoryRevision`] — one entry of that log.
 //! - [`MemoriesRuntime`] — the loop's live view: whether the capability is on, the shared store,
@@ -237,9 +237,8 @@ impl MemoryStrategy {
     /// `language` is the agent's [program language](test_cabinet_core::gg::GgProgramLanguage), or
     /// `None` for a tool-calling agent. It is a language rather than a `bool` because the *method*
     /// spelling is not gg's to decide: it is resolved from that language's own committed catalogue
-    /// by [`spell`](crate::sandbox::spell), so an SDK that renamed `editMemory` renames it in these
-    /// sentences too, and a second language spells them its own way without this function learning
-    /// about it.
+    /// by [`spell`], so an SDK that renamed `editMemory` renames it in these sentences too, and a
+    /// second language spells them its own way without this function learning about it.
     pub fn calls(self, language: Option<&dyn ProgramLanguage>) -> MemoryCalls {
         let named = |call: SurfaceCall, tool: &str| match language {
             Some(language) => format!("`{}`", spell(language, call)),
@@ -791,7 +790,7 @@ pub struct LoggedRevision {
 }
 
 /// One recorded mutation of one memory — an entry of the store's
-/// [revision log](MemoryStore::drain_revisions).
+/// [revision log](MemoryStore::log_from).
 ///
 /// A [`Deleted`](MemoryChange::Deleted) revision carries no text: what the memory said is
 /// already in the log, on the revision before it.
@@ -1219,8 +1218,8 @@ impl MemoryStore {
     // Derivations
     // -----------------------------------------------------------------------
 
-    /// The [index](MemoryStrategy::Markdown) as the model sees it: one `- \`slug\` — description`
-    /// line per memory, in slug order.
+    /// The [index](MemoryStrategy::Markdown) as the model sees it: one
+    /// `` - `slug` — description `` line per memory, in slug order.
     ///
     /// This is the text the [index limit](MemoryCaps::max_len_index) measures **and** the text the
     /// pinned block renders, deliberately from one function: the number gg refuses a create with
@@ -1772,7 +1771,7 @@ impl MemoriesRuntime {
     /// Two questions are answered here, and they are independent. **What** the memories are —
     /// the [strategy](MemoryStrategy) the capability's `implementation` selects and the
     /// [limits](MemoryCaps::resolve) its params resolve — and **whose** they are, which is the
-    /// [`scope`](MEMORY_PARAM_SCOPE):
+    /// [`scope`](test_cabinet_core::gg::MEMORY_PARAM_SCOPE):
     ///
     /// * [`isolated`](MemoryScope::Isolated) — a fresh store, held by this instance alone;
     /// * [`shared`](MemoryScope::Shared) — the [registry](MemoryRegistry) entry for this

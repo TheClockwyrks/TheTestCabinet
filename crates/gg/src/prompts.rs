@@ -878,9 +878,11 @@ fn system_template_name(language: Option<GgProgramLanguage>) -> &'static str {
 
 /// Render the [system prompt](SystemContext) for a run.
 ///
-/// The built-in template is chosen by the run's [execution mode](SystemContext::responses_as_code):
-/// the [code arm](SYSTEM_CODE_TEMPLATE) for a responses-as-code run, the
-/// [tool-calling arm](SYSTEM_TOOLS_TEMPLATE) otherwise.
+/// The built-in template is chosen by the run's [execution mode](SystemContext::responses_as_code)
+/// and, for a code run, by its [program language](SystemContext::language): a responses-as-code run
+/// renders the arm [that language names](system_template_name), so its contract is spelled in the
+/// language it will be held to; every other run renders the
+/// [tool-calling arm](SYSTEM_TOOLS_TEMPLATE).
 ///
 /// `template_override` is an agent profile's
 /// [full-template override](test_cabinet_core::gg::GgAgentConfig::system_prompt_template): when
@@ -929,7 +931,7 @@ pub fn render_system(context: &SystemContext, template_override: Option<&str>) -
 /// directly, rather than by way of the wire id [`render_system`] looks it up from.
 ///
 /// `#[cfg(test)]`, and it exists for exactly one reason: the seam's
-/// [fixture language](crate::sandbox::fixture_languages) has no wire id, so the production path
+/// fixture language (`sandbox/language/fixture.rs`) has no wire id, so the production path
 /// cannot reach it — and without a way to render a *second* language's prompt through the registered
 /// name, "the prompt is selected per language" is a claim no test can distinguish from "there is one
 /// prompt".
@@ -953,8 +955,8 @@ pub(crate) fn render_system_for(
 ///
 /// The production path goes through here too, because there is nothing left for the wire id to
 /// decide once the language is in hand; it takes a `&dyn` rather than the enum for the reason
-/// [`render_system_for`] does — the seam's
-/// [fixture language](crate::sandbox::fixture_languages) has no wire id, and without a way to render
+/// `render_system_for` does — the seam's
+/// fixture language (`sandbox/language/fixture.rs`) has no wire id, and without a way to render
 /// a *second* language's notice, "the notice is the language's" is a claim no test can distinguish
 /// from "there is one notice".
 pub(crate) fn render_code_nothing_shown_for(
@@ -1143,7 +1145,7 @@ pub fn render_memories(context: &MemoriesBlockContext) -> String {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MemoryIndexContext {
-    /// The index exactly as the store renders it — one `- \`slug\` — description` line per
+    /// The index exactly as the store renders it — one `` - `slug` — description `` line per
     /// memory. It arrives pre-rendered rather than as a list the template formats because the
     /// store measures this very text against the index limit, and a template that spelled an
     /// entry differently would be quoting the model a budget it is not being charged.

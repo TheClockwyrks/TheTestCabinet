@@ -303,7 +303,7 @@ impl Emitter {
     /// [`Prompt`](GgTelemetryKind::Prompt) carrying the request as ordered
     /// [pointers](GgPromptRef) into that pool plus the response.
     ///
-    /// `request` is the turn's messages in order, each with the [`GgContextSource`] band it
+    /// `request` is the turn's messages in order, each with the [`GgContextSource`](test_cabinet_core::gg::GgContextSource) band it
     /// occupies *this turn*, its estimated tokens, and its selector tag (from
     /// [`ContextModel::prompt_items`](crate::context::ContextModel::prompt_items)) — the tag
     /// travels onto the pooled definition, so a view's tokens stay attributable to the selector

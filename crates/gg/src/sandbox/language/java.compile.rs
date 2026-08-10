@@ -65,7 +65,7 @@
 //!   original**, so a failure a *binding* threw — a `ToolError` the host raised — reaches the guest
 //!   as itself rather than wrapped in gg's opinion of it.
 //! * **The location** comes from TeaVM's own source map, folded on the host into a
-//!   generated-line → model-line table and shipped in the bundle's [prelude](PRELUDE). A `NullPointerException`
+//!   generated-line → model-line table and shipped in the bundle's [prelude](super::super::jvm::PRELUDE). A `NullPointerException`
 //!   the model caused on its line 14 is reported as `java.lang.NullPointerException` followed by
 //!   `at program.java:14`. Measured end to end.
 //! * **What is still wrong** is the `location` field itself: `feedback.program-error` carries one,
@@ -133,7 +133,7 @@ const MAX_BUILDS: usize = 64;
 
 /// How many warm JVMs may exist at once.
 ///
-/// Not [`WIDTH`](super::super::isolation::WIDTH). A JVM with TeaVM loaded holds several hundred
+/// Not `WIDTH` in `language/isolation.rs`. A JVM with TeaVM loaded holds several hundred
 /// megabytes, so sixteen of them is a container that swaps rather than an arm that is four times
 /// faster; a preparation that arrives when all four are out waits, which costs nothing because
 /// preparation runs on a blocking task. Four is what the feasibility study measured concurrency at
@@ -368,14 +368,13 @@ fn build(
 /// What one build of the driver reported.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Report {
+pub(crate) struct Report {
     /// Whether the build produced JavaScript.
     ///
-    /// Part of the driver's protocol and deliberately kept, though nothing reads it: the
-    /// [verdict](verdict) is decided by the diagnostics, because a build that "succeeded" with an
-    /// error among them is a driver bug rather than a program gg should run. Dropping the field
-    /// would leave a wire value serde silently discards and nothing in the diff to say gg had seen
-    /// it.
+    /// Part of the driver's protocol and deliberately kept, though nothing reads it: the [verdict]
+    /// is decided by the diagnostics, because a build that "succeeded" with an error among them is
+    /// a driver bug rather than a program gg should run. Dropping the field would leave a wire
+    /// value serde silently discards and nothing in the diff to say gg had seen it.
     #[allow(dead_code, reason = "the diagnostics are the verdict")]
     ok: bool,
     /// A failure of gg's driver or of TeaVM itself rather than of the program — nothing read the
@@ -447,7 +446,7 @@ const PARSE_ERROR_PREFIXES: [&str; 6] = [
 const SHOWN: usize = 8;
 
 /// Turn a finished build into a verdict.
-fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailure> {
+pub(crate) fn verdict(report: &Report, file: &str, shift: usize) -> Result<(), PrepareFailure> {
     let errors: Vec<&Diagnostic> = report
         .diagnostics
         .iter()

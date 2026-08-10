@@ -179,7 +179,7 @@ impl From<RunEnding> for EndingKind {
 ///
 /// It owns its invoker (rather than borrowing one) so the store's data is `'static` with no
 /// lifetime erasure and no `unsafe`, and it is reclaimed whole by
-/// [`into_parts`](Self::into_parts) on **every** exit path — including a trap — because the calls a
+/// `into_parts` on **every** exit path — including a trap — because the calls a
 /// program landed before it was stopped are exactly what the model needs to see next turn.
 pub(crate) struct MembraneState<A: ToolApi> {
     /// The native, typed tool surface a bridged call is aimed at: the loop's own state in

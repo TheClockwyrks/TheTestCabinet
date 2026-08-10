@@ -37,7 +37,7 @@
 //! can mint. A host function in a sibling module therefore *cannot* reach the api, dispatch a tool,
 //! or declare an ending without having opened a bracket first: the omission this whole file exists
 //! to prevent is a compile error rather than a silent zero on a console. The
-//! [`every_host_function_records_its_own_api_call`](tests) gate closes the remaining gap — a host
+//! `every_host_function_records_its_own_api_call` in `recording.test.rs` closes the remaining gap — a host
 //! function that opened a bracket naming the *wrong* call, and the one function that touches
 //! neither the api nor a tool and could therefore have skipped the bracket and still compiled.
 

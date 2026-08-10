@@ -24,7 +24,7 @@
 //! anywhere else — a table, a prompt template, a `const` in this crate — is one that drifts from
 //! its subject with nothing to catch it, which is the same failure hand-writing a signature is. The
 //! guest's generator refuses to emit a catalogue with a blank in it, and the
-//! [agreement gate](super::language::agreement) refuses one at load, so the rule is enforced twice:
+//! agreement gate (`language/agreement.rs`) refuses one at load, so the rule is enforced twice:
 //! once in the language that can see its own AST, and once over the emitted JSON, where it is the
 //! same check for every language there will ever be.
 //!
@@ -36,11 +36,10 @@
 //! [`key`](CatalogueFunction::key) is for: `requestChanges` and `request_changes` are one function
 //! under two spellings, and the key is what says so.
 //!
-//! What does *not* live here is the data: each registered [language](super::language) owns its own
-//! committed JSON and its own parsed copy, reached through
-//! [`ProgramLanguage::catalogue`](super::ProgramLanguage::catalogue). A reader that wants "the
-//! catalogue" therefore has to say whose, which is exactly the question a cross-language study makes
-//! unavoidable.
+//! What does *not* live here is the data: each registered [language](mod@super::language) owns its
+//! own committed JSON and its own parsed copy, reached through [`ProgramLanguage::catalogue`]. A
+//! reader that wants "the catalogue" therefore has to say whose, which is exactly the question a
+//! cross-language study makes unavoidable.
 //!
 //! # Two schemas at once, on purpose
 //!
@@ -93,12 +92,12 @@ use crate::tools::ALL_TOOL_NAMES;
 ///
 /// # Why a version rather than "just add the fields"
 ///
-/// Because the two disagree about where the truth is, not merely about how much of it there is. A v1
-/// entry asserts its own gate; a v2 entry does not, because gating is gg's
-/// ([`Binding`](super::operations::Binding)). A v1 entry's brief is *computed* from prose that was
-/// not written to have one; a v2 entry's is written. Reading a v1 entry as though it were a v2 one
-/// would take a derived brief and hold it to a rule about authored briefs — which is exactly what
-/// the [register gate](super::language::register) refuses to do, and why it is inert below `V2`.
+/// Because the two disagree about where the truth is, not merely about how much of it there is. A
+/// v1 entry asserts its own gate; a v2 entry does not, because gating is gg's ([`Binding`]). A v1
+/// entry's brief is *computed* from prose that was not written to have one; a v2 entry's is
+/// written. Reading a v1 entry as though it were a v2 one would take a derived brief and hold it to
+/// a rule about authored briefs — which is exactly what the
+/// register gate (`language/register.rs`) refuses to do, and why it is inert below `V2`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize)]
 #[serde(try_from = "u32")]
 pub enum SchemaVersion {
@@ -242,7 +241,7 @@ pub(crate) struct SignatureCatalogue {
     #[serde(default)]
     pub tools: Vec<ToolSignature>,
     /// The helper functions bound alongside a tool — convenience wrappers that are not gg tools in
-    /// their own right and therefore have no name in [`ALL_TOOL_NAMES`].
+    /// their own right and therefore have no name in [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES).
     ///
     /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
     /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
@@ -366,7 +365,7 @@ pub struct FunctionSignature {
     /// spelling.
     ///
     /// Emitted by the reflector and never assembled by gg — see
-    /// [the rule it is held to](super::signatures::fqn) for the four invariants that make eleven
+    /// the rule it is held to (`signatures.fqn.rs`) for the four invariants that make eleven
     /// disagreeing spellings usable as one key.
     pub fqn: String,
     /// How the call is **written at a call site**, when that differs from the
@@ -550,7 +549,7 @@ pub(crate) struct ToolSignature {
     ///
     /// It is also this entry's language-independent identity, which is why a tool — alone among the
     /// catalogue's function-carrying sections — carries no separate `key`: every language's guest
-    /// catalogues the same [`ALL_TOOL_NAMES`], under its own spellings.
+    /// catalogues the same [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES), under its own spellings.
     pub tool: String,
     /// The name a program calls it by, in this catalogue's language (`readFile`).
     pub name: String,
@@ -844,7 +843,7 @@ pub struct ObjectDoc {
 /// Nothing downstream compares the count, because the count is spelling.
 ///
 /// What is *not* free to differ is the identity around it: the entry's key, its object, its gate.
-/// See the [agreement gate](super::language::agreement) for the line between the two.
+/// See the agreement gate (`language/agreement.rs`) for the line between the two.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureEntry {
@@ -890,7 +889,7 @@ pub enum ParameterKind {
     /// Passed by name — Python's keyword arguments, Kotlin's named ones — so the call site writes
     /// the parameter's name as well as its value.
     ///
-    /// [Python](super::language) is the registered language that emits it: every optional argument
+    /// [Python](super::language()) is the registered language that emits it: every optional argument
     /// on that arm is a keyword argument with a real default, which is what the language's own
     /// readers and writers expect and is exactly the half of a call the seam leaves each language
     /// free to spell for itself.
@@ -899,9 +898,9 @@ pub enum ParameterKind {
     /// position at all but a second channel into the call, and is written at the call site as a
     /// body rather than as a value.
     ///
-    /// [Ruby](super::language) is the registered language that emits it, as the second signature of
+    /// [Ruby](super::language()) is the registered language that emits it, as the second signature of
     /// an overload group: `write_file(path, contents)` and `write_file(path, &contents)` are one
-    /// capability written two ways. Its [type](Parameter::r#type) is the block's *return* (`->
+    /// capability written two ways. Its `type` is the block's *return* (`->
     /// String`), because what a block is for is the value it hands back.
     ///
     /// It has its own variant rather than being folded into [`Positional`](Self::Positional)
@@ -1074,7 +1073,7 @@ pub struct CatalogueFunction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Prose<'a> {
     /// The single line the thing is summarized by. Never `None`: an entry with no brief is a
-    /// [register](super::language::register) failure, not an absent field.
+    /// register failure (`language/register.rs`), not an absent field.
     pub brief: &'a str,
     /// Everything else there is to say, or `None` when there is nothing.
     pub detail: Option<&'a str>,
@@ -1096,7 +1095,7 @@ impl<'a> Prose<'a> {
     /// [schema](SchemaVersion) is deliberate: it puts the decision beside the data instead of
     /// threading a version through every leaf of the model, and it fails in the right direction. A
     /// v2 entry that forgot its brief has an *empty* one — which the
-    /// [register gate](super::language::register) refuses by name — rather than a plausible-looking
+    /// register gate (`language/register.rs`) refuses by name — rather than a plausible-looking
     /// line derived from a `doc` field the schema does not have.
     pub fn of(brief: Option<&'a str>, detail: Option<&'a str>, doc: &'a str) -> Self {
         match brief {
@@ -1107,7 +1106,7 @@ impl<'a> Prose<'a> {
 
     /// The **authored** brief and detail of a [`V2`](SchemaVersion::V2) entry, which is the whole of
     /// its documentation: there is no paragraph behind them to fall back to, and a blank brief here
-    /// stays blank so that the [register gate](super::language::register) can name it.
+    /// stays blank so that the register gate (`language/register.rs`) can name it.
     pub fn authored(brief: &'a str, detail: Option<&'a str>) -> Self {
         Self {
             brief,
@@ -1126,7 +1125,7 @@ impl<'a> Prose<'a> {
     /// it has none — the two ECMAScript arms and Python — the brief is the whole paragraph, which
     /// reads as *this arm has not authored a brief yet* rather than as a brief that was cut short.
     ///
-    /// It is deliberately **not** what the [register gate](super::language::register) is run
+    /// It is deliberately **not** what the register gate (`language/register.rs`) is run
     /// against: holding a derived line to a rule about authored lines would fail eleven arms for a
     /// property none of them has claimed yet.
     pub fn from_paragraph(doc: &'a str) -> Self {
@@ -1204,7 +1203,7 @@ pub(crate) fn functions_of(catalogue: &'static SignatureCatalogue) -> Vec<Catalo
 /// answers `false` for an unresolvable operation, so an arm that invents an operation documents
 /// nothing rather than documenting something ungated. Failing it *by name* is a different job —
 /// an arm's claim about gg's own vocabulary belongs to the coverage half of the
-/// [agreement gate](super::language::agreement) — and this is deliberately the quiet, safe half of
+/// agreement gate (`language/agreement.rs`) — and this is deliberately the quiet, safe half of
 /// that pair rather than a second opinion about it.
 fn catalogue_functions_v2(catalogue: &'static SignatureCatalogue) -> Vec<CatalogueFunction> {
     catalogue
@@ -1251,7 +1250,7 @@ fn catalogue_functions_v2(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
 ///
 /// The fallback is deliberately the id rather than a panic or an empty string: a module an entry
 /// names and the `modules` section forgot is a real defect, but it is one
-/// [the name rule](fqn::faults) reports by name, and degrading a *grouping label* mid-run is a
+/// the name rule (`signatures.fqn.rs`) reports by name, and degrading a *grouping label* mid-run is a
 /// worse answer than showing gg's own word for the module until that gate is read.
 fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'static str {
     catalogue
@@ -1380,7 +1379,7 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
 /// object's directory carries for it.
 ///
 /// `None` for a key this language's catalogue does not carry. The
-/// [agreement gate](super::language::agreement) asserts that every registered language's meta
+/// agreement gate (`language/agreement.rs`) asserts that every registered language's meta
 /// section is exactly gg's own meta vocabulary — [`list`](crate::docs::LIST_FUNCTION) and nothing
 /// else — so a miss is a corrupt committed artifact rather than a runtime condition, and the callers
 /// degrade rather than panic, because one word missing from a directory is a smaller failure than a
@@ -1510,8 +1509,8 @@ pub struct ModuleView {
 mod tests;
 
 /// **The rule one fully-qualified name is held to**, across eleven languages that disagree about
-/// how a name is spelled. A gate rather than a run-time need, like the
-/// [agreement](super::language::agreement) gate it runs beside.
+/// how a name is spelled. A gate rather than a run-time need, like the agreement gate
+/// (`language/agreement.rs`) it runs beside.
 #[cfg(test)]
 #[path = "signatures.fqn.rs"]
 pub(crate) mod fqn;

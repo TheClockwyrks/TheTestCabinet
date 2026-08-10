@@ -7,7 +7,7 @@
 //! and bindings, then an in-process [`wit_component`] encode with the pinned preview1 adapter — and
 //! what crosses the membrane is not source at all but the artifact gg's engine instantiates.
 //!
-//! It is the third arm of that shape, after [Rust](super::rust) and [Swift](super::swift), and it
+//! It is the third arm of that shape, after [Rust](super::super::rust) and [Swift](super::super::swift), and it
 //! inherits the seam Rust grew and the preview1 adaptation Swift added:
 //! [`PreparedProgram::component`] carries the bytes, `guest_component` answers `None`, and
 //! `engine::program_component` is where the two shapes meet.
@@ -18,8 +18,8 @@
 //! line gg wrote, and therefore **no line offset at all** — a diagnostic at line 7 is line 7 of what
 //! the model wrote.
 //!
-//! Like [Swift](super::swift::compile)'s, that is forced rather than chosen, and C++ forces it
-//! harder than any arm before it. A function-body wrapper — the shape [Rust](super::rust) uses —
+//! Like [Swift](super::super::swift::compile)'s, that is forced rather than chosen, and C++ forces it
+//! harder than any arm before it. A function-body wrapper — the shape [Rust](super::super::rust) uses —
 //! would refuse **three** things a C++ author writes without thinking. A `template` may not be
 //! declared at block scope at all, which is most of what generic C++ is. A `namespace` may not
 //! either. And a `#include` is a *textual* directive: it would still expand, but it would expand
@@ -93,8 +93,8 @@
 //! | What happened | What a model reads | What makes it so |
 //! | --- | --- | --- |
 //! | An uncaught `throw` | a **recoverable, model-facing program error** carrying the exception's own class, demangled, and its `what()` — but **no location** | gg's [shell](../../../../../packages/gg-sandbox-cpp/Sources/shell.cpp) catches it. Without that it is a bare host-visible wasm exception: wasmtime reports `thrown Wasm exception` and nothing else, because an escaping exception under `-fwasm-exceptions` never reaches `std::terminate` |
-//! | A libc++ **hardening** check — `v[10]`, `.front()` on an empty container, a bad range | a trap carrying libc++'s own sentence — `libc++ Hardening assertion __n < size() failed: vector[] index out of bounds` — **at the model's own line** | [`HARDENING_FLAG`](self::HARDENING_FLAG), because wasi-sdk ships libc++ configured to `none`, plus [`DEBUG_INFO`](self::DEBUG_INFO) and the engine's symbolication, because the message is a synthetic inlined frame rather than anything printed |
-//! | Integer division by zero, a null dereference, an out-of-bounds raw pointer, any other undefined behaviour | **a trap with no words at all**, located at the model's own line | [`DEBUG_INFO`](self::DEBUG_INFO), and nothing else can be done |
+//! | A libc++ **hardening** check — `v[10]`, `.front()` on an empty container, a bad range | a trap carrying libc++'s own sentence — `libc++ Hardening assertion __n < size() failed: vector[] index out of bounds` — **at the model's own line** | [`HARDENING_FLAG`], because wasi-sdk ships libc++ configured to `none`, plus [`DEBUG_INFO`] and the engine's symbolication, because the message is a synthetic inlined frame rather than anything printed |
+//! | Integer division by zero, a null dereference, an out-of-bounds raw pointer, any other undefined behaviour | **a trap with no words at all**, located at the model's own line | [`DEBUG_INFO`], and nothing else can be done |
 //!
 //! A fourth band exists on every arm and matters on this one more than on any other: a program
 //! `clang++` **rejected**, which is a [recoverable, model-facing compile error](classify) carrying
@@ -196,7 +196,7 @@ const GUEST_TAR_GZ: &[u8] = include_bytes!("../checkers/cpp.guest.tar.gz");
 /// In memory rather than in the archive above, because this is the one input the *encoder* needs and
 /// not the compiler: it never touches a filesystem.
 ///
-/// It is this arm's own copy of a file the [Swift](super::swift) arm also carries, and the
+/// It is this arm's own copy of a file the [Swift](super::super::swift) arm also carries, and the
 /// duplication is deliberate rather than an oversight: each arm pins its adapter from its own
 /// version file, and the point of a pin is that bumping one arm's toolchain cannot silently move
 /// another arm's ABI.
@@ -255,7 +255,7 @@ const PCH_FILE: &str = "prelude.pch";
 /// arm's [mode](HARDENING_FLAG) is `__builtin_verbose_trap`, and clang does not *print* its argument
 /// anywhere: it encodes it as the name of a synthetic inlined frame in the debug information. So the
 /// sentence a model reads — `libc++ Hardening assertion __n < size() failed: vector[] index out of
-/// bounds` — exists only because of this flag. It is the same mechanism the [Swift](super::swift)
+/// bounds` — exists only because of this flag. It is the same mechanism the [Swift](super::super::swift)
 /// arm's entire error surface rests on, reached here for a narrower class of failure.
 ///
 /// `-g1` rather than `-g`, measured: full debug information costs ~800 ms more per compile, takes
@@ -284,10 +284,10 @@ const EXCEPTION_FLAGS: &[&str] = &["-fwasm-exceptions", "-mllvm", "-wasm-use-leg
 /// 30 seconds of CPU that an honest program uses milliseconds of.
 ///
 /// What a failed check does is libc++'s `hardening-dependent` semantic, which for this mode is
-/// **`quick_enforce`**: `__builtin_verbose_trap`, whose message clang encodes as a synthetic inlined
-/// frame in the debug information. That is exactly the mechanism the [Swift](super::swift) arm's
-/// whole error surface rests on, reached here for a narrower class of failure — so
-/// [`DEBUG_INFO`](self::DEBUG_INFO) is what turns `values[9]` from an anonymous trap into
+/// **`quick_enforce`**: `__builtin_verbose_trap`, whose message clang encodes as a synthetic
+/// inlined frame in the debug information. That is exactly the mechanism the
+/// [Swift](super::super::swift) arm's whole error surface rests on, reached here for a narrower
+/// class of failure — so [`DEBUG_INFO`] is what turns `values[9]` from an anonymous trap into
 /// `libc++ Hardening: assertion vector[] index out of bounds failed` at the model's own line.
 const HARDENING_FLAG: &str = "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE";
 
@@ -349,7 +349,7 @@ struct Manifest {
     /// read out of the prelude that actually ships rather than restated — the same rule every other
     /// arm's library manifest follows.
     ///
-    /// Read only by [`prelude_headers`], which is a gate rather than a runtime need: nothing on the
+    /// Read only by `prelude_headers`, which is a gate rather than a runtime need: nothing on the
     /// turn path asks what is in the prelude, because the precompiled header already answers it.
     #[cfg_attr(not(test), allow(dead_code))]
     headers: Vec<String>,
@@ -831,7 +831,7 @@ fn rendered(stderr: &str) -> String {
 
 /// How many `error:` diagnostics located in gg's or the library's own files a model is shown.
 ///
-/// Four rather than [Kotlin's](super::kotlin) eight, because a C++ error is not one line: it drags
+/// Four rather than [Kotlin's](super::super::kotlin) eight, because a C++ error is not one line: it drags
 /// a source excerpt, a caret and an instantiation backtrace behind it. What a model can act on is
 /// the first, and on this arm the first is almost always the only one — the eight errors a
 /// `std::format` type mistake produces are one mistake, reported once per phase clang got to.
@@ -885,7 +885,7 @@ fn is_summary(line: &str) -> bool {
 /// `__compile_time_handle` and the `semiregular`/`copyable`/`move_constructible` chain, with the
 /// model's own line buried in the middle as a `note:`. Roughly five thousand tokens of one turn
 /// spent on a fault a sentence describes. `rustc` has no template instantiation to unwind and
-/// [Kotlin's arm](super::kotlin) already caps for its own reason; this arm needs one more than
+/// [Kotlin's arm](super::super::kotlin) already caps for its own reason; this arm needs one more than
 /// either.
 ///
 /// So the first [few](SHOWN_ERRORS) errors are kept whole, each with the notes that matter, and
@@ -1018,8 +1018,8 @@ fn diagnostics<'a>(rendered: &'a str, authored: &[String]) -> (Vec<Diagnostic<'a
 /// Encode the core module `clang++` linked as the component gg's engine instantiates.
 ///
 /// In process, from the bytes the compiler wrote, with no `wasm-tools` binary to install in a run
-/// container — the same encode the [Rust](super::rust) arm does, with the adaptation
-/// [Swift](super::swift) added. This arm targets `wasm32-wasip1`, so the module it produces imports
+/// container — the same encode the [Rust](super::super::rust) arm does, with the adaptation
+/// [Swift](super::super::swift) added. This arm targets `wasm32-wasip1`, so the module it produces imports
 /// the preview1 snapshot; [`ADAPTER`] is what implements those imports in terms of the preview 2
 /// interfaces gg's linker provides.
 fn componentize(module: &[u8]) -> Result<Vec<u8>, String> {

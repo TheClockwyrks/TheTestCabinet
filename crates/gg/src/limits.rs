@@ -76,8 +76,9 @@
 //! sequence. gg's agents run concurrently on the subagent scheduler, their turns interleave
 //! nondeterministically, and a run-wide consecutive counter would be counting a sequence that never
 //! happened, with a value depending on thread scheduling — not a knob, a race. It is also
-//! substantively right: a subagent's failures are its own, a speculation fans out K attempts
-//! precisely so that some may fail, and a thrashing fix agent must not take the run down with it.
+//! substantively right: a subagent's failures are its own, an issue may be dispatched to several
+//! agents precisely so that some may fail, and a thrashing fix agent must not take the run down
+//! with it.
 //! [`AgentLimits`] is therefore owned outright by the agent whose turns it counts (`&mut self`, no
 //! sharing, nothing to synchronise), and a breaching subagent ends *itself* while the run carries
 //! on.
@@ -633,7 +634,7 @@ const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
 /// **Total**: an unset, zero, negative or nonsensical declaration becomes `None` (the ceiling is
 /// off) plus a warning, never an error, so a sweep's one shared configuration document stays
 /// interpretable by every arm — the same terms an unknown name in
-/// [`disabled_tools`](GgCapabilitySet::disabled_tools) is read on. No warning ever fails a launch.
+/// `disabled_tools` is read on. No warning ever fails a launch.
 ///
 /// | Declaration | Resolves to | Warning |
 /// | --- | --- | --- |

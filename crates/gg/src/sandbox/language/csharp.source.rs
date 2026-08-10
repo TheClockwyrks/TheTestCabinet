@@ -71,7 +71,7 @@ use crate::sandbox::{PrepareError, PrepareFailure};
 /// The namespace every code module's class is declared in — the `lib` of `lib.<key>`.
 ///
 /// Lower-case, which no C# style guide would write and which this arm does not get to choose: the
-/// binding is [identity](super::super::agreement), shared with every other arm, and a namespace
+/// binding is identity (`language/agreement.rs`), shared with every other arm, and a namespace
 /// called `Lib` would be a different one.
 pub(super) const NAMESPACE: &str = "lib";
 

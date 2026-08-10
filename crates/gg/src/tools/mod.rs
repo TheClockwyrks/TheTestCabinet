@@ -46,7 +46,7 @@
 //! matches by name and returns a well-formed error [`ToolOutcome`] (never a panic)
 //! for an unknown tool.
 
-mod board;
+pub(crate) mod board;
 mod context;
 mod data;
 mod filesystem;
@@ -282,7 +282,7 @@ pub struct ToolContext {
     /// path cannot say whose command it ran, and a [hook's](crate::hooks) commands in particular
     /// have to be attributed to the agent it fired for or they are filed unattributed.
     pub agent_id: String,
-    /// What actually starts a process for this call. [`RealShellRunner`] in a live run, and
+    /// What actually starts a process for this call. [`RealShellRunner`](crate::tools::shell::runner::RealShellRunner) in a live run, and
     /// substituted wholesale by gg's own suite.
     ///
     /// Shared (`Arc`) because gg builds a context per agent per turn and clones it into every
@@ -334,7 +334,7 @@ impl VisionContext {
 impl ToolContext {
     /// A context rooted at `workspace_dir`, with no model bound — images are allowed,
     /// since nothing has declared or denied them — no agent behind it, and the
-    /// [real shell](RealShellRunner).
+    /// [real shell](crate::tools::shell::runner::RealShellRunner).
     ///
     /// The defaults are what keep the seam free: every one of this constructor's call sites (the
     /// loop's, the [hooks'](crate::hooks), and every test's) predates it and is

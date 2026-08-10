@@ -1,4 +1,5 @@
-//! The **hook scripts gg ships** — the sources behind [`GgHookAction::BuiltIn`].
+//! The **hook scripts gg ships** — the sources behind
+//! [`GgHookAction::BuiltIn`](test_cabinet_core::gg::GgHookAction::BuiltIn).
 //!
 //! Three of them, and the list is meant to stay short. A built-in earns its place where what it
 //! knows is genuinely gg's — the shape of an event payload — rather than where it saves an operator

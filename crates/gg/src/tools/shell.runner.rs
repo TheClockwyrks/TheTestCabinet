@@ -12,9 +12,9 @@
 //! Three call paths reach a command line — the [`shell`](super::SHELL_TOOL) tool, a
 //! [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
 //! [hook's](crate::hooks) commands — and the only thing all three share
-//! is the [`ToolContext`](super::ToolContext). So the runner travels on the context, and both
-//! [`run_command`](super::run_command) and
-//! [`run_command_capturing`](super::run_command_capturing) reach it from there. Splitting the seam
+//! is the [`ToolContext`](super::ToolContext). So the runner travels on the context, and the one
+//! function all three go through — [`run_command`](super::run_command), which each reaches with its
+//! own [origin](GgShellOrigin) — takes it from there. Splitting the seam
 //! any lower (at the `shell` tool) would leave the other two paths starting real processes behind
 //! a substituted seam; splitting it any higher would need three seams that could disagree.
 //!
@@ -62,12 +62,13 @@ pub struct ShellRequest {
     /// The agent whose turn issued the command, empty for a dispatch with no agent behind it.
     ///
     /// Carried because a recorded shell is keyed **per agent**: a runner given only a workspace
-    /// path cannot know whose recorded commands to draw from, every shell divergence names an
+    /// path cannot say whose command it just ran, every shell divergence names an
     /// agent, and a [hook's](crate::hooks) commands in particular have to be attributed to the
     /// agent it fired for — an [agent-stop](test_cabinet_core::gg::GgHookEvent::AgentStop) gate to
     /// the agent whose ending it holds — or they land on an unattributed queue.
     /// [`RealShellRunner`] has no use for it — a real process is a real process — so the only
-    /// reader is a [playback](crate::playback)'s recorded runner.
+    /// reader is the [recording](crate::capture::RecordingShellRunner) runner, which stamps it on
+    /// the entry it appends.
     pub agent_id: String,
     /// **Which of gg's three command paths** this line came from: the [`shell`](super::SHELL_TOOL)
     /// tool, a [responses-as-code](crate::sandbox) program's `system.shell(…)`, or a
@@ -88,8 +89,9 @@ pub struct ShellRequest {
 /// presented to the model differently and one of them ([`LaunchFailed`](Self::LaunchFailed)) never
 /// reaches the [output policy](super::OffloadPolicy) at all. Collapsing them into
 /// `Option<i32>` — which is what the caller-facing
-/// [`CommandCapture`](super::shell::CommandCapture) does — would make a timeout and a
-/// signal-terminated process indistinguishable.
+/// [`ShellData::exit_code`](super::ShellData::exit_code) does, once the presentation above the seam
+/// has already said which case it was — would make a timeout and a signal-terminated process
+/// indistinguishable here, where the distinction is the whole point.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellStatus {
     /// The process ran to completion. `code` is `None` for one a signal ended.

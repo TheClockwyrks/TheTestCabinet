@@ -1083,7 +1083,7 @@ struct AssetOut {
 /// One held-out scored case of a performance case: the store-relative keys of the
 /// `input` scenario fed to the engine and the `expected` oracle state its output
 /// is checked against. Mirrors core's wire `CaseBody`, so a resolved version
-/// round-trips its scored set through to the runner's [`materialize_version`].
+/// round-trips its scored set through to the runner's [`materialize_version`](test_cabinet_core::backend_client::materialize_version).
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]

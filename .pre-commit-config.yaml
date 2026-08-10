@@ -132,7 +132,7 @@ repos:
 
       - id: rust-doc
         name: cargo doc (warnings denied)
-        description: Run rustdoc across the workspace with warnings denied, catching broken intra-doc links.
+        description: Run rustdoc across the workspace with warnings denied, over private items too, catching broken intra-doc links.
         entry: scripts/hooks/rust-doc.sh
         language: script
         # rustdoc operates on the whole workspace, not individual files; trigger

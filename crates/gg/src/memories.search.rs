@@ -13,9 +13,8 @@
 //!   trap.
 //! * **Matching a keyword at all outranks matching one many times.** Breadth is the better signal:
 //!   a memory mentioning every keyword once is far more likely to be the one asked for than a
-//!   memory that repeats one of them twenty times. That is
-//!   [`breadth_then_frequency`](crate::search::breadth_then_frequency), and it is now the same
-//!   ordering documentation search uses.
+//!   memory that repeats one of them twenty times. That is [`breadth_then_frequency`], and it is
+//!   now the same ordering documentation search uses.
 
 use super::Memory;
 use crate::search::{Relevance, breadth_then_frequency, excerpt_around, normalize, relevance};

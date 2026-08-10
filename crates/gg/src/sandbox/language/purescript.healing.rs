@@ -6,7 +6,7 @@
 //!
 //! # A `#` line is prose here, and that is the opposite of what the other arms say
 //!
-//! [Python](super::python::healing) and [Ruby](super::ruby::healing) both refuse to delete a `#`
+//! [Python](super::super::python::healing) and [Ruby](super::super::ruby::healing) both refuse to delete a `#`
 //! line, because `# Plan` is a Markdown heading *and* a comment in those languages and nothing
 //! lexical tells them apart — so the heading survives into the program, where the interpreter reads
 //! it as a comment and it costs nothing.
@@ -181,7 +181,7 @@ const CODE_OPERATORS: [&str; 9] = ["::", "->", "<-", "=>", "<>", ">>=", "<$>", "
 /// Characters no line of English prose contains.
 ///
 /// `#` is deliberately **absent**, which is where this arm parts company with
-/// [Python's](super::python::healing) and [Ruby's](super::ruby::healing). Those two list it because a
+/// [Python's](super::super::python::healing) and [Ruby's](super::super::ruby::healing). Those two list it because a
 /// `#` line is a comment in their languages and deleting it would delete the model's own words.
 /// PureScript comments with `--`; `#` is an operator, and `## Plan` left in a program is a parse
 /// error. So a Markdown heading is prose here, and is deleted — with the one exception
@@ -206,7 +206,7 @@ const NON_PROSE_CHARS: [char; 18] = [
 // ---------------------------------------------------------------------------------------------
 
 /// Whether `line` is **certainly** a line of PureScript — this dialect's answer to
-/// [`Dialect::looks_like_code`](crate::healing::Dialect::looks_like_code).
+/// [`Dialect::looks_like_code`].
 ///
 /// Its errors are asymmetric on purpose: a false positive costs a fence that could have been
 /// unwrapped (one turn, one located diagnostic), while a false negative deletes a line of the model's
@@ -251,8 +251,7 @@ fn looks_like_code(raw: &str) -> bool {
 }
 
 /// Whether `line` is **certainly** prose rather than PureScript — this dialect's answer to
-/// [`Dialect::is_prose_line`](crate::healing::Dialect::is_prose_line), and the test `strip-prose`
-/// uses to *delete* a line.
+/// [`Dialect::is_prose_line`], and the test `strip-prose` uses to *delete* a line.
 ///
 /// The mirror image of [`looks_like_code`], with the asymmetry the other way round: a false positive
 /// here deletes the model's code, so every clause is a shape only English has. The two are
@@ -483,8 +482,7 @@ enum Mode {
     Raw,
 }
 
-/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to
-/// [`Dialect::code_mask`](crate::healing::Dialect::code_mask).
+/// Lex `src` into its [code mask](CodeMask) — this dialect's answer to [`Dialect::code_mask`].
 ///
 /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
 /// it. Three states end a scan uncleanly: an ordinary string still open at a newline, a triple-quoted

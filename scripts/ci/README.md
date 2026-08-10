@@ -29,7 +29,7 @@ and can be run from anywhere, including locally:
 
 | Script               | Checks                                              | Critical |
 | -------------------- | --------------------------------------------------- | -------- |
-| `rust-lint.sh`       | `cargo fmt --check`, `cargo clippy -D warnings`     | no       |
+| `rust-lint.sh`       | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc --document-private-items` | no |
 | `install-nextest.sh` | Install cargo-nextest pinned to `NEXTEST_VERSION`   | —        |
 | `rust-test.sh`       | `cargo build` + `cargo nextest run` + doctests (headless crates) | yes |
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |

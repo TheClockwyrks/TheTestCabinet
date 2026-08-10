@@ -179,9 +179,11 @@ pub struct ViewOpenOutcome {
 ///
 /// A program's call has no provider-assigned id, so the loop mints one. The **ordinal** is what
 /// makes it unique within a turn: an id named only after the tool would collide whenever one
-/// program called one tool twice, which is wrong for anything keyed by it. The
-/// [replay driver](crate::replay_driver) recognises this prefix to attribute a recorded
-/// `ToolResult` to the open turn's program rather than to a native tool call the model never made.
+/// program called one tool twice, which is wrong for anything keyed by it. The prefix is also the
+/// only thing distinguishing the two in the [session
+/// record](test_cabinet_core::gg_session_record::GgSessionRecord), so it is what lets a reader
+/// attribute a recorded `ToolResult` to the open turn's program rather than to a native tool call
+/// the model never made.
 pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
 
 /// The native, typed surface the membrane calls — one standard method per gg API function, plus the

@@ -1,7 +1,7 @@
 //! **TypeScript's [healing dialect](crate::healing::Dialect)** — the lexical half of
 //! [response healing](crate::healing).
 //!
-//! It serves gg's [JavaScript](super::javascript) arm too, and that is not a shortcut: the two arms
+//! It serves gg's [JavaScript](super::super::javascript) arm too, and that is not a shortcut: the two arms
 //! are one syntax, differing only in whether the program is type-checked before it runs. Every
 //! question below — which fence tags a model uses, which lines are code and which are prose, which
 //! bytes are string or comment text, what an import looks like, what ECMAScript refuses to declare
@@ -529,7 +529,7 @@ const NON_PROSE_CHARS: [char; 15] = [
 ];
 
 /// Whether `line` is **certainly** a line of code — TypeScript's answer to
-/// [`Dialect::looks_like_code`](crate::healing::Dialect::looks_like_code).
+/// [`Dialect::looks_like_code`].
 ///
 /// It is what `strip-fences` uses to refuse to unwrap a fence that is inside a program rather than
 /// around one, and what the loop uses to tell a reply that failed to compile from a reply that was
@@ -629,9 +629,8 @@ fn opens_with_call(line: &str) -> bool {
     line[end..].starts_with('(')
 }
 
-/// Whether `line` is **certainly** prose — TypeScript's answer to
-/// [`Dialect::is_prose_line`](crate::healing::Dialect::is_prose_line), and the test `strip-prose`
-/// uses to delete a line.
+/// Whether `line` is **certainly** prose — TypeScript's answer to [`Dialect::is_prose_line`], and
+/// the test `strip-prose` uses to delete a line.
 ///
 /// The mirror image of [`looks_like_code`]: here a false positive deletes the model's code, so every
 /// clause is a shape that only English has. The two predicates are **not** complements and are not
@@ -690,8 +689,7 @@ fn is_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '$'
 }
 
-/// Lex `src` into its [code mask](CodeMask) — TypeScript's answer to
-/// [`Dialect::code_mask`](crate::healing::Dialect::code_mask).
+/// Lex `src` into its [code mask](CodeMask) — TypeScript's answer to [`Dialect::code_mask`].
 ///
 /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
 /// it. Three states end a scan uncleanly: an unterminated block comment, an unterminated template

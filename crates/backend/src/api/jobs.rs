@@ -435,7 +435,7 @@ pub async fn status(
 /// cancellation, drops the in-flight harness exec, tears its sandbox down, and
 /// exits — the same both on the local cluster and in production, since both drive a
 /// run through a driver pod. On its way out it posts a
-/// [`DriverState::Canceled`](test_cabinet_core::job_api::DriverState::Canceled)
+/// [`DriverState::Canceled`]
 /// status carrying a [`RunState::Canceled`] record, which
 /// [`update_status`] attaches to this job; that is what keeps a killed run — and
 /// everything it streamed before the kill — visible in the run list. No completion
@@ -977,7 +977,7 @@ fn finish_and_notify(state: &AppState, notification: Notification) {
 
 /// Load a job and verify the request carries its per-job token. `404` for an
 /// unknown job, `401` for a missing or wrong token.
-async fn authorize_job(
+pub(super) async fn authorize_job(
     state: &AppState,
     id: &str,
     headers: &HeaderMap,

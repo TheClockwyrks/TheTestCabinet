@@ -3,12 +3,12 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side `swiftc`, the in-process component encode with the
-//!   preview1 adapter, what they cost, what they share, and the two failures they tell apart;
-//! * [`source`](self::source) — the one thing gg writes, which is not a wrapper around a program but
-//!   the namespace a **code module**'s declarations are moved into, in place;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of, whose lexer is also what reads a code module's top level;
+//! * [`compile`] — the host-side `swiftc`, the in-process component encode with the preview1
+//!   adapter, what they cost, what they share, and the two failures they tell apart;
+//! * [`source`] — the one thing gg writes, which is not a wrapper around a program but the
+//!   namespace a **code module**'s declarations are moved into, in place;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of, whose lexer is also what reads a code module's top level;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Swift's syntax;
 //! * `packages/gg-sandbox-swift/` — the SDK a program calls, the shell it is compiled beside, the
@@ -42,7 +42,7 @@
 //! one static archive. A static archive is why they cost nothing: the linker pulls members, so an
 //! artifact for a program that imports none of them is byte for byte the size of one built without
 //! the archive at all. `packages/gg-sandbox-swift/libraries.txt` is the one declaration, and
-//! [`surface`] compiles a program that imports every module in it.
+//! `swift.surface.test.rs` compiles a program that imports every module in it.
 //!
 //! # Why this arm has no component to commit
 //!
@@ -68,7 +68,7 @@
 //!
 //! What makes it work is that gg's shell is a second file of the **same module**: Swift lowers a
 //! top-level file's statements into the target's C entry point, and the shell, sharing the module,
-//! names that symbol and calls it from the `run` export. See [`compile`](self::compile).
+//! names that symbol and calls it from the `run` export. See [`compile`].
 //!
 //! # What this arm has that no other does
 //!
@@ -97,7 +97,7 @@
 //! an **uncaught throw** arrives with gg's own sentence and *no line at all*. The runtime hands the
 //! error to `swift_errorInMain` from the entry point's synthesized epilogue, so the only frames left
 //! are `/<compiler-generated>` and there is nothing to symbolicate. Catching what you expect is what
-//! buys the line back. Measured in [`surface`].
+//! buys the line back. Measured in `swift.surface.test.rs`.
 //!
 //! # And a code module is **linked**, which is why the seam hands a program its modules
 //!
@@ -109,12 +109,12 @@
 //!
 //! So the seam hands [`prepare_program`](super::ProgramLanguage::prepare_program) the modules in
 //! scope, and each becomes a further file of the program's **own Swift module**, with its top-level
-//! declarations moved into `lib.<key>` by being wrapped where they stand — see
-//! [`source`](self::source) for the shape, for what it preserves that the two alternatives would
-//! have given up, and for the one construct it refuses. The consequence a model can see is that
-//! `lib.csvTools.parse` is a **name the compiler resolves** rather than a property looked up on a
-//! value: a key that does not exist is a diagnostic on the turn that wrote it, where an interpreted
-//! arm finds out when the call is reached.
+//! declarations moved into `lib.<key>` by being wrapped where they stand — see [`source`] for the
+//! shape, for what it preserves that the two alternatives would have given up, and for the one
+//! construct it refuses. The consequence a model can see is that `lib.csvTools.parse` is a **name
+//! the compiler resolves** rather than a property looked up on a value: a key that does not exist
+//! is a diagnostic on the turn that wrote it, where an interpreted arm finds out when the call is
+//! reached.
 //!
 //! A module is compiled **twice**, and that is deliberate rather than an oversight — once alone when
 //! it is read, only to be checked, and once as part of every program that uses it. Without the first
@@ -133,18 +133,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The `swiftc` build and the in-process component encode: the host-side step that turns a model's
-/// Swift into the component that evaluates it.
 #[path = "swift.compile.rs"]
 pub(super) mod compile;
 
-/// The namespace a code module's declarations are moved into, and the one file gg generates beside a
-/// program — there being no wrapper around a program at all.
 #[path = "swift.source.rs"]
 pub(super) mod source;
 
-/// The lexical reading of a reply — Swift's answers to healing's questions, and the lexer
-/// [`source`] reads a code module's top level with.
 #[path = "swift.healing.rs"]
 pub(super) mod healing;
 

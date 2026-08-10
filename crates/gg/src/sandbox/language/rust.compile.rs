@@ -683,9 +683,8 @@ fn libraries() -> Result<&'static Libraries, String> {
 /// The seam's one sanctioned share, taken under the seam's discipline: the key folds in the pinned
 /// compiler **and** a digest of the tarball itself, so a gg carrying a different set at the same
 /// compiler version reads a different directory rather than another build's files; the write goes
-/// through [`place_tree`](super::compile::place_tree), which fills a staging directory, seals it
-/// read-only and renames it in, so a reader never sees a half-unpacked tree and nothing can write to
-/// a placed one.
+/// through [`place_tree`], which fills a staging directory, seals it read-only and renames it in,
+/// so a reader never sees a half-unpacked tree and nothing can write to a placed one.
 ///
 /// Sharing it needs no further argument than that, because `rustc` only ever **reads** it. Nothing
 /// is compiled into it, nothing is generated beside it, and no preparation's output goes anywhere

@@ -11,12 +11,16 @@
 //! | [`exec`](handle_exec) | the model, from its own roster | ends | the same agent, under another profile |
 //! | [`fork`](handle_fork) | the model | **keeps running** | a *child*, one level deeper |
 //!
-//! So a transition and an `exec` both produce a [`Handoff`], which [`run_agent`](super::run_agent)'s
-//! incarnation loop applies: it drains the outgoing instance's modules,
-//! [transfers](crate::modules::transfer) what the plan carries, mints the successor, and drives it
-//! on the very same scheduler slot. A `fork` produces a [`PendingFork`] instead, which the loop
-//! turns into an ordinary spawned child whose modules are [clones](crate::modules::fork_modules) of
-//! the forker's rather than a fresh set.
+//! So a transition and an `exec` both produce a [`Handoff`], which [`run_agent`]'s incarnation loop
+//! applies: it drains the outgoing instance's modules, [transfers](crate::modules::transfer) what
+//! the plan carries, mints the successor, and drives it on the very same scheduler slot. A `fork`
+//! produces a [`PendingFork`] instead, which the loop turns into an ordinary spawned child whose
+//! modules are [clones](crate::modules::fork_modules) of the forker's rather than a fresh set.
+//!
+//! It is a module of [`agent`](super) rather than a file of it for the same reason
+//! [the code path](super::code) is: one self-contained concern of some size, split out under the
+//! repo's `foo.<concern>.rs` convention because `agent.rs` is already the largest file in the
+//! crate. Its items are `use`d back into [`agent`](super), so the loop names them unqualified.
 //!
 //! # Every one of them is turn-final
 //!
@@ -35,10 +39,10 @@
 //! # First declaration wins
 //!
 //! A turn that declares two successions keeps the first and refuses the second, and an ending beats
-//! both. Unlike a [compaction](crate::compaction) — which is idempotent, so a second `compact`
-//! harmlessly replaces the first — a silently replaced successor identity is a change the model
-//! cannot see, and an agent that said its work was done has nothing left to hand on. Forks are the
-//! exception: they are additive (each is a separate child), so a turn may declare several.
+//! both. Unlike a [compaction] — which is idempotent, so a second `compact` harmlessly replaces the
+//! first — a silently replaced successor identity is a change the model cannot see, and an agent
+//! that said its work was done has nothing left to hand on. Forks are the exception: they are
+//! additive (each is a separate child), so a turn may declare several.
 
 use super::*;
 
@@ -60,7 +64,7 @@ use crate::tools::{EXEC_TOOL, FORK_TOOL};
 /// both turn into — deliberately one value rather than two, because the two features differ only in
 /// the [plan](TransferPlan) they carry and in whether a machine position travels with them.
 ///
-/// The loop that applies it is in [`run_agent`](super::run_agent).
+/// The loop that applies it is in [`run_agent`].
 pub(super) struct Handoff {
     /// The [agent profile](GgAgentConfig) the successor runs under.
     ///
@@ -82,8 +86,7 @@ pub(super) struct Handoff {
     pub(super) fsm: Option<FsmPosition>,
 }
 
-/// Why one agent instance handed off to another — the gg-side half of
-/// [`GgAgentTransitionKind`](test_cabinet_core::gg::GgAgentTransitionKind).
+/// Why one agent instance handed off to another — the gg-side half of [`GgAgentTransitionKind`].
 pub(super) enum HandoffReason {
     /// A [machine](crate::fsm) moved from one state to the next.
     Fsm {

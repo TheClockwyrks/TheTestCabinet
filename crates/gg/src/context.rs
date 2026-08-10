@@ -1182,7 +1182,7 @@ impl ContextModel {
     /// [`Retention`]. An ordinary `read_file` is [`Ephemeral`](Retention::Ephemeral) working
     /// material; a **locked** [autoloaded specification](https://docs.testcabinet.ai/gg/autoload-specifications/)
     /// is [`Pinned`](Retention::Pinned) instead, so it is kept in the window verbatim across a
-    /// [compaction](Self::compact_history) boundary (its `tool` message re-framed to a `user`
+    /// [compaction](crate::compaction::apply_compaction) boundary (its `tool` message re-framed to a `user`
     /// message that carries its text *and* its image) and is spared by
     /// [`evict_file_views`](Self::evict_file_views).
     pub fn push_file_view_with_retention(

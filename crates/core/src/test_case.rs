@@ -733,7 +733,7 @@ struct ManifestAnimation {
     auto_play: bool,
 }
 
-/// The serde default for [`ManifestAnimation::r#loop`] — most animations loop.
+/// The serde default for [`ManifestAnimation`]'s `loop` field — most animations loop.
 fn default_true() -> bool {
     true
 }

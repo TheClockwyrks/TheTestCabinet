@@ -4,13 +4,13 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side `purs` and `esbuild` compile that turns a model's
-//!   PureScript into the JavaScript the guest evaluates, what it costs, what it shares, and the two
-//!   failures it tells apart;
-//! * [`modules`](self::modules) — reading a code [skill](crate::skills)'s or
-//!   [memory](crate::memories)'s own module header for the names its namespace offers;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of: the fence tags, the two predicates, the nesting-and-primes lexer, the
+//! * [`compile`] — the host-side `purs` and `esbuild` compile that turns a model's PureScript into
+//!   the JavaScript the guest evaluates, what it costs, what it shares, and the two failures it
+//!   tells apart;
+//! * [`modules`] — reading a code [skill](crate::skills)'s or [memory](crate::memories)'s own
+//!   module header for the names its namespace offers;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of: the fence tags, the two predicates, the nesting-and-primes lexer, the
 //!   redeclaration proof, and the `Aff` wrapper;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in PureScript's syntax;
@@ -129,17 +129,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The `purs` and `esbuild` compile: the host-side step that turns a model's PureScript into the
-/// guest's JavaScript.
 #[path = "purescript.compile.rs"]
 pub(super) mod compile;
 
-/// Reading a module's own header for the names its namespace offers.
 #[path = "purescript.modules.rs"]
 mod modules;
 
-/// The lexical reading of a reply — PureScript's answers to healing's questions, three of which
-/// differ from every other arm's for reasons its own module documentation gives.
 #[path = "purescript.healing.rs"]
 pub(super) mod healing;
 
@@ -218,7 +213,7 @@ impl ProgramLanguage for PureScript {
     /// There is no wrapper around the author's source and therefore nothing to correct a diagnostic
     /// for: a code module is an ordinary PureScript module and is compiled as itself. What the
     /// namespace offers is read here rather than in the guest, because it is what the model is
-    /// *told*: see [`modules`](self::modules).
+    /// *told*: see [`modules`].
     fn prepare_module(
         &self,
         source: &str,

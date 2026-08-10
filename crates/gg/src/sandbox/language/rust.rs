@@ -3,12 +3,12 @@
 //!
 //! Everything this arm owns lives here or in one of this module's siblings:
 //!
-//! * [`compile`](self::compile) — the host-side `rustc` and the in-process component encode, what
-//!   they cost, what they share, and the two failures they tell apart;
-//! * [`source`](self::source) — what gg writes around a model's Rust, on one line, the one shape it
-//!   refuses, and how a code module is declared below the program that reads it;
-//! * [`healing`](self::healing) — the [dialect](crate::healing::Dialect) response healing asks its
-//!   lexical questions of, three of whose answers no other arm gives;
+//! * [`compile`] — the host-side `rustc` and the in-process component encode, what they cost, what
+//!   they share, and the two failures they tell apart;
+//! * [`source`] — what gg writes around a model's Rust, on one line, the one shape it refuses, and
+//!   how a code module is declared below the program that reads it;
+//! * [`healing`] — the [dialect](crate::healing::Dialect) response healing asks its lexical
+//!   questions of, three of whose answers no other arm gives;
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Rust's syntax;
 //! * `packages/gg-sandbox-rust/` — the crate a program is compiled against: the SDK, the shell, the
@@ -37,9 +37,9 @@
 //! A **sequence of statements**, as on every arm but PureScript, put inside the body of a function
 //! gg declares — because Rust has nowhere else for a statement to live, and because a function body
 //! admits everything a Rust author writes: `use`, `struct`, `enum`, `trait`, `impl`, `fn`, `const`,
-//! `static`, `mod`, `#[derive(…)]` and even an inner `#![allow(…)]`. See [`source`](self::source)
-//! for the wrapper, its one line of cost, and the one program gg refuses: one that defines `fn
-//! main` and expects gg to call it.
+//! `static`, `mod`, `#[derive(…)]` and even an inner `#![allow(…)]`. See [`source`] for the
+//! wrapper, its one line of cost, and the one program gg refuses: one that defines `fn main` and
+//! expects gg to call it.
 //!
 //! The body returns `Result<(), gg::Failure>`, which is what makes `?` the operator a Rust author
 //! reaches for against a `Result`-returning SDK. A wrapper returning `()` would make it a hard
@@ -102,18 +102,12 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The `rustc` build and the in-process component encode: the host-side step that turns a model's
-/// Rust into the component that evaluates it.
 #[path = "rust.compile.rs"]
 pub(super) mod compile;
 
-/// The entry file gg writes around a model's Rust — one line of prologue, the one shape it refuses,
-/// and the declarations that put a code module at `lib::<key>`.
 #[path = "rust.source.rs"]
 pub(super) mod source;
 
-/// The lexical reading of a reply — Rust's answers to healing's questions, three of which no other
-/// arm gives.
 #[path = "rust.healing.rs"]
 pub(super) mod healing;
 
