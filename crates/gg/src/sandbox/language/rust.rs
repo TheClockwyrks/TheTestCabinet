@@ -47,8 +47,11 @@
 //!
 //! The surface a program calls is `packages/gg-sandbox-rust`'s SDK, brought into scope by the one
 //! `use ::gg::prelude::*;` the wrapper writes — a **glob**, because Rust lets an explicit `use`
-//! shadow one and a program's own `use std::fs;` must win over gg's `fs`. Every API object is a
-//! module, every call hands back `Result<_, ToolError>`, and optional arguments are a struct with a
+//! shadow one and a program's own `use std::fs;` must win over anything gg imported. The surface is
+//! **eleven capability modules** plus a twelfth, `gg::core`, that declares no function and holds the
+//! types every other module's signatures name; each module owns the types it produces, so
+//! `gg::files::FileRead` is both the key a documentation view is opened by and a path a program can
+//! write. Every call hands back `Result<_, ToolError>`, and optional arguments are a struct with a
 //! `Default`. What that looks like in full is in `apps/docs/src/content/docs/gg/program-languages.md`.
 //!
 //! The library set is `std` plus the five crates `packages/gg-sandbox-rust/Cargo.toml` declares
@@ -147,12 +150,13 @@ impl ProgramLanguage for Rust {
         GgProgramLanguage::Rust.display_name()
     }
 
-    /// **`::`** — the one arm that does not write `.`, because here an API object is a **module**
-    /// and reaching a function on one is a path rather than a field access.
+    /// **`::`** — the one arm that does not write `.`, because here a capability module is a Rust
+    /// **module** and reaching a function in one is a path rather than a field access.
     ///
-    /// It is the difference between a prompt full of `view::open_text` and a prompt full of
-    /// `view.open_text`, which on this arm is `E0423: expected value, found module` — so a model
-    /// would be taught, in every sentence gg writes about a call, a spelling that cannot compile.
+    /// It is the difference between a prompt full of `gg::views::open_text` and a prompt full of
+    /// `gg::views.open_text`, which on this arm is `E0423: expected value, found module` — so a
+    /// model would be taught, in every sentence gg writes about a call, a spelling that cannot
+    /// compile.
     fn member_separator(&self) -> &'static str {
         "::"
     }
@@ -251,8 +255,8 @@ impl ProgramLanguage for Rust {
         &PROMPT
     }
 
-    /// [`view::open_file("src/main.rs", ReadOptions::default())?;`](self::open_file_statement) —
-    /// with the window as the two fields of that struct.
+    /// [`gg::views::open_file("src/main.rs", …)?;`](self::open_file_statement) — with the window
+    /// as the two fields of this arm's options struct.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
     }
@@ -326,8 +330,8 @@ pub(super) fn binding_name(name: &str) -> String {
     out
 }
 
-/// `view::open_file("src/main.rs", ReadOptions::default())?;`, or the same call with a
-/// `ReadOptions { offset: Some(400), limit: Some(200) }` for a window — with `view::open_file`
+/// `gg::views::open_file("src/main.rs", files::ReadOptions::default())?;`, or the same call with a
+/// `files::ReadOptions { offset: Some(400), limit: Some(200) }` for a window — with the call itself
 /// already spelled by the language that asked.
 ///
 /// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
@@ -337,8 +341,12 @@ pub(super) fn binding_name(name: &str) -> String {
 /// whose `Result` went unused would be the model's first example of ignoring a failure.
 ///
 /// The window is the two fields of this arm's options struct, written out rather than left to
-/// `..Default::default()`: `ReadOptions` has exactly two fields and this statement sets both, so a
-/// functional-update tail would be a construction a Rust author would not write.
+/// `..Default::default()`: `files::ReadOptions` has exactly two fields and this statement sets both,
+/// so a functional-update tail would be a construction a Rust author would not write.
+///
+/// The struct is written **module-qualified**, because the prelude re-exports the modules and not
+/// the types inside them — a bare `ReadOptions` here would be a statement gg synthesized into the
+/// model's own transcript that does not compile.
 ///
 /// The path is rendered through [`serde_json`] so a quote or a backslash in one cannot produce a
 /// statement that would not parse: Rust's string literals accept exactly the escapes JSON's do.
@@ -350,10 +358,10 @@ pub(super) fn open_file_statement(
     let path = serde_json::Value::String(path.to_string());
     match window {
         Some(window) => format!(
-            "{open_file}({path}, ReadOptions {{ offset: Some({}), limit: Some({}) }})?;",
+            "{open_file}({path}, files::ReadOptions {{ offset: Some({}), limit: Some({}) }})?;",
             window.offset, window.limit
         ),
-        None => format!("{open_file}({path}, ReadOptions::default())?;"),
+        None => format!("{open_file}({path}, files::ReadOptions::default())?;"),
     }
 }
 

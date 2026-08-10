@@ -13,7 +13,7 @@
 //! On an interpreted arm that gap costs a model a runtime error it can read and work around. On a
 //! **compiled** arm it costs the whole turn: the program is refused before it runs, and the
 //! diagnostic the model gets back is about gg's own prose. This gate was written because exactly
-//! that shipped — the prompt taught `fs::list()?`, and `list` returns a `Vec`, not a `Result`, so
+//! that shipped — the prompt taught `files::list()?`, and `list` returns a `Vec`, not a `Result`, so
 //! the `?` was an `E0277` on a line the model had been shown.
 //!
 //! It lives with the arm rather than with the prompt tests because it needs the arm's whole compile
@@ -36,7 +36,7 @@
 //!   fails on one.
 //!
 //! **Inline spans** — text between single backticks — are taken when they read as a *call*: a path
-//! of two or more `::`-separated identifiers followed by `(`. That admits `fs::list()`,
+//! of two or more `::`-separated identifiers followed by `(`. That admits `files::list()`,
 //! `programs::get(turn)` and `Brief::Prompt("…")`, and passes over `unwrap()` (no path),
 //! `#[derive(…)]`, `Result<(), Failure>`, `<object>::<function>(args...)` and
 //! `lib::<key>::<name>(args…)` (segments that are not identifiers), and `std::thread::spawn` (no
@@ -69,7 +69,7 @@ fn rust() -> &'static dyn ProgramLanguage {
 /// The names the prompt's own examples use without introducing, bound to the values its prose says
 /// they hold.
 ///
-/// These are placeholders in a sentence — "read a file" is written `view::open_file(path, …)`,
+/// These are placeholders in a sentence — "read a file" is written `gg::views::open_file(path, …)`,
 /// because naming a real path in that sentence would teach a path — so a gate that compiles the
 /// sentence has to supply them. Everything here is used by at least one snippet; the tuple at the
 /// end is what keeps the ones a given rendering did not reach from warning.
@@ -79,7 +79,7 @@ let path = \"notes.md\";
 let label = \"notes\";
 let body = \"what the program computed\";
 let name = \"physics\";
-let options = ReadOptions::default();
+let options = files::ReadOptions::default();
 let turn: Option<u32> = None;
 let source = String::from(\"let total = 1;\");
 let _ = (path, label, body, name, &options, turn, &source);
@@ -127,8 +127,9 @@ fn outside_fences(text: &str) -> String {
 /// The text inside each pair of single backticks, with runs of whitespace collapsed to one space.
 ///
 /// The collapse is what lets a span that the template hard-wrapped across two lines —
-/// `fs::read_text_file("notes.md",` / `ReadOptions::default())?` is one — be read as the one call it
-/// is. It would also rewrite a run of spaces inside a string literal, which no example here has and
+/// `files::read_text_file("notes.md",` / `files::ReadOptions::default())?` is one — be read as the
+/// one call it is. It would also rewrite a run of spaces inside a string literal, which none of
+/// these examples has and
 /// which would show up as a failure rather than as a silent pass.
 fn backticked(text: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -170,9 +171,9 @@ fn call_path(span: &str) -> Option<&str> {
 
 /// Every signature string a template can render, spelled exactly as [`crate::prompts`] spells it.
 ///
-/// Subtracted from the inline candidates because a signature is a declaration — `system::shell(
-/// command: &str, timeout_secs: Option<f64>) -> Result<ShellOutput, ToolError>` reads as a call to
-/// the rule above and is not one. What a template writes *beside* a signature is already gated by
+/// Subtracted from the inline candidates because a signature is a declaration — `gg::shell::run(
+/// command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, ToolError>` reads as a
+/// call to the rule above and is not one. What a template writes *beside* a signature is already gated by
 /// `every_argument_a_rendered_prompt_names_is_one_that_signature_takes`.
 fn signature_spellings() -> Vec<String> {
     let separator = rust().member_separator();
@@ -205,8 +206,8 @@ fn everything_on() -> SystemContext {
         language: Some(GgProgramLanguage::Rust),
         program_library: true,
         apis: vec![ApiView {
-            object: "fs".to_string(),
-            description: "read, write, and edit workspace files".to_string(),
+            object: "gg::files".to_string(),
+            description: "Read, write, edit and list the files of the workspace.".to_string(),
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),

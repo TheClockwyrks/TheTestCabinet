@@ -694,18 +694,15 @@ pub struct TypeDeclaration {
     ///
     /// `None` on a [`V1`](SchemaVersion::V1) catalogue, whose types are keyed by bare
     /// [`name`](Self::name) alone.
-    #[allow(
-        dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
-    )]
     pub fqn: Option<String>,
     /// The [module](ModuleDoc::id) the type belongs to. `None` on a [`V1`](SchemaVersion::V1)
     /// catalogue, where every type belongs to whichever functions happened to mention it.
     #[allow(
         dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
+        reason = "read only by the gates that hold an arm to its own shape (`signatures.fqn.rs`, \
+                  `language/register.rs`, `language/agreement.rs`), which are `#[cfg(test)]`, so it \
+                  is genuinely unread in a build. It is carried on the projection all the same, so \
+                  that a reader moving onto it does not first have to change the projection."
     )]
     pub module: Option<String>,
     /// The single line the type is summarized by, authored. `None` on a
@@ -730,8 +727,10 @@ pub struct TypeDeclaration {
     #[serde(default)]
     #[allow(
         dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
+        reason = "read only by the gates that hold an arm to its own shape (`signatures.fqn.rs`, \
+                  `language/register.rs`, `language/agreement.rs`), which are `#[cfg(test)]`, so it \
+                  is genuinely unread in a build. It is carried on the projection all the same, so \
+                  that a reader moving onto it does not first have to change the projection."
     )]
     pub member_functions: Vec<MemberFunction>,
 }
@@ -773,11 +772,6 @@ pub struct TypeMember {
     pub doc: String,
     /// Which of the three shapes this member is. `None` on a [`V1`](SchemaVersion::V1) catalogue,
     /// where it is [derived](Self::kind) from whether the member has a type of its own.
-    #[allow(
-        dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
-    )]
     pub kind: Option<MemberKind>,
     /// The single line the member is documented by, authored. `None` on a
     /// [`V1`](SchemaVersion::V1) catalogue. See [`Prose`].
@@ -962,8 +956,9 @@ pub struct CatalogueFunction {
     /// sentences, through [`spelling`] and the [`SurfaceCall`] constants, so a prompt quoting
     /// `review.requestChanges` is quoting the catalogue rather than a second copy of it.
     pub key: &'static str,
-    /// The name a program calls it by, in this language (`readFile`) — what `view.openDocsView` is
-    /// keyed on.
+    /// The name a program calls it by, in this language (`readFile`) — the **fallback** key
+    /// `view.openDocsView` accepts, and the only one a [`V1`](SchemaVersion::V1) entry has. The key
+    /// a converted arm advertises is [`fqn`](Self::fqn).
     pub name: &'static str,
     /// The gg tool whose being enabled gates this function; `None` for a carve-out the enabled set
     /// does not decide — an ending call, which the agent's [role](Self::ending) decides, or a view
@@ -995,35 +990,45 @@ pub struct CatalogueFunction {
     /// [`operation_of`](super::operations::operation_of), and it goes when the last v1 catalogue
     /// does.
     pub operation: Option<&'static str>,
+    /// Set when this entry is a **second** way to reach [`operation`](Self::operation) rather than
+    /// the arm's canonical binding of it. See [`FunctionSignature::alias_of`].
+    ///
+    /// It is carried into the projection rather than left in the schema because two readers need it
+    /// and neither reads the raw catalogue: coverage counts canonical bindings, and gg naming a call
+    /// back at a model ([`spelling`]) should name the binding every arm has rather than the one this
+    /// arm added. Always `None` on a [`V1`](SchemaVersion::V1) entry, whose schema cannot express an
+    /// alias at all.
+    pub alias_of: Option<&'static str>,
     /// What kind of declaration this is in the arm's own language. See [`EntryKind`].
     #[allow(
         dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
+        reason = "carried through the projection so a reader can move onto it without the \
+                  projection changing under it, and unread here today: what it answers is asked of \
+                  the raw catalogue instead, by the gates that hold an arm to its own shape"
     )]
     pub kind: EntryKind,
     /// The declared type a [member](EntryKind::Method) hangs off; `None` for everything else.
     #[allow(
         dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
+        reason = "read only by the gates that hold an arm to its own shape (`signatures.fqn.rs`, \
+                  `language/register.rs`, `language/agreement.rs`), which are `#[cfg(test)]`, so it \
+                  is genuinely unread in a build. It is carried on the projection all the same, so \
+                  that a reader moving onto it does not first have to change the projection."
     )]
     pub receiver: Option<&'static str>,
     /// The [module](ModuleDoc::id) it is documented under; `None` on a [`V1`](SchemaVersion::V1)
     /// entry, which has an [object](Self::object) instead.
     #[allow(
         dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
+        reason = "carried through the projection so a reader can move onto it without the \
+                  projection changing under it, and unread here today: what it answers is asked of \
+                  the raw catalogue instead, by the gates that hold an arm to its own shape"
     )]
     pub module: Option<&'static str>,
-    /// Its module-qualified fully-qualified name — the key a documentation view is opened by.
-    /// `None` on a [`V1`](SchemaVersion::V1) entry, which is keyed by bare [`name`](Self::name).
-    #[allow(
-        dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
-    )]
+    /// Its module-qualified fully-qualified name — **the key a documentation view is opened by**,
+    /// and what search files a hit under. `None` on a [`V1`](SchemaVersion::V1) entry, which is
+    /// keyed by bare [`name`](Self::name) alone; the bare name stays an accepted fallback on every
+    /// arm, because it is what a model reads at a call site.
     pub fqn: Option<&'static str>,
     /// Its documentation: the authored brief, and the detail when there is one. See [`Prose`].
     pub prose: Prose<'static>,
@@ -1039,19 +1044,15 @@ pub struct CatalogueFunction {
     /// Empty on a [`V1`](SchemaVersion::V1) entry — that schema records no return position at all,
     /// which is why [`types_to_open`](crate::docs::DocsRuntime::types_to_open) has to sort returns
     /// from arguments by elimination.
-    #[allow(
-        dead_code,
-        reason = "a v2-only field, unread while every registered arm is still v1 — the gates that \
-                  hold an arm to it and the readers that render it arrive with the arm"
-    )]
     pub returns: &'static [TypeReference],
-    /// The types this function's signature refers to.
+    /// The types this function's signature reaches, **transitively closed** — every declaration a
+    /// program holding this call's arguments and result can end up looking at, which is the question the
+    /// documentation runtime asks of it before it will open a type at all.
     ///
-    /// The two schemas mean subtly different sets here and neither is wrong: a
-    /// [`V1`](SchemaVersion::V1) entry carries the **transitive closure** of every type the surface
-    /// can reach through this one, written as it was spelled; a [`V2`](SchemaVersion::V2) entry
-    /// carries the types **this signature itself names**, resolved. Consumers that want a depth
-    /// rather than a closure narrow it themselves and must go on doing so.
+    /// A [`V1`](SchemaVersion::V1) entry writes them as they were spelled and a
+    /// [`V2`](SchemaVersion::V2) entry resolves them; the set is the same closure either way.
+    /// Consumers that want a *depth* rather than a closure narrow it themselves and must go on doing
+    /// so — [`types_to_open`](crate::docs::DocsRuntime::types_to_open) is the one that does.
     pub types: &'static [TypeReference],
 }
 
@@ -1232,6 +1233,7 @@ fn catalogue_functions_v2(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
                 ending,
                 capability,
                 operation: Some(function.operation.as_str()),
+                alias_of: function.alias_of.as_deref(),
                 kind: function.kind,
                 receiver: function.receiver.as_deref(),
                 module: Some(function.module.as_str()),
@@ -1279,6 +1281,7 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
             ending: Some(session.ending.as_str()),
             capability: None,
             operation: None,
+            alias_of: None,
             kind: EntryKind::Function,
             receiver: None,
             module: None,
@@ -1301,6 +1304,7 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
             ending: None,
             capability: None,
             operation: None,
+            alias_of: None,
             kind: EntryKind::Function,
             receiver: None,
             module: None,
@@ -1323,6 +1327,7 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
             ending: None,
             capability: Some(CAPABILITY_PROGRAM_LIBRARY),
             operation: None,
+            alias_of: None,
             kind: EntryKind::Function,
             receiver: None,
             module: None,
@@ -1342,6 +1347,7 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
             ending: None,
             capability: None,
             operation: None,
+            alias_of: None,
             kind: EntryKind::Function,
             receiver: None,
             module: None,
@@ -1361,6 +1367,7 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
             ending: None,
             capability: None,
             operation: None,
+            alias_of: None,
             kind: EntryKind::Function,
             receiver: None,
             module: None,
@@ -1392,37 +1399,118 @@ pub fn meta_function(language: &dyn ProgramLanguage, key: &str) -> Option<&'stat
         .find(|entry| entry.key == key)
 }
 
-/// The name `language`'s SDK gives the function `call` identifies, or `None` when its catalogue
-/// carries no such function.
+/// How `language`'s SDK writes the function `call` identifies: **the grouping it is reached
+/// through, and the name it is called by**. `None` when its catalogue carries no such function.
 ///
-/// The lookup is by [`key`](CatalogueFunction::key) and object — identity — never by name, because
-/// the name is exactly the thing that differs between two languages and is therefore the one thing
-/// gg may not assume. [`spell`](super::spell) is the caller; nothing else should need this, since
-/// every other consumer of the catalogue is rendering *its whole* surface rather than picking one
-/// function out of it.
-pub(crate) fn spelling(language: &dyn ProgramLanguage, call: SurfaceCall) -> Option<&'static str> {
-    catalogue_functions(language)
-        .into_iter()
-        .find(|function| function.object == call.object && function.key == call.key)
-        .map(|function| function.name)
+/// # Why two strings, and why the grouping is the arm's rather than gg's
+///
+/// Because the two schemas disagree about what a qualified call site looks like, and the caller
+/// ([`spell`](super::spell)) has to write one a program could compile. On a
+/// [`V1`](SchemaVersion::V1) arm the grouping is the API object and the pair reads `view.openFile`,
+/// exactly as it always has. On a [`V2`](SchemaVersion::V2) arm it is the
+/// [module path](ModuleDoc::path) and the pair reads `Gg.Views.OpenFile` — which is a real,
+/// compilable name on that arm, and which `view.OpenFile` would no longer be.
+///
+/// # Why the lookup goes through the operation
+///
+/// The pair a [`SurfaceCall`] names is gg's own identity, and on a converted arm neither half of it
+/// appears in the catalogue: the grouping is the arm's module and the key belongs to the
+/// [operation](super::operations). So the match is made on the **operation** each entry resolves to,
+/// which is the one thing both schemas answer — and it is still identity rather than spelling, which
+/// is the property that made the original lookup correct.
+///
+/// A [canonical binding](FunctionSignature::alias_of) is preferred over an alias, because gg naming
+/// a call back at a model should name the one every arm has rather than the one this arm added.
+pub(crate) fn spelling(
+    language: &dyn ProgramLanguage,
+    call: SurfaceCall,
+) -> Option<(&'static str, &'static str)> {
+    let matches = |function: &CatalogueFunction| {
+        super::operations::operation_of(function).is_some_and(|operation| {
+            operation.call.object == call.object && operation.call.key == call.key
+        })
+    };
+    let functions = catalogue_functions(language);
+    functions
+        .iter()
+        .find(|function| matches(function) && function.alias_of.is_none())
+        .or_else(|| functions.iter().find(|function| matches(function)))
+        .map(|function| (function.object, function.name))
 }
 
 /// One catalogued type, by name, as `language`'s SDK writes it — the declaration, the paragraph
 /// explaining it, and a line per member. What a doc lookup appends for a referenced type the session
 /// has not already been shown.
+///
+/// # The three names one type answers to, and why it needs all three
+///
+/// A converted arm writes **three different strings** for one type, and a model may reasonably type
+/// any of them:
+///
+/// * the [key](TypeDeclaration::key) — `Gg.Files.FileRead`, `gg::files::FileRead` — which is what gg
+///   itself emits and what a docview is filed under;
+/// * the [spelling](TypeReference::spelled) a signature writes — `Files.FileRead`,
+///   `files::FileRead` — which is module-qualified but relative, because that is what compiles at a
+///   call site under the arm's prelude or `global using`;
+/// * the bare [name](TypeDeclaration::name) — `FileRead`.
+///
+/// The middle one is the string the model has most often just read, since it is the one printed in
+/// the signature of the function whose documentation it opened, and before this arm it resolved to
+/// nothing at all. The spellings are taken from the catalogue's own
+/// [resolved references](TypeReference::Resolved) rather than derived by trimming a prefix, so what
+/// is accepted is exactly what some signature on this arm actually writes.
 pub fn type_declaration(
     language: &dyn ProgramLanguage,
     key: &str,
 ) -> Option<&'static TypeDeclaration> {
-    let types = &language.catalogue().types;
+    declaration_of(language.catalogue(), key)
+}
+
+/// [`type_declaration`], reached by the catalogue rather than by the arm that owns it, for the
+/// reason [`functions_of`] is.
+pub(crate) fn declaration_of(
+    catalogue: &'static SignatureCatalogue,
+    key: &str,
+) -> Option<&'static TypeDeclaration> {
+    let types = &catalogue.types;
     types
         .iter()
         .find(|declaration| declaration.key() == key)
+        .or_else(|| {
+            // The spelling a signature writes. It is neither the key nor the bare name on a
+            // converted arm, and it is the one a model copies out of the signature it just read.
+            let resolved = spellings_of(catalogue)
+                .into_iter()
+                .find(|reference| reference.spelled() == key)?;
+            types
+                .iter()
+                .find(|declaration| declaration.key() == resolved.fqn())
+        })
         // A bare name still resolves on a converted arm, and deliberately: a model that read
         // `FileRead` in a signature and asked for it by that name is asking for the type it just
         // read. The key is what everything gg emits uses, so this arm of the lookup is only ever
         // reached by a name a *model* typed.
         .or_else(|| types.iter().find(|declaration| declaration.name == key))
+}
+
+/// Every **type reference** `catalogue` writes anywhere a model can read it — one entry per
+/// (spelling, resolution) pair some signature on this arm carries.
+///
+/// It walks every section rather than only [`functions`](SignatureCatalogue::functions), because the
+/// spelling a model reads is the spelling of whichever schema its arm committed, and the lookup this
+/// feeds is asked the same question on all eleven.
+fn spellings_of(catalogue: &'static SignatureCatalogue) -> Vec<&'static TypeReference> {
+    let mut out: Vec<&'static TypeReference> = Vec::new();
+    for function in &catalogue.functions {
+        out.extend(function.returns.iter().chain(&function.types));
+    }
+    out.extend(catalogue.tools.iter().flat_map(|entry| &entry.types));
+    out.extend(catalogue.helpers.iter().flat_map(|entry| &entry.types));
+    out.extend(catalogue.views.iter().flat_map(|entry| &entry.types));
+    out.extend(catalogue.session.iter().flat_map(|entry| &entry.types));
+    out.extend(catalogue.programs.iter().flat_map(|entry| &entry.types));
+    out.extend(catalogue.meta.iter().flat_map(|entry| &entry.types));
+    out
 }
 
 /// Every **API object** `language`'s catalogue describes, in the order a program's surface is
@@ -1445,13 +1533,6 @@ pub fn catalogue_objects(language: &dyn ProgramLanguage) -> &'static [ObjectDoc]
 /// imported. The [operation](super::operations::OperationId::namespace) namespace is the real
 /// cross-arm module vocabulary, and an arm earns entries in it by being converted rather than by
 /// having gg guess on its behalf.
-#[allow(
-    dead_code,
-    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
-              register gate and the fully-qualified-name rule — and by the readers that move onto \
-              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
-              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
-)]
 pub fn catalogue_modules(language: &dyn ProgramLanguage) -> Vec<ModuleView> {
     modules_of(language.catalogue())
 }
@@ -1485,22 +1566,27 @@ pub(crate) fn modules_of(catalogue: &'static SignatureCatalogue) -> Vec<ModuleVi
 
 /// One module as every consumer reads it, whichever [schema](SchemaVersion) the arm committed — the
 /// [module](ModuleDoc) half of what [`catalogue_functions`] is for the calls.
-#[allow(
-    dead_code,
-    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
-              register gate and the fully-qualified-name rule — and by the readers that move onto \
-              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
-              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
-)]
 pub struct ModuleView {
     /// gg's cross-arm id for the module, or — on a [`V1`](SchemaVersion::V1) arm — the API object's
     /// own name, which is the most identity that arm has.
+    #[allow(
+        dead_code,
+        reason = "the cross-arm join key, read by the readouts that group eleven arms together — \
+                  the console's module grouping and the reference projection — which move onto it \
+                  as the arms are converted. Every reader today wants the arm's own spelling."
+    )]
     pub id: &'static str,
     /// This language's own spelling of the module path, and what a model reads.
     pub path: &'static str,
     /// The line the module is introduced by, and what more there is to say. See [`Prose`].
     pub prose: Prose<'static>,
     /// The literal line a program writes to bring it into scope, where there is one.
+    #[allow(
+        dead_code,
+        reason = "`None` on every registered arm, because each of the eleven puts its SDK in scope \
+                  without a line a program writes. It is read by the prompt when an arm that needs \
+                  one is converted — PureScript is the one that will."
+    )]
     pub import: Option<&'static str>,
 }
 

@@ -161,8 +161,8 @@ pub(super) fn wrap_module(source: &str, key: &str) -> Result<Module, PrepareFail
              and there are none. A module here is the body of a `static class`, so declare at least \
              one, as `public static string Greet(string who) => $\"hello {who}\";`. Everything \
              that is not `public` is the module's own business, exactly as it is in any C# class — \
-             and gg's whole surface is in scope with no `using` at all, so `fs.ReadTextFile` and \
-             `view.OpenText` work here as they do in a program."
+             and gg's whole surface is in scope with no `using` at all, so `Files.ReadTextFile` and \
+             `Views.OpenText` work here as they do in a program."
                 .to_string(),
         )));
     }

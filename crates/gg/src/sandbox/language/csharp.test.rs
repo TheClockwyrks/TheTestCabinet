@@ -56,17 +56,17 @@ fn this_arm_commits_a_component_and_still_compiles_every_program() {
     assert!(csharp().prepare_compiles());
 }
 
-/// **An API object here is a `static class`, so a call is an ordinary member access.**
+/// **A module here is a `static class`, so a call is an ordinary member access.**
 #[test]
-fn an_api_object_is_reached_with_a_dot() {
+fn a_module_is_reached_with_a_dot() {
     assert_eq!(csharp().member_separator(), ".");
     assert_eq!(
         crate::sandbox::spell(csharp(), crate::sandbox::VIEW_OPEN_TEXT),
-        "view.OpenText"
+        "Gg.Views.OpenText"
     );
     assert_eq!(
         crate::sandbox::spell(csharp(), crate::sandbox::REVIEW_REQUEST_CHANGES),
-        "review.RequestChanges"
+        "Gg.Session.RequestChanges"
     );
 }
 
@@ -121,7 +121,7 @@ fn a_skills_name_becomes_the_class_it_is_reached_through() {
 fn the_file_view_statement_is_written_the_way_c_sharp_writes_a_call() {
     assert_eq!(
         csharp().open_file_statement("src/Program.cs", None),
-        "view.OpenFile(\"src/Program.cs\");"
+        "Gg.Views.OpenFile(\"src/Program.cs\");"
     );
     assert_eq!(
         csharp().open_file_statement(
@@ -131,7 +131,7 @@ fn the_file_view_statement_is_written_the_way_c_sharp_writes_a_call() {
                 limit: 200
             })
         ),
-        "view.OpenFile(\"src/Program.cs\", offset: 400, limit: 200);"
+        "Gg.Views.OpenFile(\"src/Program.cs\", offset: 400, limit: 200);"
     );
 }
 
@@ -143,7 +143,7 @@ fn the_file_view_statement_is_written_the_way_c_sharp_writes_a_call() {
 fn a_path_with_a_quote_in_it_is_still_one_statement() {
     assert_eq!(
         csharp().open_file_statement("a\"b\\c.cs", None),
-        "view.OpenFile(\"a\\\"b\\\\c.cs\");"
+        "Gg.Views.OpenFile(\"a\\\"b\\\\c.cs\");"
     );
 }
 
@@ -157,7 +157,7 @@ fn the_documentation_program_is_a_collection_expression_and_a_foreach() {
     assert_eq!(
         csharp().open_docs_views_statement(&["OpenText", "ReadFile"]),
         "string[] functions =\n[\n    \"OpenText\",\n    \"ReadFile\",\n]\
-         ;\nforeach (var name in functions)\n{\n    view.OpenDocsView(name);\n}\n"
+         ;\nforeach (var name in functions)\n{\n    Gg.Views.OpenDocsView(name);\n}\n"
     );
 }
 
@@ -171,7 +171,7 @@ fn a_documentation_program_with_no_names_is_still_a_program() {
     assert_eq!(
         csharp().open_docs_views_statement(&[]),
         "string[] functions = [];\nforeach (var name in functions)\n{\n    \
-         view.OpenDocsView(name);\n}\n"
+         Gg.Views.OpenDocsView(name);\n}\n"
     );
 }
 

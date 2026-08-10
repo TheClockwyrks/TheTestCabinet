@@ -2,32 +2,32 @@
 //! the component answers when gg asks it what it can bind.
 //!
 //! Everything here is named by the entry file gg generates around a model's text
-//! (`crates/gg/src/sandbox/language/rust.source.rs`) and by nothing else. It is not the SDK and no
-//! model reads it.
+//! (`crates/gg/src/sandbox/language/rust.source.rs`) and by nothing else. It is not the SDK, it is
+//! not one of the capability modules, and no model reads it.
 
 use crate::bindings::test_cabinet::gg::feedback;
 use crate::bindings::test_cabinet::gg::types::ErrorCode;
 
-/// The gg tool names this component can bind, **object by object** — what `bound-tools` answers.
+/// The gg tool names this component can bind, **module by module** — what `bound-tools` answers.
 ///
 /// gg's drift gate asks the committed artifact which tools it binds and compares the answer with
 /// gg's own `ALL_TOOL_NAMES`. The answer has to come from the SDK's own binding table rather than
 /// from a list written here, because the whole point of asking the artifact is that it is a second,
-/// independent statement of the same fact: each object module declares the tools *its own*
+/// independent statement of the same fact: each capability module declares the tools *its own*
 /// functions dispatch, beside the functions that dispatch them, and this is the concatenation.
 ///
-/// The five objects missing from it are missing because none of their functions is a gg tool:
-/// `view`, `programs`, `harness` and `review` are the model-facing carve-outs the WIT keeps outside
-/// the tool interfaces, and `fs`'s helper `read_text_file` dispatches `read_file` rather than a
-/// name of its own.
+/// The four modules missing from it are missing because none of their functions is a gg tool:
+/// `views`, `programs` and `session` are the model-facing carve-outs the WIT keeps outside the tool
+/// interfaces, `core` declares no function at all, and `files`'s helper `read_text_file` dispatches
+/// `read_file` rather than a name of its own.
 const TOOLS: &[&[&str]] = &[
-    crate::fs::TOOLS,
-    crate::system::TOOLS,
-    crate::project::TOOLS,
+    crate::files::TOOLS,
+    crate::shell::TOOLS,
+    crate::board::TOOLS,
     crate::tasks::TOOLS,
-    crate::memory::TOOLS,
+    crate::memories::TOOLS,
     crate::context::TOOLS,
-    crate::agents::TOOLS,
+    crate::delegation::TOOLS,
     crate::skills::TOOLS,
 ];
 

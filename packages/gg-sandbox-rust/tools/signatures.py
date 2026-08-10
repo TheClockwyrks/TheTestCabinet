@@ -3,11 +3,19 @@
 write it to ``crates/gg/src/sandbox/guests/rust.signatures.json``.
 
 WHY RUSTDOC JSON. Everything a model reads about this surface is written on the declaration it
-describes — a function's description in its ``///`` comment, an argument's in that comment's
-``# Arguments`` list, a struct field's on the field, an enum variant's on the variant, an API
-object's in the first line of its module's ``//!`` — and ``rustdoc``'s own JSON output is what reads
-all of it, together with the *types*, which it has already resolved. Nothing here is prose typed into
-a table.
+describes — a function's brief and detail in its ``///`` comment, an argument's in that comment's
+``# Arguments`` list, a struct field's on the field, an enum variant's on the variant, a module's in
+the first line of its ``//!`` — and ``rustdoc``'s own JSON output is what reads all of it, together
+with the *types*, which it has already resolved to the declarations they name. Nothing here is prose
+typed into a table.
+
+WHY THE OPERATION ID IS AN ATTRIBUTE. gg's identity for a call — that ``files::read_file`` **is**
+gg's ``files.read_file`` operation, the same capability Java spells ``Workspace#readFile`` — is the
+one thing Rust's own syntax cannot say. It is written on the declaration all the same, as
+``#[doc(alias = "ggop:files.read_file")]``, which is a real attribute the compiler checks and
+``rustdoc`` reports structurally. An attribute rather than a line of prose because prose is
+model-facing and this is not; on the declaration rather than in ``catalogue.py`` because a side table
+naming every function twice is the second copy that drifts.
 
 WHY ``# Arguments`` RATHER THAN A PER-PARAMETER SLOT. Rust has no per-parameter doc comment: ``///``
 written on a parameter is a compile error, not a doc. So the language's own convention stands in for
@@ -16,8 +24,7 @@ one, and this reflector holds it to being a real contract rather than a habit: a
 failure lands on the author rather than on a model.
 
 WHAT IT IS NOT ALLOWED TO DO. Invent a word. Every string in the emitted JSON is either an identity
-from ``catalogue.py`` (a tool name, an object, a gate) or text lifted out of a doc comment. A blank
-anywhere is an error.
+written on a declaration or text lifted out of a doc comment. A blank anywhere is an error.
 
 Usage (through ``signatures.sh``, which builds the doc JSON first):
 
@@ -31,15 +38,33 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import catalogue  # noqa: E402  (the identity table, beside this file)
+import catalogue  # noqa: E402  (the module table, beside this file)
+
+#: The schema this catalogue is written in — the normalized doc model: modules, operations,
+#: fully-qualified names, authored briefs and resolved type references.
+SCHEMA = 2
 
 #: What the emitted catalogue records itself as reflected from.
 GENERATED_FROM = "packages/gg-sandbox-rust/src/ (rustdoc --output-format json)"
 
-#: The types every call's failure arm refers to, added to every entry's `types` because every
-#: function in this SDK returns `Result<_, ToolError>` — including the two that cannot fail, whose
-#: signature says so.
+#: The types every call's failure arm refers to, closed over on every entry because every function in
+#: this SDK returns ``Result<_, ToolError>`` — including the two that cannot fail, whose signature
+#: says so.
 ALWAYS_REFERENCED = ("ToolError", "ToolErrorCode")
+
+#: The prefix a declaration's ``#[doc(alias = …)]`` carries to name the gg operation it binds.
+OPERATION_ALIAS = "ggop:"
+
+#: The prefix a declaration carries when it is a **second** way to reach an operation some other
+#: declaration in this SDK binds canonically.
+ALIAS_ALIAS = "ggop-alias:"
+
+#: The prefix a ``pub mod`` carries to name which of gg's cross-arm modules it is.
+MODULE_ALIAS = "ggmodule:"
+
+#: How ``rustdoc`` renders an attribute it has nothing structured to say about — the shape every
+#: ``#[doc(alias = …)]`` arrives in.
+_ATTRIBUTE = re.compile(r'^#\[doc\(alias = "(.*)"\)\]$')
 
 
 class Failure(Exception):
@@ -66,15 +91,47 @@ class Docs:
 
     def modules_of(self, module):
         """The public modules declared in `module`, in declaration order."""
-        return [
-            child for child in self.module_items(module) if "module" in child["inner"]
-        ]
+        return [child for child in self.module_items(module) if "module" in child["inner"]]
 
     def functions_of(self, module):
         """The public functions declared in `module`, in declaration order."""
         return [
-            child for child in self.module_items(module) if "function" in child["inner"]
+            child
+            for child in self.module_items(module)
+            if "function" in child["inner"] and child.get("visibility") == "public"
         ]
+
+    def types_of(self, module):
+        """The public struct and enum declarations of `module`, in declaration order."""
+        return [
+            child
+            for child in self.module_items(module)
+            if ("struct" in child["inner"] or "enum" in child["inner"])
+            and child.get("visibility") == "public"
+        ]
+
+
+def aliases(item):
+    """Every ``#[doc(alias = …)]`` written on `item`, in the order they were written."""
+    found = []
+    for attribute in item.get("attrs", []):
+        rendered = attribute.get("other") if isinstance(attribute, dict) else attribute
+        matched = _ATTRIBUTE.match(rendered or "")
+        if matched:
+            found.append(matched.group(1))
+    return found
+
+
+def tagged(item, prefix):
+    """The one alias on `item` carrying `prefix`, or ``None``.
+
+    Two of them would be two claims about one declaration, which is a defect rather than a choice, so
+    it is refused here rather than resolved by picking the first.
+    """
+    found = [alias[len(prefix) :] for alias in aliases(item) if alias.startswith(prefix)]
+    if len(found) > 1:
+        raise Failure(f"`{item.get('name')}` carries {len(found)} `{prefix}` aliases")
+    return found[0] if found else None
 
 
 # ------------------------------------------------------------------------------------------------
@@ -113,9 +170,13 @@ def unwrapped(text):
 
     A `///` comment is wrapped to the source's line width, and those breaks are an artefact of
     reading Rust rather than anything a model should be shown: they turn one sentence into three
-    lines in a system prompt and make a diff of the catalogue a diff of where the author's editor
-    wrapped. Blank lines, list items and fenced blocks all survive — the first two because they are
-    structure, the third because whitespace inside it is the code.
+    lines in a documentation view and make a diff of the catalogue a diff of where the author's
+    editor wrapped. Blank lines, list items and fenced blocks all survive — the first two because
+    they are structure, the third because whitespace inside it is the code.
+
+    It is also what makes the **brief** a single line without the author having to keep one inside
+    the source's line width: the brief is the first paragraph, and a paragraph is one line by the
+    time it leaves here.
     """
     out = []
     paragraph = []
@@ -175,23 +236,37 @@ def sections(docs):
     return "\n".join(body), {name: "\n".join(lines) for name, lines in found.items()}
 
 
-def described(item, what):
-    """An item's documentation, minus the ``# Arguments`` list, refusing a blank one.
+def split(text, what):
+    """One piece of settled prose as ``(brief, detail)``: the first paragraph, and the rest.
 
-    ``# Errors`` stays: it is what a model needs in order to know which failures to expect, and it
-    reads as part of the description rather than as metadata about the arguments.
+    Doxygen's implicit structure, which is the whole of the convention this SDK is written to. The
+    brief is authored rather than derived — there is no "first sentence of" anywhere in this file —
+    and the split is on the blank line the author put there, so a doc comment whose opening paragraph
+    is really three sentences of narrative fails the register gate as the paragraph it is rather than
+    being silently cut at a full stop.
+    """
+    if not text:
+        raise Failure(f"{what} has no documentation")
+    brief, _, detail = text.partition("\n\n")
+    return brief.strip(), (detail.strip() or None)
+
+
+def documented(item, what):
+    """An item's ``(brief, detail)``, with the ``# Arguments`` list left out of both.
+
+    ``# Errors`` stays, folded into the detail: it is what a model needs in order to know which
+    failures to expect, and it reads as part of the description rather than as metadata about the
+    arguments.
     """
     docs = item.get("docs") or ""
     body, found = sections(docs)
-    parts = [prose(body)]
+    brief, detail = split(prose(body), what)
+    parts = [detail] if detail else []
     for heading, text in found.items():
         if heading == "Arguments":
             continue
         parts.append("# " + heading + "\n\n" + prose(text))
-    text = "\n\n".join(part for part in parts if part)
-    if not text:
-        raise Failure(f"{what} has no documentation")
-    return text
+    return brief, ("\n\n".join(part for part in parts if part) or None)
 
 
 def documented_arguments(item, what):
@@ -213,197 +288,292 @@ def documented_arguments(item, what):
 
 
 # ------------------------------------------------------------------------------------------------
-# Types, rendered as Rust writes them
-# ------------------------------------------------------------------------------------------------
-
-
-def short(path):
-    """A path's last segment, which is the name a program writes.
-
-    `rustdoc` reports a type by the path the declaration was WRITTEN with — `crate::types::FileRead`
-    where the module imported it that way, and `$crate::types::FunctionSummary` where the
-    declaration came out of a macro. Neither is what a model writes: gg puts `use gg::prelude::*;` in
-    front of every program, so every type in this surface is reachable by its bare name, and the bare
-    name is what the signature must show.
-    """
-    return path.rsplit("::", 1)[-1]
-
-
-def render_type(node):
-    """One rustdoc type node, written the way the SDK's own source writes it."""
-    if node is None:
-        return "()"
-    if "primitive" in node:
-        return node["primitive"]
-    if "borrowed_ref" in node:
-        reference = node["borrowed_ref"]
-        lifetime = f"{reference['lifetime']} " if reference.get("lifetime") else ""
-        mutable = "mut " if reference.get("is_mutable") else ""
-        return f"&{lifetime}{mutable}{render_type(reference['type'])}"
-    if "slice" in node:
-        return f"[{render_type(node['slice'])}]"
-    if "array" in node:
-        return f"[{render_type(node['array']['type'])}; {node['array']['len']}]"
-    if "tuple" in node:
-        return "(" + ", ".join(render_type(part) for part in node["tuple"]) + ")"
-    if "generic" in node:
-        return node["generic"]
-    if "resolved_path" in node:
-        path = node["resolved_path"]
-        return short(path["path"]) + render_arguments(path.get("args"))
-    raise Failure(f"a type this reflector cannot render: {json.dumps(node)[:200]}")
-
-
-def render_arguments(args):
-    """The generic arguments of a path, including the elided lifetime a borrowed type carries."""
-    if not args or "angle_bracketed" not in args:
-        return ""
-    bracketed = args["angle_bracketed"]
-    rendered = []
-    for argument in bracketed.get("args", []):
-        if "type" in argument:
-            rendered.append(render_type(argument["type"]))
-        elif "lifetime" in argument:
-            rendered.append(argument["lifetime"])
-    return "<" + ", ".join(rendered) + ">" if rendered else ""
-
-
-def referenced(node, out):
-    """Every path name a type node mentions, collected in the order it mentions them."""
-    if node is None:
-        return
-    if "borrowed_ref" in node:
-        referenced(node["borrowed_ref"]["type"], out)
-    elif "slice" in node:
-        referenced(node["slice"], out)
-    elif "array" in node:
-        referenced(node["array"]["type"], out)
-    elif "tuple" in node:
-        for part in node["tuple"]:
-            referenced(part, out)
-    elif "resolved_path" in node:
-        path = node["resolved_path"]
-        out.append(short(path["path"]))
-        args = path.get("args")
-        if args and "angle_bracketed" in args:
-            for argument in args["angle_bracketed"].get("args", []):
-                if "type" in argument:
-                    referenced(argument["type"], out)
-
-
-# ------------------------------------------------------------------------------------------------
-# Declarations
-# ------------------------------------------------------------------------------------------------
-
-
-def generic_header(item):
-    """The lifetime and type parameters a declaration is written with — ``<'a>``, or nothing."""
-    inner = item["inner"].get("struct") or item["inner"].get("enum") or {}
-    params = inner.get("generics", {}).get("params", [])
-    named = [param["name"] for param in params]
-    return "<" + ", ".join(named) + ">" if named else ""
-
-
-def declaration_of(docs, item, name):
-    """One type's declaration and its members, as a model reads them.
-
-    A struct is its public fields; an enum is its variants, each carrying the type it wraps when it
-    wraps one. Both are rendered on one line, because a declaration in this catalogue is a *shape* a
-    model reads at a glance and the members carry the meaning.
-    """
-    header = generic_header(item)
-    if "struct" in item["inner"]:
-        fields = []
-        members = []
-        kind = item["inner"]["struct"]["kind"]
-        if "plain" not in kind:
-            raise Failure(f"`{name}` is not a plain struct, which this catalogue cannot render")
-        for identifier in kind["plain"]["fields"]:
-            field = docs.item(identifier)
-            rendered = render_type(field["inner"]["struct_field"])
-            fields.append(f"{field['name']}: {rendered}")
-            members.append(
-                {
-                    "name": field["name"],
-                    "type": rendered,
-                    "doc": described(field, f"`{name}::{field['name']}`"),
-                }
-            )
-        return f"struct {name}{header} {{ " + ", ".join(fields) + " }", members
-
-    if "enum" in item["inner"]:
-        arms = []
-        members = []
-        for identifier in item["inner"]["enum"]["variants"]:
-            variant = docs.item(identifier)
-            kind = variant["inner"]["variant"]["kind"]
-            carried = None
-            if isinstance(kind, dict) and "tuple" in kind:
-                carried = ", ".join(
-                    render_type(docs.item(field)["inner"]["struct_field"])
-                    for field in kind["tuple"]
-                    if field is not None
-                )
-            arms.append(f"{variant['name']}({carried})" if carried else variant["name"])
-            members.append(
-                {
-                    "name": variant["name"],
-                    "type": carried,
-                    "doc": described(variant, f"`{name}::{variant['name']}`"),
-                }
-            )
-        return f"enum {name}{header} {{ " + ", ".join(arms) + " }", members
-
-    raise Failure(f"`{name}` is neither a struct nor an enum")
-
-
-# ------------------------------------------------------------------------------------------------
 # The reflection
 # ------------------------------------------------------------------------------------------------
+
+
+class Declared:
+    """One type this SDK declares, and the two names it answers to.
+
+    ``fqn`` is the key a documentation view is opened by and the string a program could write in
+    full; ``spelled`` is what a signature writes, which is the module-qualified form under
+    ``gg::prelude`` — `files::FileRead` rather than a bare `FileRead`, because the prelude re-exports
+    the modules and not the types inside them, and a bare name would be a spelling that does not
+    resolve.
+    """
+
+    def __init__(self, identifier, module, item):
+        self.id = identifier
+        self.module = module
+        self.item = item
+        self.name = item["name"]
+        self.fqn = f"{module.path}::{self.name}"
+        # The `core` types are the exception the prelude makes, so they are written bare.
+        self.spelled = self.name if module.id == "core" else f"{module.name}::{self.name}"
 
 
 class Reflector:
     def __init__(self, docs):
         self.docs = docs
-        self.objects = {}
-        self.declarable = {}
+        self.modules = {}
+        self.declared = {}
         self.types = {}
+        self.member_functions = {}
+        self._always = None
         self.collect()
 
     def collect(self):
-        """Index the crate: the API-object modules, and every type a signature could name.
+        """Index the crate: its capability modules, and every type they declare.
 
-        A type is "namable" exactly when the crate root RE-EXPORTS it, which is the same set
-        `gg::prelude` offers and therefore the same set a program has in scope with no import of its
-        own. Reading the re-exports rather than scanning every declaration in the index is also what
-        keeps the generated `bindings` module out: it declares a `ToolError` and a `FileRead` of its
-        own — the wire's, with the WIT's documentation — and a catalogue that picked those up would
-        describe the membrane to a model instead of the SDK.
+        A type is catalogued exactly when a **catalogued module declares it**, which is what makes
+        every fully-qualified name in this artifact a real Rust path. It is also what keeps the
+        generated `bindings` module out: it declares a `ToolError` and a `FileRead` of its own — the
+        wire's, with the WIT's documentation — and a catalogue that picked those up would describe
+        the membrane to a model instead of the SDK.
         """
-        for module in self.docs.modules_of(self.docs.root):
-            name = module["name"]
-            if name in catalogue.OBJECTS:
-                self.objects[name] = module
-        for item in self.docs.module_items(self.docs.root):
-            reexport = item["inner"].get("use")
-            if not reexport or reexport.get("is_glob") or reexport.get("id") is None:
+        by_name = {module.name: module for module in catalogue.MODULES}
+        seen = {}
+        for item in self.docs.modules_of(self.docs.root):
+            id_ = tagged(item, MODULE_ALIAS)
+            if id_ is None:
                 continue
-            target = self.docs.item(reexport["id"])
-            if "struct" in target["inner"] or "enum" in target["inner"]:
-                self.declarable[reexport["name"]] = target
+            if id_ in seen:
+                raise Failure(f"two modules claim gg's `{id_}` module")
+            seen[id_] = item["name"]
+            module = by_name.get(item["name"])
+            if module is None or module.id != id_:
+                raise Failure(
+                    f"`{item['name']}` declares itself gg's `{id_}` module, which `catalogue.py` "
+                    "does not name it — the table and the declarations must agree in both "
+                    "directions"
+                )
+            self.modules[module.id] = item
 
-        missing = [name for name in catalogue.OBJECTS if name not in self.objects]
+        missing = [module.id for module in catalogue.MODULES if module.id not in self.modules]
         if missing:
-            raise Failure(f"the catalogue names API objects this crate has no module for: {missing}")
+            raise Failure(
+                f"`catalogue.py` names modules no `pub mod` declares itself to be: {missing}"
+            )
+
+        for module in catalogue.MODULES:
+            for item in self.docs.types_of(self.modules[module.id]):
+                self.declared[item["id"]] = Declared(item["id"], module, item)
+
+    # -- types -----------------------------------------------------------------------------------
+
+    def render_type(self, node):
+        """One rustdoc type node, written the way a program writes it.
+
+        A path this crate declares is written **module-qualified**, because that is the spelling the
+        prelude leaves resolvable and the one a model can copy out of a signature; anything else —
+        `Option`, `Vec`, `Result`, `String`, `RangeInclusive` — is written by its last segment,
+        which is Rust's own and is already in every program's scope.
+        """
+        if node is None:
+            return "()"
+        if "primitive" in node:
+            return node["primitive"]
+        if "borrowed_ref" in node:
+            reference = node["borrowed_ref"]
+            lifetime = f"{reference['lifetime']} " if reference.get("lifetime") else ""
+            mutable = "mut " if reference.get("is_mutable") else ""
+            return f"&{lifetime}{mutable}{self.render_type(reference['type'])}"
+        if "slice" in node:
+            return f"[{self.render_type(node['slice'])}]"
+        if "array" in node:
+            return f"[{self.render_type(node['array']['type'])}; {node['array']['len']}]"
+        if "tuple" in node:
+            return "(" + ", ".join(self.render_type(part) for part in node["tuple"]) + ")"
+        if "generic" in node:
+            return node["generic"]
+        if "resolved_path" in node:
+            path = node["resolved_path"]
+            declared = self.declared.get(path.get("id"))
+            written = declared.spelled if declared else path["path"].rsplit("::", 1)[-1]
+            return written + self.render_arguments(path.get("args"))
+        raise Failure(f"a type this reflector cannot render: {json.dumps(node)[:200]}")
+
+    def render_arguments(self, args):
+        """The generic arguments of a path, including the elided lifetime a borrowed type carries."""
+        if not args or "angle_bracketed" not in args:
+            return ""
+        bracketed = args["angle_bracketed"]
+        rendered = []
+        for argument in bracketed.get("args", []):
+            if "type" in argument:
+                rendered.append(self.render_type(argument["type"]))
+            elif "lifetime" in argument:
+                rendered.append(argument["lifetime"])
+        return "<" + ", ".join(rendered) + ">" if rendered else ""
+
+    def referenced(self, node, out):
+        """Every declared type a node mentions, by rustdoc id, in the order it mentions them."""
+        if node is None:
+            return
+        if "borrowed_ref" in node:
+            self.referenced(node["borrowed_ref"]["type"], out)
+        elif "slice" in node:
+            self.referenced(node["slice"], out)
+        elif "array" in node:
+            self.referenced(node["array"]["type"], out)
+        elif "tuple" in node:
+            for part in node["tuple"]:
+                self.referenced(part, out)
+        elif "resolved_path" in node:
+            path = node["resolved_path"]
+            if path.get("id") in self.declared:
+                out.append(path["id"])
+            args = path.get("args")
+            if args and "angle_bracketed" in args:
+                for argument in args["angle_bracketed"].get("args", []):
+                    if "type" in argument:
+                        self.referenced(argument["type"], out)
+
+    def returned(self, node, out):
+        """The declared types a return position **hands back**, by rustdoc id.
+
+        Every function here returns `Result<T, ToolError>`, and only `T` is a value the program
+        receives: the error arm is the failure channel, which is `ToolError` on every call and is the
+        same one type an exception-throwing arm never lists as a return. So a `Result` this crate did
+        not declare is descended into by its first argument alone, and everything else is walked
+        whole.
+        """
+        if node is None:
+            return
+        path = node.get("resolved_path") if isinstance(node, dict) else None
+        if (
+            path
+            and path.get("id") not in self.declared
+            and path["path"].rsplit("::", 1)[-1] == "Result"
+        ):
+            args = (path.get("args") or {}).get("angle_bracketed", {}).get("args", [])
+            if args and "type" in args[0]:
+                self.returned(args[0]["type"], out)
+            return
+        self.referenced(node, out)
+
+    def declare(self, identifier):
+        """Record one type's declaration, once, and hand back the ids its members mention."""
+        if identifier in self.types:
+            return self.types[identifier]["referenced"]
+        declared = self.declared[identifier]
+        item = declared.item
+        header = generic_header(item)
+        members = []
+        referenced = []
+        if "struct" in item["inner"]:
+            kind = item["inner"]["struct"]["kind"]
+            if "plain" not in kind:
+                raise Failure(
+                    f"`{declared.fqn}` is not a plain struct, which this catalogue cannot render"
+                )
+            fields = []
+            for field_id in kind["plain"]["fields"]:
+                field = self.docs.item(field_id)
+                rendered = self.render_type(field["inner"]["struct_field"])
+                self.referenced(field["inner"]["struct_field"], referenced)
+                fields.append(f"{field['name']}: {rendered}")
+                members.append(
+                    self.member(field, "field", rendered, f"`{declared.fqn}::{field['name']}`")
+                )
+            declaration = f"struct {declared.name}{header} {{ " + ", ".join(fields) + " }"
+        elif "enum" in item["inner"]:
+            arms = []
+            for variant_id in item["inner"]["enum"]["variants"]:
+                variant = self.docs.item(variant_id)
+                kind = variant["inner"]["variant"]["kind"]
+                carried = None
+                if isinstance(kind, dict) and "tuple" in kind:
+                    parts = []
+                    for field_id in kind["tuple"]:
+                        if field_id is None:
+                            continue
+                        node = self.docs.item(field_id)["inner"]["struct_field"]
+                        parts.append(self.render_type(node))
+                        self.referenced(node, referenced)
+                    carried = ", ".join(parts)
+                arms.append(f"{variant['name']}({carried})" if carried else variant["name"])
+                members.append(
+                    self.member(
+                        variant,
+                        "variant",
+                        carried,
+                        f"`{declared.fqn}::{variant['name']}`",
+                    )
+                )
+            declaration = f"enum {declared.name}{header} {{ " + ", ".join(arms) + " }"
+        else:
+            raise Failure(f"`{declared.fqn}` is neither a struct nor an enum")
+
+        brief, detail = documented(item, f"the type `{declared.fqn}`")
+        self.types[identifier] = {
+            "fqn": declared.fqn,
+            "module": declared.module.id,
+            "name": declared.name,
+            "declaration": declaration,
+            "brief": brief,
+            "detail": detail,
+            "members": members,
+            "memberFunctions": self.member_functions.get(identifier, []),
+            "referenced": referenced,
+        }
+        return referenced
+
+    def member(self, item, kind, rendered, what):
+        """One field or variant, with the documentation written on it."""
+        brief, detail = documented(item, what)
+        return {
+            "name": item["name"],
+            "type": rendered,
+            "kind": kind,
+            "brief": brief,
+            "detail": detail,
+        }
+
+    def close_over(self, ids):
+        """The declared types a signature mentions, transitively closed, in first-mention order.
+
+        Transitive because the list answers *which declarations does this run's surface reach*, which
+        is what decides whether a type may be opened at all. What a documentation view opens beside a
+        function is a **depth-one** question gg answers for itself from `returns` and the signature
+        text, so widening here costs nothing there.
+        """
+        pending = list(ids)
+        seen = []
+        while pending:
+            identifier = pending.pop(0)
+            if identifier in seen or identifier not in self.declared:
+                continue
+            seen.append(identifier)
+            pending.extend(self.declare(identifier))
+        return seen
+
+    def references(self, ids):
+        """A list of ids, as the resolved type references the catalogue carries."""
+        out = []
+        for identifier in ids:
+            declared = self.declared[identifier]
+            out.append({"spelled": declared.spelled, "fqn": declared.fqn})
+        return out
+
+    def always_referenced(self):
+        """The ids of the types every failure arm names, looked up rather than written down."""
+        if self._always is not None:
+            return self._always
+        found = []
+        for name in ALWAYS_REFERENCED:
+            matched = [
+                identifier
+                for identifier, declared in self.declared.items()
+                if declared.name == name
+            ]
+            if len(matched) != 1:
+                raise Failure(f"`{name}` is declared {len(matched)} times, and must be declared once")
+            found.append(matched[0])
+        self._always = found
+        return found
 
     # -- functions -------------------------------------------------------------------------------
-
-    def function(self, object_, name):
-        """One public function of an API object's module."""
-        for item in self.docs.functions_of(self.objects[object_]):
-            if item["name"] == name:
-                return item
-        raise Failure(f"the catalogue names `{object_}::{name}`, which this crate does not declare")
 
     def signature(self, item, name, what):
         """One function's single calling shape, and the arguments it documents.
@@ -414,7 +584,11 @@ class Reflector:
         """
         sig = item["inner"]["function"]["sig"]
         arguments = documented_arguments(item, what)
-        rendered = [(argument, render_type(node)) for argument, node in sig["inputs"]]
+        rendered = [
+            (argument, self.render_type(node))
+            for argument, node in sig["inputs"]
+            if argument != "self"
+        ]
         if len(arguments) != len(rendered):
             raise Failure(
                 f"{what} takes {len(rendered)} arguments and documents {len(arguments)} — Rust has "
@@ -422,11 +596,11 @@ class Reflector:
                 "list of the function's own comment, in order"
             )
         parameters = []
-        for (documented, description), (argument, kind) in zip(arguments, rendered):
-            if documented != argument:
+        for (documented_name, description), (argument, kind) in zip(arguments, rendered):
+            if documented_name != argument:
                 raise Failure(
-                    f"{what} documents `{documented}` where its signature takes `{argument}` — a "
-                    "renamed argument left behind in the documentation tells a model to write "
+                    f"{what} documents `{documented_name}` where its signature takes `{argument}` — "
+                    "a renamed argument left behind in the documentation tells a model to write "
                     "something the call will not accept"
                 )
             if not description:
@@ -449,174 +623,244 @@ class Reflector:
                     "fields": [],
                 }
             )
-        arguments_text = ", ".join(
-            f"{argument}: {kind}" for argument, kind in rendered
-        )
+        arguments_text = ", ".join(f"{argument}: {kind}" for argument, kind in rendered)
         output = sig.get("output")
-        returns = f" -> {render_type(output)}" if output is not None else ""
+        returns = f" -> {self.render_type(output)}" if output is not None else ""
         return {
             "signature": f"{name}({arguments_text}){returns}",
             "parameters": parameters,
         }, sig
 
-    def entry(self, spec):
-        """One catalogue entry, whatever section it belongs to."""
-        what = f"`{spec['object']}::{spec['name']}`"
-        item = self.function(spec["object"], spec["name"])
-        shape, sig = self.signature(item, spec["name"], what)
-        names = []
-        for _, node in sig["inputs"]:
-            referenced(node, names)
-        referenced(sig.get("output"), names)
+    def entry(self, item, module, operation, alias_of, receiver=None):
+        """One catalogued call, whatever kind of declaration the SDK made of it."""
+        name = item["name"]
+        fqn = (
+            f"{module.path}::{receiver}::{name}"
+            if receiver is not None
+            else f"{module.path}::{name}"
+        )
+        what = f"`{fqn}`"
+        shape, sig = self.signature(item, name, what)
+        argument_ids = []
+        for argument, node in sig["inputs"]:
+            if argument != "self":
+                self.referenced(node, argument_ids)
+        returned_ids = []
+        self.returned(sig.get("output"), returned_ids)
+        brief, detail = documented(item, what)
         return {
-            "name": spec["name"],
-            "object": spec["object"],
-            "signatures": [shape],
-            "doc": described(item, what),
-            "types": self.close_over(names),
-        }
-
-    def close_over(self, names):
-        """The crate's own types a signature mentions, transitively closed, in first-mention order.
-
-        A type this crate does not declare — `Option`, `Vec`, `Result`, `RangeInclusive` — is not
-        catalogued and is not meant to be: it is Rust's, a model already knows it, and a declaration
-        of it would be gg describing the standard library.
-        """
-        pending = list(names) + list(ALWAYS_REFERENCED)
-        seen = []
-        while pending:
-            name = pending.pop(0)
-            if name in seen or name not in self.declarable:
-                continue
-            seen.append(name)
-            self.declare(name)
-            for member in self.types[name]["members"]:
-                if member["type"]:
-                    more = []
-                    referenced_names(member["type"], more)
-                    pending.extend(more)
-        return seen
-
-    def declare(self, name):
-        """Record one type's declaration, once."""
-        if name in self.types:
-            return
-        item = self.declarable[name]
-        rendered, members = declaration_of(self.docs, item, name)
-        self.types[name] = {
+            "operation": operation,
+            "aliasOf": alias_of,
+            "module": module.id,
+            "kind": "method" if receiver is not None else "function",
+            "receiver": receiver,
             "name": name,
-            "declaration": rendered,
-            "doc": described(item, f"the type `{name}`"),
-            "members": members,
+            "fqn": fqn,
+            # `null`, because on this arm the fully-qualified name IS what a program writes: the
+            # prelude puts every module in scope, so `files::read_file` and `gg::files::read_file`
+            # are the same path written short and long.
+            "call": None,
+            "brief": brief,
+            "detail": detail,
+            "signatures": [shape],
+            # The closure runs first, because it is what records the declarations both lists then
+            # name; `returns` itself is the DIRECT return position and nothing beyond it, since what
+            # it feeds is a one-level rule.
+            "types": self.references(
+                self.close_over(argument_ids + returned_ids + self.always_referenced())
+            ),
+            "returns": self.references(deduped(returned_ids)),
         }
+
+    def functions_and_members(self):
+        """Every catalogued call, module by module, with the member functions collected beside them.
+
+        The member walk runs **after** the module walk and over the declared types rather than out of
+        the type renderer, deliberately: a member function is a real declaration with its own
+        operation id, its own signature and its own documentation, and a renderer that listed a
+        type's methods from the type would emit entries nobody had written an id on. The one this SDK
+        has is `delegation::SubagentHandle::send`.
+        """
+        functions = []
+        for module in catalogue.MODULES:
+            item = self.modules[module.id]
+            for declaration in self.docs.functions_of(item):
+                name = declaration["name"]
+                if name == catalogue.META:
+                    continue
+                operation = tagged(declaration, OPERATION_ALIAS)
+                alias_of = tagged(declaration, ALIAS_ALIAS)
+                if operation is None and alias_of is None:
+                    raise Failure(
+                        f"`{module.path}::{name}` is public and names no gg operation, so a model "
+                        f'would never be told it exists — write `#[doc(alias = "{OPERATION_ALIAS}'
+                        '<namespace>.<key>")]` on it'
+                    )
+                if operation is not None and alias_of is not None:
+                    raise Failure(f"`{module.path}::{name}` is both an operation and an alias of one")
+                functions.append(
+                    self.entry(declaration, module, operation or alias_of, alias_of)
+                )
+
+        # The members, over the types the modules declare. Each one is emitted twice on purpose:
+        # once as a catalogued call, because it is one, and once as a line on its receiver's own
+        # documentation view, which is the menu a model reads when it opens the type.
+        for identifier, declared in self.declared.items():
+            for method in self.methods_of(declared):
+                operation = tagged(method, OPERATION_ALIAS)
+                alias_of = tagged(method, ALIAS_ALIAS)
+                if operation is None and alias_of is None:
+                    # A public method that binds no gg operation — an accessor such as
+                    # `ToolErrorCode::as_str` — is documentation for a Rust reader rather than a
+                    # capability, so it is not catalogued and nothing here has to invent an id for
+                    # it. The both-directions check above is on the MODULE functions, where a
+                    # forgotten declaration would be a forgotten capability.
+                    continue
+                entry = self.entry(
+                    method, declared.module, operation or alias_of, alias_of, declared.name
+                )
+                functions.append(entry)
+                self.member_functions.setdefault(identifier, []).append(
+                    {
+                        "operation": entry["operation"],
+                        "name": entry["name"],
+                        "fqn": entry["fqn"],
+                        "brief": entry["brief"],
+                    }
+                )
+        return functions
+
+    def methods_of(self, declared):
+        """The public methods of a type's own `impl` blocks, in declaration order.
+
+        Inherent blocks only: a trait implementation is the trait's surface rather than this one's,
+        and `Display` on an error is not a capability a run withholds.
+        """
+        inner = declared.item["inner"]
+        body = inner.get("struct") or inner.get("enum") or {}
+        out = []
+        for impl_id in body.get("impls", []):
+            block = self.docs.item(impl_id)["inner"]["impl"]
+            if block.get("trait") is not None:
+                continue
+            for member_id in block.get("items", []):
+                member = self.docs.item(member_id)
+                if "function" in member["inner"] and member.get("visibility") == "public":
+                    out.append(member)
+        return out
 
     # -- the whole document ----------------------------------------------------------------------
 
-    def objects_section(self):
-        """Each API object's one-line description: the first line of its module's own `//!`."""
+    def modules_section(self):
+        """Each module's own brief and detail: the first paragraph of its `//!`, and the rest."""
         out = []
-        for name in catalogue.OBJECTS:
-            docs = (self.objects[name].get("docs") or "").strip()
-            first = " ".join(
-                line.strip() for line in docs.split("\n\n")[0].splitlines()
-            ).strip()
-            if not first:
-                raise Failure(f"the `{name}` module has no documentation to introduce it by")
-            out.append({"object": name, "doc": prose(first)})
+        for module in catalogue.MODULES:
+            brief, detail = documented(self.modules[module.id], f"the `{module.path}` module")
+            out.append(
+                {
+                    "id": module.id,
+                    "path": module.path,
+                    "brief": brief,
+                    "detail": detail,
+                    # `null`, and truthfully: gg writes `use gg::prelude::*;` into the entry file
+                    # itself, so there is no import line a program would be right to write.
+                    "import": None,
+                }
+            )
         return out
 
     def meta_section(self):
-        """The `list` every object carries, read once and asserted identical on all twelve.
+        """The `list` every capability module carries, read once and asserted identical on all of
+        them.
 
-        It is declared by one macro and expanded into each module, so twelve identical declarations
-        are the *expected* state and any difference between them would mean the macro had been
-        bypassed on one object — a function a model is told about on twelve objects and given on
-        eleven.
+        It is declared by one macro and expanded into each module, so identical declarations are the
+        *expected* state and any difference between them would mean the macro had been bypassed on
+        one module — a function a model is told about on eleven modules and given on ten.
+
+        `core` declares no function at all, so it carries no `list` either, and that is asserted
+        rather than tolerated: a module with capabilities and no directory would be a module a
+        program could not enumerate.
         """
         entries = []
-        for name in catalogue.OBJECTS:
-            item = self.function(name, "list")
-            shape, sig = self.signature(item, "list", f"`{name}::list`")
-            names = []
-            referenced(sig.get("output"), names)
+        for module in catalogue.MODULES:
+            item = self.modules[module.id]
+            declared = [
+                function
+                for function in self.docs.functions_of(item)
+                if function["name"] == catalogue.META
+            ]
+            offers = any(
+                function["name"] != catalogue.META for function in self.docs.functions_of(item)
+            )
+            if not offers:
+                if declared:
+                    raise Failure(
+                        f"`{module.path}` offers no capability and carries a `{catalogue.META}`"
+                    )
+                continue
+            if not declared:
+                raise Failure(f"`{module.path}` offers capabilities and carries no directory")
+            what = f"`{module.path}::{catalogue.META}`"
+            shape, sig = self.signature(declared[0], catalogue.META, what)
+            returned_ids = []
+            self.returned(sig.get("output"), returned_ids)
+            brief, detail = documented(declared[0], what)
             entries.append(
                 {
-                    "key": "list",
-                    "name": "list",
+                    "key": catalogue.META,
+                    "name": catalogue.META,
                     "signatures": [shape],
-                    "doc": described(item, f"`{name}::list`"),
-                    "types": [
-                        found for found in self.close_over(names) if found not in ALWAYS_REFERENCED
-                    ],
+                    "doc": "\n\n".join(part for part in (brief, detail) if part),
+                    "types": self.references(self.close_over(returned_ids)),
                 }
             )
         first = entries[0]
         for other in entries[1:]:
             if other != first:
                 raise Failure(
-                    "the `list` an API object carries is not the same declaration on every object; "
+                    "the directory a module carries is not the same declaration on every module; "
                     "it is expanded from one macro and must be"
                 )
         return [first]
 
-    def sanity_check(self):
-        """Every public function of an API object is named by the identity table, and vice versa.
-
-        The direction that matters is this one: a function added to an SDK module and forgotten here
-        is a capability a model is never told it has, which no other gate would notice.
-        """
-        named = {(spec["object"], spec["name"]) for spec in catalogue.ENTRIES}
-        for object_ in catalogue.OBJECTS:
-            for item in self.docs.functions_of(self.objects[object_]):
-                if item["name"] == "list":
-                    continue
-                if (object_, item["name"]) not in named:
-                    raise Failure(
-                        f"`{object_}::{item['name']}` is public and nothing in `catalogue.py` names "
-                        "it, so a model would never be told it exists"
-                    )
-
     def build(self, libraries):
-        self.sanity_check()
-        document = {
+        functions = self.functions_and_members()
+        # The member functions are folded into their receivers by the walk above, so the type
+        # declarations are finished last — after every entry that could add a line to one.
+        for identifier in list(self.types):
+            self.types[identifier]["memberFunctions"] = self.member_functions.get(identifier, [])
+        return {
+            "schema": SCHEMA,
             "language": "rust",
             "generatedFrom": GENERATED_FROM,
             "libraries": libraries,
-            "objects": self.objects_section(),
+            "modules": self.modules_section(),
             "meta": self.meta_section(),
-            "session": [],
-            "views": [],
-            "programs": [],
-            "tools": [],
-            "helpers": [],
-            "types": [],
+            "functions": functions,
+            "types": [
+                {key: value for key, value in declaration.items() if key != "referenced"}
+                for _, declaration in sorted(
+                    self.types.items(), key=lambda pair: pair[1]["fqn"]
+                )
+            ],
         }
-        for spec in catalogue.ENTRIES:
-            entry = self.entry(spec)
-            if spec["section"] == "tools":
-                entry = {"tool": spec["key"], **entry}
-            else:
-                entry = {"key": spec["key"], **entry}
-            if spec["section"] == "session":
-                entry["ending"] = spec["ending"]
-            if spec["section"] == "views":
-                entry["requires"] = spec["gate"]
-            if spec["section"] == "helpers":
-                entry["requires"] = spec["gate"]
-            document[spec["section"]].append(entry)
-        document["types"] = [self.types[name] for name in sorted(self.types)]
-        return document
 
 
-def referenced_names(rendered, out):
-    """Every identifier a rendered type mentions, for closing over a member's own type.
+def deduped(ids):
+    """`ids` with every repeat dropped, in first-mention order."""
+    out = []
+    for identifier in ids:
+        if identifier not in out:
+            out.append(identifier)
+    return out
 
-    A rendered type is a string by the time a member carries it, so this reads the identifiers back
-    out of it rather than re-walking the node — which is enough, because what it feeds is a lookup
-    against the crate's own declarations and anything else is discarded.
-    """
-    out.extend(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", rendered))
+
+def generic_header(item):
+    """The lifetime and type parameters a declaration is written with — ``<'a>``, or nothing."""
+    inner = item["inner"].get("struct") or item["inner"].get("enum") or {}
+    params = inner.get("generics", {}).get("params", [])
+    named = [param["name"] for param in params]
+    return "<" + ", ".join(named) + ">" if named else ""
 
 
 # ------------------------------------------------------------------------------------------------

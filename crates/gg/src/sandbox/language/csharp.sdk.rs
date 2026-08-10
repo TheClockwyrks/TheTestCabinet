@@ -3,7 +3,7 @@
 //! # Why it is source rather than an assembly
 //!
 //! Every other arm's SDK is a *built* artifact — a jar on a classpath, a header in a precompiled
-//! prelude, a wasm object linked into the program. This one is twenty-two `.cs` files written into
+//! prelude, a wasm object linked into the program. This one is twenty-seven `.cs` files written into
 //! the preparation's own workspace and handed to `csc` beside `program.cs`, so the model's program
 //! and gg's SDK are **one compilation**. Three things follow, and each of them is why:
 //!
@@ -27,14 +27,14 @@
 //!
 //! Everything here is in the program's own assembly, so `Gg.Internal` — the `extern` declarations and
 //! the lowering under them — is `internal` *to the model's code too*. It is not model-facing: it is
-//! absent from the catalogue, absent from `object.list()`, and documented with `//` rather than
+//! absent from the catalogue, absent from a module's directory, and documented with `//` rather than
 //! `///` precisely so the reflector cannot pick it up. A program that went looking could call it; it
 //! would reach the same host that checks every call regardless.
 
 /// One embedded SDK source: its path under `src/Gg/`, and its text.
 ///
 /// The path is relative and is written into the workspace **as it stands**, so a diagnostic in gg's
-/// own SDK reads `sdk/Objects/fs.cs(12,9)` — which is what tells
+/// own SDK reads `sdk/Files/Files.cs(12,9)` — which is what tells
 /// [`classify`](super::compile) that the fault is gg's rather than the model's.
 pub(super) struct SdkSource {
     /// Where the file goes, relative to [`SDK_DIRECTORY`].
@@ -53,18 +53,60 @@ pub(super) const SDK_DIRECTORY: &str = "sdk";
 /// rather than of anyone's editing order.
 pub(super) const SDK_SOURCES: &[SdkSource] = &[
     SdkSource {
+        name: "Board/Board.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Board/Board.cs"),
+    },
+    SdkSource {
+        name: "Board/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Board/Types.cs"),
+    },
+    SdkSource {
+        name: "Context/Context.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Context/Context.cs"),
+    },
+    SdkSource {
+        name: "Context/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Context/Types.cs"),
+    },
+    SdkSource {
+        name: "Core/Directory.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Core/Directory.cs"),
+    },
+    SdkSource {
+        name: "Core/Errors.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Core/Errors.cs"),
+    },
+    SdkSource {
+        name: "Delegation/Delegation.cs",
+        text: include_str!(
+            "../../../../../packages/gg-sandbox-csharp/src/Gg/Delegation/Delegation.cs"
+        ),
+    },
+    SdkSource {
+        name: "Delegation/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Delegation/Types.cs"),
+    },
+    SdkSource {
+        name: "Files/Files.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Files/Files.cs"),
+    },
+    SdkSource {
+        name: "Files/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Files/Types.cs"),
+    },
+    SdkSource {
         name: "GlobalUsings.cs",
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/GlobalUsings.cs"),
     },
     SdkSource {
-        name: "Internal/Native.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Internal/Native.cs"),
+        name: "Internal/ModuleDirectory.cs",
+        text: include_str!(
+            "../../../../../packages/gg-sandbox-csharp/src/Gg/Internal/ModuleDirectory.cs"
+        ),
     },
     SdkSource {
-        name: "Internal/ObjectDirectory.cs",
-        text: include_str!(
-            "../../../../../packages/gg-sandbox-csharp/src/Gg/Internal/ObjectDirectory.cs"
-        ),
+        name: "Internal/Native.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Internal/Native.cs"),
     },
     SdkSource {
         name: "Internal/OperatorConsole.cs",
@@ -77,72 +119,52 @@ pub(super) const SDK_SOURCES: &[SdkSource] = &[
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Internal/Wire.cs"),
     },
     SdkSource {
-        name: "Objects/agents.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/agents.cs"),
+        name: "Memories/Memories.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Memories/Memories.cs"),
     },
     SdkSource {
-        name: "Objects/context.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/context.cs"),
+        name: "Memories/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Memories/Types.cs"),
     },
     SdkSource {
-        name: "Objects/fs.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/fs.cs"),
+        name: "Programs/Programs.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Programs/Programs.cs"),
     },
     SdkSource {
-        name: "Objects/harness.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/harness.cs"),
+        name: "Programs/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Programs/Types.cs"),
     },
     SdkSource {
-        name: "Objects/memory.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/memory.cs"),
+        name: "Session/Session.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Session/Session.cs"),
     },
     SdkSource {
-        name: "Objects/programs.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/programs.cs"),
+        name: "Shell/Shell.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Shell/Shell.cs"),
     },
     SdkSource {
-        name: "Objects/project.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/project.cs"),
+        name: "Shell/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Shell/Types.cs"),
     },
     SdkSource {
-        name: "Objects/review.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/review.cs"),
+        name: "Skills/Skills.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Skills/Skills.cs"),
     },
     SdkSource {
-        name: "Objects/skills.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/skills.cs"),
+        name: "Tasks/Tasks.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Tasks/Tasks.cs"),
     },
     SdkSource {
-        name: "Objects/system.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/system.cs"),
+        name: "Tasks/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Tasks/Types.cs"),
     },
     SdkSource {
-        name: "Objects/tasks.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/tasks.cs"),
+        name: "Views/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Views/Types.cs"),
     },
     SdkSource {
-        name: "Objects/view.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Objects/view.cs"),
-    },
-    SdkSource {
-        name: "ToolException.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/ToolException.cs"),
-    },
-    SdkSource {
-        name: "Types.Agents.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Types.Agents.cs"),
-    },
-    SdkSource {
-        name: "Types.Files.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Types.Files.cs"),
-    },
-    SdkSource {
-        name: "Types.Session.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Types.Session.cs"),
-    },
-    SdkSource {
-        name: "Types.Work.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Types.Work.cs"),
+        name: "Views/Views.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Views/Views.cs"),
     },
 ];
 

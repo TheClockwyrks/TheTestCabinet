@@ -2733,17 +2733,27 @@ whole prepared program and is run as-is.
 
 #### What Rust's SDK looks like
 
-An idiomatic Rust SDK is not the TypeScript one with `&str` in it. Every difference below is a
-spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
-them:
+An idiomatic Rust SDK is not the TypeScript one with `&str` in it. Nothing below changes which
+**capabilities** this arm offers — that is held against gg's own operations table rather than against
+another arm — and every one of them is a difference the design leaves each language free to make:
 
-- **An API object is a module.** `fs::read_file("src/main.rs", ReadOptions::default())?` is a
-  path and a call, which is how Rust namespaces anything. gg writes one line in front of every
-  program — `use gg::prelude::*;` — so all twelve objects and every type are already in scope. A
-  **glob** rather than a list of imports, and that is the load-bearing part: Rust lets an explicit
-  `use` shadow a glob-imported name, so a program that writes `use std::fs;` gets the standard
-  library's `fs` where an explicit import gg wrote would have made that program an `E0252` about a
-  name the model never asked for.
+- **A capability module is a Rust module.**
+  `files::read_file("src/main.rs", files::ReadOptions::default())?` is a path and a call, which is
+  how Rust namespaces anything. There are eleven of them — `files`, `shell`, `board`, `tasks`,
+  `memories`, `views`, `context`, `delegation`, `skills`, `programs`, `session` — plus a twelfth,
+  `core`, which declares no function and holds the three types every other module's signatures
+  name. gg writes one line in front of every program, `use gg::prelude::*;`, so every module name
+  and those three types are already in scope. A **glob** rather than a list of imports, and that is
+  the load-bearing part: Rust lets an explicit `use` shadow a glob-imported name, so a program that
+  writes `use std::fs;` gets the standard library's where an explicit import gg wrote would have
+  made that program an `E0252` about a name the model never asked for.
+- **Each module owns the types it produces, and the prelude does not flatten them.**
+  `gg::files::FileRead`, `gg::tasks::TextEdit`, `gg::board::IssueCreated` — written under their
+  module at a call site as `files::FileRead` and so on. That is what makes a fully-qualified name a
+  real Rust path rather than a key gg invented, and it makes the surface collision-safe by
+  construction: two modules may both declare a `Usage` and neither has to be renamed. The prelude
+  re-exports the modules and never the types inside them, which is what keeps every call and every
+  type qualified by the module that documents it.
 - **A failure is a `Result`, not a throw.** Every call returns `Result<_, ToolError>`, `ToolError`
   implements `std::error::Error`, and the body gg wraps a program in returns
   `Result<(), gg::Failure>` — so `?` composes a gg call with `std`'s own fallible operations in one
@@ -2751,13 +2761,14 @@ them:
   where the seam's "a failure is usually fatal to what you were doing" is expressed by the
   language's own type rather than by an exception, and nothing about it is special-cased.
 - **Optional arguments are a struct with a `Default`, filled in with functional update.**
-  `ReadOptions { limit: Some(40), ..Default::default() }`. Rust has neither default arguments nor
-  keyword ones, and this is what it reaches for instead. A call with exactly **one** optional
-  argument takes an `Option<T>` in that position — `system::shell(command, Some(30.0))`,
+  `files::ReadOptions { limit: Some(40), ..Default::default() }`. Rust has neither default arguments
+  nor keyword ones, and this is what it reaches for instead. A call with exactly **one** optional
+  argument takes an `Option<T>` in that position — `shell::run(command, Some(30.0))`,
   `programs::get(None)` — because there the `Option` *is* the idiom and a one-field struct would be
   ceremony.
-- **A three-way patch field is an `enum`.** `TextEdit::Keep` / `Clear` / `Set(…)`, with `Keep` as
-  the `Default`, so `TaskPatch { status: Some(TaskStatus::Done), ..Default::default() }` leaves the
+- **A three-way patch field is an `enum`.** `tasks::TextEdit::Keep` / `Clear` / `Set(…)`, with
+  `Keep` as the `Default`, so
+  `tasks::TaskPatch { status: Some(tasks::TaskStatus::Done), ..Default::default() }` leaves the
   description alone and says so in a value. Where [Python](#what-native-bought-in-the-catalogue)
   needs an `UNCHANGED` sentinel, Rust has a word for the third state.
 - **A span of turns is a range.** `context::archive_thread(&[4..=19, 30..=35])`, because a span of
@@ -2765,16 +2776,25 @@ them:
   one place this arm's spelling is shorter than the wire's, which carries a record with a `start` and
   an `end`.
 - **A fixed choice is an `enum`, and its arms are not prefixed.** Rust namespaces a variant under its
-  type, so `TaskStatus::Done` and `IssueStatus::Done` coexist — where
+  type, so `tasks::TaskStatus::Done` and `board::IssueStatus::Done` coexist — where
   [PureScript](#what-native-means-in-purescript) has to call them `TaskDone` and `IssueDone` because
   a program imports the whole surface from one module.
 - **A read is a real sum type**, narrowed with an ordinary `match` that needs no catch-all;
-  a child's brief is `Brief::Prompt(…)` or `Brief::Issue(…)`, so "both" and "neither" are programs
-  that do not compile.
+  a child's brief is `delegation::Brief::Prompt(…)` or `delegation::Brief::Issue(…)`, so "both" and
+  "neither" are programs that do not compile.
+- **One capability is bound twice, and it says so.** `delegation::send_message(id, text)` is the
+  canonical binding, and `handle.send(text)` on the `SubagentHandle` a spawn returns is an
+  **alias** of the same operation — catalogued as one, documented like one, and counting toward no
+  coverage, because an arm that idiomatically offers a capability twice is not thereby ahead of an
+  arm that offers it once.
 - **`println!` is not the log.** This arm's target has no standard output — a `print!` on
   `wasm32-unknown-unknown` is accepted and discarded — so the SDK carries `gg::log`, which is this
-  arm's `console.log`: the run's **operator** reads it, and `view::open_text` is what reaches the
+  arm's `console.log`: the run's **operator** reads it, and `views::open_text` is what reaches the
   model.
+- **The one name that is not gg's own.** gg's vocabulary is already `snake_case`, so every function
+  here is spelled with gg's own key for the operation it binds — except `shell.shell`, which would
+  be `gg::shell::shell`. Stuttering a module's name into the one function it holds is the thing
+  Rust naming is most consistent about not doing, so this arm spells it `shell::run`.
 
 Its catalogue is reflected from **rustdoc's own JSON** (`packages/gg-sandbox-rust/signatures.sh`,
 regenerated by the [drift gate](#the-catalogue)), which carries the doc comment on every function,
@@ -2788,6 +2808,13 @@ stating, because both are decisions:
   every checkout and in CI to read documentation out of a crate the first one compiles. The format
   version is pinned in the script, so a `rustc` bump that moves it stops there by name instead of
   emitting a catalogue with a field quietly missing.
+- **The gg operation a function binds is written on the declaration**, as
+  `#[doc(alias = "ggop:files.read_file")]`, and the gg module a module is as
+  `#[doc(alias = "ggmodule:files")]`. An attribute rather than prose, because prose is model-facing
+  and this is not; on the declaration rather than in a side table, because a table naming every
+  function twice is the second copy that drifts. `rustdoc` reports attributes structurally, so the
+  reflector reads them rather than parsing for them, and it fails in **both** directions: a public
+  function in a catalogued module carrying no operation id, and an id gg has no row for.
 - **There is no per-parameter doc slot**, because `///` on a parameter is a compile error in Rust.
   So the `# Arguments` convention stands in for one — the same fallback
   [PureScript](#the-catalogue-and-the-two-things-purescript-does-not-have) makes — and the reflector
@@ -2805,7 +2832,8 @@ macros anywhere in the tree**, since a proc macro is a host `.so` and an rlib wh
 one cannot be loaded on another architecture (which is what rules out `serde`'s `derive`,
 `thiserror` and `clap`, and what `build.sh` fails on rather than trusts); and it must compile for
 `wasm32-unknown-unknown`, which has no clock, no filesystem, no sockets and no randomness — so
-`rand`, `chrono` and `reqwest` are out, and reaching the world is what `fs` and `system` are for.
+`rand`, `chrono` and `reqwest` are out, and reaching the world is what `gg::files` and `gg::shell`
+are for.
 The whole set weighs 9.4 MB gzipped inside gg's binary, of which `regex` is 4.4 MB; none of it
 reaches an artifact the program did not use it in, because the link dead-strips.
 
@@ -3231,7 +3259,7 @@ the sentence that says what to write instead.
 #### The SDK is compiled with the program, which no other arm's is
 
 Every other arm's SDK is a *built* artifact: a jar on a classpath, a header in a precompiled
-prelude, a wasm object linked into the program. C#'s is twenty-two `.cs` files carried in gg's own
+prelude, a wasm object linked into the program. C#'s is twenty-seven `.cs` files carried in gg's own
 binary, written into the preparation's workspace and handed to `csc` beside `program.cs`. The
 model's program and gg's SDK are **one compilation**, and three things follow:
 
@@ -3272,17 +3300,31 @@ function in its catalogue, and nothing is missing from it. Showing something to 
 types, and a thrown `ToolException` — an ordinary `System.Exception`, so `catch`, `when` and
 `finally` work on it without an SDK-specific combinator. Optional arguments are **default values a
 call names**, which is C#'s own answer to the shape every arm answers differently:
-`project.CreateIssue("I", "s", "o", "c", "worker", reviewers: ["critic"])` skips three optional
+`Board.CreateIssue("I", "s", "o", "c", "worker", reviewers: ["critic"])` skips three optional
 arguments by naming the fourth, so nothing here is an options record. A variadic `params` list is
 what the wire's `list<string>` becomes wherever a call would otherwise write an array literal, and a
-three-way `text-edit` is a `TextEdit` whose `default` is `Keep` — so an update that does not mention
-a description does not touch it, and clearing one is `TextEdit.Clear` rather than a sentinel.
+three-way `text-edit` is a `Tasks.TextEdit` whose `default` is `Keep` — so an update that does not
+mention a description does not touch it, and clearing one is `Tasks.TextEdit.Clear` rather than a
+sentinel.
 
-The one place it is not C#'s is the **object names**: `fs`, `system`, `view` are lower-case types,
-which no C# style guide would write. It is not a choice. An object's name is
-[identity](#the-agreement-gate) — shared with every other arm, and what the console groups by and
-what a documentation lookup routes on — so it is the one name this SDK may not spell for itself.
-Everything it may spell, it spells the way C# does.
+**This arm's surface is eleven capability modules, and each is a `public static partial class` in
+`namespace Gg`** — `Gg.Files`, `Gg.Shell`, `Gg.Board`, `Gg.Views` — with its result types nested
+inside it, so `Gg.Files.FileRead` and `Gg.Tasks.TextEdit` are the names a program writes and the
+names a documentation view is opened by. A twelfth, class-less `core` module holds the three
+declarations every other module's signatures name (`ToolException`, `ToolErrorCode`,
+`FunctionSummary`), which sit directly in `namespace Gg` so that a `catch (ToolException failure)`
+needs no prefix.
+
+Nothing about that shape is gg's: a module class is `System.Math`'s idiom, a nested result type is
+what a C# author writes, and a program that wants the prefix gone writes `using static Gg.Files;`
+for itself. What the SDK does *not* do is write that `using` on the program's behalf — the module
+qualification is the discovery backbone, because a call written `Files.ReadFile` says which module
+documents it and a bare `ReadFile` says nothing.
+
+One capability is bound twice, deliberately: `Gg.Delegation.SubagentHandle.Send` is a **member
+function**, a second and more idiomatic way to reach `delegation.send_message` spelled on the value
+that already carries the id the free function would be passed. It is catalogued as an **alias**, so
+it counts toward no coverage and does not make this arm look wider than any other.
 
 #### What the bridge under it costs, which is an interpreter's shape rather than a design
 
@@ -3296,7 +3338,7 @@ running programs rather than by reading:
   reflecting over the assemblies the build is given — which are the BCL, whose `[DllImport]`s are the
   only native calls a stock .NET-on-wasm build makes. gg's bridge is not in that scan and cannot be,
   since its declarations live in the model's own per-turn assembly. A shape the BCL happens never to
-  use aborts the whole guest. `system.Shell` was one: nothing in the class library takes a `double`
+  use aborts the whole guest. `Shell.Run` was one: nothing in the class library takes a `double`
   anywhere but the first argument. gg supplies the four shapes it needs itself, chaining to the
   generated table for everything else.
 - **there is a ceiling on how many arguments an internal call may take**, somewhere between twelve
@@ -3328,6 +3370,22 @@ It has nine sections:
 | `tools` | One entry per gg tool, in exact bijection with the tool registry's vocabulary. |
 | `helpers` | The convenience wrappers bound alongside a tool. |
 | `types` | Every type a signature refers to: its declaration, the paragraph explaining what it is for, and **a line per member**. A declaration says what fields a value has and nothing about what any of them means — `shown: boolean` on a `FileRead` is not a thing a model can infer — so the members travel with it. |
+
+#### Two schemas at once, while the arms convert
+
+The nine sections above are **schema 1**, which is what most arms commit. A catalogue declares which
+shape it is written in, and gg parses two: the second replaces `objects` with **modules**, collapses
+the six function-carrying sections into one `functions` array whose entries name a gg *operation*
+rather than a section, keys every entry by a module-qualified **fully-qualified name**, carries an
+**authored brief and optional detail** rather than one paragraph, and records its type references
+**resolved** rather than as written.
+
+Version dispatch is what makes an arm's conversion its own commit rather than a change to eleven
+toolchains at once: the arms that have not moved parse and render exactly as they always did, and the
+one that has is read through the same normalized projection, so no consumer downstream has to ask
+which schema it was handed. [C#](#c-a-committed-interpreter-for-a-compiled-language) is the first
+arm converted and [Rust](#what-rusts-sdk-looks-like) the second. When the last one follows, schema 1
+and this paragraph go with it.
 
 #### One entry, many signatures
 
@@ -3421,7 +3479,7 @@ shown — each ` ```rust ` block in the prompt and the "nothing shown" notice, e
 reads as a call, and each fenced block in the committed catalogue, which came off a `///` comment
 on the SDK — is gathered into one program and put through the arm's production prepare step: the
 same `rustc`, the same wrapper and the same library set a model's own reply gets. It was written
-because exactly that defect shipped: the prompt taught `fs::list()?`, and `list` returns a `Vec`
+because exactly that defect shipped: the prompt taught `files::list()?`, and `list` returns a `Vec`
 rather than a `Result`, so the `?` a model would have copied is an `E0277`. Placeholder names the
 prose uses without introducing (`path`, `turn`, `source`) are bound in the test's own preamble, so
 an example that gains a new one fails here by name rather than being quietly excused.

@@ -46,8 +46,8 @@ pub(super) const SDK_CRATE: &str = "gg";
 /// Rust lets an explicit `use` shadow a glob-imported name, so a model that writes `use std::fs;`
 /// gets the standard library's `fs` and not this SDK's — where a list of explicit imports would have
 /// made that program an `E0252` about a name gg introduced. It also means a program never opens with
-/// an import line of its own: `fs::read_file("main.rs", ReadOptions::default())` is the first thing
-/// a model can write.
+/// an import line of its own: `files::read_file("main.rs", files::ReadOptions::default())` is the
+/// first thing a model can write.
 ///
 /// `__gg_program`'s return type is what makes `?` work. A wrapper returning `()` would make the
 /// operator a Rust author reaches for first a hard `E0277` on the first line of the first program of
@@ -127,7 +127,7 @@ pub(super) fn module_file(key: &str) -> String {
 /// gets, for the same reason and with the same [offset](LINE_OFFSET).
 ///
 /// A module is its own file, so nothing the program imported reaches it: without this, a skill's
-/// code could not call `fs::read_file` at all. It is the same glob rather than a list, so a module
+/// code could not call `files::read_file` at all. It is the same glob rather than a list, so a module
 /// that writes `use std::fs;` wins over gg's `fs` exactly as a program does.
 fn module_prologue() -> String {
     format!("use ::{SDK_CRATE}::prelude::*;")

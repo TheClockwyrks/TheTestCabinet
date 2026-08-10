@@ -216,10 +216,16 @@ fn resolves(language: &'static dyn ProgramLanguage, reference: &[String]) -> boo
             let [_, object, key, field] = reference else {
                 return false;
             };
+            // The path is gg's OWN identity — the pair a `SurfaceCall` names — which is what the
+            // spellings map is keyed by. So the entry is resolved to its operation and the pair
+            // compared against that, rather than against the grouping an arm happens to file it
+            // under: a converted arm groups by module and carries gg's object name nowhere.
             FIELDS.contains(&field.as_str())
-                && catalogue_functions(language)
-                    .into_iter()
-                    .any(|function| function.object == object && function.key == key)
+                && catalogue_functions(language).iter().any(|function| {
+                    crate::sandbox::operation_of(function).is_some_and(|operation| {
+                        operation.call.object == object && operation.call.key == key
+                    })
+                })
         }
         Some("meta") => {
             let [_, key, field] = reference else {

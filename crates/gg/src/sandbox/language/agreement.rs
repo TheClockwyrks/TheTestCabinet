@@ -92,6 +92,19 @@
 //! re-spelling the first, which is what keeps the comparison meaningful independently of whichever
 //! real arms happen to be registered.
 //!
+//! # It reads the catalogues that are still written in the first schema
+//!
+//! Everything above rests on a five-part identity tuple — section, object, key, gate, ending — and
+//! an arm converted to the [normalized doc model](crate::sandbox::SchemaVersion::V2) has none of
+//! those five. It files no entry into a section, hangs nothing off an API object, and asserts no
+//! gate, because a gate is a fact about gg's own configuration surface that gg states once in its
+//! [operations table](crate::sandbox::operations). So a converted arm is held here only to the
+//! checks about **usable spellings** — see [`is_v1`] for what covers the rest, and why that cover is
+//! stronger rather than weaker.
+//!
+//! **That split is transitional.** The re-founded gate replaces it with one implementation over the
+//! normalized model, and the split goes when the last v1 catalogue does.
+//!
 //! # Why it returns disagreements rather than asserting them
 //!
 //! A gate that only panics can be shown to pass; it cannot be shown to *catch* anything. Returning
@@ -295,16 +308,119 @@ pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
 pub(crate) fn disagreements(languages: &[&'static dyn ProgramLanguage]) -> Vec<Disagreement> {
     let mut out = Vec::new();
     for language in languages {
-        anchored_to_gg(*language, &mut out);
-        internally_consistent(*language, &mut out);
+        if is_v1(*language) {
+            anchored_to_gg(*language, &mut out);
+            internally_consistent(*language, &mut out);
+        } else {
+            usable_spellings(*language, &mut out);
+        }
     }
-    let Some((reference, rest)) = languages.split_first() else {
+    // The comparative half runs over the v1 arms alone, and the reference is the first of them. See
+    // [`is_v1`] for why a converted arm is not compared and what holds it instead.
+    let v1: Vec<&'static dyn ProgramLanguage> =
+        languages.iter().copied().filter(|l| is_v1(*l)).collect();
+    let Some((reference, rest)) = v1.split_first() else {
         return out;
     };
     for language in rest {
         agrees_with(*reference, *language, &mut out);
     }
     out
+}
+
+/// Whether `language` still commits a [`V1`](crate::sandbox::SchemaVersion::V1) catalogue, and is
+/// therefore something this gate can read at all.
+///
+/// # Why a converted arm is only partly held here, and by what instead
+///
+/// Every check above rests on a five-part identity tuple — section, object, key, gate, ending — and
+/// a [`V2`](crate::sandbox::SchemaVersion::V2) catalogue has **none of those five**. It files no
+/// entry into a section, hangs nothing off an API object, and asserts no gate, because a gate is a
+/// fact about gg's configuration surface that gg states once in its
+/// [operations table](crate::sandbox::operations). Reading such a catalogue through this file would
+/// not find a disagreement; it would find eleven empty sections and report the whole arm missing.
+///
+/// So the parts of the gate that were *about* those five fields are held elsewhere, and are
+/// **stronger** for it, because each is now asserted against gg rather than against a reference arm:
+/// capability coverage, gating, the ending vocabulary and roles, and whether an operation takes
+/// input at all are all in `operations.test.rs`; the register gate
+/// (`super::register`) holds every brief, detail and parameter description; and
+/// the name rule (`crate::sandbox::signatures::fqn`) holds every fully-qualified name, every module
+/// reference and every type reference.
+///
+/// What has no home outside this file is the handful of checks about *usable spellings*, and those
+/// are kept for a converted arm by [`usable_spellings`]. **This split is transitional**: the
+/// re-founded gate replaces it with one implementation over the normalized model, and this function
+/// goes when the last v1 catalogue does.
+fn is_v1(language: &'static dyn ProgramLanguage) -> bool {
+    language.catalogue().schema < crate::sandbox::SchemaVersion::V2
+}
+
+/// The checks a [`V2`](crate::sandbox::SchemaVersion::V2) catalogue is still held to here: that
+/// every spelling it offers is one a program can write, and that it offers each of them once.
+///
+/// These are exactly the survivors of the list in [`is_v1`] — the rules about a *signature* and its
+/// *arguments*, which no other gate asks and which are the same question whatever schema an entry
+/// arrived in. They read the [normalized projection](crate::sandbox::catalogue_functions) rather
+/// than any section, so they say the same thing about both shapes of catalogue and will need no
+/// second implementation when the sections go.
+fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagreement>) {
+    let name = language.display_name();
+    let mut complain = |detail: String| {
+        out.push(Disagreement {
+            language: name,
+            detail,
+        })
+    };
+
+    // Spelled once each, per grouping and receiver. Two entries under one module sharing a name is
+    // one of them shadowing the other at the call site — and a member function legitimately shares a
+    // name with a free function, which is why the receiver is part of the key rather than ignored.
+    let mut seen: BTreeSet<(&str, Option<&str>, &str)> = BTreeSet::new();
+    for function in crate::sandbox::catalogue_functions(language) {
+        let where_ = function.fqn.unwrap_or(function.name);
+        if function.name.trim().is_empty() {
+            complain(format!("`{where_}` has no name a program could call"));
+        }
+        if !seen.insert((function.object, function.receiver, function.name)) {
+            complain(format!(
+                "two functions on `{}` are both spelled `{}`",
+                function.object, function.name
+            ));
+        }
+        if function.signatures.is_empty() {
+            complain(format!("`{where_}` has no signature"));
+        }
+        for SignatureEntry {
+            signature,
+            parameters,
+        } in function.signatures
+        {
+            if signature.trim().is_empty() {
+                complain(format!("`{where_}` has an empty signature"));
+            } else if !signature.starts_with(function.name) {
+                complain(format!(
+                    "`{where_}`'s signature does not start with the name a program calls \
+                     (`{}`): {signature}",
+                    function.name
+                ));
+            }
+            if parameters.is_empty() && declares_arguments(signature) {
+                complain(format!(
+                    "`{where_}` takes arguments and documents none: {signature}"
+                ));
+            }
+            for parameter in parameters {
+                check_parameter(
+                    parameter,
+                    where_,
+                    signature,
+                    names_arguments(signature),
+                    &mut complain,
+                );
+            }
+        }
+    }
 }
 
 /// The checks that hold with **one** language registered: every one of them anchors the catalogue to

@@ -373,31 +373,39 @@ fn the_catalogue_tells_the_truth_about_pictures() {
         read.doc
     );
 
-    let open_file = catalogue()
-        .views
-        .iter()
-        .find(|entry| entry.name == "openFile")
-        .expect("openFile is catalogued");
-    // STALE PROSE, HELD DELIBERATELY. `SandboxLimits::image_view_cap` and its per-agent
-    // `imageViewCap` param are gone — nothing refuses an image view for being the n-th one any
-    // more — so these two assertions now hold every arm to a promise the host no longer keeps. They
-    // stay because a catalogue cannot be hand-edited (contract-drift regenerates it from SDK
-    // source), so retiring the promise is a change to ten SDK source trees: stage 4 of the
-    // documentation plan, which rewrites each arm's prose anyway. Until then this is a *marker* for
-    // where the lie is, not a live contract — and its failure on that commit is the expected signal
-    // that the prose was finally fixed, at which point both assertions are deleted rather than
-    // inverted. The same sentence sits in `crates/backend/src/gg_reference.json`, which is likewise
-    // regenerated rather than authored.
-    assert!(
-        open_file.doc.contains("imageViewCap"),
-        "`view.openFile` must name the cap an operator configures: {}",
-        open_file.doc
-    );
-    assert!(
-        open_file.doc.contains("limit-exceeded") && open_file.doc.contains("view.close"),
-        "`view.openFile` must say how the cap fails and how to recover from it: {}",
-        open_file.doc
-    );
+    // THE IMAGE-VIEW CAP IS GONE, AND NINE ARMS STILL PROMISE IT.
+    // `SandboxLimits::image_view_cap` and its per-agent `imageViewCap` param were deleted —
+    // nothing refuses an image view for being the n-th one — but a catalogue cannot be hand-edited
+    // (contract-drift regenerates it from SDK source), so retiring the promise is a change to each
+    // SDK source tree in turn. C# and Rust have made it; cpp, java, javascript, kotlin, purescript,
+    // python, ruby, swift and typescript have not, and their `view.openFile` still names a cap the
+    // host no longer has. The same sentence sits in `crates/backend/src/gg_reference.json`, which is
+    // likewise regenerated rather than authored.
+    //
+    // What is asserted is therefore the direction rather than the state: **an arm that has been
+    // converted may not carry it**. That tightens by itself as each arm lands, and it never holds an
+    // arm to a promise gg does not keep. This comment goes with the last unconverted arm.
+    for language in crate::sandbox::all_languages() {
+        let catalogue = language.catalogue();
+        if catalogue.schema < SchemaVersion::V2 {
+            continue;
+        }
+        let open_file = catalogue
+            .functions
+            .iter()
+            .find(|entry| entry.operation == "views.open_file")
+            .expect("every arm binds `views.open_file`");
+        let prose = format!(
+            "{} {}",
+            open_file.brief,
+            open_file.detail.as_deref().unwrap_or("")
+        );
+        assert!(
+            !prose.contains("imageViewCap") && !prose.contains("image-view cap"),
+            "{}: `views.open_file` promises an image-view cap the host does not have: {prose}",
+            language.display_name(),
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -412,19 +420,30 @@ fn the_catalogue_tells_the_truth_about_pictures() {
 
 use super::fixture;
 
-/// **Every committed catalogue is still v1 today.**
+/// **Which arms have been converted, named.**
 ///
 /// Stated rather than assumed, because it is what makes every "inert below v2" claim in the gates a
-/// claim about the tree that exists. When an arm is converted this test is the first thing to say
-/// so, and its failure is the signal to move that arm's name into the converted list rather than a
-/// defect.
+/// claim about the tree that exists: an arm absent from this list is one the register gate and the
+/// name rule say nothing about, and that is only acceptable while it is *known* to be absent.
+///
+/// It fails in both directions, which is the point. Converting an arm and forgetting to name it
+/// here leaves the tree quietly holding a v2 catalogue to no v2 gate; naming one that has not been
+/// converted claims a coverage nothing provides.
+const CONVERTED: [GgProgramLanguage; 2] = [GgProgramLanguage::CSharp, GgProgramLanguage::Rust];
+
 #[test]
-fn every_registered_arm_is_still_written_in_the_first_schema() {
+fn every_registered_arm_is_written_in_the_schema_this_tree_says_it_is() {
     for language in language::all_languages() {
+        let expected = if CONVERTED.contains(&language.id()) {
+            SchemaVersion::V2
+        } else {
+            SchemaVersion::V1
+        };
         assert_eq!(
             language.catalogue().schema,
-            SchemaVersion::V1,
-            "{} has been converted — the gates that are inert below v2 now apply to it",
+            expected,
+            "{} is written in a schema this tree does not expect — an arm's conversion commit adds \
+             it to `CONVERTED`, which is what turns the v2 gates on for it",
             language.display_name()
         );
     }

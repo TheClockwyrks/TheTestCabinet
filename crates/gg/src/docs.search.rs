@@ -105,8 +105,14 @@ pub struct DocModule {
 /// that lowercased them per query would do it once per term per entry per call for a value that
 /// cannot change. The brief is also kept in its authored casing, since that is what a hit displays.
 struct DocEntry {
-    /// The key `openDocsView` takes — a bare name today, a fully-qualified one once arms carry
-    /// modules.
+    /// The key `openDocsView` takes: the entry's fully-qualified name where its arm emits one, and
+    /// its bare name where it does not.
+    ///
+    /// Functions and types are keyed the same way deliberately. They share one namespace — a model
+    /// types one string and [`read_any`](super::DocsRuntime::read_any) decides which kind it names —
+    /// and keying one half on a module-qualified name while the other stayed bare would have left
+    /// two entries able to collide under one key on exactly the half the qualification was
+    /// introduced to protect.
     key: &'static str,
     /// Which kind of thing this is.
     kind: DocKind,
@@ -211,7 +217,7 @@ impl DocIndex {
             };
             let brief = function.prose.brief;
             entries.push(DocEntry {
-                key: function.name,
+                key: function.fqn.unwrap_or(function.name),
                 kind: DocKind::Function,
                 modules: vec![DocModule {
                     id: operation.id.namespace,

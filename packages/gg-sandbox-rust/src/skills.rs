@@ -1,25 +1,24 @@
-//! read authored skills
+//! Read the skills this run authored.
 //!
-//! A skill name is a plain `&str` rather than an arm of an `enum`, because the catalogue is per run
-//! while this crate is compiled once. The names available are listed in the system prompt, and an
-//! unknown one comes back as `NotFound` carrying the full list.
+//! The names available are listed in the system prompt, and an unknown one comes back as `NotFound`
+//! carrying the full list.
 
 use crate::bindings::test_cabinet::gg::skills;
-use crate::error::ToolError;
+use crate::core::ToolError;
 use crate::wire;
 
-/// The gg tools this object dispatches — see [`fs::TOOLS`](crate::fs::TOOLS).
+/// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
 pub(crate) const TOOLS: &[&str] = &["read_skill"];
 
-crate::meta::directory_of!("skills");
+crate::directory::directory_of!();
 
-/// Read a skill by name and hand back its body with the front matter stripped; reading it also pins
-/// that body permanently into your context, so a skill you have read stays read.
+/// Read a skill by name and hand back its body with the front matter stripped.
 ///
-/// A skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds
-/// that code at `lib::<key>` for the rest of your session and the reply names the key and what it
-/// offers. If it carries an on-use program, gg runs it once your program has ended, and whatever it
-/// shows you arrives on your next turn.
+/// Reading it also pins that body permanently into context, so a skill that has been read stays read.
+///
+/// A skill may be **code** rather than prose, or as well as it. Code is bound at `lib::<key>` for the
+/// rest of the session and the reply names the key and what it offers. An on-use program runs once
+/// this program has ended, and whatever it shows arrives on the next turn.
 ///
 /// # Arguments
 ///
@@ -28,6 +27,7 @@ crate::meta::directory_of!("skills");
 /// # Errors
 ///
 /// `NotFound` — listing the skills that do exist — when the name is unknown.
+#[doc(alias = "ggop:skills.read_skill")]
 pub fn read_skill(name: &str) -> Result<String, ToolError> {
     wire::lift(skills::read_skill(name))
 }

@@ -762,17 +762,22 @@ pub const REVIEW_REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "requ
 // own copy of that fact.
 
 /// How `language` spells `call`, qualified exactly as a program writes it —
-/// `review.requestChanges`.
+/// `review.requestChanges`, or `Gg.Session.RequestChanges` on an arm whose surface is modules.
 ///
-/// Resolved from that language's own committed catalogue by the call's language-independent
-/// [key](SurfaceCall::key), so a language that renamed a function renames it in gg's sentences too,
-/// with nothing to keep in step. A catalogue that carries no such key falls back to the key itself:
-/// the [operation gate](super::operations) proves every model-facing call resolves in every
-/// registered language, so the fallback is unreachable — and degrading one word of a notice is
-/// the right failure anyway, where panicking mid-run is not.
+/// **Both halves are the arm's**, resolved together from its own committed catalogue by the call's
+/// language-independent identity, so a language that renamed a function — or regrouped it — renames
+/// it in gg's sentences too, with nothing to keep in step. Taking the qualifier from
+/// [`SurfaceCall::object`] instead would have gg quoting its own vocabulary at a program that has
+/// no `view` to call anything on.
+///
+/// A catalogue that carries no such call falls back to gg's own pair: the
+/// [operation gate](super::operations) proves every model-facing call resolves in every registered
+/// language, so the fallback is unreachable — and degrading one word of a notice is the right
+/// failure anyway, where panicking mid-run is not.
 pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
-    let name = super::signatures::spelling(language, call).unwrap_or(call.key);
-    format!("{}{}{name}", call.object, language.member_separator())
+    let (group, name) =
+        super::signatures::spelling(language, call).unwrap_or((call.object, call.key));
+    format!("{group}{}{name}", language.member_separator())
 }
 
 /// How `language` spells the **meta function** `key` — the

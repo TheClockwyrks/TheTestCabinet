@@ -2328,11 +2328,20 @@ fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
         // catalogues under that key `List`, so demanding the key of every arm would be demanding
         // that one arm quote a method it does not bind. It is resolved out of the language's own
         // committed catalogue, exactly as every other call in this test is.
+        // And the **receiver's own word**, for the third instance of the same rule: an arm whose
+        // surface is API objects writes `<object>`, and one reshaped into capability modules has no
+        // object to name — a placeholder calling a module an object would be gg's vocabulary
+        // imposed on a program that cannot use it.
         let spelled = crate::sandbox::meta_spelling(language, crate::docs::LIST_FUNCTION);
-        let list = format!("<object>{}{spelled}", language.member_separator());
+        let receiver = if language.catalogue().schema < crate::sandbox::SchemaVersion::V2 {
+            "<object>"
+        } else {
+            "<module>"
+        };
+        let list = format!("{receiver}{}{spelled}", language.member_separator());
         assert!(
             rendered.contains(&list),
-            "{name}: the prompt no longer tells the model how to list any object's functions \
+            "{name}: the prompt no longer tells the model how to list any module's functions \
              (`{list}`):\n{rendered}"
         );
     }

@@ -4,8 +4,8 @@
 //! their full package path, records whose documentation is the WIT's rather than the model's, and
 //! types shaped by what crosses a component boundary. The [SDK](crate) is what a Rust author calls.
 //! This module is where one becomes the other — lifting a wire record into an owned model-facing
-//! [type](crate::types), lowering an SDK [option struct](crate::options) into the record the import
-//! expects, and turning the wire's `result<_, tool-error>` into a [`ToolError`](crate::ToolError).
+//! type, lowering an SDK option struct into the record the import expects, and turning the wire's
+//! `result<_, tool-error>` into a [`ToolError`](crate::ToolError).
 //!
 //! It is deliberately not a generic mapping layer. Each function here is written out, because the
 //! two sides differ in exactly the places the SDK was designed to differ — an inclusive
@@ -17,14 +17,18 @@
 use std::ops::RangeInclusive;
 
 use crate::bindings::test_cabinet::gg as gen;
-use crate::error::ToolError;
-use crate::options::{IssuePatch, ReadOptions, TaskPatch};
-use crate::types::{
-    AgentStatus, ArchiveHit, ArchiveSearch, BoardUsage, Brief, DirEntry, EntryKind, EpicAssignment,
-    EpicCreated, FileRead, FunctionSummary, ImageFile, IssueCreated, IssueStatus, MemoryHit,
-    MemoryUsage, MessageRole, OpenView, ProgramSummary, ReclaimReport, ShellOutput, SubagentHandle,
-    SubagentResult, TaskStatus, TaskUsage, TextEdit, TextFile, ViewKind, ViewRegion,
+use crate::board::{
+    BoardUsage, EpicAssignment, EpicCreated, IssueCreated, IssuePatch, IssueStatus,
 };
+use crate::context::{ArchiveHit, ArchiveSearch, MessageRole, ReclaimReport};
+use crate::core::{FunctionSummary, ToolError};
+use crate::delegation::{AgentStatus, Brief, SubagentHandle, SubagentResult};
+use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, TextFile};
+use crate::memories::{MemoryHit, MemoryUsage};
+use crate::programs::ProgramSummary;
+use crate::shell::ShellOutput;
+use crate::tasks::{TaskPatch, TaskStatus, TaskUsage, TextEdit};
+use crate::views::{OpenView, ViewKind, ViewRegion};
 
 /// Every call in this SDK ends here: the wire's error arm, lifted into the SDK's own.
 pub(crate) fn lift<T>(outcome: Result<T, gen::types::ToolError>) -> Result<T, ToolError> {
@@ -329,7 +333,7 @@ pub(crate) fn program_summary(summary: gen::programs::ProgramSummary) -> Program
     }
 }
 
-/// One function in an object's directory.
+/// One function in a module's directory.
 pub(crate) fn function_summary(summary: gen::docs::FunctionSummary) -> FunctionSummary {
     FunctionSummary {
         name: summary.name,

@@ -32,8 +32,8 @@
 //! with every other registered language's — searching each artifact for markers, which is all it
 //! asks of any arm.
 //!
-//! The programs below call the **SDK**, which is what a model would call: `fs.ReadTextFile`,
-//! `view.OpenText`, `Console.WriteLine`. Every one of them is compiled into the program's own
+//! The programs below call the **SDK**, which is what a model would call: `Files.ReadTextFile`,
+//! `Views.OpenText`, `Console.WriteLine`. Every one of them is compiled into the program's own
 //! assembly out of `packages/gg-sandbox-csharp/src/Gg/`, so what these prove is not only that the
 //! crossing happens but that the surface a model is shown is the surface that runs. The SDK's own
 //! spelling, function by function, is driven in `csharp.surface.test.rs`.
@@ -304,7 +304,7 @@ using System;
 
 public static class Program {
   public static void Main() {
-    var text = fs.ReadTextFile("notes.md");
+    var text = Files.ReadTextFile("notes.md");
     var first = text.Split('\n')[0];
     Console.WriteLine($"read {first.ToUpperInvariant()}");
   }

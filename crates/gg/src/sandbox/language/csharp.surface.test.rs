@@ -86,12 +86,12 @@ struct Crossing {
 /// arguments and the expected JSON — because the expected JSON is the point. gg's dispatch is
 /// language-independent: ten arms writing the same call in their own idioms must produce
 /// **byte-identical** arguments, or they are not running the same experiment. A default argument
-/// lowered onto the wrong wire slot, a `TextEdit.Clear` read as "leave it alone" instead of "clear
+/// lowered onto the wrong wire slot, a `Tasks.TextEdit.Clear` read as "leave it alone" instead of "clear
 /// it", an enum member whose wire word did not translate — none of them is a compile error in any of
 /// the ten, and all of them are visible here.
 ///
 /// What differs from every other arm's table is **named arguments**: C#'s way of skipping over the
-/// optional arguments you do not want is to name the one you do, so `project.CreateIssue(title: …,
+/// optional arguments you do not want is to name the one you do, so `Board.CreateIssue(title: …,
 /// agent: …, reviewers: …)` reads as a call whose five required arguments happen to be written the
 /// same way. That is the language's own answer to the shape every other arm answers differently, and
 /// it is why nothing here is an options record.
@@ -99,37 +99,37 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: r#"system.Shell("npm test", timeoutSeconds: 30);"#,
+            statement: r#"Shell.Run("npm test", timeoutSeconds: 30);"#,
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: r#"fs.ReadFile("src/a.cs", offset: 2, limit: 5);"#,
+            statement: r#"Files.ReadFile("src/a.cs", offset: 2, limit: 5);"#,
             expected: || json!({ "path": "src/a.cs", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: r#"fs.WriteFile("out.txt", "hello");"#,
+            statement: r#"Files.WriteFile("out.txt", "hello");"#,
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: r#"fs.EditFile("src/a.cs", "alpha", "beta");"#,
+            statement: r#"Files.EditFile("src/a.cs", "alpha", "beta");"#,
             expected: || json!({ "path": "src/a.cs", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: r#"fs.ListDir("src");"#,
+            statement: r#"Files.ListDir("src");"#,
             expected: || json!({ "path": "src" }),
         },
         Crossing {
             tool: "read_skill",
-            statement: r#"skills.ReadSkill("testing");"#,
+            statement: r#"Skills.ReadSkill("testing");"#,
             expected: || json!({ "name": "testing" }),
         },
         Crossing {
             tool: "write_memory",
-            statement: r#"memory.WriteMemory("layout", "d", "b");"#,
+            statement: r#"Memories.WriteMemory("layout", "d", "b");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -137,7 +137,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: r#"memory.UpdateMemory("layout", "d2", "b2");"#,
+            statement: r#"Memories.UpdateMemory("layout", "d2", "b2");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -148,7 +148,7 @@ fn crossings() -> Vec<Crossing> {
             // The one crossing that carries a memory's CODE, and the one that names an optional
             // argument while skipping the one beside it — which is what a C# author writes instead
             // of filling in a record.
-            statement: r#"memory.CreateMemory("layout", "d", "b", code: "static int One() => 1;");"#,
+            statement: r#"Memories.CreateMemory("layout", "d", "b", code: "static int One() => 1;");"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "contents": "b",
                         "code": "static int One() => 1;", "onUse": null })
@@ -156,35 +156,35 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "read_memory",
-            statement: r#"memory.ReadMemory("layout");"#,
+            statement: r#"Memories.ReadMemory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: r#"memory.EditMemory("layout", "old", "new");"#,
+            statement: r#"Memories.EditMemory("layout", "old", "new");"#,
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
             // A variadic list, which is what `params` is for: no array literal at the call site.
-            statement: r#"memory.SearchMemories("cargo", "nextest");"#,
+            statement: r#"Memories.SearchMemories("cargo", "nextest");"#,
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: r#"memory.DeleteMemory("layout");"#,
+            statement: r#"Memories.DeleteMemory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            statement: r#"tasks.AddTask("t1", "T", description: "D", blockedBy: ["t0"]);"#,
+            statement: r#"Tasks.AddTask("t1", "T", description: "D", blockedBy: ["t0"]);"#,
             expected: || json!({ "id": "t1", "title": "T", "description": "D", "blockedBy": ["t0"] }),
         },
         Crossing {
             tool: "update_task",
-            statement: r#"tasks.UpdateTask("t1", title: "T2", description: TextEdit.Clear, status: Gg.TaskStatus.InProgress);"#,
+            statement: r#"Tasks.UpdateTask("t1", title: "T2", description: Tasks.TextEdit.Clear, status: Gg.Tasks.TaskStatus.InProgress);"#,
             expected: || {
-                // `TextEdit.Clear` is what CLEARS it — the `default`, which is `TextEdit.Keep`, is
+                // `Tasks.TextEdit.Clear` is what CLEARS it — the `default`, which is `Tasks.TextEdit.Keep`, is
                 // what leaves it alone — and `in_progress` is gg's own spelling, so the membrane's
                 // `in-progress` reaches neither a model nor a tool.
                 json!({ "id": "t1", "title": "T2", "status": "in_progress", "description": "" })
@@ -192,27 +192,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_blocked_by",
-            statement: r#"tasks.SetBlockedBy("t1");"#,
+            statement: r#"Tasks.SetBlockedBy("t1");"#,
             expected: || json!({ "id": "t1", "blockedBy": [] }),
         },
         Crossing {
             tool: "complete_task",
-            statement: r#"tasks.CompleteTask("t1");"#,
+            statement: r#"Tasks.CompleteTask("t1");"#,
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "remove_task",
-            statement: r#"tasks.RemoveTask("t1");"#,
+            statement: r#"Tasks.RemoveTask("t1");"#,
             expected: || json!({ "id": "t1" }),
         },
         Crossing {
             tool: "create_epic",
-            statement: r#"project.CreateEpic("epc", "E", "D");"#,
+            statement: r#"Board.CreateEpic("epc", "E", "D");"#,
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: r#"project.CreateIssue("I", "s", "o", "c", "worker", reviewers: ["critic"]);"#,
+            statement: r#"Board.CreateIssue("I", "s", "o", "c", "worker", reviewers: ["critic"]);"#,
             expected: || {
                 json!({
                     "title": "I",
@@ -229,10 +229,10 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: r#"project.UpdateIssue("i1", status: IssueStatus.Done, epic: EpicAssignment.Ungroup);"#,
+            statement: r#"Board.UpdateIssue("i1", status: Board.IssueStatus.Done, epic: Board.EpicAssignment.Ungroup);"#,
             expected: || {
-                // `EpicAssignment.Ungroup` ungroups the issue, which gg's schema spells as the empty
-                // string; a description the call left at its `default` — which is `TextEdit.Keep` —
+                // `Board.EpicAssignment.Ungroup` ungroups the issue, which gg's schema spells as the empty
+                // string; a description the call left at its `default` — which is `Tasks.TextEdit.Keep` —
                 // keeps the one it has, so its key is absent.
                 json!({
                     "id": "i1",
@@ -247,74 +247,74 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: r#"project.SetIssueBlockedBy("i1", "i0");"#,
+            statement: r#"Board.SetIssueBlockedBy("i1", "i0");"#,
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: r#"project.RemoveEpic("e1");"#,
+            statement: r#"Board.RemoveEpic("e1");"#,
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: r#"project.RemoveIssue("i1");"#,
+            statement: r#"Board.RemoveIssue("i1");"#,
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: r#"project.WaitForIssue("i1");"#,
+            statement: r#"Board.WaitForIssue("i1");"#,
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
             tool: "evict_file_view",
-            statement: r#"context.EvictFileView("src/a.cs");"#,
+            statement: r#"Context.EvictFileView("src/a.cs");"#,
             expected: || json!({ "path": "src/a.cs" }),
         },
         Crossing {
             tool: "archive_thread",
-            statement: r#"context.ArchiveThread(new TurnRange(4, 19), new TurnRange(30, 35));"#,
+            statement: r#"Context.ArchiveThread(new Context.TurnRange(4, 19), new Context.TurnRange(30, 35));"#,
             expected: || json!({ "ranges": [[4, 19], [30, 35]] }),
         },
         Crossing {
             tool: "search_archive",
-            statement: r#"context.SearchArchive("the parser");"#,
+            statement: r#"Context.SearchArchive("the parser");"#,
             expected: || json!({ "query": "the parser" }),
         },
         Crossing {
             tool: "compact",
-            statement: r#"context.Compact("scaffolded the page", "src/Main.cs");"#,
+            statement: r#"Context.Compact("scaffolded the page", "src/Main.cs");"#,
             expected: || json!({ "summary": "scaffolded the page", "files": ["src/Main.cs"] }),
         },
         Crossing {
             tool: "spawn_subagent",
             // The brief is a typed value rather than one of two optional arguments, so "both" and
             // "neither" are programs that do not compile.
-            statement: r#"agents.SpawnSubagent("subagent", Brief.Prompt("write the lexer"));"#,
+            statement: r#"Delegation.SpawnSubagent("subagent", Delegation.Brief.Prompt("write the lexer"));"#,
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            statement: r#"agents.WaitForSubagents("agent-1");"#,
+            statement: r#"Delegation.WaitForSubagents("agent-1");"#,
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: r#"agents.SendMessage("agent-1", "prefer the simpler parser");"#,
+            statement: r#"Delegation.SendMessage("agent-1", "prefer the simpler parser");"#,
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: r#"agents.TransitionState("verify", note: "the build is green");"#,
+            statement: r#"Delegation.TransitionState("verify", note: "the build is green");"#,
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: r#"agents.Exec("Builder", prompt: "pick it up from here");"#,
+            statement: r#"Delegation.Exec("Builder", prompt: "pick it up from here");"#,
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: r#"agents.Fork("try the other fix");"#,
+            statement: r#"Delegation.Fork("try the other fix");"#,
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -374,19 +374,19 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_csharp_too(
     let (outcome, log) = evaluate(
         &prepare(
             r####"
-var text = fs.ReadTextFile("notes.md", offset: 1, limit: 2);
-var read = view.OpenFile("notes.md", offset: 1, limit: 2);
-view.OpenText("summary", text);
-view.OpenDocsView("ReadFile");
-var closed = view.Close("summary");
-var missing = view.Close("never opened");
-var open = view.Current();
-var directory = fs.List();
+var text = Files.ReadTextFile("notes.md", offset: 1, limit: 2);
+var read = Views.OpenFile("notes.md", offset: 1, limit: 2);
+Views.OpenText("summary", text);
+Views.OpenDocsView("ReadFile");
+var closed = Views.Close("summary");
+var missing = Views.Close("never opened");
+var open = Views.Current();
+var directory = Files.List();
 Console.WriteLine($"{open[0].Selector} {open[0].Kind}");
 Console.WriteLine($"{closed} {missing}");
-Console.WriteLine(read is TextFile file ? file.Contents.Split('\n')[0] : ((ImageFile)read).Label);
+Console.WriteLine(read is Files.TextFile file ? file.Contents.Split('\n')[0] : ((Files.ImageFile)read).Label);
 Console.WriteLine(string.Join(",", directory.Select(entry => entry.Name)));
-harness.Finish("read the file and showed myself the result");
+Session.Finish("read the file and showed myself the result");
 "####,
         ),
         &all_tools(),
@@ -403,7 +403,7 @@ harness.Finish("read the file and showed myself the result");
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "fsFunction");
+    assert_eq!(lines[3], "Gg.FilesFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -423,7 +423,7 @@ harness.Finish("read the file and showed myself the result");
     );
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view.OpenFile` performs. Neither has a tool name of its own, which is exactly the point — a
+    // `Views.OpenFile` performs. Neither has a tool name of its own, which is exactly the point — a
     // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
@@ -440,18 +440,18 @@ fn the_program_library_and_a_reviewers_verdict_are_reached_in_csharp_too() {
     let (outcome, _log) = evaluate(
         &prepare(
             r####"
-var history = programs.History();
+var history = Programs.History();
 Console.WriteLine(history.Count);
 try
 {
-    Console.WriteLine(programs.Get(2));
+    Console.WriteLine(Programs.Get(2));
 }
 catch (ToolException failure)
 {
     Console.WriteLine(failure.Code);
 }
-programs.Rerun("Console.WriteLine(\"again\");");
-review.RequestChanges("widen the test", "name the file");
+Programs.Rerun("Console.WriteLine(\"again\");");
+Session.RequestChanges("widen the test", "name the file");
 "####,
         ),
         &[],
@@ -475,7 +475,7 @@ review.RequestChanges("widen the test", "name the file");
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare("review.Approve();\n"),
+        &prepare("Session.Approve();\n"),
         &[],
         RunEnding::Role(EndingRole::Review),
         false,
@@ -504,7 +504,7 @@ fn a_failure_is_thrown_whether_it_is_caught_or_let_out() {
         r####"
 try
 {
-    Console.WriteLine(fs.ReadTextFile("gone.cs"));
+    Console.WriteLine(Files.ReadTextFile("gone.cs"));
 }
 catch (ToolException failure) when (failure.Code == ToolErrorCode.NotFound)
 {
@@ -527,7 +527,7 @@ Console.WriteLine("carried on");
     let (outcome, _log) = run_with(
         r####"
 Console.WriteLine("before");
-fs.ReadTextFile("gone.cs");
+Files.ReadTextFile("gone.cs");
 Console.WriteLine("after");
 "####,
         &all_tools(),
@@ -543,7 +543,7 @@ Console.WriteLine("after");
         reported.message
     );
     assert!(
-        reported.message.contains("Gg.fs.ReadTextFile"),
+        reported.message.contains("Gg.Files.ReadTextFile"),
         "an uncaught failure did not name the SDK function that raised it: {}",
         reported.message
     );
@@ -565,7 +565,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
         r####"
 try
 {
-    system.Shell("dotnet build");
+    Shell.Run("dotnet build");
     Console.WriteLine("ran");
 }
 catch (ToolException failure)
@@ -662,7 +662,7 @@ Console.WriteLine($"{xml.XPathSelectElement("//run")!.Attribute("id")!.Value} {n
 // Reflection and runtime services.
 Console.WriteLine($"{typeof(string).GetMethod("Trim", Type.EmptyTypes)!.Name} {typeof(AssemblyBuilder).Name} {typeof(GCSettings).Name} {RuntimeHelpers.GetHashCode("x") != 0} {Marshal.SizeOf<int>()} {TypeDescriptor.GetClassName(typeof(int))}");
 
-// Networking types: the vocabulary is here, and the transport is `system.Shell`.
+// Networking types: the vocabulary is here, and the transport is `Shell.Run`.
 Console.WriteLine($"{new Uri("https://example.test/a").Host} {IPAddress.Loopback} {typeof(HttpClient).Name} {typeof(Socket).Name}");
 
 // Threading types: they compile, and a `lock` is ordinary C#.
@@ -776,56 +776,130 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         "the catalogue must say whose spellings it carries, and this arm's id is what a run will \
          resolve it by"
     );
-
-    // Identity: the objects, in the order the surface is presented in, and every gg tool spelled the
-    // way this arm spells it. This is the half the agreement gate compares against the other nine,
-    // and it is compared against gg's own vocabulary here as well, so the catalogue cannot ship
-    // describing a surface nobody has.
-    let objects: Vec<&str> = section(&catalogue, "objects")
-        .iter()
-        .map(|object| text(object, "object"))
-        .collect();
     assert_eq!(
-        objects,
-        [
-            "fs", "system", "project", "tasks", "memory", "view", "context", "agents", "skills",
-            "programs", "harness", "review"
-        ],
-        "the objects, or their order, are not the surface's"
+        catalogue["schema"].as_u64(),
+        Some(2),
+        "this arm has been converted to the normalized doc model, and the schema number is what \
+         turns the gates that read it on"
     );
 
-    let mut catalogued: Vec<&str> = section(&catalogue, "tools")
+    // Identity: the modules, in the order the surface is presented in, each with gg's cross-arm id
+    // beside this arm's own spelling of the path. The id is what a study joins eleven arms on; the
+    // path is what a model reads and what every fully-qualified name below is prefixed with.
+    let modules: Vec<(&str, &str)> = section(&catalogue, "modules")
         .iter()
-        .map(|tool| text(tool, "tool"))
+        .map(|module| (text(module, "id"), text(module, "path")))
+        .collect();
+    assert_eq!(
+        modules,
+        [
+            ("files", "Gg.Files"),
+            ("shell", "Gg.Shell"),
+            ("board", "Gg.Board"),
+            ("tasks", "Gg.Tasks"),
+            ("memories", "Gg.Memories"),
+            ("views", "Gg.Views"),
+            ("context", "Gg.Context"),
+            ("delegation", "Gg.Delegation"),
+            ("skills", "Gg.Skills"),
+            ("programs", "Gg.Programs"),
+            ("session", "Gg.Session"),
+            ("core", "Gg"),
+        ],
+        "the modules, or their order, are not the surface's"
+    );
+
+    // Every gg tool is bound, spelled the way this arm spells it. The catalogue no longer files a
+    // tool into a section of its own — a section was only ever a gate by another name — so the check
+    // is over the operations the entries name, which is where gg states the gate once.
+    let mut catalogued: Vec<&str> = section(&catalogue, "functions")
+        .iter()
+        .filter(|entry| entry["aliasOf"].is_null())
+        .filter_map(|entry| text(entry, "operation").split_once('.').map(|(_, key)| key))
         .collect();
     catalogued.sort_unstable();
-    let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
+    let mut vocabulary: Vec<&str> = crate::sandbox::signatures::sandbox_tool_names();
+    // Three operations share the `read_file` tool and one shares nothing, so the tool vocabulary is
+    // a SUBSET of the operation keys rather than equal to it — every tool is bound, and the surface
+    // is wider than the tools.
     vocabulary.sort_unstable();
-    assert_eq!(
-        catalogued, vocabulary,
-        "the catalogue and gg's tool vocabulary have drifted apart"
-    );
+    for tool in &vocabulary {
+        assert!(
+            catalogued.contains(tool),
+            "the gg tool `{tool}` is not bound by any catalogued C# function"
+        );
+    }
 
     // Spelling: `PascalCase`, because that is what C# spells a method in. gg's vocabulary is
-    // `snake_case`, so on this arm the two differ for every tool — which is what the `key` exists
-    // for, and what a catalogue that quietly used gg's spelling would hide.
-    for tool in section(&catalogue, "tools") {
-        let name = text(tool, "name");
+    // `snake_case`, so on this arm the two differ for every entry — which is what the operation id
+    // exists for, and what a catalogue that quietly used gg's spelling would hide.
+    for entry in section(&catalogue, "functions") {
+        let name = text(entry, "name");
         assert!(
             !name.contains('_') && name.starts_with(|first: char| first.is_ascii_uppercase()),
             "`{name}` is not how C# spells a method"
         );
     }
 
+    // Every name is module-qualified, and a static method on the module's own class is the shape
+    // this language gives to what every other arm spells as a free function.
+    for entry in section(&catalogue, "functions") {
+        let fqn = text(entry, "fqn");
+        let module = text(entry, "module");
+        let path = section(&catalogue, "modules")
+            .iter()
+            .find(|candidate| text(candidate, "id") == module)
+            .map(|candidate| text(candidate, "path"))
+            .unwrap_or_else(|| panic!("`{fqn}` names the module `{module}`, which is declared"));
+        assert!(
+            fqn.starts_with(&format!("{path}.")),
+            "`{fqn}` is not qualified by its module `{path}`"
+        );
+        let kind = text(entry, "kind");
+        assert!(
+            (kind == "static-method" && entry["receiver"].is_null())
+                || (kind == "method" && !entry["receiver"].is_null()),
+            "`{fqn}` is a `{kind}` and its receiver does not match"
+        );
+    }
+
+    // The one MEMBER function this arm binds, and the type that lists it. It is an alias — a second
+    // way to reach one operation, spelled on the value that already carries the id the free function
+    // would be passed — so it counts toward no coverage and is documented like anything else.
+    let member = section(&catalogue, "functions")
+        .iter()
+        .find(|entry| text(entry, "fqn") == "Gg.Delegation.SubagentHandle.Send")
+        .expect("`SubagentHandle.Send` is catalogued");
+    assert_eq!(text(member, "operation"), "delegation.send_message");
+    assert_eq!(text(member, "aliasOf"), "delegation.send_message");
+    assert_eq!(text(member, "kind"), "method");
+    assert_eq!(text(member, "receiver"), "SubagentHandle");
+    let handle = section(&catalogue, "types")
+        .iter()
+        .find(|entry| text(entry, "fqn") == "Gg.Delegation.SubagentHandle")
+        .expect("`SubagentHandle` is declared");
+    let listed: Vec<&str> = handle["memberFunctions"]
+        .as_array()
+        .expect("a type lists its member functions")
+        .iter()
+        .map(|entry| text(entry, "fqn"))
+        .collect();
+    assert_eq!(
+        listed,
+        ["Gg.Delegation.SubagentHandle.Send"],
+        "a type view is a menu of what a value can do, and this is the whole of that menu"
+    );
+
     // The idiom this arm exists to produce, asserted where a model reads it: required arguments
     // positional, optional ones expressed as DEFAULT VALUES a call names rather than as a record, a
     // variadic list where the wire has a list a call would otherwise wrap in an array literal, and a
-    // typed three-way value where the wire has a variant.
-    let signature = |tool: &str| {
-        let entry = section(&catalogue, "tools")
+    // typed three-way value where the wire has a variant. Every type a signature writes is
+    // module-qualified, because a bare `FileRead` is not a name a program could resolve.
+    let signature = |operation: &str| {
+        let entry = section(&catalogue, "functions")
             .iter()
-            .find(|entry| text(entry, "tool") == tool)
-            .unwrap_or_else(|| panic!("`{tool}` is catalogued"));
+            .find(|entry| text(entry, "operation") == operation && entry["aliasOf"].is_null())
+            .unwrap_or_else(|| panic!("`{operation}` is catalogued"));
         let shapes = entry["signatures"].as_array().expect("an entry has shapes");
         assert_eq!(
             shapes.len(),
@@ -836,40 +910,40 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         text(&shapes[0], "signature").to_string()
     };
     assert_eq!(
-        signature("read_file"),
-        "ReadFile(string path, uint? offset = null, uint? limit = null) -> FileRead"
+        signature("files.read_file"),
+        "ReadFile(string path, uint? offset = null, uint? limit = null) -> Files.FileRead"
     );
     assert_eq!(
-        signature("shell"),
-        "Shell(string command, double? timeoutSeconds = null) -> ShellOutput"
+        signature("shell.shell"),
+        "Run(string command, double? timeoutSeconds = null) -> Shell.ShellOutput"
     );
     assert_eq!(
-        signature("edit_file"),
+        signature("files.edit_file"),
         "EditFile(string path, string oldString, string newString) -> void"
     );
     assert_eq!(
-        signature("archive_thread"),
-        "ArchiveThread(params TurnRange[] ranges) -> ReclaimReport"
+        signature("context.archive_thread"),
+        "ArchiveThread(params Context.TurnRange[] ranges) -> Context.ReclaimReport"
     );
     assert_eq!(
-        signature("update_task"),
-        "UpdateTask(string id, string? title = null, TextEdit description = default, \
-         TaskStatus? status = null) -> void"
+        signature("tasks.update_task"),
+        "UpdateTask(string id, string? title = null, Tasks.TextEdit description = default, \
+         Tasks.TaskStatus? status = null) -> void"
     );
     assert_eq!(
-        signature("create_issue"),
+        signature("board.create_issue"),
         "CreateIssue(string title, string inScope, string outOfScope, string completionCriteria, \
          string agent, string? description = null, string[]? blockedBy = null, \
-         string? epicId = null, string[]? reviewers = null) -> IssueCreated"
+         string? epicId = null, string[]? reviewers = null) -> Board.IssueCreated"
     );
 
     // The one overload group on this arm, and the shape the catalogue exists to be able to carry:
     // "wait for these children" and "wait for all of them" are one capability written two ways,
     // because C# expresses "no argument at all" as a second method rather than as a default a
     // variadic parameter cannot have.
-    let waiting = section(&catalogue, "tools")
+    let waiting = section(&catalogue, "functions")
         .iter()
-        .find(|entry| text(entry, "tool") == "wait_for_subagents")
+        .find(|entry| text(entry, "operation") == "delegation.wait_for_subagents")
         .expect("`wait_for_subagents` is catalogued");
     let shapes: Vec<&str> = waiting["signatures"]
         .as_array()
@@ -880,8 +954,8 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     assert_eq!(
         shapes,
         [
-            "WaitForSubagents() -> IReadOnlyList<SubagentResult>",
-            "WaitForSubagents(params string[] ids) -> IReadOnlyList<SubagentResult>",
+            "WaitForSubagents() -> IReadOnlyList<Delegation.SubagentResult>",
+            "WaitForSubagents(params string[] ids) -> IReadOnlyList<Delegation.SubagentResult>",
         ],
         "the one overload group is not both of its shapes"
     );
@@ -889,69 +963,71 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     // A default value is what makes an argument optional in C#, so the catalogue's two fields must
     // say the same thing about every argument of every shape — and an optional one is `keyword`,
     // because naming it is how a call skips the ones before it.
-    for name in ["session", "views", "programs", "tools", "helpers", "meta"] {
-        for entry in section(&catalogue, name) {
-            for shape in entry["signatures"].as_array().expect("an entry has shapes") {
-                for parameter in shape["parameters"]
-                    .as_array()
-                    .expect("a shape has parameters")
-                {
-                    let optional = parameter["optional"].as_bool().expect("a flag");
-                    assert_eq!(
-                        optional,
-                        !parameter["default"].is_null(),
-                        "`{}`'s `{}` disagrees with itself about being optional",
-                        text(entry, "name"),
-                        text(parameter, "name")
-                    );
-                    assert_eq!(
-                        text(parameter, "kind"),
-                        if optional { "keyword" } else { "positional" },
-                        "`{}`'s `{}` is passed the wrong way",
-                        text(entry, "name"),
-                        text(parameter, "name")
-                    );
-                }
+    for entry in section(&catalogue, "functions") {
+        for shape in entry["signatures"].as_array().expect("an entry has shapes") {
+            for parameter in shape["parameters"]
+                .as_array()
+                .expect("a shape has parameters")
+            {
+                let optional = parameter["optional"].as_bool().expect("a flag");
+                assert_eq!(
+                    optional,
+                    !parameter["default"].is_null(),
+                    "`{}`'s `{}` disagrees with itself about being optional",
+                    text(entry, "name"),
+                    text(parameter, "name")
+                );
+                assert_eq!(
+                    text(parameter, "kind"),
+                    if optional { "keyword" } else { "positional" },
+                    "`{}`'s `{}` is passed the wrong way",
+                    text(entry, "name"),
+                    text(parameter, "name")
+                );
             }
         }
     }
 
-    // Every word of it is written on a declaration: nothing blank, an argument documented for every
-    // argument a signature names, and a member documented for every member of every type. The
-    // reflector refuses to emit a catalogue that breaks this, and this is the second reading of it —
-    // over the emitted JSON, where it is the same check for every language there will ever be.
-    for name in ["session", "views", "programs", "tools", "helpers", "meta"] {
-        for entry in section(&catalogue, name) {
-            let called = text(entry, "name");
-            assert!(
-                !text(entry, "doc").trim().is_empty(),
-                "`{called}` has no documentation"
-            );
-            for shape in entry["signatures"].as_array().expect("an entry has shapes") {
-                let written = text(shape, "signature");
-                for parameter in shape["parameters"]
-                    .as_array()
-                    .expect("a shape has parameters")
-                {
-                    let argument = text(parameter, "name");
-                    assert!(
-                        !text(parameter, "doc").trim().is_empty(),
-                        "`{called}`'s `{argument}` has no documentation"
-                    );
-                    assert!(
-                        written.contains(argument),
-                        "`{called}` documents an argument its signature does not name: {written}"
-                    );
-                }
+    // Every word of it is written on a declaration, in the authored brief-and-detail shape: nothing
+    // blank, a brief that is one line, an argument documented for every argument a signature names,
+    // and a member documented for every member of every type. The reflector refuses to emit a
+    // catalogue that breaks this, the register gate holds the same text to the register gg chose,
+    // and this is the third reading of it — over the emitted JSON, entry by entry.
+    let brief = |entry: &Value, what: &str| {
+        let written = text(entry, "brief");
+        assert!(!written.trim().is_empty(), "{what} has no brief");
+        assert!(
+            !written.contains('\n'),
+            "{what}'s brief is more than one line: {written}"
+        );
+    };
+    for entry in section(&catalogue, "modules") {
+        brief(entry, &format!("the module `{}`", text(entry, "path")));
+    }
+    for entry in section(&catalogue, "functions") {
+        let called = text(entry, "fqn");
+        brief(entry, &format!("`{called}`"));
+        for shape in entry["signatures"].as_array().expect("an entry has shapes") {
+            let written = text(shape, "signature");
+            for parameter in shape["parameters"]
+                .as_array()
+                .expect("a shape has parameters")
+            {
+                let argument = text(parameter, "name");
+                assert!(
+                    !text(parameter, "doc").trim().is_empty(),
+                    "`{called}`'s `{argument}` has no documentation"
+                );
+                assert!(
+                    written.contains(argument),
+                    "`{called}` documents an argument its signature does not name: {written}"
+                );
             }
         }
     }
     for declaration in section(&catalogue, "types") {
-        let named = text(declaration, "name");
-        assert!(
-            !text(declaration, "doc").trim().is_empty(),
-            "the type `{named}` has no documentation"
-        );
+        let named = text(declaration, "fqn");
+        brief(declaration, &format!("the type `{named}`"));
         let members = declaration["members"]
             .as_array()
             .expect("a type declares members");
@@ -960,44 +1036,7 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
             "the type `{named}` declares no members"
         );
         for member in members {
-            let member_name = text(member, "name");
-            assert!(
-                !text(member, "doc").trim().is_empty(),
-                "`{named}.{member_name}` has no documentation"
-            );
+            brief(member, &format!("`{named}.{}`", text(member, "name")));
         }
     }
-}
-
-#[test]
-fn the_catalogue_agrees_with_a_registered_arm() {
-    // The [agreement gate](super::super::agreement) iterates the REGISTERED set, and this arm is not in it
-    // — a language cannot be half-registered, because the registry's `match` is exhaustive. So the
-    // gate is run by hand over this arm's committed catalogue, against TypeScript's, and it is worth
-    // having early for exactly the reason the gate exists at all: an SDK and a catalogue that agree
-    // with each other and with nothing else are two green test suites and an invalidated experiment.
-    //
-    // The catalogue is carried in on the [fixture](super::super::fixture), whose whole job is to be a second
-    // `ProgramLanguage` with no wire id, since this one has no `GgProgramLanguage` to be parsed
-    // under yet. Only the `language` field is rewritten; every spelling, signature, argument and
-    // type below it is this arm's own.
-    let language = super::super::fixture::a_language_whose_catalogue(|document| {
-        let mut mine: Value =
-            serde_json::from_str(SIGNATURES).expect("the committed catalogue is JSON");
-        mine["language"] = json!("typescript");
-        *document = mine;
-    });
-    let disagreements = super::super::agreement::disagreements(&[
-        crate::sandbox::language(GgProgramLanguage::TypeScript),
-        language,
-    ]);
-    assert!(
-        disagreements.is_empty(),
-        "the C# catalogue does not describe the same capability surface as a registered arm: {}",
-        disagreements
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
 }

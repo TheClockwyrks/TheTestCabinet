@@ -69,13 +69,13 @@ function, a local `record`. A `class Program` with a `static void Main` works to
 if you prefer it; you do not need one.
 
 **gg's own surface needs no `using`.** The whole SDK is already in scope through
-a `global using` gg's own files declare, so `fs`, `view`, `system` and every type
+a `global using` gg's own files declare, so `Files`, `Views`, `Shell` and every type
 they hand back are names you can write on line 1. `System`,
 `System.Collections.Generic`, `System.Linq`, `System.Text`,
 `System.Text.RegularExpressions` and `System.IO` are in scope for you already as
 well. Write the `using` lines you would normally write for anything else — they
-resolve exactly where they stand, and a redundant one costs nothing. Each API
-object is a `static class`, so nothing is constructed first.
+resolve exactly where they stand, and a redundant one costs nothing. Each
+module is a `static class`, so nothing is constructed first.
 
 The signatures below are written the way C# writes them. Required arguments are
 positional; optional ones have **default values and are passed by name**, so you
@@ -87,7 +87,7 @@ that fails.
 ```csharp
 var entries = {{api.fs.list_dir.call}}("src");
 var names = entries
-    .Where(entry => entry.Kind == EntryKind.File)
+    .Where(entry => entry.Kind == Files.EntryKind.File)
     .Select(entry => entry.Name)
     .Order();
 {{api.view.open_text.call}}("sources", string.Join("\n", names));
@@ -125,7 +125,7 @@ used: JSON, regular expressions, LINQ, immutable collections,
 arbitrary-precision arithmetic, XML and compression are all in it. Three
 absences are worth knowing before you spend a turn on one. `HttpClient` compiles
 and cannot transport — the handler underneath it is not in this runtime, so the
-network is reached through the `system` object below, as it is on every language
+network is reached through the `Gg.Shell` module below, as it is on every language
 gg drives. `System.Security.Cryptography` is present as types that throw
 `PlatformNotSupportedException`, which you can catch. And nothing in
 `System.Threading` will get work done for you, for the reason above.
@@ -150,22 +150,22 @@ Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
 
 ### Your APIs
 
-Your program is given these objects, each grouping the methods of one
+Your program is given these modules, each grouping the methods of one
 capability. Each is a `static class`, so you call one with
-`<object>.<Method>(args...)`. They are in scope already, with no `using` line of
-your own.
+`<Module>.<Method>(args...)`. They are in scope already, with no `using` line of
+your own — and `using static Gg.Files;` drops the prefix where you want it gone.
 
 {{#each apis}}
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what an object holds, and they reach you by different routes.
+Two calls tell you what a module holds, and they reach you by different routes.
 
-`<object>.{{meta.list.name}}()` — for example `fs.{{meta.list.name}}()` — **returns** an object's
+`<module>.{{meta.list.name}}()` — for example `Files.{{meta.list.name}}()` — **returns** a module's
 methods to your program, each as a `FunctionSummary`. It is an ordinary return
 value, so it puts nothing in front of you on its own: to read it yourself you
 must open a view of it, exactly as you would any other value your program
-computed — `{{api.view.open_text.call}}("fs", string.Join("\n", fs.{{meta.list.name}}().Select(f => f.Name)))`.
+computed — `{{api.view.open_text.call}}("files", string.Join("\n", Files.{{meta.list.name}}().Select(f => f.Name)))`.
 
 `{{api.view.open_docs_view.signature}}` **opens a
 view** directly, of one method's full signature, documentation, and the types it
@@ -304,7 +304,7 @@ A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{#if tasks}}
 ## Tasks
 
-You have access to a task list on the `tasks` object. Use `{{api.tasks.add_task.call}}` to add
+You have access to a task list in the `Gg.Tasks` module. Use `{{api.tasks.add_task.call}}` to add
 work, `{{api.tasks.update_task.call}}` to update a task's data, `{{api.tasks.complete_task.call}}` to mark a
 task as completed, and `{{api.tasks.remove_task.call}}` to drop a task. At most
 {{tasks.maxTasks}} may be recorded.
@@ -319,7 +319,7 @@ automatically rejected.
 
 Use `{{api.agents.spawn_subagent.call}}` to delegate work to another agent. Its second
 argument is a `Brief`, which is one value with two named factories:
-`Brief.Prompt("…")` or `Brief.Issue("…")` — so naming both, or neither, is a
+`Delegation.Brief.Prompt("…")` or `Delegation.Brief.Issue("…")` — so naming both, or neither, is a
 program that does not compile. You have the following agents available to you:
 
 {{#each spawnableAgents}}
@@ -333,7 +333,7 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-You have access to a shared project board, reached through the `project` object,
+You have access to a shared project board, reached through the `Gg.Board` module,
 that you and other agents may use. This board is shared across the entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational

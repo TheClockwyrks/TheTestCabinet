@@ -91,18 +91,34 @@
 //!
 //! # What the SDK is
 //!
-//! Twelve `static class`es in `namespace Gg`, one per API object, each with `PascalCase` methods,
-//! optional arguments a call names, real `enum`s, nullable reference types, `record`s for results
-//! and a thrown `ToolException` for the error arm. It is compiled **with** the model's program
-//! rather than referenced as a built assembly, which is what makes gg's surface reachable without
-//! the committed guest having to carry it — see [`sdk`] for the argument and the cost (~70 ms on a
-//! ~210 ms compile).
+//! **Eleven capability modules, each a `public static partial class` in `namespace Gg`**, with
+//! `PascalCase` methods, optional arguments a call names, real `enum`s, nullable reference types,
+//! `record`s for results and a thrown `ToolException` for the error arm — plus a twelfth,
+//! class-less `core` module holding the three types every other module's signatures name. It is
+//! compiled **with** the model's program rather than referenced as a built assembly, which is what
+//! makes gg's surface reachable without the committed guest having to carry it — see [`sdk`] for
+//! the argument and the cost (~70 ms on a ~210 ms compile).
 //!
-//! The one place it departs from C#'s naming conventions is the **object names**, which are
-//! lower-case: `fs`, `system`, `view`. That is not a choice — an object's name is
-//! identity (`language/agreement.rs`), shared with every other arm, and it is what the console groups by
-//! and what a documentation lookup routes on. Everything a language is free to spell is spelled the
-//! way C# spells it.
+//! Every name in it is spelled the way C# spells it, and nothing about the shape is gg's: a module
+//! is `System.Math`'s idiom, a result type is nested in the module that produces it, and a program
+//! that wants the prefix gone writes `using static Gg.Files;` of its own. What the SDK does *not*
+//! do is write that `using` on the program's behalf. The module qualification is the discovery
+//! backbone — a call written `Files.ReadFile` says which module documents it, and a bare `ReadFile`
+//! says nothing — so a program that has never been told a module's name can still read one off any
+//! call it sees.
+//!
+//! # The types are nested in the module that produces them
+//!
+//! `Gg.Files.FileRead`, `Gg.Tasks.TextEdit`, `Gg.Delegation.Brief`. That is what makes a
+//! fully-qualified name a *real* C# name on this arm rather than a key gg invented: the string a
+//! documentation view is opened by is the string a program could write. It also makes the surface
+//! collision-safe by construction, which is the property this design is being prototyped for — two
+//! modules may both declare a `Status` and neither has to be renamed.
+//!
+//! The one exception is the `core` module, whose three declarations (`ToolException`,
+//! `ToolErrorCode`, `FunctionSummary`) sit directly in `namespace Gg` and are therefore written
+//! bare. A `catch (ToolException failure)` that had to name a module would be a `catch` clause
+//! nobody writes.
 //!
 //! There is no logging function, and that is this arm's own answer rather than an omission:
 //! `Console.WriteLine` reaches the run's operator, because the SDK redirects `Console.Out` onto gg's
@@ -304,7 +320,7 @@ impl ProgramLanguage for CSharp {
         &PROMPT
     }
 
-    /// [`view.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
+    /// [`Views.OpenFile("src/Program.cs");`](self::open_file_statement) — with the window as the
     /// call's own optional arguments, passed by name.
     fn open_file_statement(&self, path: &str, window: Option<FileWindow>) -> String {
         open_file_statement(&spell(self, VIEW_OPEN_FILE), path, window)
@@ -388,8 +404,8 @@ impl ProgramLanguage for CSharp {
 // The syntax this arm writes
 // ---------------------------------------------------------------------------------------------
 
-/// `view.OpenFile("src/Program.cs");`, or the same call with `offset: 400, limit: 200` for a window
-/// — with `view.OpenFile` already spelled by the language that asked.
+/// `Views.OpenFile("src/Program.cs");`, or the same call with `offset: 400, limit: 200` for a window
+/// — with `Views.OpenFile` already spelled by the language that asked.
 ///
 /// Deliberately the plainest statement that does the job: no binding, no printing. It is synthesized
 /// into the agent's own transcript and read by the model as an example of its own output, so

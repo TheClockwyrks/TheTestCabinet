@@ -424,3 +424,65 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
     );
     assert!(reviewer.read("get").is_some());
 }
+
+/// **Every name a model has been shown opens**, on every registered arm — the fourth invariant of
+/// the [name rule](crate::sandbox::signatures::fqn), which is a property of this runtime rather than
+/// of a catalogue and so is asserted here.
+///
+/// Three strings count as *shown*, and the gate is over all three because a model has no way to
+/// tell them apart:
+///
+/// 1. the key a catalogued function advertises — its
+///    [fully-qualified name](crate::sandbox::CatalogueFunction::fqn) where its arm emits one, which
+///    is also what a search hit is filed under;
+/// 2. the name a program calls that function by, which is what a call site writes;
+/// 3. the **spelling** every type reference writes into a signature — `Files.FileRead`,
+///    `files::FileRead` — which is neither the type's key nor its bare name on a converted arm, and
+///    which is the string a model most often copies, because it is printed inside the signature of
+///    the very function whose documentation it just opened.
+///
+/// It passes vacuously on an arm whose spellings *are* its keys, which is every unconverted arm, and
+/// that is the point: it is the assertion that converting an arm cannot quietly cost the model the
+/// ability to open what the conversion made it read. It is asked of an agent holding everything,
+/// because what a *withheld* name answers is a different question with its own tests
+/// ([`a_type_only_a_withheld_function_reaches_is_not_readable`]).
+#[test]
+fn every_name_a_model_is_shown_opens_on_every_arm() {
+    for language in crate::sandbox::all_languages() {
+        let arm = language.display_name();
+        // Both roles, because the endings are bound one group per role and a name no role binds
+        // is a name no model is ever shown.
+        for role in [EndingRole::Standard, EndingRole::Review] {
+            let docs = DocsRuntime::new(
+                crate::tools::ALL_TOOL_NAMES
+                    .iter()
+                    .map(|tool| tool.to_string())
+                    .collect(),
+                role,
+                test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG,
+                language.id(),
+            );
+            for function in crate::sandbox::catalogue_functions(language) {
+                if !docs.bound(&function) {
+                    continue;
+                }
+                for key in [function.fqn.unwrap_or(function.name), function.name] {
+                    assert!(
+                        docs.read_any(key).is_some(),
+                        "{arm}: `{key}` is a name this arm advertises for `{}` and opens nothing",
+                        function.name,
+                    );
+                }
+                for reference in function.returns.iter().chain(function.types) {
+                    assert!(
+                        docs.read_any(reference.spelled()).is_some(),
+                        "{arm}: `{}` writes the type `{}` and that spelling opens nothing — it is \
+                         the string the model reads in the signature",
+                        function.name,
+                        reference.spelled(),
+                    );
+                }
+            }
+        }
+    }
+}

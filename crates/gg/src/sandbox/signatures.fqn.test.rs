@@ -114,7 +114,10 @@ fn the_rule_accepts_every_arms_own_spelling() {
             receiver: Some("SubagentHandle"),
             shape: Shape::Member,
         },
-        // C# — a static class that *is* the module, so a standalone function has no receiver.
+        // C# — a static class that *is* the module, so a standalone function has no receiver. The
+        // three rows below are the arm's real committed names rather than anticipated ones: this is
+        // the arm that has been converted, and its catalogue is held to the same rule by
+        // `every_registered_arms_names_are_whole`.
         Row {
             arm: "C#",
             fqn: "Gg.Files.ReadFile",
@@ -133,8 +136,8 @@ fn the_rule_accepts_every_arms_own_spelling() {
         },
         Row {
             arm: "C#",
-            fqn: "Gg.Agents.SubagentHandle.Send",
-            module: "Gg.Agents",
+            fqn: "Gg.Delegation.SubagentHandle.Send",
+            module: "Gg.Delegation",
             name: "Send",
             receiver: Some("SubagentHandle"),
             shape: Shape::Member,
@@ -399,15 +402,24 @@ fn the_v2_fixture_names_are_whole() {
     assert_eq!(faults(fixture::v2()), Vec::<String>::new());
 }
 
-/// **A v1 catalogue is not held to the rule**, because it emits no names to be held to.
+/// **Every registered arm's names hold together**, whichever schema it committed.
+///
+/// For an arm that emits no fully-qualified names the rule is inert — there is nothing to be right
+/// or wrong about, and a gate that invented names to check would be checking gg's invention rather
+/// than the arm's. For a converted arm it is the whole rule: module-qualified, of the right shape
+/// for its kind, unique, and every type and member reference resolving to something the same
+/// catalogue declares.
 #[test]
-fn the_rule_is_inert_on_a_v1_catalogue() {
+fn every_registered_arms_names_are_whole() {
     assert_eq!(faults(fixture::v1()), Vec::<String>::new());
     for language in crate::sandbox::all_languages() {
+        // Inert for an arm that emits no fully-qualified names at all, and the real rule for one
+        // that does — the same call either way, which is what keeps a converted arm from needing a
+        // second test to be held by.
         assert_eq!(
             faults(language.catalogue()),
             Vec::<String>::new(),
-            "{} is still a v1 arm and has no names to be wrong about",
+            "{}'s names do not hold together",
             language.display_name()
         );
     }

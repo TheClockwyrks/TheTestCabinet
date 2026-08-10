@@ -217,7 +217,8 @@ fn a_type_is_visible_through_the_functions_that_use_it() {
 /// disagree about where an entry lives.
 /// Asserted on the **Rust** arm rather than TypeScript's, because TypeScript's catalogue has exactly
 /// one type referenced from two objects and both are gated on the same tool, so the narrowing has
-/// nothing to bite on there. Rust's `ToolError` is referenced from all twelve.
+/// nothing to bite on there. Rust's `gg::core::ToolError` is referenced from every module that binds
+/// anything.
 #[test]
 fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
     let rust = |tools: &[&str]| {
@@ -228,8 +229,11 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
             GgProgramLanguage::Rust,
         )
     };
+    // Searched by the type's own name and found by its KEY, which on a converted arm are two
+    // different strings: a query is words, and a key is the fully-qualified name a view is opened
+    // by.
     let modules_of = |docs: &DocsRuntime, key: &str| -> String {
-        docs.search(ask(key))
+        docs.search(ask("ToolError"))
             .expect("a usable query")
             .hits
             .into_iter()
@@ -238,16 +242,19 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
             .module
     };
 
+    // The key is the type's fully-qualified name, because this arm is written in the normalized doc
+    // model and a name is what a documentation view is keyed by.
+    const TOOL_ERROR: &str = "gg::core::ToolError";
     let reader = rust(&["read_file"]);
-    let narrowed = modules_of(&reader, "ToolError");
+    let narrowed = modules_of(&reader, TOOL_ERROR);
     assert!(
-        narrowed.contains("fs"),
+        narrowed.contains("gg::files"),
         "the module it does hold a call in: {narrowed}"
     );
     // Every family it holds nothing in is absent, whatever the catalogue's own union says.
-    for absent in ["memory", "skills", "programs", "tasks", "project"] {
+    for absent in ["memories", "skills", "programs", "tasks", "board"] {
         assert!(
-            !narrowed.contains(absent),
+            !narrowed.contains(&format!("gg::{absent}")),
             "this agent has no bound call in `{absent}`: {narrowed}"
         );
         // And the filter agrees with the report, so the model cannot be pointed at a module whose
@@ -260,17 +267,17 @@ fn a_types_modules_are_narrowed_to_what_this_agent_binds() {
             })
             .expect("a usable query");
         assert!(
-            !keys(&found).contains(&"ToolError"),
+            !keys(&found).contains(&TOOL_ERROR),
             "`{absent}` answered a type it cannot reach: {:?}",
             keys(&found)
         );
     }
 
     // An agent that holds the surface is told the whole union, because for it the union is true.
-    let whole = modules_of(&rust(crate::tools::ALL_TOOL_NAMES), "ToolError");
-    for present in ["fs", "memory", "skills", "tasks"] {
+    let whole = modules_of(&rust(crate::tools::ALL_TOOL_NAMES), TOOL_ERROR);
+    for present in ["files", "memories", "skills", "tasks"] {
         assert!(
-            whole.contains(present),
+            whole.contains(&format!("gg::{present}")),
             "every family that raises it: {whole}"
         );
     }
@@ -588,7 +595,7 @@ fn every_language_answers_only_with_what_its_agent_binds() {
         let bound: Vec<&str> = crate::sandbox::catalogue_functions(language)
             .into_iter()
             .filter(|function| docs.bound(function))
-            .map(|function| function.name)
+            .map(|function| function.fqn.unwrap_or(function.name))
             .collect();
         for hit in found
             .hits

@@ -74,8 +74,8 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 use crate::ending::EndingRole;
 use crate::sandbox::{
     Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, Prose,
-    SignatureEntry, TypeDeclaration, catalogue_functions, language, meta_function, operation_of,
-    type_declaration,
+    SignatureEntry, TypeDeclaration, TypeReference, catalogue_functions, language, meta_function,
+    operation_of, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -292,6 +292,40 @@ impl DocsRuntime {
         out
     }
 
+    /// Every function of one **capability family** this agent binds, with one-line summaries.
+    ///
+    /// # Why this is not [`list`](Self::list) with the objects passed in
+    ///
+    /// Because the grouping a function is filed under is the **arm's**, and a family is **gg's**. On
+    /// a catalogue written in the first schema those two happen to coincide — the filesystem family's
+    /// functions hang off an object every arm calls `fs` — and on a
+    /// [converted](crate::sandbox::SchemaVersion::V2) arm they do not: the same functions are filed
+    /// under `gg::files` or `Gg.Files`, and a caller passing gg's own word for the object gets an
+    /// empty answer rather than a wrong one.
+    ///
+    /// Empty is exactly the failure worth designing out here, because the one caller is the
+    /// [built-in family skill](crate::skills)'s generated on-use script and an empty directory makes
+    /// it decline to generate a skill at all. So the family is resolved through the
+    /// [operation](crate::sandbox::operation_of) each entry binds, which is the identity both schemas
+    /// answer, and no arm's own vocabulary is quoted at it.
+    ///
+    /// An [alias](crate::sandbox::CatalogueFunction) is left out: it is a second way to reach an
+    /// operation the family already lists, and a directory that named both would open two
+    /// documentation views of one capability.
+    pub fn family(&self, family: &str) -> Vec<FunctionSummary> {
+        catalogue_functions(self.language)
+            .into_iter()
+            .filter(|function| function.alias_of.is_none() && self.bound(function))
+            .filter(|function| {
+                operation_of(function).is_some_and(|operation| operation.family == family)
+            })
+            .map(|function| FunctionSummary {
+                name: function.name.to_string(),
+                summary: function.prose.brief.to_string(),
+            })
+            .collect()
+    }
+
     /// One **function's** documentation by the name it is called by, or `None` for a name this run
     /// did not bind. The `list` meta function is answered from its own text; every other name is a
     /// catalogue function, gated by the enabled set.
@@ -337,7 +371,10 @@ impl DocsRuntime {
     /// you may not have it*, which would itself be the disclosure.
     pub fn read_type(&self, name: &str) -> Option<String> {
         let declaration = type_declaration(self.language, name)?;
-        self.type_is_reachable(&declaration.name)
+        // Reachability is asked under the string a reference RESOLVES to rather than under the bare
+        // name a signature wrote, because those are two different strings on a converted arm and
+        // asking under the wrong one refuses every type it declares. See `TypeDeclaration::key`.
+        self.type_is_reachable(declaration.key())
             .then(|| declare(declaration))
     }
 
@@ -376,9 +413,11 @@ impl DocsRuntime {
     /// The single entry point everything that re-derives a [docview](crate::context::OpenDocview)
     /// from its key goes through, so a re-seeded window cannot come back holding a different kind of
     /// block than the one it lost. Functions win a collision because a function is what a model
-    /// calls, and a name it can write into a program is the one it more likely meant; on today's
-    /// bare-name catalogue that is a judgement, and it stops being one as soon as keys are
-    /// module-qualified and the two namespaces cannot meet.
+    /// calls, and a name it can write into a program is the one it more likely meant. On a
+    /// [`V1`](crate::sandbox::SchemaVersion::V1) arm, whose keys are bare names, that is a
+    /// judgement; on a converted arm both halves are keyed by their module-qualified name and the
+    /// two namespaces cannot meet, so the judgement is only ever reached through the *fallback*
+    /// names each half also answers to.
     pub fn read_any(&self, key: &str) -> Option<String> {
         self.read(key).or_else(|| self.read_type(key))
     }
@@ -445,12 +484,17 @@ impl DocsRuntime {
             if !names_a_signature(&function, &declaration.name) {
                 continue;
             }
-            if mode == DocViewTypes::ReturnOnly && names_a_parameter(&function, &declaration.name) {
+            if mode == DocViewTypes::ReturnOnly
+                && !returned(&function, referenced, &declaration.name)
+            {
                 continue;
             }
-            let name = declaration.name.as_str();
-            if !names.contains(&name) {
-                names.push(name);
+            // The key, never the bare name: what comes back from here is handed straight to
+            // `read_type`, and a name that is indexed under one string and opened under another is
+            // a type this rule would name and that lookup would then miss.
+            let key = declaration.key();
+            if !names.contains(&key) {
+                names.push(key);
             }
         }
         names
@@ -460,9 +504,21 @@ impl DocsRuntime {
     /// [`types_to_open`](Self::types_to_open) share, so the two cannot disagree about which entry a
     /// name resolves to.
     fn function(&self, name: &str) -> Option<CatalogueFunction> {
-        catalogue_functions(self.language)
-            .into_iter()
-            .find(|function| function.name == name && self.bound(function))
+        let mut functions = catalogue_functions(self.language);
+        // The fully-qualified name first, because on a converted arm that is the key: it is what
+        // the catalogue advertises, what search files a hit under, and the only one of the two that
+        // two modules offering a `close` could not both claim. The bare name stays as the fallback
+        // for the same reason [`type_declaration`](crate::sandbox::type_declaration) keeps one — it
+        // is what a model reads at a call site — and on a v1 arm it is the only name there is.
+        let found = functions
+            .iter()
+            .position(|function| function.fqn == Some(name) && self.bound(function))
+            .or_else(|| {
+                functions
+                    .iter()
+                    .position(|function| function.name == name && self.bound(function))
+            })?;
+        Some(functions.swap_remove(found))
     }
 
     /// The bound names nearest `name`, for the hint a failed lookup carries — empty when nothing is
@@ -476,14 +532,46 @@ impl DocsRuntime {
     ///
     /// What counts as *near* is [`suggest`]'s to decide; what is *available* to be near is this
     /// method's.
+    ///
+    /// **Types are candidates too**, under every name they answer to, because
+    /// [`read_any`](Self::read_any) answers a type by name and a hint drawn from functions alone
+    /// could never recover a near-miss on one — which is the failure a model reaching for the type it
+    /// just read in a signature would hit. They are filtered by the same reachability predicate
+    /// [`read_type`](Self::read_type) applies, so a refusal cannot suggest its way around the gate.
     pub fn suggest(&self, name: &str) -> Vec<String> {
-        let bound: Vec<&'static str> = catalogue_functions(self.language)
-            .into_iter()
-            .filter(|function| self.bound(function))
-            .map(|function| function.name)
-            .chain(meta_function(self.language, LIST_FUNCTION).map(|meta| meta.name.as_str()))
-            .collect();
-        suggest::nearest(name, bound)
+        let functions = catalogue_functions(self.language);
+        let mut candidates: Vec<&'static str> = Vec::new();
+        for function in &functions {
+            if self.bound(function) {
+                candidates.push(function.name);
+                candidates.extend(function.fqn);
+            }
+        }
+        candidates
+            .extend(meta_function(self.language, LIST_FUNCTION).map(|meta| meta.name.as_str()));
+        for declaration in &self.language.catalogue().types {
+            if !self.type_is_reachable(declaration.key()) {
+                continue;
+            }
+            candidates.push(declaration.name.as_str());
+            candidates.push(declaration.key());
+        }
+        // The spelling a signature writes, which is neither of the two above on a converted arm and
+        // is the one a model is likeliest to have mistyped, since it is what the signature it just
+        // read printed.
+        for function in &functions {
+            if !self.bound(function) {
+                continue;
+            }
+            for reference in function.returns.iter().chain(function.types) {
+                if self.type_is_reachable(reference.fqn()) {
+                    candidates.push(reference.spelled());
+                }
+            }
+        }
+        candidates.sort_unstable();
+        candidates.dedup();
+        suggest::nearest(name, candidates)
     }
 
     /// **Whether this agent's scope binds a function** — the one predicate deciding what a model may
@@ -571,6 +659,30 @@ fn names_a_signature(function: &CatalogueFunction, type_name: &str) -> bool {
                 .iter()
                 .any(|parameter| mentions(&parameter.r#type, type_name))
     })
+}
+
+/// Whether `reference` is in `function`'s **return** position — stated where the catalogue states
+/// it, and inferred by elimination where it does not.
+///
+/// The [normalized schema](crate::sandbox::SchemaVersion::V2) carries a real return position, so an
+/// arm that has been converted answers this from a field its reflector resolved out of a type
+/// system. An arm that has not carries nothing, and the honest reading of its signature is the one
+/// [`types_to_open`](DocsRuntime::types_to_open) documents: a type named by one of the function's
+/// own documented parameters is an argument type, and everything else it names is reached through
+/// what it hands back.
+///
+/// A function that states an **empty** return position falls through to the inference rather than
+/// answering `false` outright, and that costs nothing: a call that hands nothing back names no type
+/// its own signature does not also write into a parameter, so the depth-one narrowing above has
+/// already dropped whatever the inference would have kept.
+fn returned(function: &CatalogueFunction, reference: &TypeReference, type_name: &str) -> bool {
+    if !function.returns.is_empty() {
+        return function
+            .returns
+            .iter()
+            .any(|returned| returned.fqn() == reference.fqn());
+    }
+    !names_a_parameter(function, type_name)
 }
 
 /// Whether any shape of `function` takes an argument whose declared type **names** `type_name` —

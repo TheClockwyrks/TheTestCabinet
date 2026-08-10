@@ -101,6 +101,80 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
     assert!(!script.contains("\"list\""), "{script}");
 }
 
+/// **A built-in family skill is generated for every registered arm**, whichever
+/// [schema](crate::sandbox::SchemaVersion) its catalogue is written in.
+///
+/// The script is generated from the directory of the family's functions, and a directory that came
+/// back empty makes `built_in_code` decline to generate a skill at all — silently, because declining
+/// is also the right answer for a family this run withheld. That is exactly what happened when the
+/// directory was asked for by **API object**: an arm whose surface is capability modules files the
+/// filesystem family under `gg::files` rather than under `fs`, so gg's own word for the object
+/// matched nothing and every converted arm quietly lost all eleven of its built-in skills. It is
+/// asked for by family now, which is gg's identity on both shapes of catalogue, and this is the
+/// gate that says so for every arm at once rather than for whichever one the tests above picked.
+#[test]
+fn every_arm_generates_the_built_in_family_skills_whatever_schema_it_is_written_in() {
+    for language in crate::sandbox::all_languages() {
+        let skills = builtin_skills(
+            &["read_file".to_string()],
+            &[read_file()],
+            EndingRole::Standard,
+            /* library */ true,
+            Some(language.id()),
+            &json!({}),
+        );
+        let offered = |name: &str| skills.iter().find(|skill| skill.name() == name);
+        let files = offered("gg-filesystem").unwrap_or_else(|| {
+            panic!(
+                "{} offers no filesystem skill for an agent holding `read_file`",
+                language.display_name()
+            )
+        });
+        let script = files.on_use(language).unwrap_or_else(|| {
+            panic!(
+                "{}'s filesystem skill carries no script",
+                language.display_name()
+            )
+        });
+        // The read is in it under this arm's own spelling, and the write — which this run withheld —
+        // is not, whatever that arm calls it. The script names each function by the name it is
+        // called by rather than by a qualified path, so the qualifier comes off the spelling gg
+        // resolved.
+        let named = |id: &str| {
+            let operation = crate::sandbox::OPERATIONS
+                .iter()
+                .find(|operation| operation.id.to_string() == id)
+                .expect("gg has this operation");
+            let spelled = crate::sandbox::spell(language, operation.call);
+            spelled
+                .rsplit(language.member_separator())
+                .next()
+                .unwrap_or(&spelled)
+                .to_string()
+        };
+        let read = named("files.read_file");
+        assert!(
+            script.contains(&read),
+            "{}'s filesystem skill does not open `{read}`:\n{script}",
+            language.display_name()
+        );
+        let write = named("files.write_file");
+        assert!(
+            !script.contains(&write),
+            "{}'s filesystem skill opens `{write}`, which this run withheld:\n{script}",
+            language.display_name()
+        );
+        // And the three carve-out families, which every program has whatever a run enables.
+        for family in ["gg-views", "gg-session", "gg-programs"] {
+            assert!(
+                offered(family).is_some(),
+                "{} offers no `{family}` skill",
+                language.display_name()
+            );
+        }
+    }
+}
+
 #[test]
 fn the_code_arm_offers_the_carve_out_families_a_native_run_has_no_tools_for() {
     let skills = builtin_skills(

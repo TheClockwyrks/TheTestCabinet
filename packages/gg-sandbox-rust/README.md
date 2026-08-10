@@ -18,9 +18,17 @@ component" and hand its bytes back from the preparation instead.
 What this package **is** is the crate a program is compiled against — named `gg`,
 because `rustc --extern gg=…` is what puts it in scope and so it is the first word of
 every Rust program in the study. It carries the hand-written, idiomatic SDK a model
-calls (`fs`, `system`, `project`, `tasks`, `memory`, `view`, `context`, `agents`,
-`skills`, `programs`, `harness`, `review`), the shell gg's generated entry file names,
-and the generated bindings both are written against.
+calls, the shell gg's generated entry file names, and the generated bindings both are
+written against.
+
+The SDK is **eleven capability modules** — `files`, `shell`, `board`, `tasks`,
+`memories`, `views`, `context`, `delegation`, `skills`, `programs`, `session` — plus a
+twelfth, `core`, which declares no function and holds the three types every other
+module's signatures name. Each module owns the types it produces, so `gg::files::FileRead`
+is at once the path a program writes and the key its documentation view is opened by, and
+two modules are free to declare a type of the same name. `gg::prelude` re-exports the
+**modules**, never the types inside them: that is what keeps a call qualified by the
+module that documents it, which is the whole of how a model discovers one.
 
 ## What it commits
 
@@ -61,13 +69,13 @@ is.
 | --- | --- |
 | `rust-version.sh` | The pins: the compiler (read out of `rust-toolchain.toml`), the target, and the `wit-bindgen` release. Sourced by every script here and by `containers/build.sh`. |
 | `Cargo.toml` | Its own workspace on purpose — it is compiled for wasm and its output is a set of `.rlib` files, so a member of the repository's workspace would be built by every `cargo build --workspace` for no reason. |
-| `src/lib.rs` | The crate's own front door: the API-object modules, the `prelude` gg glob-imports into every program, and `log`. |
-| `src/fs.rs`, `src/system.rs`, … | One file per API object. Each declares its functions, the gg tools they dispatch (`TOOLS`), and the `list` every object carries. |
-| `src/types.rs`, `src/options.rs`, `src/error.rs` | The model-facing shapes: what a call hands back, what its optional arguments are carried in, and how one fails. |
+| `src/lib.rs` | The crate's own front door: the capability modules with the gg module id each declares itself to be, the `prelude` gg glob-imports into every program, and `log`. |
+| `src/files.rs`, `src/shell.rs`, … | One file per capability module. Each declares its functions with the gg operation each binds, the types those functions hand back, the gg tools they dispatch (`TOOLS`), and the `list` every module carries. |
+| `src/core.rs` | The three types that belong to no module because they belong to all of them: `ToolError`, `ToolErrorCode` and `FunctionSummary`. |
 | `src/wire.rs` | The bridge onto the generated bindings — the only part of this crate a model never reads. |
-| `src/meta.rs` | The one `list` declaration, expanded into every object module by a macro so its documentation is written once. |
+| `src/directory.rs` | The one `list` declaration, expanded into every capability module by a macro so its documentation is written once. |
 | `src/program.rs` | The shell gg's generated entry file names: the panic hook, the `Failure` type a program's body returns, and what `bound-tools` answers. |
-| `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out. `tools/catalogue.py` is the identity half — which function is which gg tool, on which object, gated by what — and `tools/signatures.py` is everything else. |
+| `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out. `tools/catalogue.py` holds the one thing the sources cannot say — which modules the surface is divided into and in what order a reader meets them — and `tools/signatures.py` is everything else. A function's gg operation id is written on the declaration itself, as `#[doc(alias = "ggop:files.read_file")]`, and a module's as `#[doc(alias = "ggmodule:files")]`. |
 | `src/bindings.rs` | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `bindings.sh` writes it. |
 | `bindings.sh` | Fetches the pinned `wit-bindgen` and generates `src/bindings.rs`. Its own script rather than a step of `build.sh` because both `build.sh` and `signatures.sh` need it and only one of them may write a committed artifact — see below. |
 | `build.sh` | Generates the bindings, compiles the set for `wasm32-unknown-unknown`, packs it and writes the manifest. |
@@ -107,7 +115,7 @@ Two constraints decide what may be in it, and both are hard:
   one rather than trusting nobody adds it.
 - **It must compile for `wasm32-unknown-unknown`**, which has no clock, no filesystem, no
   sockets and no randomness. That rules out `rand`, `chrono` and `reqwest`. Reaching the
-  world is what `fs` and `system` are for.
+  world is what `gg::files` and `gg::shell` are for.
 
 ## Building it
 

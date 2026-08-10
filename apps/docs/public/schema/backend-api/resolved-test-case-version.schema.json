@@ -198,7 +198,7 @@
       "type": "object"
     },
     "CaseOut": {
-      "description": "One held-out scored case of a performance case: the store-relative keys of the\n`input` scenario fed to the engine and the `expected` oracle state its output\nis checked against. Mirrors core's wire `CaseBody`, so a resolved version\nround-trips its scored set through to the runner's [`materialize_version`].",
+      "description": "One held-out scored case of a performance case: the store-relative keys of the\n`input` scenario fed to the engine and the `expected` oracle state its output\nis checked against. Mirrors core's wire `CaseBody`, so a resolved version\nround-trips its scored set through to the runner's [`materialize_version`](test_cabinet_core::backend_client::materialize_version).",
       "properties": {
         "expected": {
           "type": "string"

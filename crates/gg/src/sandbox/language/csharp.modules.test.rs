@@ -147,7 +147,7 @@ fn a_code_skill_reaches_ggs_own_surface_and_the_models_lines_do_not_move() {
     // exactly as it is inside a program — with no `using` and nothing for the author to remember.
     let modules = [module(
         "report",
-        "public static void Show(string title, string body) => view.OpenText(title, body);\n",
+        "public static void Show(string title, string body) => Views.OpenText(title, body);\n",
     )];
     let logs = run_with(
         concat!(

@@ -68,12 +68,18 @@ pub(crate) struct Family {
     pub(crate) title: &'static str,
     /// The one-line description the skills index carries.
     pub(crate) description: &'static str,
-    /// The [API objects](crate::sandbox::CatalogueFunction) its functions are grouped under in a
-    /// program's scope, which is also what the responses-as-code arm asks the catalogue for.
+    /// The **API objects** its functions are grouped under, in gg's own vocabulary — what the
+    /// [reference](crate::reference) page groups its API tab by.
     ///
     /// A list rather than one name because of the ending family: `harness`, `review` and `judge` are
-    /// one family grouped by **role**, and exactly one of them is bound. Asking for all three and
-    /// keeping what comes back is how the skill describes the ending this agent really has.
+    /// one family grouped by **role**, and exactly one of them is bound.
+    ///
+    /// It is **not** how the responses-as-code arm asks the catalogue for this family's functions,
+    /// and that is worth stating because it was: an arm whose surface is capability modules files
+    /// the same functions under `gg::files` or `Gg.Files`, so a lookup by gg's word for the object
+    /// answers nothing there. [`DocsRuntime::family`](crate::docs::DocsRuntime::family) resolves
+    /// through the [operation](crate::sandbox::operation_of) instead, which both shapes of catalogue
+    /// answer.
     pub(crate) objects: &'static [&'static str],
     /// The gg tool names in it. Empty for the three families that are responses-as-code carve-outs
     /// and have no native tools at all — they are offered only in code mode.
@@ -361,14 +367,16 @@ fn describe_parameters(schema: &Value) -> Vec<String> {
 /// `view.openDocsView` gives it — the signature, the description, and every type they refer to — for
 /// the whole family at once, on the turn after it read the skill.
 fn built_in_code(family: &Family, docs: &crate::docs::DocsRuntime) -> Option<Skill> {
-    // `list` is on every object and documents itself; a skill that opened a view of it for each of
-    // eleven families would put eleven identical blocks in the window.
-    let functions: Vec<String> = family
-        .objects
-        .iter()
-        .flat_map(|object| docs.list(object))
+    // Asked by FAMILY rather than by object, because an object is the arm's own grouping and a
+    // family is gg's: an arm whose surface is capability modules files these same functions under
+    // `gg::files` rather than under `fs`, and a lookup by object name would answer nothing there and
+    // silently generate no skill. `list` is not in the answer either, and does not need filtering
+    // out: it belongs to every module and to no operation, and a skill that opened a view of it for
+    // each of eleven families would put eleven identical blocks in the window.
+    let functions: Vec<String> = docs
+        .family(family.id)
+        .into_iter()
         .map(|function| function.name)
-        .filter(|name| name != "list")
         .collect();
     if functions.is_empty() {
         return None;

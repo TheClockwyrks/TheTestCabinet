@@ -248,8 +248,18 @@ fn every_arm_opens_only_types_its_own_signature_names() {
                 })
                 .collect();
             for referenced in docs.types_to_open(function.name, DocViewTypes::ReturnAndParameters) {
+                // The key a documentation view is opened by is module-qualified; a signature
+                // writes the type under whatever qualification the program's own scope needs,
+                // which on a converted arm is shorter than the key and on the rest is the key
+                // itself. The last segment is the one thing both spellings always share, and it
+                // is enough for the property being asserted: a type reached at depth two is not
+                // written into this function's signature under any qualification at all.
+                let named = referenced
+                    .rsplit(|character: char| !(character.is_alphanumeric() || character == '_'))
+                    .next()
+                    .unwrap_or(referenced);
                 assert!(
-                    written.iter().any(|text| mentions(text, referenced)),
+                    written.iter().any(|text| mentions(text, named)),
                     "{}: opening `{}` would place `{referenced}`, which no shape of it names — \
                      that is depth two, and the rule is depth one.\nWhat it writes: {written:?}",
                     language.display_name(),

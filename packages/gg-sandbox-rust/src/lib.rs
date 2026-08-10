@@ -8,38 +8,46 @@
 //! into the wasm component that turn is evaluated by.
 //!
 //! ```ignore
-//! let entries = fs::list_dir(Some("src"))?;
-//! let sources: Vec<_> = entries.iter().filter(|e| e.kind == EntryKind::File).collect();
-//! let built = system::shell("cargo build", None)?;
-//! view::open_text("build", &built.output)?;
-//! harness::finish(&format!("looked at {} sources", sources.len()))?;
+//! let entries = files::list_dir(Some("src"))?;
+//! let sources: Vec<_> = entries
+//!     .iter()
+//!     .filter(|entry| entry.kind == files::EntryKind::File)
+//!     .collect();
+//! let built = shell::run("cargo build", None)?;
+//! views::open_text("build", &built.output)?;
+//! session::finish(&format!("looked at {} sources", sources.len()))?;
 //! ```
 //!
-//! # The surface
+//! # The surface is eleven capability modules
 //!
-//! Everything a program may call hangs off one of a handful of **API objects** — [`fs`], [`system`],
-//! [`project`], [`tasks`], [`memory`], [`view`], [`context`], [`agents`], [`skills`], [`programs`],
-//! [`harness`], [`review`] — and in Rust an object is a **module**, so `fs::read_file` is an
-//! ordinary path and `use gg::fs;` is how you shorten it. Each object also carries a `list`, which
-//! is the directory of what that object really bound for this run.
+//! [`files`], [`shell`], [`board`], [`tasks`], [`memories`], [`views`], [`context`], [`delegation`],
+//! [`skills`], [`programs`] and [`session`] — plus [`core`], which declares no function at all and
+//! holds the three types every other module's signatures name. A module is Rust's own unit of
+//! grouping, so `files::read_file` is an ordinary path, `gg::files::read_file` is the same function
+//! written in full, and `use gg::files;` is how a program that wants only one of them shortens it.
 //!
-//! gg puts `use gg::prelude::*;` in front of every program, so all twelve objects and every type
-//! below are already in scope. It is a **glob**, which Rust lets an explicit `use` shadow — so
-//! `use std::fs;` in your own program wins over this crate's `fs`, and nothing you import can
-//! collide with what gg imported for you.
+//! Each module owns the types it produces — `files::FileRead`, `board::IssueCreated`,
+//! `tasks::TextEdit` — which is what makes a fully-qualified name a *real* Rust path rather than a
+//! key gg invented, and what makes the surface collision-safe by construction: two modules may both
+//! declare a `Usage` and neither has to be renamed.
 //!
-//! The objects a run does **not** offer are still names this crate exports: a program that calls one
+//! gg writes `use gg::prelude::*;` in front of every program, so every module name and the three
+//! `core` types are already in scope. It is a **glob**, which Rust lets an explicit `use` shadow — so
+//! a program's own `use std::fs;` wins over anything glob-imported, and nothing a program imports can
+//! collide with what gg imported for it.
+//!
+//! The functions a run does **not** offer are still names this crate exports: a program that calls one
 //! gets a [`ToolError`] carrying [`Unavailable`](ToolErrorCode::Unavailable) rather than a compile
-//! error, because what a run enables is decided per run and this crate is compiled once. What every
-//! object's `list` reports, and what the system prompt describes, is what this run actually has.
+//! error, because what a run enables is decided per run and this crate is compiled once. Each
+//! module's `list` reports what that module really bound for this run.
 //!
 //! # Three rules every program here obeys
 //!
 //! * **Every call is synchronous.** There is no executor, no `async` and no `.await`; a call is done
 //!   when it returns.
-//! * **A value you compute is discarded unless you show it.**
-//!   [`view::open_text`] is how a program shows itself something. [`log`] goes to
-//!   the run's operator, not to you — and `println!` goes nowhere at all, because
+//! * **A value a program computes is discarded unless it is shown.**
+//!   [`views::open_text`] is how a program shows itself something. [`log`] goes to
+//!   the run's operator, not to the model — and `println!` goes nowhere at all, because
 //!   `wasm32-unknown-unknown` has no standard output.
 //! * **A failure is an [`Err`], not a panic.** Every call returns `Result<_, ToolError>`; `?`
 //!   composes them, and [`Failure`] is what the program's own body returns. A panic *is* reported —
@@ -90,72 +98,86 @@ pub mod bindings;
 
 pub mod program;
 
-mod error;
-mod meta;
-mod options;
-mod types;
+mod directory;
 mod wire;
 
-// The API objects. Alphabetical, because `rustfmt` sorts module declarations and this repository
-// does not fight it — which is why the order a model is PRESENTED with them in lives in
-// `tools/catalogue.py` instead, beside the rest of this surface's identity. That order is
-// model-facing (it is the sequence the system prompt's API list renders in), the reflector emits the
-// catalogue in it, and it fails if this list and that one name different modules.
-pub mod agents;
+// The model-facing modules, each carrying the gg module id it binds. Alphabetical, because
+// `rustfmt` sorts module declarations and this repository does not fight it — which is why the order
+// a model is PRESENTED with them in lives in `tools/catalogue.py` instead, beside the rest of this
+// surface's identity. That order is model-facing (it is the sequence the system prompt's module list
+// renders in), the reflector emits the catalogue in it, and it fails if this list and that one name
+// different modules.
+//
+// The `#[doc(alias = "ggmodule:…")]` on each is how a module says which of gg's cross-arm module ids
+// it is. It is written on the declaration rather than in a side table for the reason every operation
+// id is: a side table naming each module twice is the second copy that drifts.
+
+#[doc(alias = "ggmodule:board")]
+pub mod board;
+
+#[doc(alias = "ggmodule:context")]
 pub mod context;
-pub mod fs;
-pub mod harness;
-pub mod memory;
+
+#[doc(alias = "ggmodule:core")]
+pub mod core;
+
+#[doc(alias = "ggmodule:delegation")]
+pub mod delegation;
+
+#[doc(alias = "ggmodule:files")]
+pub mod files;
+
+#[doc(alias = "ggmodule:memories")]
+pub mod memories;
+
+#[doc(alias = "ggmodule:programs")]
 pub mod programs;
-pub mod project;
-pub mod review;
+
+#[doc(alias = "ggmodule:session")]
+pub mod session;
+
+#[doc(alias = "ggmodule:shell")]
+pub mod shell;
+
+#[doc(alias = "ggmodule:skills")]
 pub mod skills;
-pub mod system;
+
+#[doc(alias = "ggmodule:tasks")]
 pub mod tasks;
-pub mod view;
 
-pub use error::{ToolError, ToolErrorCode};
-pub use options::{IssueOptions, IssuePatch, MemoryOptions, ReadOptions, TaskOptions, TaskPatch};
-pub use program::Failure;
-pub use types::{
-    AgentStatus, ArchiveHit, ArchiveSearch, BoardUsage, Brief, DirEntry, EntryKind, EpicAssignment,
-    EpicCreated, FileRead, FunctionSummary, ImageFile, IssueCreated, IssueStatus, MemoryHit,
-    MemoryUsage, MessageRole, OpenView, ProgramSummary, ReclaimReport, ShellOutput, SubagentHandle,
-    SubagentResult, TaskStatus, TaskUsage, TextEdit, TextFile, ViewKind, ViewRegion,
-};
+#[doc(alias = "ggmodule:views")]
+pub mod views;
 
-/// **gg's surface, in one glob** — every API object and every type this SDK hands back or takes.
+pub use crate::core::{FunctionSummary, ToolError, ToolErrorCode};
+pub use crate::program::Failure;
+
+/// **gg's surface, in one glob** — every capability module, and the types that belong to no module.
 ///
 /// gg writes `use gg::prelude::*;` into the entry file it compiles a program in, so a program starts
 /// with all of it already in scope and needs no import line of its own. A glob is what makes that
 /// safe rather than presumptuous: Rust lets an explicit `use` shadow a glob-imported name, so a
 /// program that writes `use std::fs;` gets the standard library's and not this crate's.
+///
+/// It re-exports the **modules**, never the types inside them, and that is deliberate: a call written
+/// `files::read_file` says which module documents it where a bare `read_file` would say nothing, and
+/// a type written `tasks::TextEdit` leaves `board` free to declare a `TextEdit` of its own. The three
+/// [`core`] types are the exception — they belong to every module, and a `match` on an error code
+/// that had to name one would be a `match` nobody writes.
 pub mod prelude {
     pub use crate::{
-        agents, context, fs, harness, log, memory, programs, project, review, skills, system,
-        tasks, view,
+        board, context, delegation, files, log, memories, programs, session, shell, skills, tasks,
+        views,
     };
 
-    pub use crate::error::{ToolError, ToolErrorCode};
-    pub use crate::options::{
-        IssueOptions, IssuePatch, MemoryOptions, ReadOptions, TaskOptions, TaskPatch,
-    };
+    pub use crate::core::{FunctionSummary, ToolError, ToolErrorCode};
     pub use crate::program::Failure;
-    pub use crate::types::{
-        AgentStatus, ArchiveHit, ArchiveSearch, BoardUsage, Brief, DirEntry, EntryKind,
-        EpicAssignment, EpicCreated, FileRead, FunctionSummary, ImageFile, IssueCreated,
-        IssueStatus, MemoryHit, MemoryUsage, MessageRole, OpenView, ProgramSummary, ReclaimReport,
-        ShellOutput, SubagentHandle, SubagentResult, TaskStatus, TaskUsage, TextEdit, TextFile,
-        ViewKind, ViewRegion,
-    };
 }
 
 /// Write one line to the run's **operator** log.
 ///
 /// It is this arm's `console.log`: the channel a program uses to say something to whoever is
-/// watching the run, capped by the host and never shown back to the model. Showing something to
-/// **yourself** is [`view::open_text`], which is a view — attributable, closable, and in your next
-/// prompt.
+/// watching the run, capped by the host and never shown back to the model. Showing something to the
+/// model is [`views::open_text`], which is a view — attributable, closable, and in the next prompt.
 ///
 /// It exists because `println!` does not work here and cannot be made to: this arm's target is
 /// `wasm32-unknown-unknown`, whose standard output is a sink that accepts every byte and keeps none.
@@ -163,7 +185,8 @@ pub mod prelude {
 /// is the one failure shape this whole codebase spends the most effort not producing.
 ///
 /// It is deliberately **not** in the signature catalogue, on the same terms every other arm's
-/// `console.log` is not: the catalogue describes the API objects, and this belongs to none of them.
+/// `console.log` is not: the catalogue describes the capability modules, and this belongs to none of
+/// them.
 pub fn log(line: impl std::fmt::Display) {
     bindings::test_cabinet::gg::feedback::log(&line.to_string());
 }

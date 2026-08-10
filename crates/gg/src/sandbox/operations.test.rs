@@ -263,9 +263,7 @@ fn every_catalogued_function_has_an_operation() {
 /// waiver.
 ///
 /// **Provisional, and it does not discharge the propagation check the re-founded agreement gate
-/// owes.** It is keyed on the transitional [`Operation::call`] join, so it must be rewritten when
-/// each arm writes its operation id on the declaration and the join goes. More importantly it was
-/// written against eleven arms that already agree, with no way to make it fail: every operation is
+/// owes.** It was written against eleven arms that already agree, with no way to make it fail: every operation is
 /// [`Applicability::Universal`] today, so the dead-exemption branch below has never once been
 /// reached by the suite. A check whose failing paths have never run is a check nobody has evidence
 /// about, and eleven green arms are not that evidence. The gate is kept here because it is real
@@ -275,12 +273,19 @@ fn every_catalogued_function_has_an_operation() {
 #[test]
 fn every_operation_is_offered_by_every_arm_that_is_not_excused() {
     for language in all_languages() {
-        let catalogued: BTreeSet<(&str, &str)> = catalogue_functions(language)
+        // Keyed on the operation each entry RESOLVES to rather than on the pair it was filed under,
+        // because a converted arm files an entry under its own module and gg's `(object, key)` pair
+        // appears in its catalogue nowhere. An alias is not a binding: coverage counts the canonical
+        // one, so an arm that idiomatically offers a capability twice is not thereby ahead of an arm
+        // that offers it once.
+        let catalogued: BTreeSet<OperationId> = catalogue_functions(language)
             .iter()
-            .map(|function| (function.object, function.key))
+            .filter(|function| function.alias_of.is_none())
+            .filter_map(operation_of)
+            .map(|operation| operation.id)
             .collect();
         for operation in OPERATIONS {
-            let bound = catalogued.contains(&(operation.call.object, operation.call.key));
+            let bound = catalogued.contains(&operation.id);
             let excused = match operation.applies {
                 Applicability::Universal => None,
                 Applicability::UniversalExcept(exemptions) => exemptions
@@ -357,17 +362,19 @@ fn every_operations_binding_is_what_every_arm_declares() {
 /// is told a call takes nothing. Held per arm against gg rather than arm against arm, so it survives
 /// the arms being reshaped into different shapes of the same operation.
 ///
-/// **Provisional on the same terms as the propagation check above**: keyed on the transitional
-/// [`Operation::call`] join, and never yet observed failing. It is also the check whose looseness
-/// would be hardest to see — it reads "any signature documents a parameter", which is the right
-/// question for today's one-shape-per-function arms and becomes a weaker one the moment an arm binds
-/// an operation twice, since an alias with parameters would answer for a canonical binding without
-/// them. The version that counts is the one written against a fixture carrying an alias, and it must
-/// be made to fail on a takes-input mismatch before it is believed.
+/// **Provisional on the same terms as the propagation check above**: never yet observed failing.
+/// The looseness it once had — "any signature documents a parameter", which an alias with
+/// parameters could have answered on a parameterless canonical binding's behalf — is closed by
+/// asking only the canonical bindings, since an alias is free to take a different shape of the same
+/// capability. The version that counts is the one written against a fixture carrying an alias, and
+/// it must be made to fail on a takes-input mismatch before it is believed.
 #[test]
 fn takes_input_is_what_every_arm_documents() {
     for language in all_languages() {
-        for function in catalogue_functions(language) {
+        for function in catalogue_functions(language)
+            .into_iter()
+            .filter(|function| function.alias_of.is_none())
+        {
             let operation = operation_of(&function).expect("every catalogued function has one");
             let documented = function
                 .signatures

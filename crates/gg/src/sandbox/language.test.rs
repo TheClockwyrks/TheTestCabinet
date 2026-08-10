@@ -83,10 +83,13 @@ fn every_registered_language_carries_its_committed_artifacts() {
                 language.id()
             ),
         }
-        let catalogue = language.catalogue();
+        // The catalogue is loaded through the normalized projection rather than by reaching into a
+        // section, because which section a call arrives in is exactly what the two schemas disagree
+        // about — and what this asserts is that the artifact carries a surface at all, which is the
+        // same question whichever shape it was written in.
         assert!(
-            !catalogue.tools.is_empty(),
-            "{}'s catalogue documents no tools at all",
+            !crate::sandbox::catalogue_functions(language).is_empty(),
+            "{}'s catalogue documents no model-facing call at all",
             language.id()
         );
     }
@@ -260,9 +263,18 @@ fn every_model_facing_call_resolves_in_every_language() {
             .iter()
             .map(|operation| operation.call)
         {
+            // Resolved through the operation, which is the identity both schemas answer: an arm
+            // that groups its surface into modules carries gg's own `(object, key)` pair nowhere,
+            // and looking for it there would report every one of gg's calls missing. The canonical
+            // binding is what gg quotes, so an alias is skipped here exactly as `spell` skips it.
             let entry = functions
                 .iter()
-                .find(|function| function.object == call.object && function.key == call.key)
+                .find(|function| {
+                    function.alias_of.is_none()
+                        && crate::sandbox::operation_of(function).is_some_and(|resolved| {
+                            resolved.call.object == call.object && resolved.call.key == call.key
+                        })
+                })
                 .unwrap_or_else(|| {
                     panic!(
                         "{}: gg names `{}.{}`, which its catalogue does not carry",
@@ -271,11 +283,15 @@ fn every_model_facing_call_resolves_in_every_language() {
                         call.key
                     )
                 });
+            // Both halves of the quoted spelling are the ARM's: the grouping a program writes
+            // before the separator, and the name after it. On an arm whose surface is API objects
+            // the grouping is gg's own word for it and nothing changes; on a converted arm it is
+            // the module path, which is the only form a program could compile.
             assert_eq!(
                 crate::sandbox::spell(language, call),
                 format!(
                     "{}{}{}",
-                    call.object,
+                    entry.object,
                     language.member_separator(),
                     entry.name
                 ),

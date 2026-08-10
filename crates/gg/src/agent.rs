@@ -8576,8 +8576,10 @@ fn api_surface(
     let docs =
         crate::docs::DocsRuntime::new(scope_tools(registry), role, capabilities, program_language);
     let language = docs.language();
-    // In the catalogue's order, which is the order the SDK declares them in.
-    let objects = crate::sandbox::catalogue_objects(language);
+    // In the catalogue's order, which is the order the SDK declares them in — read through the
+    // normalized reading of the two schemas, so that an arm whose surface is API objects and an arm
+    // whose surface is modules both arrive here as the same list of groupings.
+    let objects = crate::sandbox::catalogue_modules(language);
     // Grouped by object rather than filtered per object, so the catalogue is walked once.
     let mut bound: BTreeMap<&'static str, Vec<GgAgentApiFunction>> = BTreeMap::new();
     for function in crate::sandbox::catalogue_functions(language) {
@@ -8598,7 +8600,7 @@ fn api_surface(
     objects
         .iter()
         .filter_map(|described| {
-            let object = described.object.as_str();
+            let object = described.path;
             bound.remove(object).map(|mut functions| {
                 // `catalogue_functions` walks the sections whose entries name an object, and a meta
                 // function names none — the guest seeds it onto every object it creates, and no tool
@@ -8613,7 +8615,7 @@ fn api_surface(
                 }
                 GgAgentApi {
                     object: object.to_string(),
-                    description: described.doc.clone(),
+                    description: described.prose.rendered().into_owned(),
                     functions,
                 }
             })

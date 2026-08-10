@@ -269,6 +269,13 @@ fn segments(tail: &str) -> Vec<&str> {
 /// * no two entries share a name, because a name is a documentation view's key;
 /// * every [type reference](super::TypeReference) resolves to a type this catalogue declares, which
 ///   is what makes "open the types this function returns" a lookup rather than a guess;
+/// * no **written spelling** — `Files.FileRead`, `files::FileRead` — names two types. The spelling
+///   is the string a model reads inside a signature and copies out of it, and it is a second key the
+///   lookup accepts; two declarations answering to one would make that lookup a coin toss;
+/// * every declared type is **referred to by something**. A type nothing reaches is a documentation
+///   view nothing can open: reachability from a bound call is what gates a type view, so an
+///   unreferenced declaration is dead weight in the catalogue and an unanswerable name to the one
+///   reader it exists for;
 /// * every [member function](super::MemberFunction) a type lists is itself catalogued under that
 ///   name, so the menu a type view shows is a menu of things that can actually be opened.
 pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
@@ -289,8 +296,20 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
         .iter()
         .filter_map(|declaration| declaration.fqn.as_deref())
         .collect();
+    // The two questions a reference answers, gathered as the functions are walked: which
+    // declarations are reached at all, and under which written spellings a model has seen them.
+    let mut reached: BTreeSet<&str> = BTreeSet::new();
+    let mut spelled: BTreeSet<&str> = BTreeSet::new();
 
     for function in &catalogue.functions {
+        // Gathered first, and before any early exit: what a signature *refers to* is a fact about
+        // the reference, and a function whose module is misnamed still puts the types it names
+        // within a program's reach. Folding this in after a `continue` would make one fault
+        // manufacture a second, unrelated one.
+        for reference in function.returns.iter().chain(&function.types) {
+            reached.insert(reference.fqn());
+            spelled.insert(reference.spelled());
+        }
         let Some(path) = path_of(&function.module) else {
             out.push(format!(
                 "`{}` is documented under the module `{}`, which the catalogue does not declare",
@@ -342,6 +361,13 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
         }
     }
 
+    for entry in &catalogue.meta {
+        for reference in &entry.types {
+            reached.insert(reference.fqn());
+            spelled.insert(reference.spelled());
+        }
+    }
+
     for declaration in &catalogue.types {
         let Some(fqn) = declaration.fqn.as_deref() else {
             out.push(format!(
@@ -382,6 +408,38 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
                     member.fqn
                 ));
             }
+        }
+        if !reached.contains(fqn) {
+            out.push(format!(
+                "nothing refers to the type `{fqn}`, so no agent can reach it and no documentation \
+                 view of it can be opened — a declaration only exists to be read"
+            ));
+        }
+    }
+
+    // One spelling, one type. A spelling that two declarations both answer to would make the lookup
+    // that accepts it a coin toss: `read_any` takes the first, and the model would be shown the
+    // wrong declaration under a name it read in a real signature. That the spelling resolves *at
+    // all* is guaranteed by construction — it is recorded beside its own resolution — so
+    // ambiguity is the only thing left here to be wrong, and the runtime gate over the whole lookup
+    // lives in `docs.test.rs` where the reachability half can be asked as well.
+    for spelling in spelled {
+        let mut resolutions: BTreeSet<&str> = BTreeSet::new();
+        for reference in catalogue
+            .functions
+            .iter()
+            .flat_map(|function| function.returns.iter().chain(&function.types))
+            .chain(catalogue.meta.iter().flat_map(|entry| &entry.types))
+        {
+            if reference.spelled() == spelling {
+                resolutions.insert(reference.fqn());
+            }
+        }
+        if resolutions.len() > 1 {
+            out.push(format!(
+                "signatures write the type `{spelling}` for {resolutions:?} — one spelling has to \
+                 name one type, or the lookup that accepts it answers with whichever came first"
+            ));
         }
     }
 

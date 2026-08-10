@@ -42,7 +42,8 @@ internal static class Wire
 
     // A `board-usage` as the bridge hands it back: one array in declaration order, which is what
     // keeps the calls that carry one inside the interpreter's argument-count ceiling.
-    internal static BoardUsage Board(uint[] board) => new(board[0], board[1], board[2], board[3]);
+    internal static Gg.Board.BoardUsage Board(uint[] board) =>
+        new(board[0], board[1], board[2], board[3]);
 
     // A list argument the caller left out. The bridge lowers an empty array as an empty list, which
     // is what every one of these means: "no blockers", "no reviewers".

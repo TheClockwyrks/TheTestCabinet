@@ -246,7 +246,7 @@ const CODE_ENDINGS: [&str; 13] = [
 /// almost nothing a model writes has.
 ///
 /// The backtick is absent for [Rust's reason](super::super::rust::healing): a lead-in written with
-/// an inline code span (`` Use `view.OpenText` to show yourself a value ``) is the single most
+/// an inline code span (`` Use `Views.OpenText` to show yourself a value ``) is the single most
 /// common prose line there is, and one that could never be deleted would cost a repair on almost
 /// every fenced reply.
 const NON_PROSE_CHARS: [char; 15] = [
@@ -549,7 +549,7 @@ fn carries_an_assignment(line: &str) -> bool {
     })
 }
 
-/// Whether `line` opens with `Name(`, `a.b(` — `view.OpenText(`, `Console.WriteLine(`.
+/// Whether `line` opens with `Name(`, `a.b(` — `Views.OpenText(`, `Console.WriteLine(`.
 fn opens_with_call(line: &str) -> bool {
     let mut chars = line.char_indices().peekable();
     let Some((_, first)) = chars.peek().copied() else {

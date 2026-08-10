@@ -53,24 +53,24 @@ fn this_arm_commits_no_component_and_compiles_one_instead() {
     }
 }
 
-/// **This is one of the two arms that join an object to a function with `::`**, because here an
-/// object is a module.
+/// **This is one of the two arms that join a grouping to a function with `::`**, because here the
+/// grouping is a module.
 ///
 /// Everything else about a call's spelling comes out of the catalogue; the punctuation between the
 /// two halves appears in no declaration, so the seam has to be told. gg quotes qualified calls in
-/// its own notices and in every line of every prompt template, and `view.open_text` on this arm is
-/// `E0423: expected value, found module` — so a model would be taught, in every sentence gg writes
-/// about a call, a spelling that cannot compile.
+/// its own notices and in every line of every prompt template, and `gg::views.open_text` on this arm
+/// is `E0423: expected value, found module` — so a model would be taught, in every sentence gg
+/// writes about a call, a spelling that cannot compile.
 ///
 /// [C++](super::super::cpp) is the other, and for the same reason reached through a different
-/// construct: there an object is a **namespace**. Both are named here rather than derived, so a
+/// construct: there the grouping is a **namespace**. Both are named here rather than derived, so a
 /// third arm answering `::` is a failing test with a sentence in it.
 #[test]
-fn this_is_the_arm_whose_objects_are_modules() {
+fn this_is_the_arm_whose_groupings_are_modules() {
     assert_eq!(rust().member_separator(), "::");
     assert_eq!(
         crate::sandbox::spell(rust(), crate::sandbox::VIEW_OPEN_TEXT),
-        "view::open_text"
+        "gg::views::open_text"
     );
     for language in crate::sandbox::all_languages() {
         let qualified = matches!(
@@ -133,15 +133,16 @@ fn the_binding_name_is_a_snake_case_rust_identifier() {
 /// `Result` went unused would be the model's first example of ignoring a failure.
 ///
 /// The window is written out in full rather than with a `..Default::default()` tail, because
-/// `ReadOptions` has exactly two fields and this statement sets both — which is exactly where this
-/// arm is meant to look different from [Kotlin's](super::super::kotlin) named arguments and
-/// [Java's](super::super::java) second overload.
+/// `files::ReadOptions` has exactly two fields and this statement sets both — which is exactly where
+/// this arm is meant to look different from [Kotlin's](super::super::kotlin) named arguments and
+/// [Java's](super::super::java) second overload. The struct is module-qualified because the prelude
+/// re-exports the modules and not the types inside them.
 #[test]
 fn the_synthesized_file_view_is_rust() {
     let whole = rust().open_file_statement("src/main.rs", None);
     assert_eq!(
         whole,
-        "view::open_file(\"src/main.rs\", ReadOptions::default())?;"
+        "gg::views::open_file(\"src/main.rs\", files::ReadOptions::default())?;"
     );
 
     let windowed = rust().open_file_statement(
@@ -153,7 +154,8 @@ fn the_synthesized_file_view_is_rust() {
     );
     assert_eq!(
         windowed,
-        "view::open_file(\"src/main.rs\", ReadOptions { offset: Some(400), limit: Some(200) })?;"
+        "gg::views::open_file(\"src/main.rs\", files::ReadOptions { offset: Some(400), \
+         limit: Some(200) })?;"
     );
 
     // A path a model could not have written safely is still one statement.
@@ -169,7 +171,7 @@ fn the_generated_documentation_program_is_a_statement_sequence() {
     assert_eq!(
         program,
         "let functions = [\n    \"read_file\",\n    \"open_text\",\n];\n\
-         for name in functions {\n    view::open_docs_view(name)?;\n}\n"
+         for name in functions {\n    gg::views::open_docs_view(name)?;\n}\n"
     );
 
     // The empty case carries its element type, because `[]` alone has none to infer.
@@ -198,7 +200,7 @@ fn the_modules_in_scope_are_declared_below_the_program_and_move_nothing() {
             source: "use ::gg::prelude::*;\npub fn title() -> &'static str { \"n\" }\n".to_string(),
         },
     ];
-    let program = "let total = 1;\nview::open_text(\"n\", &total.to_string())?;\n";
+    let program = "let total = 1;\nviews::open_text(\"n\", &total.to_string())?;\n";
     let wrapped = source::wrap(program, &modules).expect("an ordinary program is wrapped");
 
     let lines: Vec<&str> = wrapped.lines().collect();
@@ -293,20 +295,27 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
 
 /// **The committed catalogue is this language's**, and it carries the whole surface in Rust's own
 /// spelling.
+///
+/// Every operation resolves to a call written under the module that documents it, and — with one
+/// exception — to gg's own key, because gg's vocabulary is already `snake_case`. The exception is
+/// `shell.shell`: `gg::shell::shell` would stutter a module's name into the one function it holds,
+/// which is the one thing Rust naming is most consistent about not doing, so this arm spells it
+/// `run`. It is named here rather than derived, so a second divergence is a failing test.
 #[test]
 fn the_committed_catalogue_is_this_languages() {
     let catalogue = rust().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Rust);
-    for call in crate::sandbox::OPERATIONS
-        .iter()
-        .map(|operation| operation.call)
-    {
-        let spelled = crate::sandbox::spell(rust(), call);
+    for operation in crate::sandbox::OPERATIONS {
+        // The module ids are gg's cross-arm vocabulary and this SDK adopts them verbatim, so the
+        // namespace an operation is filed under IS the Rust module that documents it.
+        let expected = match operation.id.to_string().as_str() {
+            "shell.shell" => "gg::shell::run".to_string(),
+            _ => format!("gg::{}::{}", operation.id.namespace, operation.id.key),
+        };
         assert_eq!(
-            spelled,
-            format!("{}::{}", call.object, call.key),
-            "this arm spells `{}` in `snake_case`, so its catalogue key and its name are one word",
-            call.key
+            crate::sandbox::spell(rust(), operation.call),
+            expected,
+            "this arm writes a call under the module that documents it, in gg's own `snake_case`"
         );
     }
 }

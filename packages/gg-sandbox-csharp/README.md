@@ -9,7 +9,7 @@ Not an npm package. This directory is a set of builds, and what they commit live
 | Artifact | What it is |
 | --- | --- |
 | `crates/gg/src/sandbox/guests/csharp.component.wasm` | The guest — Mono's IL interpreter, the .NET class libraries, ICU and gg's bridge, as one self-contained wasm component exporting gg's `sandbox` world (35.3 MB) |
-| `crates/gg/src/sandbox/guests/csharp.signatures.json` | The **catalogue** — every object, signature, argument, type and type member a model is told about, reflected out of the SDK's own XML documentation comments |
+| `crates/gg/src/sandbox/guests/csharp.signatures.json` | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments |
 | `crates/gg/src/sandbox/checkers/csharp.toolchain.json` | What built the guest, and what is in it |
 
 | | |
@@ -46,8 +46,9 @@ path for binding a custom WIT world from managed .NET code, and this arm never a
 
 ## The SDK, and why it is source rather than a built assembly
 
-`src/Gg/` is twelve `static class`es in `namespace Gg`, one per API object, plus the types they
-return and the `ToolException` they throw. It is **compiled with the model's program**, not
+`src/Gg/` is eleven capability modules, each a `public static partial class` in `namespace Gg` with
+its own directory and its result types nested inside it, plus a class-less `core` module holding the
+`ToolException`, the `ToolErrorCode` and the `FunctionSummary` that every module's signatures name. It is **compiled with the model's program**, not
 referenced as a built assembly — `crates/gg/src/sandbox/language/csharp.sdk.rs` carries the sources
 in gg's binary and writes them into the preparation's own workspace beside `program.cs`.
 

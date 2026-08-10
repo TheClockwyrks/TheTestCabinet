@@ -74,7 +74,7 @@ fn a_compile_that_failed_in_ggs_sdk_and_only_warned_about_the_program_is_ggs() {
         false,
         "exited with status 1",
         &format!(
-            "{SDK_DIRECTORY}/Objects/fs.cs(12,5): error CS0246: The type or namespace name 'Nope' \
+            "{SDK_DIRECTORY}/Files/Files.cs(12,5): error CS0246: The type or namespace name 'Nope' \
              could not be found\n\
              program.cs(4,9): warning CS8600: Converting null literal or possible null value\n"
         ),
@@ -154,7 +154,7 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
         ));
     }
     stdout.push_str(&format!(
-        "{SDK_DIRECTORY}/Objects/fs.cs(12,5): error CS0246: gg's own file\n"
+        "{SDK_DIRECTORY}/Files/Files.cs(12,5): error CS0246: gg's own file\n"
     ));
     let Err(PrepareFailure::Program(PrepareError::Compile(diagnostic))) =
         verdict(&report(false, "exited with status 1", &stdout, ""))
@@ -170,7 +170,7 @@ fn the_band_is_decided_before_anything_is_dropped_for_length() {
     // matter that only eight of them would ever have been shown.
     let ours: String = (1..=40)
         .map(|line| {
-            format!("{SDK_DIRECTORY}/Objects/fs.cs({line},5): error CS0246: gg's own file\n")
+            format!("{SDK_DIRECTORY}/Files/Files.cs({line},5): error CS0246: gg's own file\n")
         })
         .collect();
     assert!(
@@ -291,7 +291,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     std::fs::write(references.join("System.Linq.xml"), "").expect("a documentation file");
 
     let sdk = [
-        path.join("sdk/Objects/fs.cs"),
+        path.join("sdk/Files/Files.cs"),
         path.join("sdk/ToolException.cs"),
     ];
     let rendered = response_file(
@@ -341,7 +341,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
 
     // The SDK's sources are compiled with the program, and BEFORE it: they are what makes gg's
     // surface reachable without an assembly the guest would have to carry. A compile that lost
-    // them would fail on the model's first `fs.ReadFile` with a diagnostic about the model. The
+    // them would fail on the model's first `Files.ReadFile` with a diagnostic about the model. The
     // code modules in scope sit between the two, so one may reach another's class and neither can
     // move a line of the model's own file.
     let sources: Vec<String> = lines
@@ -358,7 +358,7 @@ fn the_response_file_pins_everything_a_compile_must_not_inherit() {
     assert_eq!(
         sources,
         [
-            "sdk/Objects/fs.cs",
+            "sdk/Files/Files.cs",
             "sdk/ToolException.cs",
             "module_Kit.cs",
             "program.cs",

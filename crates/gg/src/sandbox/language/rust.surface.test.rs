@@ -95,27 +95,27 @@ fn crossings() -> Vec<Crossing> {
     vec![
         Crossing {
             tool: "shell",
-            statement: r#"system::shell("npm test", Some(30.0));"#,
+            statement: r#"shell::run("npm test", Some(30.0));"#,
             expected: || json!({ "command": "npm test", "timeout_secs": 30.0 }),
         },
         Crossing {
             tool: "read_file",
-            statement: r#"fs::read_file("src/a.rs", ReadOptions { offset: Some(2), limit: Some(5) });"#,
+            statement: r#"files::read_file("src/a.rs", files::ReadOptions { offset: Some(2), limit: Some(5) });"#,
             expected: || json!({ "path": "src/a.rs", "offset": 2, "limit": 5 }),
         },
         Crossing {
             tool: "write_file",
-            statement: r#"fs::write_file("out.txt", "hello");"#,
+            statement: r#"files::write_file("out.txt", "hello");"#,
             expected: || json!({ "path": "out.txt", "contents": "hello" }),
         },
         Crossing {
             tool: "edit_file",
-            statement: r#"fs::edit_file("src/a.rs", "alpha", "beta");"#,
+            statement: r#"files::edit_file("src/a.rs", "alpha", "beta");"#,
             expected: || json!({ "path": "src/a.rs", "old_string": "alpha", "new_string": "beta" }),
         },
         Crossing {
             tool: "list_dir",
-            statement: r#"fs::list_dir(Some("src"));"#,
+            statement: r#"files::list_dir(Some("src"));"#,
             expected: || json!({ "path": "src" }),
         },
         Crossing {
@@ -125,7 +125,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "write_memory",
-            statement: r#"memory::write_memory("layout", "d", "b", MemoryOptions::default());"#,
+            statement: r#"memories::write_memory("layout", "d", "b", memories::MemoryOptions::default());"#,
             expected: || {
                 json!({ "name": "layout", "description": "d", "body": "b",
                         "code": null, "onUse": null })
@@ -133,7 +133,7 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_memory",
-            statement: r#"memory::update_memory("layout", "d2", "b2", MemoryOptions::default());"#,
+            statement: r#"memories::update_memory("layout", "d2", "b2", memories::MemoryOptions::default());"#,
             expected: || {
                 json!({ "name": "layout", "description": "d2", "body": "b2",
                         "code": null, "onUse": null })
@@ -143,7 +143,7 @@ fn crossings() -> Vec<Crossing> {
             tool: "create_memory",
             // The one crossing that carries a memory's CODE, and the one that exercises functional
             // update over an options struct with something already in it.
-            statement: r#"memory::create_memory("layout", "d", "b", MemoryOptions {
+            statement: r#"memories::create_memory("layout", "d", "b", memories::MemoryOptions {
                 code: Some("fn one() -> i32 { 1 }"),
                 ..Default::default()
             });"#,
@@ -154,27 +154,27 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "read_memory",
-            statement: r#"memory::read_memory("layout");"#,
+            statement: r#"memories::read_memory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "edit_memory",
-            statement: r#"memory::edit_memory("layout", "old", "new");"#,
+            statement: r#"memories::edit_memory("layout", "old", "new");"#,
             expected: || json!({ "name": "layout", "old_string": "old", "new_string": "new" }),
         },
         Crossing {
             tool: "search_memories",
-            statement: r#"memory::search_memories(&["cargo", "nextest"]);"#,
+            statement: r#"memories::search_memories(&["cargo", "nextest"]);"#,
             expected: || json!({ "keywords": ["cargo", "nextest"] }),
         },
         Crossing {
             tool: "delete_memory",
-            statement: r#"memory::delete_memory("layout");"#,
+            statement: r#"memories::delete_memory("layout");"#,
             expected: || json!({ "name": "layout" }),
         },
         Crossing {
             tool: "add_task",
-            statement: r#"tasks::add_task("t1", "T", TaskOptions {
+            statement: r#"tasks::add_task("t1", "T", tasks::TaskOptions {
                 description: Some("D"),
                 blocked_by: &["t0"],
             });"#,
@@ -182,10 +182,10 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_task",
-            statement: r#"tasks::update_task("t1", TaskPatch {
+            statement: r#"tasks::update_task("t1", tasks::TaskPatch {
                 title: Some("T2"),
-                description: TextEdit::Clear,
-                status: Some(TaskStatus::InProgress),
+                description: tasks::TextEdit::Clear,
+                status: Some(tasks::TaskStatus::InProgress),
             });"#,
             expected: || {
                 // `TextEdit::Clear` is what CLEARS it — the default `Keep` is what leaves it alone —
@@ -211,12 +211,12 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "create_epic",
-            statement: r#"project::create_epic("epc", "E", "D");"#,
+            statement: r#"board::create_epic("epc", "E", "D");"#,
             expected: || json!({ "prefix": "epc", "title": "E", "description": "D" }),
         },
         Crossing {
             tool: "create_issue",
-            statement: r#"project::create_issue("I", "s", "o", "c", "worker", IssueOptions {
+            statement: r#"board::create_issue("I", "s", "o", "c", "worker", board::IssueOptions {
                 reviewers: &["critic"],
                 ..Default::default()
             });"#,
@@ -236,9 +236,9 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "update_issue",
-            statement: r#"project::update_issue("i1", IssuePatch {
-                status: Some(IssueStatus::Done),
-                epic: EpicAssignment::Ungroup,
+            statement: r#"board::update_issue("i1", board::IssuePatch {
+                status: Some(board::IssueStatus::Done),
+                epic: board::EpicAssignment::Ungroup,
                 ..Default::default()
             });"#,
             expected: || {
@@ -258,22 +258,22 @@ fn crossings() -> Vec<Crossing> {
         },
         Crossing {
             tool: "set_issue_blocked_by",
-            statement: r#"project::set_issue_blocked_by("i1", &["i0"]);"#,
+            statement: r#"board::set_issue_blocked_by("i1", &["i0"]);"#,
             expected: || json!({ "id": "i1", "blockedBy": ["i0"] }),
         },
         Crossing {
             tool: "remove_epic",
-            statement: r#"project::remove_epic("e1");"#,
+            statement: r#"board::remove_epic("e1");"#,
             expected: || json!({ "id": "e1" }),
         },
         Crossing {
             tool: "remove_issue",
-            statement: r#"project::remove_issue("i1");"#,
+            statement: r#"board::remove_issue("i1");"#,
             expected: || json!({ "id": "i1" }),
         },
         Crossing {
             tool: "wait_for_issue",
-            statement: r#"project::wait_for_issue("i1");"#,
+            statement: r#"board::wait_for_issue("i1");"#,
             expected: || json!({ "issueId": "i1" }),
         },
         Crossing {
@@ -303,32 +303,32 @@ fn crossings() -> Vec<Crossing> {
             tool: "spawn_subagent",
             // The brief is a typed value rather than one of two optional arguments, so "both" and
             // "neither" are programs that do not compile.
-            statement: r#"agents::spawn_subagent("subagent", Brief::Prompt("write the lexer"));"#,
+            statement: r#"delegation::spawn_subagent("subagent", delegation::Brief::Prompt("write the lexer"));"#,
             expected: || json!({ "agent": "subagent", "prompt": "write the lexer", "issueId": null }),
         },
         Crossing {
             tool: "wait_for_subagents",
-            statement: r#"agents::wait_for_subagents(Some(&["agent-1"]));"#,
+            statement: r#"delegation::wait_for_subagents(Some(&["agent-1"]));"#,
             expected: || json!({ "ids": ["agent-1"] }),
         },
         Crossing {
             tool: "send_message",
-            statement: r#"agents::send_message("agent-1", "prefer the simpler parser");"#,
+            statement: r#"delegation::send_message("agent-1", "prefer the simpler parser");"#,
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
             tool: "transition_state",
-            statement: r#"agents::transition_state("verify", Some("the build is green"));"#,
+            statement: r#"delegation::transition_state("verify", Some("the build is green"));"#,
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
         Crossing {
             tool: "exec",
-            statement: r#"agents::exec("Builder", Some("pick it up from here"));"#,
+            statement: r#"delegation::exec("Builder", Some("pick it up from here"));"#,
             expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
         },
         Crossing {
             tool: "fork",
-            statement: r#"agents::fork("try the other fix");"#,
+            statement: r#"delegation::fork("try the other fix");"#,
             expected: || json!({ "prompt": "try the other fix" }),
         },
     ]
@@ -381,26 +381,27 @@ fn every_tool_crosses_the_membrane_from_its_rust_spelling() {
 }
 
 #[test]
-fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_rust_too() {
+fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too() {
     // Two of the four families that are NOT gg tools, so neither appears in the crossing table
     // above — and both are where a program puts something in front of the model, which makes them
     // the ones a silent bridging mistake would cost the most.
     let (outcome, log) = evaluate(
         &prepare(
             r####"
-let text = fs::read_text_file("notes.md", ReadOptions { offset: Some(1), limit: Some(2) })?;
-let read = view::open_file("notes.md", ReadOptions { offset: Some(1), limit: Some(2) })?;
-view::open_text("summary", &text)?;
-view::open_docs_view("read_file")?;
-let closed = view::close("summary")?;
-let missing = view::close("never opened")?;
-let open = view::current();
-let directory = fs::list();
+let window = files::ReadOptions { offset: Some(1), limit: Some(2) };
+let text = files::read_text_file("notes.md", window)?;
+let read = views::open_file("notes.md", window)?;
+views::open_text("summary", &text)?;
+views::open_docs_view("read_file")?;
+let closed = views::close("summary")?;
+let missing = views::close("never opened")?;
+let open = views::current();
+let directory = files::list();
 gg::log(format!("{} {:?}", open[0].selector, open[0].kind));
 gg::log(format!("{closed} {missing}"));
 gg::log(match read {
-    FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
-    FileRead::Image(picture) => picture.label,
+    files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
+    files::FileRead::Image(picture) => picture.label,
 });
 gg::log(
     directory
@@ -409,7 +410,7 @@ gg::log(
         .collect::<Vec<_>>()
         .join(","),
 );
-harness::finish("read the file and showed myself the result")?;
+session::finish("read the file and showed the result")?;
 "####,
         ),
         &all_tools(),
@@ -427,7 +428,7 @@ harness::finish("read the file and showed myself the result")?;
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "fsFunction");
+    assert_eq!(lines[3], "gg::filesFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -447,8 +448,8 @@ harness::finish("read the file and showed myself the result")?;
     );
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
-    // `view::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
-    // helper is a spelling of the tool it is built on, and a view is a read gg also shows you.
+    // `views::open_file` performs. Neither has a tool name of its own, which is exactly the point —
+    // a helper is a spelling of the tool it is built on, and a view is a read gg also shows.
     assert_eq!(log.names(), ["read_file", "read_file"]);
     assert_eq!(
         log.args("read_file"),
@@ -471,7 +472,7 @@ match programs::get(Some(2)) {
     Err(failure) => gg::log(format!("{:?}", failure.code)),
 }
 programs::rerun("gg::log(\"again\");")?;
-review::request_changes(&["widen the test", "name the file"])?;
+session::request_changes(&["widen the test", "name the file"])?;
 "####,
         ),
         &[],
@@ -496,7 +497,7 @@ review::request_changes(&["widen the test", "name the file"])?;
     // The other verdict, which is the same role's other ending, and the one call in the surface that
     // takes nothing at all.
     let (outcome, _log) = evaluate(
-        &prepare("review::approve()?;"),
+        &prepare("session::approve()?;"),
         &[],
         &[],
         RunEnding::Role(EndingRole::Review),
@@ -524,7 +525,7 @@ fn a_failure_is_a_result_whether_it_is_matched_on_or_let_out() {
     // combinator.
     let (outcome, _log) = run_with(
         r####"
-match fs::read_text_file("gone.rs", ReadOptions::default()) {
+match files::read_text_file("gone.rs", files::ReadOptions::default()) {
     Ok(text) => gg::log(text),
     Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
 }
@@ -544,7 +545,7 @@ gg::log("carried on");
     let (outcome, _log) = run_with(
         r####"
 gg::log("before");
-fs::read_text_file("gone.rs", ReadOptions::default())?;
+files::read_text_file("gone.rs", files::ReadOptions::default())?;
 gg::log("after");
 "####,
         &all_tools(),
@@ -570,7 +571,7 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // a name that was never in scope gets.
     let (outcome, log) = run_with(
         r####"
-match system::shell("cargo build", None) {
+match shell::run("cargo build", None) {
     Ok(_) => gg::log("ran"),
     Err(failure) => gg::log(format!("{:?}", failure.code)),
 }
@@ -701,59 +702,106 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     assert_eq!(
         text(&catalogue, "language"),
         "rust",
-        "the catalogue must say whose spellings it carries, and this arm's id is what the \
-         registration step will resolve"
+        "the catalogue must say whose spellings it carries"
+    );
+    assert_eq!(
+        catalogue["schema"].as_u64(),
+        Some(2),
+        "this arm is written in the normalized doc model, and a catalogue that stopped saying so \
+         would be read as the shape that predates it"
     );
 
-    // Identity: the objects, in the order the surface is presented in, and every gg tool spelled the
-    // way this arm spells it. This is the half the agreement gate will compare against the other six
-    // the moment this arm is registered; until then it is compared against gg's own vocabulary here,
-    // so the catalogue cannot ship describing a surface nobody has.
-    let objects: Vec<&str> = section(&catalogue, "objects")
+    // Identity: the modules, in the order the surface is presented in, spelled the way a program
+    // writes them. `core` is last and declares no function of its own — it is where the two error
+    // types and the directory summary live, which every other module's signatures name.
+    let modules: Vec<&str> = section(&catalogue, "modules")
         .iter()
-        .map(|object| text(object, "object"))
+        .map(|module| text(module, "path"))
         .collect();
     assert_eq!(
-        objects,
+        modules,
         [
-            "fs", "system", "project", "tasks", "memory", "view", "context", "agents", "skills",
-            "programs", "harness", "review"
+            "gg::files",
+            "gg::shell",
+            "gg::board",
+            "gg::tasks",
+            "gg::memories",
+            "gg::views",
+            "gg::context",
+            "gg::delegation",
+            "gg::skills",
+            "gg::programs",
+            "gg::session",
+            "gg::core",
         ],
-        "the objects, or their order, are not the surface's"
+        "the modules, or their order, are not the surface's"
     );
 
-    let mut catalogued: Vec<&str> = section(&catalogue, "tools")
+    // Every gg tool is bound exactly once, under gg's own operation id — which on this arm is also
+    // the function's own name, because gg's vocabulary is already `snake_case`. That coincidence is
+    // worth stating rather than relying on: the operation is the identity and the name is the
+    // spelling, and `shell.shell` is the one row where the two differ, since Rust does not stutter a
+    // module's name into the function it holds.
+    let functions = section(&catalogue, "functions");
+    let mut bound: Vec<&str> = functions
         .iter()
-        .map(|tool| text(tool, "tool"))
+        .filter(|entry| entry["aliasOf"].is_null())
+        .map(|entry| text(entry, "operation"))
+        .filter_map(|operation| operation.split_once('.').map(|(_, key)| key))
+        .filter(|key| crate::sandbox::signatures::sandbox_tool_names().contains(key))
         .collect();
-    catalogued.sort_unstable();
+    bound.sort_unstable();
     let mut vocabulary = crate::sandbox::signatures::sandbox_tool_names();
     vocabulary.sort_unstable();
     assert_eq!(
-        catalogued, vocabulary,
+        bound, vocabulary,
         "the catalogue and gg's tool vocabulary have drifted apart"
     );
-
-    // Spelling: gg's own name for a tool, because gg's vocabulary is already `snake_case`. This arm
-    // is the only one whose `key` and `name` are equal for every tool, and it is a coincidence of
-    // spelling rather than an identity — the pair is still carried, and this is what says so.
-    for tool in section(&catalogue, "tools") {
+    for entry in functions {
+        let operation = text(entry, "operation");
+        let name = text(entry, "name");
+        // An alias is a second way to reach one operation and is free to be spelled for the site it
+        // is written at — `handle.send(…)` rather than `handle.send_message(…)`, which would say the
+        // word `message` twice.
+        if !entry["aliasOf"].is_null() {
+            continue;
+        }
+        if operation == "shell.shell" {
+            assert_eq!(
+                name, "run",
+                "`gg::shell::shell` would stutter, so this arm spells it `run`"
+            );
+            continue;
+        }
         assert_eq!(
-            text(tool, "name"),
-            text(tool, "tool"),
-            "a gg tool's Rust name is gg's own name for it"
+            operation.split_once('.').map(|(_, key)| key),
+            Some(name),
+            "a gg operation's Rust name is gg's own key for it"
         );
     }
 
+    // One member function, built deliberately: the handle a spawn hands back can deliver a message
+    // without the id being spelled out again. It is an ALIAS — the operation is bound canonically by
+    // the free function beside it — so it counts toward no coverage and is documented like anything
+    // else.
+    let alias = functions
+        .iter()
+        .find(|entry| !entry["aliasOf"].is_null())
+        .expect("the one alias this arm binds");
+    assert_eq!(text(alias, "fqn"), "gg::delegation::SubagentHandle::send");
+    assert_eq!(text(alias, "aliasOf"), "delegation.send_message");
+    assert_eq!(text(alias, "receiver"), "SubagentHandle");
+    assert_eq!(text(alias, "kind"), "method");
+
     // The idiom this arm exists to produce, asserted where a model reads it: required arguments
     // positional, an options struct for the optional ones, an `Option<T>` where there is exactly
-    // one, `Result<_, ToolError>` on the way out, and an inclusive range where the wire has a
-    // record.
-    let signature = |tool: &str| {
-        let entry = section(&catalogue, "tools")
+    // one, `Result<_, ToolError>` on the way out, an inclusive range where the wire has a record,
+    // and every SDK type written under the module that declares it.
+    let signature = |operation: &str| {
+        let entry = functions
             .iter()
-            .find(|entry| text(entry, "tool") == tool)
-            .unwrap_or_else(|| panic!("`{tool}` is catalogued"));
+            .find(|entry| text(entry, "operation") == operation && entry["aliasOf"].is_null())
+            .unwrap_or_else(|| panic!("`{operation}` is catalogued"));
         let shapes = entry["signatures"].as_array().expect("an entry has shapes");
         assert_eq!(
             shapes.len(),
@@ -763,59 +811,64 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         text(&shapes[0], "signature").to_string()
     };
     assert_eq!(
-        signature("read_file"),
-        "read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError>"
+        signature("files.read_file"),
+        "read_file(path: &str, options: files::ReadOptions) \
+         -> Result<files::FileRead, ToolError>"
     );
     assert_eq!(
-        signature("shell"),
-        "shell(command: &str, timeout_secs: Option<f64>) -> Result<ShellOutput, ToolError>"
+        signature("shell.shell"),
+        "run(command: &str, timeout_secs: Option<f64>) -> Result<shell::ShellOutput, ToolError>"
     );
     assert_eq!(
-        signature("archive_thread"),
-        "archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, ToolError>"
+        signature("context.archive_thread"),
+        "archive_thread(ranges: &[RangeInclusive<u32>]) \
+         -> Result<context::ReclaimReport, ToolError>"
     );
     assert_eq!(
-        signature("create_issue"),
+        signature("board.create_issue"),
         "create_issue(title: &str, in_scope: &str, out_of_scope: &str, \
-         completion_criteria: &str, agent: &str, options: IssueOptions<'_>) \
-         -> Result<IssueCreated, ToolError>"
+         completion_criteria: &str, agent: &str, options: board::IssueOptions<'_>) \
+         -> Result<board::IssueCreated, ToolError>"
     );
 
-    // Every word of it is written on a declaration: nothing blank, an argument documented for every
-    // argument a signature names, and a member documented for every member of every type. The
-    // reflector refuses to emit a catalogue that breaks this, and this is the second reading of it —
-    // over the emitted JSON, where it is the same check for every language there will ever be.
-    for name in ["session", "views", "programs", "tools", "helpers", "meta"] {
-        for entry in section(&catalogue, name) {
-            let called = text(entry, "name");
-            assert!(
-                !text(entry, "doc").trim().is_empty(),
-                "`{called}` has no documentation"
-            );
-            for shape in entry["signatures"].as_array().expect("an entry has shapes") {
-                let written = text(shape, "signature");
-                for parameter in shape["parameters"]
-                    .as_array()
-                    .expect("a shape has parameters")
-                {
-                    let argument = text(parameter, "name");
-                    assert!(
-                        !text(parameter, "doc").trim().is_empty(),
-                        "`{called}`'s `{argument}` has no documentation"
-                    );
-                    assert!(
-                        written.contains(argument),
-                        "`{called}` documents an argument its signature does not name: {written}"
-                    );
-                }
+    // Every word of it is written on a declaration: a brief on everything, an argument documented
+    // for every argument a signature names, and a member documented for every member of every type.
+    // The reflector refuses to emit a catalogue that breaks this, and this is the second reading of
+    // it — over the emitted JSON, where the register gate then holds the same strings to a register.
+    for entry in functions {
+        let called = text(entry, "fqn");
+        assert!(
+            !text(entry, "brief").trim().is_empty(),
+            "`{called}` has no brief"
+        );
+        for shape in entry["signatures"].as_array().expect("an entry has shapes") {
+            let written = text(shape, "signature");
+            for parameter in shape["parameters"]
+                .as_array()
+                .expect("a shape has parameters")
+            {
+                let argument = text(parameter, "name");
+                assert!(
+                    !text(parameter, "doc").trim().is_empty(),
+                    "`{called}`'s `{argument}` has no documentation"
+                );
+                assert!(
+                    written.contains(argument),
+                    "`{called}` documents an argument its signature does not name: {written}"
+                );
             }
         }
     }
     for declaration in section(&catalogue, "types") {
-        let named = text(declaration, "name");
+        let named = text(declaration, "fqn");
         assert!(
-            !text(declaration, "doc").trim().is_empty(),
-            "the type `{named}` has no documentation"
+            named.starts_with("gg::"),
+            "the type `{named}` is not module-qualified, and a name is what a documentation view \
+             is keyed by"
+        );
+        assert!(
+            !text(declaration, "brief").trim().is_empty(),
+            "the type `{named}` has no brief"
         );
         let members = declaration["members"]
             .as_array()
@@ -827,8 +880,8 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         for member in members {
             let member_name = text(member, "name");
             assert!(
-                !text(member, "doc").trim().is_empty(),
-                "`{named}::{member_name}` has no documentation"
+                !text(member, "brief").trim().is_empty(),
+                "`{named}::{member_name}` has no brief"
             );
         }
     }

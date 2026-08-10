@@ -386,13 +386,25 @@ fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
     // API object is a module and the step is `::`.
     let separator = language.member_separator();
     for function in crate::sandbox::catalogue_functions(language) {
+        // A template addresses a call by gg's OWN identity — `{{api.view.open_text.call}}` — and
+        // renders the ARM's spelling of it. Those are two different strings on a converted arm,
+        // where the entry is grouped under a module path rather than under gg's object, so the key
+        // is taken from the operation and the rendered call from the entry beside it.
+        let Some(operation) = crate::sandbox::operation_of(&function) else {
+            continue;
+        };
         let call = format!("{}{separator}{}", function.object, function.name);
         let signature = match function.signatures.first() {
             Some(entry) => format!("{}{separator}{}", function.object, entry.signature),
             None => call.clone(),
         };
-        api.entry(function.object).or_default().insert(
-            function.key,
+        // An alias is a second way to reach one operation, so it must not displace the canonical
+        // binding under the key both of them answer to.
+        if function.alias_of.is_some() {
+            continue;
+        }
+        api.entry(operation.call.object).or_default().insert(
+            operation.call.key,
             CallSpelling {
                 name: function.name.to_string(),
                 call,

@@ -15,6 +15,21 @@
 //! Each `#[test]` is its own process under `cargo nextest`, and every program in here costs a real
 //! `clang++` and a `Component::new`. So each function drives *many* statements rather than being one
 //! behaviour per function. Add a statement to an existing function rather than adding a function.
+//!
+//! # What used to be here, and what covers it now
+//!
+//! A hand-wired comparison of this arm's catalogue against the **Rust** arm's, entry by entry,
+//! written when neither was registered and kept afterwards as a second opinion. It is gone, because
+//! the arm it compared against has been converted to the
+//! [normalized doc model](crate::sandbox::SchemaVersion::V2) and no longer has the five-part
+//! identity tuple — section, object, key, gate, ending — the comparison read; against a v2 catalogue
+//! it would report every section missing rather than finding a disagreement.
+//!
+//! What covers it is stronger than what it did:
+//! `operations.test.rs::every_operation_is_offered_by_every_arm_that_is_not_excused` asserts the
+//! same coverage against **gg's own operations table** rather than against whichever arm this file
+//! happened to point at, and the [agreement gate](super::agreement) runs over this arm for real now
+//! that it is registered.
 
 use serde_json::{Value, json};
 
@@ -35,15 +50,6 @@ use crate::tools::{ToolFailure, ToolOutcome};
 /// until it is, and the catalogue lands first so the surface it describes can be reviewed before it
 /// is switched on.
 const SIGNATURES: &str = include_str!("../guests/cpp.signatures.json");
-
-/// Another arm's catalogue, to compare **identity** against.
-///
-/// [Rust](super::super::rust)'s, because it is the closest arm in shape — an object is a
-/// namespace-like path, an optional argument is a record — and therefore the one whose *spellings*
-/// this arm's most resemble while still differing everywhere the two languages do. The
-/// [agreement gate](super::agreement) will make this comparison for real the day this arm is
-/// registered; making it here is what stops that day from being the first time anybody looked.
-const OTHER_ARM: &str = include_str!("../guests/rust.signatures.json");
 
 /// The committed catalogue, parsed as JSON.
 fn catalogue() -> Value {
@@ -972,68 +978,4 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         Some(2),
         "the one function this SDK spells as an overload pair carries two signatures"
     );
-}
-
-#[test]
-fn the_catalogue_agrees_with_another_arms_by_identity() {
-    // What the agreement gate will compare the day this arm is registered, compared now: two
-    // catalogues describe the SAME capabilities, and only their spellings differ. An arm whose SDK
-    // quietly lost a function would otherwise be a green test suite and an invalidated experiment,
-    // and it would stay one until registration.
-    let mine = catalogue();
-    let theirs: Value = serde_json::from_str(OTHER_ARM).expect("the Rust arm's catalogue is JSON");
-
-    // Identity is the section, the key, the object it hangs off, the gate that binds it and the
-    // ending role whose programs get it. Everything else — the name, the prose, the whole shape of
-    // the call — is free.
-    let identity = |catalogue: &Value| -> Vec<String> {
-        let mut out = Vec::new();
-        for name in ["meta", "session", "views", "programs", "tools", "helpers"] {
-            for entry in section(catalogue, name) {
-                let key = entry
-                    .get("key")
-                    .or_else(|| entry.get("tool"))
-                    .and_then(Value::as_str)
-                    .expect("an entry carries a key or a tool name");
-                let object = entry.get("object").and_then(Value::as_str).unwrap_or("-");
-                let gate = entry.get("requires").and_then(Value::as_str).unwrap_or("-");
-                let ending = entry.get("ending").and_then(Value::as_str).unwrap_or("-");
-                out.push(format!("{name} {key} {object} {gate} {ending}"));
-            }
-        }
-        out.sort();
-        out
-    };
-    assert_eq!(
-        identity(&mine),
-        identity(&theirs),
-        "the C++ arm and the Rust arm describe different capabilities, so a study comparing them \
-         would be measuring the surface rather than the language"
-    );
-
-    // And the objects, in the same order, with the same descriptions — because the order is
-    // model-facing and the description is gg's rather than a language's.
-    let objects = |catalogue: &Value| -> Vec<(String, String)> {
-        section(catalogue, "objects")
-            .iter()
-            .map(|object| {
-                (
-                    text(object, "object").to_string(),
-                    text(object, "doc").to_string(),
-                )
-            })
-            .collect()
-    };
-    assert_eq!(objects(&mine), objects(&theirs));
-
-    // The spellings really do differ, which is the other half of the claim: a gate that passed
-    // because both arms were the same file would say nothing at all.
-    let signature = |catalogue: &Value| -> String {
-        section(catalogue, "tools")
-            .iter()
-            .find(|entry| text(entry, "tool") == "read_file")
-            .map(|entry| text(&entry["signatures"][0], "signature").to_string())
-            .expect("read_file is catalogued")
-    };
-    assert_ne!(signature(&mine), signature(&theirs));
 }

@@ -23,19 +23,19 @@ use crate::healing::{Dialect, Healed, HealingConfig, HealingStrategy, heal};
 /// string with a string inside its hole, a verbatim string with doubled quotes, a block comment that
 /// does not nest, an apostrophe in a line of English, and two replies that are no program at all.
 pub(super) const FIXTURES: &[&str] = &[
-    "Here is the program.\n\n```csharp\nusing System.Text.Json;\n\nvar rows = fs.ListDir(\"src\");\nview.OpenText(\"rows\", JsonSerializer.Serialize(rows.Count));\n```\n\nThat lists the directory.",
-    "using System.Text.Json;\nusing System.Globalization;\n\nvar rows = fs.ListDir(\"src\");\nview.OpenText(\"rows\", rows.Count.ToString(CultureInfo.InvariantCulture));\n",
-    "#nullable enable\n\nvar notes = fs.ReadTextFile(\"notes.md\", limit: 40);\nview.OpenText(\"notes\", notes);\n",
-    "# Plan\n\nI will read the manifest and show it to myself.\n\n```cs\nview.OpenText(\"notes\", fs.ReadTextFile(\"notes.md\"));\n```",
-    "var total = 1;\nview.OpenText(\"n\", total.ToString());\nvar total = 1;\nview.OpenText(\"n\", total.ToString());\n",
-    "record Point(int X, int Y);\nvar here = new Point(1, 2);\nview.OpenText(\"p\", here.ToString());\nrecord Point(int X, int Y);\nvar here = new Point(1, 2);\nview.OpenText(\"p\", here.ToString());\n",
-    "using System.Threading.Tasks;\n\nclass Program\n{\n    static async Task Main()\n    {\n        var notes = fs.ReadTextFile(\"notes.md\");\n        view.OpenText(\"notes\", notes);\n        await Task.CompletedTask;\n    }\n}\n",
-    "var usage = \"\"\"\nvar x = \"unbalanced\nand a \\ backslash\n\"\"\";\nview.OpenText(\"usage\", usage);\n",
-    "var names = new[] { \"a\", \"b\" };\nview.OpenText(\"names\", $\"{names.First(n => $\"{n}\")}\");\n",
-    "var path = @\"C:\\logs\\\"\"quoted\"\"\\out.txt\";\nview.OpenText(\"path\", path);\n",
-    "/* outer /* inner */\nview.OpenText(\"note\", \"done\");\n",
-    "I couldn't finish that, and it doesn't work yet.\n\n```csharp\nview.OpenText(\"note\", \"partial\");\n```",
-    "partial class Helpers\n{\n    public static int One() => 1;\n}\n\npartial class Helpers\n{\n    public static int Two() => 2;\n}\n\nview.OpenText(\"n\", (Helpers.One() + Helpers.Two()).ToString());\n",
+    "Here is the program.\n\n```csharp\nusing System.Text.Json;\n\nvar rows = Files.ListDir(\"src\");\nViews.OpenText(\"rows\", JsonSerializer.Serialize(rows.Count));\n```\n\nThat lists the directory.",
+    "using System.Text.Json;\nusing System.Globalization;\n\nvar rows = Files.ListDir(\"src\");\nViews.OpenText(\"rows\", rows.Count.ToString(CultureInfo.InvariantCulture));\n",
+    "#nullable enable\n\nvar notes = Files.ReadTextFile(\"notes.md\", limit: 40);\nViews.OpenText(\"notes\", notes);\n",
+    "# Plan\n\nI will read the manifest and show it to myself.\n\n```cs\nViews.OpenText(\"notes\", Files.ReadTextFile(\"notes.md\"));\n```",
+    "var total = 1;\nViews.OpenText(\"n\", total.ToString());\nvar total = 1;\nViews.OpenText(\"n\", total.ToString());\n",
+    "record Point(int X, int Y);\nvar here = new Point(1, 2);\nViews.OpenText(\"p\", here.ToString());\nrecord Point(int X, int Y);\nvar here = new Point(1, 2);\nViews.OpenText(\"p\", here.ToString());\n",
+    "using System.Threading.Tasks;\n\nclass Program\n{\n    static async Task Main()\n    {\n        var notes = Files.ReadTextFile(\"notes.md\");\n        Views.OpenText(\"notes\", notes);\n        await Task.CompletedTask;\n    }\n}\n",
+    "var usage = \"\"\"\nvar x = \"unbalanced\nand a \\ backslash\n\"\"\";\nViews.OpenText(\"usage\", usage);\n",
+    "var names = new[] { \"a\", \"b\" };\nViews.OpenText(\"names\", $\"{names.First(n => $\"{n}\")}\");\n",
+    "var path = @\"C:\\logs\\\"\"quoted\"\"\\out.txt\";\nViews.OpenText(\"path\", path);\n",
+    "/* outer /* inner */\nViews.OpenText(\"note\", \"done\");\n",
+    "I couldn't finish that, and it doesn't work yet.\n\n```csharp\nViews.OpenText(\"note\", \"partial\");\n```",
+    "partial class Helpers\n{\n    public static int One() => 1;\n}\n\npartial class Helpers\n{\n    public static int Two() => 2;\n}\n\nViews.OpenText(\"n\", (Helpers.One() + Helpers.Two()).ToString());\n",
     "I have finished the task. Everything works.",
 ];
 
@@ -135,7 +135,7 @@ fn a_using_is_never_deleted() {
             "`{line}` must not be treated as an import to delete"
         );
     }
-    let reply = "using System.Text.Json;\n\nview.OpenText(\"n\", JsonSerializer.Serialize(1));\n";
+    let reply = "using System.Text.Json;\n\nViews.OpenText(\"n\", JsonSerializer.Serialize(1));\n";
     let result = healed(reply);
     assert_eq!(result.program, reply.trim_end());
     assert!(!fired(&result, HealingStrategy::DropImports));
@@ -153,7 +153,7 @@ fn a_using_is_never_deleted() {
 /// never have executed.
 #[test]
 fn a_doubled_program_that_declares_a_local_is_deleted() {
-    let program = "var total = 1;\nview.OpenText(\"n\", total.ToString());\n";
+    let program = "var total = 1;\nViews.OpenText(\"n\", total.ToString());\n";
     let result = healed(&format!("{program}{program}"));
     assert_eq!(result.program, program.trim_end());
     assert!(
@@ -167,7 +167,7 @@ fn a_doubled_program_that_declares_a_local_is_deleted() {
 #[test]
 fn a_doubled_program_that_declares_a_type_is_deleted() {
     let program =
-        "record Point(int X, int Y);\nview.OpenText(\"p\", new Point(1, 2).ToString());\n";
+        "record Point(int X, int Y);\nViews.OpenText(\"p\", new Point(1, 2).ToString());\n";
     let result = healed(&format!("{program}{program}"));
     assert_eq!(result.program, program.trim_end());
     assert!(
@@ -212,7 +212,7 @@ fn an_assignment_is_not_a_declaration() {
         "rows[0] = \"a\";",
         "counts[\"word\"] = 1;",
         "entry.Kind = EntryKind.File;",
-        "view.OpenText(\"n\", \"1\");",
+        "Views.OpenText(\"n\", \"1\");",
         "Console.WriteLine(total);",
         "names.Sort((a, b) => a.Length - b.Length);",
     ] {
@@ -266,7 +266,7 @@ fn a_declaration_inside_a_literal_is_not_one() {
 #[test]
 fn an_async_entry_point_is_not_unwrapped() {
     let reply = "using System.Threading.Tasks;\n\nclass Program\n{\n    static async Task Main()\n    \
-                 {\n        view.OpenText(\"notes\", fs.ReadTextFile(\"notes.md\"));\n        \
+                 {\n        Views.OpenText(\"notes\", Files.ReadTextFile(\"notes.md\"));\n        \
                  await Task.CompletedTask;\n    }\n}\n";
     let mask = mask(reply);
     assert!(csharp().unwrap_async(reply, &mask).is_none());
@@ -278,8 +278,8 @@ fn an_async_entry_point_is_not_unwrapped() {
 /// **A top-level `await` is left alone too**, for the same reason and by the same lowering.
 #[test]
 fn a_top_level_await_is_not_unwrapped() {
-    let reply = "using System.Threading.Tasks;\n\nvar notes = fs.ReadTextFile(\"notes.md\");\n\
-                 await Task.CompletedTask;\nview.OpenText(\"notes\", notes);\n";
+    let reply = "using System.Threading.Tasks;\n\nvar notes = Files.ReadTextFile(\"notes.md\");\n\
+                 await Task.CompletedTask;\nViews.OpenText(\"notes\", notes);\n";
     let mask = mask(reply);
     assert!(csharp().unwrap_async(reply, &mask).is_none());
     assert_eq!(healed(reply).program, reply.trim_end());
@@ -296,11 +296,11 @@ fn a_top_level_await_is_not_unwrapped() {
 /// byte after it masked wrongly.
 #[test]
 fn a_raw_string_hides_everything_inside_it() {
-    let source = "var usage = \"\"\"\nvar x = \"unbalanced\nand a \\ backslash\n\"\"\";\nview.OpenText(\"usage\", usage);\n";
+    let source = "var usage = \"\"\"\nvar x = \"unbalanced\nand a \\ backslash\n\"\"\";\nViews.OpenText(\"usage\", usage);\n";
     let mask = mask(source);
     let at = source.find("var x =").expect("the needle is in the source");
     assert!(!mask.is_code(at));
-    assert!(read_as_code(source, "view.OpenText"));
+    assert!(read_as_code(source, "Views.OpenText"));
 }
 
 /// **A verbatim string escapes a quote by doubling it**, so a run of them is that many pairs and, if
@@ -308,11 +308,11 @@ fn a_raw_string_hides_everything_inside_it() {
 #[test]
 fn a_verbatim_string_reads_a_doubled_quote_as_one() {
     let source =
-        "var path = @\"C:\\logs\\\"\"quoted\"\"\\out.txt\";\nview.OpenText(\"path\", path);\n";
+        "var path = @\"C:\\logs\\\"\"quoted\"\"\\out.txt\";\nViews.OpenText(\"path\", path);\n";
     let mask = mask(source);
     let at = source.find("quoted").expect("the needle is in the source");
     assert!(!mask.is_code(at));
-    assert!(read_as_code(source, "view.OpenText"));
+    assert!(read_as_code(source, "Views.OpenText"));
 }
 
 /// **An interpolation hole is code, even when it holds another string.**
@@ -321,7 +321,7 @@ fn a_verbatim_string_reads_a_doubled_quote_as_one() {
 /// one expression as three strings.
 #[test]
 fn an_interpolation_hole_is_code_and_may_hold_another_string() {
-    let source = "view.OpenText(\"names\", $\"{names.First(n => $\"{n}\")}\");\n";
+    let source = "Views.OpenText(\"names\", $\"{names.First(n => $\"{n}\")}\");\n";
     let mask = mask(source);
     let at = source
         .find("names.First")
@@ -335,8 +335,8 @@ fn an_interpolation_hole_is_code_and_may_hold_another_string() {
 /// code after it masked as comment and lost.
 #[test]
 fn a_block_comment_ends_at_the_first_close() {
-    let source = "/* outer /* inner */\nview.OpenText(\"note\", \"done\");\n";
-    assert!(read_as_code(source, "view.OpenText"));
+    let source = "/* outer /* inner */\nViews.OpenText(\"note\", \"done\");\n";
+    assert!(read_as_code(source, "Views.OpenText"));
 }
 
 /// **A reading that did not hold together is refused**, so no strategy deletes on the strength of
@@ -349,9 +349,9 @@ fn a_block_comment_ends_at_the_first_close() {
 #[test]
 fn a_source_that_did_not_lex_is_declined() {
     for broken in [
-        "/* never closed\nview.OpenText(\"n\", \"1\");\n",
-        "var s = \"never closed\nview.OpenText(\"n\", s);\n",
-        "var c = 'x\nview.OpenText(\"n\", \"1\");\n",
+        "/* never closed\nViews.OpenText(\"n\", \"1\");\n",
+        "var s = \"never closed\nViews.OpenText(\"n\", s);\n",
+        "var c = 'x\nViews.OpenText(\"n\", \"1\");\n",
         "var s = \"\"\"\nnever closed\n",
         "var s = @\"never closed\n",
     ] {
@@ -380,6 +380,6 @@ fn an_apostrophe_in_prose_is_a_reading_that_did_not_hold() {
 /// is not a character boundary would panic; comparing bytes cannot.
 #[test]
 fn a_reply_with_non_ascii_text_in_it_lexes() {
-    let source = "var note = \"café — done\";\nview.OpenText(\"note\", note);\n";
-    assert!(read_as_code(source, "view.OpenText"));
+    let source = "var note = \"café — done\";\nViews.OpenText(\"note\", note);\n";
+    assert!(read_as_code(source, "Views.OpenText"));
 }
