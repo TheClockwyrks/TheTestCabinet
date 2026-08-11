@@ -665,7 +665,7 @@ validation = { script = "validation/enemies/roster-stats.mjs", outputs = [{ id =
 id = "hp-scales-by-wave"
 title = "Only HP scales across waves"
 description = "As the waves deepen only HP scales (per the pinned formula); speed, bounty, and leak are unchanged wave to wave."
-validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "The same tower killing a Wave-1 Mote while a Wave-10 one soaks it", kind = "video" }] }
+validation = { script = "validation/enemies/hp-scales-by-wave.mjs", outputs = [{ id = "scale", name = "Two Motes walked side by side into one tower — the one carrying Wave-1 HP pops, the one carrying Wave-10 HP soaks it", kind = "video" }] }
 [[review.categories.items]]
 id = "filament-every-fourth"
 title = "The Filament flyer appears only every fourth wave"

@@ -7,7 +7,7 @@
 // released in the arrange. The act then lets them walk, which is what puts the roster — six
 // distinct silhouettes moving at six distinct speeds — on screen for the capture.
 
-import { startBuild, spawnControlled, LOAD, scaledHp, SECOND } from "../_helpers.mjs";
+import { startBuild, spawnControlled, ROUNDING_SLACK, LOAD, scaledHp, SECOND } from "../_helpers.mjs";
 
 // Long enough for the roster to string out along the first leg by speed.
 const CLIP_TICKS = 2 * SECOND;
@@ -38,7 +38,14 @@ export default function item() {
         const def = LOAD[type];
         check.expectEq(`${type} base speed`, u.baseSpeed, def.speed);
         check.expectEq(`${type} flying`, u.flying, def.flies);
-        check.expectEq(`${type} Wave-1 HP (base x difficulty)`, u.maxHp, scaledHp(def.baseHp, 1, "medium"));
+        // One rounding of slack (`ROUNDING_SLACK`): the scaled figure is a real number and a build
+        // may carry it as that or as an integer.
+        check.expectClose(
+          `${type} Wave-1 HP (base x difficulty)`,
+          u.maxHp,
+          scaledHp(def.baseHp, 1, "medium"),
+          ROUNDING_SLACK,
+        );
       }
     },
   };
