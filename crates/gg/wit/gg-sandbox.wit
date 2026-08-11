@@ -691,20 +691,6 @@ interface session {
 interface docs {
     use types.{tool-error};
 
-    /// One function in an API object's directory: the name a program calls it by, and a one-line
-    /// summary of what it does.
-    record function-summary {
-        /// The function name on its object — `readFile` in `fs.readFile(...)`.
-        name: string,
-        /// A one-line description of what the function does.
-        summary: string,
-    }
-
-    /// List the callable functions on one API object (`fs`, `project`, `harness`, …), each with a
-    /// one-line summary. Only the functions THIS run actually bound are returned, so the directory
-    /// is never a promise the scope cannot keep. An unknown object name returns an empty list.
-    list-functions: func(object: string) -> list<function-summary>;
-
     /// One thing a documentation search found: enough to choose from, and no more.
     record doc-hit {
         /// What `open-doc-view` takes to read the whole entry.
@@ -883,8 +869,9 @@ interface views {
     /// `0` for a documentation key, because it cannot reclaim one by any route.
     close-view: func(selector: string) -> result<u32, tool-error>;
 
-    /// What is open in your window right now. Named `current-views` rather than `list` because every
-    /// API object already carries a `list()` that lists the object's own functions.
+    /// What is open in your window right now — the views, never the functions. It is named for what
+    /// it enumerates because a bare `list` on this interface would read as the object's own
+    /// declarations rather than as the window's contents.
     current-views: func() -> list<open-view>;
 }
 

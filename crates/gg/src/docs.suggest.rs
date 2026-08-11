@@ -22,7 +22,7 @@
 //! The candidates are the bound ones — exactly the set [`read`](super::DocsRuntime::read) would have
 //! answered from — and never the whole catalogue. Offering `editFile` to an agent whose run withheld
 //! `edit_file` would trade a `not-found` the model can act on for a name that evaluates to
-//! `undefined` on the turn it writes it, which is the one failure a directory must never cause.
+//! `undefined` on the turn it writes it, which is the one failure a hint must never cause.
 //!
 //! # Why the matching is tiered rather than scored
 //!
@@ -33,17 +33,17 @@
 
 /// The most names one hint offers.
 ///
-/// A hint is a nudge, not a directory — `<object>.list()` is the directory, and the lookup's own
-/// documentation already points at it — so this is what fits in a glance rather than what would be
-/// complete. When more candidates than this sit in the winning tier the extras are dropped; nothing
-/// from a worse tier is ever promoted in their place.
+/// A hint is a nudge, not a search — searching is how a model finds a name it does not have, and
+/// the lookup's own refusal already points at it — so this is what fits in a glance rather than what
+/// would be complete. When more candidates than this sit in the winning tier the extras are dropped;
+/// nothing from a worse tier is ever promoted in their place.
 const MAX_SUGGESTIONS: usize = 3;
 
 /// The length at or under which a name gets one edit of latitude rather than two.
 ///
-/// Two edits inside `list` reaches `last`, `lint` and a good deal of the vocabulary; two inside
-/// `searchMemories` reaches nothing that is not a typo of it. The threshold is where the second edit
-/// stops being evidence and starts being noise.
+/// Two edits inside `fork` reaches `for`, `form`, `work` and a good deal of the vocabulary; two
+/// inside `searchMemories` reaches nothing that is not a typo of it. The threshold is where the
+/// second edit stops being evidence and starts being noise.
 const SHORT_NAME: usize = 4;
 
 /// The bound names nearest `query`, best tier first, at most [`MAX_SUGGESTIONS`] of them — empty

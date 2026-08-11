@@ -14,51 +14,8 @@ fn enabled() -> Vec<String> {
         .collect()
 }
 
-/// An object's directory lists its bound functions with summaries, plus the `list` meta function
-/// every object carries — and only the functions the run enabled.
-#[test]
-fn list_enumerates_bound_functions_and_the_list_meta() {
-    let docs = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
-    let fs = docs.list("fs");
-    let names: Vec<&str> = fs.iter().map(|f| f.name.as_str()).collect();
-    assert!(names.contains(&"readFile"), "{names:?}");
-    assert!(names.contains(&"writeFile"), "{names:?}");
-    assert!(
-        names.contains(&"list"),
-        "every object carries `list`: {names:?}"
-    );
-    // `edit_file` was not enabled, so `editFile` is not listed.
-    assert!(!names.contains(&"editFile"), "{names:?}");
-    // Every entry carries a non-empty one-line summary.
-    assert!(fs.iter().all(|f| !f.summary.is_empty()));
-}
-
-/// The `harness` object always carries `finish` and `list`, whatever a run enables.
-///
-/// It no longer carries `readDocs`: reading a function's documentation is
-/// `view.openDocsView`, on the object that owns every other channel into the model's window.
-#[test]
-fn harness_always_carries_finish_and_list() {
-    let docs = DocsRuntime::new(
-        Vec::new(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
-    let harness = docs.list("harness");
-    let names: Vec<&str> = harness.iter().map(|f| f.name.as_str()).collect();
-    assert!(names.contains(&"finish"), "{names:?}");
-    assert!(names.contains(&"list"), "{names:?}");
-    assert!(!names.contains(&"readDocs"), "{names:?}");
-}
-
-/// The `view` object carries `openDocsView`, ungated — a run that enables no tools at all must still
-/// be able to read what the functions it *does* have do.
+/// `openDocsView` is documented ungated — a run that enables no tools at all must still be able to
+/// read what the functions it *does* have do.
 #[test]
 fn view_always_carries_open_docs_view() {
     let docs = DocsRuntime::new(
@@ -67,8 +24,7 @@ fn view_always_carries_open_docs_view() {
         &[],
         GgProgramLanguage::TypeScript,
     );
-    let names: Vec<String> = docs.list("view").into_iter().map(|f| f.name).collect();
-    assert!(names.iter().any(|n| n == "openDocsView"), "{names:?}");
+    assert!(docs.read("openDocsView").is_some());
 }
 
 /// **A function's lookup is the signature and the description, and stops there.**
@@ -300,62 +256,6 @@ fn read_of_a_withheld_function_is_none() {
     assert!(docs.read("writeFile").is_none());
 }
 
-/// The one meta function documents itself, so `view.openDocsView("list")` is answerable even though
-/// `list` has no catalogue entry of its own.
-#[test]
-fn read_documents_the_list_meta_function() {
-    let docs = DocsRuntime::new(
-        Vec::new(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
-    let list = docs.read("list").expect("list is a meta function");
-    // Its signature and its paragraph both come from the SDK declaration the guest binds it from.
-    assert!(list.contains("list(): FunctionSummary[]"), "{list}");
-    // And it points at the call that opens a function's full documentation, quoted as this arm's
-    // own catalogue spells it rather than typed out here.
-    let open_docs_view = crate::sandbox::spell(
-        crate::sandbox::language(GgProgramLanguage::TypeScript),
-        crate::sandbox::VIEW_OPEN_DOCS_VIEW,
-    );
-    assert!(list.contains(&open_docs_view), "{list}");
-    assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
-    // The type it names is a view of its own, reachable by that name.
-    assert!(
-        docs.read_type("FunctionSummary")
-            .is_some_and(|summary| summary.contains("summary")),
-        "the return type a signature names is addressable"
-    );
-}
-
-/// A missed lookup is answered with the bound names nearest it — the tool name the model wrote
-/// instead of the spelling, and the stem it completed by guess.
-#[test]
-fn a_miss_suggests_the_bound_names_nearest_it() {
-    let docs = DocsRuntime::new(
-        enabled(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::TypeScript,
-    );
-    // Both strings a lookup accepts are offered: the name a signature writes, and the
-    // fully-qualified name a documentation view is keyed by. On an arm reshaped into capability
-    // modules those are two spellings of one function, and hinting only one of them would send a
-    // model that copied the other back to the same miss.
-    assert_eq!(
-        docs.suggest("write_file"),
-        vec!["writeFile", "gg.files.writeFile"]
-    );
-    assert_eq!(
-        docs.suggest("write"),
-        vec!["writeFile", "gg.files.writeFile"]
-    );
-    // The meta function is a candidate like any other: it is bound on every object, and `read`
-    // answers it.
-    assert_eq!(docs.suggest("lists"), vec!["list"]);
-}
-
 /// **A suggestion is drawn from this agent's scope, never from the catalogue.**
 ///
 /// The failure a whole-catalogue hint would cause is the worst kind: the model reads a plausible
@@ -406,9 +306,9 @@ fn a_suggestion_never_names_a_function_this_agent_lacks() {
 /// The **third gate**: the program library, which neither the enabled set nor the ending role can
 /// express.
 ///
-/// It is documented exactly when the capability is on, because a directory that lists a function the
-/// scope did not bind is the one thing a directory must never do — and the failure it would produce
-/// is the worst kind: the model reads a plausible signature, writes the call, and is answered with a
+/// It is documented exactly when the capability is on, because documenting a function the scope did
+/// not bind is the one thing documentation must never do — and the failure it would produce is the
+/// worst kind: the model reads a plausible signature, writes the call, and is answered with a
 /// `ReferenceError` about a name gg itself named.
 #[test]
 fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
@@ -418,16 +318,9 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
         &[],
         GgProgramLanguage::TypeScript,
     );
-    assert!(without.read("rerun").is_none());
-    assert_eq!(
-        without
-            .list("programs")
-            .iter()
-            .map(|f| f.name.as_str())
-            .collect::<Vec<_>>(),
-        vec!["list"],
-        "an unknown object lists the meta function alone"
-    );
+    for call in ["rerun", "history", "get"] {
+        assert!(without.read(call).is_none(), "`{call}` is not bought");
+    }
 
     let with = DocsRuntime::new(
         enabled(),
@@ -435,11 +328,9 @@ fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
         &[CAPABILITY_PROGRAM_LIBRARY],
         GgProgramLanguage::TypeScript,
     );
-    let listed = with.list("programs");
-    let names: Vec<&str> = listed.iter().map(|f| f.name.as_str()).collect();
-    assert!(names.contains(&"history"), "{names:?}");
-    assert!(names.contains(&"get"), "{names:?}");
-    assert!(names.contains(&"rerun"), "{names:?}");
+    for call in ["rerun", "history", "get"] {
+        assert!(with.read(call).is_some(), "`{call}` is bought");
+    }
     let doc = with
         .read("rerun")
         .expect("the library's calls are documented");
@@ -512,55 +403,6 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
                          the string the model reads in the signature",
                         function.name,
                         reference.spelled(),
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// **Every grouping name an arm's `list` can pass resolves to that function's directory**, on every
-/// arm and in both of the two spellings a guest can hold.
-///
-/// The two spellings exist because [`list`](DocsRuntime::list) is reached by two different routes.
-/// A compiled arm calls the `docs.list-functions` import with the module path its own SDK closed
-/// over, so it asks with [`object`](crate::sandbox::CatalogueFunction::object). The three arms that
-/// share the ECMAScript guest cannot: that guest seeds each object's `list` with the **API object**
-/// name it built the object under, so a PureScript program writing `Gg.Files.list` asks with `fs`.
-/// A directory that answered only one of the two would hand the other route a well-formed empty
-/// array — the failure shape worth designing out, because an empty directory reads as a capability
-/// that is not there rather than as a question asked in the wrong words.
-///
-/// It is asked of an agent holding everything, so that a name missing from the answer is a grouping
-/// that does not resolve rather than a capability this run withheld.
-#[test]
-fn both_spellings_of_a_grouping_open_its_directory_on_every_arm() {
-    for language in crate::sandbox::all_languages() {
-        let arm = language.display_name();
-        for role in [EndingRole::Standard, EndingRole::Review] {
-            let docs = DocsRuntime::new(
-                crate::tools::ALL_TOOL_NAMES
-                    .iter()
-                    .map(|tool| tool.to_string())
-                    .collect(),
-                role,
-                test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG,
-                language.id(),
-            );
-            for function in crate::sandbox::catalogue_functions(language) {
-                if !docs.bound(&function) {
-                    continue;
-                }
-                let legacy = crate::sandbox::operation_of(&function)
-                    .map(|operation| operation.call.object)
-                    .unwrap_or(function.object);
-                for grouping in [function.object, legacy] {
-                    let listed = docs.list(grouping);
-                    assert!(
-                        listed.iter().any(|entry| entry.name == function.name),
-                        "{arm}: `{}` is grouped under `{grouping}`, and asking that grouping for \
-                         its directory does not list it",
-                        function.name,
                     );
                 }
             }

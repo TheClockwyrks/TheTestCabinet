@@ -17,8 +17,8 @@ namespace gg {
 
 /// Keep durable memories that survive context compaction.
 ///
-/// A run picks one of three memory strategies and binds only that strategy's functions, so
-/// `memories::list()` is the honest answer to what memory can do in a given run. The scratchpad
+/// A run picks one of three memory strategies and binds only that strategy's functions, so what
+/// this module offers is the honest answer to what memory can do in a given run. The scratchpad
 /// keeps every memory in the context window; the two file-shaped strategies keep the contents
 /// outside it, one behind an index that is always in context and one behind a search.
 ///
@@ -27,9 +27,6 @@ namespace gg {
 ///
 /// <ggmodule>memories</ggmodule>
 namespace memories {
-
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
 
 /// How much of the run's durable-memory budget is used, after the call that returned it.
 ///

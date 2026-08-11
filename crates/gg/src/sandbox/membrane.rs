@@ -555,7 +555,7 @@ pub(crate) struct MembraneParts {
     /// How many calls the roster cap discarded.
     pub calls_suppressed: u64,
     /// How many **model-facing API calls** the program made — a superset of the dispatched ones by
-    /// the carve-outs (a view, an ending, a program-library call, an `object.list()`) and by the
+    /// the carve-outs (a view, an ending, a program-library call, a documentation search) and by the
     /// calls the membrane refused. See [`recording`].
     pub api_calls: u64,
     /// Every refused call the roster kept.

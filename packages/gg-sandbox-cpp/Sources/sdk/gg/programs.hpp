@@ -30,9 +30,6 @@ namespace gg {
 /// <ggmodule>programs</ggmodule>
 namespace programs {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// One program that has already run this session, as the history lists it.
 ///
 /// It describes the program's shape rather than its source: a directory that inlined every program

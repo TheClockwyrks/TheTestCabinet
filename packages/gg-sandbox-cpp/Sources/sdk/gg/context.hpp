@@ -25,9 +25,6 @@ namespace gg {
 /// <ggmodule>context</ggmodule>
 namespace context {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// What a reclaim actually freed from the live context window.
 struct reclaim_report {
   /// Context items dropped from the live window.

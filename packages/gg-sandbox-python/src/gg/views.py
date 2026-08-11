@@ -203,8 +203,7 @@ def current() -> list[OpenView]:
     paged file view — the `region` it covers. Reading it is what decides what to close when the
     window is filling up.
 
-    It is called `current` rather than `list` because every module already carries a `list` that
-    lists that module's own functions.
+    What it enumerates is the context window's contents, not any module's functions.
     """
     return [
         OpenView(

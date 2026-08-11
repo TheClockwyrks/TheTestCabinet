@@ -12,7 +12,7 @@
 //!
 //! # Two of the three are unconditional, and one is bought
 //!
-//! The directory is bound into every program's scope whatever a run enables, because a model must
+//! Searching is bound into every program's scope whatever a run enables, because a model must
 //! always be able to discover the functions it *does* have. **Closing** a documentation view is not:
 //! it is gated on [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE), refused here
 //! rather than withheld from the guest's scope, and the asymmetry is the point. Opening a
@@ -24,10 +24,9 @@
 //! Reading what a function *does* is [`view.openDocsView`](super::views), because documentation is
 //! material the model reads and every channel into the model is a view.
 
-use super::test_cabinet::gg::docs::{DocHit, DocSearch, FunctionSummary, Host as DocsHost};
+use super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
-use crate::docs::LIST_FUNCTION;
 use crate::sandbox::invoker::{DocSearchQuery, ViewRefusal};
 
 /// The object a documentation call is recorded under.
@@ -46,31 +45,10 @@ const CLOSE_DOC_VIEW_FUNCTION: &str = "close";
 const CLOSE_DOC_VIEWS_FUNCTION: &str = "close_all";
 
 impl<A: ToolApi> DocsHost for MembraneState<A> {
-    /// List one API object's bound functions, each with a one-line summary — the directory
-    /// `object.list()` returns. Straight to the api: the loop knows the run's enabled set.
-    ///
-    /// It is one host function answering for a call bound on **every** object, so its API record is
-    /// the one that cannot be a fixed pair: the object is the argument, and `context.list` and
-    /// `fs.list` are two different rows built from the same function. Recorded through
-    /// [`recorded_ok_on`](MembraneState::recorded_ok_on) for exactly that reason.
-    fn list_functions(&mut self, object: String) -> Vec<FunctionSummary> {
-        self.recorded_ok_on(&object.clone(), LIST_FUNCTION, |state, rec| {
-            state
-                .api(rec)
-                .list_functions(&object)
-                .into_iter()
-                .map(|summary| FunctionSummary {
-                    name: summary.name,
-                    summary: summary.summary,
-                })
-                .collect()
-        })
-    }
-
     /// Search the surface this agent binds, hand the program its page, and leave the results in the
     /// window as a view.
     ///
-    /// Ungated like the directory beside it, and for the same reason: with the prompt naming no
+    /// Ungated, and it is the one call that could not be anything else: with the prompt naming no
     /// functions, this **is** how an agent finds what it has, so a run that could withhold it could
     /// withhold an agent's knowledge of its own capabilities. What the agent may *find* is still
     /// decided per agent — the runtime filters every hit through the one bound predicate — so the

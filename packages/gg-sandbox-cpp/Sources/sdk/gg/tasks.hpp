@@ -23,9 +23,6 @@ namespace gg {
 /// <ggmodule>tasks</ggmodule>
 namespace tasks {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// A three-way edit of an optional text field: leave it, empty it, or replace it.
 ///
 /// The field really has three states and an `std::optional<std::string>` could say only two of

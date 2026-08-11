@@ -105,18 +105,6 @@ which is the half of a signature Python states in prose rather than in the annot
 would carry it in none, and the failure type would be a declaration no model could open.
 """
 
-META_FUNCTION = "list"
-"""The one model-facing function that hangs off no module, because it hangs off all of them.
-
-It is declared once in `gg.docs` and bound onto each capability module with that module's path closed
-over, so it has no module of its own to be filed under and no gg operation to name — which is why it
-is catalogued in a section of its own rather than among the functions.
-"""
-
-META_MODULE = "docs"
-"""The module `META_FUNCTION` is declared in."""
-
-
 def load_catalogue() -> ModuleType:
     """Load `gg/catalogue.py` as a standalone module.
 
@@ -672,8 +660,8 @@ def public_names(module: griffe.Module, where: str) -> list[str]:
         )
     listed = set(re.findall(r"[\"']([^\"']+)[\"']", str(exported.value)))
     # Walked in DECLARATION order rather than in `__all__`'s, because the order is model-facing: it
-    # is the sequence a module's directory lists its functions in and the sequence a documentation
-    # view appends its types in. `__all__` is sorted so that a reader can find a name in it, which is
+    # is the sequence a documentation view appends its types in and the sequence the catalogue
+    # presents this module in. `__all__` is sorted so that a reader can find a name in it, which is
     # the opposite of the order the SDK was written to be read in.
     declared = [name for name in module.members if name in listed]
     missing = sorted(listed.difference(declared))
@@ -775,15 +763,6 @@ def build() -> str:
             }
         )
 
-    meta_where = f"`{package}.{META_MODULE}.{META_FUNCTION}`"
-    meta = sources[META_MODULE].members.get(META_FUNCTION)
-    if not isinstance(meta, griffe.Function):
-        raise SystemExit(f"{meta_where} is not declared, and every module carries it.")
-    meta_prose = documentation(meta, meta_where)
-    meta_signature = signature_of(meta, META_FUNCTION, meta_where)
-    meta_types = resolver.references(annotation_of(meta.returns))
-    reached.update(reference["fqn"] for reference in meta_types)
-
     unreached = [declaration.fqn for declaration in declared if declaration.fqn not in reached]
     if unreached:
         raise SystemExit(
@@ -800,17 +779,6 @@ def build() -> str:
                 "generatedFrom": GENERATED_FROM,
                 "libraries": libraries(),
                 "modules": modules,
-                "meta": [
-                    {
-                        "key": META_FUNCTION,
-                        "name": META_FUNCTION,
-                        "signatures": [meta_signature],
-                        "doc": "\n\n".join(
-                            part for part in [meta_prose.brief, meta_prose.detail] if part
-                        ),
-                        "types": meta_types,
-                    }
-                ],
                 "functions": emitted,
                 "types": [declaration.entry for declaration in declared],
             },

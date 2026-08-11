@@ -1,9 +1,9 @@
-"""The types every other module's signatures name: how a call fails, and what a directory lists.
+"""The types every other module's signatures name: how a call fails, and what a patch leaves alone.
 
 A capability module owns the types it produces, so `FileRead` belongs to `gg.files` and
-`IssueCreated` to `gg.board`. The four here belong to none of them because they belong to all of
-them: every function in this SDK raises `ToolError`, every module's `list` returns
-`FunctionSummary`, and `UNCHANGED` is the default of every patch argument that can also be cleared.
+`IssueCreated` to `gg.board`. The three here belong to none of them because they belong to all of
+them: every function in this SDK raises `ToolError`, and `UNCHANGED` is the default of every patch
+argument that can also be cleared.
 
 They are also the names a program writes unqualified. `gg.scope` binds them directly into a
 program's namespace, because an `except` clause that had to spell out a module would be an `except`
@@ -19,7 +19,7 @@ from typing import Any, Callable, TypeVar
 from componentize_py_types import Err
 from wit_world.imports import types as wire
 
-__all__ = ["UNCHANGED", "FunctionSummary", "ToolError", "ToolErrorCode", "Unchanged"]
+__all__ = ["UNCHANGED", "ToolError", "ToolErrorCode", "Unchanged"]
 
 T = TypeVar("T")
 
@@ -139,22 +139,6 @@ class Unchanged(Enum):
 
 UNCHANGED = Unchanged.UNCHANGED
 """The default of every patch argument that can also be cleared."""
-
-
-@dataclass(frozen=True)
-class FunctionSummary:
-    """One function in a module's directory, as `list` returns it.
-
-    The summary is one line. A function's whole documentation — every shape it may be called in, what
-    to put in each argument, and the types it refers to — is a view, opened with
-    `views.open_docs_view`.
-    """
-
-    name: str
-    """The function's name in its module — `read_file` in `files.read_file`."""
-
-    summary: str
-    """One line saying what it does."""
 
 
 def _call(fn: Callable[..., T], /, *args: Any) -> T:

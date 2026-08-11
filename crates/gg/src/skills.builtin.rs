@@ -361,18 +361,17 @@ fn describe_parameters(schema: &Value) -> Vec<String> {
 /// The responses-as-code arm: an **on-use script** that opens one documentation view per function in
 /// the family, and no body and no importable code at all.
 ///
-/// The script is generated rather than authored because the set of functions is: it is exactly what
-/// `<object>.list()` would answer for this agent, so a skill that hard-coded a list would be a
-/// second answer to a question that already has one. What the model gets is the same material
+/// The script is generated rather than authored because the set of functions is: it is exactly the
+/// family this agent binds, so a skill that hard-coded a list would be a second answer to a question
+/// the catalogue already answers. What the model gets is the same material
 /// `view.openDocsView` gives it — the signature, the description, and every type they refer to — for
 /// the whole family at once, on the turn after it read the skill.
 fn built_in_code(family: &Family, docs: &crate::docs::DocsRuntime) -> Option<Skill> {
     // Asked by FAMILY rather than by object, because an object is the arm's own grouping and a
     // family is gg's: an arm whose surface is capability modules files these same functions under
     // `gg::files` rather than under `fs`, and a lookup by object name would answer nothing there and
-    // silently generate no skill. `list` is not in the answer either, and does not need filtering
-    // out: it belongs to every module and to no operation, and a skill that opened a view of it for
-    // each of eleven families would put eleven identical blocks in the window.
+    // silently generate no skill. Nothing has to be filtered out of the answer: every entry a family
+    // holds is an operation this agent binds, so every one of them is worth a view.
     let functions: Vec<String> = docs
         .family(family.id)
         .into_iter()

@@ -68,16 +68,4 @@ final class GgCatalogue {
 
     /** The package holding the bridge, which is not model-facing and is walked by nothing here. */
     static final String INTERNAL_PACKAGE = "gg.internal";
-
-    /**
-     * The one function that belongs to no module because it belongs to all of them.
-     *
-     * <p>gg's key for it, and the name a Java program calls it by. It carries no operation id and has
-     * no row in gg's operations table: the guest seeds it onto every object it builds rather than
-     * declaring it once, so what it is <em>of</em> is a run-time argument.
-     */
-    static final String META_KEY = "list";
-
-    /** The name a program calls the meta function by. */
-    static final String META_NAME = "list";
 }

@@ -684,9 +684,9 @@ pub struct GgAgentApi {
     pub object: String,
     /// The one-line description of the object the agent's system prompt carries.
     pub description: String,
-    /// The functions this instance actually binds on the object, in catalogue order, ending with
-    /// the `list` meta function every object carries — the same order the model sees when it calls
-    /// `object.list()` for itself. Never empty: an object with nothing bound is absent instead.
+    /// The functions this instance actually binds on the object, in catalogue order — exactly the
+    /// catalogue's own entries for it, with nothing appended that the catalogue does not carry.
+    /// Never empty: an object with nothing bound is absent instead.
     pub functions: Vec<GgAgentApiFunction>,
 }
 
@@ -699,16 +699,16 @@ pub struct GgAgentApi {
 /// bound function to how many times this agent actually called it is a join on `(object, key)` and
 /// on nothing else. No gg tool name appears here, and none is needed: the API surface and the tool
 /// vocabulary are two independent surfaces over one core, and a function no tool backs — a view
-/// call, an ending call, a program-library call, `list` — is counted exactly as a function one does.
+/// call, an ending call, a program-library call — is counted exactly as a function one does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentApiFunction {
     /// The name a program calls it by — `readFile`, `openDocsView`, `finish`.
     pub name: String,
-    /// This function's language-independent identity — `read_file`, `open_docs_view`, `finish`,
-    /// `list` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it by, so a
-    /// count survives a run whose programs were written in another language with other spellings.
+    /// This function's language-independent identity — `read_file`, `open_docs_view`, `finish` —
+    /// which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it by, so a count
+    /// survives a run whose programs were written in another language with other spellings.
     ///
     /// Absent only on a record written before gg recorded a call per function, where a consumer must
     /// say the record predates the accounting rather than report a zero: zero accuses the model of
@@ -5331,12 +5331,13 @@ pub enum GgTelemetryKind {
     /// vocabulary are two surfaces over one core, so a call is recorded here under what the *model
     /// wrote* (`view`.`open_file`) and there under what *ran* (`read_file`), and neither figure is
     /// derived from the other. That independence is the whole reason this event exists: a call no
-    /// tool backs — `view.openText`, `harness.finish`, `programs.get`, every object's `list` — has
-    /// no `ToolCall` to be counted through, and used to be counted nowhere at all.
+    /// tool backs — `view.openText`, `harness.finish`, `programs.get` — has no `ToolCall` to be
+    /// counted through, and used to be counted nowhere at all.
     ///
     /// It carries **no arguments**. A bridged call's `ToolCall` already carries them, and a
-    /// carve-out's are either trivial (`list("fs")`) or enormous (`view.openText(label, body)`) —
-    /// so a second copy would double the stream's largest payloads to say nothing new.
+    /// carve-out's are either trivial (`harness.finish()`) or enormous
+    /// (`view.openText(label, body)`) — so a second copy would double the stream's largest payloads
+    /// to say nothing new.
     ///
     /// Emitted **before** the call runs, so anything the call produces — a delegation's child
     /// events, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its
@@ -5345,9 +5346,9 @@ pub enum GgTelemetryKind {
     ApiCall {
         /// The API object the function hangs off — `fs`, `view`, `harness`, `context`.
         object: String,
-        /// The function's language-independent identity — `read_file`, `open_file`, `finish`,
-        /// `list` — the same [`key`](GgAgentApiFunction::key) the agent's
-        /// [surface](Self::AgentSurface) reports it under, never one language's spelling of it.
+        /// The function's language-independent identity — `read_file`, `open_file`, `finish` — the
+        /// same [`key`](GgAgentApiFunction::key) the agent's [surface](Self::AgentSurface) reports
+        /// it under, never one language's spelling of it.
         function: String,
     },
     /// The [`ApiCall`](Self::ApiCall) beside this one returned.
@@ -6224,8 +6225,8 @@ pub enum GgTelemetryKind {
         /// or not a gg tool backs the function.
         ///
         /// It legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two
-        /// things: the calls no tool backs (a view, an ending, a program-library call, an
-        /// `object.list()`), and the calls the sandbox refused before dispatch (a spent wall-clock
+        /// things: the calls no tool backs (a view, an ending, a program-library call), and the
+        /// calls the sandbox refused before dispatch (a spent wall-clock
         /// budget, a tool this run does not offer) — the model made those, so the API layer counts
         /// them even though nothing ran. The two figures answer different questions and are not
         /// meant to agree.

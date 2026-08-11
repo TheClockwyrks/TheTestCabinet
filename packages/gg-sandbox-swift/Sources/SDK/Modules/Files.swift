@@ -8,10 +8,7 @@
 /// does.
 ///
 /// - ggmodule: files
-public enum files: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.files"
-
+public enum files {
     /// The gg tools this module dispatches, which is its share of what the artifact answers
     /// `bound-tools` with. Declared beside the functions that call them, so a tool added here is a
     /// tool the artifact reports.

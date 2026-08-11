@@ -115,10 +115,9 @@
 //! collision-safe by construction, which is the property this design is being prototyped for — two
 //! modules may both declare a `Status` and neither has to be renamed.
 //!
-//! The one exception is the `core` module, whose three declarations (`ToolException`,
-//! `ToolErrorCode`, `FunctionSummary`) sit directly in `namespace Gg` and are therefore written
-//! bare. A `catch (ToolException failure)` that had to name a module would be a `catch` clause
-//! nobody writes.
+//! The one exception is the `core` module, whose declarations (`ToolException`, `ToolErrorCode`)
+//! sit directly in `namespace Gg` and are therefore written bare. A `catch (ToolException failure)`
+//! that had to name a module would be a `catch` clause nobody writes.
 //!
 //! There is no logging function, and that is this arm's own answer rather than an omission:
 //! `Console.WriteLine` reaches the run's operator, because the SDK redirects `Console.Out` onto gg's

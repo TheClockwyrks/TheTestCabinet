@@ -38,8 +38,8 @@ for this package:
 | Path | What it holds |
 | --- | --- |
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
-| `src/gg/*.ts` | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ToolError` above all. `src/gg/docs.ts` declares the directory every module carries. |
-| `src/internal/*.ts` | Everything the modules are built out of and no model reads: the argument validators, the failure normaliser, the membrane lowerings shared by two modules, and the one-argument directory call the shim closes a module's name over. It is outside `src/gg/` because that is exactly what the reflector walks. |
+| `src/gg/*.ts` | **The model-facing surface**: one module per capability family, each exporting that family's functions and declaring the types they speak in. `src/gg/core.ts` declares no function and holds the types every other module names — `ToolError` above all. |
+| `src/internal/*.ts` | Everything the modules are built out of and no model reads: the argument validators, the failure normaliser, and the membrane lowerings shared by two modules. It is outside `src/gg/` because that is exactly what the reflector walks. |
 | `src/catalogue.ts` | The one thing a declaration cannot state: **what buys a call at run time**. The module order, and the four tables that map a gg operation onto the tool, capability or role that binds it. No name, no description and no operation id lives here. |
 | `src/shim.ts` | The component's entry point: `run(program, …)` and `boundTools()`. It builds a program's scope by deriving each module's exports from the operations this run bought. |
 | `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files under `dist/headers/gg/`. |
@@ -84,14 +84,6 @@ program library of `src/gg/programs.ts`, which a capability buys. Keeping them o
 of the tool vocabulary is what keeps `boundTools() == ALL_TOOL_NAMES` — the one
 drift gate that inspects the committed `.wasm` rather than a source file — in exact
 bijection.
-
-`src/gg/docs.ts` carries the odd one out. `list` is the directory every module
-holds, bound onto *every* module rather than declared on one — the shim seeds it
-with that module's own grouping name closed over — so its bound arity is zero and
-it belongs to no module at all. It is catalogued anyway, in a `meta` section, and
-`export declare function list()` is the declaration its signature and its
-documentation are read from: no implementation, because it is never imported, and
-no second copy on gg's side that no gate could check.
 
 ## Refreshing the artifacts
 

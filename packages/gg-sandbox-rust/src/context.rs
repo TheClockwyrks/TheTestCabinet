@@ -18,7 +18,6 @@ pub(crate) const TOOLS: &[&str] = &[
     "compact",
 ];
 
-crate::directory::directory_of!();
 
 /// Drop the contents of files that were read out of the context window, freeing the tokens they
 /// occupy.

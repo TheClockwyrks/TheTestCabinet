@@ -16,7 +16,6 @@ use crate::core::ToolError;
 use crate::files::{FileRead, ReadOptions};
 use crate::wire;
 
-crate::directory::directory_of!();
 
 /// Read a file and place it in the context window, attributed to its path and closable by it.
 ///

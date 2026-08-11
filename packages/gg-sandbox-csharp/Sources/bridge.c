@@ -1203,25 +1203,6 @@ static MonoBoolean gg_rerun(MonoString *source) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// docs
-// ---------------------------------------------------------------------------------------------
-
-static void gg_list_functions(MonoString *object, MonoArray **names, MonoArray **summaries) {
-  char *utf8 = lift(object);
-  sandbox_string_t owned = borrow(utf8);
-  test_cabinet_gg_docs_list_function_summary_t functions;
-  test_cabinet_gg_docs_list_functions(&owned, &functions);
-  if (utf8 != NULL) mono_free(utf8);
-  *names = string_array(functions.len);
-  *summaries = string_array(functions.len);
-  for (size_t index = 0; index < functions.len; index++) {
-    mono_array_setref(*names, index, lower(&functions.ptr[index].name));
-    mono_array_setref(*summaries, index, lower(&functions.ptr[index].summary));
-  }
-  test_cabinet_gg_docs_list_function_summary_free(&functions);
-}
-
-// ---------------------------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------------------------
 
@@ -1230,7 +1211,7 @@ static void gg_list_functions(MonoString *object, MonoArray **names, MonoArray *
 ///
 /// The tool name lives here rather than in a second list so that `bound-tools` and the bindings are
 /// one statement. A row with no tool name is one of the model-facing carve-outs that is not a gg
-/// tool: an ending, a view, a program-library call, the helper's directory, or the feedback channel.
+/// tool: an ending, a view, a program-library call, or the feedback channel.
 typedef struct {
   const char *managed;
   const void *native;
@@ -1285,7 +1266,6 @@ static const binding_t bindings[] = {
     {"Gg.Internal.Native::History", (const void *)gg_history, NULL},
     {"Gg.Internal.Native::GetProgram", (const void *)gg_get_program, NULL},
     {"Gg.Internal.Native::Rerun", (const void *)gg_rerun, NULL},
-    {"Gg.Internal.Native::ListFunctions", (const void *)gg_list_functions, NULL},
 };
 
 // The three recording calls share one lowering — `write_memory`, `update_memory` and

@@ -22,8 +22,6 @@ const std::vector<std::string>& context_tools() {
 
 namespace context {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::context"); }
-
 context::reclaim_report evict_file_view(std::optional<std::string_view> path) {
   detail::scratch scratch;
   sandbox_string_t lowered{};

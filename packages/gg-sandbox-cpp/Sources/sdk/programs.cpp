@@ -12,8 +12,6 @@ namespace gg {
 
 namespace programs {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::programs"); }
-
 std::vector<programs::program_summary> history() {
   test_cabinet_gg_programs_list_program_summary_t ret{};
   test_cabinet_gg_types_tool_error_t err{};

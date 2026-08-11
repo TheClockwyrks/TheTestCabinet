@@ -9,10 +9,7 @@
 /// detaches or regroups an epic. Neither needs a sentinel.
 ///
 /// - ggmodule: board
-public enum board: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.board"
-
+public enum board {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = [
         "create_epic", "create_issue", "update_issue", "set_issue_blocked_by", "remove_epic",

@@ -25,9 +25,6 @@ namespace gg {
 /// <ggmodule>board</ggmodule>
 namespace board {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// How an issue's epic grouping changes: leave it, detach it, or regroup it.
 ///
 /// The same three-way shape `tasks::text_edit` has, for a field whose value is an epic id. A

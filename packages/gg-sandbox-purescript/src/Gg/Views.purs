@@ -10,7 +10,6 @@ module Gg.Views
   , openDocsView
   , close
   , current
-  , list
   , ViewKind(..)
   , ViewRegion
   , OpenView
@@ -23,9 +22,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe)
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
 import Gg.Files (FileRead(..))
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Read (fileRead)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
@@ -158,8 +155,8 @@ openText label body =
 -- |
 -- | # Arguments
 -- |
--- | - `name` — The function to document, by its fully-qualified name — `"Gg.Files.readFile"`. Each
--- |   module's `list` is what names the functions that exist.
+-- | - `name` — The function to document, by its fully-qualified name — `"Gg.Files.readFile"`.
+-- |   Searching the documentation is what names the functions that exist.
 -- |
 -- | # Raises
 -- |
@@ -190,9 +187,9 @@ close selector = Wire.call "close" "view" "Gg.Views.close" [ Wire.wire selector 
 -- | List what is open in the context window right now.
 -- |
 -- | Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a
--- | paged file view — the `region` it covers. It is called `current` rather than `list` because every
--- | module already carries a `list` of its own functions. Reading it is what informs a decision about
--- | what to close when the window is filling up.
+-- | paged file view — the `region` it covers. What it enumerates is the context window's contents,
+-- | not any module's functions. Reading it is what informs a decision about what to close when the window is
+-- | filling up.
 -- |
 -- | # Operation
 -- |
@@ -220,15 +217,3 @@ viewKind = case _ of
   "file" -> FileView
   "docs" -> DocsView
   _ -> TextView
-
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Views.list" [ "view" ]

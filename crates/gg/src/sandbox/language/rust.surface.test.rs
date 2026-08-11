@@ -396,20 +396,12 @@ views::open_docs_view("read_file")?;
 let closed = views::close("summary")?;
 let missing = views::close("never opened")?;
 let open = views::current();
-let directory = files::list();
 gg::log(format!("{} {:?}", open[0].selector, open[0].kind));
 gg::log(format!("{closed} {missing}"));
 gg::log(match read {
     files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
     files::FileRead::Image(picture) => picture.label,
 });
-gg::log(
-    directory
-        .iter()
-        .map(|function| function.name.as_str())
-        .collect::<Vec<_>>()
-        .join(","),
-);
 session::finish("read the file and showed the result")?;
 "####,
         ),
@@ -428,7 +420,6 @@ session::finish("read the file and showed the result")?;
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "gg::filesFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome

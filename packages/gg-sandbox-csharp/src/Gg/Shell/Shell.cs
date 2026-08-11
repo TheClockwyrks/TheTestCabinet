@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Gg;
 
 /// <summary>Run shell commands in the workspace.</summary>
@@ -10,9 +8,6 @@ namespace Gg;
 /// <ggmodule>shell</ggmodule>
 public static partial class Shell
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Shell));
-
     /// <summary>Run a command with <c>sh -c</c> and hand back its merged output and exit status.</summary>
     /// <remarks>
     /// <para>

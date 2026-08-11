@@ -14,7 +14,6 @@ module Gg.Delegation
   , transitionState
   , exec
   , fork
-  , list
   , Brief(..)
   , SubagentHandle
   , AgentEnding(..)
@@ -30,8 +29,6 @@ import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..))
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
@@ -269,17 +266,6 @@ exec agent options =
 fork :: String -> Effect SubagentHandle
 fork prompt = Wire.call "fork" "agents" "Gg.Delegation.fork" [ Wire.wire prompt ]
 
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Delegation.list" [ "agents" ]
 
 -- | One child agent's result. A child that produced no return value at all has no ending.
 subagentResult :: Wire.Wire -> SubagentResult

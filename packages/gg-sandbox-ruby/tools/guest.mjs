@@ -57,7 +57,6 @@ const SDK = [
   "gg/check.rb",
   "gg/surface.rb",
   "gg/wire.rb",
-  "gg/directory.rb",
   "gg/lib.rb",
   "gg/files.rb",
   "gg/shell.rb",

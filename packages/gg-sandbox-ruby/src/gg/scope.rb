@@ -9,9 +9,9 @@ module GG
   #
   # **The module functions are built from the run.** Every declaration `GG::Surface` recorded is
   # lifted off its module at load time and put back on it by {install}, once per run, for exactly
-  # the subset this run enables. So `GG::Files.list` is the honest directory of what a program has,
-  # and a name reached for and not offered raises with a sentence naming the module and its
-  # directory.
+  # the subset this run enables. So what a module answers to is what a program really has, and a
+  # name reached for and not offered raises with a sentence naming the module and what it does
+  # offer.
   #
   # **It is not the enforcement.** The **host** refuses a call outside the run's enabled set,
   # whichever name a program used to make it. What is built here is the *surface*, and the surface
@@ -23,9 +23,9 @@ module GG
   #
   # ## Why the implementations are lifted off and put back rather than left in place
   #
-  # Because a module that always answered every name would be a module whose `list` disagreed with
-  # itself, and the message a program gets for a withheld call would be gg's refusal three steps
-  # later rather than a `NoMethodError` on the line that wrote it. Lifting happens once, at load,
+  # Because a module that always answered every name would be a module that answered for calls this
+  # run withheld, and the message a program gets for one would be gg's refusal three steps later
+  # rather than a `NoMethodError` on the line that wrote it. Lifting happens once, at load,
   # inside the snapshot `componentize-js` bakes; putting back happens per run and is the only
   # per-turn cost.
   #
@@ -81,15 +81,16 @@ module GG
     #
     # `GG::Files.read_file` in a run with reading withheld is the single most likely mistake a model
     # makes against this surface, and the difference between `undefined method 'read_file' for
-    # GG::Files` and a sentence pointing at that module's own directory is a turn.
+    # GG::Files` and a sentence naming what that module does offer is a turn.
     #
     # @param mod [Module] the capability module to install the refusal on
     # @return [void]
     def self.refuse_unknown(mod)
       mod.singleton_class.send(:define_method, :method_missing) do |name, *_args|
+        offered = Scope.installed.select { |entry| entry.owner.equal?(mod) }.map(&:name).sort
         raise NoMethodError,
               "`#{mod.name}.#{name}` is not one of the names this run offers; " \
-              "`#{mod.name}.list` shows the ones it does"
+              "it offers #{offered.join(', ')}"
       end
       mod.singleton_class.send(:define_method, :respond_to_missing?) do |name, include_private = false|
         Scope.installed.any? { |entry| entry.owner.equal?(mod) && entry.name.to_s == name.to_s } ||
@@ -206,8 +207,8 @@ module GG
              .uniq
     end
 
-    # Put back onto each capability module exactly the functions this run offers, plus the directory
-    # every module that offers something carries.
+    # Put back onto each capability module exactly the functions this run offers, and nothing
+    # else.
     #
     # @param enabled [Array<String>] the run's enabled gg tool names
     # @param ending [String] the role whose ending group this program is given; `none` binds no
@@ -217,9 +218,6 @@ module GG
     def self.install(enabled, ending, library)
       on = enabled.to_a
       @installed.each { |entry| entry.owner.singleton_class.send(:remove_method, entry.name) }
-      MODULES.each do |mod|
-        mod.singleton_class.send(:remove_method, :list) if mod.singleton_class.method_defined?(:list)
-      end
 
       offered = Surface.registry.select do |entry|
         IMPLEMENTATIONS.key?(entry) && entry.offered?(on, ending, library)
@@ -227,24 +225,10 @@ module GG
       offered.each { |entry| bind(entry) }
       @installed = offered
 
-      # The directory every module that offers something carries, with that module's own path closed
-      # over. A module with nothing on it gets none: a directory of nothing is a name a program can
-      # reach and learn nothing from, and `GG::Core` declares no function at all.
-      populated = MODULES.select { |mod| offered.any? { |entry| entry.owner.equal?(mod) } }
-      populated.each do |mod|
-        listing = Directory.bind(mod.name.to_s)
-        fn = "#{mod.name}.list"
-        mod.singleton_class.send(:define_method, :list) do |*args, **kwargs|
-          # Behind the same forwarder every other bound name is behind, so a directory called with
-          # something it does not take is refused in the same words: a nullary function that said
-          # `wrong number of arguments` for a keyword would be describing the wrong mistake.
-          Scope.check_arity(fn, [0, 0], args.length)
-          Scope.check_keywords(fn, [], kwargs)
-          listing.call
-        end
-      end
-
-      populated.map { |mod| mod.name.to_s }
+      # A module with nothing on it is not a module a program may reach: reaching it would teach a
+      # model nothing, and `GG::Core` declares no function at all.
+      MODULES.select { |mod| offered.any? { |entry| entry.owner.equal?(mod) } }
+             .map { |mod| mod.name.to_s }
     end
 
     # Bind one declaration back onto the module that declares it, behind the forwarder that says

@@ -17,9 +17,9 @@ this tool.
 
 Under [responses as code](/gg/responses-as-code/) the call is `system.shell(command)`, and
 it is one of the two or three the [system prompt](/gg/prompts/) spells out up front rather
-than leaving to `system.list()` and `view.openDocsView` — for the reason above, restated as
-a cost: running a build or a test is the most common thing a *program* does, and a model
-that has to discover the call spends a turn on it. That line renders only when this
+than leaving to search and `view.openDocsView` — for the reason above, restated as a cost:
+running a build or a test is the most common thing a *program* does, and a model that has to
+discover the call spends a turn on it. That line renders only when this
 capability is **offered**, because a call named to a run that does not bind it is a
 `ReferenceError` the model copies verbatim, and it is gated on nothing else. What it says is
 what a program needs and no more: the call returns the `exitCode` and the merged output **to

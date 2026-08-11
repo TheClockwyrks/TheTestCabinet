@@ -12,8 +12,6 @@ namespace gg {
 
 namespace views {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::views"); }
-
 files::file_read open_file(std::string_view path, files::read_window window) {
   detail::scratch scratch;
   detail::window lines(window);

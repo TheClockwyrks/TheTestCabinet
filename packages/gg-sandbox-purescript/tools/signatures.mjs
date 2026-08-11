@@ -68,7 +68,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CORE, META, MODULES } from "./catalogue.mjs";
+import { CORE, MODULES } from "./catalogue.mjs";
 
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 const ROOT = join(PACKAGE, "..", "..");
@@ -789,7 +789,7 @@ function checkBinders(modulePath, name, parsed, documentedNames) {
   const binders = binderNames(modulePath, name);
   if (binders === undefined || binders.length !== documentedNames.length)
     return;
-  const sorted = (names) => [...names].sort().join(" ");
+  const sorted = (names) => [...names].sort().join("\u0000");
   if (sorted(binders) !== sorted(documentedNames)) return;
   for (const [index, binder] of binders.entries()) {
     if (binder === documentedNames[index]) continue;
@@ -1134,33 +1134,19 @@ function modulesSection() {
  * Every catalogued call, module by module.
  *
  * The `Gg.Core` module binds nothing and is the only one allowed to: it declares the two failure
- * types, the directory's own result, and the three helpers that read a failure. Every other module's
- * exported values are either the directory or a bound operation, which is the reverse check that
- * stops a capability from being exported, compiled, documented for a human reader and invisible to
- * every model.
+ * types and the three helpers that read a failure. Every other module's exported values are all
+ * bound operations, which is the reverse check that stops a capability from being exported,
+ * compiled, documented for a human reader and invisible to every model.
  */
 function functionsSection() {
   const functions = [];
   const bound = new Map();
   for (const module_ of MODULES) {
-    const names = [...moduleDocs(module_.path).values.keys()];
-    const capabilities = names.filter((name) => name !== META);
-    if (module_.id === CORE) {
-      if (names.includes(META)) {
-        throw new Error(
-          `${module_.path} binds no operation and carries a \`${META}\``,
-        );
-      }
-      continue;
-    }
+    const capabilities = [...moduleDocs(module_.path).values.keys()];
+    if (module_.id === CORE) continue;
     if (capabilities.length === 0) {
       throw new Error(
         `${module_.path} exports no capability at all; is it a module or plumbing?`,
-      );
-    }
-    if (!names.includes(META)) {
-      throw new Error(
-        `${module_.path} binds capabilities and carries no directory`,
       );
     }
     for (const name of capabilities) {
@@ -1178,48 +1164,6 @@ function functionsSection() {
   return functions;
 }
 
-/**
- * The `list` every capability module carries, read once and asserted identical on all of them.
- *
- * PureScript has no macro, so identical declarations are something this script has to check rather
- * than something the language guarantees: a directory that said one thing on ten modules and another
- * on the eleventh would be a function a model is told about eleven times and understands ten.
- */
-function metaSection() {
-  const entries_ = [];
-  for (const module_ of MODULES) {
-    if (module_.id === CORE) continue;
-    const declaration = value(module_.path, META);
-    const parsed = comment(declaration, `\`${module_.path}.${META}\``);
-    const { shape, returned } = shapeOf(
-      module_.path,
-      declaration,
-      META,
-      parsed,
-    );
-    const { brief, detail } = documented(parsed);
-    entries_.push({
-      key: META,
-      name: META,
-      signatures: [shape],
-      doc: [brief, detail]
-        .filter((part) => part !== null && part !== "")
-        .join("\n\n"),
-      types: references(closure(mentions(returned))),
-    });
-  }
-  const [first, ...rest] = entries_;
-  for (const other of rest) {
-    if (JSON.stringify(other) !== JSON.stringify(first)) {
-      throw new Error(
-        `the \`${META}\` a module carries is not the same declaration on every module; every one ` +
-          "of them documents one function and they must agree word for word",
-      );
-    }
-  }
-  return [first];
-}
-
 /** Every catalogued type, in the order the modules present them. */
 function typesSection() {
   return [...DECLARED.keys()].map(describeType);
@@ -1235,7 +1179,6 @@ function catalogue() {
     generatedFrom: GENERATED_FROM,
     libraries: libraries(),
     modules: modulesSection(),
-    meta: metaSection(),
     functions,
     types,
   };

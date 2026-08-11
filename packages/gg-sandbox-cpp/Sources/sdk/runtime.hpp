@@ -1,5 +1,5 @@
-// The declarations that belong to **no capability module**: the operator log, the drift gate's
-// answer, and the one paragraph every module's `list()` copies.
+// The declarations that belong to **no capability module**: the operator log and the drift gate's
+// answer.
 //
 // Nothing here is catalogued, and that is the rule rather than an oversight: this arm catalogues
 // exactly the declarations inside a capability module that name a gg operation, so a declaration
@@ -35,27 +35,5 @@ void log(std::string_view line);
 /// its own `ALL_TOOL_NAMES`. Not model-facing and not catalogued: a program has the functions
 /// themselves.
 std::vector<std::string> bound_tool_names();
-
-namespace detail {
-
-/// List the functions this module offers, each with a one-line summary.
-///
-/// Only the functions this run actually bound are returned, so the directory never names a call
-/// the program cannot make. One function's full signature, argument descriptions and types are
-/// opened as a view with `views::open_docs_view`.
-///
-/// \param module The module whose directory to read, by the path it is documented under.
-/// \returns the functions this module really bound, each with its one-line summary.
-///
-// NOT REACHABLE FROM A PROGRAM, and that is the point of it being here. C++ has no protocol
-// extension and no macro that can carry a doc comment (a comment inside a macro body is gone
-// before the macro is expanded), so the twelve `list()` declarations cannot share one written
-// paragraph the way Swift's protocol default or Rust's `macro_rules!` do. What they share instead
-// is this declaration: each module's `list()` carries a one-line `\copydoc` of it, and the
-// reflector resolves that command, so the words a model reads about `list` are written exactly
-// once and every module's directory is the same function.
-std::vector<core::function_summary> module_directory(std::string_view module);
-
-}  // namespace detail
 
 }  // namespace gg

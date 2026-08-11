@@ -802,14 +802,14 @@ describe("deriveGgAgentSummaries", () => {
 
   it("sums a profile's api calls across its instances, tool or no tool", () => {
     // The other half of the offered-versus-called contrast, and the half the old tool-keyed
-    // join could not produce: `view.openFile` runs a `read_file` and `context.list` runs
+    // join could not produce: `view.openFile` runs a `read_file` and `view.current` runs
     // nothing, and both are calls this profile's programs made.
     const summaries = summarize(
       [
         spawn("root", "Root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
         apiCall("w1", "view", "open_file"),
-        apiCall("w1", "context", "list"),
+        apiCall("w1", "view", "current"),
         spawn("w2", "worker", "vendor/small", "root"),
         apiCall("w2", "view", "open_file"),
       ],
@@ -821,7 +821,7 @@ describe("deriveGgAgentSummaries", () => {
 
     const worker = summaries.find((s) => s.name === "worker")!;
     expect(worker.apiCalls.get("view.open_file")).toBe(2);
-    expect(worker.apiCalls.get("context.list")).toBe(1);
+    expect(worker.apiCalls.get("view.current")).toBe(1);
     expect(summaries.find((s) => s.name === "Root")!.apiCalls.size).toBe(0);
   });
 

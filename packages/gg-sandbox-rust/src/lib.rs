@@ -98,7 +98,6 @@ pub mod bindings;
 
 pub mod program;
 
-mod directory;
 mod wire;
 
 // The model-facing modules, each carrying the gg module id it binds. Alphabetical, because
@@ -148,7 +147,7 @@ pub mod tasks;
 #[doc(alias = "ggmodule:views")]
 pub mod views;
 
-pub use crate::core::{FunctionSummary, ToolError, ToolErrorCode};
+pub use crate::core::{ToolError, ToolErrorCode};
 pub use crate::program::Failure;
 
 /// **gg's surface, in one glob** — every capability module, and the types that belong to no module.
@@ -160,7 +159,7 @@ pub use crate::program::Failure;
 ///
 /// It re-exports the **modules**, never the types inside them, and that is deliberate: a call written
 /// `files::read_file` says which module documents it where a bare `read_file` would say nothing, and
-/// a type written `tasks::TextEdit` leaves `board` free to declare a `TextEdit` of its own. The three
+/// a type written `tasks::TextEdit` leaves `board` free to declare a `TextEdit` of its own. The two
 /// [`core`] types are the exception — they belong to every module, and a `match` on an error code
 /// that had to name one would be a `match` nobody writes.
 pub mod prelude {
@@ -169,7 +168,7 @@ pub mod prelude {
         views,
     };
 
-    pub use crate::core::{FunctionSummary, ToolError, ToolErrorCode};
+    pub use crate::core::{ToolError, ToolErrorCode};
     pub use crate::program::Failure;
 }
 

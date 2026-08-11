@@ -1584,7 +1584,7 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
 
 /// Under responses-as-code the system prompt names the API objects a program has — one per module
 /// with a bound function — rather than listing every tool. It never lists the tool *functions*: the
-/// model discovers those with `object.list()` and `fn.docs()`. `harness` is always named, since it
+/// model discovers those by searching. `harness` is always named, since it
 /// carries `finish` whatever a run enables. (What each capability's section *says* is covered by the
 /// [prompt template tests](crate::prompts); this covers the wiring from a run's registry into the
 /// rendering context.)
@@ -1601,7 +1601,6 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
     assert!(full.contains("`gg.files`"), "{full}");
     assert!(full.contains("`gg.shell`"), "{full}");
     assert!(full.contains("`gg.session`"), "{full}");
-    assert!(full.contains(".list()"), "{full}");
     assert!(full.contains("gg.views.openDocsView"), "{full}");
     // No tool function is spelled out in the prompt.
     assert!(!full.contains("writeFile"), "{full}");

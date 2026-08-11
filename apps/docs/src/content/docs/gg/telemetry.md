@@ -216,8 +216,8 @@ identically down to the order of the cards) reads a run through these surfaces:
   introduced the object by, over the functions this instance bound, each carrying **its
   own** count. No gg tool name appears anywhere on that file: gg records a model-facing
   call under the function the model wrote, so a view call, a documentation lookup, an
-  ending call, a [program-library](/gg/program-library/) call and the `list` every object
-  ends with are counted exactly as a file read is, and three functions over one core
+  ending call and a [program-library](/gg/program-library/) call are counted exactly as a
+  file read is, and three functions over one core
   (`fs.readFile`, `fs.readTextFile` and `view.openFile` all run a `read_file`) are three
   figures rather than one shared between them. The only row with no figure at all is one
   read off a record written **before** gg counted per function — a fact about the record,
@@ -379,15 +379,10 @@ is its own event, the other half of the pair `agent_modules` opens:
   surface rather than an unknown one. One entry per object (`fs`, `view`, `harness`),
   carrying the same one-line description the agent's own system prompt introduced the
   object by and the functions this instance actually bound; an object nothing bound is
-  absent rather than listed empty. Every object ends with `list`, the meta function the
-  guest seeds onto every object it creates and no tool gates — the
-  [directory](/gg/responses-as-code/#reading-the-documentation-is-opening-a-view) a
-  program consults to find out what it may call. It is bound but not *catalogued*, since
-  the catalogue is reflected out of the SDK's exported signatures and `list` is the
-  documentation carve-out's own, so the surface appends it rather than finding it — last,
-  where the model's own `object.list()` puts it, so the read-out and the directory the
-  model gets for itself agree function for function. Each function names its own
-  language-independent **key** (`read_file`, `open_file`, `finish`, `list`), and that field
+  absent rather than listed empty. What is reported is exactly the catalogue's own entries:
+  nothing is appended that no SDK declaration produced, so the read-out and what a program's
+  scope really binds are one projection of one array. Each function names its own
+  language-independent **key** (`read_file`, `open_file`, `finish`), and that field
   is the load-bearing one: every call a program makes is recorded as an `api_call` under
   exactly that key, so it is the join from a bound function to how many times *it* was
   called. No gg tool name appears here at all. A responses-as-code agent does not call
@@ -396,7 +391,7 @@ is its own event, the other half of the pair `agent_modules` opens:
 
   The join is at the grain of the **function**, which is what makes the two halves of the
   contrast trustworthy in both directions. A function with no tool behind it is counted like
-  any other, so an ending call and an `object.list()` have figures instead of blanks; and
+  any other, so an ending call and a view call have figures instead of blanks; and
   three functions over one core (`fs.readFile`, `fs.readTextFile`, `view.openFile` all run a
   `read_file`) are three figures, so a function the model genuinely ignored reads as ignored
   rather than inheriting its neighbour's calls. The only entry with no figure is one from a

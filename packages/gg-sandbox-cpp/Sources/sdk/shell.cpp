@@ -21,8 +21,6 @@ const std::vector<std::string>& shell_tools() {
 
 namespace shell {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::shell"); }
-
 shell::shell_output run(std::string_view command, std::optional<double> timeout_secs) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(command);

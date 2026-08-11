@@ -194,7 +194,7 @@ pub struct GgApiFunction {
     pub name: String,
     /// The [category](GgReferenceCategory::id) the function's object belongs to.
     pub category: String,
-    /// The one-line summary `object.list()` shows — the first sentence of
+    /// The one-line summary a search result carries — the first sentence of
     /// [`doc`](Self::doc).
     pub summary: String,
     /// Every shape the SDK offers this function in, each with the arguments it takes.

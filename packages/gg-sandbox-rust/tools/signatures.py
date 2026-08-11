@@ -686,8 +686,6 @@ class Reflector:
             item = self.modules[module.id]
             for declaration in self.docs.functions_of(item):
                 name = declaration["name"]
-                if name == catalogue.META:
-                    continue
                 operation = tagged(declaration, OPERATION_ALIAS)
                 alias_of = tagged(declaration, ALIAS_ALIAS)
                 if operation is None and alias_of is None:
@@ -769,60 +767,6 @@ class Reflector:
             )
         return out
 
-    def meta_section(self):
-        """The `list` every capability module carries, read once and asserted identical on all of
-        them.
-
-        It is declared by one macro and expanded into each module, so identical declarations are the
-        *expected* state and any difference between them would mean the macro had been bypassed on
-        one module — a function a model is told about on eleven modules and given on ten.
-
-        `core` declares no function at all, so it carries no `list` either, and that is asserted
-        rather than tolerated: a module with capabilities and no directory would be a module a
-        program could not enumerate.
-        """
-        entries = []
-        for module in catalogue.MODULES:
-            item = self.modules[module.id]
-            declared = [
-                function
-                for function in self.docs.functions_of(item)
-                if function["name"] == catalogue.META
-            ]
-            offers = any(
-                function["name"] != catalogue.META for function in self.docs.functions_of(item)
-            )
-            if not offers:
-                if declared:
-                    raise Failure(
-                        f"`{module.path}` offers no capability and carries a `{catalogue.META}`"
-                    )
-                continue
-            if not declared:
-                raise Failure(f"`{module.path}` offers capabilities and carries no directory")
-            what = f"`{module.path}::{catalogue.META}`"
-            shape, sig = self.signature(declared[0], catalogue.META, what)
-            returned_ids = []
-            self.returned(sig.get("output"), returned_ids)
-            brief, detail = documented(declared[0], what)
-            entries.append(
-                {
-                    "key": catalogue.META,
-                    "name": catalogue.META,
-                    "signatures": [shape],
-                    "doc": "\n\n".join(part for part in (brief, detail) if part),
-                    "types": self.references(self.close_over(returned_ids)),
-                }
-            )
-        first = entries[0]
-        for other in entries[1:]:
-            if other != first:
-                raise Failure(
-                    "the directory a module carries is not the same declaration on every module; "
-                    "it is expanded from one macro and must be"
-                )
-        return [first]
-
     def build(self, libraries):
         functions = self.functions_and_members()
         # The member functions are folded into their receivers by the walk above, so the type
@@ -835,7 +779,6 @@ class Reflector:
             "generatedFrom": GENERATED_FROM,
             "libraries": libraries,
             "modules": self.modules_section(),
-            "meta": self.meta_section(),
             "functions": functions,
             "types": [
                 {key: value for key, value in declaration.items() if key != "referenced"}

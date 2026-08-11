@@ -1,7 +1,7 @@
 """Durable memories, which survive a context compaction.
 
-A run picks one of three memory strategies and binds only that strategy's functions, so
-`memories.list()` is the honest answer to what memory can do here. The scratchpad keeps every memory
+A run picks one of three memory strategies and binds only that strategy's functions, so what this
+module offers is the honest answer to what memory can do here. The scratchpad keeps every memory
 in the context window (`write_memory`, `update_memory`); the two file-shaped strategies keep the
 contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an index that is
 always in context and one behind `search_memories`. `delete_memory` is bound under all three.

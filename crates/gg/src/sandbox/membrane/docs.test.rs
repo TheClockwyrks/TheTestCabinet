@@ -1,4 +1,4 @@
-//! Tests for the **documentation** interface — the directory every program reaches, and the two
+//! Tests for the **documentation** interface — the search every program reaches, and the two
 //! closes that are bought by a capability.
 //!
 //! The split is the subject. Discovering what a run offers is unconditional; taking documentation
@@ -11,27 +11,9 @@ use super::super::test_cabinet::gg::types::ErrorCode;
 use super::*;
 use crate::sandbox::fake::{CallLog, membrane, membrane_closing_docs};
 
-/// The directory is answered whatever a run enables, and is recorded under the object the guest
-/// named — the one call whose API record cannot be a fixed pair.
-#[test]
-fn the_directory_answers_and_is_recorded_under_the_object_it_was_asked_about() {
-    let log = CallLog::default();
-    let mut state = membrane(&log);
-
-    let listed = state.list_functions("fs".to_string());
-    assert_eq!(listed.len(), 1);
-    assert_eq!(listed[0].name, "fsFunction");
-
-    assert!(
-        log.names().is_empty(),
-        "a directory lookup dispatches no tool"
-    );
-    assert_eq!(state.into_parts().api_calls, 1);
-}
-
 /// **A search is unconditional, and the view it opens is recorded as a view.**
 ///
-/// It sits on the ungated side of this interface with the directory, and for a stronger reason:
+/// It sits on the ungated side of this interface, and for a strong reason:
 /// once the prompt names no functions, a search is how an agent learns what it has, so a run able to
 /// withhold it could withhold an agent's knowledge of its own capabilities. What is still per agent
 /// is what a search *finds*, which the runtime decides and this membrane never second-guesses.

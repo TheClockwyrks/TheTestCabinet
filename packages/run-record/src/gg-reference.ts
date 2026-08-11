@@ -248,7 +248,7 @@ export type GgApiFunction = {
    */
   category: string;
   /**
-   * The one-line summary `object.list()` shows — the first sentence of
+   * The one-line summary a search result carries — the first sentence of
    * [`doc`](Self::doc).
    */
   summary: string;

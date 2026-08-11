@@ -4,10 +4,9 @@ Two things are built here, and the difference between them is the whole of gg's 
 this guest sees it.
 
 **The modules are built from the run.** `files`, `board`, `views`, `session` — one per
-`gg.catalogue.MODULE_ORDER` entry with at least one function this run offers, each carrying the
-functions it offers and the `list` directory every module has. A withheld function is not an
-attribute, so `<module>.list()` is the honest directory of what is really available and a model is
-never shown a call it cannot make.
+`gg.catalogue.MODULE_ORDER` entry with at least one function this run offers, carrying exactly the
+functions it offers and nothing else. A withheld function is not an attribute, so what a module holds
+is what is really available and a model is never shown a call it cannot make.
 
 **It is not the enforcement.** That is the difference from a guest that could hide a name and be done
 with it: this SDK is an ordinary Python package, a program can `import gg.files` and reach every
@@ -29,7 +28,7 @@ from typing import Any
 
 from wit_world.imports import session as wire_session
 
-from . import board, context, core, delegation, docs, files, memories, programs
+from . import board, context, core, delegation, files, memories, programs
 from . import session as session_module
 from . import shell, skills, tasks, views
 from ._registry import ATTRIBUTE, REGISTRY
@@ -122,7 +121,7 @@ class CapabilityModule(Bound):
     function that is **not** on it. `files.read_file` in a run with reading withheld is the single
     most likely mistake a model makes against this surface, and the difference between
     `'types.SimpleNamespace' object has no attribute 'read_file'` and a sentence naming the module
-    and pointing at its directory is a turn.
+    and saying the function is not offered is a turn.
 
     It is also what lets the shim classify that mistake correctly. Python raises `AttributeError`
     where a guest that could withhold a *name* would raise `NameError`, and the two mean the same
@@ -145,7 +144,7 @@ class CapabilityModule(Bound):
         except KeyError:
             raise AttributeError(
                 f"`{self._path}.{name}` is not one of the functions this run offers; "
-                f"`{self._path}.list()` shows the ones it does",
+                f"it offers {', '.join(sorted(self._members))}",
                 name=name,
                 obj=self,
             ) from None
@@ -211,12 +210,7 @@ def build_modules(
 
     def offer(operation: str, function: Any) -> None:
         module = operation.split(".", 1)[0]
-        members = offered.get(module)
-        if members is None:
-            # Seeded with the directory every module carries, so a module a run offers is always a
-            # module whose contents a program can ask for.
-            members = {"list": docs.bind_list(f"{PACKAGE}.{module}")}
-            offered[module] = members
+        members = offered.setdefault(module, {})
         members[function.__name__] = function
 
     for operation, function in implemented.items():

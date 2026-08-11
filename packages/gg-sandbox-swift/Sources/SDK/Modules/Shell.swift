@@ -7,10 +7,7 @@
 /// run passed is the single most common thing a program does with one.
 ///
 /// - ggmodule: shell
-public enum shell: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.shell"
-
+public enum shell {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = ["shell"]
 

@@ -8,8 +8,8 @@ documentation parser built into it — the one ``-Wdocumentation`` diagnoses aga
 matter: it decides which comment belongs to which declaration, it parses the Doxygen commands
 inside one into structure, and it **keeps the lines** the author wrote. So ``\\param path``'s prose
 arrives attached to the parameter called ``path``, ``\\returns`` and ``\\throws`` arrive as their
-own nodes, ``\\copydoc`` arrives as a resolvable reference, and the first line of a comment is
-recoverable as a first line rather than as a sentence this script had to find.
+own nodes, and the first line of a comment is recoverable as a first line rather than as a sentence
+this script had to find.
 
 THE BRIEF IS THE FIRST LINE, AND THE SPLIT HAPPENS BEFORE ANYTHING IS UNWRAPPED. Doxygen's implicit
 structure, with no ``\\brief`` tag anywhere: the opening paragraph of a declaration's comment is its
@@ -314,50 +314,34 @@ def tagged(node, pattern):
     return found[0] if found else None
 
 
-class Docs:
-    """Every doc comment in the SDK, and the one command that points from one to another."""
+def described(node, what):
+    """One declaration's ``(brief, detail)``, with its identity lines taken out.
 
-    def __init__(self, index):
-        self.index = index
-
-    def described(self, node, what):
-        """One declaration's ``(brief, detail)``, with ``\\copydoc`` resolved and identity lines out.
-
-        The brief is the **first paragraph and one line**. An opening paragraph that runs to two
-        lines is not a brief, and it is refused here — naming the declaration it was written on —
-        rather than reaching a model as a paragraph in the field where it expected a line.
-        """
-        comment = comment_of(node)
-        if comment is None:
-            raise Failure(f"{what} has no `///` documentation, so a model would read nothing")
-        written = [
-            paragraph
-            for paragraph in paragraphs(comment)
-            if not OPERATION_TAG.fullmatch(paragraph.strip())
-            and not ALIAS_TAG.fullmatch(paragraph.strip())
-            and not MODULE_TAG.fullmatch(paragraph.strip())
-        ]
-        if len(written) == 1:
-            copied = re.fullmatch(r"\\copydoc\s+([A-Za-z0-9_:]+)", written[0].strip())
-            if copied:
-                target = self.index.get(copied.group(1))
-                if target is None:
-                    raise Failure(
-                        f"{what} copies the documentation of `{copied.group(1)}`, which this SDK "
-                        "does not declare"
-                    )
-                return self.described(target, f"`{copied.group(1)}`")
-        if not written:
-            raise Failure(f"{what}'s documentation is blank")
-        brief = written[0].strip()
-        if "\n" in brief:
-            raise Failure(
-                f"{what} opens with a paragraph of {len(brief.splitlines())} lines where a brief "
-                "is one line — the first line is the brief and everything after the blank line is "
-                f"the detail, so this reads as a brief nobody wrote: {brief!r}"
-            )
-        detail = unwrapped("\n\n".join(written[1:])).strip() or None
-        return brief, detail
+    The brief is the **first paragraph and one line**. An opening paragraph that runs to two lines
+    is not a brief, and it is refused here — naming the declaration it was written on — rather than
+    reaching a model as a paragraph in the field where it expected a line.
+    """
+    comment = comment_of(node)
+    if comment is None:
+        raise Failure(f"{what} has no `///` documentation, so a model would read nothing")
+    written = [
+        paragraph
+        for paragraph in paragraphs(comment)
+        if not OPERATION_TAG.fullmatch(paragraph.strip())
+        and not ALIAS_TAG.fullmatch(paragraph.strip())
+        and not MODULE_TAG.fullmatch(paragraph.strip())
+    ]
+    if not written:
+        raise Failure(f"{what}'s documentation is blank")
+    brief = written[0].strip()
+    if "\n" in brief:
+        raise Failure(
+            f"{what} opens with a paragraph of {len(brief.splitlines())} lines where a brief "
+            "is one line — the first line is the brief and everything after the blank line is "
+            f"the detail, so this reads as a brief nobody wrote: {brief!r}"
+        )
+    detail = unwrapped("\n\n".join(written[1:])).strip() or None
+    return brief, detail
 
 
 def with_tail(detail, comment):
@@ -620,14 +604,6 @@ class Reflector:
         # `namespace gg { … }` is reopened by every header, and clang dumps each block, so the
         # surface is their union rather than any one of them.
         self.children = [child for block in blocks for child in block.get("inner", [])]
-        self.qualified = {}
-        for child in self.children:
-            if child.get("kind") != "NamespaceDecl":
-                continue
-            for member in child.get("inner", []):
-                if member.get("name"):
-                    self.qualified[f'gg::{child["name"]}::{member["name"]}'] = member
-        self.docs = Docs(self.qualified)
         self.modules = {}
         self.declared = {}
         self.types = {}
@@ -729,7 +705,7 @@ class Reflector:
         found = public_members(node)
         parts = [member for member in found if not is_member_function(member)]
         rendered = declaration_of(node, declared.name, parts)
-        brief, detail = self.docs.described(node, f"the type `{declared.fqn}`")
+        brief, detail = described(node, f"the type `{declared.fqn}`")
         members = []
         referenced = []
         for member in parts:
@@ -740,7 +716,7 @@ class Reflector:
             written = member_type(member, declared.spelled)
             if written:
                 self.referenced(written, referenced, f"`{declared.fqn}::{member.get('name')}`")
-            member_brief, member_detail = self.docs.described(
+            member_brief, member_detail = described(
                 member, f"`{declared.fqn}::{member.get('name')}`"
             )
             members.append(
@@ -866,11 +842,11 @@ class Reflector:
                 "would be decided by declaration order — give the catalogue one description to "
                 "read by making the fullest overload the documented one"
             )
-        described = max(nodes, key=lambda node: len(parameters_of(node)))
+        documented = max(nodes, key=lambda node: len(parameters_of(node)))
         # The identity belongs on the declaration that carries the description, because that is the
         # one a reader of the header is standing at when they read what the call is. An id on the
         # shorter overload would be an id on a comment the catalogue never renders.
-        if tagged(described, OPERATION_TAG) is None and tagged(described, ALIAS_TAG) is None:
+        if tagged(documented, OPERATION_TAG) is None and tagged(documented, ALIAS_TAG) is None:
             raise Failure(
                 f"{what} names its gg operation on an overload other than the one that documents "
                 "the entry — the identity goes on the fullest shape, beside the prose that covers "
@@ -883,7 +859,7 @@ class Reflector:
             for _, kind, _ in parameters_of(node):
                 self.referenced(kind, arguments, what)
             self.referenced(returns_of(node), returned, what)
-        brief, detail = self.docs.described(described, what)
+        brief, detail = described(documented, what)
         return {
             "operation": operation,
             "aliasOf": alias_of,
@@ -922,8 +898,6 @@ class Reflector:
             groups = {}
             for child in self.modules[module.id]:
                 if child.get("kind") != "FunctionDecl" or child.get("isImplicit"):
-                    continue
-                if child["name"] == catalogue.META:
                     continue
                 # A declaration carrying no `///` is not model-facing on this arm, and is the one
                 # way a module may hold something a program can call and a model is never told
@@ -992,7 +966,7 @@ class Reflector:
                 and child.get("name") == module.name
                 and comment_of(child) is not None
             )
-            brief, detail = self.docs.described(block, f"the `{module.path}` module")
+            brief, detail = described(block, f"the `{module.path}` module")
             out.append(
                 {
                     "id": module.id,
@@ -1007,59 +981,6 @@ class Reflector:
             )
         return out
 
-    def meta_section(self):
-        """The `list` every capability module carries, read once and asserted identical on all of
-        them.
-
-        Every module that offers a capability carries one, and `core` — which offers none — carries
-        none. Both halves are asserted rather than tolerated: a module with capabilities and no
-        directory would be a module a program could not enumerate, and a directory on a module with
-        nothing in it would list nothing.
-        """
-        entries = []
-        for module in catalogue.MODULES:
-            declared = [
-                child
-                for child in self.modules[module.id]
-                if child.get("kind") == "FunctionDecl" and child["name"] == catalogue.META
-            ]
-            offers = any(
-                child.get("kind") == "FunctionDecl"
-                and child["name"] != catalogue.META
-                and comment_of(child) is not None
-                for child in self.modules[module.id]
-            )
-            if not offers:
-                if declared:
-                    raise Failure(
-                        f"`{module.path}` offers no capability and carries a `{catalogue.META}`"
-                    )
-                continue
-            if not declared:
-                raise Failure(f"`{module.path}` offers capabilities and carries no directory")
-            what = f"`{module.path}::{catalogue.META}`"
-            shape = self.shape(declared[0], catalogue.META, what)
-            brief, detail = self.docs.described(declared[0], what)
-            returned = []
-            self.referenced(returns_of(declared[0]), returned, what)
-            entries.append(
-                {
-                    "key": catalogue.META,
-                    "name": catalogue.META,
-                    "signatures": [shape],
-                    "doc": "\n\n".join(part for part in (brief, detail) if part),
-                    "types": self.references(self.close_over(returned)),
-                }
-            )
-        first = entries[0]
-        for other in entries[1:]:
-            if other != first:
-                raise Failure(
-                    "the directory a module carries is not the same declaration on every module; "
-                    f"it is a `\\copydoc` of {catalogue.META_DOC_HOME} and must be"
-                )
-        return [first]
-
     def build(self, libraries):
         functions = self.functions_and_members()
         # The member functions are folded into their receivers by the walk above, so the type
@@ -1072,7 +993,6 @@ class Reflector:
             "generatedFrom": GENERATED_FROM,
             "libraries": libraries,
             "modules": self.modules_section(),
-            "meta": self.meta_section(),
             "functions": functions,
             "types": [
                 {key: value for key, value in declaration.items() if key != "referenced"}

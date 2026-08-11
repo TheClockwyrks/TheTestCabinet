@@ -92,16 +92,3 @@ export class ToolError extends Error {
   }
 }
 
-/**
- * One function in a module's directory, as `list` returns it.
- *
- * The summary is a single line. A function's whole documentation — every shape it may be called in,
- * what each argument is for, and the types it names — is a view, opened with `gg.views.openDocsView`.
- */
-export interface FunctionSummary {
-  /** The function's name on its module: `readFile`, in `gg.files.readFile`. */
-  name: string;
-
-  /** The one line that says what it does. */
-  summary: string;
-}

@@ -69,7 +69,7 @@
    "id": "memories",
    "path": "gg.memories",
    "brief": "Durable notes that survive a context compaction.",
-   "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so this module's own directory is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window; the two file-shaped strategies keep the contents outside it, one behind an index that is always in context and one behind a keyword search. Deleting is bound under all three.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
+   "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so what this module offers is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window; the two file-shaped strategies keep the contents outside it, one behind an index that is always in context and one behind a keyword search. Deleting is bound under all three.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
    "import": null
   },
   {
@@ -120,25 +120,6 @@
    "brief": "The failure type, the failure codes, and the small values every other module speaks in.",
    "detail": "It catalogues no capability of its own. What it holds is the vocabulary the other eleven modules share, gathered here so that no module has to reach into another to name a failure — and so that a program catching one writes a single `import gg.core.ToolError` rather than one per module it calls. The session-wide `lib` namespace sits here for the same reason: a code module arrives from a skill or from a memory, so it belongs to neither.",
    "import": null
-  }
- ],
- "meta": [
-  {
-   "key": "list",
-   "name": "list",
-   "signatures": [
-    {
-     "signature": "list(): List<gg.core.FunctionSummary>",
-     "parameters": []
-    }
-   ],
-   "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `gg.views.openDocsView`.\n\nReturns: every function this module really bound, each with one line saying what it does",
-   "types": [
-    {
-     "spelled": "gg.core.FunctionSummary",
-     "fqn": "gg.core.FunctionSummary"
-    }
-   ]
   }
  ],
  "functions": [
@@ -3146,31 +3127,6 @@
      "type": "String",
      "kind": "field",
      "brief": "The prose summary of what was reclaimed.",
-     "detail": null
-    }
-   ],
-   "memberFunctions": []
-  },
-  {
-   "fqn": "gg.core.FunctionSummary",
-   "module": "core",
-   "name": "FunctionSummary",
-   "declaration": "data class FunctionSummary(val name: String, val summary: String)",
-   "brief": "One function in a module's directory, as `list` returns it.",
-   "detail": "The summary is one line. A function's whole documentation — every shape it may be called in, what each argument takes, and the types it names — is a view, opened with `gg.views.openDocsView`.",
-   "members": [
-    {
-     "name": "name",
-     "type": "String",
-     "kind": "field",
-     "brief": "The function's name within its module, such as `readFile` in `gg.files.readFile`.",
-     "detail": null
-    },
-    {
-     "name": "summary",
-     "type": "String",
-     "kind": "field",
-     "brief": "One line saying what the function does.",
      "detail": null
     }
    ],

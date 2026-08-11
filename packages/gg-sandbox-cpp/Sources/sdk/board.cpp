@@ -26,8 +26,6 @@ const std::vector<std::string>& board_tools() {
 
 namespace board {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::board"); }
-
 board::epic_created create_epic(std::string_view prefix, std::string_view title,
                                 std::string_view description) {
   detail::scratch scratch;

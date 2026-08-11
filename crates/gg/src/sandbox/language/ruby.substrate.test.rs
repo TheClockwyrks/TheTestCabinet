@@ -454,7 +454,7 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     );
 
     // A module that exists with the function withheld says something better than Ruby would, and
-    // points at the directory every module carries.
+    // names what it does offer.
     let (outcome, _log) = run_with(
         "GG::Files.write_file(\"a\", \"b\")\n",
         &["read_file".into()],
@@ -464,8 +464,8 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("GG::Files.write_file") && error.message.contains("GG::Files.list"),
-        "the refusal names the call and the directory: {}",
+        error.message.contains("GG::Files.write_file") && error.message.contains("read_file"),
+        "the refusal names the call and what the module does offer: {}",
         error.message
     );
 
@@ -939,7 +939,6 @@ GG::Views.open_docs_view(GG::Files.method(:read_file))
 
 whole = GG::Views.open_file("notes.md")
 puts "#{whole.class} #{GG::Views.current.select { |v| v.kind == GG::Views::ViewKind::FILE }.map(&:region).inspect}"
-puts GG::Files.list.map { |entry| "#{entry.name}: #{entry.summary}" }.join(",")
 GG::Session.finish("done")
 "##,
         &all_tools(),
@@ -956,11 +955,6 @@ GG::Session.finish("done")
         "{:?}",
         lines[2]
     );
-    assert_eq!(
-        lines[3], "GG::FilesFunction: a function on `GG::Files`",
-        "a module's directory is asked for under the module's own path, not gg's word for it"
-    );
-
     // The program library is bound from the capability rather than from a tool name, and a reviewer
     // gets the other ending group and no `finish` at all.
     let (outcome, _log) = run_as(
@@ -1361,12 +1355,12 @@ const SIGNATURES: &str = include_str!("../guests/ruby.signatures.json");
 
 #[test]
 fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
-    // The **real** agreement gate, over the real Ruby catalogue. It is what stands between a
-    // configured `language` param and an invalidated study: two internally-consistent surfaces that
-    // disagree with each other are two green test suites, and this is the only thing that compares
-    // them. It ran here before this arm was registered, wearing the seam's fixture so it could be
-    // handed a catalogue whose id the wire enum did not carry yet; now that `ruby` is a language an
-    // operator configures, it runs against the registry itself, which is what the whole gate is for.
+    // The **real** capability gate, over the real Ruby catalogue. It is what stands between a
+    // configured `language` param and an invalidated study: an arm that quietly offers a model
+    // fewer capabilities than the arm it is measured against is a green test suite, and this is the
+    // only thing that would notice. It ran here before this arm was registered, wearing the seam's
+    // fixture so it could be handed a catalogue whose id the wire enum did not carry yet; now that
+    // `ruby` is a language an operator configures, it runs against the registry itself.
     let document: Value =
         serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
     assert_eq!(
@@ -1378,7 +1372,7 @@ fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
     let found = super::super::agreement::disagreements(&[typescript(), ruby()]);
     assert!(
         found.is_empty(),
-        "the Ruby catalogue does not describe the same capability surface TypeScript does:\n{}",
+        "the Ruby catalogue does not offer gg's capability surface:\n{}",
         found
             .iter()
             .map(|disagreement| format!("  - {}\n", disagreement.detail))
@@ -1428,21 +1422,7 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
             }
         })
     };
-    let mut calls: Vec<String> = functions.iter().filter_map(asked).collect();
-
-    // Plus the directory every module that offers something carries. It is seeded onto each module
-    // rather than catalogued on one, which is why it is checked against the modules rather than
-    // found among the functions — and `core` declares no function at all, so it carries none.
-    let meta = catalogue["meta"][0]["name"]
-        .as_str()
-        .expect("the meta function is catalogued");
-    for module in catalogue["modules"].as_array().expect("an array") {
-        if module["id"] == json!("core") {
-            continue;
-        }
-        let path = module["path"].as_str().expect("a module path");
-        calls.push(format!("{path}.respond_to?(:{meta})"));
-    }
+    let calls: Vec<String> = functions.iter().filter_map(asked).collect();
 
     let program = format!(
         "puts [{}].map {{ |ok| ok ? \"ok\" : \"missing\" }}.join(\",\")\n",
@@ -1643,7 +1623,7 @@ why { GG::Board.create_issue("t", "in", "out", "done", "worker", reviewer: ["r1"
 why { GG::Tasks.add_task("id", "t", desc: "oops") }
 why { GG::Files.read_file("a.rb", start: 3) }
 why { GG::Files.list_dir("src", deep: true) }
-why { GG::Views.list(deep: true) }
+why { GG::Views.current(deep: true) }
 "##,
         &all_tools(),
         &[],

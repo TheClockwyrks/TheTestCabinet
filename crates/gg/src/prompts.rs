@@ -45,7 +45,7 @@
 //!
 //! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt names the
 //! [API objects](SystemContext::apis) a program has (`fs`, `project`, `harness`, …) and how to
-//! inspect them — `object.list()` and `view.openDocsView()` — rather than listing every signature up front.
+//! inspect them — searching, and `view.openDocsView()` — rather than listing every signature up front.
 //! The signatures and documentation live behind the [docs carve-out](crate::docs), reflected from
 //! the SDK's own declarations, so a description the sandbox cannot back can never reach a model.
 //!
@@ -100,7 +100,7 @@ const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs"
 // `system-code.<language id>` by [`engine`].
 //
 // It carries the same capability sections as the tool-calling arm plus the code-protocol framing
-// (the reply *is* a program, discovery through `object.list()`/`view.openDocsView()`, the message
+// (the reply *is* a program, discovery through search and `view.openDocsView()`, the message
 // headings), with each capability's calls named in their grouped form — methods on an API object
 // (`tasks.addTask`, `agents.spawnSubagent`, `project.createEpic`) rather than free-standing tools.
 //
@@ -113,8 +113,8 @@ const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs"
 // of additive.
 //
 // What a template does **not** carry is a single function *name*. Every call it quotes is resolved
-// from that language's committed catalogue at render time, through the [`api`](ApiSpellings) and
-// `meta` variables [`spellings`] builds — `{{api.view.open_text.signature}}`, never
+// from that language's committed catalogue at render time, through the `api` variables
+// [`spellings`] builds — `{{api.view.open_text.signature}}`, never
 // `view.openText(label, body)`. That is the rule the whole surface follows: nothing a model reads
 // about the SDK is written anywhere but on the declaration it describes.
 //
@@ -330,14 +330,13 @@ struct CallSpelling {
 /// A template therefore never contains a spelling, and a language that renamed a function renames it
 /// in every prompt with nothing to keep in step.
 ///
-/// `meta.<key>` carries the [meta functions](crate::sandbox::MetaSignature), which hang off no object
-/// — `{{meta.list.name}}`.
+/// There is no second namespace beside it. `meta.<key>` used to carry the functions that hung off
+/// no object, and `list` was the whole of that vocabulary; with the directory deleted every
+/// model-facing call a template can name hangs off something, so one namespace covers the surface.
 #[derive(Debug, Serialize)]
 struct Spellings {
     /// Every catalogued function, by object then key.
     api: BTreeMap<&'static str, BTreeMap<&'static str, CallSpelling>>,
-    /// Every meta function, by key.
-    meta: BTreeMap<&'static str, CallSpelling>,
     /// The [libraries](crate::sandbox::LibraryGroup) this language's programs may import, in the
     /// groups its own artifact files them under — `{{#each libraries}}- {{group}}: {{modules}}`.
     ///
@@ -412,24 +411,6 @@ fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
             },
         );
     }
-    let meta = language
-        .catalogue()
-        .meta
-        .iter()
-        .map(|entry| {
-            (
-                entry.key.as_str(),
-                CallSpelling {
-                    name: entry.name.clone(),
-                    call: entry.name.clone(),
-                    signature: entry
-                        .signatures
-                        .first()
-                        .map_or_else(|| entry.name.clone(), |shape| shape.signature.clone()),
-                },
-            )
-        })
-        .collect();
     let libraries = language
         .catalogue()
         .libraries
@@ -439,11 +420,7 @@ fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
             modules: group.modules.join(", "),
         })
         .collect();
-    Spellings {
-        api,
-        meta,
-        libraries,
-    }
+    Spellings { api, libraries }
 }
 
 /// The plain sentence a code turn that showed itself nothing degrades to when its notice template
@@ -540,9 +517,9 @@ pub struct SystemContext {
     #[serde(skip)]
     pub language: Option<GgProgramLanguage>,
     /// The API objects a code program has this run, each with a one-line description — the section
-    /// the prompt names so a model knows which objects to inspect with `object.list()`. Empty on the
+    /// the prompt names so a model knows which vocabulary its searches can use. Empty on the
     /// tool-calling path (where tools are in the request); on the code path it always carries at
-    /// least `harness`. Not the *functions* — those are discovered on demand with `list()` and
+    /// least `harness`. Not the *functions* — those are discovered on demand by searching and then
     /// `view.openDocsView()`, which is the whole point of the redesign — only the objects and what each is for.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub apis: Vec<ApiView>,
@@ -709,8 +686,8 @@ pub struct ShellView {
     /// Separate from [`offloaded`](Self::offloaded), which describes how much of a command's output
     /// comes back: this one gates whether the prompt says a program can run commands *at all*. It is
     /// worth its own line under responses-as-code for the reason `view.openFile` is: running a build
-    /// or a test is the most common thing a program does, and a model that has to discover the call
-    /// through `system.list()` spends a turn on it.
+    /// or a test is the most common thing a program does, and a model that has to search the call
+    /// out spends a turn on it.
     pub offered: bool,
     /// Whether `shell` output is offloaded this run. False when the tool is not offered, or when its
     /// output comes back inline — in which case nothing else here is referenced by the template.
@@ -738,7 +715,7 @@ pub struct CodeHeadingView {
 
 /// One API object a code program has, as the system prompt names it: the object identifier a
 /// program reaches (`fs`) and a one-line description of what it is for. The functions on it are not
-/// listed — the model discovers those with `object.list()` and `view.openDocsView()`.
+/// listed — the model discovers those by searching and then `view.openDocsView()`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiView {
@@ -925,7 +902,6 @@ pub fn render_system(context: &SystemContext, template_override: Option<&str>) -
         Some(id) => spellings(language(id)),
         None => Spellings {
             api: BTreeMap::new(),
-            meta: BTreeMap::new(),
             libraries: Vec::new(),
         },
     };

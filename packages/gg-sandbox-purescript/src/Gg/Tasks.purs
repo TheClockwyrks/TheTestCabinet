@@ -12,7 +12,6 @@ module Gg.Tasks
   , setBlockedBy
   , completeTask
   , removeTask
-  , list
   , TaskStatus(..)
   , TaskUsage
   , AddTaskOptions
@@ -26,8 +25,6 @@ import Data.Maybe (Maybe)
 import Data.Nullable (toNullable)
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
@@ -175,17 +172,6 @@ completeTask id = Wire.call_ "complete_task" "tasks" "Gg.Tasks.completeTask" [ W
 removeTask :: String -> Effect TaskUsage
 removeTask id = Wire.call "remove_task" "tasks" "Gg.Tasks.removeTask" [ Wire.wire id ]
 
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Tasks.list" [ "tasks" ]
 
 -- | gg's own word for a status, which is what both execution modes report.
 taskStatus :: TaskStatus -> String

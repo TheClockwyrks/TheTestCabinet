@@ -26,9 +26,6 @@ namespace gg {
 /// <ggmodule>views</ggmodule>
 namespace views {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// Which of the three kinds a view is.
 ///
 /// The taxonomy is closed at three deliberately: everything on disk is a file, everything a
@@ -118,7 +115,8 @@ void open_text(std::string_view label, std::string_view body);
 /// <ggop>views.open_docs_view</ggop>
 ///
 /// \param name The function to document, by the name it is called under its module —
-///   `"read_file"` for `files::read_file`. A module's `list` is what says which names exist.
+///   `"read_file"` for `files::read_file`. Searching the documentation is what says which names
+///   exist.
 /// \throws core::tool_error `not_found` for an unknown or unbound name.
 void open_docs_view(std::string_view name);
 
@@ -140,8 +138,8 @@ std::uint32_t close(std::string_view selector);
 /// List what is open in the context window right now, with what each one costs.
 ///
 /// Each entry carries its `kind`, the `selector` that closes it, roughly what it costs in
-/// `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather
-/// than `list` because every module already carries a `list` of its own functions.
+/// `tokens`, and — for a paged file view — the `region` it covers. What it enumerates is the context
+/// window's contents, not any module's functions.
 ///
 /// <ggop>views.current</ggop>
 ///

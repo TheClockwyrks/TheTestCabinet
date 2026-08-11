@@ -121,8 +121,8 @@ pub use language::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, ResolvedProgramLanguage, VIEW_OPEN_DOCS_VIEW, Workspace, daemon, meta_spelling,
-    place, place_tree, shared_toolchain_dir,
+    PromptDialect, ResolvedProgramLanguage, VIEW_OPEN_DOCS_VIEW, Workspace, daemon, place,
+    place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -169,15 +169,14 @@ pub use {
     invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened, invoker::ViewOpenOutcome,
     invoker::ViewRefusal, limits::resolve_sandbox_limits, membrane::RunEnding,
     signatures::CatalogueFunction, signatures::Parameter, signatures::ParameterKind,
-    signatures::TypeDeclaration, signatures::catalogue_functions, signatures::meta_function,
-    signatures::type_declaration,
+    signatures::TypeDeclaration, signatures::catalogue_functions, signatures::type_declaration,
 };
 
 // The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are
-// fields of types it does: an `ObjectDoc` comes back from `catalogue_objects`, a `MetaSignature`
-// from `meta_function`, a `SignatureEntry` hangs off every `CatalogueFunction`, and a `TypeMember`
-// off every `TypeDeclaration`. A type a reader has to reach into a private module to read is a type
-// nobody reads, and the crate denies warnings.
+// fields of types it does: an `ObjectDoc` comes back from `catalogue_objects`, a `SignatureEntry`
+// hangs off every `CatalogueFunction`, and a `TypeMember` off every `TypeDeclaration`. A type a
+// reader has to reach into a private module to read is a type nobody reads, and the crate denies
+// warnings.
 //
 // The normalized doc model's own types are here for the same reason and one more: they are the
 // shape each arm is converted *into*, one commit at a time, so the readers that move onto them
@@ -192,9 +191,8 @@ pub use {
 // caller for it, and it goes with the last v1 arm rather than being kept alive by a new one.
 #[allow(unused_imports)]
 pub use signatures::{
-    EntryKind, LibraryGroup, MemberFunction, MemberKind, MetaSignature, ModuleDoc, ModuleView,
-    ObjectDoc, Prose, SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules,
-    catalogue_objects,
+    EntryKind, LibraryGroup, MemberFunction, MemberKind, ModuleDoc, ModuleView, ObjectDoc, Prose,
+    SchemaVersion, SignatureEntry, TypeMember, TypeReference, catalogue_modules, catalogue_objects,
 };
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source

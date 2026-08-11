@@ -5,10 +5,9 @@
 # WHAT READS THE DOCUMENTATION. `clang++` itself. clang carries a real documentation parser — the
 # one `-Wdocumentation` diagnoses against and the one `libclang`'s comment API and `clang-doc` are
 # built on — and `-ast-dump=json` prints what it built: which comment belongs to which declaration,
-# each `\param`'s prose attached to the parameter it names, `\returns` and `\throws` as their own
-# nodes, and `\copydoc` as a reference this arm's reflector resolves. So the per-parameter
-# documentation slot here is the LANGUAGE's rather than a convention standing in for one, as it is
-# on the Rust and PureScript arms.
+# each `\param`'s prose attached to the parameter it names, and `\returns` and `\throws` as their
+# own nodes. So the per-parameter documentation slot here is the LANGUAGE's rather than a convention
+# standing in for one, as it is on the Rust and PureScript arms.
 #
 # `-Werror=documentation` is what makes that a contract rather than a habit: clang refuses the
 # reflection outright if a `\param` names an argument the function does not take, or if a documented

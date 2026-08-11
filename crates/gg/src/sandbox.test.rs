@@ -264,7 +264,6 @@ fn a_program_runs_typed_calls_in_order() {
         "gg.context.compact(\"done\");\n",
         "gg.delegation.sendMessage(\"agent-1\", \"more\");\n",
         "gg.skills.readSkill(\"testing\");\n",
-        "console.log(gg.files.list().map((f) => f.name).join(\",\"));\n",
         "try {\n",
         "  gg.files.readTextFile(42 as unknown as string);\n",
         "} catch (error) {\n",
@@ -303,12 +302,7 @@ fn a_program_runs_typed_calls_in_order() {
     );
     let lines = logs(&outcome);
     assert_eq!(
-        lines[0], "fsFunction",
-        "`gg.files.list()` answered with this module's own directory, which the host keys by the \
-         grouping the module was seeded with"
-    );
-    assert_eq!(
-        lines[1], "true",
+        lines[0], "true",
         "`ToolError` is bound bare, so `instanceof` narrows a caught failure"
     );
     assert_eq!(
@@ -1032,10 +1026,6 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "a view with no selector could never be closed or attributed, so it is refused"
     );
 
-    // The object is wired into the documentation carve-out under its own name, like every other one.
-    let (outcome, _) = run("console.log(JSON.stringify(view.list().map((f) => f.name)));");
-    assert_eq!(logged_json(&outcome), json!(["viewFunction"]));
-
     // Reading a function's documentation opens a VIEW and returns nothing, which is the whole of
     // what replaced `fn.docs()`: a call that handed the text back inline was a second channel into
     // the model that no band was charged for and no `view.close` could reclaim.
@@ -1080,18 +1070,6 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
     assert!(
         log.names().is_empty(),
         "nothing reached the host: a withheld family is not a name in scope at all"
-    );
-
-    // Present with it, and carrying exactly the three functions.
-    let outcome = run_with_library(
-        "console.log(JSON.stringify(programs.list().map((f) => f.name)));",
-        &[],
-    );
-    assert_eq!(
-        logged_json(&outcome),
-        json!(["programsFunction"]),
-        "the object is wired into the documentation carve-out like every other one (the double \
-         answers a directory per object; which functions a real one lists is `docs`'s own test)"
     );
 
     // `history` describes the shape of what is held, and never its source.

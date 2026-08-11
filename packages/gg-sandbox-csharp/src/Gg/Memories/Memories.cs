@@ -9,8 +9,7 @@ namespace Gg;
 /// <see cref="WriteMemory"/> and <see cref="UpdateMemory"/>, or the file-shaped
 /// <see cref="CreateMemory"/>, <see cref="ReadMemory"/> and <see cref="EditMemory"/> — plus
 /// <see cref="SearchMemories"/> where there is no pinned index. <see cref="DeleteMemory"/> is bound
-/// under all three, the system prompt says which strategy is in force, and <see cref="List"/> is the
-/// directory of what was really bound.
+/// under all three, and the system prompt says which strategy is in force.
 /// </para>
 /// <para>
 /// A memory may carry <c>code</c>, which is a module in this language bound at
@@ -21,9 +20,6 @@ namespace Gg;
 /// <ggmodule>memories</ggmodule>
 public static partial class Memories
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Memories));
-
     /// <summary>Record a new durable memory.</summary>
     /// <remarks>
     /// A duplicate name, or a body that would breach a limit, is a failure — the answer is to revise

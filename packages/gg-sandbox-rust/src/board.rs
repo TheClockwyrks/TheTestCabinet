@@ -24,7 +24,6 @@ pub(crate) const TOOLS: &[&str] = &[
     "wait_for_issue",
 ];
 
-crate::directory::directory_of!();
 
 /// Create an epic to group related issues, and hand back the id its prefix resolved to.
 ///

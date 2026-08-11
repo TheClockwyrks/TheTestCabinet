@@ -8,9 +8,9 @@
   "clang": "22.1.0-wasi-sdk",
   "target": "wasm32-wasip2",
   "witBindgen": "0.60.0",
-  "componentBytes": 35260748,
+  "componentBytes": 35259496,
   "shellSha256": "fa2ba1ac2ce77811a8bd68795330287b28b5948189fb3ec791bf24a946c46e74",
-  "bridgeSha256": "4ecc12e6ee1b2c45a99412dd73308854fce2aee96736f83c8fb0bedd723bbb58",
+  "bridgeSha256": "85d3e393e9c33b28ca7564eb4496461456fd693f7b873ad2bfc93bd1fb8c299d",
   "trampolinesSha256": "7c00c2d12ddf5445ed2b9526e0988d066f0bec81927904e6192704f8bb30bc1b",
   "unscannedAssemblies": ["System.Net.Http.dll"],
   "bundledAssemblies": 171

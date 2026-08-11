@@ -23,7 +23,6 @@ use super::super::test_cabinet::gg::context::{Host as ContextHost, TurnRange};
 use super::super::test_cabinet::gg::delegation::{
     Host as DelegationHost, SpawnRequest, SubagentBrief,
 };
-use super::super::test_cabinet::gg::docs::Host as DocsHost;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::super::test_cabinet::gg::memories::{Host as MemoriesHost, MemoryEdit, MemoryInput};
@@ -160,15 +159,19 @@ fn call_everything(state: &mut MembraneState<FakeToolApi>) {
     let _ = state.finish("done".to_string());
     let _ = state.approve();
     let _ = state.request_changes(vec!["fix the lexer".to_string()]);
-
-    let _ = state.list_functions("context".to_string());
 }
 
 /// **Every host function on the membrane records its own API call, and no two share one.**
 ///
-/// The set recorded has to be exactly the model-facing surface plus `list`. A missing identity is a
-/// function whose calls vanish; an extra one is a call recorded under a name the agent's own
-/// reported surface never mentions, which joins to nothing and reads as a phantom.
+/// The set recorded has to be exactly the model-facing surface — the
+/// [operations table](OPERATIONS), and nothing beside it. A missing identity is a function whose
+/// calls vanish; an extra one is a call recorded under a name the agent's own reported surface never
+/// mentions, which joins to nothing and reads as a phantom.
+///
+/// It is an equality rather than a containment because there is no longer anything model-facing
+/// outside that table. `list` used to be the exception — bound on every object, catalogued on none —
+/// and it was added back here by hand; with it deleted the two sets are the same set by
+/// construction.
 #[test]
 fn every_host_function_records_its_own_api_call() {
     let log = CallLog::default();
@@ -180,9 +183,6 @@ fn every_host_function_records_its_own_api_call() {
     let want: BTreeSet<String> = OPERATIONS
         .iter()
         .map(|operation| format!("{}.{}", operation.call.object, operation.call.key))
-        // `list` is bound on every object and catalogued on none; the one call above asks
-        // `context` for its directory.
-        .chain(std::iter::once("context.list".to_string()))
         .collect();
 
     assert_eq!(
@@ -204,15 +204,15 @@ fn every_host_function_records_its_own_api_call() {
 
 /// **A call the model wrote is counted even when nothing dispatched.**
 ///
-/// `context.list` is the complaint that motivated all of this: no gg tool backs it, so the old
+/// The carve-outs are the complaint that motivated all of this: no gg tool backs one, so the old
 /// tool-keyed join had nothing to count it with and the console said so out loud — "nothing behind
-/// it is recorded as a tool call, so it has no count". It is a call. It is counted.
+/// it is recorded as a tool call, so it has no count". They are calls. They are counted.
 #[test]
 fn a_call_no_tool_backs_is_still_recorded() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
-    state.list_functions("context".to_string());
+    state.current_views();
     state
         .open_text_view("findings".to_string(), "all green".to_string())
         .expect("the text view opens");
@@ -220,7 +220,7 @@ fn a_call_no_tool_backs_is_still_recorded() {
 
     assert_eq!(
         recorded.names(),
-        vec!["context.list", "view.open_text", "harness.finish"]
+        vec!["view.current", "view.open_text", "harness.finish"]
     );
     assert!(
         log.calls().is_empty(),
@@ -334,26 +334,6 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
     assert_eq!(parts.refusals.len(), 1);
 }
 
-/// **`object.list()` records the object it was asked about**, which is what makes `context.list` and
-/// `fs.list` two rows rather than one.
-///
-/// One host function answers for every object, and the object arrives as the argument — the reason
-/// this one identity cannot be a constant.
-#[test]
-fn the_directory_call_records_the_object_it_was_asked_about() {
-    let log = CallLog::default();
-    let (mut state, recorded) = recording_membrane(&log);
-
-    state.list_functions("context".to_string());
-    state.list_functions("fs".to_string());
-    state.list_functions("context".to_string());
-
-    assert_eq!(
-        recorded.names(),
-        vec!["context.list", "fs.list", "context.list"]
-    );
-}
-
 /// **A call that dispatched a tool successfully but could not use what came back is a failed API
 /// call**, even though its `ToolResult` already streamed a success.
 ///
@@ -411,7 +391,7 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
 
     let _ = state.read_file("missing.rs".to_string(), None, None);
     let _ = state.write_file("../escape.txt".to_string(), "body".to_string());
-    let _ = state.list_functions("fs".to_string());
+    let _ = state.current_views();
 
     let calls = recorded.calls();
     assert_eq!(
@@ -423,7 +403,7 @@ fn a_failed_api_call_records_the_class_it_threw_with() {
             ("read_file", Some(GgToolFailure::NotFound)),
             ("write_file", Some(GgToolFailure::InvalidArgument)),
             // A call that cannot fail records no class, because nothing threw.
-            ("list", None),
+            ("current", None),
         ]
     );
 }

@@ -96,18 +96,15 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
     let script = fs.on_use(language).expect("the code arm carries a script");
     assert!(script.contains("gg.views.openDocsView(name)"), "{script}");
     assert!(script.contains("\"readFile\""), "{script}");
-    // `list` documents itself and is on every object; eleven identical blocks would be eleven too
-    // many.
-    assert!(!script.contains("\"list\""), "{script}");
 }
 
 /// **A built-in family skill is generated for every registered arm**, whichever
 /// [schema](crate::sandbox::SchemaVersion) its catalogue is written in.
 ///
-/// The script is generated from the directory of the family's functions, and a directory that came
-/// back empty makes `built_in_code` decline to generate a skill at all — silently, because declining
-/// is also the right answer for a family this run withheld. That is exactly what happened when the
-/// directory was asked for by **API object**: an arm whose surface is capability modules files the
+/// The script is generated from the family's own functions, and a family that came back empty makes
+/// `built_in_code` decline to generate a skill at all — silently, because declining is also the
+/// right answer for a family this run withheld. That is exactly what happened when the functions
+/// were asked for by **API object**: an arm whose surface is capability modules files the
 /// filesystem family under `gg::files` rather than under `fs`, so gg's own word for the object
 /// matched nothing and every converted arm quietly lost all eleven of its built-in skills. It is
 /// asked for by family now, which is gg's identity on both shapes of catalogue, and this is the

@@ -81,9 +81,11 @@ is a call you can write as it stands. Each module owns the types it produces, so
 is written under its module too — `gg.files.FileRead`, `gg.tasks.TaskStatus`,
 `gg.delegation.Brief` — and two modules are free to declare a type of the same
 name. If you would rather write the short form, add the `import` yourself:
-`import gg.core.ToolError` and then `catch (failure: ToolError)`. Do not import a
-whole module with `*`: every module declares a `list`, so two star imports make
-`list()` ambiguous.
+`import gg.core.ToolError` and then `catch (failure: ToolError)`. Import the one
+name you want rather than a whole module with `*`: every name below is already
+written in full, so a star import buys nothing, and two of them would decide
+between same-named declarations of two modules by a rule you cannot see in the
+call.
 
 The signatures below are written the way Kotlin writes them: required arguments
 are positional, and an optional one is a **default argument you pass by name** —
@@ -167,19 +169,13 @@ with no `import` line of your own.
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what a module holds, and they reach you by different routes.
-
-`<module>.{{meta.list.name}}()` — for example `gg.files.{{meta.list.name}}()` — **returns** a module's
-functions to your program, each as a `gg.core.FunctionSummary`. It is an ordinary
-return value, so it puts nothing in front of you on its own: to read it yourself
-you must open a view of it, exactly as you would any other value your program
-computed — `{{api.view.open_text.call}}("files", gg.files.{{meta.list.name}}().toString())`.
+One call tells you what a function does.
 
 `{{api.view.open_docs_view.signature}}` **opens a view** directly, of one
 function's full signature, documentation, and the types it uses. Pass its
 fully-qualified name (`{{api.view.open_docs_view.call}}("{{api.view.open_text.call}}")`).
 
-Either way you are reading a view, so what you asked for arrives on your next
+You are reading a view, so what you asked for arrives on your next
 turn and is not available during the turn you ask for it. Ask in one turn, use it
 in the next.
 

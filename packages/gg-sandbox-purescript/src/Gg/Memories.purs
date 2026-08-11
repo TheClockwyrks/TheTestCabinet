@@ -1,7 +1,7 @@
 -- | Durable notes that survive context compaction.
 -- |
--- | A run picks one of three memory strategies and binds only that strategy's functions, so
--- | `Gg.Memories.list` is the honest answer to what memory can do here. The scratchpad keeps every
+-- | A run picks one of three memory strategies and binds only that strategy's functions, so what
+-- | this module offers is the honest answer to what memory can do here. The scratchpad keeps every
 -- | memory in the context window (`writeMemory` and `updateMemory`); the two file-shaped strategies
 -- | keep the contents outside it (`createMemory`, `readMemory` and `editMemory`), one behind an index
 -- | that is always in context and one behind `searchMemories`. Deleting is bound under all three.
@@ -16,7 +16,6 @@ module Gg.Memories
   , editMemory
   , searchMemories
   , deleteMemory
-  , list
   , MemoryUsage
   , MemoryHit
   , MemoryCodeOptions
@@ -26,8 +25,6 @@ import Prelude
 
 import Data.Maybe (Maybe)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
@@ -260,17 +257,6 @@ deleteMemory :: String -> Effect MemoryUsage
 deleteMemory name =
   memoryUsage <$> Wire.call "delete_memory" "memory" "Gg.Memories.deleteMemory" [ Wire.wire name ]
 
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Memories.list" [ "memory" ]
 
 -- | The memory budget, whose every maximum may be switched off.
 memoryUsage :: Wire.Wire -> MemoryUsage

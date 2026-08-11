@@ -17,9 +17,6 @@ namespace Gg;
 /// <ggmodule>files</ggmodule>
 public static partial class Files
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Files));
-
     /// <summary>Read a file, as either a <see cref="TextFile"/> or a <see cref="ImageFile"/>.</summary>
     /// <remarks>
     /// <para>

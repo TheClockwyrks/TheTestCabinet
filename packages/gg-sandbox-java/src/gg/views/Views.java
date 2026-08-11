@@ -1,6 +1,5 @@
 package gg.views;
 
-import gg.FunctionSummary;
 import gg.ToolError;
 import gg.ToolErrorCode;
 import gg.files.Files;
@@ -25,21 +24,6 @@ import org.teavm.jso.JSObject;
  */
 public final class Views {
     private Views() {
-    }
-
-    /**
-     * List the functions this module offers, each with a one-line summary.
-     *
-     * <p>Only the functions this run actually bound are returned, so the directory never names a
-     * call a program cannot make. One function's full signature, argument descriptions and types
-     * are opened as a view with {@code Views.openDocsView}.
-     *
-     * @return the functions this module really bound, each with its one-line summary
-     * @ggmeta list
-     */
-    public static List<FunctionSummary> list() {
-        return Read.functionSummaries(
-                Wire.call("list", Wire.view(), "view", "list", Wire.args()));
     }
 
     /**
@@ -117,7 +101,7 @@ public final class Views {
      * view rather than adding a second copy, and {@link #close} closes it.
      *
      * @param name The function to document, by the name it is called by — {@code "readFile"} for
-     *     {@code Files.readFile}. Each module's {@code list} is what says which names exist.
+     *     {@code Files.readFile}. Searching the documentation is what says which names exist.
      * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown or unbound name.
      * @ggop views.open_docs_view
      */
@@ -149,8 +133,8 @@ public final class Views {
      * List what is open in the context window right now, with what each costs.
      *
      * <p>Each entry carries its kind, the selector that closes it, roughly what it costs in tokens,
-     * and — for a paged file view — the region it covers. It is called {@code current} rather than
-     * {@code list} because every module already carries a {@code list} of its own functions.
+     * and — for a paged file view — the region it covers. What it enumerates is the context window's
+     * contents, not any module's functions.
      *
      * @return every view open in the context window
      * @ggop views.current

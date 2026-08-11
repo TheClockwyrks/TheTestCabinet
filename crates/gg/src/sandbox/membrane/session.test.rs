@@ -434,7 +434,7 @@ fn a_refusal_names_the_endings_the_way_this_program_would_write_them() {
         .expect_err("a reviewer does not finish");
 
     assert!(
-        refused.message.contains("review.request_changes"),
+        refused.message.contains("session.request_changes"),
         "the fixture language's spelling: {}",
         refused.message
     );

@@ -8,21 +8,6 @@
 
 namespace gg {
 
-namespace detail {
-
-std::vector<core::function_summary> module_directory(std::string_view module) {
-  scratch scratch;
-  sandbox_string_t lowered = scratch.str(module);
-  test_cabinet_gg_docs_list_function_summary_t ret{};
-  test_cabinet_gg_docs_list_functions(&lowered, &ret);
-  std::vector<core::function_summary> summaries =
-      lift_each(ret.ptr, ret.len, lift_function_summary);
-  test_cabinet_gg_docs_list_function_summary_free(&ret);
-  return summaries;
-}
-
-}  // namespace detail
-
 void log(std::string_view line) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(line);

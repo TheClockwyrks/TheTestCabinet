@@ -13,7 +13,7 @@
 //!   `ToolCall`/`ToolResult` pair, pinned in the [replay](crate::capture) so a re-run feeds the
 //!   recorded outcome back;
 //! * the API record — what the *model wrote*: `view.open_file`, which happens to bridge to
-//!   `read_file`, and `context.list`, which bridges to nothing at all.
+//!   `read_file`, and `view.current`, which bridges to nothing at all.
 //!
 //! Only the second can answer "was this agent offered that call, and did it use it?", which is the
 //! question an ablation is run to ask. The first cannot: several API functions share one tool
@@ -103,15 +103,15 @@ impl<A: ToolApi> MembraneState<A> {
         self.recorded_on(call.object, call.key, body)
     }
 
-    /// As [`recorded`](Self::recorded), for a call whose object is only known at run time.
+    /// As [`recorded`](Self::recorded), for a call named by two strings rather than by a
+    /// [`SurfaceCall`].
     ///
-    /// One caller: `object.list()`, the [documentation carve-out](crate::docs)'s meta function. The
-    /// guest seeds it onto *every* object it creates and passes the object's name as the argument,
-    /// so there is no fixed pair to write into
-    /// [`OPERATIONS`](crate::sandbox::operations::OPERATIONS) — and the object it
-    /// records is therefore whatever the guest sent. In practice that is one of the names the shim
-    /// seeded; a guest that sent something else records a row that joins to no reported surface,
-    /// which is inert rather than dangerous.
+    /// The callers are the [documentation carve-out](crate::docs)'s own three calls, which no arm's
+    /// committed catalogue spells yet — so there is nothing to resolve a
+    /// [`SurfaceCall`] from and no fixed pair in
+    /// [`OPERATIONS`](crate::sandbox::operations::OPERATIONS) to name. They record under gg's own
+    /// words for them instead, which is a name in the record that joins to gg's own vocabulary
+    /// rather than to a spelling nobody wrote.
     pub(super) fn recorded_on<R>(
         &mut self,
         object: &str,
@@ -130,36 +130,28 @@ impl<A: ToolApi> MembraneState<A> {
         result
     }
 
-    /// As [`recorded`](Self::recorded), for the two calls that cannot fail.
+    /// As [`recorded`](Self::recorded), for the one call that cannot fail.
     ///
-    /// `view.current` and `object.list()` each answer with a list — an agent with nothing open and
-    /// nothing bound gets an empty one, which is an answer rather than an error — so there is no
-    /// verdict to take and the record is always `ok`. Spelling that out here is what keeps their
-    /// host functions from having to invent a `Result` they would then unwrap.
+    /// `view.current` answers with a list — an agent with nothing open gets an empty one, which is
+    /// an answer rather than an error — so there is no verdict to take and the record is always
+    /// `ok`. Spelling that out here is what keeps its host function from having to invent a
+    /// `Result` it would then unwrap.
     ///
-    /// `programs.history` used to be the third, and stopped being one when the host started checking
+    /// `programs.history` used to be a second, and stopped being one when the host started checking
     /// the [program-library](super::programs) capability: an agent with no library and an agent that
     /// has run nothing are different facts, and one empty list could only have told the model one of
-    /// them.
+    /// them. `object.list()` used to be a third, and its object was the reason this ever took one at
+    /// run time rather than from the call — it was the one carve-out whose object was an argument.
+    /// With the directory gone every recorded call names a fixed pair again.
     pub(super) fn recorded_ok<R>(
         &mut self,
         call: SurfaceCall,
         body: impl FnOnce(&mut Self, Recording) -> R,
     ) -> R {
-        self.recorded_ok_on(call.object, call.key, body)
-    }
-
-    /// [`recorded_ok`](Self::recorded_ok) with a run-time object — `object.list()`.
-    pub(super) fn recorded_ok_on<R>(
-        &mut self,
-        object: &str,
-        function: &str,
-        body: impl FnOnce(&mut Self, Recording) -> R,
-    ) -> R {
-        self.api.api.begin_api_call(object, function);
+        self.api.api.begin_api_call(call.object, call.key);
         self.api_calls = self.api_calls.saturating_add(1);
         let value = body(self, Recording(()));
-        self.api.api.end_api_call(object, function, None);
+        self.api.api.end_api_call(call.object, call.key, None);
         value
     }
 

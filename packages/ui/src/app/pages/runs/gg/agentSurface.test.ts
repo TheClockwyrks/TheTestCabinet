@@ -238,7 +238,9 @@ describe("apiCallSpellings", () => {
     ]);
     expect(spellings.get("fs.read_file")).toBe("fs.readFile");
     expect(spellings.get("view.open_file")).toBe("view.openFile");
-    // Namespaced on both sides: every object binds a `list`, and a bare one would collide.
+    // Namespaced on both sides. `list` is a call from before the per-module directory was
+    // deleted, and it is here as exactly that: a record already written cannot be rewritten, so
+    // the reducer must go on resolving a key no surface gg emits today still carries.
     expect(spellings.get("fs.list")).toBe("fs.list");
   });
 

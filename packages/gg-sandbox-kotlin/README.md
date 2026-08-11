@@ -65,11 +65,13 @@ can write as it stands. That keeps the substrate's headline property intact: *a 
 `import` in it is compiled byte for byte, with a shift of zero*, where every other compiled arm
 writes a header and moves every diagnostic back over it.
 
-Twelve star imports were the alternative and they are **not available**, which was measured
-rather than assumed: every module declares a `list`, so `import gg.files.*` beside
-`import gg.tasks.*` makes a bare `list()` an overload-resolution ambiguity. A program that wants
-the short form still writes its own import — gg hoists it — and picks which names it is
-importing.
+Twelve star imports were the alternative and they **buy nothing**. Every name in this arm's
+documentation is written in full — `gg.files.readFile` is the fully-qualified name the catalogue
+carries and the spelling a model reads — so a header of star imports would shorten nothing a model
+was ever going to write, while putting twelve lines in front of every program. They would also
+cost something: two modules are free to declare a type of the same name, and two star imports
+decide between them by a rule that is nowhere in the call. A program that wants the short form
+still writes its own import — gg hoists it — and picks which names it is importing.
 
 The bridge is out of a program's reach, and by a stronger fence than a package alone would give
 it. Everything in [`src/gg/internal/`](src/gg/internal/) is `internal`, which in Kotlin means

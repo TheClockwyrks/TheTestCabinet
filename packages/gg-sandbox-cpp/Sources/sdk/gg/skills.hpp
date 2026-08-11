@@ -22,9 +22,6 @@ namespace gg {
 /// <ggmodule>skills</ggmodule>
 namespace skills {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// Read a skill by name, which also pins its body permanently into the context window.
 ///
 /// The body comes back with its front matter stripped. A skill may be code rather than prose, or

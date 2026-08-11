@@ -44,13 +44,10 @@ differently:
   `system`, `project`, `tasks`, `memory`, `skills`, `context`, `agents`, `view`,
   `programs`, `harness`, `review`, `judge` — because that is how a program reaches them
   (`fs.readFile`, not "the filesystem family's read call") and it is what a model itself
-  enumerates mid-run with `object.list()`. Each folder is captioned with its family's own
-  one-line description; the last family supplies three objects, one per agent role. Every
-  folder ends with `list` — the directory the sandbox binds onto each object it creates. It
-  is declared and documented in the SDK like everything else, in the catalogue's
-  [`meta` section](/gg/program-languages/#the-catalogue), and appears once under each object
-  rather than in a folder of its own, because that is where a program can call it. An
-  instance's own [surface](/gg/telemetry/#what-an-agent-is-offered) reports it the same way.
+  reaches mid-run. Each folder is captioned with its family's own one-line description; the
+  last family supplies three objects, one per agent role. What a folder holds is exactly the
+  catalogue's own entries — nothing is appended that no SDK declaration produced, which is
+  also how an instance's own [surface](/gg/telemetry/#what-an-agent-is-offered) reports it.
 
 An API function shows **every signature** the SDK offers it in, each above its own argument
 list. There is usually exactly one — TypeScript spells an optional argument with `?` — but a

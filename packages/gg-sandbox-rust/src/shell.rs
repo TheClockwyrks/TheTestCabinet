@@ -13,7 +13,6 @@ use crate::wire;
 /// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
 pub(crate) const TOOLS: &[&str] = &["shell"];
 
-crate::directory::directory_of!();
 
 /// Run a command with `sh -c` in the workspace and hand back its merged stdout and stderr.
 ///

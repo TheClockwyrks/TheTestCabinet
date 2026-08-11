@@ -18,9 +18,6 @@ namespace Gg;
 /// <ggmodule>views</ggmodule>
 public static partial class Views
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Views));
-
     /// <summary>Read a file and show it in the context window.</summary>
     /// <remarks>
     /// <para>

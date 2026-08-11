@@ -5,10 +5,7 @@
 /// files, extract what matters, then evict the views, all in one turn.
 ///
 /// - ggmodule: context
-public enum context: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.context"
-
+public enum context {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = [
         "evict_file_view", "archive_thread", "search_archive", "compact",

@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Gg;
 
 /// <summary>End the session, with a summary or with a reviewer's verdict.</summary>
@@ -12,9 +10,6 @@ namespace Gg;
 /// <ggmodule>session</ggmodule>
 public static partial class Session
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Session));
-
     /// <summary>Declare the work complete.</summary>
     /// <remarks>
     /// <para>

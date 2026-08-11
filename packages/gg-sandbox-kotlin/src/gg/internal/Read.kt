@@ -7,7 +7,6 @@ import gg.context.ArchiveHit
 import gg.context.ArchiveSearch
 import gg.context.MessageRole
 import gg.context.ReclaimReport
-import gg.core.FunctionSummary
 import gg.delegation.AgentEnding
 import gg.delegation.SubagentHandle
 import gg.delegation.SubagentResult
@@ -224,12 +223,6 @@ internal object Read {
                 ok = ggBool(it, "ok"),
                 error = optionalText(it, "error"),
             )
-        }
-
-    /** Every function an object's directory named. */
-    fun functionSummaries(value: JSObject): List<FunctionSummary> =
-        each(ggAsArray(value)) {
-            FunctionSummary(name = ggString(it, "name"), summary = ggString(it, "summary"))
         }
 
     // -------------------------------------------------------------------------------------------

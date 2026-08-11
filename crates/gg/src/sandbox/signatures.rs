@@ -41,24 +41,27 @@
 //! reader that wants "the catalogue" therefore has to say whose, which is exactly the question a
 //! cross-language study makes unavoidable.
 //!
-//! # Two schemas at once, on purpose
+//! # Two schemas at once, and why the second reader is still here
 //!
-//! A catalogue declares its [`schema`](SignatureCatalogue::schema), and gg parses both the one every
-//! arm commits today ([`V1`](SchemaVersion::V1)) and the one they move to
-//! ([`V2`](SchemaVersion::V2)) — see [`SchemaVersion`] for what each carries and why the second
-//! exists.
+//! A catalogue declares its [`schema`](SignatureCatalogue::schema), and gg parses both the shape
+//! every arm committed before the conversion ([`V1`](SchemaVersion::V1)) and the one they all
+//! commit now ([`V2`](SchemaVersion::V2)) — see [`SchemaVersion`] for what each carries and why the
+//! second exists.
 //!
-//! That is not tolerance of drift; it is the mechanism by which the move happens at all. Eleven arms
-//! are reflected by eleven different documentation tools out of ten source trees, and converting
-//! them in one commit would mean eleven toolchains, eleven regenerated artifacts and eleven prose
-//! rewrites landing together, with nothing green in between. Version dispatch makes an arm's
-//! conversion **its own commit**: the ten that have not moved keep parsing and rendering exactly as
-//! they do now, and the one that has is read through the same normalized projection
-//! ([`catalogue_functions`], [`catalogue_modules`]) as the rest, so no consumer has to ask which
-//! schema it is looking at.
+//! Version dispatch is what made the move possible at all. Eleven arms are reflected by eleven
+//! different documentation tools out of ten source trees, and converting them in one commit would
+//! have meant eleven toolchains, eleven regenerated artifacts and eleven prose rewrites landing
+//! together, with nothing green in between. Dispatch made each arm's conversion **its own commit**:
+//! an arm that had not moved kept parsing and rendering exactly as before, and one that had was read
+//! through the same normalized projection ([`catalogue_functions`], [`catalogue_modules`]) as the
+//! rest, so no consumer ever had to ask which schema it was looking at.
 //!
-//! The transition is finished when no `V1` catalogue is left, at which point the v1 sections, the
-//! [transitional brief derivation](Prose::from_paragraph) and this paragraph all go.
+//! **Every registered arm is now `V2`**, which `every_registered_arm_is_written_in_the_schema_this_tree_says_it_is`
+//! holds them to. What the v1 reader still buys is the ability to *refuse* one by name — the
+//! capability gate hands itself a v1 document and asserts the complaint — so retiring it is a change
+//! to what those gates can be shown doing rather than a deletion of dead code, and it belongs in a
+//! commit of its own. Whichever commit that is takes the v1 sections and the
+//! [transitional brief derivation](Prose::from_paragraph) with it.
 
 use std::borrow::Cow;
 
@@ -78,8 +81,8 @@ use crate::tools::ALL_TOOL_NAMES;
 ///
 /// # What each version is
 ///
-/// **[`V1`](Self::V1)** is the shape every arm commits today: functions filed into six sections
-/// (`meta`, `session`, `views`, `programs`, `tools`, `helpers`), each entry hanging off an **API
+/// **[`V1`](Self::V1)** is the shape every arm committed before the conversion: functions filed into five sections
+/// (`session`, `views`, `programs`, `tools`, `helpers`), each entry hanging off an **API
 /// object** (`fs`, `view`) and carrying the gate that binds it (`requires`, `ending`) as a field the
 /// reflector wrote. Documentation is one `doc` paragraph per entry, out of which a one-line summary
 /// was derived.
@@ -101,7 +104,8 @@ use crate::tools::ALL_TOOL_NAMES;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize)]
 #[serde(try_from = "u32")]
 pub enum SchemaVersion {
-    /// Sections, API objects, arm-declared gates, one `doc` paragraph. What every arm commits today.
+    /// Sections, API objects, arm-declared gates, one `doc` paragraph. What every arm committed
+    /// before the conversion, and what no registered arm commits now.
     ///
     /// The default, and deliberately: a catalogue written before the field existed carries no
     /// `schema` key, and the only honest reading of its absence is the shape that predates it.
@@ -184,17 +188,6 @@ pub(crate) struct SignatureCatalogue {
     /// already know to reach anything, which is what the module vocabulary replaces.
     #[serde(default)]
     pub objects: Vec<ObjectDoc>,
-    /// The model-facing functions that hang off **no** API object, because they hang off all of
-    /// them — today just `list`, the directory every object carries.
-    ///
-    /// Kept out of every other section because each of those carries an `object`, and any object a
-    /// meta function named would be a claim about the eleven it is also on. See [`MetaSignature`].
-    ///
-    /// **[`V1`](SchemaVersion::V1) only.** A [`V2`](SchemaVersion::V2) catalogue files every
-    /// model-facing call into one flat [`functions`](Self::functions) array, because the section an
-    /// entry sat in was only ever a gate field by another name, and a gate is gg's to state.
-    #[serde(default)]
-    pub meta: Vec<MetaSignature>,
     /// The model-facing functions that are not gg tools: the calls that end a session, one group per
     /// [role](crate::ending::EndingRole).
     ///
@@ -259,10 +252,10 @@ pub(crate) struct SignatureCatalogue {
     /// Empty on a `V1` catalogue, which has objects instead.
     #[serde(default)]
     pub modules: Vec<ModuleDoc>,
-    /// **Every model-facing call**, in one array — the successor of the six sections above, and the
+    /// **Every model-facing call**, in one array — the successor of the five sections above, and the
     /// shape a [`V2`](SchemaVersion::V2) catalogue carries.
     ///
-    /// One array rather than six because the sections were never a fact about the functions: they
+    /// One array rather than five because the sections were never a fact about the functions: they
     /// were where an arm filed a gate it should never have been asserting. With gating stated once
     /// by gg's [operations table](super::operations), the only thing a section still said is which
     /// gate field to look in — so there is nothing left for it to say.
@@ -297,9 +290,10 @@ pub(crate) struct SignatureCatalogue {
 #[allow(
     dead_code,
     reason = "the normalized doc model is read by the gates that hold each arm to it — the \
-              register gate and the fully-qualified-name rule — and by the readers that move onto \
-              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
-              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+              register gate and the fully-qualified-name rule — and by the readers that consume it \
+              as each stage of the documentation surface lands. A field whose reader belongs to a \
+              stage that has not landed yet is unread, and is carried here so that the stage which \
+              needs it finds it already reflected by all eleven arms."
 )]
 pub struct ModuleDoc {
     /// gg's language-independent module id (`files`, `views`, `docs`) — the cross-arm join key, and
@@ -325,9 +319,9 @@ pub struct ModuleDoc {
 /// **One model-facing call** in the [`V2`](SchemaVersion::V2) model, whatever kind of thing the arm
 /// declared it as.
 ///
-/// It replaces six types that differed only in which gate field they carried
+/// It replaces five types that differed only in which gate field they carried
 /// ([`ToolSignature`], [`SessionSignature`], [`ViewSignature`], [`ProgramSignature`],
-/// [`HelperSignature`], [`MetaSignature`]) — and it carries no gate at all, because a gate is a fact
+/// [`HelperSignature`]) — and it carries no gate at all, because a gate is a fact
 /// about gg's configuration surface and an arm asserting one is an arm asserting something only gg
 /// can be held to. What it carries instead is the [operation](Self::operation) it binds, which is
 /// the join to the [table](super::operations::OPERATIONS) where gg states the gate once.
@@ -336,9 +330,10 @@ pub struct ModuleDoc {
 #[allow(
     dead_code,
     reason = "the normalized doc model is read by the gates that hold each arm to it — the \
-              register gate and the fully-qualified-name rule — and by the readers that move onto \
-              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
-              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+              register gate and the fully-qualified-name rule — and by the readers that consume it \
+              as each stage of the documentation surface lands. A field whose reader belongs to a \
+              stage that has not landed yet is unread, and is carried here so that the stage which \
+              needs it finds it already reflected by all eleven arms."
 )]
 pub struct FunctionSignature {
     /// The gg [operation](super::operations::OperationId) this call binds, rendered
@@ -480,9 +475,10 @@ impl TypeReference {
 #[allow(
     dead_code,
     reason = "the normalized doc model is read by the gates that hold each arm to it — the \
-              register gate and the fully-qualified-name rule — and by the readers that move onto \
-              it as each arm is converted. A field no v1 catalogue can carry is unread in a tree \
-              of eleven v1 arms, which is the state the schema dispatch exists to make survivable."
+              register gate and the fully-qualified-name rule — and by the readers that consume it \
+              as each stage of the documentation surface lands. A field whose reader belongs to a \
+              stage that has not landed yet is unread, and is carried here so that the stage which \
+              needs it finds it already reflected by all eleven arms."
 )]
 pub struct MemberFunction {
     /// The gg [operation](super::operations::OperationId) the member binds, rendered
@@ -512,35 +508,6 @@ pub struct LibraryGroup {
     pub modules: Vec<String>,
 }
 
-/// One **meta** function: a call bound onto every API object rather than declared on one.
-///
-/// `list` is the whole of it. The guest seeds it onto each object it creates, closing over that
-/// object's name, so the function a program calls takes no arguments and belongs to no object — the
-/// one entry in the surface whose identity is a bare key.
-///
-/// It is catalogued for the reason everything else is: its signature and its description are read by
-/// a **model**, and the rule this whole module exists to keep is that nothing a model reads about
-/// the SDK is written anywhere but on the declaration it describes. A meta function documented in a
-/// `const` on gg's side would be the one description in the surface no gate could compare against
-/// the code — and it was, until this section existed.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MetaSignature {
-    /// This function's language-independent identity (`list`).
-    pub key: String,
-    /// The name a program calls it by, in this catalogue's language (`list`).
-    pub name: String,
-    /// How this function may be called, one entry per shape its language offers. See
-    /// [`SignatureEntry`].
-    pub signatures: Vec<SignatureEntry>,
-    /// The SDK's own documentation for it, which is what a doc lookup renders and what every
-    /// object's directory takes its one-line summary from.
-    pub doc: String,
-    /// The type names this signature references, folded into a doc lookup's declarations exactly as
-    /// a tool's are.
-    pub types: Vec<TypeReference>,
-}
-
 /// One bound tool, as the guest exports it and the prompt describes it.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -553,8 +520,8 @@ pub(crate) struct ToolSignature {
     pub tool: String,
     /// The name a program calls it by, in this catalogue's language (`readFile`).
     pub name: String,
-    /// The API object this function is grouped under in a program's scope (`fs`) — what
-    /// `object.list()` enumerates and what `view.openDocsView` routes by.
+    /// The API object this function is grouped under in a program's scope (`fs`) — what a search
+    /// reports a hit under and what `view.openDocsView` routes by.
     pub object: String,
     /// How this function may be called, one entry per shape its language offers. See
     /// [`SignatureEntry`].
@@ -836,8 +803,9 @@ pub struct ObjectDoc {
 /// each with its own [`parameters`](Self::parameters); the other three arrive as one entry with one.
 /// Nothing downstream compares the count, because the count is spelling.
 ///
-/// What is *not* free to differ is the identity around it: the entry's key, its object, its gate.
-/// See the agreement gate (`language/agreement.rs`) for the line between the two.
+/// What is *not* free to differ is the identity around it: the gg
+/// [operation](super::operations) the entry binds, and therefore what gates it. See the capability
+/// gate (`language/agreement.rs`) for the line between the two.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SignatureEntry {
@@ -951,10 +919,10 @@ pub struct CatalogueFunction {
     /// This function's language-independent identity: a gg tool's own name (`read_file`) when it has
     /// one, and the catalogue entry's `key` (`request_changes`, `open_text`) when it does not.
     ///
-    /// It is what two languages' catalogues are compared *by*, since the surface they offer is the
-    /// same and only [`name`](Self::name) differs — and it is how gg names a function in its **own**
-    /// sentences, through [`spelling`] and the [`SurfaceCall`] constants, so a prompt quoting
-    /// `review.requestChanges` is quoting the catalogue rather than a second copy of it.
+    /// It is how gg names a function in its **own** sentences, through [`spelling`] and the
+    /// [`SurfaceCall`] constants, so a prompt quoting `review.requestChanges` is quoting the
+    /// catalogue rather than a second copy of it. It is *not* the cross-arm join — that is
+    /// [`operation`](Self::operation), which a converted entry states rather than being resolved to.
     pub key: &'static str,
     /// The name a program calls it by, in this language (`readFile`) — the **fallback** key
     /// `view.openDocsView` accepts, and the only one a [`V1`](SchemaVersion::V1) entry has. The key
@@ -1165,14 +1133,14 @@ impl<'a> Prose<'a> {
 ///
 /// It takes a language because the *spellings* are one language's: two registered languages offer
 /// the same functions on the same objects under the same gates, and differ in what a program calls
-/// them. The docs runtime filters these by the run's enabled set, the agent's role
-/// and whether it keeps a program library, and adds the `list` meta function itself, since it is the
-/// carve-out's own and has no catalogue entry. Every other reader of this catalogue that reports what
-/// an object binds — the agent-surface telemetry — has to add it back for the same reason.
+/// them. The docs runtime filters these by the run's enabled set, the agent's role and whether it
+/// keeps a program library. **This is the whole model-facing surface** — every reader that reports
+/// what an agent binds reports exactly these, with nothing appended, since nothing model-facing sits
+/// outside the catalogue any more.
 ///
 /// # It is the one place either [schema](SchemaVersion) is read
 ///
-/// A [`V1`](SchemaVersion::V1) catalogue's six sections and a [`V2`](SchemaVersion::V2) catalogue's
+/// A [`V1`](SchemaVersion::V1) catalogue's five sections and a [`V2`](SchemaVersion::V2) catalogue's
 /// one array arrive here as the same [`CatalogueFunction`], so **no consumer downstream has to know
 /// which schema an arm committed** — which is the whole of what makes converting one arm per commit
 /// possible. Where the two schemas genuinely disagree, the projection says so in the field rather
@@ -1262,7 +1230,7 @@ fn module_path(catalogue: &'static SignatureCatalogue, id: &'static str) -> &'st
         .map_or(id, |module| module.path.as_str())
 }
 
-/// The [`V1`](SchemaVersion::V1) half of [`catalogue_functions`]: the six sections, each with the
+/// The [`V1`](SchemaVersion::V1) half of [`catalogue_functions`]: the five sections, each with the
 /// gate its own section decides, exactly as they have always been read.
 fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<CatalogueFunction> {
     let mut functions = Vec::with_capacity(
@@ -1381,24 +1349,6 @@ fn catalogue_functions_v1(catalogue: &'static SignatureCatalogue) -> Vec<Catalog
     functions
 }
 
-/// One **meta** function by its language-independent key, as `language`'s SDK spells and documents
-/// it — the signature a lookup renders, the paragraph under it, and the one-line summary every
-/// object's directory carries for it.
-///
-/// `None` for a key this language's catalogue does not carry. The
-/// agreement gate (`language/agreement.rs`) asserts that every registered language's meta
-/// section is exactly gg's own meta vocabulary — [`list`](crate::docs::LIST_FUNCTION) and nothing
-/// else — so a miss is a corrupt committed artifact rather than a runtime condition, and the callers
-/// degrade rather than panic, because one word missing from a directory is a smaller failure than a
-/// run that stops.
-pub fn meta_function(language: &dyn ProgramLanguage, key: &str) -> Option<&'static MetaSignature> {
-    language
-        .catalogue()
-        .meta
-        .iter()
-        .find(|entry| entry.key == key)
-}
-
 /// How `language`'s SDK writes the function `call` identifies: **the grouping it is reached
 /// through, and the name it is called by**. `None` when its catalogue carries no such function.
 ///
@@ -1509,7 +1459,6 @@ fn spellings_of(catalogue: &'static SignatureCatalogue) -> Vec<&'static TypeRefe
     out.extend(catalogue.views.iter().flat_map(|entry| &entry.types));
     out.extend(catalogue.session.iter().flat_map(|entry| &entry.types));
     out.extend(catalogue.programs.iter().flat_map(|entry| &entry.types));
-    out.extend(catalogue.meta.iter().flat_map(|entry| &entry.types));
     out
 }
 

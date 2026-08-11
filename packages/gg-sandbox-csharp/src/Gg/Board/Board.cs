@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Gg;
 
 /// <summary>The epic and issue board, on which work is decomposed into dispatchable units.</summary>
@@ -11,9 +9,6 @@ namespace Gg;
 /// <ggmodule>board</ggmodule>
 public static partial class Board
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Board));
-
     /// <summary>Create an epic to group related issues under.</summary>
     /// <param name="prefix">
     /// A three to six letter prefix. Upper-cased it becomes the epic's id and the stem its issues

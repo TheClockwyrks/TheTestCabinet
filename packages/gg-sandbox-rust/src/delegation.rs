@@ -22,7 +22,6 @@ pub(crate) const TOOLS: &[&str] = &[
     "fork",
 ];
 
-crate::directory::directory_of!();
 
 /// Delegate scoped work to a child agent and hand back its handle immediately.
 ///

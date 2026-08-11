@@ -159,19 +159,13 @@ your own — and `using static Gg.Files;` drops the prefix where you want it gon
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what a module holds, and they reach you by different routes.
-
-`<module>.{{meta.list.name}}()` — for example `Files.{{meta.list.name}}()` — **returns** a module's
-methods to your program, each as a `FunctionSummary`. It is an ordinary return
-value, so it puts nothing in front of you on its own: to read it yourself you
-must open a view of it, exactly as you would any other value your program
-computed — `{{api.view.open_text.call}}("files", string.Join("\n", Files.{{meta.list.name}}().Select(f => f.Name)))`.
+One call tells you what a function does.
 
 `{{api.view.open_docs_view.signature}}` **opens a
 view** directly, of one method's full signature, documentation, and the types it
 uses. Pass its name (`{{api.view.open_docs_view.call}}("{{api.view.open_text.name}}")`).
 
-Either way you are reading a view, so what you asked for arrives on your next
+You are reading a view, so what you asked for arrives on your next
 turn and is not available during the turn you ask for it. Ask in one turn, use it
 in the next.
 

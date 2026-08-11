@@ -379,15 +379,12 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
          int closed = Views.close(\"summary\");\n\
          int missing = Views.close(\"never opened\");\n\
          List<Views.OpenView> open = Views.current();\n\
-         List<FunctionSummary> directory = Files.list();\n\
          System.out.println(open.get(0).selector() + \" \" + open.get(0).kind());\n\
          System.out.println(closed + \" \" + missing);\n\
          System.out.println(switch (read) {\n\
          \x20   case Files.TextFile file -> file.contents().split(\"\\n\")[0];\n\
          \x20   case Files.ImageFile picture -> picture.label();\n\
          });\n\
-         System.out.println(directory.stream().map(FunctionSummary::name)\n\
-         \x20       .collect(Collectors.joining(\",\")));\n\
          Session.finish(\"read the file and showed myself the result\");\n",
         &all_tools(),
         RunEnding::Role(EndingRole::Standard),
@@ -403,7 +400,6 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "fsFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -643,8 +639,8 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 
 #[test]
 fn the_committed_catalogue_says_whose_spellings_it_carries() {
-    // The agreement gate itself now runs over this arm for free, because the arm is registered:
-    // `agreement.test.rs` compares every registered language identity-for-identity, and this
+    // The capability gate itself now runs over this arm for free, because the arm is registered:
+    // `agreement.test.rs` holds every registered language to gg's operations table, and this
     // catalogue is in it. What is left here is the one claim that gate cannot make — that the
     // committed file was generated **for Java** — asserted against the document rather than through
     // the language, so it holds even if the registration's own provenance check were removed.
@@ -655,10 +651,12 @@ fn the_committed_catalogue_says_whose_spellings_it_carries() {
         json!("java"),
         "the catalogue says whose spellings it carries"
     );
+    // Run here over this arm beside the one it was written against, which is a convenience rather
+    // than a comparison: nothing in the gate reads one arm against another any more.
     assert!(
         super::super::agreement::disagreements(&[typescript_language(), java_language()])
             .is_empty(),
-        "the registered Java arm does not describe the same capability surface TypeScript does"
+        "the registered Java arm does not offer gg's capability surface"
     );
 }
 
@@ -673,27 +671,25 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         serde_json::from_str(SIGNATURES).expect("the committed Java catalogue is valid JSON");
 
     let mut groups = 0usize;
-    for section in ["meta", "functions"] {
-        for entry in document[section].as_array().expect("an array") {
-            let shapes = entry["signatures"].as_array().expect("an array");
-            if shapes.len() < 2 {
-                continue;
-            }
-            groups += 1;
-            let lists: Vec<usize> = shapes
-                .iter()
-                .map(|shape| shape["parameters"].as_array().expect("an array").len())
-                .collect();
-            let mut distinct = lists.clone();
-            distinct.sort_unstable();
-            distinct.dedup();
-            assert_eq!(
-                distinct.len(),
-                lists.len(),
-                "`{}` carries two signatures taking the same number of arguments",
-                entry["name"]
-            );
+    for entry in document["functions"].as_array().expect("an array") {
+        let shapes = entry["signatures"].as_array().expect("an array");
+        if shapes.len() < 2 {
+            continue;
         }
+        groups += 1;
+        let lists: Vec<usize> = shapes
+            .iter()
+            .map(|shape| shape["parameters"].as_array().expect("an array").len())
+            .collect();
+        let mut distinct = lists.clone();
+        distinct.sort_unstable();
+        distinct.dedup();
+        assert_eq!(
+            distinct.len(),
+            lists.len(),
+            "`{}` carries two signatures taking the same number of arguments",
+            entry["name"]
+        );
     }
     assert_eq!(
         groups, 14,
@@ -703,19 +699,17 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
     // And not one argument on this arm is passed by NAME: Java has no keyword arguments, so every
     // one of them is positional, and a `kind` of `keyword` here would mean the reflector had
     // invented a shape the language does not have.
-    for section in ["meta", "functions"] {
-        for entry in document[section].as_array().expect("an array") {
-            for shape in entry["signatures"].as_array().expect("an array") {
-                for parameter in shape["parameters"].as_array().expect("an array") {
-                    assert_eq!(
-                        parameter["kind"],
-                        json!("positional"),
-                        "`{}` passes `{}` by name, which Java cannot do",
-                        entry["name"],
-                        parameter["name"]
-                    );
-                    assert_eq!(parameter["default"], json!(null), "Java states no defaults");
-                }
+    for entry in document["functions"].as_array().expect("an array") {
+        for shape in entry["signatures"].as_array().expect("an array") {
+            for parameter in shape["parameters"].as_array().expect("an array") {
+                assert_eq!(
+                    parameter["kind"],
+                    json!("positional"),
+                    "`{}` passes `{}` by name, which Java cannot do",
+                    entry["name"],
+                    parameter["name"]
+                );
+                assert_eq!(parameter["default"], json!(null), "Java states no defaults");
             }
         }
     }

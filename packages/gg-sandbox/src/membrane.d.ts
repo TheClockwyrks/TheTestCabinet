@@ -470,23 +470,6 @@ declare module "test-cabinet:gg/session" {
 }
 
 /**
- * Documentation lookup — the second model-facing carve-out, bound into every program's scope and
- * never a gg tool. `src/tools/docs.ts` is its only importer.
- */
-declare module "test-cabinet:gg/docs" {
-  /** One function in an API object's directory. */
-  export interface FunctionSummary {
-    /** The function name on its object — `readFile` in `fs.readFile(...)`. */
-    name: string;
-    /** A one-line description of what the function does. */
-    summary: string;
-  }
-
-  /** List one API object's bound functions, each with a one-line summary. */
-  export function listFunctions(object: string): FunctionSummary[];
-}
-
-/**
  * Putting material into the agent's own context window — the third model-facing carve-out, beside
  * `session` and `docs`, and never a gg tool. `src/tools/views.ts` is its only importer.
  *

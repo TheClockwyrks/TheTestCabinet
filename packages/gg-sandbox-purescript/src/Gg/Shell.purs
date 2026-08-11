@@ -7,7 +7,6 @@
 -- | run passed is the single most common thing a program does with one.
 module Gg.Shell
   ( shell
-  , list
   , ShellOutput
   , ShellOptions
   ) where
@@ -16,8 +15,6 @@ import Prelude
 
 import Data.Maybe (Maybe)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
@@ -82,15 +79,3 @@ shellOutput value =
   , output: Wire.text "output" value
   , truncated: Wire.field "truncated" value
   }
-
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Shell.list" [ "system" ]

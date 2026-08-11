@@ -107,8 +107,8 @@ mod cpp;
 #[path = "language/csharp.rs"]
 mod csharp;
 
-/// The **cross-language agreement gate**: the assertion that every registered language describes the
-/// same capabilities, and that only their spellings differ.
+/// The **cross-arm capability gate**: the assertion that every registered language lets a model do
+/// the same things, under the same conditions, whatever shape its SDK gives them.
 ///
 /// `#[cfg(test)]` because it is a gate rather than a runtime need — it reads committed artifacts and
 /// compiles components, which is a test's budget and not a turn's. Its own module documentation says
@@ -434,9 +434,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// The one place gg generates source rather than quoting a call, and it is not optional: it is
     /// the on-use script of every [built-in family skill](crate::skills), so a language that could
     /// not write it would be a language whose agents read a skill and are shown nothing. The set of
-    /// names is exactly what `object.list()` would answer for that agent, which is why the program is
-    /// generated at all — a skill that hard-coded a list would be a second answer to a question that
-    /// already has one.
+    /// names is exactly the family this agent binds, which is why the program is generated at all —
+    /// a skill that hard-coded a list would be a second answer to a question the catalogue already
+    /// answers.
     ///
     /// A trait method rather than a `format!` in [`skills`](crate::skills) because every token of it
     /// is this language's: the list literal, the loop, the statement terminator, and the name of the
@@ -553,9 +553,9 @@ pub trait ProgramLanguage: Send + Sync + 'static {
 ///   loader, an `await` where there is no event loop). Those belong to the prepare step and stay with
 ///   it, because they are answers to something the model just wrote rather than standing prose.
 /// * Any function's **signature, description or summary**. All of it is reflected out of the
-///   declaration it describes and arrives in the language's catalogue, `list` included — a signature
-///   authored on gg's side is one nothing can compare against the code, which is exactly the defect
-///   the catalogue exists to remove.
+///   declaration it describes and arrives in the language's catalogue — a signature authored on gg's
+///   side is one nothing can compare against the code, which is exactly the defect the catalogue
+///   exists to remove.
 pub struct PromptDialect {
     /// This language's responses-as-code system prompt template, verbatim.
     pub system_template: &'static str,
@@ -778,28 +778,6 @@ pub fn spell(language: &dyn ProgramLanguage, call: SurfaceCall) -> String {
     let (group, name) =
         super::signatures::spelling(language, call).unwrap_or((call.object, call.key));
     format!("{group}{}{name}", language.member_separator())
-}
-
-/// How `language` spells the **meta function** `key` — the
-/// [documentation carve-out](crate::docs::LIST_FUNCTION)'s `list`, which hangs off no one object and
-/// so has no [`SurfaceCall`] to resolve through.
-///
-/// Resolved from the language's own committed catalogue for exactly the reason [`spell`] is: `list`
-/// is gg's own key rather than any SDK's spelling of it, and an arm whose convention is `PascalCase`
-/// catalogues it as `List`. A caller that wrote the key out would be quoting a method that arm does
-/// not bind. Falls back to the key on a catalogue that carries no such entry, on the same terms
-/// [`spell`] falls back — degrading one word of a sentence is the right failure where panicking
-/// mid-run is not.
-///
-/// `#[allow(dead_code)]` on the same terms as the re-exports beside it in
-/// [`sandbox`](crate::sandbox): its caller today is the prompt gate, which is `#[cfg(test)]`, and
-/// production reaches the same entry through [`docs`](crate::docs), which wants the whole
-/// [`MetaSignature`](super::MetaSignature) rather than one field of it.
-#[allow(dead_code)]
-pub fn meta_spelling(language: &dyn ProgramLanguage, key: &'static str) -> &'static str {
-    super::signatures::meta_function(language, key)
-        .map(|meta| meta.name.as_str())
-        .unwrap_or(key)
 }
 
 /// The `offset`/`limit` window a synthesized file-view call re-opens — the same pair the model would

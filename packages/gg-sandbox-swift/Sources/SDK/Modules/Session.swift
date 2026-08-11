@@ -10,10 +10,7 @@
 /// — and a program that then fails has its ending revoked along with everything else it decided.
 ///
 /// - ggmodule: session
-public enum session: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.session"
-
+public enum session {
     /// End the session, reporting what was done in a sentence or two.
     ///
     /// This is the only thing that ends a working agent's session. It does not stop the program —

@@ -16,13 +16,14 @@
 //! compile a 34.9 MB component. So each function drives *many* statements rather than being one
 //! behaviour per function. Add a statement to an existing function rather than adding a function.
 //!
-//! # What is not here yet
+//! # What holds the surface, and what is here instead
 //!
-//! The [agreement gate](super::super::agreement) proper, which iterates the **registered** set — this arm
-//! is not in it, because a language cannot be half-registered. What stands in for it is
-//! [`the_catalogue_agrees_with_a_registered_arm`], which runs gg's own comparison over this arm's
-//! committed catalogue against TypeScript's, so the surface is held to the seam's rule before the
-//! registration that will hold it there automatically.
+//! Not the cross-arm rules. This arm is registered, so the
+//! [capability gate](super::super::agreement) holds it exactly as it holds every other — by its
+//! coverage half, one arm at a time against gg's own operations table, with nothing compared to any
+//! other arm. Everything below is therefore about *this* arm's own machinery: that Roslyn really reflects the
+//! SDK it is pointed at, that the membrane really binds what the catalogue documents, and that the
+//! libraries this arm names are ones a program can reach.
 
 use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
@@ -381,11 +382,9 @@ Views.OpenDocsView("ReadFile");
 var closed = Views.Close("summary");
 var missing = Views.Close("never opened");
 var open = Views.Current();
-var directory = Files.List();
 Console.WriteLine($"{open[0].Selector} {open[0].Kind}");
 Console.WriteLine($"{closed} {missing}");
 Console.WriteLine(read is Files.TextFile file ? file.Contents.Split('\n')[0] : ((Files.ImageFile)read).Label);
-Console.WriteLine(string.Join(",", directory.Select(entry => entry.Name)));
 Session.Finish("read the file and showed myself the result");
 "####,
         ),
@@ -403,7 +402,6 @@ Session.Finish("read the file and showed myself the result");
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "Gg.FilesFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome

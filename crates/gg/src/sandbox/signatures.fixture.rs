@@ -36,7 +36,7 @@ use serde_json::Value;
 
 use super::{SchemaVersion, SignatureCatalogue};
 
-/// The surface in the [`V1`](SchemaVersion::V1) shape: six sections, an API object per entry, the
+/// The surface in the [`V1`](SchemaVersion::V1) shape: five sections, an API object per entry, the
 /// gate written on the entry, and one `doc` paragraph each.
 pub(crate) const V1: &str = r#"{
   "language": "rust",
@@ -47,7 +47,6 @@ pub(crate) const V1: &str = r#"{
     { "object": "harness", "doc": "End the session." },
     { "object": "programs", "doc": "The programs already run in this session." }
   ],
-  "meta": [],
   "session": [
     {
       "key": "finish",

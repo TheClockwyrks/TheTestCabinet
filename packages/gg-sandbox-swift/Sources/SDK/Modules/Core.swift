@@ -1,12 +1,12 @@
-/// The types every other module's signatures name: how a call fails, and what a directory lists.
+/// The types every other module's signatures name: how a call fails, and how a field is patched.
 ///
 /// A capability module owns the types it produces, so `files.FileRead` belongs to `files` and
-/// `board.IssueCreated` to `board`. These four belong to none of them because they belong to all of
-/// them: every fallible function in this SDK throws a `core.ToolError`, every module's `list` hands
-/// back `core.FunctionSummary`, and both patch calls take a `core.TextEdit`.
+/// `board.IssueCreated` to `board`. These three belong to none of them because they belong to all of
+/// them: every fallible function in this SDK throws a `core.ToolError`, every one of those is
+/// classified by a `core.ToolErrorCode`, and both patch calls take a `core.TextEdit`.
 ///
-/// It is the one module with no `list`, because it offers no capability to list: it conforms to
-/// `ModuleDirectory` nowhere, and the reflector refuses a catalogue in which it does.
+/// It is the one module that offers no capability at all, and the reflector refuses a catalogue in
+/// which it offers one.
 ///
 /// - ggmodule: core
 public enum core {
@@ -126,22 +126,6 @@ public enum core {
             case TEST_CABINET_GG_TYPES_ERROR_CODE_IO_ERROR: self = .ioError
             default: self = .other
             }
-        }
-    }
-
-    /// One function in a module's directory, as `list` returns it.
-    ///
-    /// The summary is one line. A function's whole documentation — every argument, what to put in
-    /// it, and the types it refers to — is a view, opened with `views.openDocsView`.
-    public struct FunctionSummary: Sendable {
-        /// The function's name in its module — `readFile` in `files.readFile`.
-        public let name: String
-        /// One line saying what it does.
-        public let summary: String
-
-        init(wire: test_cabinet_gg_docs_function_summary_t) {
-            name = lift(wire.name)
-            summary = lift(wire.summary)
         }
     }
 

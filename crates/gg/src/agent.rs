@@ -151,8 +151,8 @@ use crate::prompts::{
     SystemContext, TasksView,
 };
 use crate::sandbox::{
-    self, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
-    SandboxOutcome, run_program, scope_tools,
+    self, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits, SandboxOutcome,
+    run_program, scope_tools,
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
@@ -5294,7 +5294,7 @@ impl Agent {
         // The full offered toolset — every turn offers all of it, so the tool schemas are a stable
         // prefix a provider can cache.
         let all_tools = registry.definitions();
-        // The per-agent documentation carve-out, behind `object.list()` and `view.openDocsView()`. Built from
+        // The per-agent documentation carve-out, behind `docs.search` and `view.openDocsView()`. Built from
         // the same scope-bound tool set the program's objects are, and always present (docs are not a
         // capability), so a code turn can always answer a lookup. Unused on the tool-calling path.
         // This agent's [program library](crate::programs): the source of every program it runs, and
@@ -8539,13 +8539,13 @@ struct PromptInputs<'a> {
 ///
 /// The objects, the order they are shown in and the sentence each is introduced by are the
 /// **catalogue's**, reflected from the doc comment written on that object's declaration in the guest
-/// SDK — the same material `object.list()` and the [reference](crate::reference) render. Nothing
-/// about an object is authored here, because a table here would be a second copy of prose the model
-/// also meets by two other routes and nothing would keep the copies equal. What this function
-/// decides is only which of those objects *this* agent binds, and it has two consumers with opposite
-/// needs. The [prompt](api_views) takes objects and descriptions **without**
-/// the functions, because a model discovers those on demand with `object.list()` and
-/// `view.openDocsView()` rather than being shown every signature up front; the
+/// SDK — the same material a documentation search and the [reference](crate::reference) render.
+/// Nothing about an object is authored here, because a table here would be a second copy of prose
+/// the model also meets by two other routes and nothing would keep the copies equal. What this
+/// function decides is only which of those objects *this* agent binds, and it has two consumers with
+/// opposite needs. The [prompt](api_views) takes objects and descriptions **without**
+/// the functions, because a model discovers those on demand — by searching, and with
+/// `view.openDocsView()` — rather than being shown every signature up front; the
 /// [surface event](GgTelemetryKind::AgentSurface) takes the functions too, because a console reader
 /// asking *"was this agent offered that call at all?"* is asking the question the on-demand
 /// discovery deliberately does not answer up front. Both read this, so neither can drift from what
@@ -8556,8 +8556,8 @@ struct PromptInputs<'a> {
 /// spelling one SDK gives it — because that key is what every call the program makes is
 /// [recorded](test_cabinet_core::gg::GgTelemetryKind::ApiCall) under. So a consumer joins a bound
 /// function to its own count, whether or not a tool backs it, and a function offered and never
-/// called reports a real zero. Every object ends with [`list`](crate::docs::LIST_FUNCTION), which
-/// hangs off no object because it hangs off all of them — see the note at the tail of the function.
+/// called reports a real zero. What is reported is exactly the catalogue's own entries: nothing is
+/// appended that the catalogue does not carry.
 fn api_surface(
     registry: &ToolRegistry,
     role: EndingRole,
@@ -8593,31 +8593,14 @@ fn api_surface(
                 });
         }
     }
-    // `list` is catalogued like everything else, in the section for the functions that hang off no
-    // object — so its name is this language's own spelling of it rather than gg's key for it, which
-    // is the whole reason it is looked up rather than written here.
-    let list = crate::sandbox::meta_function(language, crate::docs::LIST_FUNCTION);
     objects
         .iter()
         .filter_map(|described| {
             let object = described.path;
-            bound.remove(object).map(|mut functions| {
-                // `catalogue_functions` walks the sections whose entries name an object, and a meta
-                // function names none — the guest seeds it onto every object it creates, and no tool
-                // gates it. So it is appended here rather than found there, and it goes last, where
-                // `DocsRuntime::list` puts it, so this readout and the directory the model itself
-                // gets from `object.list()` list the same functions in the same order.
-                if let Some(list) = list {
-                    functions.push(GgAgentApiFunction {
-                        name: list.name.clone(),
-                        key: crate::docs::LIST_FUNCTION.to_string(),
-                    });
-                }
-                GgAgentApi {
-                    object: object.to_string(),
-                    description: described.prose.rendered().into_owned(),
-                    functions,
-                }
+            bound.remove(object).map(|functions| GgAgentApi {
+                object: object.to_string(),
+                description: described.prose.rendered().into_owned(),
+                functions,
             })
         })
         .collect()
@@ -8625,7 +8608,7 @@ fn api_surface(
 
 /// The API objects a code program has this run as the **system prompt** names them: the object and
 /// its one-line description, and deliberately not its functions — a model discovers those on demand
-/// with `object.list()` and `view.openDocsView()`.
+/// by searching, and reads one with `view.openDocsView()`.
 ///
 /// A projection of [`api_surface`], which owns the objects, the prose and the binding rule.
 fn api_views(

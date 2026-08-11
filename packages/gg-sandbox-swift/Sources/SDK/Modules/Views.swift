@@ -11,10 +11,7 @@
 /// value it computed reaches that model. `print` and `gg.log` both reach the run instead.
 ///
 /// - ggmodule: views
-public enum views: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.views"
-
+public enum views {
     /// Read a file and place it in the context window, attributed to its path and closable by it.
     ///
     /// What comes back is exactly what `files.readFile` returns; the difference is the view. That
@@ -88,7 +85,8 @@ public enum views: ModuleDirectory {
     /// closes it.
     ///
     /// - Parameter name: The function to document, by the name it is called by in its module —
-    ///   `"readFile"` for `files.readFile`. Each module's `list()` is what says which names exist.
+    ///   `"readFile"` for `files.readFile`. Searching the documentation is what says which names
+    ///   exist.
     /// - Throws: `core.ToolError` with `.notFound` for an unknown or unbound name.
     /// - ggop: views.open_docs_view
     public static func openDocsView(_ name: String) throws {

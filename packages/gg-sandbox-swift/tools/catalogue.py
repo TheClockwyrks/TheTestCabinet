@@ -10,8 +10,8 @@ What is left is a table of twelve module identities, and it is here rather than 
 two reasons: the ORDER is model-facing — it is the sequence a documentation index and the run's agent
 surface present the modules in — and the PATH is the string gg matches a fully-qualified name's
 prefix against, so a module that misspelled its own path would be reporting names nothing could open.
-Each module's own ``ggmodule`` line says which of these rows it is, its ``ggModule`` constant is the
-path it answers a directory under, and ``signatures.py`` asserts all three agree.
+Each module's own ``ggmodule`` line says which of these rows it is, and ``signatures.py`` asserts the
+two agree.
 """
 
 
@@ -59,15 +59,3 @@ MODULES = [
     Module("session", "gg.session"),
     Module("core", "gg.core"),
 ]
-
-#: The name of the directory function every module that offers a capability carries, declared once by
-#: the ``ModuleDirectory`` protocol extension and inherited by each of them. It is the one call with
-#: no operation id, because gg seeds it onto every module rather than catalogueing it on one.
-META = "list"
-
-#: The protocol whose extension declares that one function, and the type the ``meta`` section is read
-#: from. Not model-facing: no program writes it, and no catalogue entry names it.
-META_PROTOCOL = "ModuleDirectory"
-
-#: The constant a conforming module states its own gg path in, checked against the table above.
-MODULE_PATH_CONSTANT = "ggModule"

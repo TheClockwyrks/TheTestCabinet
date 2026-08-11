@@ -207,7 +207,6 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "gg.context.compact(\"done\");\n",
         "gg.delegation.sendMessage(\"agent-1\", \"more\");\n",
         "gg.skills.readSkill(\"testing\");\n",
-        "console.log(gg.files.list().map((f) => f.name).join(\",\"));\n",
         "try {\n",
         "  gg.files.readTextFile(42);\n",
         "} catch (error) {\n",
@@ -244,16 +243,11 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         ["scratch"],
         "`gg.views.openText` opened the view its documented spelling names"
     );
-    // The directory a module hands its own program, and the bare `ToolError` a `catch` narrows on —
-    // the two things the prompt teaches that are not a tool call.
+    // The bare `ToolError` a `catch` narrows on — the one thing the prompt teaches that is not a
+    // tool call.
     let lines = logs(&outcome);
     assert_eq!(
-        lines[0], "fsFunction",
-        "`gg.files.list()` answered with this module's own directory, which the host keys by the \
-         grouping the module was seeded with"
-    );
-    assert_eq!(
-        lines[1], "true",
+        lines[0], "true",
         "`ToolError` is bound bare, so `instanceof` narrows a caught failure"
     );
     assert!(

@@ -13,7 +13,6 @@ use crate::bindings::test_cabinet::gg::programs;
 use crate::core::ToolError;
 use crate::wire;
 
-crate::directory::directory_of!();
 
 /// List the programs this session has already run, oldest first.
 ///

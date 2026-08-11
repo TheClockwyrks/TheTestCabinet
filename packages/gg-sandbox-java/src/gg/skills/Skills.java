@@ -1,6 +1,5 @@
 package gg.skills;
 
-import gg.FunctionSummary;
 import gg.ToolError;
 import gg.ToolErrorCode;
 import gg.internal.Read;
@@ -17,21 +16,6 @@ import java.util.List;
  */
 public final class Skills {
     private Skills() {
-    }
-
-    /**
-     * List the functions this module offers, each with a one-line summary.
-     *
-     * <p>Only the functions this run actually bound are returned, so the directory never names a
-     * call a program cannot make. One function's full signature, argument descriptions and types
-     * are opened as a view with {@code Views.openDocsView}.
-     *
-     * @return the functions this module really bound, each with its one-line summary
-     * @ggmeta list
-     */
-    public static List<FunctionSummary> list() {
-        return Read.functionSummaries(
-                Wire.call("list", Wire.skills(), "skills", "list", Wire.args()));
     }
 
     /**

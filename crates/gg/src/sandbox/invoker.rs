@@ -30,13 +30,16 @@ use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
 
-/// One function in an API object's directory, as [`list_functions`](ToolApi::list_functions)
-/// returns it: the name a program calls it by and a one-line summary. The host counterpart of the
-/// guest's `FunctionSummary` WIT record, kept free of the bindgen types so the trait has no
-/// dependency on the generated membrane.
+/// One function of a capability family, as
+/// [`DocsRuntime::family`](crate::docs::DocsRuntime::family) reports it: the name a program calls it
+/// by and its one-line brief.
+///
+/// It reaches no model directly and crosses no membrane. Its one reader is the
+/// [built-in family skill](crate::skills)'s generated on-use script, which needs a name to write
+/// into a program and a line to explain why it wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSummary {
-    /// The function name on its object — `readFile` in `fs.readFile(...)`.
+    /// The name a program calls the function by, in the arm's own spelling.
     pub name: String,
     /// A one-line description of what the function does.
     pub summary: String,
@@ -109,8 +112,8 @@ pub struct SandboxViewOpened {
 
 /// Why a `view.*` call was refused, in a shape the membrane lowers into a typed `tool-error`.
 ///
-/// It carries a [`ToolFailure`] rather than the membrane's generated `error-code` for the same
-/// reason [`FunctionSummary`] is spelled out here: this trait must not depend on the `bindgen!`
+/// It carries a [`ToolFailure`] rather than the membrane's generated `error-code` for the reason
+/// every type in this file is spelled out by hand: this trait must not depend on the `bindgen!`
 /// types. The membrane maps the one onto the other with the conversion every failed
 /// [`ToolOutcome`] already goes through, so a refused view is classified exactly as a failed tool
 /// call is.
@@ -126,8 +129,8 @@ pub struct ViewRefusal {
 
 /// What a `docs.search` asks for, owned — the host counterpart of the guest's `search` arguments.
 ///
-/// Owned `String`s rather than borrows for the reason [`FunctionSummary`] is spelled out here: the
-/// membrane lifts these out of the guest's linear memory and the trait must not depend on the
+/// Owned `String`s rather than borrows for the reason [`ViewRefusal`] carries a [`ToolFailure`]:
+/// the membrane lifts these out of the guest's linear memory and the trait must not depend on the
 /// generated bindings, nor on how long the guest's copy lives.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DocSearchQuery {
@@ -351,7 +354,6 @@ pub trait ToolApi: Send + 'static {
     ) -> ToolOutcome;
     fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome;
     fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome;
-    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
     /// Search the documentation surface this agent binds, and **also** open the results as a view.
     ///
     /// Both, deliberately. A search is a value the program computes with — it will page, filter and

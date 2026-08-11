@@ -115,8 +115,8 @@ export function openText(label: string, body: string): void {
  * and using it in the next is the shape that works. Opening the same function again replaces the
  * view, and `close` takes the same name.
  *
- * Throws `ToolError` with `not-found` for an unknown or unbound name; a module's `list` is what says
- * which names exist.
+ * Throws `ToolError` with `not-found` for an unknown or unbound name; searching the documentation is
+ * what says which names exist.
  *
  * @ggop views.open_docs_view
  * @param target The function to document: the function itself, or its name as a string.
@@ -185,8 +185,7 @@ export function close(selector: string): number {
  * and — for a paged file view — the `region` it covers. It is the thing to read before deciding what
  * to close when the window is filling up.
  *
- * It is called `current` rather than `list` because every module already carries a `list` that lists
- * that module's own functions.
+ * What it enumerates is the context window's contents, not any module's functions.
  *
  * @ggop views.current
  */

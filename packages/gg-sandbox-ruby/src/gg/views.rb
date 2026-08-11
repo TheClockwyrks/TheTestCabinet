@@ -144,8 +144,8 @@ module GG
     #
     # Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
     # for a paged file view — the `region` it covers. Reading it is what decides what to close when
-    # the window is filling up. It is called `current` rather than `list` because every module
-    # already carries a `list` that lists that module's own functions.
+    # the window is filling up. What it enumerates is the context window's contents, not
+    # any module's functions.
     #
     # @return [Array<GG::Views::OpenView>] every view open in the context window
     def self.current

@@ -276,10 +276,6 @@ views::open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire) {
   return open;
 }
 
-core::function_summary lift_function_summary(const test_cabinet_gg_docs_function_summary_t& wire) {
-  return core::function_summary{lift(wire.name), lift(wire.summary)};
-}
-
 programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire) {
   programs::program_summary summary;
   summary.turn = wire.turn;

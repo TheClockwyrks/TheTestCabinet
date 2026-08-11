@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Gg;
 
 /// <summary>Reclaim room in the agent's own context window.</summary>
@@ -11,9 +9,6 @@ namespace Gg;
 /// <ggmodule>context</ggmodule>
 public static partial class Context
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Context));
-
     /// <summary>Drop file contents already read out of the context window.</summary>
     /// <remarks>The files on disk are untouched; only the views of them go.</remarks>
     /// <param name="path">The workspace path whose views to drop. Left out, every file view goes.</param>

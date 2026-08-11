@@ -193,7 +193,7 @@ it. `    await work()` dedents to `await work()`, and deleting the token alone w
 ### What "native" bought, in the catalogue
 
 The SDK is [hand-written](#the-sdk-is-hand-written-and-native) and reads as Python reads, and the
-[agreement gate](#the-agreement-gate) accepts every one of those choices as spelling: `snake_case`
+[capability gate](#the-capability-gate) accepts every one of those choices as spelling: `snake_case`
 throughout, keyword arguments with real defaults rather than a trailing options object, frozen
 dataclasses for results, enums for fixed choices, `isinstance` narrowing rather than a discriminant
 field, a raised `ToolError` for the wire's error arm, an `UNCHANGED` sentinel where `None` already
@@ -342,7 +342,7 @@ a test that only a runtime falling out of the snapshot could move.
 ### What "native" means in Ruby
 
 An idiomatic Ruby SDK is not the Python one with different brackets. Every difference below is a
-spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
+spelling rather than an identity, and the [capability gate](#the-capability-gate) accepts each of
 them:
 
 - **A block where a Ruby author expects one.**
@@ -386,9 +386,9 @@ them:
   methods, and a flat surface would have a program reaching for the builtin and silently getting
   gg's tool.
 - **The surface is built from the run.** `GG::Scope` lifts every declaration off its module at load
-  and puts back only the subset this run offers, so a module's `list` is the honest directory of
-  what a program has and a withheld name raises `NoMethodError` on the line that wrote it, naming
-  the module and its directory. That is the one place this arm still differs from the compiled
+  and puts back only the subset this run offers, so what a module answers to is what a program
+  really has, and a withheld name raises `NoMethodError` on the line that wrote it, naming the
+  module and what it does offer. That is the one place this arm still differs from the compiled
   ones, where every name exists and the host refuses the call instead.
 - **`lib.<key>` is a `Module`.** A Ruby file has no exports, so the host wraps a code skill's or
   memory's source in the call that evaluates it against a fresh anonymous module, which extends
@@ -672,7 +672,7 @@ that was never wrong.
 ### What "native" means in PureScript
 
 An idiomatic PureScript SDK is not the TypeScript one with `::` in it. Every difference below is
-a spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts each of
+a spelling rather than an identity, and the [capability gate](#the-capability-gate) accepts each of
 them:
 
 - **The surface is modules of free functions**, which is what a PureScript library is. `Gg.Files`,
@@ -767,10 +767,10 @@ argument must be documented and every documented field must exist, a `# Fields` 
 every field of its type and only those, and nothing may be blank. The failure lands on the author
 rather than on a model.
 
-One thing this arm made the [agreement gate](#the-agreement-gate) learn. Its signatures are
+One thing this arm made the [capability gate](#the-capability-gate) learn. Its signatures are
 written in **ML notation**, which puts its argument list in a chain of top-level arrows rather
 than between brackets — and the gate's shallow bracket rule was wrong about that in both
-directions, reading `list :: Effect (Array FunctionSummary)` as taking an argument and
+directions, reading `current :: Effect (Array Gg.Views.OpenView)` as taking an argument and
 `readFile :: String -> Effect FileRead` as taking none. It now reads an ML signature by its
 arrows, which is strictly *more* than it could see before; and the one check such a signature
 cannot satisfy — that a documented argument's name appears in it — is skipped for the arguments a
@@ -1005,7 +1005,7 @@ so the arm's own tests assert each of these:
 ### What "native" means in Java
 
 An idiomatic Java SDK is not the TypeScript one with types moved to the left. Every difference
-below is a spelling rather than an identity, and the [agreement gate](#the-agreement-gate) accepts
+below is a spelling rather than an identity, and the [capability gate](#the-capability-gate) accepts
 each of them:
 
 - **An optional argument is an overload**, because Java has no default parameters and no keyword
@@ -1421,7 +1421,7 @@ An idiomatic Kotlin SDK is not the Java one with the types moved right — and t
 that matters most, because the two share a compiler road, a guest and a classlib, so a surface that
 was merely Java's transliterated would make the pair measure the *toolchain* rather than the
 language. Every difference below is a spelling rather than an identity, and the
-[agreement gate](#the-agreement-gate) accepts each of them:
+[capability gate](#the-capability-gate) accepts each of them:
 
 - **An optional argument is a default argument, passed by name.** `fs.readFile("main.kt", offset = 2,
   limit = 5)`, `system.shell("npm test", timeoutSecs = 30)`. Where
@@ -2469,7 +2469,7 @@ system and into a string the model has to remember; every mistake it enables is 
 one, discovered a turn later, with a message that can only say *no such tool* rather than
 *that argument is the wrong shape for this call*. Namespacing is part of the same rule and
 not decoration: `fs.` and `system.` are how the model knows what it has, and the object
-names are [identity](#the-agreement-gate) rather than spelling for exactly that reason.
+names are [identity](#the-capability-gate) rather than spelling for exactly that reason.
 
 **2. Every call is synchronous.** Nothing returns a promise, a future or a coroutine.
 There is no event loop inside the guest, so an `await` has nothing to yield to — but the
@@ -2554,7 +2554,7 @@ instantly in every gate that iterates languages.
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something that yields a namespace, bound at `lib.<key>` — for an interpreted arm, source its guest evaluates; for a [compiled](#a-module-a-program-has-to-be-linked-against) one, source the *next program's* compile is built against. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
-| Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reads through `object.list()` and `view.openDocsView()`. See [the catalogue](#the-catalogue). |
+| Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reaches by searching and reads through `view.openDocsView()`. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and nothing else. Not one function name: every call a template quotes is resolved from that language's catalogue when the template renders — see [nothing quotes a call by hand](#nothing-quotes-a-call-by-hand). |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
@@ -2909,7 +2909,7 @@ try session.finish("looked at \(sources.count) sources")
 ```
 
 Every difference below is a spelling rather than an identity, and the
-[agreement gate](#the-agreement-gate) accepts each of them:
+[capability gate](#the-capability-gate) accepts each of them:
 
 - **A capability module is a caseless `enum`**, which is Swift's own namespace inside a module, so
   `files.readFile(…)` is a call on a namespace and nothing is constructed first. There are eleven of
@@ -3039,7 +3039,7 @@ adding a language would mean editing the one file every language shares. It is a
 operator-facing surface:
 the console's prompt-override editor is seeded from it, and an operator overriding the
 prompt is overriding it for the language they are running. What a copied template can lose
-is a whole section, so that is [asserted](#the-agreement-gate) rather than trusted: every
+is a whole section, so that is [asserted](#the-capability-gate) rather than trusted: every
 registered language's prompt must render, under every context fixture, carrying every
 required section. A checked language's prompt is additionally held to *saying* it is checked,
 by the name of its own compiler — [`checker`](#what-a-language-supplies) is where that name
@@ -3088,7 +3088,7 @@ session::finish(std::format("looked at {} sources", sources.size()));
 ```
 
 Every difference below is a spelling rather than an identity, and the
-[agreement gate](#the-agreement-gate) accepts each of them:
+[capability gate](#the-capability-gate) accepts each of them:
 
 - **A capability module is a namespace**, so `files::read_file(…)` is a qualified name and a call.
   That is the same answer [Rust](#what-rusts-sdk-looks-like) gives, reached with C++'s own
@@ -3184,7 +3184,7 @@ Three mechanics of it are worth recording, because each was a decision:
 | --- | --- |
 | **The AST is filtered** | A translation unit that includes this SDK also includes half the standard library, and dumping the whole of one is ~300 MB for `<string>` alone. `-ast-dump-filter=gg` keeps the declarations whose name matches — which for this SDK is all of them, because the whole surface nests inside `namespace gg`. 3 MB and half a second. |
 | **`///` means model-facing and `//` does not** | A public member the bridge needs — `text_edit::tag()`, `brief::is_issue()` — carries `//` and is left out of the declaration a model is shown. There is no other marker, and a public member with no documentation at all is omitted rather than emitted blank. |
-| **`list` is written once and declared eleven times** | C++ has no protocol extension, and a comment inside a macro body is gone before the macro is ever expanded — so the eleven `list()` declarations cannot share one written paragraph the way [Swift](#what-swifts-sdk-looks-like)'s protocol default or Rust's `macro_rules!` do. They share `gg::detail::module_directory` instead, by a one-line `\copydoc` the reflector resolves, and the reflector asserts all eleven declare the same shape. |
+| **`\copydoc` resolves before the brief/detail split** | C++ has no protocol extension, and a comment inside a macro body is gone before the macro is ever expanded — so anything that must be said identically on several declarations has to be said once and pointed at. The reflector resolves a one-line `\copydoc` to its target's own comment *before* splitting brief from detail, which is what makes the mechanism usable for model-facing prose. Nothing uses it today: its one user was the directory every module carried, and that is deleted. |
 
 Two smaller things the reflector has to do that no other arm's does. clang's comment lexer splits a
 line wherever it thinks it sees markup, so `std::get_if<text_file>` arrives as four fragments —
@@ -3396,10 +3396,9 @@ sentinel.
 **This arm's surface is eleven capability modules, and each is a `public static partial class` in
 `namespace Gg`** — `Gg.Files`, `Gg.Shell`, `Gg.Board`, `Gg.Views` — with its result types nested
 inside it, so `Gg.Files.FileRead` and `Gg.Tasks.TextEdit` are the names a program writes and the
-names a documentation view is opened by. A twelfth, class-less `core` module holds the three
-declarations every other module's signatures name (`ToolException`, `ToolErrorCode`,
-`FunctionSummary`), which sit directly in `namespace Gg` so that a `catch (ToolException failure)`
-needs no prefix.
+names a documentation view is opened by. A twelfth, class-less `core` module holds the two
+declarations every other module's signatures name (`ToolException` and `ToolErrorCode`), which sit
+directly in `namespace Gg` so that a `catch (ToolException failure)` needs no prefix.
 
 Nothing about that shape is gg's: a module class is `System.Math`'s idiom, a nested result type is
 what a C# author writes, and a program that wants the prefix gone writes `using static Gg.Files;`
@@ -3436,42 +3435,35 @@ running programs rather than by reading:
 
 A language's catalogue is the whole of what a model is *told* about the surface, and every
 word of it is **reflected out of documentation written on the declaration it describes**.
-Nothing in it is authored in a table, a template or a prompt: an object's one-line
-description comes from the doc comment on the constant that names the object, an argument's
+Nothing in it is authored in a table, a template or a prompt: a module's one-line
+description comes from the doc comment on the module itself, an argument's
 description from the `@param` (or `# Arguments` heading, or `///` on the parameter — the
 convention is the language's) written on that argument, and a type member's from the comment
 above the member. A description kept anywhere else is a description that drifts, and nothing
 would catch it.
 
-It has nine sections:
+Every arm commits **schema 2**. Three lines of it are provenance — the `schema` it is written
+in, the `language` it was generated for, and the `generatedFrom` naming what it was reflected
+out of — and the rest is four sections:
 
 | Section | What it carries |
 | --- | --- |
-| `objects` | Every API object a program's surface is divided into, **in the order the surface is presented in**, each with the sentence the system prompt introduces it by. The order is model-facing: it is what the prompt's API list and the run's [agent surface](/gg/agent-surface/) both render. |
+| `modules` | Every **capability module** the surface is divided into, **in the order a model meets them**, each with its gg `id`, the `path` this arm spells it under, an authored `brief` and optional `detail`, and the `import` line a program must write — `null` on the ten arms that inject the SDK into scope. The order is model-facing: it is what the prompt and the run's [agent surface](/gg/agent-surface/) both render. |
 | `libraries` | The **libraries a program may import**, grouped as the artifact that decides the set groups them, each name spelled exactly as a program must write it. The one section that is not a signature, and it is here for the same reason the rest is: it is model-facing text about the arm's surface, so it is reflected out of the code that decides the set rather than described in a prompt. Absent for a language whose programs get their runtime's own standard library and nothing more. |
-| `meta` | The functions that hang off **no** object because they hang off all of them — today just `list`, the directory every object carries. Its entries have no `object` field, because any object one of them named would be a claim about the eleven it is also on. |
-| `session` | The [ending calls](/gg/ending-a-session/), one group per role. |
-| `views` | The `view` object — the calls that put material into the agent's own context window. |
-| `programs` | The [program library](/gg/program-library/)'s calls. |
-| `tools` | One entry per gg tool, in exact bijection with the tool registry's vocabulary. |
-| `helpers` | The convenience wrappers bound alongside a tool. |
-| `types` | Every type a signature refers to: its declaration, the paragraph explaining what it is for, and **a line per member**. A declaration says what fields a value has and nothing about what any of them means — `shown: boolean` on a `FileRead` is not a thing a model can infer — so the members travel with it. |
+| `functions` | **Every call a program can write**, in one flat array — there is no per-capability section, because a section was a gate an arm asserted about itself and gating is now gg's alone. Each entry names the gg **`operation`** it binds (`files.read_file`), the `module` it is documented under, its `kind` and `receiver`, the `name` a program calls it by, its module-qualified **`fqn`**, an authored `brief` with optional `detail`, its `signatures`, and its `returns` and `types` as **resolved** references. An entry that is a second way into a capability the arm already binds says so with `aliasOf` and counts toward nothing. |
+| `types` | Every type a signature refers to: its `fqn` and `module`, its `declaration`, the prose explaining what it is for, **a line per member**, and — where the arm hangs one off the type — the `memberFunctions` a program may call on a value of it. A declaration says what fields a value has and nothing about what any of them means — `shown: boolean` on a `FileRead` is not a thing a model can infer — so the members travel with it. |
 
-#### Two schemas at once, while the arms convert
+Two things are deliberately **not** in a catalogue, and both used to be. Neither is an
+omission: they are the two facts an arm was never in a position to be right about.
 
-The nine sections above are **schema 1**, which is what most arms commit. A catalogue declares which
-shape it is written in, and gg parses two: the second replaces `objects` with **modules**, collapses
-the six function-carrying sections into one `functions` array whose entries name a gg *operation*
-rather than a section, keys every entry by a module-qualified **fully-qualified name**, carries an
-**authored brief and optional detail** rather than one paragraph, and records its type references
-**resolved** rather than as written.
-
-Version dispatch is what makes an arm's conversion its own commit rather than a change to eleven
-toolchains at once: the arms that have not moved parse and render exactly as they always did, and the
-one that has is read through the same normalized projection, so no consumer downstream has to ask
-which schema it was handed. [C#](#c-a-committed-interpreter-for-a-compiled-language) is the first
-arm converted and [Rust](#what-rusts-sdk-looks-like) the second. When the last one follows, schema 1
-and this paragraph go with it.
+- **What gates a call.** An arm wrote down the tool, the ending role or the capability that
+  bought each of its calls, and eleven copies of one fact were kept equal by comparing them to
+  each other. They are now stated once, by gg, in its [operations table](#the-capability-gate),
+  and an entry reaches its gate through the `operation` id it names.
+- **What a module lists.** Every module used to carry a `list` a program could call to
+  enumerate itself, catalogued in a section of its own. Discovery is a
+  [search](/gg/responses-as-code/#reading-the-documentation-is-opening-a-view) over the whole
+  surface now, so there is no per-module directory to declare and no section to file it under.
 
 #### One entry, many signatures
 
@@ -3482,7 +3474,7 @@ An optional argument is a Java overload pair, a Kotlin default, a Python keyword
 and a TypeScript `?`. Those are four spellings of one capability. Java's arrives as **one
 entry with two signatures**, each with its own argument list; the other three arrive as one
 entry with one. Nothing downstream compares the count, because the count is spelling — see
-[the agreement gate](#the-agreement-gate).
+[the capability gate](#the-capability-gate).
 
 [Ruby](#what-native-means-in-ruby) is the arm that first produced that shape, and not over an
 optional argument: `view.open_text(label, body)` and `view.open_text(label, &body)` are one
@@ -3493,7 +3485,7 @@ emitted.
 An overload group is **one entry with many signatures, never two entries sharing a name**,
 and a reflector that emits the second shape is rejected at load: two entries on one object
 spelled the same is one of them silently shadowing the other at bind time, and every
-consumer that routes on `(object, name)` — the doc lookup, `object.list()`, the reference
+consumer that routes on `(object, name)` — the doc lookup, a search hit, the reference
 projection — would show the first and lose the rest.
 
 Each signature carries its arguments in order, and each argument carries its name, its type,
@@ -3516,8 +3508,7 @@ So a template writes `` `{{api.view.open_text.signature}}` `` and gets
 `view.openText(label: string, body: string): void` under TypeScript and whatever the next
 language's SDK declares under that. Three fields are available for each call: `.name` (the bare
 name, for the places a prompt quotes one as a string argument), `.call` (the name qualified by
-its object, which is how a program writes it), and `.signature` (the qualified signature).
-`{{meta.<key>.…}}` does the same for the object-less [meta functions](#the-catalogue). A path
+its object, which is how a program writes it), and `.signature` (the qualified signature). A path
 that names nothing is a strict-mode render failure rather than a sentence quietly describing a
 call nobody has.
 
@@ -3565,8 +3556,9 @@ shown — each ` ```rust ` block in the prompt and the "nothing shown" notice, e
 reads as a call, and each fenced block in the committed catalogue, which came off a `///` comment
 on the SDK — is gathered into one program and put through the arm's production prepare step: the
 same `rustc`, the same wrapper and the same library set a model's own reply gets. It was written
-because exactly that defect shipped: the prompt taught `files::list()?`, and `list` returns a `Vec`
-rather than a `Result`, so the `?` a model would have copied is an `E0277`. Placeholder names the
+because exactly that defect shipped: the prompt taught `files::list()?` back when a directory call
+existed, and it returned a `Vec` rather than a `Result`, so the `?` a model would have copied was an
+`E0277`. Placeholder names the
 prose uses without introducing (`path`, `turn`, `source`) are bound in the test's own preamble, so
 an example that gains a new one fails here by name rather than being quietly excused.
 
@@ -3605,7 +3597,7 @@ Two consequences for a language being added:
 - **A new SDK is free to expose the whole surface**, and should: a function it cannot
   reach is a function a doc view cannot show, and hiding one per run is a per-run artifact
   where the point is that every arm sees the same surface. Prompts never advertise a
-  disabled capability, `object.list()` filters them, and calling one is an error — from the
+  disabled capability, search filters them out, and calling one is an error — from the
   host.
 - **The refusal is not the model's own failure.** `unavailable` is recorded as the same
   turn error a missing name is, and gg decides that from the failure *code* rather than
@@ -3671,104 +3663,132 @@ asserted the same way and for the same reason, and it is the other end of the ra
 membrane interfaces and **twenty** WASI ones, `wasi:filesystem` and all five `wasi:sockets`
 interfaces included.
 
-## The agreement gate
+## The capability gate
 
-The seam says the only thing free to differ between two languages is **spelling**. That is
-not left as a convention anyone is asked to remember; it is asserted, for every registered
-language, on every test run.
+The seam says two languages may present **different surfaces** as long as a model can do
+the **same things** with them. That is not left as a convention anyone is asked to
+remember; it is asserted, for every registered language, on every test run.
 
-gg builds an **identity** for each function a language's catalogue describes, and compares
-the sets:
+It used to say something stricter and simpler — that the only thing free to differ was
+*spelling* — and the gate enforced it by building a five-part identity for every function
+(the section it sat in, the API object it hung off, its key, its gate, its ending role)
+and requiring two arms' sets of those to be equal. That premise is gone, and it was
+retired deliberately: API objects were a hidden vocabulary, and abolishing them was the
+point of the [module surface](#the-catalogue). What replaced them are eleven *idiomatic*
+SDKs, which differ in **structure** — a capability is a free function on one arm and a
+method on the type it operates on next door, one arm offers it twice under two names and
+another once, and no two arms group their modules identically. A gate comparing identity
+tuples would reject every one of those, which would mean forbidding an arm from being
+idiomatic — itself a confound in a study about languages, and the larger one.
 
-- **Identity** — the section it sits in, the **object** it hangs off (`fs`, `view`,
-  `harness`) or *no* object at all for a `meta` function, its language-independent **key**
-  (a tool's is its gg tool name; `request_changes` and `open_text` are the carve-outs' own),
-  the gg tool that **gates** it, the ending **role** whose programs bind it, and whether it
-  belongs to the [program library](/gg/program-library/). None of it may differ.
-- **Spelling** — everything else, and deliberately a great deal: the name a program calls,
-  the prose that documents it, the object's own description, and the whole **shape of the
-  call**. Argument names, argument descriptions, whether an argument is positional or passed
-  by name, what it defaults to, and *how many signatures an entry carries* are all spelling.
-  A language that must express an optional argument as an overload pair carries two
-  signatures where one expressing it as a default carries one, and that is not a difference
-  in what the function does — so the gate does not compare the count.
+So **there is no reference arm and no comparison between arms**, and nothing counts
+functions. Every arm is held, one at a time, to gg's own **operations table**: the list of
+every model-facing operation gg has, what buys each one, and whether a program passes it
+anything.
 
-The one thing about the call shape that is **not** free is whether there is one. A capability
-that needs a path needs it in every language, so *whether an entry documents any argument at
-all* is compared across arms: an arm whose model is told what to put in `fs.readFile` and an
-arm whose model is not are not two spellings of one surface.
+**Gating, over the table alone.** Every tool-bound operation names a real gg tool and
+every gg tool buys something; the ending operations are gg's three under the roles
+`EndingRole` gives them; a view is gated exactly where it reads the workspace (`open_file`
+on `read_file`, the rest on nothing at all); a capability buys the [program
+library](/gg/program-library/) and nothing else. This runs once rather than eleven times,
+and it is *stronger* than the per-arm version it replaced: a gate is a fact about gg's own
+configuration surface, and eleven copies of it were eleven chances to disagree. An arm has
+no gate field left to be wrong in — what it still says is only **which operation it is
+binding**.
 
-What the gate asserts about spelling is that it is **there**. Every argument, every field of
-a structured argument, every type, every one of a type's members and every API object must
-carry documentation; a signature must begin with the name a program calls; an argument must
-be named by the signature that takes it — a renamed parameter left behind under its old name
-in the docs reads perfectly and tells a model to write something the call will not accept —
-except where the notation has nowhere to put a name, which is [ML
-notation](#the-catalogue-and-the-two-things-purescript-does-not-have), where the same check is
-kept for the **fields** of a structured argument and dropped for the arguments a type cannot
-name; and no two functions on one object may share a name. Those checks run over the **emitted
-catalogue**, so they are one gate for every language: a language whose compiler enforced its
-doc comments (Java's `-Xdoclint`) and one whose only per-argument slot is a **convention** over
-the comment text (Rust's and PureScript's `# Arguments`, Swift's `- Parameters:`) land in the
-same shape here.
+**Capability coverage, per arm.** Every operation gg offers has exactly one canonical
+binding on every arm that is not excused; every operation an arm names is one gg has;
+every alias names an operation that arm canonically binds. A binding is identified by the
+arm's own shape — its module, whether it is a function, a method or a static method, the
+type it hangs off, and the name a program calls it by — and that identity is used to
+*name* a binding in a complaint and to notice two of them, never to require that two arms
+chose the same one. An [alias](#the-catalogue) is a second way in and counts toward
+nothing, so an arm that idiomatically offers one capability twice is not thereby ahead of
+an arm that offers it once.
 
-An **omission** is caught as well as a blank, which matters because the languages with no
-per-argument doc slot of their own are exactly the ones whose reflector is most likely to
-emit an empty argument list and call it done. Two checks catch it, and between them they
-cover every notation: a signature that writes a non-empty argument list — between brackets, or as
-a chain of top-level arrows where the notation is `readFile :: String -> Effect FileRead` — and
-documents nothing fails on its own, and an entry documenting no argument where another arm
-documents one fails comparatively.
+**The propagation rule.** A helper added to one SDK is added to every other *where
+applicable*, and "applicable" is not computable — a helper wrapping a `Result`-returning
+read is idiomatic in Rust and pointless in a throwing language. So the judgement is made
+explicit, central and reviewed: an exemption is written beside the operation, in gg, with
+a prose reason, and never in the package that omits the operation, where the only evidence
+would be an absence. An arm that omits a universal operation fails by name; an exemption
+naming an arm that *does* bind the operation is dead and fails too, so a list of two
+cannot rot into a blanket waiver.
 
-Each language is additionally anchored to **gg's own vocabularies**: its tools in exact
-bijection with the tool registry's, its component binding exactly those tools, its ending
-calls exactly the four the tool-calling arm dispatches and each bound to the role gg gives
-it, its `meta` section exactly the one function gg seeds onto every object (`list`), every
-gate a real tool name, `view.openFile` gated on `read_file` and the rest of the view surface
-gated on nothing, and every type a signature mentions declared in its own catalogue.
+**Whether an operation takes input at all**, per arm against gg. The shape of a call is
+the arm's — an optional argument is an overload pair in one language and a default in
+another, and *how many signatures an entry carries* is never compared — but a capability
+that needs a path needs one everywhere. An arm whose model is told what to put in a call
+and an arm whose model is not are not two spellings of one surface. It is also what
+catches a reflector emitting an empty parameter list for everything: every signature still
+renders, and every model on that arm is told every call takes nothing.
 
-A `meta` function is checked in one more way the others are not, because it is bound on
-*every* object rather than on one: its name may not collide with any catalogued function's,
-since a collision would shadow silently on whichever object carried it.
+**That every spelling is one a program could write.** A name; a signature that begins with
+it; one spelling per module and receiver, because two entries under one module sharing a
+name is one of them shadowing the other at the call site; and an argument named by the
+signature that takes it — a renamed parameter left behind under its old name in the docs
+reads perfectly and tells a model to write something the call will not accept — except
+where the notation has nowhere to put a name, which is [ML
+notation](#the-catalogue-and-the-two-things-purescript-does-not-have), where the same
+check is kept for the **fields** of a structured argument and dropped for the arguments a
+type cannot name.
 
-**Why it is load-bearing for the experiment:** its absence is *silent*. Each language's own
-drift gates compare it to gg's tool vocabulary and to its own committed component — never
-to another language. Two internally consistent surfaces that disagree with **each other**
-are therefore two green test suites, and an A/B across them measures the difference in the
-surface while reporting it as a difference in the language. This gate is the only thing
-standing between a configured `language` param and an invalidated study.
+Two rules that used to live here now live next door and are stronger for it: every brief,
+detail and description belongs to the **documentation register gate**, which asks not only
+whether the prose is there but whether it is one line, closes its code spans and is
+written in the register gg chose; and every fully-qualified name, module reference and
+type reference belongs to the **name rule**, which also holds a declared type to being
+reachable and a reference to resolving.
 
-It returns its complaints rather than asserting them, so its own failure mode is testable:
-a gate that can be shown to pass but never shown to *catch* anything is a gate nobody knows
-works. Its tests hand it deliberately damaged catalogues — a missing `edit_file`, a
-renamed object, a view function gated on the wrong tool, an ending offered to the wrong
-role, an undocumented argument, a type member with no description, an API object nothing
-describes, an argument the signature does not name — and assert on what comes back. One test
-runs the other way: a catalogue that **renames every argument, passes them by name with
-stated defaults, and splits an optional argument into an overload pair** must be accepted
-without complaint, because a gate that rejected that would make an overloading language
+**What it does not check, stated rather than implied.** Nothing is compared between arms —
+not names, not counts, not documentation length, not how many functions a module groups.
+Nothing requires two arms to pick the same module, receiver or kind. And an arm that
+*swapped* two operations within one family — labelling its `open_file` binding `open_text`
+and vice versa — would pass coverage, because both operations still have exactly one
+canonical binding each; what is bound under the wrong gate there is legible only in the
+function's own prose and spelling, which are the arm's and are not comparable to anything.
+No gate that refuses to compare spellings can reach it.
+
+**Why it is load-bearing for the experiment:** its absence is *silent*. Each language's
+own drift gates compare it to its own committed component — never to gg's vocabulary, and
+never to another language. Eleven internally consistent surfaces offering eleven different
+sets of capabilities are eleven green test suites, and an A/B across them measures the
+difference in the surface while reporting it as a difference in the language.
+
+**And it can be made to fail.** It returns its complaints rather than asserting them,
+because a gate that can be shown to pass but never shown to *catch* anything is a gate
+nobody knows works — and a coverage gate written slightly too loosely still passes on
+eleven green arms. Two kinds of subject prove it. Damaged **catalogues**, built by
+reshaping a committed one and breaking a row: an operation the SDK stopped binding, an
+operation bound twice with neither binding calling itself the alias, an operation gg does
+not have, an alias of an operation the arm binds nowhere, a call that claims to take an
+argument gg says it does not, a name that shadows another in its module, an argument
+documented nowhere. And damaged **operations tables** — the gate takes the table as a
+parameter for exactly this reason, since gg's own is a constant no test could ever damage:
+a view of a file bound to every program, an ending offered to the wrong role, a capability
+gg does not have, an exemption with no reason written for it. Each is asserted to fail, by
+name and against the right subject: a catalogue's fault is the arm's, a gating fault is
+gg's.
+
+One test runs the other way, and it is the one the whole re-founding turns on. A **fixture
+language** that exists only under `#[cfg(test)]` offers every operation gg has and offers
+them *differently* — its modules are named differently, one operation is filed under a
+module gg has no word for, two are methods on the types they operate on rather than free
+functions, one is bound twice as an alias, and every name is spelled another way. The old
+gate would have rejected all of it. This one accepts it, and the test asserts the reshape
+is real, because a gate that rejected a second shape would make an idiomatic SDK
 impossible to register — which is a worse failure than any it prevents.
 
-The comparative half runs over the registry for real, and with all eleven arms in it that is
-the comparison this gate was built for rather than a stand-in: nine of the catalogues are SDKs
-written by hand, in nine languages, sharing no declaration and reflected by nine different
-documentation tools, and each arm brought at least one call shape its predecessors did not
-have — Ruby a two-signature entry, Java fourteen overload groups where Kotlin has none on the
-same compiler, PureScript curried ML notation with no argument list to look inside, and the
-converted arms a surface of capability **modules** with their types nested inside them, where the
-arms still on the first schema present a value with a `.` on it. Only
-the TypeScript/JavaScript pair is an easy comparison, its two catalogues being one
-set of declarations reflected twice. It is also exercised, on every run, against a
-**fixture language** that exists only
-under `#[cfg(test)]`: a second implementation of the whole seam whose catalogue is
-TypeScript's own, re-spelled to `snake_case` at test time — same keys, same objects, same
-gates — with its own line-oriented preparation step, its own healing dialect and its own
-prompt templates. It is derived rather than copied, so it cannot rot; it has no wire id,
-so it can never be configured, recorded or run; and it is deliberately not in the registry,
-so nothing that iterates registered languages pays for it. What it buys is that every claim
-the seam makes is *observed* rather than asserted — that the healing skeleton asks the
-dialect rather than knowing TypeScript's answers, that a prompt is selected per language
-rather than shared, that no language can be served another's artifacts.
+That fixture is a second implementation of the whole seam, with its own line-oriented
+preparation step, its own healing dialect and its own prompt templates. Its catalogue is
+**derived** from a registered arm's at test time rather than frozen, so a gg tool added
+tomorrow becomes an operation, the source arm binds it, and the fixture binds it too — it
+cannot rot. It has no wire id, so it can never be configured, recorded or run; and it is
+deliberately not in the registry, so nothing that iterates registered languages pays for
+it. What it buys is that every claim the seam makes is *observed* rather than asserted —
+that the healing skeleton asks the dialect rather than knowing TypeScript's answers, that
+a prompt is selected per language rather than shared, that no language can be served
+another's artifacts.
 
 ## Adding a language, worked: Python
 
@@ -3791,8 +3811,8 @@ every gate that iterates the registered set demands two templates and a healing 
 moment the enum has a variant.
 
 The surface was not taken on trust in the meantime, which is the part worth copying. The
-[agreement gate](#the-agreement-gate) was run against the committed Python catalogue a step
-*before* it was registered, wearing the [fixture language](#the-agreement-gate) so it could be
+[capability gate](#the-capability-gate) was run against the committed Python catalogue a step
+*before* it was registered, wearing the [fixture language](#the-capability-gate) so it could be
 handed a catalogue whose id the wire enum did not carry yet; and every one of the thirty-five
 tools was driven through the real membrane from its Python spelling, against the same expected
 JSON the TypeScript arm's crossing table asserts. Every arm since has done the same, and the
@@ -3970,8 +3990,8 @@ model reaches by accident rather than by writing a sleep.
 4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in
    [the same shape](#the-catalogue), with `language: "python"` and the same `key`s: the
    `objects` section in presentation order, one entry per function with its `signatures` and
-   each signature's arguments, every type with its own description and its members', the
-   `meta` section carrying `list`, and — if the arm ships a curated library set — the
+   each signature's arguments, every type with its own description and its members', and — if
+   the arm ships a curated library set — the
    `libraries` section reflected out of whatever decides it. It
    need not use the TypeScript package's reflector — only the emitted JSON is contractual —
    and Python's does not: `packages/gg-sandbox-python/tools/signatures.py` reads the SDK with
@@ -3980,10 +4000,10 @@ model reaches by accident rather than by writing a sleep.
    it reads is what a Python author already writes: the docstring's summary and body, its
    `Args:` entries, its `Raises:` section, each parameter's annotation and default, each
    dataclass field's and enum member's own docstring. It must reflect them rather than list
-   them, because the completeness half of the agreement gate fails a catalogue with a blank in
+   them, because the completeness half of the capability gate fails a catalogue with a blank in
    it — and, for an argument, with a gap where one should be: a signature that takes arguments
-   and documents none fails, as does an entry documenting no argument where another arm
-   documents one. The reflector refuses to emit either, so the failure lands on the author
+   and documents none fails, as does an entry documenting no argument where gg says the
+   operation takes one. The reflector refuses to emit either, so the failure lands on the author
    rather than on a model.
 5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`. If the language
    type-checks the model's program, its compiler has to reach the run container, and there
@@ -4055,8 +4075,8 @@ model reaches by accident rather than by writing a sleep.
     language's program and module steps sixteen ways and requires every artifact to belong to
     its own program — and if the new arm's artifact rides over the wire in a transport encoding, as
     C#'s base64 IL does, answer `isolation_readable` so the marker search reads the bytes rather
-    than the encoding; the agreement gate compares the new catalogue against TypeScript's
-    identity-for-identity; the prompt gate renders the new templates under every context
+    than the encoding; the capability gate holds the new catalogue to gg's operations table,
+    operation by operation; the prompt gate renders the new templates under every context
     fixture and checks every required section, every configured value, every granted
     capability's call and every rule a program runs under; the
     [prompt-resolution gate](#nothing-quotes-a-call-by-hand) reads the new templates' sources
@@ -4083,7 +4103,7 @@ point, and every one of them is a spelling rather than an identity:
   where TypeScript writes `fs.readFile(path, { limit: 200 })`. Required arguments stay
   positional in both.
 - **`snake_case` throughout** — `request_changes` for `requestChanges`, `open_text` for
-  `openText`. The [operation](#the-agreement-gate) written on each declaration is what lets gg tell
+  `openText`. The [operation](#the-capability-gate) written on each declaration is what lets gg tell
   that those are the *same capability*, which is exactly what it is for.
 - **`None`, not `undefined`.** An absent optional is `None`, and an optional field of a
   result is `T | None` rather than `T | undefined`.

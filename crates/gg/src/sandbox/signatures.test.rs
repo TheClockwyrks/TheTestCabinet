@@ -19,10 +19,10 @@ use crate::tools::ALL_TOOL_NAMES;
 /// between languages. So these are assertions about TypeScript's SDK, and they say so, rather than
 /// about whichever language happens to be gg's default.
 ///
-/// What is *not* here is anything that must hold for **every** registered language, or that compares
-/// two languages: the tool bijection, the type closure, the ending vocabulary, the gates and the
-/// spelling-uniqueness rules all live in the [agreement gate](crate::sandbox::language) now, stated
-/// once and applied to every language there is.
+/// What is *not* here is anything that must hold for **every** registered language: capability
+/// coverage, the gating vocabulary, whether a call takes input at all and the spelling-uniqueness
+/// rules all live in the [capability gate](crate::sandbox::language) now, stated once against gg's
+/// own operations table and applied to every language there is.
 fn typescript() -> &'static dyn ProgramLanguage {
     language(GgProgramLanguage::TypeScript)
 }

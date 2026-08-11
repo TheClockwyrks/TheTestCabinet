@@ -181,8 +181,8 @@ fn a_bare_run_renders_almost_nothing() {
 }
 
 /// In responses-as-code mode the prompt names the API objects a program has, teaches discovery
-/// through `object.list()` and `fn.docs()`, and points at `finish` to end the run — and it lists no
-/// tool signatures or type declarations at all. Those are discovered on demand.
+/// through `view.openDocsView`, and points at `finish` to end the run — and it lists no tool
+/// signatures or type declarations at all. Those are discovered on demand.
 ///
 /// The assertions check for the words the prompt must contain — each object's name and its
 /// description, the discovery calls, `finish` — not the punctuation that separates them, so the
@@ -220,7 +220,6 @@ fn code_mode_names_objects_and_teaches_discovery() {
         "`system`",
         "run shell commands in the workspace",
         "`harness`",
-        "<module>.list()",
         "gg.views.openDocsView",
         "finish",
     ] {
@@ -489,50 +488,6 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
         !without_shell.contains("\n\n\n"),
         "blank-line run:\n{without_shell}"
     );
-}
-
-/// **The prompt says which of the two discovery calls actually reaches the model.**
-///
-/// They read as a pair and they are not one: `<object>.list()` **returns** its directory to the
-/// program, and `view.openDocsView` **opens a view**. A prompt that offers them as two ways to look
-/// something up teaches that calling `system.list()` shows you the functions on `system` — and it
-/// does not. It shows them to your program, which then discards them, and the turn produces nothing
-/// at all: the model reads a `Notice` saying its program put nothing in its context, having done
-/// exactly what it was told.
-///
-/// So the route each takes is the thing the paragraph is about, and the wrapping call a directory
-/// needs is written out rather than left to be inferred.
-#[test]
-fn code_mode_distinguishes_a_returned_directory_from_an_opened_view() {
-    let prompt = render_system(
-        &SystemContext {
-            responses_as_code: true,
-            language: Some(GgProgramLanguage::TypeScript),
-            apis: vec![ApiView {
-                object: "fs".to_string(),
-                description: "read, write, and edit workspace files".to_string(),
-            }],
-            ..SystemContext::default()
-        },
-        None,
-    );
-    let flat = plain(&prompt);
-    // `list()` hands its answer to the PROGRAM, and the prompt shows the one call that forwards it
-    // to the model.
-    assert!(flat.contains("`<module>.list()` returns"), "{prompt}");
-    assert!(flat.contains("to your program"), "{prompt}");
-    assert!(
-        flat.contains("gg.views.openText") && flat.contains("gg.files.list()"),
-        "the worked example that forwards a directory to a view is gone:\n{prompt}"
-    );
-    // `openDocsView` is the one that opens a view directly.
-    assert!(flat.contains("gg.views.openDocsView"), "{prompt}");
-    assert!(flat.contains("opens a view"), "{prompt}");
-    // And whichever route was taken, the material lands on the next turn.
-    assert!(flat.contains("next turn"), "{prompt}");
-    // The example is written inline: this prompt forbids Markdown formatting in a reply, so it can
-    // hardly fence a line of program code as the model it wants copied.
-    assert!(!prompt.contains("```"), "{prompt}");
 }
 
 /// A tool-calling run's non-code sections still render: the read-cap and image facts (when
@@ -2102,8 +2057,8 @@ fn each_language_words_its_own_nothing_shown_notice() {
         .next()
         .expect("the seam registers a fixture language under test");
     let rendered = render_code_nothing_shown_for(fixture);
-    assert!(rendered.contains("view.open_text"), "{rendered}");
-    assert!(!rendered.contains("view.openText"), "{rendered}");
+    assert!(rendered.contains("views.open_text"), "{rendered}");
+    assert!(!rendered.contains("openText"), "{rendered}");
     assert_ne!(
         rendered,
         super::nothing_shown_fallback(fixture),
@@ -2335,47 +2290,14 @@ fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
                  (`{spelling}`):\n{rendered}"
             );
         }
-        // The documentation carve-out is not a `SurfaceCall` — it is seeded onto every object, so
-        // it has no fixed pair — but it is the call an agent reads its own surface with, and the
-        // prompt is where its name is established. It is asserted in its *generic* form: the bare
-        // name appears in the worked example too (`fs.list`), so a prompt that dropped the rule and
-        // kept the example would satisfy `list` while teaching the model nothing about the other
-        // eleven objects. The **placeholder receiver** is the rule, and it is the whole of the rule:
-        // the parentheses this once demanded are spelling, and PureScript — where `list` takes no
-        // argument and `fs.list ()` would apply `Unit` to an `Effect` — is the arm that proved it.
-        //
-        // Both halves of the step are the *language's*, for the same reason every call gg quotes
-        // is. The **separator**: on Rust an API object is a module, so `<object>.list` is `E0423`
-        // (expected value, found module) — a placeholder written in a syntax the arm does not have,
-        // in the one sentence establishing how a model reaches its own surface. And the **name**:
-        // `list` is gg's own key rather than any SDK's spelling of it, and C# spells the method it
-        // catalogues under that key `List`, so demanding the key of every arm would be demanding
-        // that one arm quote a method it does not bind. It is resolved out of the language's own
-        // committed catalogue, exactly as every other call in this test is.
-        // And the **receiver's own word**, for the third instance of the same rule: an arm whose
-        // surface is API objects writes `<object>`, and one reshaped into capability modules has no
-        // object to name — a placeholder calling a module an object would be gg's vocabulary
-        // imposed on a program that cannot use it.
-        let spelled = crate::sandbox::meta_spelling(language, crate::docs::LIST_FUNCTION);
-        let receiver = if language.catalogue().schema < crate::sandbox::SchemaVersion::V2 {
-            "<object>"
-        } else {
-            "<module>"
-        };
-        let list = format!("{receiver}{}{spelled}", language.member_separator());
-        assert!(
-            rendered.contains(&list),
-            "{name}: the prompt no longer tells the model how to list any module's functions \
-             (`{list}`):\n{rendered}"
-        );
     }
 }
 
 /// **A read-only memory holder is told the calls its implementation leaves it**, spelled the way
 /// its own language writes them.
 ///
-/// A holder that may write is told what its store *is* and left to find the calls on the `memory`
-/// object, which is what `list()` is for. A read-only holder cannot be left to that: it is being
+/// A holder that may write is told what its store *is* and left to find the calls it has by
+/// searching. A read-only holder cannot be left to that: it is being
 /// told about somebody else's memories, most of the object is withheld from it, and the one or two
 /// calls it does hold are named in the same sentence as the instruction to use them. That makes the
 /// naming load-bearing rather than convenient — drop it and the section describes an index the

@@ -47,14 +47,3 @@ MODULES = [
     Module("session", "session", "gg::session"),
     Module("core", "core", "gg::core"),
 ]
-
-#: The name of the directory function every module that offers a capability carries. It is the one
-#: call with no operation id, because gg seeds it onto every module rather than catalogueing it on
-#: one.
-META = "list"
-
-#: Where the words a model reads about `list` are written, and the one declaration the twelve
-#: `list()`s copy. C++ has no protocol extension and no macro that can carry a doc comment — a
-#: comment inside a macro body is removed before the macro is ever expanded — so each module's
-#: `list()` carries a one-line `\\copydoc` of this declaration, which the reflector resolves.
-META_DOC_HOME = "gg::detail::module_directory"

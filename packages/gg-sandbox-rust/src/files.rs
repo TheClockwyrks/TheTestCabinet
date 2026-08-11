@@ -16,7 +16,6 @@ use crate::wire;
 /// reports.
 pub(crate) const TOOLS: &[&str] = &["read_file", "write_file", "edit_file", "list_dir"];
 
-crate::directory::directory_of!();
 
 /// Read a file, as either a [`FileRead::Text`] or a [`FileRead::Image`].
 ///

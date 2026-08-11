@@ -1,7 +1,7 @@
 /// Durable memories, which survive a context compaction.
 ///
-/// A run picks one of three memory strategies and binds only that strategy's functions, so
-/// `memories.list()` is the honest answer to what memory can do here. The scratchpad keeps every
+/// A run picks one of three memory strategies and binds only that strategy's functions, so what
+/// this module offers is the honest answer to what memory can do here. The scratchpad keeps every
 /// memory in the context window (`writeMemory`, `updateMemory`); the two file-shaped strategies keep
 /// the contents outside it (`createMemory`, `readMemory`, `editMemory`), one behind an index that is
 /// always in context and one behind `searchMemories`. `deleteMemory` is bound under all three.
@@ -10,10 +10,7 @@
 /// memory by reading numbers rather than by parsing a sentence about them.
 ///
 /// - ggmodule: memories
-public enum memories: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.memories"
-
+public enum memories {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = [
         "write_memory", "update_memory", "create_memory", "read_memory", "edit_memory",

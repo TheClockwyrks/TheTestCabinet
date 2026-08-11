@@ -158,7 +158,6 @@ internal static class Signatures
 
             WriteLibraries(writer, librariesPath);
             WriteModules(writer, modules);
-            WriteMeta(writer, modules);
             WriteFunctions(writer);
             WriteTypes(writer);
 
@@ -281,7 +280,7 @@ internal static class Signatures
                 writer.WriteString(
                     "detail",
                     "They are declared directly in `namespace Gg`, which the SDK brings into every "
-                        + "program's scope, so `ToolException` and `FunctionSummary` are written "
+                        + "program's scope, so `ToolException` and `ToolErrorCode` are written "
                         + "without a module prefix.");
             }
             // Nothing is imported: the SDK declares a `global using Gg;` of its own, in the same
@@ -317,10 +316,6 @@ internal static class Signatures
                     method.DeclaredAccessibility == Accessibility.Public
                     && method.MethodKind == MethodKind.Ordinary))
             {
-                if (method.Name == Catalogue.Meta[0].Name)
-                {
-                    continue;
-                }
                 if (TagOf(method, "ggop") is null)
                 {
                     throw new InvalidOperationException(
@@ -448,88 +443,6 @@ internal static class Signatures
             writer.WriteEndObject();
         }
         writer.WriteEndArray();
-    }
-
-    // The one function that belongs to every module. Its SIGNATURE is a module's own `List()`,
-    // because that is the call a program writes; its DOCUMENTATION is the one declaration the eleven
-    // `<inheritdoc>` at, which is checked here rather than assumed.
-    //
-    // TRANSITIONAL. `list` is the one call in this surface gg has no operation for, because the
-    // guest seeds it onto every module rather than declaring it on one — so it has nowhere to go in
-    // the flat function array, and it keeps the section it has always had until it is deleted.
-    private static void WriteMeta(Utf8JsonWriter writer, Dictionary<string, INamedTypeSymbol> modules)
-    {
-        var parts = Catalogue.MetaDocumentation.Split('.');
-        var shared = gg
-            .GetNamespaceMembers()
-            .Single(space => space.Name == parts[1])
-            .GetTypeMembers()
-            .Single(type => type.Name == parts[2])
-            .GetMembers(parts[3])
-            .OfType<IMethodSymbol>()
-            .Single();
-
-        foreach (var module in Catalogue.Classed())
-        {
-            var declared = Method(modules[module.Id], Catalogue.Meta[0].Name).Single();
-            var inherited = InheritDocTarget(declared);
-            if (inherited is null || !SymbolEqualityComparer.Default.Equals(inherited, shared))
-            {
-                throw new InvalidOperationException(
-                    $"`{module.Path}.{Catalogue.Meta[0].Name}` does not inherit its documentation "
-                        + $"from {Catalogue.MetaDocumentation}");
-            }
-            RequireOwnDirectory(modules[module.Id], declared, module.Path);
-        }
-
-        var written = Method(modules[Catalogue.Classed().First().Id], Catalogue.Meta[0].Name).Single();
-        Reach([written]);
-        writer.WriteStartArray("meta");
-        foreach (var entry in Catalogue.Meta)
-        {
-            writer.WriteStartObject();
-            writer.WriteString("key", entry.Key);
-            writer.WriteString("name", entry.Name);
-            WriteSignatures(writer, [written]);
-            writer.WriteString("doc", Paragraph(shared, $"the meta function `{entry.Key}`"));
-            WriteTypeReferences(writer, "types", ClosureOf([written]));
-            writer.WriteEndObject();
-        }
-        writer.WriteEndArray();
-    }
-
-    /// Refuse a module whose `List()` reports a **different** module's functions.
-    ///
-    /// The host filters a directory on the module path it is handed, so a path naming another module
-    /// returns that module's functions rather than failing — a model would be shown a directory of
-    /// calls it is reading under the wrong heading, and nothing downstream could tell. The lowering
-    /// takes the module as a type argument so there is no string to mistype, and this holds each of
-    /// the eleven expansions to naming the class it is written in.
-    private static void RequireOwnDirectory(
-        INamedTypeSymbol module,
-        IMethodSymbol declared,
-        string path)
-    {
-        var named = declared
-            .DeclaringSyntaxReferences
-            .Select(reference => reference.GetSyntax())
-            .SelectMany(syntax => syntax.DescendantNodes().OfType<TypeOfExpressionSyntax>())
-            .Select(expression => compilation
-                .GetSemanticModel(expression.SyntaxTree)
-                .GetSymbolInfo(expression.Type)
-                .Symbol)
-            .FirstOrDefault();
-        if (named is null)
-        {
-            throw new InvalidOperationException(
-                $"`{path}.{declared.Name}` names no module to read the directory of");
-        }
-        if (!SymbolEqualityComparer.Default.Equals(named, module))
-        {
-            throw new InvalidOperationException(
-                $"`{path}.{declared.Name}` reports the directory of "
-                    + $"`{named.ToDisplayString()}` rather than its own");
-        }
     }
 
     // ------------------------------------------------------------------------------------------
@@ -1041,13 +954,6 @@ internal static class Signatures
     // Documentation
     // ------------------------------------------------------------------------------------------
 
-    private static IMethodSymbol[] Method(INamedTypeSymbol type, string name) =>
-        type.GetMembers(name)
-            .OfType<IMethodSymbol>()
-            .Where(method => method.DeclaredAccessibility == Accessibility.Public)
-            .OrderBy(method => method.Parameters.Length)
-            .ToArray();
-
     private static XElement? Comment(ISymbol symbol)
     {
         var xml = symbol.GetDocumentationCommentXml(expandIncludes: true);
@@ -1242,24 +1148,6 @@ internal static class Signatures
             tags.Add($"Throws `ToolException`: {string.Join(" ", throws)}");
         }
         return new Documented(Brief(Require(Summary(target), what), what), Remarks(target), tags);
-    }
-
-    /// The whole of a `<summary>` and `<remarks>` as one paragraph, which is the shape the
-    /// transitional `meta` section still carries.
-    private static string Paragraph(ISymbol symbol, string what)
-    {
-        var parts = new List<string> { Require(Summary(symbol), what) };
-        var detail = Remarks(symbol);
-        if (detail is not null)
-        {
-            parts.Add(detail);
-        }
-        var returns = Comment(symbol)?.Element("returns");
-        if (returns is not null)
-        {
-            parts.Add($"Returns: {Text(returns)}");
-        }
-        return string.Join("\n\n", parts);
     }
 
     /// A brief, held to the one structural property the whole model rests on: it is **one line**.

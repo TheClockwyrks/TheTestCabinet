@@ -13,34 +13,13 @@
  */
 package gg.session
 
-import gg.core.FunctionSummary
 import gg.core.ToolError
-import gg.internal.Read
 import gg.internal.ggArgs
-import gg.internal.ggCall
 import gg.internal.ggRun
 import gg.internal.ggText
 import gg.internal.ggTexts
 import gg.internal.harnessObject
 import gg.internal.reviewObject
-
-/**
- * List the functions this module offers, each with a one-line summary.
- *
- * Only the functions this run actually bound are returned, so the directory never names a call the
- * program cannot make. One function's full signature, argument descriptions and types are opened as a
- * view with `gg.views.openDocsView`.
- *
- * @return every function this module really bound, each with one line saying what it does
- */
-public fun list(): List<FunctionSummary> =
-    Read.functionSummaries(
-        // The one module whose directory hangs off two of the guest's objects, because the ending an
-        // agent is given depends on its role: a working agent binds `harness` and a reviewer binds
-        // `review`, and no agent binds both. Asking the one that is there is what makes this
-        // module's directory answer for either role.
-        ggCall("list", harnessObject() ?: reviewObject(), "gg.session", "list", ggArgs()),
-    )
 
 /**
  * End the session, reporting what was done in a sentence or two.

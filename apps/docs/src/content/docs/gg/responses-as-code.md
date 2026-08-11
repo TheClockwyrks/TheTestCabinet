@@ -18,7 +18,7 @@ runs untrusted controllers in), so it is a low-risk capability to bring to gg.
 It is a capability like any other, which is the point. Turn it on and the model is
 offered **no native tool definitions at all** — the [system prompt](/gg/prompts/) names
 the API objects the program is given, and the model reads the functions on them on demand
-with `object.list()` and `view.openDocsView()`; turn it off and the same run executes as ordinary
+by searching and then `view.openDocsView()`; turn it off and the same run executes as ordinary
 tool calling. Freeze the model, the test case and the rest of the
 [capability set](/gg/overview/#the-capability-set), vary this one toggle, and the
 difference is attributable to the shape of the response. That A/B — do code-shaped
@@ -287,41 +287,28 @@ documentation exist for every function **the run actually offers**, reflected ou
 language's SDK's own emitted declarations by the same build that produces its component; the
 prompt names the objects — plus the argument shape of the two or three calls a program
 cannot bootstrap without, `view.openText`, `view.openFile` and `system.shell`, each named
-only when this run binds it — and the model reads the rest of the functions on demand with
-`object.list()` and `view.openDocsView()`. A hand-written list would drift, and a prompt
+only when this run binds it — and the model reads the rest of the functions on demand by
+searching and then `view.openDocsView()`. A hand-written list would drift, and a prompt
 that describes a signature the sandbox does not have is worse than no prompt, because the
 model has no way to discover the lie.
 
 ### Reading the documentation is opening a view
 
-There are two discovery calls and they are deliberately different kinds of thing.
+**Nothing enumerates a module's functions.** There is no directory call, and its absence is a
+decision rather than an omission: a call that hands back a whole module defeats the point of
+making a model look for what it needs, because the cheapest way to find anything would be to
+dump the directory and read it. Search is the only route in, and it is **global** — one query
+reaches every module at once, so nothing is discovered by already knowing where to look, and
+what the prompt has to supply is a module vocabulary rather than a function list.
 
-`object.list()` returns **inline**, as a value the program can iterate. It is a *directory* —
-one line per function on that object, name and summary — and a directory is something a
-program consults in order to decide what to do next, in the turn it is deciding. It is
-unchanged, and it is the reason every API object carries a `list` and the view API's own
-listing call had to be named [`current`](#showing-yourself-things) instead.
+A directory call did exist, on every API object, and its deletion took a whole concept with
+it: the catalogue's `meta` section, the one entry in the surface that hung off no object and
+had to be folded back in by hand at every readout that reported what an agent binds. What each
+of those readouts reports now is exactly the catalogue's own entries. The one visible residue
+is a name: the view API's own listing call is [`current`](#showing-yourself-things) because
+`list` was taken, and it keeps that name.
 
-`list` is the one function that hangs off **no** object, because it hangs off all of them: the
-guest seeds it onto each object it creates with that object's name closed over. It is
-catalogued all the same, in a
-[`meta` section](/gg/program-languages/#the-catalogue) of its own, and for the reason
-everything else is — its signature and its description are read by a model, and every word a
-model reads about this SDK is reflected out of the declaration that states it. Answering for
-it from a constant on gg's side was the one description in the whole surface that no gate could
-compare against the code.
-
-What it returns inline it returns **to the program**, which is the whole distinction between
-the two calls and the one the [prompt](/gg/prompts/) now draws in as many words. A directory
-is an ordinary return value, so it reaches the model's window not at all unless the program
-forwards it — `view.openText("fs", JSON.stringify(fs.list()))` — and the failure of not
-saying so is silent rather than noisy. A model told that `list()` and `openDocsView` are two
-ways of looking a function up writes `system.list();`, the program runs, the value is
-discarded like every other returned value, and the turn produces *nothing*: the only thing
-that comes back is the [`Notice`](#a-program-that-worked-earns-no-message) saying the program
-put nothing in its context, earned by a program that did exactly what it was told.
-
-`view.openDocsView(fn)` is the other one, and it opens a **view**. Pass the bound function
+`view.openDocsView(fn)` is what reads one function, and it opens a **view**. Pass the bound function
 itself — `view.openDocsView(view.openText)` — or its name, `view.openDocsView("openText")`.
 What comes back is every shape the function may be called in — usually one, but a language
 that spells an optional argument as an overload pair carries two — with **a line per
@@ -374,8 +361,8 @@ closest *kind* of near-miss — an exact name under another spelling is never pa
 typos beside it — and, when nothing is close, nothing at all, since a wrong suggestion sends the
 model to read documentation for a function it did not want. The candidates are the names **this
 agent binds**, never the whole catalogue: offering `editFile` to a run that withheld `edit_file`
-would trade a `not-found` for a `ReferenceError` a turn later. `<object>.list()` remains the
-directory; this is a nudge, not a substitute for it.
+would trade a `not-found` for a `ReferenceError` a turn later. Searching is how a model finds a
+name it does not have; this is a nudge, not a substitute for that.
 
 That is a reversal, and the thing it replaced is worth stating because the replacement is a
 subtraction. gg used to hang a `.docs()` method off every bound function (and a
@@ -1033,8 +1020,10 @@ its own set of open views; each view has a **kind**, a **selector** (its key), a
 | `view.close(selector)` | Closes every view carrying that selector (for a file, every page of that path) and returns how many it closed. Closing something that is not open is `0`, not a failure. |
 | `view.current()` | Lists what is open: each view's `kind`, `selector`, roughly what it costs in `tokens`, and a paged file view's `region`. |
 
-It is `current` and not `list` because every API object already carries a `list()` that
-lists that object's **own functions**, and one name cannot mean both.
+It is `current` and not `list` because every API object used to carry a `list()` that listed
+that object's **own functions**, and one name could not mean both. That directory is
+[gone](#reading-the-documentation-is-opening-a-view); the name it forced is kept, because
+renaming a call a model has been taught buys nothing.
 
 The object is bound whatever a run enables — the same carve-out `harness.finish` has, and
 for the same reason: a run that offers no tools at all must still be able to show its model
@@ -1575,7 +1564,7 @@ than for the package, because every registered language commits a pair:
 | Artifact | What it is |
 | --- | --- |
 | `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (14,004,036 bytes as committed). |
-| `crates/gg/src/sandbox/guests/typescript.signatures.json` | The signature catalogue the model reads through `object.list()` and `view.openDocsView()`. |
+| `crates/gg/src/sandbox/guests/typescript.signatures.json` | The signature catalogue the model searches and reads through `view.openDocsView()`. |
 
 Committing them follows the precedent the `foray-ref-*` guests already set, and it is
 what means **no build or CI step ever needs `componentize-js`**: the host
@@ -1597,7 +1586,7 @@ test fails if the committed component's imports no longer match the host's linke
 `bound-tools` test asks the **artifact** which tools it can bind and compares that against
 gg's own tool vocabulary, which is the one drift no source-level test can catch; CI
 regenerates the signature catalogue and fails on a diff; and the
-[agreement gate](#the-agreement-gate) checks the catalogue against every other registered
+[capability gate](#the-capability-gate) checks the catalogue against every other registered
 language's, which is the one drift the first four cannot see because each of them only ever
 compares a language to itself.
 
@@ -1662,56 +1651,75 @@ otherwise be invisible. See
 
 What a second language may and may not change is the point of the seam. Free to differ:
 how a function is spelled (`requestChanges` against `request_changes`), how optional
-arguments are passed, how the prompt teaches the language. Not free to differ: **which**
-functions exist, which object each is grouped under, and what gates it. Each catalogue
-entry that is not a gg tool therefore carries a language-independent `key`; a tool needs
-none, because its gg tool name already is one.
+arguments are passed, which module a call is documented under, whether it is a free
+function or a method on the type it operates on, how many functions the SDK offers, and
+how the prompt teaches the language. Not free to differ: **which capabilities exist**, and
+what gates each of them. Every catalogue entry therefore names the gg **operation** it
+binds, and gg — not the arm — states what buys that operation.
 
-### The agreement gate
+### The capability gate
 
-That rule is not a convention anyone is asked to remember — it is asserted. gg builds, for
-every registered language, the **identity** of each function its catalogue describes: the
-section it sits in, the object it hangs off, its `key`, the gg tool that gates it, the
-ending role that binds it, and whether it belongs to the program library. Every language's
-set must be identical, and each language's own must line up with gg's vocabularies: the
-tools in exact bijection with the tool registry's, the ending calls exactly the four the
-tool-calling arm dispatches, each bound to the role `EndingRole` gives it, every gate a
-real tool name, `view.openFile` gated on `read_file` and the rest of the view surface
-gated on nothing.
+That rule is not a convention anyone is asked to remember — it is asserted. gg keeps an
+**operations table**: every model-facing operation it has, what buys each one, and whether
+a program passes it anything. Each registered language is then held to that table, one arm
+at a time, and never to another arm.
 
-Everything else is **spelling**, and the gate asserts only that it is there: every function
-name unique within its object, every signature starting with the name a program calls, and
-a description on every object, every argument, every field of a structured argument, every
-type and every one of a type's members. What it deliberately does not compare is the *shape*
-of a call — an argument's name, whether it is passed by position or by name, what it
-defaults to, or how many signatures an entry carries. A language that must express an
-optional argument as an overload pair offers the same capability as one that expresses it as
-a default, and a gate that said otherwise would make the first kind of language impossible
-to register.
+**Gating is checked once, over the table alone**: every tool-bound operation names a real
+gg tool and every gg tool buys something, the ending calls are gg's three under the roles
+`EndingRole` gives them, a view is gated exactly where it reads the workspace, and a
+capability buys the program library and nothing else. That is stronger than asking eleven
+catalogues the same question: a gate is a fact about gg's own configuration surface, so an
+arm has no gate field left to be wrong in. What an arm still says is only **which
+operation it is binding**.
 
-The one exception is whether a call *has* a shape: a function that takes arguments must
-document them, and an entry documenting none where another arm documents some fails. A
-capability that needs a path needs it in every language, so an arm whose model is told what
-to put in `fs.readFile` and an arm whose model is not are not two spellings of one surface.
+**Coverage is checked per arm**: every operation gg offers has exactly one canonical
+binding on this arm, every operation the arm names is one gg has, and every alias names an
+operation the arm canonically binds. A helper added to one SDK is written into the table
+and every other arm goes red until it binds it or an exemption **with a written reason**
+is added beside the operation — in gg, where it is reviewed, rather than in the package
+that omits it, where the only evidence would be an absence.
+
+What is emphatically **not** checked is shape. Not the module a call is grouped under, not
+whether it is a free function or a method on the type it operates on, not how many
+signatures an entry carries, not how many functions an arm offers, and nothing at all
+between two arms. An arm that expresses an optional argument as an overload pair offers
+the same capability as one that expresses it as a default. The one thing about a call's
+shape that is not free is whether it *has* one: a capability that needs a path needs it in
+every language, so an arm whose model is told what to put in a call and an arm whose model
+is not are not two spellings of one surface.
+
+Beside that, the gate asserts that every spelling is one a program could write: a name, a
+signature beginning with it, one spelling per module and receiver, and every argument
+named by the signature that takes it.
 
 It is load-bearing because its absence is silent. Each language's own drift gates compare
-it to gg's tool vocabulary and to its own committed component — never to another language
-— so two internally consistent surfaces that disagree with *each other* are two green test
-suites, and an A/B across them measures the difference in the surface rather than the
-difference in the language, with nothing anywhere to say so.
+it to its own committed component — never to gg's vocabulary, and never to another
+language — so eleven internally consistent surfaces offering eleven different sets of
+capabilities are eleven green test suites, and an A/B across them measures the difference
+in the surface while reporting it as a difference in the language.
 
-The comparative half runs over the registry for real, and is also exercised
-on every test run against a **fixture language** that exists only under `#[cfg(test)]` —
-because the registered pair is the easiest comparison there is, its two catalogues being
-one set of declarations reflected twice. The fixture is a
-second implementation of the seam whose catalogue is TypeScript's re-spelled in
-snake_case, with its own healing dialect, its own prompt and its own preparation step. It
+And it can be made to fail, which for a coverage gate is the whole question: one written
+slightly too loosely still passes on eleven green arms and stops catching anything. It
+returns its complaints rather than asserting them, and its tests hand it damaged
+**catalogues** — an operation the SDK stopped binding, one bound twice with neither
+calling itself the alias, an operation gg does not have, an alias of an operation the arm
+binds nowhere — and damaged **operations tables** — a view of a file bound to every
+program, an ending offered to the wrong role, a capability gg does not have, an exemption
+with no reason written for it. Each is asserted to fail by name.
+
+It runs, on every test run, against a **fixture language** that exists only under
+`#[cfg(test)]`, and that is what proves the other direction: the fixture offers every
+operation gg has and offers them in a shape no registered arm chose — modules named
+differently, one operation filed under a module gg has no word for, two bound as methods
+on the types they operate on, one bound twice as an alias, every name spelled another way
+— and the gate must accept all of it, because a gate that rejected a second shape would
+make an idiomatic SDK impossible to register. The fixture is a second implementation of
+the whole seam, with its own healing dialect, its own prompt and its own preparation step;
+its catalogue is derived from a registered arm's at test time, so it cannot rot; and it
 has no wire id, so it can never be configured, recorded or run. It is what turns the
 seam's claims into observations — that the healing skeleton asks the dialect rather than
 knowing TypeScript's answers, that a prompt is selected per language, that no language
-serves another's artifacts — and, by being handed to the gate with a dozen deliberately
-damaged catalogues, what proves the gate catches a disagreement rather than merely
-reporting agreement.
+serves another's artifacts.
 
 Adding one is additive: a sibling guest directory — not necessarily an npm package —
 that binds the same `crates/gg/wit/gg-sandbox.wit`, commits

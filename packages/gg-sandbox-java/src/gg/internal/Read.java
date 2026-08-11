@@ -1,6 +1,5 @@
 package gg.internal;
 
-import gg.FunctionSummary;
 import gg.board.Board;
 import gg.context.Context;
 import gg.delegation.Delegation;
@@ -202,18 +201,6 @@ public final class Read {
             out.add(new Programs.ProgramSummary(Wire.integer(program, "turn"),
                     Wire.integer(program, "lines"), Wire.integer(program, "chars"),
                     Wire.bool(program, "ok"), optionalText(program, "error")));
-        }
-        return List.copyOf(out);
-    }
-
-    /** Every function an object's directory named. */
-    public static List<FunctionSummary> functionSummaries(JSObject value) {
-        JSArray<JSObject> array = Wire.asArray(value);
-        List<FunctionSummary> out = new ArrayList<>(array.getLength());
-        for (int index = 0; index < array.getLength(); index++) {
-            JSObject entry = array.get(index);
-            out.add(new FunctionSummary(Wire.string(entry, "name"),
-                    Wire.string(entry, "summary")));
         }
         return List.copyOf(out);
     }

@@ -46,18 +46,6 @@ internal static class Catalogue
         new("core", "", "Gg"),
     ];
 
-    /// The one function that belongs to no module because it belongs to all of them.
-    internal static readonly (string Key, string Name)[] Meta = [("list", "List")];
-
-    /// Where the words a model reads about `List` are written, and where its shape is read from.
-    ///
-    /// C# has no way to give eleven methods one doc comment except `<inheritdoc cref="…"/>`, so the
-    /// eleven `List()` declarations carry one of those pointing here. `Signatures.cs` resolves it and
-    /// asserts all eleven land on this declaration — so the paragraph is written once and the eleven
-    /// modules cannot drift from it — while the SIGNATURE is taken from the module's own `List()`,
-    /// because that is the call a program writes.
-    internal const string MetaDocumentation = "Gg.Internal.ModuleDirectory.List";
-
     /// Every module that has a class of its own, which is every module but `core`.
     internal static IEnumerable<Module> Classed()
     {

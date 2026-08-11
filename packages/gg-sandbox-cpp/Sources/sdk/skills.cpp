@@ -21,8 +21,6 @@ const std::vector<std::string>& skills_tools() {
 
 namespace skills {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::skills"); }
-
 std::string read_skill(std::string_view name) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(name);

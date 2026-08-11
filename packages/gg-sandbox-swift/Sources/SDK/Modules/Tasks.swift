@@ -8,10 +8,7 @@
 /// `.clear` empties it, `.set` replaces it.
 ///
 /// - ggmodule: tasks
-public enum tasks: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.tasks"
-
+public enum tasks {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = [
         "add_task", "update_task", "set_blocked_by", "complete_task", "remove_task",

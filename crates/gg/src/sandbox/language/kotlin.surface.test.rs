@@ -378,14 +378,12 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
          val closed = gg.views.close(\"summary\")\n\
          val missing = gg.views.close(\"never opened\")\n\
          val open = gg.views.current()\n\
-         val directory = gg.files.list()\n\
          println(open[0].selector + \" \" + open[0].kind)\n\
          println(\"$closed $missing\")\n\
          println(when (read) {\n\
          \x20   is gg.files.TextFile -> read.contents.lines()[0]\n\
          \x20   is gg.files.ImageFile -> read.label\n\
          })\n\
-         println(directory.joinToString(\",\") { it.name })\n\
          gg.session.finish(\"read the file and showed myself the result\")\n",
         &all_tools(),
         RunEnding::Role(EndingRole::Standard),
@@ -401,7 +399,6 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "fsFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -679,51 +676,49 @@ fn the_catalogue_carries_the_defaults_this_arm_expresses_an_optional_argument_as
 
     let mut defaults = 0usize;
     let mut varargs = 0usize;
-    // Two arrays rather than six sections: this arm is written in the normalized doc model, where
-    // every model-facing call is one entry and the directory is the one thing beside them.
-    for section in ["functions", "meta"] {
-        for entry in document[section].as_array().expect("an array") {
-            let shapes = entry["signatures"].as_array().expect("an array");
+    // One array rather than five sections: this arm is written in the normalized doc model, where
+    // every model-facing call is one entry of it and nothing model-facing sits outside it.
+    for entry in document["functions"].as_array().expect("an array") {
+        let shapes = entry["signatures"].as_array().expect("an array");
+        assert_eq!(
+            shapes.len(),
+            1,
+            "`{}` carries an overload group, which this language does not need",
+            entry["name"]
+        );
+        for parameter in shapes[0]["parameters"].as_array().expect("an array") {
+            let optional = parameter["optional"].as_bool().expect("a flag");
+            let vararg = parameter["type"]
+                .as_str()
+                .expect("a type")
+                .starts_with("vararg ");
+            if vararg {
+                // A `vararg` is optional because naming none is legal, and it is passed by
+                // POSITION: `gg.memories.searchMemories("a", "b")` names no parameter.
+                varargs += 1;
+                assert!(optional, "a vararg may always be given no values");
+                assert_eq!(parameter["kind"], json!("positional"));
+                assert_eq!(parameter["default"], json!(null));
+                continue;
+            }
             assert_eq!(
-                shapes.len(),
-                1,
-                "`{}` carries an overload group, which this language does not need",
-                entry["name"]
+                parameter["kind"],
+                json!(if optional { "keyword" } else { "positional" }),
+                "`{}`'s `{}` is passed neither the way a required argument is nor the way an \
+                 optional one is",
+                entry["name"],
+                parameter["name"]
             );
-            for parameter in shapes[0]["parameters"].as_array().expect("an array") {
-                let optional = parameter["optional"].as_bool().expect("a flag");
-                let vararg = parameter["type"]
-                    .as_str()
-                    .expect("a type")
-                    .starts_with("vararg ");
-                if vararg {
-                    // A `vararg` is optional because naming none is legal, and it is passed by
-                    // POSITION: `gg.memories.searchMemories("a", "b")` names no parameter.
-                    varargs += 1;
-                    assert!(optional, "a vararg may always be given no values");
-                    assert_eq!(parameter["kind"], json!("positional"));
-                    assert_eq!(parameter["default"], json!(null));
-                    continue;
-                }
+            if optional {
+                defaults += 1;
                 assert_eq!(
-                    parameter["kind"],
-                    json!(if optional { "keyword" } else { "positional" }),
-                    "`{}`'s `{}` is passed neither the way a required argument is nor the way an \
-                     optional one is",
+                    parameter["default"],
+                    json!("null"),
+                    "`{}`'s `{}` states no default, so the signature does not say what leaving \
+                     it out means",
                     entry["name"],
                     parameter["name"]
                 );
-                if optional {
-                    defaults += 1;
-                    assert_eq!(
-                        parameter["default"],
-                        json!("null"),
-                        "`{}`'s `{}` states no default, so the signature does not say what leaving \
-                         it out means",
-                        entry["name"],
-                        parameter["name"]
-                    );
-                }
             }
         }
     }

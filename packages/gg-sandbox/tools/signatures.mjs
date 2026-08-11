@@ -122,18 +122,6 @@ const OPERATION_TAG = "ggop";
 const INTERNAL_TAG = "internal";
 
 /**
- * The module whose one declaration is the directory every other module carries.
- *
- * It is not in `MODULE_ORDER` and its entry is not a function of the surface: `list` binds no gg
- * operation, because the shim seeds it onto each module object with that module's name closed over.
- * It is catalogued in its own `meta` section, which is where gg looks for it.
- */
-const META_MODULE = "docs";
-
-/** The one declaration {@link META_MODULE} carries. */
-const META_FUNCTION = "list";
-
-/**
  * The type every signature reaches whether it names it or not.
  *
  * Every function on this surface throws it, and no signature says so, because TypeScript has no
@@ -747,17 +735,6 @@ async function build(language) {
     );
   }
 
-  const metaSource = await loadModule(META_MODULE);
-  const metaWhere = `\`${SURFACE}.${META_MODULE}.${META_FUNCTION}\``;
-  const metaNode = metaSource.statements.find(
-    (statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === META_FUNCTION,
-  );
-  if (!metaNode) throw new Error(`${metaWhere} is not declared, and every module carries it.`);
-  const metaProse = documentation(metaNode, metaSource, metaWhere);
-  const metaReturn = metaNode.type ? print(metaNode.type, metaSource) : "void";
-  const metaTypes = resolver.closure(metaReturn);
-  for (const reference of metaTypes) reached.add(reference.fqn);
-
   const unreached = declared.filter((type) => !reached.has(type.fqn)).map((type) => type.fqn);
   if (unreached.length > 0) {
     throw new Error(
@@ -773,15 +750,6 @@ async function build(language) {
       language,
       generatedFrom: GENERATED_FROM,
       modules,
-      meta: [
-        {
-          key: META_FUNCTION,
-          name: META_FUNCTION,
-          signatures: signaturesOf([metaNode], metaSource, META_FUNCTION, metaWhere),
-          doc: [metaProse.brief, metaProse.detail].filter(Boolean).join("\n\n"),
-          types: metaTypes,
-        },
-      ],
       functions,
       types: declared,
     },
@@ -829,8 +797,7 @@ async function main() {
     const parsed = JSON.parse(catalogue);
     process.stdout.write(
       `Wrote ${path.relative(process.cwd(), out)} (${parsed.modules.length} modules, ` +
-        `${parsed.functions.length} functions, ${parsed.meta.length} meta functions, ` +
-        `${parsed.types.length} types).\n`,
+        `${parsed.functions.length} functions, ${parsed.types.length} types).\n`,
     );
   }
 }

@@ -539,38 +539,15 @@ fn placeholder_position() -> FsmPosition {
 /// to) and the type declarations, which the catalogue carries by name so that a run's prompt can
 /// declare only the types its own tools use.
 ///
-/// The [meta](crate::docs::LIST_FUNCTION) section is folded in **once per grouping**, at the end,
-/// and that is not a duplication of one function: `list` is bound onto every object the guest
-/// creates, so a grouping's entry in this projection is incomplete without it. It is the same answer
-/// the two other readouts of the surface give — the directory a program gets from `<module>.list()`
-/// and the [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) event — and the
-/// reason it is appended rather than found in
-/// [`catalogue_functions`](crate::sandbox::catalogue_functions) is that a meta entry names no
-/// grouping of its own to be filed under.
-///
-/// The groupings are read through [`catalogue_modules`](crate::sandbox::catalogue_modules) — the
-/// normalized reading of an arm's API objects and its capability modules alike — and a grouping that
-/// carries no call of its own is left out, exactly as the agent surface leaves it out. That is not a
-/// filter on v1, where every API object binds something; it is the honest answer on a converted arm,
-/// which declares a module holding only the types every other module raises (`gg.core`) and no
-/// function for a directory to list.
+/// Nothing is appended to a grouping that the catalogue does not carry. A directory function used to
+/// be folded in once per grouping, because it was bound onto every object the guest created and no
+/// catalogue entry named it; with it deleted, this projection and the
+/// [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) event are both exactly the
+/// catalogue's own entries, which is one fewer place the two could disagree.
 fn functions() -> Vec<GgApiFunction> {
     let language = crate::sandbox::language(reference_language());
     let catalogued = crate::sandbox::catalogue_functions(language);
-    // Each grouping's category, taken from the calls filed under it, so that the directory appended
-    // below lands in the same family as everything it lists. Read off the entries rather than looked
-    // up from the grouping's name, because a module path is this arm's spelling and no family claims
-    // one — the same reason `category_of_function` resolves through the operation.
-    let category_of_group: Vec<(&str, String)> = crate::sandbox::catalogue_modules(language)
-        .iter()
-        .filter_map(|module| {
-            catalogued
-                .iter()
-                .find(|function| function.object == module.path)
-                .map(|function| (module.path, category_of_function(function)))
-        })
-        .collect();
-    let mut out: Vec<GgApiFunction> = catalogued
+    catalogued
         .iter()
         .map(|function| GgApiFunction {
             object: function.object.to_string(),
@@ -588,27 +565,7 @@ fn functions() -> Vec<GgApiFunction> {
             library: function.capability == Some(CAPABILITY_PROGRAM_LIBRARY),
             types: types(language, function.types),
         })
-        .collect();
-    if let Some(list) = crate::sandbox::meta_function(language, crate::docs::LIST_FUNCTION) {
-        out.extend(category_of_group.into_iter().map(|(path, category)| {
-            GgApiFunction {
-                object: path.to_string(),
-                name: list.name.clone(),
-                category,
-                summary: crate::sandbox::Prose::from_paragraph(&list.doc)
-                    .brief
-                    .to_string(),
-                signatures: signatures(&list.signatures),
-                doc: list.doc.clone(),
-                // Nothing gates the directory: a grouping that exists carries it.
-                gate: None,
-                ending: None,
-                library: false,
-                types: types(language, &list.types),
-            }
-        }));
-    }
-    out
+        .collect()
 }
 
 /// Every shape one catalogue entry may be called in, projected onto the wire.

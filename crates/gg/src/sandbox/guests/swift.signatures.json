@@ -76,7 +76,7 @@
       "id": "memories",
       "path": "gg.memories",
       "brief": "Durable memories, which survive a context compaction.",
-      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so `memories.list()` is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`writeMemory`, `updateMemory`); the two file-shaped strategies keep the contents outside it (`createMemory`, `readMemory`, `editMemory`), one behind an index that is always in context and one behind `searchMemories`. `deleteMemory` is bound under all three.\n\nEvery mutation hands back the budget after it, so a program can decide whether to write another memory by reading numbers rather than by parsing a sentence about them.",
+      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so what this module offers is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`writeMemory`, `updateMemory`); the two file-shaped strategies keep the contents outside it (`createMemory`, `readMemory`, `editMemory`), one behind an index that is always in context and one behind `searchMemories`. `deleteMemory` is bound under all three.\n\nEvery mutation hands back the budget after it, so a program can decide whether to write another memory by reading numbers rather than by parsing a sentence about them.",
       "import": null
     },
     {
@@ -124,28 +124,9 @@
     {
       "id": "core",
       "path": "gg.core",
-      "brief": "The types every other module's signatures name: how a call fails, and what a directory lists.",
-      "detail": "A capability module owns the types it produces, so `files.FileRead` belongs to `files` and `board.IssueCreated` to `board`. These four belong to none of them because they belong to all of them: every fallible function in this SDK throws a `core.ToolError`, every module's `list` hands back `core.FunctionSummary`, and both patch calls take a `core.TextEdit`.\n\nIt is the one module with no `list`, because it offers no capability to list: it conforms to `ModuleDirectory` nowhere, and the reflector refuses a catalogue in which it does.",
+      "brief": "The types every other module's signatures name: how a call fails, and how a field is patched.",
+      "detail": "A capability module owns the types it produces, so `files.FileRead` belongs to `files` and `board.IssueCreated` to `board`. These three belong to none of them because they belong to all of them: every fallible function in this SDK throws a `core.ToolError`, every one of those is classified by a `core.ToolErrorCode`, and both patch calls take a `core.TextEdit`.\n\nIt is the one module that offers no capability at all, and the reflector refuses a catalogue in which it offers one.",
       "import": null
-    }
-  ],
-  "meta": [
-    {
-      "key": "list",
-      "name": "list",
-      "signatures": [
-        {
-          "signature": "list() -> [core.FunctionSummary]",
-          "parameters": []
-        }
-      ],
-      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `views.openDocsView`.\n\n- Returns: the functions this module really bound, each with its one-line summary.",
-      "types": [
-        {
-          "spelled": "core.FunctionSummary",
-          "fqn": "gg.core.FunctionSummary"
-        }
-      ]
     }
   ],
   "functions": [
@@ -1865,7 +1846,7 @@
               "optional": false,
               "kind": "positional",
               "default": null,
-              "doc": "The function to document, by the name it is called by in its module — `\"readFile\"` for `files.readFile`. Each module's `list()` is what says which names exist.",
+              "doc": "The function to document, by the name it is called by in its module — `\"readFile\"` for `files.readFile`. Searching the documentation is what says which names exist.",
               "fields": []
             }
           ]
@@ -3182,31 +3163,6 @@
           "type": "String",
           "kind": "field",
           "brief": "The prose summary of what was reclaimed.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": []
-    },
-    {
-      "fqn": "gg.core.FunctionSummary",
-      "module": "core",
-      "name": "FunctionSummary",
-      "declaration": "struct FunctionSummary { let name: String; let summary: String }",
-      "brief": "One function in a module's directory, as `list` returns it.",
-      "detail": "The summary is one line. A function's whole documentation — every argument, what to put in it, and the types it refers to — is a view, opened with `views.openDocsView`.",
-      "members": [
-        {
-          "name": "name",
-          "type": "String",
-          "kind": "field",
-          "brief": "The function's name in its module — `readFile` in `files.readFile`.",
-          "detail": null
-        },
-        {
-          "name": "summary",
-          "type": "String",
-          "kind": "field",
-          "brief": "One line saying what it does.",
           "detail": null
         }
       ],

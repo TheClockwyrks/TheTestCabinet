@@ -12,7 +12,6 @@ module Gg.Programs
   ( history
   , get
   , rerun
-  , list
   , ProgramSummary
   , GetOptions
   ) where
@@ -21,8 +20,6 @@ import Prelude
 
 import Data.Maybe (Maybe)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
 
@@ -121,17 +118,6 @@ get options = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.pick "turn" op
 rerun :: String -> Effect Unit
 rerun source = Wire.call_ "rerun" "programs" "Gg.Programs.rerun" [ Wire.wire source ]
 
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Programs.list" [ "programs" ]
 
 -- | One program in the library's directory.
 programSummary :: Wire.Wire -> ProgramSummary

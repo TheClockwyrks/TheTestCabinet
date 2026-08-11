@@ -91,10 +91,6 @@ class Graph:
             symbol["identifier"]["precise"]: symbol for symbol in self.symbols.values()
         }
 
-    def at(self, *path):
-        """One declaration by its path components, or ``None``."""
-        return self.symbols.get(path)
-
     def children(self, owner, kind):
         """Every declaration one level under `owner` of one symbol kind, in declaration order.
 
@@ -109,22 +105,6 @@ class Graph:
             and path[: len(owner)] == owner
             and symbol["kind"]["identifier"] == kind
         ]
-
-    def source_line(self, symbol):
-        """The line of Swift a declaration was written on, read out of the file it names.
-
-        Used for the one fact a symbol graph does not carry and this catalogue must be right about:
-        the **value** of a module's `ggModule` constant, which is the string the host filters its
-        directory on.
-        """
-        location = symbol.get("location")
-        if not location:
-            raise Failure(f"`{'.'.join(symbol['pathComponents'])}` records no source location")
-        path = Path(location["uri"].removeprefix("file://"))
-        if not path.is_absolute():
-            path = self.root / path
-        return path.read_text().splitlines()[location["position"]["line"]]
-
 
 def base_name(title):
     """``readFile(_:offset:limit:)`` → ``readFile``."""
@@ -732,8 +712,6 @@ class Reflector:
         for module in catalogue.MODULES:
             for symbol in self.graph.children((module.name,), "swift.type.method"):
                 name = base_name(symbol["pathComponents"][1])
-                if name == catalogue.META:
-                    continue
                 what = f"`{module.path}.{name}`"
                 _, _, tags = read(symbol, what)
                 operation, alias_of = self.identify(tags, what)
@@ -791,12 +769,11 @@ class Reflector:
     # -- the whole document ----------------------------------------------------------------------
 
     def modules_section(self):
-        """Each module's own brief and detail, and the path it answers a directory under."""
+        """Each module's own brief and detail."""
         out = []
         for module in catalogue.MODULES:
             symbol = self.modules[module.id]
             brief, detail = documented(symbol, f"the `{module.path}` module")
-            self.check_path(module)
             out.append(
                 {
                     "id": module.id,
@@ -811,62 +788,6 @@ class Reflector:
             )
         return out
 
-    def check_path(self, module):
-        """Hold a module's `ggModule` constant to the path this catalogue publishes.
-
-        It is the one fact in this artifact the symbol graph cannot supply — a `let`'s initializer
-        is not in it — and the one that fails silently: the host filters a directory on the string,
-        so a namespace answering under a neighbour's path hands a program the wrong functions rather
-        than failing. So the constant's own source line is read and compared.
-
-        `core` carries none, because it carries no directory to look up.
-        """
-        constant = self.graph.at(module.name, catalogue.MODULE_PATH_CONSTANT)
-        directory = self.graph.at(module.name, f"{catalogue.META}()")
-        if module.id == "core":
-            if constant is not None or directory is not None:
-                raise Failure(
-                    "`core` offers no capability and must carry no directory, and it declares one"
-                )
-            return
-        if constant is None or directory is None:
-            raise Failure(
-                f"`{module.path}` offers capabilities and does not conform to "
-                f"`{catalogue.META_PROTOCOL}`, so it carries no directory"
-            )
-        line = self.graph.source_line(constant)
-        found = re.search(r'"([^"]*)"', line)
-        if found is None or found.group(1) != module.path:
-            raise Failure(
-                f"`{module.name}.{catalogue.MODULE_PATH_CONSTANT}` is not `{module.path}`, so its "
-                "directory would be looked up under a path this catalogue does not publish"
-            )
-
-    def meta_section(self):
-        """The `list` every capability module carries, read from the one place it is declared.
-
-        On this arm there is nothing to compare: `list()` is the default implementation on the
-        `ModuleDirectory` protocol extension every capability module conforms to, so eleven modules
-        share one declaration and one paragraph of documentation by construction rather than by a
-        check.
-        """
-        what = f"`{catalogue.META_PROTOCOL}.{catalogue.META}`"
-        symbol = self.graph.at(catalogue.META_PROTOCOL, f"{catalogue.META}()")
-        if symbol is None:
-            raise Failure(f"{what} is not declared, so no module carries a directory")
-        returned_ids = []
-        self.referenced(symbol.get("functionSignature", {}).get("returns", []), returned_ids)
-        brief, detail = documented(symbol, what)
-        return [
-            {
-                "key": catalogue.META,
-                "name": catalogue.META,
-                "signatures": [self.signature(symbol, catalogue.META, what)],
-                "doc": "\n\n".join(part for part in (brief, detail) if part),
-                "types": self.references(self.close_over(returned_ids)),
-            }
-        ]
-
     def build(self, libraries):
         functions = self.functions_and_members()
         # The member functions are folded into their receivers by the walk above, so the type
@@ -879,7 +800,6 @@ class Reflector:
             "generatedFrom": GENERATED_FROM,
             "libraries": libraries,
             "modules": self.modules_section(),
-            "meta": self.meta_section(),
             "functions": functions,
             "types": [
                 {key: value for key, value in declaration.items() if key != "referenced"}

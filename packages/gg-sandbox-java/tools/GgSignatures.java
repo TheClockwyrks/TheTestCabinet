@@ -109,9 +109,6 @@ public final class GgSignatures implements Doclet {
     /** The block tag naming the gg module a class is. */
     private static final String MODULE_TAG = "ggmodule";
 
-    /** The block tag marking the one function that belongs to every module. */
-    private static final String META_TAG = "ggmeta";
-
     /** Where the JSON goes. */
     private Path output;
 
@@ -173,7 +170,6 @@ public final class GgSignatures implements Doclet {
                 Json.of("packages/gg-sandbox-java/src/gg/ (javadoc, jdk.javadoc.doclet)"));
         document.put("libraries", libraries());
         document.put("modules", modules());
-        document.put("meta", meta());
         // The functions first: what they refer to is what decides which types are declared at all,
         // and a type nothing reaches is a documentation view nothing can open.
         document.put("functions", functions());
@@ -381,62 +377,6 @@ public final class GgSignatures implements Doclet {
     }
 
     /**
-     * The one function that hangs off every module rather than one: {@code list}.
-     *
-     * <p>Java has no way to give eleven static methods one doc comment — {@code {@inheritDoc}} is for
-     * an override, and a static method overrides nothing — so the eleven carry the same comment and
-     * this asserts they are identical. The words are therefore written once in effect, and a module
-     * whose directory drifted from the other ten is not a thing that can happen.
-     */
-    private Json meta() {
-        List<ExecutableElement> declarations = new ArrayList<>();
-        for (TypeElement module : moduleClasses.values()) {
-            List<ExecutableElement> found = new ArrayList<>();
-            for (ExecutableElement method : publicStatics(module)) {
-                if (tag(method, META_TAG) != null) {
-                    found.add(method);
-                }
-            }
-            if (found.size() != 1) {
-                complain("`" + module.getQualifiedName() + "` declares " + found.size()
-                        + " functions tagged `@" + META_TAG + "`, and every module carries exactly "
-                        + "one — its directory");
-            }
-            declarations.addAll(found);
-        }
-        if (declarations.isEmpty()) {
-            return Json.array(List.of());
-        }
-        ExecutableElement first = declarations.get(0);
-        Prose written = prose(first, "`" + GgCatalogue.META_NAME + "`");
-        for (ExecutableElement other : declarations) {
-            Prose theirs = prose(other, "`" + GgCatalogue.META_NAME + "`");
-            if (!theirs.equals(written)) {
-                complain("`" + other.getEnclosingElement().getSimpleName() + "."
-                        + GgCatalogue.META_NAME + "` is documented differently from `"
-                        + first.getEnclosingElement().getSimpleName() + "." + GgCatalogue.META_NAME
-                        + "` — every module's directory is the same function and says the same thing");
-            }
-            String declared = tag(other, META_TAG);
-            if (!GgCatalogue.META_KEY.equals(declared)) {
-                complain("`" + other.getEnclosingElement().getSimpleName() + "."
-                        + other.getSimpleName() + "` is tagged `@" + META_TAG + " " + declared
-                        + "`, and gg's key for the directory is `" + GgCatalogue.META_KEY + "`");
-            }
-        }
-
-        Set<String> referenced = new LinkedHashSet<>();
-        Overload signature = signature(first, "`" + GgCatalogue.META_NAME + "`", referenced);
-        Json entry = Json.object();
-        entry.put("key", Json.of(GgCatalogue.META_KEY));
-        entry.put("name", Json.of(GgCatalogue.META_NAME));
-        entry.put("signatures", Json.array(List.of(signature.json())));
-        entry.put("doc", Json.of(written.rendered()));
-        entry.put("types", references(closure(referenced)));
-        return Json.array(List.of(entry));
-    }
-
-    /**
      * Every model-facing call: the module classes' static methods, and the member functions the
      * types they hand back carry.
      */
@@ -452,9 +392,6 @@ public final class GgSignatures implements Doclet {
             // the signatures array is for.
             Map<String, List<ExecutableElement>> overloads = new LinkedHashMap<>();
             for (ExecutableElement method : publicStatics(owner)) {
-                if (tag(method, META_TAG) != null) {
-                    continue;
-                }
                 if (operationOf(method) == null) {
                     complain("`" + module.path() + "." + method.getSimpleName()
                             + "` is a call a program can make and names no gg operation — add a `@"

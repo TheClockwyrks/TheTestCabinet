@@ -169,36 +169,34 @@ The code arm teaches five things the tool-calling arm has no need of:
   it hands back: the `exitCode` and the merged output, to the **program**, with the
   reminder to open a view on that output to read it yourself. The surface is otherwise
   read on demand, and this is one of the places that rule does not pay — running a build
-  or a test is the most common thing a program does, and a model that has to discover the
-  call through `system.list()` spends a turn on it. The line is gated on `shell` being
+  or a test is the most common thing a program does, and a model that has to search the
+  call out spends a turn on it. The line is gated on `shell` being
   offered and on nothing else; in particular it is not gated on whether the run
   [offloads](/gg/shell/#output-offloading) that output, which is a fact about what comes
   back rather than about whether the call exists at all.
 - **What is in scope, and how to read its documentation.** One line per API object — its
-  name and what it is for — and then the two discovery calls, `<object>.list()` and
-  `view.openDocsView(fn)`. No signatures and no type declarations: the prompt names the
-  argument shape of the two or three calls a program cannot bootstrap without, and nothing
-  else. The rest of the surface is
+  name and what it is for — and then `view.openDocsView(fn)`. No signatures and no type
+  declarations: the prompt names the argument shape of the two or three calls a program
+  cannot bootstrap without, and nothing else. The rest of the surface is
   [read on demand](/gg/responses-as-code/#the-typed-tool-surface) rather than dumped up
   front, and what a call's options are, what it throws, and the rest of the `view`
   object's own functions (`view.close`, `view.current`) are answers the model asks for
-  rather than paragraphs it is handed. What the prompt distinguishes the two discovery
-  calls by is the **route** each takes, not the turn each answers on. `<object>.list()`
-  **returns** its directory to the *program*, one `{ name, summary }` per function — an
-  ordinary return value, so it puts nothing in front of the model on its own, and the
-  prompt writes out the call that forwards it:
-  `view.openText("fs", JSON.stringify(fs.list()))`. `view.openDocsView(fn)` **opens a
-  view** directly, of one function's signature, documentation and types. Getting that
-  wrong is not a slow turn but an empty one: a prompt that offers them as two ways to look
-  something up teaches that `system.list()` shows you the functions on `system`, and it
-  does not — it shows them to a program that then discards them, and the model reads a
-  `Notice` saying its program put nothing in its context, having done exactly what it was
-  told. Either route lands in the window on the *next* turn: *"Ask in one turn, use it in
-  the next."* The prompt used to make that claim about the old `.docs()` method, which
-  returned its text inline and made a liar of the sentence; a view is what makes it true.
-  The rules those functions obey are documented for *humans* on
-  the [responses as code](/gg/responses-as-code/#showing-yourself-things) page; the model
-  opens a docs view.
+  rather than paragraphs it is handed.
+
+  **There is no directory call, and that is a decision rather than an omission.** Nothing
+  enumerates a module's functions, because a call that hands back a whole module defeats
+  the point of making a model look for what it needs: the cheapest way to find anything
+  would be to dump the directory and read it. Searching is the only route in, and it is
+  global — one query reaches every module at once, so nothing is discovered by already
+  knowing where to look. What the prompt supplies is the module **vocabulary** a search can
+  be phrased in, and nothing finer.
+
+  What is opened lands in the window on the *next* turn: *"Ask in one turn, use it in the
+  next."* The prompt used to make that claim about the old `.docs()` method, which returned
+  its text inline and made a liar of the sentence; a view is what makes it true. The rules
+  those functions obey are documented for *humans* on the
+  [responses as code](/gg/responses-as-code/#showing-yourself-things) page; the model opens
+  a docs view.
 
 The code arm also lists the **message headings** a run can produce — the `<label>\n----\n`
 rule every message it receives obeys — and that list is gated the same way everything else

@@ -11,9 +11,6 @@ namespace Gg;
 /// <ggmodule>programs</ggmodule>
 public static partial class Programs
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Programs));
-
     /// <summary>List the programs this session has run, oldest first.</summary>
     /// <remarks>
     /// Each entry carries the shape of a program rather than its source: a directory that inlined

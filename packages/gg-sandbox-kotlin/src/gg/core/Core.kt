@@ -118,17 +118,6 @@ public enum class ToolErrorCode(public val wireName: String) {
 }
 
 /**
- * One function in a module's directory, as `list` returns it.
- *
- * The summary is one line. A function's whole documentation — every shape it may be called in, what
- * each argument takes, and the types it names — is a view, opened with `gg.views.openDocsView`.
- *
- * @property name The function's name within its module, such as `readFile` in `gg.files.readFile`.
- * @property summary One line saying what the function does.
- */
-public data class FunctionSummary(val name: String, val summary: String)
-
-/**
  * One field of a revision that can be cleared as well as replaced.
  *
  * Most of what `gg.tasks.updateTask` and `gg.board.updateIssue` take is two-way: naming a field

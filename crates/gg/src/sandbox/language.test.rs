@@ -708,7 +708,7 @@ fn no_language_serves_another_languages_artifacts() {
 /// The registry's own version of this is next door; running it over a second surface is what proves
 /// the resolution reads the language it was handed rather than the one committed catalogue that
 /// exists. The fixture re-spells every function in `snake_case`, so a resolution that had quietly
-/// fallen back to TypeScript's would produce `review.requestChanges` here and fail.
+/// fallen back to the arm the fixture is cut from would produce `requestChanges` here and fail.
 #[test]
 fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
     let fixture = fixture_language();
@@ -717,12 +717,10 @@ fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
         .iter()
         .map(|operation| operation.call)
     {
-        // Resolved through the operation and quoted with the entry's OWN grouping — which is how
-        // this assertion is written once against both shapes of catalogue. The fixture is cut from
-        // `fixture::FIXTURE_SIGNATURES`, the frozen v1 surface, and is therefore the ONE place left
-        // in the tree where a catalogue filing gg's `(object, key)` pair on every entry is read end
-        // to end; the registry's version next door reads eleven that file it nowhere. Going through
-        // the operation is what makes both of those the same lookup. It goes with the frozen file.
+        // Resolved through the operation and quoted with the entry's OWN grouping, because the
+        // fixture's grouping is deliberately not gg's: it renames one module, invents another, and
+        // hangs two calls off the types they operate on. Going through the operation is what makes
+        // this a lookup rather than a guess at where the arm filed the call.
         let entry = functions.iter().find(|function| {
             function.alias_of.is_none()
                 && crate::sandbox::operation_of(function).is_some_and(|resolved| {
@@ -774,11 +772,11 @@ fn the_synthesized_file_view_statement_is_the_languages_own() {
     let fixture = fixture_language();
     assert_eq!(
         fixture.open_file_statement("src/main.fx", None),
-        r#"view.open_file("src/main.fx")"#
+        r#"views.open_file("src/main.fx")"#
     );
     assert_eq!(
         fixture.open_file_statement("src/main.fx", Some(window)),
-        r#"view.open_file("src/main.fx", offset=400, limit=200)"#
+        r#"views.open_file("src/main.fx", offset=400, limit=200)"#
     );
 
     // A path is rendered so that a quote or a backslash in one cannot produce a statement that

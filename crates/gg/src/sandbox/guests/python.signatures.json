@@ -168,7 +168,7 @@
       "id": "memories",
       "path": "gg.memories",
       "brief": "Durable memories, which survive a context compaction.",
-      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so `memories.list()` is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`write_memory`, `update_memory`); the two file-shaped strategies keep the contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an index that is always in context and one behind `search_memories`. `delete_memory` is bound under all three.\n\nEvery mutation hands back the budget after it, so a program can decide whether to write another memory by reading numbers rather than by parsing a sentence about them.\n\nThe three writes take their fields as arguments rather than as a record. The membrane declares one `memory-input` for all of them, and a language whose optional arguments are keyword arguments has no reason to make a program construct a value before it can make a call.",
+      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so what this module offers is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`write_memory`, `update_memory`); the two file-shaped strategies keep the contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an index that is always in context and one behind `search_memories`. `delete_memory` is bound under all three.\n\nEvery mutation hands back the budget after it, so a program can decide whether to write another memory by reading numbers rather than by parsing a sentence about them.\n\nThe three writes take their fields as arguments rather than as a record. The membrane declares one `memory-input` for all of them, and a language whose optional arguments are keyword arguments has no reason to make a program construct a value before it can make a call.",
       "import": null
     },
     {
@@ -216,28 +216,9 @@
     {
       "id": "core",
       "path": "gg.core",
-      "brief": "The types every other module's signatures name: how a call fails, and what a directory lists.",
-      "detail": "A capability module owns the types it produces, so `FileRead` belongs to `gg.files` and `IssueCreated` to `gg.board`. The four here belong to none of them because they belong to all of them: every function in this SDK raises `ToolError`, every module's `list` returns `FunctionSummary`, and `UNCHANGED` is the default of every patch argument that can also be cleared.\n\nThey are also the names a program writes unqualified. `gg.scope` binds them directly into a program's namespace, because an `except` clause that had to spell out a module would be an `except` clause nobody writes.",
+      "brief": "The types every other module's signatures name: how a call fails, and what a patch leaves alone.",
+      "detail": "A capability module owns the types it produces, so `FileRead` belongs to `gg.files` and `IssueCreated` to `gg.board`. The three here belong to none of them because they belong to all of them: every function in this SDK raises `ToolError`, and `UNCHANGED` is the default of every patch argument that can also be cleared.\n\nThey are also the names a program writes unqualified. `gg.scope` binds them directly into a program's namespace, because an `except` clause that had to spell out a module would be an `except` clause nobody writes.",
       "import": null
-    }
-  ],
-  "meta": [
-    {
-      "key": "list",
-      "name": "list",
-      "signatures": [
-        {
-          "signature": "list() -> list[FunctionSummary]",
-          "parameters": []
-        }
-      ],
-      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `views.open_docs_view`.",
-      "types": [
-        {
-          "spelled": "FunctionSummary",
-          "fqn": "gg.core.FunctionSummary"
-        }
-      ]
     }
   ],
   "functions": [
@@ -2020,7 +2001,7 @@
       "fqn": "gg.views.current",
       "call": null,
       "brief": "List what is open in the context window right now.",
-      "detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. Reading it is what decides what to close when the window is filling up.\n\nIt is called `current` rather than `list` because every module already carries a `list` that lists that module's own functions.",
+      "detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. Reading it is what decides what to close when the window is filling up.\n\nWhat it enumerates is the context window's contents, not any module's functions.",
       "signatures": [
         {
           "signature": "current() -> list[OpenView]",
@@ -3826,31 +3807,6 @@
           "type": null,
           "kind": "variant",
           "brief": "The only member; `UNCHANGED` is the name a program writes.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": []
-    },
-    {
-      "fqn": "gg.core.FunctionSummary",
-      "module": "core",
-      "name": "FunctionSummary",
-      "declaration": "@dataclass(frozen=True)\nclass FunctionSummary:\n    name: str\n    summary: str",
-      "brief": "One function in a module's directory, as `list` returns it.",
-      "detail": "The summary is one line. A function's whole documentation — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `views.open_docs_view`.",
-      "members": [
-        {
-          "name": "name",
-          "type": "str",
-          "kind": "field",
-          "brief": "The function's name in its module — `read_file` in `files.read_file`.",
-          "detail": null
-        },
-        {
-          "name": "summary",
-          "type": "str",
-          "kind": "field",
-          "brief": "One line saying what it does.",
           "detail": null
         }
       ],

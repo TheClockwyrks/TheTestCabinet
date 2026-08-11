@@ -12,7 +12,6 @@
  */
 package gg.board
 
-import gg.core.FunctionSummary
 import gg.core.Patch
 import gg.core.ToolError
 import gg.internal.Read
@@ -27,17 +26,6 @@ import gg.internal.ggTexts
 import gg.internal.lower
 import gg.internal.projectObject
 
-/**
- * List the functions this module offers, each with a one-line summary.
- *
- * Only the functions this run actually bound are returned, so the directory never names a call the
- * program cannot make. One function's full signature, argument descriptions and types are opened as a
- * view with `gg.views.openDocsView`.
- *
- * @return every function this module really bound, each with one line saying what it does
- */
-public fun list(): List<FunctionSummary> =
-    Read.functionSummaries(ggCall("list", projectObject(), "gg.board", "list", ggArgs()))
 
 /**
  * Create an epic to group related issues, and hand back the id its prefix resolved to.

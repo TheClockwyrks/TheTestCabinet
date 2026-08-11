@@ -26,7 +26,6 @@ const BOUND: &[&str] = &[
     "close",
     "current",
     "shell",
-    "list",
 ];
 
 /// The whole set, for the common case.
@@ -78,14 +77,27 @@ fn a_typo_is_caught_and_the_nearest_one_wins() {
     assert_eq!(nearest_bound("clone"), vec!["close"]);
 }
 
-/// **Only the best tier is ever offered.** `list` is bound exactly, and the names that merely
-/// *contain* it — `listDir` — are a weaker kind of match, so they do not appear beside it.
+/// **Only the best tier is ever offered.** A name matched exactly is not joined by the names that
+/// merely open with it, which are a weaker kind of match.
+///
+/// The candidates here are constructed rather than taken from [`BOUND`], and that is worth saying
+/// plainly: **no scope binds one function's name inside another's any more.** The per-module
+/// directory was the only name that ever collided with a longer one — `list` against `listDir` —
+/// and with it deleted no real agent can currently produce this ambiguity. The tier is still what
+/// decides the answer the day one does, which a module gaining a `read` beside its `readFile` would
+/// be enough to cause, so the rule is asserted here rather than left to be found out by the agent
+/// that hits it first.
 #[test]
 fn a_weaker_kind_of_match_is_never_promoted_beside_a_better_one() {
-    assert_eq!(nearest_bound("list"), vec!["list"]);
+    assert_eq!(
+        nearest("read", ["read", "readFile", "readMemory"]),
+        vec!["read"]
+    );
     // Without the exact name in the set, the weaker kinds are what is left — and are offered.
-    let without_list: Vec<&str> = BOUND.iter().copied().filter(|n| *n != "list").collect();
-    assert_eq!(nearest(" list ", without_list), vec!["listDir"]);
+    assert_eq!(
+        nearest(" read ", ["readFile", "readMemory"]),
+        vec!["readFile", "readMemory"]
+    );
 }
 
 /// The cap holds, and what survives it is the *nearest* — the shorter name first, since it is the
@@ -121,8 +133,8 @@ fn a_name_unlike_anything_bound_earns_no_hint() {
 /// — though they are still answered when they are genuinely part of a name.
 #[test]
 fn a_name_too_short_for_an_edit_to_mean_anything_is_not_matched_by_edits() {
-    assert!(nearest("ls", ["list", "close"]).is_empty());
-    assert_eq!(nearest("li", ["list", "close"]), vec!["list"]);
+    assert!(nearest("fk", ["fork", "close"]).is_empty());
+    assert_eq!(nearest("fo", ["fork", "close"]), vec!["fork"]);
     assert_eq!(allowance(2), None);
     assert_eq!(allowance(3), Some(1));
     assert_eq!(allowance(SHORT_NAME + 1), Some(2));
@@ -159,7 +171,7 @@ fn folding_erases_spelling_and_keeps_the_name() {
 fn the_distance_counts_single_character_edits() {
     assert_eq!(distance("close", "close"), 0);
     assert_eq!(distance("close", "clone"), 1);
-    assert_eq!(distance("", "list"), 4);
+    assert_eq!(distance("", "fork"), 4);
     assert_eq!(distance("kitten", "sitting"), 3);
     // Over characters rather than bytes: one multi-byte character is one edit.
     assert_eq!(distance("readFile", "readFilé"), 1);

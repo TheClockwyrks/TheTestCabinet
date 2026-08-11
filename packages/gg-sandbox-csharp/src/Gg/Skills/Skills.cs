@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Gg;
 
 /// <summary>Read the authored skills this run offers.</summary>
@@ -10,9 +8,6 @@ namespace Gg;
 /// <ggmodule>skills</ggmodule>
 public static partial class Skills
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Skills));
-
     /// <summary>Read an authored skill by name, front matter stripped.</summary>
     /// <remarks>
     /// The skill is also pinned permanently into the session's context, so it survives a compaction

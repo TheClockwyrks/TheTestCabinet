@@ -649,31 +649,23 @@ fn legacy_groupings(catalogue: &SignatureCatalogue, id: &str) -> Vec<&'static st
     out
 }
 
-/// Every signature the module `id` binds, in catalogue order, with the directory every module that
-/// binds anything also carries.
+/// Every signature the module `id` binds, in catalogue order.
 ///
 /// One entry may contribute several signatures — that is what an overload group is — so they are
 /// emitted in order and TypeScript reads them as the overload set the language declared.
 ///
-/// A module that binds no function at all gets no directory, and that is the truth rather than a
-/// simplification: `core` declares the types every other module speaks in and the shim builds no
-/// object for it beyond the error class, so a `core.list()` the checker accepted would be a call that
-/// fails at run time.
+/// It is exactly the catalogue's own entries and nothing else. A directory function used to be
+/// appended to every module that bound anything, and it was the one member of a checked module that
+/// no catalogue entry declared; with it deleted, what the checker accepts on a module is precisely
+/// what that module's declarations say, so the checker cannot admit a call the guest does not bind.
 fn members(catalogue: &SignatureCatalogue, id: &str) -> Vec<String> {
-    let mut out: Vec<String> = catalogue
+    catalogue
         .functions
         .iter()
         .filter(|function| function.module == id)
         .flat_map(|function| function.signatures.iter())
         .map(|entry| entry.signature.clone())
-        .collect();
-    if out.is_empty() {
-        return out;
-    }
-    for entry in &catalogue.meta {
-        out.extend(entry.signatures.iter().map(|entry| entry.signature.clone()));
-    }
-    out
+        .collect()
 }
 
 #[cfg(test)]

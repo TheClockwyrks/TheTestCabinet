@@ -46,8 +46,3 @@ MODULES = [
     Module("session", "session", "gg::session"),
     Module("core", "core", "gg::core"),
 ]
-
-#: The name of the directory function every module that offers a capability carries, declared once by
-#: ``directory_of!`` and expanded into each of them. It is the one call with no operation id, because
-#: gg seeds it onto every module rather than catalogueing it on one.
-META = "list"

@@ -1,8 +1,8 @@
 /**
  * Durable notes that survive a context compaction.
  *
- * A run picks one of three memory strategies and binds only that strategy's functions, so this
- * module's own directory is the honest answer to what memory can do here. The scratchpad keeps every
+ * A run picks one of three memory strategies and binds only that strategy's functions, so what this
+ * module offers is the honest answer to what memory can do here. The scratchpad keeps every
  * memory in the context window; the two file-shaped strategies keep the contents outside it, one
  * behind an index that is always in context and one behind a keyword search. Deleting is bound under
  * all three.
@@ -14,7 +14,6 @@
  */
 package gg.memories
 
-import gg.core.FunctionSummary
 import gg.core.ToolError
 import gg.internal.Read
 import gg.internal.ggArgs
@@ -26,17 +25,6 @@ import gg.internal.ggText
 import gg.internal.ggTexts
 import gg.internal.memoryObject
 
-/**
- * List the functions this module offers, each with a one-line summary.
- *
- * Only the functions this run actually bound are returned, so the directory never names a call the
- * program cannot make. One function's full signature, argument descriptions and types are opened as a
- * view with `gg.views.openDocsView`.
- *
- * @return every function this module really bound, each with one line saying what it does
- */
-public fun list(): List<FunctionSummary> =
-    Read.functionSummaries(ggCall("list", memoryObject(), "gg.memories", "list", ggArgs()))
 
 /**
  * Record a durable memory that survives context compaction.

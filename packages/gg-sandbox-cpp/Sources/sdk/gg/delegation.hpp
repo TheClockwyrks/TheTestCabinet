@@ -23,9 +23,6 @@ namespace gg {
 /// <ggmodule>delegation</ggmodule>
 namespace delegation {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// What a child agent is briefed with: self-contained instructions, or a board issue.
 ///
 /// One value with two named factories rather than two optional arguments, so that "both" and

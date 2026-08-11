@@ -10,10 +10,7 @@
 /// ```
 ///
 /// - ggmodule: programs
-public enum programs: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.programs"
-
+public enum programs {
     /// List the programs this session has already run, oldest first.
     ///
     /// Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists

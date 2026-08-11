@@ -23,8 +23,7 @@
  *
  * It runs from the modules almost every run has to the ones a particular shape of agent has, because
  * a model reads a list from the top. `Gg.Core` is last and deliberately: it binds no operation at
- * all, only the two failure types, the summary every module's directory hands back, and the three
- * helpers that read a failure.
+ * all, only the two failure types and the three helpers that read a failure.
  */
 export const MODULES = [
   { id: "files", path: "Gg.Files" },
@@ -42,19 +41,10 @@ export const MODULES = [
 ];
 
 /**
- * gg's id for the one module that binds no operation, and therefore carries no directory and is
- * allowed to export values that name no operation.
+ * gg's id for the one module that binds no operation, and therefore the one module allowed to
+ * export values that name no operation.
  *
  * Named rather than derived, so that a capability module which lost every operation id fails as the
  * defect it is instead of quietly reclassifying itself as this one.
  */
 export const CORE = "core";
-
-/**
- * The name of the directory function every module that binds a capability carries.
- *
- * It is the one call with no operation id, because gg seeds it onto every module rather than
- * catalogueing it on one — so `signatures.mjs` reflects it into the catalogue's `meta` section and
- * holds all eleven declarations of it to being word for word the same.
- */
-export const META = "list";

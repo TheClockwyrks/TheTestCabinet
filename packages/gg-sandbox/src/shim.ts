@@ -53,7 +53,6 @@ import {
   LEGACY_STANDARD_ENDING,
   LIBRARY_BOUND,
   LIB_OBJECT,
-  LIST_FUNCTION,
   MODULE_ORDER,
   SURFACE,
   TOOL_BOUND,
@@ -74,7 +73,6 @@ import * as shellMod from "./gg/shell.js";
 import * as skillsMod from "./gg/skills.js";
 import * as tasksMod from "./gg/tasks.js";
 import * as viewsMod from "./gg/views.js";
-import { listFunctions } from "./internal/docs.js";
 import {
   asToolError,
   describeThrown,
@@ -379,7 +377,7 @@ function attribute(js: string, thrown: unknown): unknown {
 /**
  * Tag a bound function with the name gg knows it by, so `view.openDocsView(fs.readFile)` can be
  * spelled with the function instead of a string. `name` is the name a program calls the function by
- * (`readFile`, `finish`, `list`), which is what the host's doc directory is keyed on.
+ * (`readFile`, `finish`), which is what the host keys documentation on.
  *
  * The tag is a non-enumerable `Symbol`, so it never shows up when a model iterates an object and is
  * not part of the callable surface — it is metadata, reachable only by something that knows to look.
@@ -412,17 +410,15 @@ function documented(fn: ToolFn, name: string): ToolFn {
  * says nothing about what the program did wrong. One qualified path costs nothing to write and
  * collides with nothing.
  *
- * Three further bindings are not modules and are here anyway:
+ * Two further bindings are not modules and are here anyway:
  *
  * - **`ToolError`**, bound bare, because `catch (error) { if (error instanceof ToolError) … }` is the
  *   shape the prompt teaches and a qualified name in a `catch` reads as ceremony;
- * - each module's **`list`**, the directory of its own functions, seeded with the grouping name gg
- *   files that module's documentation under;
  * - the **legacy grouping names** ({@link LEGACY_GROUPING}) — `fs`, `view`, `harness` — which the
  *   PureScript, Java and Kotlin arms' compiled bundles resolve as free identifiers against this same
  *   scope. They are in no catalogue, so nothing puts them in front of a model.
  *
- * The last of those three **qualifies the paragraph above it**, and the prompt says so rather than
+ * The last of those two **qualifies the paragraph above it**, and the prompt says so rather than
  * leaving a model to find out: four modules' grouping names are their own ids (`tasks`, `context`,
  * `skills`, `programs`), so those four *are* seeded bare after all, and `const context = …` is the
  * very `SyntaxError` this design was meant to avoid. They cannot simply be dropped — the three
@@ -440,25 +436,20 @@ function buildScope(
 ): Record<string, unknown> {
   const on = new Set(enabled);
   const modules = new Map<ModuleId, Record<string, unknown>>();
-  // Fetch (creating on first use) the object for a module, seeding it with the `list` directory
-  // every module carries. The grouping the directory is asked for is gg's own filing name for the
-  // module rather than the module's path, because the two other arms that share this component build
-  // their objects under that name and gg answers to it on every arm.
-  const moduleFor = (id: ModuleId, grouping: string): Record<string, unknown> => {
+  // Fetch (creating on first use) the object for a module. A module starts EMPTY, and every property
+  // it ends up with is one operation this run bound — so a module a program can see is a module it
+  // can call something on, and there is nothing on it that is not a capability.
+  const moduleFor = (id: ModuleId): Record<string, unknown> => {
     let module = modules.get(id);
     if (!module) {
-      module = {
-        [LIST_FUNCTION]: documented(
-          guard(LIST_FUNCTION, () => listFunctions(grouping)),
-          LIST_FUNCTION,
-        ),
-      };
+      module = {};
       modules.set(id, module);
     }
     return module;
   };
-  // The grouping name gg files one module's documentation under, and the name the PureScript arm
-  // reaches the module by. The ending group is the one module whose grouping depends on the role.
+  // The second name a module is reached by: the one the PureScript, Java and Kotlin arms' compiled
+  // bundles resolve as a free identifier. The ending group is the one module whose name depends on
+  // the role.
   const groupingFor = (id: ModuleId): string =>
     id === "session"
       ? ending === "review"
@@ -471,7 +462,7 @@ function buildScope(
     if (!fn) return;
     const id = moduleOf(operation);
     const name = exportedName(keyOf(operation));
-    moduleFor(id, groupingFor(id))[name] = documented(guard(name, fn), name);
+    moduleFor(id)[name] = documented(guard(name, fn), name);
   };
 
   for (const [operation, tool] of Object.entries(TOOL_BOUND)) {
@@ -585,8 +576,8 @@ export function run(
   const scope: Record<string, unknown> = buildScope(enabled, ending, library);
   // The unknown-name hint names the MODULES a program may reach, qualified as the documentation
   // qualifies them (`gg.files`, `gg.views`): one spelling in the message, and the one every other
-  // thing the model reads uses. `lib` is not a module — it holds no gg function and has no directory
-  // — so it is named separately rather than folded into a list that would be false about it.
+  // thing the model reads uses. `lib` is not a module — it holds no gg function — so it is named
+  // separately rather than folded into a list that would be false about it.
   const surface = scope[SURFACE] as Record<string, unknown>;
   const offered = MODULE_ORDER.filter((id) => id in surface).map((id) => `${SURFACE}.${id}`);
   // Built against the module scope alone, then added to it: a module sees the same names the program
@@ -658,7 +649,7 @@ function describe(
     if (name === "ReferenceError") {
       // The most common cause is a program reaching for a flat name (`readFile`) instead of the
       // qualified one (`gg.files.readFile`), so answer the question it is about to ask: which
-      // modules does it have? Each module's `list` then names that module's functions.
+      // modules does it have? Finding a function inside one is what searching is for.
       return {
         kind: "unknown-name",
         code: undefined,

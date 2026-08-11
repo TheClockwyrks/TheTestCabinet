@@ -9,10 +9,7 @@
 /// `enum` rather than two optional arguments, "both" and "neither" are programs that do not compile.
 ///
 /// - ggmodule: delegation
-public enum delegation: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.delegation"
-
+public enum delegation {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = [
         "spawn_subagent", "wait_for_subagents", "send_message", "transition_state", "exec", "fork",

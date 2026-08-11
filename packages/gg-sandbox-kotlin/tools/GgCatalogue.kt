@@ -56,14 +56,4 @@ internal object GgCatalogue {
      * it up would put the crossing itself in front of a model instead of the surface.
      */
     const val BRIDGE: String = "gg.internal"
-
-    /**
-     * The name of the directory function every module that offers a capability carries.
-     *
-     * It is the one public declaration with no operation id, because gg seeds it onto every grouping
-     * rather than catalogueing it on one. Kotlin has no way to write a doc comment once and attach it
-     * to eleven declarations, so the eleven are written out and [GgSignatures] refuses to emit unless
-     * they render identically — which turns eleven copies from a drift risk into a build failure.
-     */
-    const val META: String = "list"
 }

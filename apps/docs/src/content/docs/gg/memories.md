@@ -42,7 +42,7 @@ rather than failing the run.
 All three work in both execution modes. Under
 [responses-as-code](/gg/responses-as-code/) the same functions are methods on the
 `memory` object (`memory.createMemory`, `memory.searchMemories`, …), and only the
-active strategy's are bound into a program's scope, so `memory.list()` is an
+active strategy's are bound into a program's scope, so what the object holds is an
 honest answer to "what can I do with memory here?".
 
 ### `scratchpad`

@@ -20,7 +20,6 @@ pub(crate) const TOOLS: &[&str] = &[
     "remove_task",
 ];
 
-crate::directory::directory_of!();
 
 /// Add a task to the task graph and hand back the task budget.
 ///

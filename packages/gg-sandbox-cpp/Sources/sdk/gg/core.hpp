@@ -1,8 +1,7 @@
 // **The types every other module's signatures name**, and nothing else.
 //
-// It declares no capability of its own, which is why it carries no `list()`: a program reaches
-// `core::tool_error` by catching one and `core::function_summary` by calling another module's
-// directory, so a directory of this module would list nothing.
+// It declares no capability of its own: a program reaches `core::tool_error` by catching one, and
+// `core::tool_error_code` by branching on the failure it caught.
 //
 // This file is model-facing: everything a `///` says here is reflected into the signature catalogue
 // and reaches a model. `//` comments are for whoever maintains it.
@@ -15,11 +14,10 @@
 
 namespace gg {
 
-/// The types every other module's signatures name: how a call fails, and what a directory carries.
+/// The types every other module's signatures name: how a call fails, and how it is classified.
 ///
-/// It declares no capability of its own, which is why it carries no directory: a program reaches
-/// `core::tool_error` by catching one and `core::function_summary` by calling another module's
-/// `list`.
+/// It declares no capability of its own: a program reaches `core::tool_error` by catching one, and
+/// `core::tool_error_code` by branching on the failure it caught.
 ///
 /// <ggmodule>core</ggmodule>
 namespace core {
@@ -108,17 +106,6 @@ class tool_error : public std::runtime_error {
   tool_error_code code_;
   std::string tool_;
   std::string message_;
-};
-
-/// One function in a module's directory: its name, and one line saying what it does.
-///
-/// The whole documentation of a function — every shape it may be called in, what to put in each
-/// argument, and the types it refers to — is a view, opened with `views::open_docs_view`.
-struct function_summary {
-  /// The name a program calls it by, under its own module (`read_file` in `files::read_file`).
-  std::string name;
-  /// One line saying what it does.
-  std::string summary;
 };
 
 // gg's own hyphenated word for a failure class (`not-found`, `limit-exceeded`), as every other

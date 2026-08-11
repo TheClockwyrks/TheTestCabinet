@@ -70,10 +70,9 @@ is.
 | `rust-version.sh` | The pins: the compiler (read out of `rust-toolchain.toml`), the target, and the `wit-bindgen` release. Sourced by every script here and by `containers/build.sh`. |
 | `Cargo.toml` | Its own workspace on purpose — it is compiled for wasm and its output is a set of `.rlib` files, so a member of the repository's workspace would be built by every `cargo build --workspace` for no reason. |
 | `src/lib.rs` | The crate's own front door: the capability modules with the gg module id each declares itself to be, the `prelude` gg glob-imports into every program, and `log`. |
-| `src/files.rs`, `src/shell.rs`, … | One file per capability module. Each declares its functions with the gg operation each binds, the types those functions hand back, the gg tools they dispatch (`TOOLS`), and the `list` every module carries. |
-| `src/core.rs` | The three types that belong to no module because they belong to all of them: `ToolError`, `ToolErrorCode` and `FunctionSummary`. |
+| `src/files.rs`, `src/shell.rs`, … | One file per capability module. Each declares its functions with the gg operation each binds, the types those functions hand back, and the gg tools they dispatch (`TOOLS`). |
+| `src/core.rs` | The two types that belong to no module because they belong to all of them: `ToolError` and `ToolErrorCode`. |
 | `src/wire.rs` | The bridge onto the generated bindings — the only part of this crate a model never reads. |
-| `src/directory.rs` | The one `list` declaration, expanded into every capability module by a macro so its documentation is written once. |
 | `src/program.rs` | The shell gg's generated entry file names: the panic hook, the `Failure` type a program's body returns, and what `bound-tools` answers. |
 | `signatures.sh`, `tools/` | The catalogue: `rustdoc` JSON in, `rust.signatures.json` out. `tools/catalogue.py` holds the one thing the sources cannot say — which modules the surface is divided into and in what order a reader meets them — and `tools/signatures.py` is everything else. A function's gg operation id is written on the declaration itself, as `#[doc(alias = "ggop:files.read_file")]`, and a module's as `#[doc(alias = "ggmodule:files")]`. |
 | `src/bindings.rs` | **Generated and not committed** — a pure function of `crates/gg/wit/gg-sandbox.wit` and the pinned `wit-bindgen`. `bindings.sh` writes it. |

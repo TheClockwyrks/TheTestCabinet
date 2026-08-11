@@ -11,9 +11,6 @@ namespace Gg;
 /// <ggmodule>delegation</ggmodule>
 public static partial class Delegation
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Delegation));
-
     /// <summary>Delegate scoped work to a child agent, and get its handle back immediately.</summary>
     /// <remarks>
     /// <para>

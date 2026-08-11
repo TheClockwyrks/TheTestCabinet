@@ -73,13 +73,9 @@ export const MODULE_ORDER: readonly ModuleId[] = [
 export const SURFACE = "gg";
 
 /**
- * The **API object** each module's functions used to hang off, kept for two readers and no third.
+ * The **API object** each module's functions used to hang off, kept for one reader and no second.
  *
- * The first is gg's own documentation directory: the host answers `list` under either the module path
- * or this name, and the guest asks with this one because it is the only name the *other* arms sharing
- * this component build their objects under.
- *
- * The second is the PureScript arm, which compiles to a bundle this same component evaluates and
+ * That reader is the PureScript arm, which compiles to a bundle this same component evaluates and
  * resolves these as free identifiers. Its SDK is its own — `Gg.Files`, `Gg.Views` — and the names
  * below are the lowering it was written against, so removing one would break an arm this package does
  * not own.
@@ -250,19 +246,11 @@ export const ENDING_BOUND: Readonly<Record<string, EndingKind>> = {
 };
 
 /**
- * The name every module's directory function is bound under.
- *
- * It is the one model-facing call with no gg operation behind it: the shim seeds it onto each module
- * object with that module's own name closed over, so it belongs to all of them and to none.
- */
-export const LIST_FUNCTION = "list";
-
-/**
  * The scope object a program reaches its loaded **code modules** through: the code of a skill or a
  * memory it has read, bound at `lib.<name>`.
  *
- * It is not a capability module and carries no `list`: nothing there is a gg function, the members
- * are whatever the skill or memory exported, and the host already said which key each one got and
+ * It is not a capability module: nothing there is a gg function, the members are whatever the skill
+ * or memory exported, and the host already said which key each one got and
  * what it exports when it answered the read. It is bound only when at least one module was handed
  * over, so a run with none has no `lib` identifier at all.
  */

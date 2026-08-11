@@ -701,7 +701,6 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
 
     fun emit(): String {
         val functions = functions()
-        val meta = meta()
         val declared = reached.sorted().map { type(it) }
 
         val json = Json()
@@ -742,8 +741,6 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
                     }
                 }
             }
-            key("meta")
-            array { obj { meta.write(this) } }
             key("functions")
             array {
                 for (entry in functions) {
@@ -805,9 +802,6 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
                             ?: fail("`${module.path}.$name` has no documentation on its declaration")
                     val operation = doc.tags[OPERATION_TAG]
                     val alias = doc.tags[ALIAS_TAG]
-                    if (name == GgCatalogue.META && operation == null && alias == null) {
-                        continue
-                    }
                     if (operation == null && alias == null) {
                         fail(
                             "`${module.path}.$name` is public and names no gg operation, so a model " +
@@ -1316,112 +1310,6 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
                 else -> ""
             }
         return "$sealed$data$keyword ${declared.name}$parameters$constructor$supertypes$body"
-    }
-
-    // ---------------------------------------------------------------------------------------
-    // The directory
-    // ---------------------------------------------------------------------------------------
-
-    /**
-     * The `list` every capability module carries, read once and asserted identical on all of them.
-     *
-     * Kotlin has no way to write one doc comment and attach it to eleven declarations — no macro, no
-     * `\copydoc`, no inherited member now that the surface is free functions — so the eleven are
-     * written out, and any difference between them fails here. A module that offers capabilities and
-     * carries no directory fails too, and so does `core`, which offers none and must carry none.
-     */
-    private fun meta(): Meta {
-        var first: Meta? = null
-        for (module in GgCatalogue.MODULES) {
-            var declared: KtNamedFunction? = null
-            var offers = false
-            for (file in index.files.getValue(module.path)) {
-                for (function in file.declarations.filterIsInstance<KtNamedFunction>()) {
-                    if (!function.isPublic) {
-                        continue
-                    }
-                    val doc = documentation(function)
-                    val identified =
-                        doc?.tags?.containsKey(OPERATION_TAG) == true ||
-                            doc?.tags?.containsKey(ALIAS_TAG) == true
-                    when {
-                        identified -> offers = true
-                        function.name == GgCatalogue.META -> declared = function
-                        else -> Unit
-                    }
-                }
-            }
-            if (!offers) {
-                if (declared != null) {
-                    fail("`${module.path}` offers no capability and carries a `${GgCatalogue.META}`")
-                }
-                continue
-            }
-            val function =
-                declared ?: fail("`${module.path}` offers capabilities and carries no directory")
-            val file = function.containingKtFile
-            val names = Names(file, index.types)
-            val what = "`${module.path}.${GgCatalogue.META}`"
-            val doc = documentation(function) ?: fail("$what has no documentation on its declaration")
-            if (function.valueParameters.isNotEmpty()) {
-                fail("$what takes arguments, and a directory takes none")
-            }
-            val returned = LinkedHashSet<String>()
-            val returns =
-                function.typeReference?.text?.let { render(it, names, returned) }
-                    ?: fail("$what states no return type")
-            val (brief, detail) = split(links(doc.body, names), what)
-            val handed = doc.returns?.let { "Returns: ${links(it, names)}" }
-            val entry =
-                Meta(
-                    signature = "${GgCatalogue.META}(): $returns",
-                    doc = listOfNotNull(brief, detail, handed).joinToString("\n\n"),
-                    types = closure(returned).toList(),
-                )
-            if (first == null) {
-                first = entry
-            } else if (first != entry) {
-                fail(
-                    "the directory `${module.path}` carries is not the declaration every other " +
-                        "module carries — Kotlin cannot write one doc comment eleven times, so the " +
-                        "eleven copies have to be kept equal by hand",
-                )
-            }
-        }
-        return first ?: fail("no module carries a directory")
-    }
-
-    /** The directory function, as the catalogue's one meta entry. */
-    private class Meta(val signature: String, val doc: String, val types: List<String>) {
-        override fun equals(other: Any?): Boolean =
-            other is Meta && other.signature == signature && other.doc == doc && other.types == types
-
-        override fun hashCode(): Int = signature.hashCode() * 31 + doc.hashCode()
-
-        fun write(json: Json) {
-            with(json) {
-                field("key", GgCatalogue.META)
-                field("name", GgCatalogue.META)
-                key("signatures")
-                array {
-                    obj {
-                        field("signature", signature)
-                        key("parameters")
-                        array {}
-                    }
-                }
-                field("doc", doc)
-                key("types")
-                array {
-                    for (fqn in types) {
-                        obj {
-                            field("spelled", fqn)
-                            field("fqn", fqn)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 

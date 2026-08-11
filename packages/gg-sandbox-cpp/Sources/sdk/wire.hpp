@@ -130,7 +130,6 @@ board::board_usage lift_board_usage(const test_cabinet_gg_board_board_usage_t& w
 context::reclaim_report lift_reclaim_report(test_cabinet_gg_context_reclaim_report_t& wire);
 context::archive_search lift_archive_search(test_cabinet_gg_context_archive_search_t& wire);
 views::open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire);
-core::function_summary lift_function_summary(const test_cabinet_gg_docs_function_summary_t& wire);
 programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire);
 delegation::subagent_handle lift_subagent_handle(test_cabinet_gg_delegation_subagent_handle_t& wire);
 delegation::subagent_result lift_subagent_result(const test_cabinet_gg_delegation_subagent_result_t& wire);

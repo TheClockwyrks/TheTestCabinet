@@ -24,8 +24,6 @@ const std::vector<std::string>& tasks_tools() {
 
 namespace tasks {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::tasks"); }
-
 tasks::task_usage add_task(std::string_view id, std::string_view title,
                            tasks::task_options options) {
   detail::scratch scratch;

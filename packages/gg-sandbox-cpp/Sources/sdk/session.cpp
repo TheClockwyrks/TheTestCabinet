@@ -12,8 +12,6 @@ namespace gg {
 
 namespace session {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::session"); }
-
 void finish(std::string_view summary) {
   detail::scratch scratch;
   sandbox_string_t lowered = scratch.str(summary);

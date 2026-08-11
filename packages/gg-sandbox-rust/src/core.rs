@@ -1,9 +1,8 @@
-//! The types every other module's signatures name: how a call fails, and what a directory lists.
+//! The types every other module's signatures name: how a call fails.
 //!
 //! A capability module owns the types it produces, so `files::FileRead` belongs to `files` and
-//! `board::IssueCreated` to `board`. These three belong to none of them because they belong to all
-//! of them: every function in this SDK returns `Result<_, ToolError>`, and every module's `list`
-//! returns [`FunctionSummary`].
+//! `board::IssueCreated` to `board`. These two belong to none of them because they belong to all of
+//! them: every function in this SDK returns `Result<_, ToolError>`.
 //!
 //! They are the one part of the surface a program writes unqualified. `gg::prelude` re-exports them
 //! by name, because a `match` on an error code that had to spell out a module would be a `match`
@@ -99,19 +98,6 @@ pub enum ToolErrorCode {
     ///
     /// Reserved for outcomes raised outside a tool implementation; no call in this SDK produces it.
     Other,
-}
-
-/// One function in a module's directory, as `list` returns it.
-///
-/// The summary is one line. A function's whole documentation — every shape it may be called in, what
-/// to put in each argument, and the types it refers to — is a view, opened with
-/// [`views::open_docs_view`](crate::views::open_docs_view).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionSummary {
-    /// The function's name in its module — `read_file` in `files::read_file`.
-    pub name: String,
-    /// One line saying what it does.
-    pub summary: String,
 }
 
 impl ToolError {

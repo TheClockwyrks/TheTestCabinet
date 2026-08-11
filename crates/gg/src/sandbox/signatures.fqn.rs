@@ -366,13 +366,6 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
         }
     }
 
-    for entry in &catalogue.meta {
-        for reference in &entry.types {
-            reached.insert(reference.fqn());
-            spelled.insert(reference.spelled());
-        }
-    }
-
     for declaration in &catalogue.types {
         let Some(fqn) = declaration.fqn.as_deref() else {
             out.push(format!(
@@ -434,7 +427,6 @@ pub(crate) fn faults(catalogue: &SignatureCatalogue) -> Vec<String> {
             .functions
             .iter()
             .flat_map(|function| function.returns.iter().chain(&function.types))
-            .chain(catalogue.meta.iter().flat_map(|entry| &entry.types))
         {
             if reference.spelled() == spelling {
                 resolutions.insert(reference.fqn());

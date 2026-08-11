@@ -84,7 +84,7 @@
       "id": "memories",
       "path": "GG::Memories",
       "brief": "Durable memories, which survive a context compaction.",
-      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so `GG::Memories.list` is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`write_memory`, `update_memory`); the two file-shaped strategies keep the contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an index that is always in context and one behind `search_memories`. `delete_memory` is bound under all three.\n\nEvery mutation hands back the budget after it, so a program can decide whether to write another memory by reading numbers rather than by parsing a sentence about them. The three writes take their fields as arguments rather than as a record, because a language whose optional arguments are keyword arguments has no reason to make a program construct a value before it can make a call.",
+      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so what this module offers is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`write_memory`, `update_memory`); the two file-shaped strategies keep the contents outside it (`create_memory`, `read_memory`, `edit_memory`), one behind an index that is always in context and one behind `search_memories`. `delete_memory` is bound under all three.\n\nEvery mutation hands back the budget after it, so a program can decide whether to write another memory by reading numbers rather than by parsing a sentence about them. The three writes take their fields as arguments rather than as a record, because a language whose optional arguments are keyword arguments has no reason to make a program construct a value before it can make a call.",
       "import": null
     },
     {
@@ -132,27 +132,9 @@
     {
       "id": "core",
       "path": "GG::Core",
-      "brief": "The types every other module's signatures name: how a call fails, and what a directory lists.",
-      "detail": "A capability module owns the types it produces, so `GG::Files::TextFile` belongs to `GG::Files` and `GG::Board::IssueCreated` to `GG::Board`. The three declarations here belong to none of them because they belong to all of them: every function in this SDK raises `GG::Core::ToolError` when it fails, and every module's `list` answers with `GG::Core::FunctionSummary`.\n\nThis module declares no function of its own, which is why it comes last in the surface: there is nothing here to call, only shapes to read.",
+      "brief": "The types every other module's signatures name: how a call fails, and what a patch leaves alone.",
+      "detail": "A capability module owns the types it produces, so `GG::Files::TextFile` belongs to `GG::Files` and `GG::Board::IssueCreated` to `GG::Board`. The declarations here belong to none of them because they belong to all of them: every function in this SDK raises `GG::Core::ToolError` when it fails.\n\nThis module declares no function of its own, which is why it comes last in the surface: there is nothing here to call, only shapes to read.",
       "import": null
-    }
-  ],
-  "meta": [
-    {
-      "key": "list",
-      "name": "list",
-      "signatures": [
-        {
-          "signature": "list() -> Array<GG::Core::FunctionSummary>",
-          "parameters": [
-
-          ]
-        }
-      ],
-      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `GG::Views.open_docs_view`.\n\nReturns: every function this module offers, one line each",
-      "types": [
-        "GG::Core::FunctionSummary"
-      ]
     }
   ],
   "functions": [
@@ -1924,7 +1906,7 @@
       "fqn": "GG::Views.current",
       "call": null,
       "brief": "List what is open in the context window right now.",
-      "detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. Reading it is what decides what to close when the window is filling up. It is called `current` rather than `list` because every module already carries a `list` that lists that module's own functions.\n\nReturns: every view open in the context window",
+      "detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. Reading it is what decides what to close when the window is filling up. What it enumerates is the context window's contents, not any module's functions.\n\nReturns: every view open in the context window",
       "signatures": [
         {
           "signature": "current() -> Array<GG::Views::OpenView>",
@@ -2724,40 +2706,6 @@
   ],
   "types": [
     {
-      "fqn": "GG::Files::EntryKind",
-      "module": "files",
-      "name": "EntryKind",
-      "declaration": "module EntryKind\n  FILE: :file\n  DIRECTORY: :directory\n  OTHER: :other\nend",
-      "brief": "What a directory entry is.",
-      "detail": "Every arm is a Symbol, so a comparison may name the constant or write the literal: `GG::Files::EntryKind::FILE` and `:file` are the same value.",
-      "members": [
-        {
-          "name": "FILE",
-          "type": ":file",
-          "kind": "variant",
-          "brief": "An ordinary file.",
-          "detail": null
-        },
-        {
-          "name": "DIRECTORY",
-          "type": ":directory",
-          "kind": "variant",
-          "brief": "A directory, which can be listed in its own right.",
-          "detail": null
-        },
-        {
-          "name": "OTHER",
-          "type": ":other",
-          "kind": "variant",
-          "brief": "Everything that is neither, a symlink among them.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
       "fqn": "GG::Files::ImageFile",
       "module": "files",
       "name": "ImageFile",
@@ -2881,6 +2829,40 @@
       ]
     },
     {
+      "fqn": "GG::Files::EntryKind",
+      "module": "files",
+      "name": "EntryKind",
+      "declaration": "module EntryKind\n  FILE: :file\n  DIRECTORY: :directory\n  OTHER: :other\nend",
+      "brief": "What a directory entry is.",
+      "detail": "Every arm is a Symbol, so a comparison may name the constant or write the literal: `GG::Files::EntryKind::FILE` and `:file` are the same value.",
+      "members": [
+        {
+          "name": "FILE",
+          "type": ":file",
+          "kind": "variant",
+          "brief": "An ordinary file.",
+          "detail": null
+        },
+        {
+          "name": "DIRECTORY",
+          "type": ":directory",
+          "kind": "variant",
+          "brief": "A directory, which can be listed in its own right.",
+          "detail": null
+        },
+        {
+          "name": "OTHER",
+          "type": ":other",
+          "kind": "variant",
+          "brief": "Everything that is neither, a symlink among them.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
       "fqn": "GG::Shell::ShellOutput",
       "module": "shell",
       "name": "ShellOutput",
@@ -2907,6 +2889,33 @@
           "type": "Boolean",
           "kind": "field",
           "brief": "Whether the cap cut `output`, dropping the head and keeping the tail.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
+      "fqn": "GG::Board::EpicCreated",
+      "module": "board",
+      "name": "EpicCreated",
+      "declaration": "class EpicCreated\n  attr_reader id: String\n  attr_reader board: GG::Board::BoardUsage\nend",
+      "brief": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+      "detail": null,
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "kind": "field",
+          "brief": "The epic's id: the prefix given, upper-cased, so `auth` becomes `AUTH`.",
+          "detail": "It is what groups issues under the epic, and the stem those issues are numbered from (`AUTH-1`)."
+        },
+        {
+          "name": "board",
+          "type": "GG::Board::BoardUsage",
+          "kind": "field",
+          "brief": "How much of the board budget is used.",
           "detail": null
         }
       ],
@@ -3021,33 +3030,6 @@
           "type": "[OPEN, IN_PROGRESS, DONE].freeze",
           "kind": "variant",
           "brief": "Every status an issue may be moved to.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
-      "fqn": "GG::Board::EpicCreated",
-      "module": "board",
-      "name": "EpicCreated",
-      "declaration": "class EpicCreated\n  attr_reader id: String\n  attr_reader board: GG::Board::BoardUsage\nend",
-      "brief": "An epic that was just created: the id its prefix resolved to, and the board budget.",
-      "detail": null,
-      "members": [
-        {
-          "name": "id",
-          "type": "String",
-          "kind": "field",
-          "brief": "The epic's id: the prefix given, upper-cased, so `auth` becomes `AUTH`.",
-          "detail": "It is what groups issues under the epic, and the stem those issues are numbered from (`AUTH-1`)."
-        },
-        {
-          "name": "board",
-          "type": "GG::Board::BoardUsage",
-          "kind": "field",
-          "brief": "How much of the board budget is used.",
           "detail": null
         }
       ],
@@ -3339,6 +3321,33 @@
       ]
     },
     {
+      "fqn": "GG::Context::ArchiveSearch",
+      "module": "context",
+      "name": "ArchiveSearch",
+      "declaration": "class ArchiveSearch\n  attr_reader hits: Array<GG::Context::ArchiveHit>\n  def archive_empty?: () -> Boolean\nend",
+      "brief": "What `GG::Context.search_archive` found.",
+      "detail": null,
+      "members": [
+        {
+          "name": "hits",
+          "type": "Array<GG::Context::ArchiveHit>",
+          "kind": "field",
+          "brief": "The matches, most recent first, at most 8.",
+          "detail": null
+        },
+        {
+          "name": "archive_empty?",
+          "type": "Boolean",
+          "kind": "field",
+          "brief": "Nothing has been archived yet, so there was nothing to search.",
+          "detail": "Deliberately distinct from a search that ran and matched nothing, so a program does not archive again believing the first archive failed."
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
       "fqn": "GG::Context::ReclaimReport",
       "module": "context",
       "name": "ReclaimReport",
@@ -3469,72 +3478,6 @@
       ]
     },
     {
-      "fqn": "GG::Context::ArchiveSearch",
-      "module": "context",
-      "name": "ArchiveSearch",
-      "declaration": "class ArchiveSearch\n  attr_reader hits: Array<GG::Context::ArchiveHit>\n  def archive_empty?: () -> Boolean\nend",
-      "brief": "What `GG::Context.search_archive` found.",
-      "detail": null,
-      "members": [
-        {
-          "name": "hits",
-          "type": "Array<GG::Context::ArchiveHit>",
-          "kind": "field",
-          "brief": "The matches, most recent first, at most 8.",
-          "detail": null
-        },
-        {
-          "name": "archive_empty?",
-          "type": "Boolean",
-          "kind": "field",
-          "brief": "Nothing has been archived yet, so there was nothing to search.",
-          "detail": "Deliberately distinct from a search that ran and matched nothing, so a program does not archive again believing the first archive failed."
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
-      "fqn": "GG::Delegation::SubagentHandle",
-      "module": "delegation",
-      "name": "SubagentHandle",
-      "declaration": "class SubagentHandle\n  attr_reader id: String\n  attr_reader slot: String\n  attr_reader model_id: String\nend",
-      "brief": "A child agent that was spawned and is now running in parallel.",
-      "detail": null,
-      "members": [
-        {
-          "name": "id",
-          "type": "String",
-          "kind": "field",
-          "brief": "The child's id — what `GG::Delegation.wait_for_subagents` and `GG::Delegation.send_message` take.",
-          "detail": null
-        },
-        {
-          "name": "slot",
-          "type": "String",
-          "kind": "field",
-          "brief": "The agent profile it runs as.",
-          "detail": null
-        },
-        {
-          "name": "model_id",
-          "type": "String",
-          "kind": "field",
-          "brief": "The model actually bound to that agent.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-        {
-          "operation": "delegation.send_message",
-          "name": "send_message",
-          "fqn": "GG::Delegation::SubagentHandle#send_message",
-          "brief": "Deliver a message to this child's inbox, which it reads at its next turn."
-        }
-      ]
-    },
-    {
       "fqn": "GG::Delegation::AgentEnding",
       "module": "delegation",
       "name": "AgentEnding",
@@ -3624,6 +3567,45 @@
       ]
     },
     {
+      "fqn": "GG::Delegation::SubagentHandle",
+      "module": "delegation",
+      "name": "SubagentHandle",
+      "declaration": "class SubagentHandle\n  attr_reader id: String\n  attr_reader slot: String\n  attr_reader model_id: String\nend",
+      "brief": "A child agent that was spawned and is now running in parallel.",
+      "detail": null,
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "kind": "field",
+          "brief": "The child's id — what `GG::Delegation.wait_for_subagents` and `GG::Delegation.send_message` take.",
+          "detail": null
+        },
+        {
+          "name": "slot",
+          "type": "String",
+          "kind": "field",
+          "brief": "The agent profile it runs as.",
+          "detail": null
+        },
+        {
+          "name": "model_id",
+          "type": "String",
+          "kind": "field",
+          "brief": "The model actually bound to that agent.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+        {
+          "operation": "delegation.send_message",
+          "name": "send_message",
+          "fqn": "GG::Delegation::SubagentHandle#send_message",
+          "brief": "Deliver a message to this child's inbox, which it reads at its next turn."
+        }
+      ]
+    },
+    {
       "fqn": "GG::Programs::ProgramSummary",
       "module": "programs",
       "name": "ProgramSummary",
@@ -3696,33 +3678,6 @@
           "type": "Symbol",
           "kind": "field",
           "brief": "The failure class, so a rescue branches on a value rather than on prose. One of `GG::Core::ToolErrorCode`'s symbols.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
-      "fqn": "GG::Core::FunctionSummary",
-      "module": "core",
-      "name": "FunctionSummary",
-      "declaration": "class FunctionSummary\n  attr_reader name: String\n  attr_reader summary: String\nend",
-      "brief": "One function in a module's directory, as `list` returns it.",
-      "detail": "The summary is one line. A function's whole documentation — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `GG::Views.open_docs_view`.",
-      "members": [
-        {
-          "name": "name",
-          "type": "String",
-          "kind": "field",
-          "brief": "The function's name in its module — `read_file` in `GG::Files.read_file`.",
-          "detail": null
-        },
-        {
-          "name": "summary",
-          "type": "String",
-          "kind": "field",
-          "brief": "One line saying what it does.",
           "detail": null
         }
       ],

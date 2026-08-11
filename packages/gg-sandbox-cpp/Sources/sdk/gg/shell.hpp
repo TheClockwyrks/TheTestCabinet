@@ -26,9 +26,6 @@ namespace gg {
 /// <ggmodule>shell</ggmodule>
 namespace shell {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// What a command reported when it finished.
 struct shell_output {
   /// The process's exit status; empty when a signal killed it. Zero means success.

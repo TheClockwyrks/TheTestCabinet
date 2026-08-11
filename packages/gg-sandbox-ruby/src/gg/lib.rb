@@ -66,7 +66,7 @@ module GG
 
     # The `lib` a program reaches its loaded code modules through.
     #
-    # It is not a capability module and carries no `list`: nothing on it is a gg function, its
+    # It is not a capability module: nothing on it is a gg function, its
     # members are whatever each module's body left behind, and the host already told the model which
     # key each one got and what it offers when it answered the read. It exists as a class of its own
     # rather than as a bare `Object.new` for what it says when a program reaches for a key that is

@@ -1,9 +1,9 @@
 -- | The types every other module's signatures name, and the three functions that read a failure.
 -- |
 -- | A capability module owns the types it produces, so `Gg.Files.FileRead` belongs to `Gg.Files` and
--- | `Gg.Board.IssueCreated` to `Gg.Board`. The three here belong to none of them because they belong
--- | to all: every call in this SDK throws a `ToolError`, and every module's `list` hands back a
--- | `FunctionSummary`.
+-- | `Gg.Board.IssueCreated` to `Gg.Board`. The two here belong to none of them because they belong
+-- | to all: every call in this SDK throws a `ToolError`, and every one of them is classified by a
+-- | `ToolErrorCode`.
 -- |
 -- | ```
 -- | import Gg.Core as Gg.Core
@@ -20,7 +20,6 @@
 module Gg.Core
   ( ToolError
   , ToolErrorCode(..)
-  , FunctionSummary
   , attempt
   , toolError
   , toolErrorCode
@@ -99,21 +98,6 @@ derive instance Eq ToolErrorCode
 derive instance Generic ToolErrorCode _
 instance Show ToolErrorCode where
   show = genericShow
-
--- | One function in a module's directory, as `list` hands it back.
--- |
--- | The summary is one line. A function's whole documentation — every shape it may be called in, what
--- | each argument is for, and the types it refers to — is a view, opened with
--- | `Gg.Views.openDocsView`.
--- |
--- | # Fields
--- |
--- | - `name` — The function's name in its module: `readFile` in `Gg.Files.readFile`.
--- | - `summary` — One line saying what it does.
-type FunctionSummary =
-  { name :: String
-  , summary :: String
-  }
 
 -- | The failure fields, dug out of whatever was thrown — `null` for anything that is not a gg
 -- | failure.

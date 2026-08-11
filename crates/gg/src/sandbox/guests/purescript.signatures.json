@@ -304,7 +304,7 @@
 			"id": "memories",
 			"path": "Gg.Memories",
 			"brief": "Durable notes that survive context compaction.",
-			"detail": "A run picks one of three memory strategies and binds only that strategy's functions, so `Gg.Memories.list` is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`writeMemory` and `updateMemory`); the two file-shaped strategies keep the contents outside it (`createMemory`, `readMemory` and `editMemory`), one behind an index that is always in context and one behind `searchMemories`. Deleting is bound under all three.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
+			"detail": "A run picks one of three memory strategies and binds only that strategy's functions, so what this module offers is the honest answer to what memory can do here. The scratchpad keeps every memory in the context window (`writeMemory` and `updateMemory`); the two file-shaped strategies keep the contents outside it (`createMemory`, `readMemory` and `editMemory`), one behind an index that is always in context and one behind `searchMemories`. Deleting is bound under all three.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
 			"import": "import Gg.Memories as Gg.Memories"
 		},
 		{
@@ -353,27 +353,8 @@
 			"id": "core",
 			"path": "Gg.Core",
 			"brief": "The types every other module's signatures name, and the three functions that read a failure.",
-			"detail": "A capability module owns the types it produces, so `Gg.Files.FileRead` belongs to `Gg.Files` and `Gg.Board.IssueCreated` to `Gg.Board`. The three here belong to none of them because they belong to all: every call in this SDK throws a `ToolError`, and every module's `list` hands back a `FunctionSummary`.\n\n```\nimport Gg.Core as Gg.Core\nimport Gg.Files as Gg.Files\n\noutcome <- Gg.Core.attempt (Gg.Files.readTextFile \"notes.md\" {})\n```\n\nA failing call **throws** rather than handing back an `Either`. That is how effectful PureScript expresses a failure that is usually fatal to the work in hand, and it keeps the happy path unwrapped: `read <- Gg.Files.readTextFile \"main.purs\" {}` binds a `String`. An expected failure is narrowed with `attempt`, which converts one gg failure into an `Either` and re-throws anything that is not gg's.",
+			"detail": "A capability module owns the types it produces, so `Gg.Files.FileRead` belongs to `Gg.Files` and `Gg.Board.IssueCreated` to `Gg.Board`. The two here belong to none of them because they belong to all: every call in this SDK throws a `ToolError`, and every one of them is classified by a `ToolErrorCode`.\n\n```\nimport Gg.Core as Gg.Core\nimport Gg.Files as Gg.Files\n\noutcome <- Gg.Core.attempt (Gg.Files.readTextFile \"notes.md\" {})\n```\n\nA failing call **throws** rather than handing back an `Either`. That is how effectful PureScript expresses a failure that is usually fatal to the work in hand, and it keeps the happy path unwrapped: `read <- Gg.Files.readTextFile \"main.purs\" {}` binds a `String`. An expected failure is narrowed with `attempt`, which converts one gg failure into an `Either` and re-throws anything that is not gg's.",
 			"import": "import Gg.Core as Gg.Core"
-		}
-	],
-	"meta": [
-		{
-			"key": "list",
-			"name": "list",
-			"signatures": [
-				{
-					"signature": "list :: Effect (Array Gg.Core.FunctionSummary)",
-					"parameters": []
-				}
-			],
-			"doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `Gg.Views.openDocsView`.",
-			"types": [
-				{
-					"spelled": "Gg.Core.FunctionSummary",
-					"fqn": "Gg.Core.FunctionSummary"
-				}
-			]
 		}
 	],
 	"functions": [
@@ -2221,7 +2202,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "The function to document, by its fully-qualified name — `\"Gg.Files.readFile\"`. Each module's `list` is what names the functions that exist.",
+							"doc": "The function to document, by its fully-qualified name — `\"Gg.Files.readFile\"`. Searching the documentation is what names the functions that exist.",
 							"fields": []
 						}
 					]
@@ -2288,7 +2269,7 @@
 			"fqn": "Gg.Views.current",
 			"call": null,
 			"brief": "List what is open in the context window right now.",
-			"detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather than `list` because every module already carries a `list` of its own functions. Reading it is what informs a decision about what to close when the window is filling up.",
+			"detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. What it enumerates is the context window's contents, not any module's functions. Reading it is what informs a decision about what to close when the window is filling up.",
 			"signatures": [
 				{
 					"signature": "current :: Effect (Array Gg.Views.OpenView)",
@@ -4179,31 +4160,6 @@
 					"kind": "variant",
 					"brief": "The failure was not classified.",
 					"detail": "Reserved for outcomes raised outside a tool implementation; no call in this SDK produces it."
-				}
-			],
-			"memberFunctions": []
-		},
-		{
-			"fqn": "Gg.Core.FunctionSummary",
-			"module": "core",
-			"name": "FunctionSummary",
-			"declaration": "type FunctionSummary = { name :: String, summary :: String }",
-			"brief": "One function in a module's directory, as `list` hands it back.",
-			"detail": "The summary is one line. A function's whole documentation — every shape it may be called in, what each argument is for, and the types it refers to — is a view, opened with `Gg.Views.openDocsView`.",
-			"members": [
-				{
-					"name": "name",
-					"type": "String",
-					"kind": "field",
-					"brief": "The function's name in its module: `readFile` in `Gg.Files.readFile`.",
-					"detail": null
-				},
-				{
-					"name": "summary",
-					"type": "String",
-					"kind": "field",
-					"brief": "One line saying what it does.",
-					"detail": null
 				}
 			],
 			"memberFunctions": []

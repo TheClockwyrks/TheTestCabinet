@@ -1030,7 +1030,7 @@ pub(super) struct CodeTurnState {
     pub(super) context: ContextModel,
     /// The skills runtime (skill library + what has been read this session).
     pub(super) skills: SkillsRuntime,
-    /// The per-agent documentation runtime behind `object.list()` / `view.openDocsView()`.
+    /// The per-agent documentation runtime behind `docs.search` / `view.openDocsView()`.
     pub(super) docs: DocsRuntime,
     /// The per-agent [program library](crate::programs), with **this turn's program already
     /// recorded in it** — the turn appends before it hands the state back, so the next turn's
@@ -3025,9 +3025,6 @@ impl ToolApi for LoopToolApi {
                     .block_on(handle_subagent_call(sub, spawner, emitter, call))
             },
         )
-    }
-    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
-        self.docs.list(object)
     }
     /// Search the documentation surface, hand the program its page, and leave the same page in the
     /// window as the agent's [search-results view](ContextModel::open_search_view).

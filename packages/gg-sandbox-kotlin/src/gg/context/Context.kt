@@ -9,7 +9,6 @@
  */
 package gg.context
 
-import gg.core.FunctionSummary
 import gg.core.ToolError
 import gg.internal.Read
 import gg.internal.contextObject
@@ -24,17 +23,6 @@ import gg.internal.ggTexts
 import org.teavm.jso.JSObject
 import org.teavm.jso.core.JSArray
 
-/**
- * List the functions this module offers, each with a one-line summary.
- *
- * Only the functions this run actually bound are returned, so the directory never names a call the
- * program cannot make. One function's full signature, argument descriptions and types are opened as a
- * view with `gg.views.openDocsView`.
- *
- * @return every function this module really bound, each with one line saying what it does
- */
-public fun list(): List<FunctionSummary> =
-    Read.functionSummaries(ggCall("list", contextObject(), "gg.context", "list", ggArgs()))
 
 /**
  * Drop the contents of files that were read out of the context window, and report what that

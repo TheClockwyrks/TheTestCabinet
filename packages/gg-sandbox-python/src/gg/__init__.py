@@ -55,11 +55,10 @@ from . import (
     tasks,
     views,
 )
-from .core import UNCHANGED, FunctionSummary, ToolError, ToolErrorCode, Unchanged
+from .core import UNCHANGED, ToolError, ToolErrorCode, Unchanged
 
 __all__ = [
     "UNCHANGED",
-    "FunctionSummary",
     "ToolError",
     "ToolErrorCode",
     "Unchanged",

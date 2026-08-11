@@ -121,9 +121,8 @@ by **clang's comment AST**, dumped as JSON. clang carries a real documentation p
 on — and it does the three things that matter: it decides which comment belongs to which declaration,
 it parses the Doxygen commands inside one into structure, and it keeps the **lines** the author
 wrote. So `\param path`'s prose arrives attached to the parameter called `path`, `\returns` and
-`\throws` arrive as their own nodes, `\copydoc` arrives as a reference the reflector resolves, and
-the first line of a comment is recoverable as a first line rather than as a sentence a rule had to
-find.
+`\throws` arrive as their own nodes, and the first line of a comment is recoverable as a first line
+rather than as a sentence a rule had to find.
 
 That makes C++ one of the few arms here with a **real per-parameter documentation slot** rather than
 a convention standing in for one — Rust and PureScript both need a `# Arguments` list, because
@@ -147,11 +146,6 @@ Two conventions the reflector enforces, both worth knowing before editing a head
   namespace. An element rather than a `\command`, because an unknown Doxygen command is a compiler
   warning on every declaration that carries one; on the declaration rather than in a table beside
   it, because a table is a second place to be wrong.
-- **`list()` is written once.** C++ has no protocol extension, and a comment inside a macro body is
-  gone before the macro is expanded, so the eleven `list()` declarations cannot share one written
-  paragraph the way Swift's protocol default or Rust's `macro_rules!` do. They share
-  `gg::detail::module_directory` instead, by a one-line `\copydoc`, and the reflector asserts all
-  eleven declare the same shape — and that `gg::core`, which offers no capability, carries none.
 
 ## The library set
 

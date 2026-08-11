@@ -49,6 +49,32 @@ pub(crate) enum EndingRole {
 }
 
 impl EndingRole {
+    /// **Every role an agent is dispatched in**, in the order gg offers them.
+    ///
+    /// It is here, next to [`tools`](Self::tools), rather than written out wherever a caller needs
+    /// to enumerate roles — and that placement is the whole of its value. A copy of this list kept
+    /// in another file rots in the direction nothing notices: the enum grows, the copy does not,
+    /// and a gate that reads the copy goes on agreeing with itself about the roles it still knows
+    /// while agents dispatched in the new one are offered an ending nothing documents or records.
+    ///
+    /// It cannot rot here, and the [assertion below](self) is what makes that a fact rather than a
+    /// hope — an array is not something the compiler can derive from an enum, so the chain that
+    /// walks it is what a third variant has to be threaded onto.
+    pub(crate) const ALL: [Self; 2] = [Self::Standard, Self::Review];
+
+    /// The role after `self` in [`ALL`](Self::ALL)'s order, or `None` for the last of them.
+    ///
+    /// Read by nothing but the compile-time assertion below, and that is its whole job: it is an
+    /// **exhaustive** `match`, so a role added to the enum does not compile until it is threaded
+    /// into this chain, and threading it in is what makes the walk longer than [`ALL`](Self::ALL)
+    /// and fails the build until the array grows too.
+    const fn after(self) -> Option<Self> {
+        match self {
+            Self::Standard => Some(Self::Review),
+            Self::Review => None,
+        }
+    }
+
     /// The tool names this role may end with, in the order the loop offers them.
     pub(crate) fn tools(self) -> &'static [&'static str] {
         match self {
@@ -76,6 +102,33 @@ impl EndingRole {
         }
     }
 }
+
+/// **[`EndingRole::ALL`] really is all of them**, asserted at compile time.
+///
+/// The failure this catches is a role added to gg whose ending calls nobody wrote down. It is
+/// silent from every other angle: the capability gate reads `ALL` to work out which endings gg
+/// offers, so a role missing from the array makes the gate compute *no* expectation for it, and an
+/// expectation of nothing agrees with a table that carries nothing. Agents dispatched in the new
+/// role would then be offered a native ending tool that no operation documents, gates or records,
+/// and no program in any registered language could end their session.
+///
+/// The walk is what makes it airtight rather than merely co-located: [`after`](EndingRole::after)
+/// is exhaustive, so a third variant must be threaded onto the chain, and a chain one longer than
+/// the array fails here — before anything has a chance to run and quietly offer an ending nothing
+/// knows about.
+const _: () = {
+    let mut counted = 1;
+    let mut role = EndingRole::ALL[0];
+    while let Some(next) = role.after() {
+        counted += 1;
+        role = next;
+    }
+    assert!(
+        counted == EndingRole::ALL.len(),
+        "`EndingRole::ALL` must list every ending role — a role threaded into `after` needs a slot \
+         in the array too"
+    );
+};
 
 /// What an agent declared when it ended its session.
 #[derive(Debug, Clone, PartialEq, Eq)]

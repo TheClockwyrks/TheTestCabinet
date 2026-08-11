@@ -12,7 +12,6 @@ module Gg.Files
   , writeFile
   , editFile
   , listDir
-  , list
   , FileRead(..)
   , TextFile
   , ImageFile
@@ -28,8 +27,6 @@ import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe)
 import Data.Show.Generic (genericShow)
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Read (fileRead)
 import Gg.Internal.Wire as Wire
 import Prim.Row (class Union)
@@ -268,15 +265,3 @@ entryKind = case _ of
   "file" -> FileEntry
   "directory" -> DirectoryEntry
   _ -> OtherEntry
-
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Files.list" [ "fs" ]

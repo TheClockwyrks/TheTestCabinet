@@ -5,10 +5,7 @@
 /// unknown one comes back as `.notFound` carrying the full list.
 ///
 /// - ggmodule: skills
-public enum skills: ModuleDirectory {
-    /// The gg module this namespace is, which is what its directory is looked up by.
-    public static let ggModule = "gg.skills"
-
+public enum skills {
     /// The gg tools this module dispatches — see `files.ggTools`.
     static let ggTools = ["read_skill"]
 

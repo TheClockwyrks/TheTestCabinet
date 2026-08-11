@@ -27,16 +27,15 @@
 //! reflector emits — a catalogue that carried one would be an arm asserting something about gg's
 //! configuration surface, which is the one thing an arm cannot be held to. The
 //! [projection](super::signatures::CatalogueFunction::capability) that carries the id to the docs
-//! runtime is synthesized host-side from where an entry sits in its catalogue, and this table is
-//! where the id it is synthesized *to* is written down.
+//! runtime reads it off the [`Binding`] here, and this table is the only place it is written down.
 //!
 //! # The transitional field
 //!
-//! [`Operation::call`] is the join to today's catalogues, which still file every entry under an API
-//! object and a key. When each arm writes its operation id on the declaration itself, the join
-//! becomes the id and the field goes; until then it is how a [catalogue
-//! function](super::signatures::CatalogueFunction) is resolved to the row that governs it, and the
-//! test module holds every arm to resolving.
+//! [`Operation::call`] is gg's own `(object, key)` name for an operation. Every arm now writes its
+//! operation id on the declaration itself, so no catalogue is *resolved* through this pair any more
+//! — what still is, is gg's own sentences: the [`SurfaceCall`] constants are how a prompt or a
+//! refusal names a call, and [`spell`](super::language::spell) turns one into the arm's spelling by
+//! way of this field. It goes when those constants are replaced by operation ids.
 
 use std::fmt;
 
@@ -131,13 +130,24 @@ pub enum Binding {
 /// Writing it here makes the judgement explicit, central, and reviewed in the same diff as the
 /// operation it excuses — rather than implicit in the omitting package, where the only evidence is
 /// an absence.
+///
+/// It ranges over **operations, not spellings**, and the boundary is worth stating because it is
+/// where the propagation rule stops. A helper that is a new *capability* becomes a row here, and
+/// every arm that has not followed goes red by name. A helper that is a second way into a
+/// capability every arm already binds — the method some arm hangs off the type it operates on,
+/// beside the free function everybody has — names an operation that already exists, so it needs no
+/// row, no exemption and no reason, and an arm may ship it where another does not. That is
+/// deliberate: requiring the rest to follow would be requiring eleven arms to agree on a receiver,
+/// which is the shape parity the capability gate was re-founded to retire. The capability gate's
+/// module header states the same boundary from the other side.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(
     dead_code,
-    reason = "the propagation rule this expresses is enforced by this module's gates rather than \
+    reason = "the propagation rule this expresses is enforced by the capability gate rather than \
               read at run time, and no arm needs an exemption today — the type is here so that the \
               first one that does is written down beside the operation instead of in the package \
-              that omits it"
+              that omits it. Both of its arms are exercised: the gate's tests add an operation no \
+              arm binds and watch every arm fail, then excuse them and watch it pass."
 )]
 pub enum Applicability {
     /// Every registered language offers it. The default, and the state of all 47 today.
@@ -159,10 +169,10 @@ pub enum Applicability {
 #[allow(
     dead_code,
     reason = "a run reads two of these fields — `call` to resolve a catalogue entry to its row, and \
-              `binding` to decide whether the agent has it. The other four are read by the gates in \
-              `operations.test.rs`, which is where a table that exists to be *correct* rather than \
-              to be *called* earns its keep; each becomes a run-time read as the stages that \
-              consume it land."
+              `binding` to decide whether the agent has it. The other four are read by the \
+              capability gate (`language/agreement.rs`), which is where a table that exists to be \
+              *correct* rather than to be *called* earns its keep; each becomes a run-time read as \
+              the stages that consume it land."
 )]
 pub struct Operation {
     /// gg's stable identity for it, and the cross-arm join key: `files.read_file`.
@@ -196,17 +206,17 @@ pub struct Operation {
 /// The [family](Operation::family) ids, named once so that a row of the table below files an
 /// operation under a family by a name a typo cannot survive. Each is asserted to be a real
 /// `skills::builtin` family.
-const FAMILY_FILESYSTEM: &str = "gg-filesystem";
-const FAMILY_SHELL: &str = "gg-shell";
-const FAMILY_PROJECT: &str = "gg-project";
-const FAMILY_TASKS: &str = "gg-tasks";
-const FAMILY_MEMORY: &str = "gg-memory";
-const FAMILY_SKILLS: &str = "gg-skills";
-const FAMILY_CONTEXT: &str = "gg-context";
-const FAMILY_DELEGATION: &str = "gg-delegation";
-const FAMILY_VIEWS: &str = "gg-views";
-const FAMILY_PROGRAMS: &str = "gg-programs";
-const FAMILY_SESSION: &str = "gg-session";
+pub(crate) const FAMILY_FILESYSTEM: &str = "gg-filesystem";
+pub(crate) const FAMILY_SHELL: &str = "gg-shell";
+pub(crate) const FAMILY_PROJECT: &str = "gg-project";
+pub(crate) const FAMILY_TASKS: &str = "gg-tasks";
+pub(crate) const FAMILY_MEMORY: &str = "gg-memory";
+pub(crate) const FAMILY_SKILLS: &str = "gg-skills";
+pub(crate) const FAMILY_CONTEXT: &str = "gg-context";
+pub(crate) const FAMILY_DELEGATION: &str = "gg-delegation";
+pub(crate) const FAMILY_VIEWS: &str = "gg-views";
+pub(crate) const FAMILY_PROGRAMS: &str = "gg-programs";
+pub(crate) const FAMILY_SESSION: &str = "gg-session";
 
 /// [`Operation::takes_input`], spelled. A bare `true` at the end of a row says nothing about which
 /// field it is, and this table is read far more often than it is written.
@@ -255,10 +265,9 @@ macro_rules! operation {
 /// tool added to gg fails this file to compile until it has an operation. That is the one direction
 /// where derivation is safe, because the tool vocabulary is already gg's own.
 ///
-/// [`list`](crate::docs::LIST_FUNCTION) is deliberately absent, exactly as it was absent from the
-/// table this replaces: the [documentation carve-out](crate::docs)'s meta function is seeded onto
-/// *every* object the guest creates rather than catalogued on one, so its object is a run-time
-/// argument and there is no fixed call to write down.
+/// The [documentation carve-out](crate::docs)'s own calls are deliberately absent, exactly as they
+/// were absent from the table this replaces: no arm's committed catalogue spells them, so there is
+/// no binding for a row here to join to and nothing a spelling could be resolved from.
 pub const OPERATIONS: &[Operation] = &[
     operation!(
         "shell",
@@ -641,12 +650,13 @@ pub const OPERATIONS: &[Operation] = &[
 /// The operation governing one [catalogue function](CatalogueFunction), or `None` for an entry gg
 /// has no identity for.
 ///
-/// The lookup is by the `(object, key)` pair the entry was filed under — identity, never the name,
+/// The lookup is by the operation the entry **names**, never by the name a program calls it by,
 /// which is exactly the half that differs between arms. A `None` is a **drift**: an arm binding
 /// something gg does not know about, or gg having renamed a key without the arm following. Callers
 /// treat it as unbound rather than panicking, because degrading one function out of a model's
-/// documentation is a smaller failure than a run that stops — and `every_catalogued_function_has_an_operation`
-/// proves the case unreachable for every registered language.
+/// documentation is a smaller failure than a run that stops — and
+/// `every_catalogued_function_has_an_operation` proves the case unreachable for every registered
+/// language, while the capability gate (`language/agreement.rs`) is what reports it *by name*.
 pub fn operation_of(function: &CatalogueFunction) -> Option<&'static Operation> {
     match function.operation {
         // A catalogue in the [normalized schema](super::signatures::SchemaVersion::V2) names its
@@ -777,15 +787,27 @@ const _: () = {
 /// compile time for the same reason the tool bijection is: the failure is an omission, and an
 /// omission is exactly what a reviewer skims past.
 ///
-/// The run-time gate cannot catch this one. `every_operation_is_offered_by_every_arm_that_is_not_excused`
-/// reads a reason only to quote it back in the panic for a *dead* exemption; a live exemption with a
-/// blank reason takes the accepting arm and the suite stays green — the operation waived on that arm
-/// for good, with the justification the clause exists to force left unwritten. Here it fails a
-/// `cargo check`, before there is a green suite to be reassured by.
+/// Coverage cannot catch this one. A blank reason still excuses the arm, so the arm really does not
+/// bind the operation, the dead-exemption converse stays quiet, and the operation is waived there
+/// for good with the justification the clause exists to force left unwritten. The capability gate
+/// (`language/agreement.rs`) reports it too — that is the copy that can be *watched* rejecting a
+/// table, since this one cannot be handed a wrong table at all — and here it fails a `cargo check`,
+/// before there is a green suite to be reassured by.
 ///
 /// An empty exemption *list* fails too. `UniversalExcept(&[])` is [`Applicability::Universal`] said
 /// in a way that reads like a waiver, and a row that reads like a waiver is one a later edit will
 /// append to without re-deriving whether it should exist at all.
+///
+/// **This is the message a developer actually sees**, and it is the less helpful of the two. A
+/// `const` block is evaluated before anything runs, so a blank reason fails the build here and the
+/// gate's own sentence — which names both the operation and the arm (``` `files.list_dir` is
+/// excused on `ruby` with no reason ```) — is never reached on the real table. What this one can
+/// say is that *a* row is wrong, with the span pointing at the assertion rather than at the row, so
+/// on a table of 47 the next step is to read the exemptions rather than to follow the error. The
+/// two are not redundant: [`is_blank`] recognises ASCII whitespace only, where the gate's
+/// `reason.trim()` also strips U+00A0, so the gate is the stricter of the two on a reason it will
+/// never be shown — and the gate is the copy that can be *watched* rejecting a table, which this
+/// one, being unable to be handed a wrong table at all, cannot.
 const _: () = {
     let mut i = 0;
     while i < OPERATIONS.len() {

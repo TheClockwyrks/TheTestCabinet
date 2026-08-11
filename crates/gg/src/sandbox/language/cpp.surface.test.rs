@@ -418,19 +418,12 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
   const std::uint32_t closed = views::close("summary");
   const std::uint32_t missing = views::close("never opened");
   const auto open = views::current();
-  const auto directory = files::list();
   log(std::format("{} {}", open[0].selector, open[0].kind == views::view_kind::file));
   log(std::format("{} {}", closed, missing));
   const std::string shown = std::holds_alternative<files::text_file>(read)
                                 ? std::get<files::text_file>(read).contents
                                 : std::get<files::image_file>(read).label;
   log(shown.substr(0, shown.find('\n')));
-  std::string names;
-  for (const auto &function : directory) {
-    if (!names.empty()) names += ",";
-    names += function.name;
-  }
-  log(names);
   session::finish("read the file and showed myself the result");
 "####,
         )),
@@ -445,7 +438,6 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    assert_eq!(lines[3], "gg::filesFunction");
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome

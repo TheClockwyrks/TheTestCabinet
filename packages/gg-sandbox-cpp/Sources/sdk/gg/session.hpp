@@ -27,9 +27,6 @@ namespace gg {
 /// <ggmodule>session</ggmodule>
 namespace session {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// End this session, reporting what was done in a sentence or two.
 ///
 /// It is the only thing that ends a working agent's session, and it does not stop the program:

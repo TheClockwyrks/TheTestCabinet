@@ -70,21 +70,6 @@ fn a_module_is_reached_with_a_dot() {
     );
 }
 
-/// **The documentation carve-out is spelled `List` here**, which is why nothing in gg quotes its
-/// key.
-///
-/// `list` is gg's own identity for the meta function, shared with every arm and with the surface
-/// record; `List` is what this SDK binds, because a method in C# is `PascalCase`. The two being
-/// different is exactly the case the seam's [`meta_spelling`](crate::sandbox::meta_spelling) exists
-/// for — and this arm is the first registered one where they are.
-#[test]
-fn the_documentation_carve_out_is_spelled_the_way_c_sharp_spells_a_method() {
-    assert_eq!(
-        crate::sandbox::meta_spelling(csharp(), crate::docs::LIST_FUNCTION),
-        "List"
-    );
-}
-
 /// **A code module is spelled `.cs`**, and there is no second spelling because C# has never had one.
 #[test]
 fn a_code_skills_module_is_spelled_cs() {

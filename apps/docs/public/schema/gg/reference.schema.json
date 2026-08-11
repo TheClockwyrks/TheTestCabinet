@@ -39,7 +39,7 @@
           "type": "array"
         },
         "summary": {
-          "description": "The one-line summary `object.list()` shows — the first sentence of\n[`doc`](Self::doc).",
+          "description": "The one-line summary a search result carries — the first sentence of\n[`doc`](Self::doc).",
           "type": "string"
         },
         "types": {

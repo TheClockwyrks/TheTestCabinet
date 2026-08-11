@@ -8,7 +8,7 @@
 //! [seam](super) claims — that the healing skeleton asks a dialect rather than knowing TypeScript's
 //! answers, that the prompt is selected per language rather than shared, that one language's
 //! committed artifacts cannot reach another's consumer, that the
-//! [agreement gate](super::agreement) compares two surfaces rather than one surface to itself —
+//! [capability gate](super::agreement) can be made to reject a surface at all —
 //! is unfalsifiable while TypeScript is the only thing that implements it. The fixture is what
 //! makes them falsifiable, a workflow before a second real language exists rather than a workflow
 //! after.
@@ -24,29 +24,24 @@
 //! A stand-in for the *shape* a second language would take, deliberately not an imitation of any
 //! particular one:
 //!
-//! * **Its spellings are snake_case.** They are derived, at test time, from the
-//!   [frozen v1 surface](FIXTURE_SIGNATURES) beside this file by re-spelling every entry's `name`
-//!   and the head of its `signature`, and changing nothing else — not a `key`, not an `object`, not
-//!   a gate, not an `ending`. So the fixture is by construction *the same capability surface under
-//!   different spellings*, which is exactly what an A/B study across languages needs both arms to
-//!   be, and what the agreement gate must therefore accept.
+//! * **It offers gg's whole capability surface in a shape no registered arm chose.** The catalogue
+//!   is [reshaped](reshape), at test time, out of a registered arm's committed one: every name is
+//!   re-spelled in snake_case, one module is renamed, an operation is moved into a module of the
+//!   fixture's own making, two free functions become methods on the types they operate on, and one
+//!   operation is bound a second time as an alias. Nothing about which *operation* an entry binds
+//!   changes, because that is the one thing the [gate](super::agreement) holds an arm to.
 //!
-//!   It used to be cut from a registered arm's own committed catalogue — TypeScript's, then
-//!   Swift's — and deriving it that way is what kept it from rotting. **That is no longer
-//!   possible**, and the reason is a milestone rather than a regression: the
-//!   [agreement gate](super::agreement)'s comparative half reads the five-part identity a
-//!   [`V1`](crate::sandbox::SchemaVersion::V1) catalogue files an entry under and runs over the v1
-//!   arms alone, and with Swift's conversion **there is no v1 arm left**. A fixture cut from a
-//!   converted arm would be a second surface the comparison skips, and every teeth test below it
-//!   would assert nothing while still passing. So the last v1-shaped surface is frozen beside this
-//!   file and the comparison is made between two fixtures cut from it.
+//!   That combination is the whole point. The gate must **pass** a surface that offers the same
+//!   capabilities in another shape — a different module, a different receiver, a different kind of
+//!   declaration, a different number of functions — and must **fail** a surface missing one of
+//!   them. A fixture that only re-spelled names could show the first half only for spelling, which
+//!   is the dimension nothing was ever in danger of over-constraining.
 //!
-//!   The cost of freezing is stated rather than hidden: a gg tool added after the freeze fails the
-//!   fixture's own tool bijection, by name, because the frozen surface will not carry it. That is
-//!   the correct failure — it says the transitional surface is stale — and its remedy is the stage
-//!   that removes both. **This goes where the split in [`is_v1`](super::agreement) goes**: when the
-//!   gate is re-founded on the normalized model, the frozen file and the comparative half go
-//!   together and the fixture is cut from whichever arm the re-founded gate reads.
+//!   It is derived rather than frozen, and that is what keeps it from rotting: a gg tool added
+//!   tomorrow becomes an operation, the source arm binds it, and the fixture binds it too. The
+//!   surface it is cut from does not matter and is not asserted — every arm commits the same
+//!   normalized model — beyond its being one whose functions are free functions, so that the
+//!   reshape into methods has somewhere to start.
 //! * **Its syntax is line-oriented**: `#` starts a comment, `use x` imports, `def f` declares, and
 //!   `??` is not a token. Nothing evaluates it — no component is ever compiled from
 //!   [`guest_component`](ProgramLanguage::guest_component) — because everything under test here
@@ -69,6 +64,7 @@
 //! everything here, and its only production-side consumer is the `#[cfg(test)]` arm of the prompt
 //! engine's template registration.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use serde_json::{Value, json};
@@ -82,31 +78,16 @@ use super::{
     PreparedProgram, ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// **The last surface written in the first schema**, frozen here so that the transitional half of
-/// the [agreement gate](super::agreement) keeps a subject after the eleventh arm was converted.
+/// **The surface the fixture's own is reshaped out of** — a registered arm's committed catalogue,
+/// read as a *file* rather than reached for through [`TypeScript`](super::typescript), which keeps
+/// this module from needing anything of another language's module to be public.
 ///
-/// It is the Swift arm's catalogue as it stood before that conversion, byte for byte, and it is a
-/// *test fixture* rather than an arm: nothing loads it at run time, no run resolves it, and its
-/// `language` field names Swift only because that is who wrote it. It is not
-/// `guests/swift.signatures.json`, which is now a [`V2`](crate::sandbox::SchemaVersion::V2)
-/// catalogue and which the comparative half would silently skip.
-///
-/// See this module's header for what freezing costs and which stage un-freezes it.
-const FIXTURE_SIGNATURES: &str = include_str!("fixture.signatures.json");
-
-/// **A surface written in the second schema**, for the half of the
-/// [agreement gate](super::agreement) that reads one.
-///
-/// Swift's committed catalogue, read a second time as a *file* rather than reached for through
-/// [`Swift::catalogue`](super::swift), on the same terms the frozen v1 surface above is read: taking
-/// it from the file keeps this module from needing anything of another language's module to be
-/// public.
-///
-/// It is here because [`usable_spellings`](super::agreement) — the one check every converted arm is
-/// still held to — had no damaged subject anywhere in the tree, and a gate whose failure nobody has
-/// watched is a gate nobody knows works. Which arm it is cut from does not matter and is not
-/// asserted: what is exercised is the *shape*, and every converted arm has the same one.
-const CONVERTED_SIGNATURES: &str = include_str!("../guests/swift.signatures.json");
+/// Which arm it is does not matter and is not asserted, with one exception that is about the
+/// reshape rather than about the arm: its functions are free functions, so [`reshape`] has somewhere
+/// to start when it turns two of them into methods. Its `language` field says `typescript` and the
+/// fixture is not TypeScript — the field is the wire enum, the fixture has no value in it, and that
+/// is why catalogue provenance is asserted over *registered* languages only.
+const SOURCE_SIGNATURES: &str = include_str!("../guests/typescript.signatures.json");
 
 /// The stub that stands where a real language's component would be.
 ///
@@ -371,31 +352,11 @@ impl FixtureLanguage {
     }
 }
 
-/// The one agreeing fixture: the frozen surface, re-spelled, and nothing else changed.
+/// The one agreeing fixture: gg's whole capability surface, [reshaped](reshape).
 pub(crate) fn fixture_language() -> &'static FixtureLanguage {
     static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
     FIXTURE.get_or_init(|| FixtureLanguage {
-        catalogue: leak(respelled_catalogue(|_| {})),
-        checker: Some(FIXTURE_CHECKER),
-    })
-}
-
-/// **The reference surface every comparative assertion is made against** — the frozen v1 surface
-/// with nothing re-spelled at all.
-///
-/// It exists because the comparison needs two v1 languages and the registry no longer has one. Until
-/// Swift's conversion this role was a *registered arm*, which was better: comparing a real
-/// catalogue against a re-spelling of it is what made "the gate compares identity rather than names"
-/// an observation about something that ships. With every arm converted the comparative half has no
-/// registered subject left, so the reference and the re-spelling are now cut from the same frozen
-/// file — which keeps every teeth test below able to *fail*, and is honest about no longer being a
-/// statement about a shipped surface.
-///
-/// It goes with the frozen file, in the stage that re-founds the gate.
-pub(crate) fn a_language_spelling_it_verbatim() -> &'static FixtureLanguage {
-    static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
-    FIXTURE.get_or_init(|| FixtureLanguage {
-        catalogue: leak(verbatim_catalogue()),
+        catalogue: leak(reshaped_catalogue(|_| {})),
         checker: Some(FIXTURE_CHECKER),
     })
 }
@@ -410,13 +371,16 @@ pub(crate) fn a_language_spelling_it_verbatim() -> &'static FixtureLanguage {
 pub(crate) fn a_language_that_does_not_compile() -> &'static FixtureLanguage {
     static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
     FIXTURE.get_or_init(|| FixtureLanguage {
-        catalogue: leak(respelled_catalogue(|_| {})),
+        catalogue: leak(reshaped_catalogue(|_| {})),
         checker: None,
     })
 }
 
 /// A fixture whose catalogue has been damaged by `edit` — the input to every assertion that the
 /// [agreement gate](super::agreement) has teeth.
+///
+/// `edit` sees the catalogue **after** the reshape, so a row damages the surface an arm would really
+/// commit rather than the one it was cut from.
 ///
 /// Each call leaks one catalogue, which is what lets a single test hold a healthy fixture and a
 /// damaged one at once. A test binary that runs a handful of these leaks a handful of catalogues
@@ -425,29 +389,7 @@ pub(crate) fn a_language_whose_catalogue(
     edit: impl FnOnce(&mut Value),
 ) -> &'static FixtureLanguage {
     Box::leak(Box::new(FixtureLanguage {
-        catalogue: leak(respelled_catalogue(edit)),
-        checker: Some(FIXTURE_CHECKER),
-    }))
-}
-
-/// A fixture whose **[`V2`](crate::sandbox::SchemaVersion::V2)** catalogue has been damaged by
-/// `edit` — the input to every assertion that
-/// [`usable_spellings`](super::agreement) has teeth.
-///
-/// The v1 fixture next door cannot stand in for it. A catalogue in the first schema is answered by
-/// `internally_consistent`, which is a *separate implementation* of nearly the same rules with
-/// nearly the same complaint strings — so a row damaged there proves nothing about the branch a
-/// converted arm is actually read by, however alike the two failures look.
-///
-/// Leaks one catalogue per call, for the reason [`a_language_whose_catalogue`] does.
-pub(crate) fn a_converted_language_whose_catalogue(
-    edit: impl FnOnce(&mut Value),
-) -> &'static FixtureLanguage {
-    let mut document: Value = serde_json::from_str(CONVERTED_SIGNATURES)
-        .expect("the committed converted catalogue is valid JSON");
-    edit(&mut document);
-    Box::leak(Box::new(FixtureLanguage {
-        catalogue: leak(document.to_string()),
+        catalogue: leak(reshaped_catalogue(edit)),
         checker: Some(FIXTURE_CHECKER),
     }))
 }
@@ -462,61 +404,286 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 // The catalogue
 // ---------------------------------------------------------------------------------------------
 
-/// The frozen v1 surface exactly as it was written, as JSON — the reference every comparison is
-/// made against.
-fn verbatim_catalogue() -> String {
-    FIXTURE_SIGNATURES.to_string()
-}
+/// The module the fixture files the wait-for-an-issue operation under — **a module of its own
+/// making**, and the one an arm's grouping is proved free by.
+///
+/// gg's own vocabulary files that operation under `board`, and the source arm agrees. An arm is
+/// nonetheless free to group its documentation how it likes: the cross-arm join is the operation
+/// id, so a gate that noticed this at all would be a gate imposing gg's module layout on eleven
+/// SDKs — which is the shape parity the whole reshape exists to retire.
+const WAITING: &str = "waiting";
 
-/// The frozen v1 surface with every spelling converted to snake_case and `edit` applied, as JSON.
+/// The module whose **path** the fixture renames, so that a module's id and the path a model reads
+/// are demonstrably two strings rather than one.
+const FILES: &str = "files";
+
+/// What the fixture calls it — deliberately a word out of this arm's own vocabulary rather than
+/// gg's, since a fixture that renamed a module to another of gg's names would be showing that a
+/// grouping may be re-spelled rather than that it may be *chosen*.
+const WORKSPACE: &str = "workspace";
+
+/// The operation the fixture binds **twice**: once canonically, and once as an alias.
 ///
-/// Only two fields move: an entry's `name`, and the head of each of its `signatures`, which by the
-/// catalogue's own rule begins with that name. Identity — `key`, `tool`, `object`, `requires`,
-/// `ending` — is copied verbatim, because identity is precisely what the agreement gate says two
-/// languages may not differ on, and a fixture that differed on it would make the gate vacuous.
+/// It is the case the schema's `aliasOf` was written for — a free function beside the method on the
+/// type it operates on — so the fixture binds the method canonically and keeps the free function as
+/// the second way in.
 ///
-/// The *shape* of the call is copied verbatim too — parameter names, their descriptions, how many
-/// signatures an entry carries — even though every one of those is spelling the fixture would be
-/// free to change. Deriving means never rotting, and a fixture that also renamed arguments would
-/// have to re-derive the descriptions to keep them honest. The divergence a *real* second language
-/// brings is exercised by the [agreement gate's own tests](super::agreement::tests), which build a
-/// catalogue whose arguments are renamed and whose optional argument is an overload pair, and assert
-/// that it still agrees.
-///
-/// The root `language` field is the one thing that cannot be re-spelled: it is the wire enum, and
-/// the fixture has no value in it. That is why catalogue provenance is asserted over *registered*
-/// languages only.
-fn respelled_catalogue(edit: impl FnOnce(&mut Value)) -> String {
+/// The canonical method takes **no parameters**: the view it closes is the receiver, which is the
+/// shape a language with methods reaches for and the one the [gate](super::agreement::takes_input)
+/// has to be able to accept. An arm that documents no argument because its argument is the thing
+/// the call hangs off is not an arm that forgot to document one.
+const CLOSE: &str = "views.close";
+
+/// The operation the fixture turns into a **method on a handle**, renaming it in the process.
+const SEND_MESSAGE: &str = "delegation.send_message";
+
+/// The operation the fixture **moves into another module**.
+const WAIT_FOR_ISSUE: &str = "board.wait_for_issue";
+
+/// The source surface, [reshaped](reshape) and then damaged by `edit`, as JSON.
+fn reshaped_catalogue(edit: impl FnOnce(&mut Value)) -> String {
     let mut document: Value =
-        serde_json::from_str(FIXTURE_SIGNATURES).expect("the frozen v1 surface is valid JSON");
-    for section in ["meta", "session", "views", "programs", "tools", "helpers"] {
-        let entries = document[section]
-            .as_array_mut()
-            .unwrap_or_else(|| panic!("the catalogue's `{section}` is an array"));
-        for entry in entries {
-            let name = entry["name"]
-                .as_str()
-                .expect("every entry names the function a program calls")
-                .to_string();
-            let respelled = snake_case(&name);
-            let signatures = entry["signatures"]
-                .as_array_mut()
-                .expect("every entry carries at least one signature");
-            for shape in signatures {
-                let signature = shape["signature"]
-                    .as_str()
-                    .expect("every signature is a string")
-                    .to_string();
-                shape["signature"] = json!(match signature.strip_prefix(name.as_str()) {
-                    Some(rest) => format!("{respelled}{rest}"),
-                    None => signature,
-                });
-            }
-            entry["name"] = json!(respelled);
-        }
-    }
+        serde_json::from_str(SOURCE_SIGNATURES).expect("the source catalogue is valid JSON");
+    reshape(&mut document);
     edit(&mut document);
     document.to_string()
+}
+
+/// **Turn a registered arm's surface into a second arm's**, in every dimension an idiomatic SDK is
+/// free to differ in — and in none that it is not.
+///
+/// What moves:
+///
+/// * every module `path`, which loses the source arm's namespace prefix, and one of which
+///   ([`FILES`]) is renamed outright to [`WORKSPACE`];
+/// * every function's `name`, into snake_case, with the head of each of its signatures — which by
+///   the catalogue's own rule begins with that name — following it;
+/// * [`WAIT_FOR_ISSUE`], into a module ([`WAITING`]) the source arm does not have;
+/// * [`SEND_MESSAGE`] and [`CLOSE`], from free functions into **methods** on the types they operate
+///   on, the second of them losing its parameter list to its receiver and keeping the free function
+///   it displaced as an alias;
+/// * every fully-qualified name and every resolved type reference, so that the names still say where
+///   the things are.
+///
+/// What does not move is the `operation` each entry binds. That is the one thing the
+/// [gate](super::agreement) holds an arm to, so a fixture free to change it would be a fixture that
+/// could not show the gate catching anything.
+///
+/// # Why it minds what the source arm already did
+///
+/// It is derived from a *committed* catalogue, so the surface it is cut from changes under it — and
+/// the changes that matter are the ones in the same direction as the reshape. A source arm that
+/// grew its own `OpenView.close` method would, under an unconditional rewrite, be reshaped into two
+/// entries both spelled `close` on one receiver, and the four tests that read the fixture would
+/// fail with a sentence about the *gate*. So every promotion here is conditioned on the entry being
+/// the arm's canonical binding, and the alias is synthesized only where the source arm does not
+/// already carry one for that operation. The reshape is then idempotent with respect to an arm
+/// becoming more idiomatic, which is the one kind of drift it is guaranteed to meet.
+fn reshape(document: &mut Value) {
+    let paths = modules(document);
+    let resolved = types(document, &paths);
+    let aliased = already_aliased(document);
+
+    let mut alias: Option<Value> = None;
+    for function in document["functions"]
+        .as_array_mut()
+        .expect("the source catalogue files every call in `functions`")
+    {
+        let operation = string(&function["operation"]);
+        // Only the arm's canonical binding is reshaped. An entry the source arm already filed as a
+        // second way in is one of the shapes this reshape produces, and rewriting it would be the
+        // reshape colliding with itself.
+        let canonical = function["aliasOf"].is_null();
+        let mut name = snake_case(&string(&function["name"]));
+        let mut module = string(&function["module"]);
+        match operation.as_str() {
+            SEND_MESSAGE if canonical => {
+                function["kind"] = json!("method");
+                function["receiver"] = json!("SubagentHandle");
+                name = "send".to_string();
+            }
+            CLOSE if canonical => {
+                function["kind"] = json!("method");
+                function["receiver"] = json!("OpenView");
+            }
+            WAIT_FOR_ISSUE if canonical => {
+                module = WAITING.to_string();
+                function["module"] = json!(WAITING);
+            }
+            _ => {}
+        }
+        rename(function, &name);
+        let path = paths.get(&module).unwrap_or(&module);
+        function["fqn"] = json!(qualified(path, function["receiver"].as_str(), &name));
+        for reference in references(function) {
+            requalify(reference, &resolved);
+        }
+        if operation == CLOSE && canonical && !aliased.contains(CLOSE) {
+            // The free function the method displaced, kept as the second way to reach the one
+            // operation — which is what an arm does when both spellings read well and neither is
+            // worth withholding. It is cut **before** the method gives its argument up to its
+            // receiver, so the two shapes differ in the way two real spellings of one capability
+            // do: `close_view(selector)` names what to close, and `view.close()` is the view.
+            let mut second = function.clone();
+            second["aliasOf"] = json!(CLOSE);
+            second["kind"] = json!("function");
+            second["receiver"] = Value::Null;
+            rename(&mut second, "close_view");
+            second["fqn"] = json!(qualified(path, None, "close_view"));
+            alias = Some(second);
+        }
+        if operation == CLOSE && canonical {
+            receive_the_argument(function, &name);
+        }
+    }
+    if let Some(alias) = alias {
+        document["functions"]
+            .as_array_mut()
+            .expect("an array")
+            .push(alias);
+    }
+}
+
+/// Every operation the source arm **already** offers a second way into, so the reshape does not add
+/// a second second way.
+fn already_aliased(document: &Value) -> BTreeSet<String> {
+    document["functions"]
+        .as_array()
+        .expect("an array")
+        .iter()
+        .filter_map(|function| function["aliasOf"].as_str())
+        .map(str::to_string)
+        .collect()
+}
+
+/// Hand one entry's argument list to its **receiver**: no documented parameters, and a signature
+/// whose brackets are empty.
+///
+/// This is the shape the fixture exists to make the gate accept. A method whose receiver *is* the
+/// thing the call operates on documents no argument and still takes input, which is idiomatic in
+/// every language with methods and which a rule reading only the parameter list would read as an
+/// arm that had forgotten to document one.
+fn receive_the_argument(function: &mut Value, name: &str) {
+    for shape in function["signatures"]
+        .as_array_mut()
+        .expect("every entry carries at least one signature")
+    {
+        let signature = string(&shape["signature"]);
+        let tail = signature
+            .find('(')
+            .and_then(|open| signature[open..].find(')').map(|close| open + close + 1))
+            .map_or("", |end| &signature[end..]);
+        shape["signature"] = json!(format!("{name}(){tail}"));
+        shape["parameters"] = json!([]);
+    }
+}
+
+/// Re-spell every module's path, add the fixture's own [module](WAITING), and hand back the path
+/// each module id now answers to.
+fn modules(document: &mut Value) -> BTreeMap<String, String> {
+    let mut paths: BTreeMap<String, String> = BTreeMap::new();
+    let modules = document["modules"]
+        .as_array_mut()
+        .expect("the source catalogue declares its modules");
+    for module in modules.iter_mut() {
+        let id = string(&module["id"]);
+        // The source arm nests everything under one namespace segment; this one does not, and one
+        // module is renamed outright — a module's id is gg's word and its path is the arm's, and
+        // two strings that are always equal are one string nobody has noticed yet.
+        let path = match id.as_str() {
+            FILES => WORKSPACE.to_string(),
+            _ => string(&module["path"])
+                .rsplit('.')
+                .next()
+                .expect("a path has a last segment")
+                .to_string(),
+        };
+        module["path"] = json!(path);
+        paths.insert(id, path);
+    }
+    modules.push(json!({
+        "id": WAITING,
+        "path": WAITING,
+        "brief": "Wait on work somebody else was given.",
+        "detail": null,
+        "import": null,
+    }));
+    paths.insert(WAITING.to_string(), WAITING.to_string());
+    paths
+}
+
+/// Re-qualify every declared type under its module's new path, and hand back the map from the name
+/// each one used to answer to onto the one it answers to now.
+fn types(document: &mut Value, paths: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut resolved: BTreeMap<String, String> = BTreeMap::new();
+    for declaration in document["types"].as_array_mut().expect("an array") {
+        let module = string(&declaration["module"]);
+        let name = string(&declaration["name"]);
+        let path = paths.get(&module).unwrap_or(&module);
+        let fqn = format!("{path}.{name}");
+        resolved.insert(string(&declaration["fqn"]), fqn.clone());
+        declaration["fqn"] = json!(fqn);
+    }
+    resolved
+}
+
+/// Every [type reference](crate::sandbox::signatures::TypeReference) one entry carries, in both
+/// positions it carries them.
+fn references(function: &mut Value) -> impl Iterator<Item = &mut Value> {
+    // Filtered out of one walk of the entry rather than reached for by name twice, because both
+    // arrays are `&mut` fields of one `Value` and the borrow checker will not hand out two at once.
+    function
+        .as_object_mut()
+        .expect("an entry is an object")
+        .iter_mut()
+        .filter(|(key, _)| *key == "returns" || *key == "types")
+        .filter_map(|(_, value)| value.as_array_mut())
+        .flatten()
+}
+
+/// Point one type reference at the name its type now answers to, leaving the spelling a signature
+/// writes exactly as it was — that half is what a model reads at the call site, and it did not move.
+fn requalify(reference: &mut Value, resolved: &BTreeMap<String, String>) {
+    let Some(fqn) = reference["fqn"].as_str() else {
+        return;
+    };
+    if let Some(moved) = resolved.get(fqn) {
+        reference["fqn"] = json!(moved);
+    }
+}
+
+/// Re-spell one entry: the name a program calls it by, and the head of every signature it offers,
+/// which by the catalogue's own rule begins with that name.
+fn rename(function: &mut Value, name: &str) {
+    let previous = string(&function["name"]);
+    for shape in function["signatures"]
+        .as_array_mut()
+        .expect("every entry carries at least one signature")
+    {
+        let signature = string(&shape["signature"]);
+        shape["signature"] = json!(match signature.strip_prefix(previous.as_str()) {
+            Some(rest) => format!("{name}{rest}"),
+            None => signature,
+        });
+    }
+    function["name"] = json!(name);
+}
+
+/// One fully-qualified name: the module path, the type a member hangs off where there is one, and
+/// the name a program writes.
+fn qualified(path: &str, receiver: Option<&str>, name: &str) -> String {
+    match receiver {
+        Some(receiver) => format!("{path}.{receiver}.{name}"),
+        None => format!("{path}.{name}"),
+    }
+}
+
+/// One string field of a catalogue entry, which every field read here is.
+fn string(value: &Value) -> String {
+    value
+        .as_str()
+        .unwrap_or_else(|| panic!("a catalogue field this reshape reads is a string: {value}"))
+        .to_string()
 }
 
 /// `readFile` → `read_file`. The whole of the fixture's "language design".
@@ -581,7 +748,7 @@ Call `{{ending.finish}}(summary)`.
 {{/each}}
 
 Read a file with `{{api.fs.read_file.call}}(path)` and show yourself something with \
-`{{api.view.open_text.signature}}`. Every object also carries `{{meta.list.name}}()`.
+`{{api.view.open_text.signature}}`.
 ";
 
 // ---------------------------------------------------------------------------------------------

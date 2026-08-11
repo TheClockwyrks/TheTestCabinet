@@ -76,7 +76,7 @@ write — they resolve exactly where you put them.
 
 **gg's own surface needs no import.** `use gg::prelude::*;` is already written
 above your first line, so every module listed below is in scope under its own
-name, along with `ToolError`, `ToolErrorCode` and `FunctionSummary`. It is a
+name, along with `ToolError` and `ToolErrorCode`. It is a
 glob, which means your own `use std::fs;` shadows anything gg imported rather
 than colliding with it.
 
@@ -162,19 +162,13 @@ already.
 - `{{object}}`: {{description}}
 {{/each}}
 
-Two calls tell you what a module holds, and they reach you by different routes.
-
-`<module>::{{meta.list.name}}()` — for example `files::{{meta.list.name}}()` — **returns** a module's
-functions to your program, each as a `FunctionSummary`. It is an ordinary return
-value, and not a `Result`, so it puts nothing in front of you on its own: to read
-it yourself you must open a view of it, exactly as you would any other value your
-program computed — `{{api.view.open_text.call}}("files", &format!("{:?}", files::{{meta.list.name}}()))?`.
+One call tells you what a function does.
 
 `{{api.view.open_docs_view.signature}}` **opens a view**
 directly, of one function's full signature, documentation, and the types it uses.
 Pass its name (`{{api.view.open_docs_view.call}}("{{api.view.open_text.name}}")?`).
 
-Either way you are reading a view, so what you asked for arrives on your next
+You are reading a view, so what you asked for arrives on your next
 turn and is not available during the turn you ask for it. Ask in one turn, use it
 in the next.
 

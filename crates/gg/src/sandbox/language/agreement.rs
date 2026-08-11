@@ -1,377 +1,816 @@
-//! **The cross-language agreement gate** — the assertion that every
-//! [registered language](super::all_languages) describes *the same capabilities*, and that the only
-//! thing free to differ between them is how they are spelled.
+//! **The cross-arm capability gate** — the assertion that every
+//! [registered language](super::all_languages) lets a model do the *same set of things*, under the
+//! *same conditions*, documented to the *same standard*.
 //!
 //! # Why it is load-bearing
 //!
 //! The [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) capability exists to
 //! **measure**. The question that made the program language a variable at all — *does the language a
 //! model writes in change how well it works?* — is answered by running two arms and comparing them,
-//! and that comparison is only a measurement of the language if both arms present the model with the
-//! same capabilities. If one language's SDK were missing `edit_file`, or gated `view.openFile` on
-//! nothing, or offered four view functions where the other offers five, then every difference the
-//! study measured would be confounded by a difference in *surface*, and the study would quietly be
-//! measuring something nobody asked about.
+//! and that comparison is only a measurement of the language if both arms let the model do the same
+//! things. If one language's SDK were missing `edit_file`, or offered `views.open_file` to an agent
+//! with no `read_file` tool, then every difference the study measured would be confounded by a
+//! difference in *capability*, and the study would quietly be measuring something nobody asked
+//! about.
 //!
-//! Nothing else in gg would notice. Each language's own drift gates compare it to
-//! [`ALL_TOOL_NAMES`] and to its own committed component — never to another language — so two
-//! internally-consistent surfaces that disagree with each other are two green test suites. This
-//! module is the only thing that compares them, and therefore the only thing standing between a
-//! configured `language` param and an invalidated experiment.
+//! Nothing else in gg would notice. Each language's own drift gates compare it to its own committed
+//! component — never to gg's vocabulary, and never to another language — so eleven internally
+//! consistent surfaces that offer eleven different sets of capabilities are eleven green test
+//! suites.
 //!
-//! # What is identity, and what is spelling
+//! # What this gate used to be, and why that premise is gone
 //!
-//! **Identity** is everything a consumer routes, gates or groups on, and no language may differ on
-//! any of it:
+//! It used to rest on a five-part identity tuple — section, object, key, gate, ending — and on the
+//! claim that two arms "offer the same functions on the same objects under the same gates, and
+//! differ only in what a program calls them". Every arm filed its calls into the same five sections,
+//! hung each off the same API object, and wrote down the same gate; the gate compared one arm's
+//! tuples to a reference arm's, and required them to be equal as sets.
 //!
-//! * the **key** — a gg tool's own name (`read_file`), or the catalogue entry's `key`
-//!   (`request_changes`, `open_text`) for the carve-outs that are not tools;
-//! * the **object** it hangs off (`fs`, `view`, `harness`), which is on the wire in
-//!   [`AgentSurface`](test_cabinet_core::gg::AgentSurface), is what the console groups by, is what
-//!   [`reference`](crate::reference) joins capability families to, and is what the
-//!   [docs runtime](crate::docs) routes a lookup by — or *no* object, for a
-//!   [meta](Section::Meta) function, which is bound onto every one of them;
-//! * the **gate** — the gg tool whose being enabled binds it;
-//! * the **ending role** whose programs bind it, and whether it belongs to the
-//!   [program library](crate::programs), which is the one family a capability rather than a tool
-//!   decides.
+//! **That premise was retired deliberately.** API objects are a hidden vocabulary — to reach
+//! anything you had to already know the object existed — and abolishing them was the point of the
+//! [module surface](crate::sandbox::signatures::ModuleDoc). What replaced them are eleven
+//! *idiomatic* SDKs, and idiomatic SDKs differ in **structure**: a capability is a free function on
+//! one arm and a method on the type it operates on next door, one arm offers it twice under two
+//! names and another once, and no two arms group their modules identically. Comparing tuples would
+//! now reject every one of those, which would mean forbidding an arm from being idiomatic — itself a
+//! confound, and the larger one.
 //!
-//! **Spelling** is everything else, and it is deliberately a great deal: the function name a program
-//! calls, the prose that documents it, the object's own description — and the whole **shape of the
-//! call**. Parameter names, parameter descriptions, whether an argument is positional or passed by
-//! name, what it defaults to, and *how many signatures the entry carries* are all spelling. A
-//! language that expresses an optional argument as an overload pair carries two signatures where one
-//! expressing it as a default carries one, and that is not a difference in what the function does —
-//! so nothing here compares the count. Those are the language's own, and the whole point of the seam.
+//! So there is **no reference arm and no comparison between arms anywhere in this file**, and
+//! nothing here counts functions. What each arm is held to is gg's own
+//! [operations table](crate::sandbox::operations), one arm at a time.
 //!
-//! The one thing about the call shape that is **not** free is whether there is one: a capability that
-//! needs a path needs it in every language, so *whether an entry documents any argument at all* is
-//! compared across arms. An arm whose model is told what to put in `fs.read_file` and an arm whose
-//! model is not are not two spellings of one surface.
+//! # What is checked
 //!
-//! # What is asserted about spelling, then
+//! **Gating, over the table alone** ([`gating`]). Every [`Binding::Tool`] names a real gg tool and
+//! every gg tool buys something; an operation that is gg's own name for a tool is bought by *that*
+//! tool; the ending operations are gg's three under the roles [`EndingRole::tools`] gives them; a
+//! view is gated exactly where it reads the workspace; a capability buys the
+//! [program library](crate::programs) and nothing else. This runs once rather than eleven times,
+//! and it is *stronger* than the per-arm version it replaces: gating is stated in one place, so an
+//! arm has no field left to be wrong in.
 //!
-//! That it is *there*. Every parameter, every field of a structured argument, every type, every one
-//! of a type's members and every API object must carry documentation, because all of it is read by a
-//! model and a blank is a model guessing. The check runs over the **emitted catalogue**, so it is the
-//! same check for a language whose compiler enforced its doc comments and one whose convention did —
-//! Swift's `docc`, Java's `-Xdoclint`, Rust's `# Arguments` heading and PureScript's `@param` all
-//! land in one shape here, and one gate covers every language that will ever be added.
+//! **Capability coverage, per arm** ([`coverage`]). Every operation gg offers has exactly one
+//! canonical binding on every arm that is not excused; every operation an arm names is one gg has;
+//! every alias names an operation that arm canonically binds. A binding is identified by
+//! `(module, kind, receiver, name)` — the arm's own shape — and that identity is used to *name* a
+//! binding in a complaint and to notice two of them, never to require that two arms chose the same
+//! one.
 //!
-//! An **omission** is caught as well as a blank, which matters because the languages with no
-//! per-argument doc slot of their own are exactly the ones whose reflector is most likely to emit an
-//! empty list and call it done. Two checks catch it: a signature that writes a non-empty argument
-//! list and documents nothing fails on its own ([`declares_arguments`]), and an entry that documents
-//! no argument where another arm documents one fails comparatively — so a language whose signatures
-//! carry no brackets to look inside is covered too.
+//! **The propagation rule** ([`Applicability`]). A helper added to one SDK is added to every other
+//! *where applicable*, and "applicable" is not computable: a helper wrapping a `Result`-returning
+//! read is idiomatic in Rust and pointless in a throwing language. So the judgement is made
+//! **explicit, central and reviewed** — an exemption is written beside the operation, in gg, with a
+//! prose reason, and never in the package that omits the operation, where the only evidence would be
+//! an absence. An arm that omits a universal operation fails by name; an exemption naming an arm
+//! that *does* bind the operation is dead and fails too, so a list of two cannot rot into a blanket
+//! waiver.
 //!
-//! # What holds each language up on its own
+//! **Whether an operation takes input at all** ([`takes_input`]), per arm against gg. The shape of a
+//! call is the arm's — an optional argument is an overload pair in one language and a default in
+//! another — but a capability that needs a path needs one everywhere, and an arm whose model is told
+//! what to put in a call and an arm whose model is not are not two spellings of one surface. It is
+//! also what catches a reflector emitting an empty parameter list for everything: every signature
+//! still renders, and every model on that arm is told every call takes nothing. A **receiver counts
+//! as input**, because on a method whose receiver is the thing operated on it *is* the input, and a
+//! rule that read only the parameter list would forbid an arm from binding a capability that way.
 //!
-//! Most of what this gate checks anchors a language's catalogue to **gg's own vocabularies** rather
-//! than to another language: the tool bijection against [`ALL_TOOL_NAMES`], the session keys against
-//! the four [ending tools](crate::completion), the meta keys against the one the
-//! [docs runtime](crate::docs) binds on every object, the ending roles against the three that
-//! runtime filters by, and every gate against the tool vocabulary. Every one of those holds, and
-//! fails, per language and without a second one to compare against.
+//! **That every spelling is one a program could write** ([`usable_spellings`]). A name, a signature
+//! that begins with it, one spelling per `(module, receiver)`, and a description on every argument
+//! and every field of a structured one. These were always the majority of this gate's real value and
+//! they are unchanged.
 //!
-//! The comparative half runs over the registry for real, and what it compares there has grown teeth
-//! with every arm. [JavaScript](super::javascript)'s catalogue and [TypeScript](super::typescript)'s
-//! are one set of declarations reflected twice and could hardly disagree; the other nine are SDKs
-//! written by hand, in nine languages, reflected by nine different documentation tools, and they
-//! really can. Each of them brought at least one shape its predecessors did not have —
-//! [Ruby](super::ruby) an entry with **two signatures**, because a long body may be an argument or a
-//! block; [Java](super::java) fourteen **overload groups** where [Kotlin](super::kotlin), on the
-//! same compiler and the same guest, has none and default arguments instead;
-//! [PureScript](super::purescript) **curried ML notation** with no argument list to look inside at
-//! all; [Rust](super::rust) and [C++](super::cpp) an API object that is a **module** or a
-//! **namespace**, so the step from object to function is not even a `.`. Every one of those is a
-//! legitimate divergence this gate has to accept while still rejecting a missing capability, and
-//! each was the arm that found the dimension the schema was short of.
+//! # What it explicitly does not check
 //!
-//! It is also exercised against the [fixture language](super::fixture), a second surface built by
-//! re-spelling the first, which is what keeps the comparison meaningful independently of whichever
-//! real arms happen to be registered.
+//! * **Nothing is compared between arms.** Not names, not counts, not documentation length, not how
+//!   many functions a module groups. An arm that binds one operation as three overloads and a second
+//!   arm that binds it as one call agree here, because they offer the same capability.
+//! * **Nothing requires two arms to choose the same module, receiver or kind.** The grouping is what
+//!   the model reads and is the arm's to choose; the cross-arm join is the operation id.
+//! * **An alias is not propagated.** [`Applicability`] ranges over [`OPERATIONS`], so the
+//!   propagation rule reaches a helper that is a *new capability* and stops there. A second
+//!   spelling of a capability every arm already binds — `OpenView.close()` beside `views.close` —
+//!   needs no row, no exemption and no reason, and this gate is silent about the difference by
+//!   design. The tree measures this way today: five arms bind five such methods, two bind one, and
+//!   four bind none. It is silent because the difference is one of
+//!   **shape**: every arm can close a view, and requiring the rest to hang a method off the same
+//!   declared type would be requiring eleven arms to agree on a receiver, which is the parity the
+//!   re-founding retired. What it costs is real and is stated rather than hidden: an ergonomic
+//!   affordance can differ between two arms of a study without anything going red.
+//! * **Nothing is asked about a return.** [`usable_spellings`] holds every argument and every field
+//!   of a structured one to being named and described; there is no matching rule for what a call
+//!   hands back, and the asymmetry is a property of the schema rather than an omission here. A
+//!   catalogue records a return as a *type reference*, which the name rule (`signatures.fqn.rs`)
+//!   holds to resolving; it has nowhere to put return prose at all, so the only place an arm can
+//!   explain what comes back is the detail paragraph, and holding a paragraph to mentioning one
+//!   would be a register rule about content rather than a completeness rule about a field. Until
+//!   the schema carries the field, this is a known gap.
 //!
-//! # It reads the catalogues that are still written in the first schema
+//! Two rules that used to be here now live elsewhere, and are stronger for it. Every brief, detail,
+//! parameter description, type description and member description belongs to the register gate
+//! (`language/register.rs`), which asks not only whether the prose is *there* but whether it is one
+//! line, closes its code spans and is written in the register gg chose. Every fully-qualified name,
+//! every module reference and every type reference belongs to the name rule
+//! (`signatures.fqn.rs`), which also holds a declared type to being reachable and a reference to
+//! resolving.
 //!
-//! Everything above rests on a five-part identity tuple — section, object, key, gate, ending — and
-//! an arm converted to the [normalized doc model](crate::sandbox::SchemaVersion::V2) has none of
-//! those five. It files no entry into a section, hangs nothing off an API object, and asserts no
-//! gate, because a gate is a fact about gg's own configuration surface that gg states once in its
-//! [operations table](crate::sandbox::operations). So a converted arm is held here only to the
-//! checks about **usable spellings** — see [`is_v1`] for what covers the rest, and why that cover is
-//! stronger rather than weaker.
+//! One rule was **dropped rather than moved**, and it is worth naming. A non-tool function spelled
+//! exactly as one of gg's own tool names used to fail: two vocabularies shared one flat program
+//! scope, so a collision would have been resolved by bind order rather than by anyone's decision.
+//! With a module-scoped surface there is no single flat scope to collide in — `read_file` under the
+//! files module and `read_file` under another are two names, and shadowing *within* one grouping is
+//! what [`usable_spellings`] still refuses. The hazard survives only on the arms that inject bare
+//! names into a program's scope, and telling those apart needs a field in the catalogue saying so,
+//! which no arm emits yet. Until one does, this is a known gap rather than a covered case.
 //!
-//! **That split is transitional.** The re-founded gate replaces it with one implementation over the
-//! normalized model, and the split goes when the last v1 catalogue does.
+//! # And the things it cannot see, stated plainly
+//!
+//! **An arm that *swaps* two operations within one family** — labelling its `open_file` binding
+//! `views.open_text` and vice versa — passes coverage, because both operations still have exactly
+//! one canonical binding each. What is bound under the wrong gate there is legible only in the
+//! function's own prose and spelling, which are the arm's and are not comparable to anything. The
+//! gate catches every *unresolvable* and every *missing* operation, which is the shape the failure
+//! takes when someone mistypes one id; a coherent two-sided swap is beyond it, and no gate that
+//! refuses to compare spellings can reach it.
+//!
+//! **gg's own table can be mis-gated the same way, and mostly cannot be.** The tool rule in
+//! [`tools`] is a bijection of *sets*, so two rows that swapped their gates would satisfy it, and
+//! that fault is worse than an arm's: every arm reads its gates from this one table, so a run would
+//! withhold the call it enabled in all eleven at once. [`tool_named`] closes it wherever the
+//! operation's own key is a tool name, which is 35 of the 47 rows. The twelve it does not reach are
+//! the rows where the binding is a real decision rather than a restatement of the key —
+//! `files.read_text_file` on the `read_file` tool, the five views, the three program-library calls
+//! and the three endings — and of those, all but `files.read_text_file` have a named rule of their
+//! own ([`views`], [`capabilities`], [`endings`]). So exactly one row's gate rests on review alone.
 //!
 //! # Why it returns disagreements rather than asserting them
 //!
 //! A gate that only panics can be shown to pass; it cannot be shown to *catch* anything. Returning
-//! the disagreements makes the gate's own failure mode testable, and
-//! [its tests](self::tests) hand it deliberately damaged catalogues and assert on what comes back.
-//! A gate nobody has watched fail is a gate nobody knows works.
+//! the disagreements makes the gate's own failure mode testable, and [its tests](self::tests) hand
+//! it deliberately damaged catalogues *and deliberately damaged operations tables* and assert on
+//! what comes back. That is also why [`disagreements_against`] takes the table as a parameter:
+//! [`OPERATIONS`] is a `const` no test can damage, and a gating rule nobody has watched fail is a
+//! gating rule nobody knows works.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
+use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
+
 use crate::ending::EndingRole;
-use crate::tools::ALL_TOOL_NAMES;
+use crate::skills::builtin::FAMILIES;
+use crate::tools::{ALL_TOOL_NAMES, READ_FILE_TOOL};
 
-use super::ProgramLanguage;
-use crate::sandbox::signatures::{Parameter, SignatureEntry};
+use super::{ProgramLanguage, all_languages};
+use crate::sandbox::operations::{
+    Applicability, Binding, FAMILY_PROGRAMS, FAMILY_VIEWS, OPERATIONS, Operation, OperationId,
+};
+use crate::sandbox::signatures::{
+    CatalogueFunction, EntryKind, Parameter, SchemaVersion, SignatureEntry,
+};
 
-/// The six function-carrying sections of a catalogue, which are themselves identity: a function that
-/// is a `view` in one language and a `tool` in another is not the same function, whatever it is
-/// called.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Section {
-    /// The functions bound onto **every** API object rather than declared on one — today just
-    /// `list`. The one section whose entries carry no object at all.
-    Meta,
-    /// The calls that end a session, one group per [role](crate::ending::EndingRole).
-    Session,
-    /// The `view` object — the calls that put material into the agent's own context window.
-    Views,
-    /// The [program library](crate::programs)'s object.
-    Programs,
-    /// One entry per gg tool the sandbox binds.
-    Tools,
-    /// The convenience wrappers bound alongside a tool.
-    Helpers,
-}
-
-impl fmt::Display for Section {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Meta => "meta",
-            Self::Session => "session",
-            Self::Views => "views",
-            Self::Programs => "programs",
-            Self::Tools => "tools",
-            Self::Helpers => "helpers",
-        })
-    }
-}
-
-/// One capability, stripped of every spelling — what two languages must agree on exactly.
+/// What a complaint about gg's own [operations table](OPERATIONS) is filed under, where an arm's
+/// complaint is filed under the arm's display name.
 ///
-/// Ordered and compared as a whole, and collected into a sorted `Vec` rather than a set, so that a
-/// language offering the *same* function twice is a disagreement rather than a silently-deduplicated
-/// match.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Identity {
-    /// Which of the catalogue's [sections](Section) it came from.
-    pub section: Section,
-    /// The API object it hangs off. Identity, never spelling.
-    ///
-    /// `None` for a [meta](Section::Meta) function, which hangs off no object because it hangs off
-    /// all of them: naming one would be a claim about the eleven it is equally bound on.
-    pub object: Option<String>,
-    /// The language-independent key: a tool's gg tool name, or the entry's own `key`.
-    pub key: String,
-    /// The gg tool whose being enabled binds it, when one does.
-    pub gate: Option<String>,
-    /// The [ending role](crate::ending::EndingRole) whose programs bind it, when it is an ending
-    /// call.
-    pub ending: Option<String>,
-    /// Whether it belongs to the [program library](crate::programs).
-    pub library: bool,
-}
+/// A gating fault is nobody's arm and everybody's problem: it mis-gates all eleven at once, because
+/// all eleven read their gates from the one table.
+pub(crate) const GG: &str = "gg";
 
-impl fmt::Display for Identity {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{} [{}",
-            qualified(self.object.as_deref(), &self.key),
-            self.section
-        )?;
-        if let Some(gate) = &self.gate {
-            write!(f, ", gated on {gate}")?;
-        }
-        if let Some(ending) = &self.ending {
-            write!(f, ", {ending} ending")?;
-        }
-        if self.library {
-            f.write_str(", library")?;
-        }
-        f.write_str("]")
-    }
-}
-
-/// One thing wrong: which language it is wrong in, and what.
+/// One thing wrong: whose it is, and what.
 ///
-/// The language is named by its [display name](ProgramLanguage::display_name) rather than its wire
-/// id, because a language under test may not have one — the [fixture](super::fixture) does not, by
-/// construction.
+/// The subject is a [display name](ProgramLanguage::display_name) rather than a wire id, because a
+/// surface under test may not have one — the [fixture](super::fixture) does not, by construction —
+/// and because gg itself is a possible subject.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Disagreement {
-    /// The language the complaint is about.
-    pub language: &'static str,
-    /// What is wrong with it, in one sentence, naming the identity at fault.
+    /// Whose the complaint is: an arm's display name, or [`GG`].
+    pub subject: &'static str,
+    /// What is wrong with it, in one sentence, naming the operation or the binding at fault.
     pub detail: String,
 }
 
 impl fmt::Display for Disagreement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.language, self.detail)
+        write!(f, "{}: {}", self.subject, self.detail)
     }
 }
 
-/// How a complaint names one function: `fs.read_file` for the entries that hang off an object, and
-/// the bare key for a [meta](Section::Meta) function, which hangs off none.
-fn qualified(object: Option<&str>, key: &str) -> String {
-    match object {
-        Some(object) => format!("{object}.{key}"),
-        None => key.to_string(),
-    }
-}
-
-/// The [identity](Identity) of every function one language's catalogue describes, sorted.
-pub(crate) fn identities(language: &dyn ProgramLanguage) -> Vec<Identity> {
-    let catalogue = language.catalogue();
-    let mut out = Vec::new();
-    for entry in &catalogue.meta {
-        out.push(Identity {
-            section: Section::Meta,
-            object: None,
-            key: entry.key.clone(),
-            gate: None,
-            ending: None,
-            library: false,
-        });
-    }
-    for entry in &catalogue.session {
-        out.push(Identity {
-            section: Section::Session,
-            object: Some(entry.object.clone()),
-            key: entry.key.clone(),
-            gate: None,
-            ending: Some(entry.ending.clone()),
-            library: false,
-        });
-    }
-    for entry in &catalogue.views {
-        out.push(Identity {
-            section: Section::Views,
-            object: Some(entry.object.clone()),
-            key: entry.key.clone(),
-            gate: entry.requires.clone(),
-            ending: None,
-            library: false,
-        });
-    }
-    for entry in &catalogue.programs {
-        out.push(Identity {
-            section: Section::Programs,
-            object: Some(entry.object.clone()),
-            key: entry.key.clone(),
-            gate: None,
-            ending: None,
-            library: true,
-        });
-    }
-    for entry in &catalogue.tools {
-        out.push(Identity {
-            section: Section::Tools,
-            object: Some(entry.object.clone()),
-            key: entry.tool.clone(),
-            gate: Some(entry.tool.clone()),
-            ending: None,
-            library: false,
-        });
-    }
-    for entry in &catalogue.helpers {
-        out.push(Identity {
-            section: Section::Helpers,
-            object: Some(entry.object.clone()),
-            key: entry.key.clone(),
-            gate: Some(entry.requires.clone()),
-            ending: None,
-            library: false,
-        });
-    }
-    out.sort();
-    out
-}
+/// The operation that opens a **view of a file**, which is the one view call a gg tool gates.
+const OPEN_FILE: &str = "open_file";
 
 /// Every way `languages` fail to describe one capability surface. Empty is the passing answer.
 ///
-/// The first language is the **reference arm**: the comparative complaints are phrased as what the
-/// others have that it does not, and vice versa. That is a presentation choice only — the relation
-/// is symmetric, and a disagreement anywhere fails the gate whichever arm is first.
+/// Held against gg's own [operations table](OPERATIONS) — there is no reference arm, and the order
+/// the arms are given in decides nothing.
 ///
 /// Every check is over catalogues alone, so this costs no component compile and can be run against
 /// as many candidate surfaces as a test cares to build.
 pub(crate) fn disagreements(languages: &[&'static dyn ProgramLanguage]) -> Vec<Disagreement> {
+    disagreements_against(OPERATIONS, languages)
+}
+
+/// [`disagreements`], run against a **stated** operations table rather than against gg's own.
+///
+/// The table is a parameter for one reason: [`OPERATIONS`] is a `const`, so the gating rules below
+/// could never be observed rejecting anything, and a rule that has only ever been watched pass is
+/// indistinguishable from a rule that cannot fail. [Its tests](self::tests) hand it tables with one
+/// row damaged and assert on the complaint that comes back.
+pub(crate) fn disagreements_against(
+    operations: &'static [Operation],
+    languages: &[&'static dyn ProgramLanguage],
+) -> Vec<Disagreement> {
     let mut out = Vec::new();
+    gating(operations, &mut out);
     for language in languages {
-        if is_v1(*language) {
-            anchored_to_gg(*language, &mut out);
-            internally_consistent(*language, &mut out);
-        } else {
-            usable_spellings(*language, &mut out);
-        }
-    }
-    // The comparative half runs over the v1 arms alone, and the reference is the first of them. See
-    // [`is_v1`] for why a converted arm is not compared and what holds it instead.
-    let v1: Vec<&'static dyn ProgramLanguage> =
-        languages.iter().copied().filter(|l| is_v1(*l)).collect();
-    let Some((reference, rest)) = v1.split_first() else {
-        return out;
-    };
-    for language in rest {
-        agrees_with(*reference, *language, &mut out);
+        coverage(operations, *language, &mut out);
+        takes_input(operations, *language, &mut out);
+        usable_spellings(*language, &mut out);
     }
     out
 }
 
-/// Whether `language` still commits a [`V1`](crate::sandbox::SchemaVersion::V1) catalogue, and is
-/// therefore something this gate can read at all.
-///
-/// # Why a converted arm is only partly held here, and by what instead
-///
-/// Every check above rests on a five-part identity tuple — section, object, key, gate, ending — and
-/// a [`V2`](crate::sandbox::SchemaVersion::V2) catalogue has **none of those five**. It files no
-/// entry into a section, hangs nothing off an API object, and asserts no gate, because a gate is a
-/// fact about gg's configuration surface that gg states once in its
-/// [operations table](crate::sandbox::operations). Reading such a catalogue through this file would
-/// not find a disagreement; it would find eleven empty sections and report the whole arm missing.
-///
-/// So the parts of the gate that were *about* those five fields are held elsewhere, and are
-/// **stronger** for it, because each is now asserted against gg rather than against a reference arm:
-/// capability coverage, gating, the ending vocabulary and roles, and whether an operation takes
-/// input at all are all in `operations.test.rs`; the register gate
-/// (`super::register`) holds every brief, detail and parameter description; and
-/// the name rule (`crate::sandbox::signatures::fqn`) holds every fully-qualified name, every module
-/// reference and every type reference.
-///
-/// What has no home outside this file is the handful of checks about *usable spellings*, and those
-/// are kept for a converted arm by [`usable_spellings`]. **This split is transitional**: the
-/// re-founded gate replaces it with one implementation over the normalized model, and this function
-/// goes when the last v1 catalogue does.
-fn is_v1(language: &'static dyn ProgramLanguage) -> bool {
-    language.catalogue().schema < crate::sandbox::SchemaVersion::V2
-}
+// ---------------------------------------------------------------------------------------------
+// Gating: the table alone
+// ---------------------------------------------------------------------------------------------
 
-/// The checks a [`V2`](crate::sandbox::SchemaVersion::V2) catalogue is still held to here: that
-/// every spelling it offers is one a program can write, and that it offers each of them once.
+/// **Every operation is bound under the right kind of gate**, asserted over the table and nothing
+/// else.
 ///
-/// These are exactly the survivors of the list in [`is_v1`] — the rules about a *signature* and its
-/// *arguments*, which no other gate asks and which are the same question whatever schema an entry
-/// arrived in. They read the [normalized projection](crate::sandbox::catalogue_functions) rather
-/// than any section, so they say the same thing about both shapes of catalogue and will need no
-/// second implementation when the sections go.
-fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagreement>) {
-    let name = language.display_name();
+/// This is where the checks that eleven arms each used to make about themselves ended up, and the
+/// move made them stronger rather than weaker: a gate is a fact about gg's own configuration
+/// surface, so eleven copies of it were eleven chances to disagree, and one copy checked once is
+/// none. What an arm still says about a gate is only *which operation it is binding*, which
+/// [`coverage`] holds it to.
+fn gating(operations: &'static [Operation], out: &mut Vec<Disagreement>) {
     let mut complain = |detail: String| {
         out.push(Disagreement {
-            language: name,
+            subject: GG,
             detail,
         })
     };
+
+    identities(operations, &mut complain);
+    tools(operations, &mut complain);
+    tool_named(operations, &mut complain);
+    endings(operations, &mut complain);
+    views(operations, &mut complain);
+    capabilities(operations, &mut complain);
+    exemptions(operations, &mut complain);
+}
+
+/// Every row has an identity of its own, filed under a real family.
+///
+/// A duplicated id would put two gates on one operation and let whichever came first decide; a
+/// duplicated `(object, key)` join would resolve two catalogue entries to one row. The family is
+/// checked against the skills library because the family is the one grouping that survives every arm
+/// being idiomatic, and a grouping pointing at nothing groups nothing.
+///
+/// The namespace and the family are separate strings — `files` against `gg-filesystem` — because a
+/// skill's id is a handle a model reads and an operation id is not. Separate strings drift, so the
+/// mapping is held to a bijection in both directions.
+fn identities(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    let families: BTreeSet<&str> = FAMILIES.iter().map(|family| family.id).collect();
+    let mut seen: BTreeSet<OperationId> = BTreeSet::new();
+    let mut joins: BTreeSet<(&str, &str)> = BTreeSet::new();
+    let mut by_namespace: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut by_family: BTreeMap<&str, &str> = BTreeMap::new();
+
+    for operation in operations {
+        if operation.id.namespace.trim().is_empty() || operation.id.key.trim().is_empty() {
+            complain(format!(
+                "the operation `{}` has a blank half to its id",
+                operation.id
+            ));
+        }
+        if !seen.insert(operation.id) {
+            complain(format!(
+                "the operation `{}` is written down twice",
+                operation.id
+            ));
+        }
+        if !joins.insert((operation.call.object, operation.call.key)) {
+            complain(format!(
+                "`{}` claims the `{}.{}` join a second operation already claims",
+                operation.id, operation.call.object, operation.call.key
+            ));
+        }
+        if !families.contains(operation.family) {
+            complain(format!(
+                "`{}` is filed under the family `{}`, which the skills library does not ship",
+                operation.id, operation.family
+            ));
+        }
+        if let Some(previous) = by_namespace.insert(operation.id.namespace, operation.family)
+            && previous != operation.family
+        {
+            complain(format!(
+                "the namespace `{}` covers two families, `{previous}` and `{}`",
+                operation.id.namespace, operation.family
+            ));
+        }
+        if let Some(previous) = by_family.insert(operation.family, operation.id.namespace)
+            && previous != operation.id.namespace
+        {
+            complain(format!(
+                "the family `{}` is filed under two namespaces, `{previous}` and `{}`",
+                operation.family, operation.id.namespace
+            ));
+        }
+    }
+}
+
+/// The tool half of the table is gg's tool vocabulary, exactly: nothing is gated on a name that is
+/// not a gg tool, and no gg tool buys nothing.
+///
+/// The same bijection is a `const` assertion in the [table itself](crate::sandbox::operations), and
+/// deliberately in both places. There it fails a `cargo build` — which is the right failure for a
+/// tool *added* to gg, before anything has a chance to run and quietly not document it. Here it can
+/// be **watched failing**, which is the only way to know the sentence it would print is the sentence
+/// it prints.
+fn tools(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    let offered: BTreeSet<&str> = ALL_TOOL_NAMES.iter().copied().collect();
+    let mut bound: BTreeSet<&str> = BTreeSet::new();
+    for operation in operations {
+        if let Binding::Tool(tool) = operation.binding {
+            bound.insert(tool);
+            if !offered.contains(tool) {
+                complain(format!(
+                    "`{}` is bound by `{tool}`, which is not a gg tool",
+                    operation.id
+                ));
+            }
+        }
+    }
+    for missing in offered.difference(&bound) {
+        complain(format!(
+            "the gg tool `{missing}` buys no operation, so a run that enables it offers a model \
+             nothing it can call"
+        ));
+    }
+}
+
+/// **An operation named after a gg tool is bought by that tool**, and never by another.
+///
+/// [`tools`] above is a bijection of *sets*, which is a much weaker statement than it reads as: it
+/// asks that every gate name a real tool and that every tool buy something, and two rows that swap
+/// their gates satisfy both. So `tasks.add_task` bought by `remove_task` and `tasks.remove_task`
+/// bought by `add_task` passes every other rule in this file — the tool vocabulary is intact, the
+/// families are intact, each operation still has exactly one binding — and the consequence is
+/// precisely the confound this gate exists to prevent. Both the
+/// [documentation runtime](crate::docs::DocsRuntime::bound) and the
+/// [projection](crate::sandbox::catalogue_functions) read the [`Binding`], so a run that enables
+/// only `add_task` would document and bind `remove_task` into the program scope and withhold
+/// `add_task` — in every registered arm at once, since all of them read their gates from this one
+/// table.
+///
+/// The rule is stated over the **key**, not over every row, because the key is the only thing that
+/// can vouch for a binding without a second list to compare against. Where an operation is gg's own
+/// word for a tool, the tool is not a judgement anybody makes; where it is not — `files.read_text_file`
+/// wrapping the `read_file` tool, the view surface, the program library, the endings — the binding
+/// really is a decision, and those rows are covered by [`views`], [`capabilities`] and [`endings`]
+/// or are deliberately left to review.
+fn tool_named(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    let offered: BTreeSet<&str> = ALL_TOOL_NAMES.iter().copied().collect();
+    for operation in operations {
+        if !offered.contains(operation.id.key) {
+            continue;
+        }
+        let expected = Binding::Tool(operation.id.key);
+        if operation.binding != expected {
+            complain(format!(
+                "`{}` is gg's own name for the tool `{}` and is bought by {:?} — an operation \
+                 named after a tool is that tool's, and buying it with another withholds the call \
+                 a run thought it had enabled",
+                operation.id, operation.id.key, operation.binding
+            ));
+        }
+    }
+}
+
+/// The ending operations are gg's three, under the roles gg gives them.
+///
+/// Read off [`EndingRole::tools`] rather than listed here, so the table is checked against gg's own
+/// answer to "what may this role end with" and the two cannot be edited apart. A reviewer given
+/// `finish` is a reviewer that can declare the work complete, which is not a verdict a reviewer is
+/// asked for.
+///
+/// The roles themselves come from [`EndingRole::ALL`] for the same reason, and this file
+/// deliberately keeps no list of its own: a role gg gained and a gate that had not heard of it
+/// would compute no expectation for it at all, and an expectation of nothing agrees with a table
+/// carrying nothing. `ALL` is held to the enum by a compile-time walk beside it.
+fn endings(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    let mut expected: BTreeSet<(&str, &str)> = BTreeSet::new();
+    for role in EndingRole::ALL {
+        for tool in role.tools() {
+            expected.insert((role.id(), *tool));
+        }
+    }
+    let found: BTreeSet<(&str, &str)> = operations
+        .iter()
+        .filter_map(|operation| match operation.binding {
+            Binding::Ending(role) => Some((role.id(), operation.id.key)),
+            _ => None,
+        })
+        .collect();
+    for (role, key) in expected.difference(&found) {
+        complain(format!(
+            "gg lets a `{role}` agent end with `{key}` and no operation offers it"
+        ));
+    }
+    for (role, key) in found.difference(&expected) {
+        complain(format!(
+            "`{key}` is bound as a `{role}` ending, and gg does not offer that role that ending"
+        ));
+    }
+}
+
+/// A view is gated exactly where it reads the workspace, and nowhere else.
+///
+/// Opening a view of a file is a **read** and is bound when `read_file` is; the rest of the view
+/// surface is bound to every program whatever a run enables, because a run that offers no tools at
+/// all must still be able to show its model something. A gate that slipped onto the wrong one would
+/// silently withhold the only channel into the context window, or silently open a side door into the
+/// workspace, and neither shows up as a compile error.
+fn views(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    for operation in operations
+        .iter()
+        .filter(|operation| operation.family == FAMILY_VIEWS)
+    {
+        let expected = if operation.id.key == OPEN_FILE {
+            Binding::Tool(READ_FILE_TOOL)
+        } else {
+            Binding::Always
+        };
+        if operation.binding != expected {
+            complain(format!(
+                "the view `{}` is bound by {:?} where gg binds it by {expected:?}",
+                operation.id, operation.binding
+            ));
+        }
+    }
+}
+
+/// A capability buys the [program library](crate::programs) and nothing else, and the id it names is
+/// a real one.
+///
+/// This is the invariant the whole host-side synthesis rests on: the capability id lives in gg, and
+/// the *only* reason an arm's catalogue can stay ignorant of it is that exactly one family is bought
+/// this way and gg knows which. A second capability appearing in the table without the
+/// [projection](crate::sandbox::catalogue_functions) learning about it would silently document a
+/// withheld family.
+fn capabilities(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    let catalog: BTreeSet<&str> = GG_CAPABILITY_CATALOG.iter().copied().collect();
+    for operation in operations {
+        match (operation.binding, operation.family == FAMILY_PROGRAMS) {
+            (Binding::Capability(id), true) => {
+                if !catalog.contains(id) {
+                    complain(format!(
+                        "`{}` is bought by `{id}`, which is not a gg capability",
+                        operation.id
+                    ));
+                }
+            }
+            (Binding::Capability(id), false) => complain(format!(
+                "`{}` is bought by the capability `{id}`, and the program library is the only \
+                 family a capability buys",
+                operation.id
+            )),
+            (_, true) => complain(format!(
+                "`{}` belongs to the program library and is bound by {:?} rather than by the \
+                 capability that buys the whole family",
+                operation.id, operation.binding
+            )),
+            (_, false) => {}
+        }
+    }
+}
+
+/// Every [exemption](Applicability::UniversalExcept) is one somebody wrote down a reason for.
+///
+/// The reason being *required* is the whole of the clause's value, and its absence is invisible from
+/// every other angle: the arm really does not bind the operation, so [`coverage`]'s dead-exemption
+/// converse stays quiet, and the operation is waived on that arm for good with nothing recorded. It
+/// is a `const` assertion in the [table itself](crate::sandbox::operations) as well, for the reason
+/// the tool bijection is — there it fails a build, here it can be watched failing.
+///
+/// An empty exemption *list* fails too: `UniversalExcept(&[])` is [`Applicability::Universal`] said
+/// in a way that reads like a waiver, and a row that reads like a waiver is one a later edit will
+/// append to without re-deriving whether it should exist at all.
+fn exemptions(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    for operation in operations {
+        let Applicability::UniversalExcept(exemptions) = operation.applies else {
+            continue;
+        };
+        if exemptions.is_empty() {
+            complain(format!(
+                "`{}` excuses nobody — an empty exemption list is `Universal`, and should be \
+                 spelled that way",
+                operation.id
+            ));
+        }
+        let mut excused: BTreeSet<GgProgramLanguage> = BTreeSet::new();
+        for (language, reason) in exemptions {
+            if reason.trim().is_empty() {
+                complain(format!(
+                    "`{}` is excused on `{language}` with no reason — an exemption's reason is \
+                     prose, required, and reviewed, because it is the only record of why that arm \
+                     is permanently waived",
+                    operation.id
+                ));
+            }
+            if !excused.insert(*language) {
+                complain(format!("`{}` excuses `{language}` twice", operation.id));
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Coverage: one arm at a time, against gg
+// ---------------------------------------------------------------------------------------------
+
+/// **Every operation this arm is expected to offer, it offers exactly once** — and everything it
+/// offers is an operation gg has.
+///
+/// Coverage counts **canonical bindings**. An [alias](CatalogueFunction::alias_of) is a second way
+/// to reach one operation — a free function beside the method on the type it operates on, a block
+/// form beside a keyword form — and counts toward nothing, so an arm that idiomatically offers one
+/// capability twice is not thereby ahead of an arm that offers it once. Nothing here counts
+/// functions, modules, or anything else an arm chose for itself.
+fn coverage(
+    operations: &'static [Operation],
+    language: &'static dyn ProgramLanguage,
+    out: &mut Vec<Disagreement>,
+) {
+    let subject = language.display_name();
+    let mut complain = |detail: String| out.push(Disagreement { subject, detail });
+
+    if language.catalogue().schema < SchemaVersion::V2 {
+        complain(
+            "commits a catalogue in schema 1, which named no operation and asserted its own gates \
+             — this gate reads the normalized model and has nothing to hold such a catalogue to"
+                .to_string(),
+        );
+        return;
+    }
+
+    // The arm's identity mapping: operation id → the bindings it wrote for it. A `Vec` rather than
+    // one value because two canonical bindings of one operation is precisely the thing to report,
+    // and reporting it needs both.
+    let mut canonical: BTreeMap<OperationId, Vec<Shape>> = BTreeMap::new();
+    let mut aliases: Vec<(String, &'static str)> = Vec::new();
+
+    for function in crate::sandbox::catalogue_functions(language) {
+        let named = named(&function);
+        // **Unreachable while every readable catalogue is in the normalized schema**, and kept
+        // rather than unwrapped because that is a property of the schema refusal above rather than
+        // of this loop. A V2 entry's operation is a required, non-optional field, so the projection
+        // fills it in unconditionally; a V1 catalogue never reaches here at all. A committed
+        // catalogue with the key deleted therefore does not produce this sentence — it fails
+        // earlier and harder, where the arm parses its committed document (`SignatureCatalogue::parse`
+        // in each arm's `catalogue`), with `missing field `operation``. That is an acceptable place to fail,
+        // and this arm exists so that the field going optional again is a complaint rather than a
+        // panic.
+        let Some(id) = function.operation else {
+            complain(format!(
+                "`{named}` names no operation at all, so gg has no identity to gate, record or \
+                 document it under"
+            ));
+            continue;
+        };
+        let Some(operation) = resolve(operations, id) else {
+            complain(format!(
+                "`{named}` binds the operation `{id}`, which gg does not have — an entry gg cannot \
+                 resolve is offered under no gate at all, and is dropped from search, from every \
+                 directory and from every documentation view"
+            ));
+            continue;
+        };
+        match function.alias_of {
+            Some(alias) => aliases.push((named, alias)),
+            None => canonical
+                .entry(operation.id)
+                .or_default()
+                .push(Shape::of(&function)),
+        }
+    }
+
+    for (id, bindings) in &canonical {
+        if bindings.len() > 1 {
+            let listed = bindings
+                .iter()
+                .map(|shape| format!("{shape}"))
+                .collect::<Vec<_>>()
+                .join(", and ");
+            complain(format!(
+                "binds `{id}` {} times over — as {listed}. An arm's second way to reach one \
+                 operation is an alias, and an alias says so with `aliasOf`",
+                bindings.len()
+            ));
+        }
+    }
+
+    for (named, alias) in aliases {
+        match resolve(operations, alias) {
+            None => complain(format!(
+                "`{named}` is an alias of `{alias}`, which gg does not have"
+            )),
+            Some(operation) if !canonical.contains_key(&operation.id) => complain(format!(
+                "`{named}` is an alias of `{alias}`, which this arm binds nowhere — an alias is a \
+                 *second* way to reach an operation, so one standing alone leaves the operation \
+                 uncovered and itself gated by something it does not offer"
+            )),
+            Some(_) => {}
+        }
+    }
+
+    for operation in operations {
+        let bound = canonical.contains_key(&operation.id);
+        match (bound, excused(operation, language)) {
+            (true, None) | (false, Some(_)) => {}
+            (false, None) => complain(format!(
+                "gg offers `{}` and this arm binds it nowhere — bind it, or write an exemption \
+                 with a reason beside the operation",
+                operation.id
+            )),
+            (true, Some(reason)) => complain(format!(
+                "`{}` is excused here ({reason}), and this arm binds it — the exemption is dead, \
+                 and a dead exemption is how a list of two becomes a blanket waiver",
+                operation.id
+            )),
+        }
+    }
+}
+
+/// **Whether a program passes an operation anything is gg's answer, and every arm documents it.**
+///
+/// Asked of the canonical bindings alone: an alias is free to take a different shape of the same
+/// capability, so a parameterless alias must not be able to answer on a parameter-taking binding's
+/// behalf, or the other way about.
+///
+/// The defect this exists for is a reflector that emits an empty parameter list for everything. The
+/// documentation still renders, every signature still looks plausible, and every model on that arm
+/// is told every call takes nothing.
+///
+/// **A receiver is input.** `view.close()` on a handle to the view it closes takes an argument —
+/// the view — and documents no parameter, because the parameter is the thing the call hangs off.
+/// That is the idiomatic binding in every language with methods, and a rule that read only the
+/// parameter list would forbid an arm from choosing it, which is shape parity by another route:
+/// every parameterised operation would have to keep a free function to satisfy the gate. So the
+/// half of this rule that demands a documented argument is asked of receiverless bindings only.
+///
+/// The other half is unaffected and stays: an arm that documents an argument where gg says the
+/// operation takes nothing is wrong however it bound the call. What the exemption costs is narrow
+/// and worth naming — a *two*-input operation bound as a method whose second parameter the
+/// reflector dropped reads here as a receiver supplying the one input gg knows about, and gg's
+/// table records whether an operation takes input rather than how much of it.
+fn takes_input(
+    operations: &'static [Operation],
+    language: &'static dyn ProgramLanguage,
+    out: &mut Vec<Disagreement>,
+) {
+    let subject = language.display_name();
+    let mut complain = |detail: String| out.push(Disagreement { subject, detail });
+
+    for function in crate::sandbox::catalogue_functions(language) {
+        if function.alias_of.is_some() {
+            continue;
+        }
+        let Some(operation) = function.operation.and_then(|id| resolve(operations, id)) else {
+            // Already reported, in the sentence that diagnoses it.
+            continue;
+        };
+        // Folded across the shapes, because an overload group legitimately contains a nullary shape
+        // beside one that takes a path: `listDir()` and `listDir(String)` are one capability, and it
+        // takes an argument.
+        let documented = function
+            .signatures
+            .iter()
+            .any(|entry| !entry.parameters.is_empty());
+        // A receiver stands in for a documented argument, and only in the direction where its
+        // absence would otherwise read as an omission.
+        let takes = documented || function.receiver.is_some();
+        let complaint = match (documented, takes, operation.takes_input) {
+            (true, _, false) => Some(("documents an argument", "nothing")),
+            (_, false, true) => Some(("documents no argument", "input")),
+            _ => None,
+        };
+        if let Some((documents, takes)) = complaint {
+            complain(format!(
+                "`{}`, which binds `{}`, {documents} in any of its shapes, where gg says the \
+                 operation takes {takes}",
+                named(&function),
+                operation.id
+            ));
+        }
+    }
+}
+
+/// The **shape** one arm gave one operation: where it is documented, what kind of declaration it is,
+/// what it hangs off, and what a program calls it.
+///
+/// This is the identity of a *binding*, and it exists to name one in a complaint and to tell two of
+/// them apart. It is deliberately never compared between arms: which of these an arm chose is the
+/// whole of what being idiomatic means, and the cross-arm join is the operation id beside it.
+struct Shape {
+    /// The module it is documented under, in the arm's own spelling.
+    module: &'static str,
+    /// What kind of declaration the arm made of it.
+    kind: EntryKind,
+    /// The declared type it hangs off, where it hangs off one.
+    receiver: Option<&'static str>,
+    /// The name a program calls it by.
+    name: &'static str,
+}
+
+impl Shape {
+    /// The shape of one catalogued binding.
+    fn of(function: &CatalogueFunction) -> Self {
+        Self {
+            module: function.object,
+            kind: function.kind,
+            receiver: function.receiver,
+            name: function.name,
+        }
+    }
+}
+
+impl fmt::Display for Shape {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let kind = match self.kind {
+            EntryKind::Function => "a function",
+            EntryKind::Method => "a method",
+            EntryKind::StaticMethod => "a static method",
+            EntryKind::Initializer => "an initializer",
+        };
+        write!(f, "`{}`, {kind}", self.name)?;
+        if let Some(receiver) = self.receiver {
+            write!(f, " on `{receiver}`")?;
+        }
+        write!(f, " in `{}`", self.module)
+    }
+}
+
+/// How a complaint names one binding: its fully-qualified name where the arm emits one, and the
+/// name a program calls it by otherwise.
+fn named(function: &CatalogueFunction) -> String {
+    function.fqn.unwrap_or(function.name).to_string()
+}
+
+/// The row of `operations` the rendered id `id` names, or `None` for one no row carries.
+///
+/// Resolution goes through the **stated** table rather than through
+/// [`operation_by_id`](crate::sandbox::operations::operation_by_id), so that a damaged table is
+/// really the table this gate reads. The split is at the first dot, which is safe by construction:
+/// an [`OperationId`]'s key is `snake_case` and its namespace is one word.
+fn resolve(operations: &'static [Operation], id: &str) -> Option<&'static Operation> {
+    let (namespace, key) = id.split_once('.')?;
+    operations
+        .iter()
+        .find(|operation| operation.id.namespace == namespace && operation.id.key == key)
+}
+
+/// The reason `operation` is excused on `language`, or `None` where it is not excused there.
+fn excused(
+    operation: &'static Operation,
+    language: &'static dyn ProgramLanguage,
+) -> Option<&'static str> {
+    let Applicability::UniversalExcept(exemptions) = operation.applies else {
+        return None;
+    };
+    let id = registered_id(language)?;
+    exemptions
+        .iter()
+        .find(|(excused, _)| *excused == id)
+        .map(|(_, reason)| *reason)
+}
+
+/// The wire id of `language`, or `None` for a surface that is not a registered arm.
+///
+/// It is resolved by *finding* the language in the registry rather than by asking it, because
+/// [`id`](ProgramLanguage::id) panics on the [fixture](super::fixture) — deliberately, since a
+/// fixture that could be named in a config file would be a fixture that could be run. An exemption
+/// names a `GgProgramLanguage`, so a surface with no wire id can never be the arm one names, and
+/// answering `None` here says exactly that rather than working around a panic.
+fn registered_id(language: &'static dyn ProgramLanguage) -> Option<GgProgramLanguage> {
+    all_languages()
+        .find(|registered| registered.display_name() == language.display_name())
+        .map(|registered| registered.id())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Spellings: what a program could write
+// ---------------------------------------------------------------------------------------------
+
+/// **Every spelling an arm offers is one a program can write, and it offers each of them once.**
+///
+/// These are the rules about a *signature* and its *arguments* — the ones no other gate asks, and
+/// the ones that were always the majority of this gate's value. They read the
+/// [normalized projection](crate::sandbox::catalogue_functions), so one implementation covers every
+/// arm however its own reflector spells things.
+fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagreement>) {
+    let subject = language.display_name();
+    let mut complain = |detail: String| out.push(Disagreement { subject, detail });
 
     // Spelled once each, per grouping and receiver. Two entries under one module sharing a name is
     // one of them shadowing the other at the call site — and a member function legitimately shares a
@@ -419,374 +858,6 @@ fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagr
                     &mut complain,
                 );
             }
-        }
-    }
-}
-
-/// The checks that hold with **one** language registered: every one of them anchors the catalogue to
-/// a vocabulary gg owns, rather than to another language's catalogue.
-fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagreement>) {
-    let name = language.display_name();
-    let catalogue = language.catalogue();
-    let mut complain = |detail: String| {
-        out.push(Disagreement {
-            language: name,
-            detail,
-        })
-    };
-
-    // The tool bijection: every gg tool is catalogued, nothing else is, and none is catalogued
-    // twice. This is the drift gate that has always existed, restated per language.
-    let catalogued: BTreeSet<&str> = catalogue.tools.iter().map(|e| e.tool.as_str()).collect();
-    let offered: BTreeSet<&str> = ALL_TOOL_NAMES.iter().copied().collect();
-    for missing in offered.difference(&catalogued) {
-        complain(format!("the gg tool `{missing}` is not catalogued"));
-    }
-    for extra in catalogued.difference(&offered) {
-        complain(format!(
-            "`{extra}` is catalogued as a gg tool, and is not one"
-        ));
-    }
-    if catalogued.len() != catalogue.tools.len() {
-        complain(format!(
-            "the catalogue has {} tool entries for {} distinct tools",
-            catalogue.tools.len(),
-            catalogued.len()
-        ));
-    }
-
-    // The meta vocabulary is gg's own, exactly: the [documentation carve-out](crate::docs) seeds
-    // `list` onto every object the guest creates and answers a lookup for that key by it. A
-    // catalogue that omits it leaves the one function every object carries undocumented — the
-    // directory a model reaches for first — and one that invents a second names a function no guest
-    // binds. Neither is visible to any other check, because a meta entry hangs off no object and so
-    // appears in none of the per-object counts.
-    let meta_vocabulary: BTreeSet<&str> = [crate::docs::LIST_FUNCTION].into_iter().collect();
-    let meta: BTreeSet<&str> = catalogue.meta.iter().map(|e| e.key.as_str()).collect();
-    for missing in meta_vocabulary.difference(&meta) {
-        complain(format!("the meta function `{missing}` is not catalogued"));
-    }
-    for extra in meta.difference(&meta_vocabulary) {
-        complain(format!(
-            "`{extra}` is catalogued as a meta function, and gg binds no such function"
-        ));
-    }
-    if meta.len() != catalogue.meta.len() {
-        complain(format!(
-            "the catalogue has {} meta entries for {} distinct meta functions",
-            catalogue.meta.len(),
-            meta.len()
-        ));
-    }
-
-    // Every gate names a gg tool. A gate that names nothing is a function bound by a condition
-    // nobody can satisfy, or — worse — one bound unconditionally by a typo.
-    let gates = catalogue
-        .views
-        .iter()
-        .filter_map(|e| e.requires.as_deref())
-        .chain(catalogue.helpers.iter().map(|e| e.requires.as_str()));
-    for gate in gates {
-        if !offered.contains(gate) {
-            complain(format!("`{gate}` gates a function and is not a gg tool"));
-        }
-    }
-
-    // The session section is gg's ending vocabulary, exactly: the same three names the tool-calling
-    // arm dispatches, which is what makes an ending comparable across the two execution modes as
-    // well as across languages.
-    let ending_vocabulary: BTreeSet<&str> = [FINISH_TOOL, APPROVE_TOOL, REQUEST_CHANGES_TOOL]
-        .into_iter()
-        .collect();
-    let session: BTreeSet<&str> = catalogue.session.iter().map(|e| e.key.as_str()).collect();
-    for missing in ending_vocabulary.difference(&session) {
-        complain(format!("the ending call `{missing}` is not catalogued"));
-    }
-    for extra in session.difference(&ending_vocabulary) {
-        complain(format!(
-            "`{extra}` is catalogued as an ending call, and gg has no such ending"
-        ));
-    }
-
-    // The role each ending belongs to is one of the three the docs runtime filters by; anything else
-    // documents a call to every agent, including the ones whose scope does not bind it.
-    for entry in &catalogue.session {
-        if !ENDING_ROLES.contains(&entry.ending.as_str()) {
-            complain(format!(
-                "the ending `{}` belongs to the role `{}`, which is not one of {ENDING_ROLES:?}",
-                entry.key, entry.ending
-            ));
-        }
-    }
-
-    // And which role, exactly — read off [`EndingRole::tools`] rather than listed here, so the
-    // catalogue is checked against gg's own answer to "what may this role end with" and the two
-    // cannot be edited apart. A reviewer offered `finish` is a reviewer that can declare the work
-    // complete, which is not a verdict a reviewer is asked for.
-    for role in [EndingRole::Standard, EndingRole::Review] {
-        let ending = role.id();
-        for tool in role.tools() {
-            if let Some(entry) = catalogue.session.iter().find(|e| e.key == *tool)
-                && entry.ending != ending
-            {
-                complain(format!(
-                    "`{tool}` is catalogued as a `{}` ending, and gg offers it to the `{ending}` \
-                     role",
-                    entry.ending
-                ));
-            }
-        }
-    }
-
-    // A file view is a **read**, and the rest of the view surface is not gated at all: a run that
-    // offers no tools must still be able to show its model something. A `requires` that slipped onto
-    // the wrong one would silently withhold the only channel into the context window, or silently
-    // open a side door into the workspace, and neither shows up as a compile error.
-    for entry in &catalogue.views {
-        let expected = (entry.key == FILE_VIEW).then_some(READ_FILE_TOOL);
-        if entry.requires.as_deref() != expected {
-            complain(format!(
-                "the view `{}` is gated on {:?} where gg gates it on {expected:?}",
-                entry.key, entry.requires
-            ));
-        }
-    }
-
-    // No non-tool function may be a gg tool in disguise — neither by gg's own name for one nor by
-    // this SDK's spelling of one. Two vocabularies share one program scope, so a collision would be
-    // resolved by bind order rather than by anyone's decision; and a model shown two unrelated
-    // functions under one word has no way to tell which it is calling. Ending calls, view calls,
-    // program-library calls, helpers and meta functions alike, since none of them has a gg tool name
-    // of its own — and a meta function most of all, since it is bound on *every* object and so
-    // collides with a tool spelling wherever that tool is grouped.
-    let tool_spellings: BTreeSet<&str> = catalogue
-        .tools
-        .iter()
-        .map(|tool| tool.name.as_str())
-        .collect();
-    for (family, object, name) in catalogue
-        .meta
-        .iter()
-        .map(|e| ("meta function", None, e.name.as_str()))
-        .chain(
-            catalogue
-                .session
-                .iter()
-                .map(|e| ("ending call", Some(e.object.as_str()), e.name.as_str())),
-        )
-        .chain(
-            catalogue
-                .views
-                .iter()
-                .map(|e| ("view call", Some(e.object.as_str()), e.name.as_str())),
-        )
-        .chain(catalogue.programs.iter().map(|e| {
-            (
-                "program-library call",
-                Some(e.object.as_str()),
-                e.name.as_str(),
-            )
-        }))
-        .chain(
-            catalogue
-                .helpers
-                .iter()
-                .map(|e| ("helper", Some(e.object.as_str()), e.name.as_str())),
-        )
-    {
-        let where_ = qualified(object, name);
-        if ALL_TOOL_NAMES.contains(&name) {
-            complain(format!(
-                "the {family} `{where_}` is spelled as one of gg's own tool names"
-            ));
-        }
-        if tool_spellings.contains(name) {
-            complain(format!(
-                "the {family} `{where_}` is spelled exactly as this SDK spells a gg tool"
-            ));
-        }
-    }
-}
-
-/// Every API object at least one of a catalogue's functions hangs off.
-///
-/// A [meta](Section::Meta) function contributes none: it is bound onto whatever objects the rest of
-/// the catalogue creates, so it can neither introduce an object nor keep one alive.
-fn grouped_objects(language: &'static dyn ProgramLanguage) -> BTreeSet<&'static str> {
-    spellings(language)
-        .into_iter()
-        .filter_map(|spelling| spelling.object)
-        .collect()
-}
-
-/// The [ending roles](crate::ending::EndingRole) a catalogue may tag a session entry with — the same
-/// three spellings [`DocsRuntime`](crate::docs::DocsRuntime) filters by.
-const ENDING_ROLES: [&str; 3] = ["standard", "review", "judge"];
-
-/// The [key](Identity::key) of the view function that opens a **file**, which is the one view call a
-/// gg tool gates.
-const FILE_VIEW: &str = "open_file";
-
-/// The gg tool that gates it. A view of a file is a read, so it closes when reading does.
-const READ_FILE_TOOL: &str = "read_file";
-
-/// The checks about one language's own coherence: that its spellings are usable and unambiguous, and
-/// that every type it mentions it also declares.
-fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagreement>) {
-    let name = language.display_name();
-    let catalogue = language.catalogue();
-    let mut complain = |detail: String| {
-        out.push(Disagreement {
-            language: name,
-            detail,
-        })
-    };
-
-    // Spelled once each, per object. A program's scope is one namespace per object, so two entries
-    // on `fs` sharing a name is one of them silently shadowing the other at bind time.
-    let mut seen: BTreeSet<(Option<&str>, &str)> = BTreeSet::new();
-    for entry in spellings(language) {
-        let Spelling {
-            object,
-            name,
-            signatures,
-            doc,
-            key,
-        } = entry;
-        let where_ = qualified(object, key);
-        if name.trim().is_empty() {
-            complain(format!("`{where_}` has no name a program could call"));
-        }
-        if doc.trim().is_empty() {
-            complain(format!("`{where_}` has no documentation"));
-        }
-        if !seen.insert((object, name)) {
-            complain(match object {
-                Some(object) => format!("two functions on `{object}` are both spelled `{name}`"),
-                None => format!("two meta functions are both spelled `{name}`"),
-            });
-        }
-        // Every shape the language offers this function in, checked on its own. The COUNT is
-        // spelling — an overload pair and a default argument are two idioms for one capability —
-        // so what is asserted is that each of them is callable and documented, never how many
-        // there are.
-        if signatures.is_empty() {
-            complain(format!("`{where_}` has no signature"));
-        }
-        for SignatureEntry {
-            signature,
-            parameters,
-        } in signatures
-        {
-            if signature.trim().is_empty() {
-                complain(format!("`{where_}` has an empty signature"));
-            } else if !signature.starts_with(name) {
-                complain(format!(
-                    "`{where_}`'s signature does not start with the name a program calls \
-                     (`{name}`): {signature}"
-                ));
-            }
-            if parameters.is_empty() && declares_arguments(signature) {
-                complain(format!(
-                    "`{where_}` takes arguments and documents none: {signature}"
-                ));
-            }
-            for parameter in parameters {
-                check_parameter(
-                    parameter,
-                    &where_,
-                    signature,
-                    names_arguments(signature),
-                    &mut complain,
-                );
-            }
-        }
-    }
-
-    // And a meta function is spelled once against *every* object, not just against the other meta
-    // functions: it is seeded onto each object the guest creates, so a name it shares with any
-    // catalogued function is a collision on that object — the same silent shadowing the per-object
-    // rule above catches, in the one shape that rule cannot see.
-    let meta_names: BTreeSet<&str> = catalogue.meta.iter().map(|e| e.name.as_str()).collect();
-    for spelling in spellings(language) {
-        let Some(object) = spelling.object else {
-            continue;
-        };
-        if meta_names.contains(spelling.name) {
-            complain(format!(
-                "`{object}.{}` is spelled exactly as the meta function bound on every object",
-                spelling.name
-            ));
-        }
-    }
-
-    // Every type a signature mentions is declared, so a doc lookup never shows a name it does not
-    // then define — and is itself explained, member by member. A record whose fields arrive
-    // unexplained is a record the model has to infer from its field names, which is exactly the
-    // guessing the catalogue exists to remove.
-    let declared: BTreeSet<&str> = catalogue.types.iter().map(|t| t.name.as_str()).collect();
-    for declaration in &catalogue.types {
-        let name = &declaration.name;
-        if declaration.declaration.trim().is_empty() {
-            complain(format!("the type `{name}` has no declaration"));
-        }
-        if declaration.doc.trim().is_empty() {
-            complain(format!("the type `{name}` has no documentation"));
-        }
-        for member in &declaration.members {
-            if member.name.trim().is_empty() {
-                complain(format!("a member of `{name}` has no name"));
-            } else if member.doc.trim().is_empty() {
-                complain(format!(
-                    "`{name}.{}` has no documentation",
-                    member.name.trim()
-                ));
-            }
-        }
-    }
-
-    // The API objects: described exactly once each, and only the ones a function actually hangs off.
-    // A described object with nothing on it is an object a model is introduced to and never given;
-    // an object with functions and no description is a heading with no sentence under it.
-    let grouped = grouped_objects(language);
-    let mut described: BTreeSet<&str> = BTreeSet::new();
-    for entry in &catalogue.objects {
-        let object = entry.object.as_str();
-        if !described.insert(object) {
-            complain(format!("the API object `{object}` is described twice"));
-        }
-        if entry.doc.trim().is_empty() {
-            complain(format!("the API object `{object}` has no description"));
-        }
-        if !grouped.contains(object) {
-            complain(format!(
-                "the API object `{object}` is described and no function hangs off it"
-            ));
-        }
-    }
-    for object in grouped.difference(&described) {
-        complain(format!(
-            "functions hang off `{object}` and nothing describes it"
-        ));
-    }
-    let referenced = catalogue
-        .meta
-        .iter()
-        .flat_map(|e| e.types.iter())
-        .chain(catalogue.session.iter().flat_map(|e| e.types.iter()))
-        .chain(catalogue.views.iter().flat_map(|e| e.types.iter()))
-        .chain(catalogue.programs.iter().flat_map(|e| e.types.iter()))
-        .chain(catalogue.tools.iter().flat_map(|e| e.types.iter()))
-        .chain(catalogue.helpers.iter().flat_map(|e| e.types.iter()));
-    for reference in referenced {
-        // The *written* spelling is what a v1 catalogue's `types` section is keyed by, and it is
-        // what this check has always compared. A converted arm records the resolved name beside it,
-        // and the two are the same string wherever the arm had nothing better to give.
-        if !declared.contains(reference.spelled()) {
-            complain(format!(
-                "`{}` is referenced by a signature and never declared",
-                reference.spelled()
-            ));
         }
     }
 }
@@ -855,9 +926,9 @@ fn is_ml_notation(signature: &str) -> bool {
 /// Whether an ML-notation signature's type takes an argument: a `->` at the top level of it, outside
 /// every bracket.
 ///
-/// `list :: Effect (Array FunctionSummary)` takes nothing and `readFile :: String -> Effect FileRead`
+/// `current :: Effect (Array OpenView)` takes nothing and `readFile :: String -> Effect FileRead`
 /// takes one, which the bracket rule cannot tell apart — it sees the parentheses around
-/// `Array FunctionSummary` and reads them as an argument list.
+/// `Array OpenView` and reads them as an argument list.
 fn ml_declares_arguments(signature: &str) -> bool {
     let Some((_, kind)) = signature.split_once(" :: ") else {
         return false;
@@ -885,9 +956,10 @@ fn ml_declares_arguments(signature: &str) -> bool {
 /// (`readFile :: String -> Effect FileRead`) has no bracket to look inside, and is read by
 /// [`ml_declares_arguments`] instead: its arguments are the chain of top-level arrows, which is where
 /// that notation puts them. The bracket rule was wrong about such a signature in both directions —
-/// `list :: Effect (Array FunctionSummary)` looked like it took an argument, and
-/// `readFile :: String -> Effect FileRead` looked like it took none — and the comparative check in
-/// [`agrees_with`] is now the second line of defence rather than the only one.
+/// `current :: Effect (Array OpenView)` looked like it took an argument, and
+/// `readFile :: String -> Effect FileRead` looked like it took none — and [`takes_input`], which
+/// holds every arm to gg's own answer about the call, is the second line of defence rather than the
+/// only one.
 fn declares_arguments(signature: &str) -> bool {
     if is_ml_notation(signature) {
         return ml_declares_arguments(signature);
@@ -911,191 +983,6 @@ fn declares_arguments(signature: &str) -> bool {
     // Unbalanced brackets: malformed rather than argument-free. Complaining here would be a second
     // sentence about one defect, and the name and doc checks above already have it.
     false
-}
-
-/// Whether each entry documents any argument at all, keyed by the identity it belongs to.
-///
-/// Folded across an entry's signatures, because an overload group legitimately contains a nullary
-/// shape beside one that takes a path — `listDir()` and `listDir(String)` are one capability, and it
-/// takes an argument.
-fn documented_arguments(
-    language: &'static dyn ProgramLanguage,
-) -> BTreeMap<(Option<&'static str>, &'static str), bool> {
-    let mut out = BTreeMap::new();
-    for spelling in spellings(language) {
-        let documented = spelling
-            .signatures
-            .iter()
-            .any(|entry| !entry.parameters.is_empty());
-        *out.entry((spelling.object, spelling.key)).or_default() |= documented;
-    }
-    out
-}
-
-/// One entry's spellings, beside the identity they belong to, so a complaint can name both.
-struct Spelling {
-    /// The object it hangs off — identity, and here only so a complaint can qualify the name.
-    /// `None` for a [meta](Section::Meta) function, which hangs off every object rather than one.
-    object: Option<&'static str>,
-    /// The name a program calls it by.
-    name: &'static str,
-    /// Every shape this language's SDK declares it in. Never compared across languages — the count
-    /// is idiom — and checked one by one within a language.
-    signatures: &'static [SignatureEntry],
-    /// The documentation paragraph a lookup renders.
-    doc: &'static str,
-    /// The language-independent key the spelling belongs to.
-    key: &'static str,
-}
-
-/// Every catalogue entry's [spellings](Spelling), across all six function-carrying sections.
-fn spellings(language: &'static dyn ProgramLanguage) -> Vec<Spelling> {
-    let catalogue = language.catalogue();
-    let mut out: Vec<Spelling> = catalogue
-        .meta
-        .iter()
-        .map(|e| Spelling {
-            object: None,
-            name: e.name.as_str(),
-            signatures: e.signatures.as_slice(),
-            doc: e.doc.as_str(),
-            key: e.key.as_str(),
-        })
-        .collect();
-    out.extend(catalogue.session.iter().map(|e| Spelling {
-        object: Some(e.object.as_str()),
-        name: e.name.as_str(),
-        signatures: e.signatures.as_slice(),
-        doc: e.doc.as_str(),
-        key: e.key.as_str(),
-    }));
-    out.extend(catalogue.views.iter().map(|e| Spelling {
-        object: Some(e.object.as_str()),
-        name: e.name.as_str(),
-        signatures: e.signatures.as_slice(),
-        doc: e.doc.as_str(),
-        key: e.key.as_str(),
-    }));
-    out.extend(catalogue.programs.iter().map(|e| Spelling {
-        object: Some(e.object.as_str()),
-        name: e.name.as_str(),
-        signatures: e.signatures.as_slice(),
-        doc: e.doc.as_str(),
-        key: e.key.as_str(),
-    }));
-    // A tool's identity is its own gg tool name, which is why it alone carries no separate `key`.
-    out.extend(catalogue.tools.iter().map(|e| Spelling {
-        object: Some(e.object.as_str()),
-        name: e.name.as_str(),
-        signatures: e.signatures.as_slice(),
-        doc: e.doc.as_str(),
-        key: e.tool.as_str(),
-    }));
-    out.extend(catalogue.helpers.iter().map(|e| Spelling {
-        object: Some(e.object.as_str()),
-        name: e.name.as_str(),
-        signatures: e.signatures.as_slice(),
-        doc: e.doc.as_str(),
-        key: e.key.as_str(),
-    }));
-    out
-}
-
-/// The comparative half: `language` offers exactly the capabilities `reference` does.
-fn agrees_with(
-    reference: &'static dyn ProgramLanguage,
-    language: &'static dyn ProgramLanguage,
-    out: &mut Vec<Disagreement>,
-) {
-    let name = language.display_name();
-    let theirs = identities(reference);
-    let ours = identities(language);
-
-    for identity in ours.iter().filter(|i| !theirs.contains(i)) {
-        out.push(Disagreement {
-            language: name,
-            detail: format!(
-                "offers `{identity}`, which {} does not",
-                reference.display_name()
-            ),
-        });
-    }
-    for identity in theirs.iter().filter(|i| !ours.contains(i)) {
-        out.push(Disagreement {
-            language: name,
-            detail: format!(
-                "does not offer `{identity}`, which {} does",
-                reference.display_name()
-            ),
-        });
-    }
-
-    // Whether an entry takes arguments at all. How many there are, what they are called and how they
-    // are passed are the language's own — but a capability that needs a path needs one in every
-    // language, so an arm documenting arguments for `fs.read_file` and an arm documenting none are
-    // not two spellings of one surface: a model reads what to put in the call on one arm and guesses
-    // on the other, which is a difference in surface in the middle of a study measuring the language.
-    // It is also the check that covers what `declares_arguments` cannot see: a reflector for a
-    // language whose signature notation has no bracket, emitting an empty `parameters` for
-    // everything, passes the internal half and fails here.
-    let theirs_arguments = documented_arguments(reference);
-    for ((object, key), mine) in documented_arguments(language) {
-        // Absent means the reference arm does not offer this identity at all, which the comparison
-        // above has already said in the sentence that diagnoses it.
-        let Some(yours) = theirs_arguments.get(&(object, key)).copied() else {
-            continue;
-        };
-        if mine != yours {
-            let (here, there) = if mine {
-                ("arguments", "none")
-            } else {
-                ("no arguments", "some")
-            };
-            out.push(Disagreement {
-                language: name,
-                detail: format!(
-                    "documents {here} for `{}`, where {} documents {there}",
-                    qualified(object, key),
-                    reference.display_name()
-                ),
-            });
-        }
-    }
-
-    // The objects, and how many functions hang off each. Implied by the identity comparison above,
-    // and stated separately because it is the failure a *renamed* object produces, and "`fs` has 12
-    // functions here and 0 there" is the sentence that diagnoses it.
-    let theirs = objects(&theirs);
-    let ours = objects(&ours);
-    for object in theirs.keys().chain(ours.keys()).collect::<BTreeSet<_>>() {
-        let (mine, yours) = (
-            ours.get(object).copied().unwrap_or_default(),
-            theirs.get(object).copied().unwrap_or_default(),
-        );
-        if mine != yours {
-            out.push(Disagreement {
-                language: name,
-                detail: format!(
-                    "groups {mine} function(s) under `{object}` where {} groups {yours}",
-                    reference.display_name()
-                ),
-            });
-        }
-    }
-}
-
-/// How many functions hang off each object.
-///
-/// A [meta](Section::Meta) function counts against none of them: it is bound on every object equally,
-/// so counting it would add one to each and say nothing.
-fn objects(identities: &[Identity]) -> BTreeMap<&str, usize> {
-    let mut out: BTreeMap<&str, usize> = BTreeMap::new();
-    for identity in identities {
-        if let Some(object) = identity.object.as_deref() {
-            *out.entry(object).or_default() += 1;
-        }
-    }
-    out
 }
 
 #[cfg(test)]

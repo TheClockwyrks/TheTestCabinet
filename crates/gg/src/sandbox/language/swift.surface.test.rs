@@ -382,12 +382,6 @@ switch read {
 case .text(let file): gg.log(file.contents.split(separator: "\n").first.map(String.init) ?? "")
 case .image(let picture): gg.log(picture.label)
 }
-let directories = [
-    files.list(), shell.list(), board.list(), tasks.list(), memories.list(),
-    views.list(), context.list(), delegation.list(), skills.list(), programs.list(),
-    session.list(),
-]
-gg.log(directories.flatMap { $0 }.map(\.name).joined(separator: ","))
 try session.finish("read the file and showed myself the result")
 "####,
         ),
@@ -405,18 +399,6 @@ try session.finish("read the file and showed myself the result")
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    // EVERY MODULE ASKS ITS DIRECTORY UNDER THE PATH THIS ARM PUBLISHES.
-    // The double echoes the grouping it was asked about, so this line is the one place the
-    // `ggModule` constant each namespace declares is observed crossing the membrane. It is the one
-    // fact `signatures.py` cannot read off a symbol graph — a `let`'s initializer is not in one — and
-    // the one whose failure is silent, since the host filters the directory on the string and a
-    // namespace answering under a neighbour's path would hand a program the wrong functions.
-    assert_eq!(
-        lines[3],
-        "gg.filesFunction,gg.shellFunction,gg.boardFunction,gg.tasksFunction,\
-         gg.memoriesFunction,gg.viewsFunction,gg.contextFunction,gg.delegationFunction,\
-         gg.skillsFunction,gg.programsFunction,gg.sessionFunction"
-    );
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
         outcome
@@ -929,26 +911,24 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     // must say the same thing about every argument of every shape — a `default` on a required
     // argument, or an optional one without a default, would be a catalogue describing a call a model
     // could not write.
-    for name in ["functions", "meta"] {
-        for entry in section(&catalogue, name) {
-            for shape in entry["signatures"].as_array().expect("an entry has shapes") {
-                for parameter in shape["parameters"]
-                    .as_array()
-                    .expect("a shape has parameters")
-                {
-                    assert_eq!(
-                        parameter["optional"].as_bool().expect("a flag"),
-                        !parameter["default"].is_null(),
-                        "`{}`'s `{}` disagrees with itself about being optional",
-                        text(entry, "name"),
-                        text(parameter, "name")
-                    );
-                    assert_eq!(
-                        text(parameter, "kind"),
-                        "positional",
-                        "every Swift argument is positional, label or no label"
-                    );
-                }
+    for entry in section(&catalogue, "functions") {
+        for shape in entry["signatures"].as_array().expect("an entry has shapes") {
+            for parameter in shape["parameters"]
+                .as_array()
+                .expect("a shape has parameters")
+            {
+                assert_eq!(
+                    parameter["optional"].as_bool().expect("a flag"),
+                    !parameter["default"].is_null(),
+                    "`{}`'s `{}` disagrees with itself about being optional",
+                    text(entry, "name"),
+                    text(parameter, "name")
+                );
+                assert_eq!(
+                    text(parameter, "kind"),
+                    "positional",
+                    "every Swift argument is positional, label or no label"
+                );
             }
         }
     }
@@ -957,35 +937,27 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
     // argument a signature names, and a member documented for every member of every type. The
     // reflector refuses to emit a catalogue that breaks this, and this is the second reading of it —
     // over the emitted JSON, where it is the same check for every language there will ever be.
-    for name in ["functions", "meta"] {
-        for entry in section(&catalogue, name) {
-            let called = text(entry, "name");
-            // A `functions` entry authors a `brief`; the `meta` section still carries the one
-            // paragraph its own schema has, which is why the two are read differently.
-            let documented = match name {
-                "meta" => text(entry, "doc"),
-                _ => text(entry, "brief"),
-            };
-            assert!(
-                !documented.trim().is_empty(),
-                "`{called}` has no documentation"
-            );
-            for shape in entry["signatures"].as_array().expect("an entry has shapes") {
-                let written = text(shape, "signature");
-                for parameter in shape["parameters"]
-                    .as_array()
-                    .expect("a shape has parameters")
-                {
-                    let argument = text(parameter, "name");
-                    assert!(
-                        !text(parameter, "doc").trim().is_empty(),
-                        "`{called}`'s `{argument}` has no documentation"
-                    );
-                    assert!(
-                        written.contains(argument),
-                        "`{called}` documents an argument its signature does not name: {written}"
-                    );
-                }
+    for entry in section(&catalogue, "functions") {
+        let called = text(entry, "name");
+        assert!(
+            !text(entry, "brief").trim().is_empty(),
+            "`{called}` has no documentation"
+        );
+        for shape in entry["signatures"].as_array().expect("an entry has shapes") {
+            let written = text(shape, "signature");
+            for parameter in shape["parameters"]
+                .as_array()
+                .expect("a shape has parameters")
+            {
+                let argument = text(parameter, "name");
+                assert!(
+                    !text(parameter, "doc").trim().is_empty(),
+                    "`{called}`'s `{argument}` has no documentation"
+                );
+                assert!(
+                    written.contains(argument),
+                    "`{called}` documents an argument its signature does not name: {written}"
+                );
             }
         }
     }

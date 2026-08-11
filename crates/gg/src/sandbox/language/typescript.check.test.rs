@@ -20,10 +20,10 @@ fn diagnostics(source: &str) -> Option<String> {
 #[test]
 fn a_program_that_uses_the_sdk_correctly_checks_clean() {
     // Every shape the surface offers at once: a positional argument, a trailing options object, a
-    // discriminated return, a caught `ToolError`, the `list` every module carries, an ending call,
-    // and a top-level `return` — which is legal only because the guest evaluates a program as a
-    // function body, and is therefore the one thing a naive `tsc` invocation would reject. The
-    // undocumented grouping aliases are exercised too, because the shim really binds them.
+    // discriminated return, a caught `ToolError`, an ending call, and a top-level `return` — which
+    // is legal only because the guest evaluates a program as a function body, and is therefore the
+    // one thing a naive `tsc` invocation would reject. The undocumented grouping aliases are
+    // exercised too, because the shim really binds them.
     let clean = r#"
 const entries: gg.files.DirEntry[] = gg.files.listDir("src");
 if (entries.length === 0) return;
@@ -42,7 +42,6 @@ try {
 } catch (error) {
   if (error instanceof ToolError) console.log(error.tool, error.code);
 }
-gg.views.openText("files", JSON.stringify(gg.files.list()));
 lib.anything.at.all(1, 2, 3);
 gg.session.finish(`saw ${names.length} files`);
 "#;
@@ -238,11 +237,15 @@ fn the_generated_surface_declares_every_module_the_catalogue_carries() {
     }
 }
 
+/// **The checked surface is the catalogue's own entries and nothing else.**
+///
+/// A directory function used to be appended to every module that bound anything — the one member of
+/// a checked module that no catalogue entry declared — and `core`, which binds nothing, had to be
+/// excluded from that append by hand. With it deleted the exclusion is structural: `core` declares
+/// the types every other module speaks in and no function, so it declares no function here, and a
+/// checker that waved through `gg.core.list()` would be accepting a call that fails at run time.
 #[test]
-fn only_a_module_that_binds_something_carries_a_directory() {
-    // `core` declares the types every other module speaks in and binds no function, so the shim
-    // builds it no directory. A checker that accepted `gg.core.list()` would wave through a call
-    // that fails at run time, which is the one thing it must never do.
+fn a_module_that_binds_nothing_declares_no_function() {
     let surface = surface(super::super::TYPESCRIPT.catalogue());
     let core = surface
         .split("  namespace core {")
@@ -250,12 +253,12 @@ fn only_a_module_that_binds_something_carries_a_directory() {
         .and_then(|rest| rest.split("  }").next())
         .expect("the surface declares `core`");
     assert!(
-        !core.contains("function list("),
-        "`core` binds no function, so it carries no directory: {core}"
+        !core.contains("function "),
+        "`core` binds no function, so it declares none: {core}"
     );
     assert!(
-        surface.contains("function list(): FunctionSummary[];"),
-        "and the modules that do bind something carry one"
+        !surface.contains("function list("),
+        "nothing declares a directory, on any module"
     );
 }
 

@@ -44,7 +44,7 @@ which is what gets both the message and the model's own line and column out.
 
 | | |
 | --- | --- |
-| `Sources/SDK/` | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge, the `list` every module carries, and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`. |
+| `Sources/SDK/` | **The SDK a model writes against.** One file per capability module under `Modules/`, each carrying its functions and the types they produce, plus `Internal/` — the wire bridge and the two public functions that belong to no module. Compiled ahead of time into a module called `gg`. |
 | `Sources/shell.swift` | gg's shell — the `@_exported import` that puts the SDK in the model's scope, the two exports the sandbox world declares, and the call into the model's own top-level code. Compiled beside every program, once per turn. |
 | `Sources/gg-shell.h` | The bridging header: the generated WIT surface as C, `stdlib.h` for the allocator the canonical ABI's post-return frees with, and the one declaration that is not generated (the program's entry point). |
 | `libraries.txt` | Every module a program may `import`, grouped as the catalogue renders them. One declaration, two readers: `tools/signatures.py` and a gg test that compiles a program importing all of them. |

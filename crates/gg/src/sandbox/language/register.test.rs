@@ -394,8 +394,8 @@ fn a_types_own_prose_is_held_to_the_rule() {
 /// This is the one complaint that is not about prose, and it is the loudest thing in the file. An id
 /// gg has no row for is read everywhere downstream as *this agent does not have that operation*:
 /// [`bound`](crate::docs::DocsRuntime::bound) refuses it, the search index skips it, and the
-/// function is then absent from `list()`, from every search and from every documentation view —
-/// while the SDK still compiles it and still documents it to every human who reads the source. One
+/// function is then absent from every search and from every documentation view — while the SDK
+/// still compiles it and still documents it to every human who reads the source. One
 /// character costs a capability and nothing else in the tree changes colour.
 ///
 /// A converted arm writes about forty-seven of these by hand, which is why the gate quotes the id

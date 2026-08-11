@@ -21,8 +21,6 @@ const std::vector<std::string>& files_tools() {
 
 namespace files {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::files"); }
-
 files::file_read read_file(std::string_view path, files::read_window window) {
   detail::scratch scratch;
   detail::window lines(window);

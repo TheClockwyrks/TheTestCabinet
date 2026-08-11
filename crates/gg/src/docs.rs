@@ -1,10 +1,15 @@
 //! The documentation carve-out's runtime state.
 //!
 //! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the system prompt no
-//! longer lists every tool signature. It names the API objects a program has (`fs`, `project`, …)
-//! and tells the model two things it can always do: call `object.list()` to see an object's
-//! functions, and `view.openDocsView(name)` to read what one of them is. This is the host state
-//! behind those two calls.
+//! longer lists every tool signature. It names the modules a program has and tells the model two
+//! things it can always do: `search` for a function by keyword, and `view.openDocsView(name)` to
+//! read what one of them is. This is the host state behind those two calls.
+//!
+//! **There is no directory.** Nothing enumerates a module's functions, and that is a decision rather
+//! than an omission: a call that hands back a whole module defeats the point of making a model
+//! search for what it needs, since the cheapest way to find anything would be to dump the directory
+//! and read it. [`search`](DocsRuntime::search) is the only route in, and it is global — one query
+//! reaches every module at once, so nothing is discovered by already knowing where to look.
 //!
 //! **Looking something up is deliberately not a capability.** Like [`finish`](crate::sandbox), it is
 //! a carve-out: no toolset offers it, no ablation withholds it, and it is bound into every program's
@@ -21,9 +26,9 @@
 //! # Why the host, and not the guest
 //!
 //! Both answers depend on facts only gg holds: which tools this run enabled, which
-//! [ending role](EndingRole) this agent has, and which capabilities it was granted. A directory
-//! baked into the guest would list functions the scope did not bind, which is the one thing a
-//! directory must never do.
+//! [ending role](EndingRole) this agent has, and which capabilities it was granted. A search index
+//! baked into the guest would return functions the scope did not bind, which is the one thing a
+//! search must never do.
 //!
 //! Which of those three decides a given function is not a fact the guest holds either, and — since
 //! the [operations table](crate::sandbox::operation_of) — it is no longer a fact each arm's
@@ -36,8 +41,8 @@
 //! [program language](test_cabinet_core::gg::GgProgramLanguage) — that is what makes a
 //! cross-language study a measurement of the language rather than of the surface. What differs is
 //! how each is **spelled**, and a signature is nothing but a spelling. So a runtime is built for one
-//! language and reads its catalogue and its `list` documentation from that language alone: a
-//! directory answering in a language the model is not writing would be naming calls it cannot make.
+//! language and reads that language's catalogue alone: an answer in a language the model is not
+//! writing would be naming calls it cannot make.
 //!
 //! # A function and a type are two views, not one block
 //!
@@ -73,9 +78,8 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage, Prose,
-    SignatureEntry, TypeDeclaration, TypeReference, catalogue_functions, language, meta_function,
-    operation_of, type_declaration,
+    Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage,
+    TypeDeclaration, TypeReference, catalogue_functions, language, operation_of, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -201,24 +205,11 @@ pub struct ResolvedDocViewTypes {
     pub unknown_params: Vec<String>,
 }
 
-/// The **key** the `list()` meta function is catalogued, bound and looked up under. Named once here
-/// because it is gg's own identity for the carve-out rather than any language's spelling of it: the
-/// guest binds `list` on every object it creates, this runtime answers and documents it, and the
-/// [surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) reports it as bound — three
-/// places that must agree on one string.
-pub const LIST_FUNCTION: &str = "list";
-
-// `list`'s spelling, its signature, its documentation and its one-line summary are **not** here, and
-// are not authored anywhere in this crate. They are reflected out of the declaration in each
-// language's own SDK and arrive in that language's committed catalogue's `meta` section, exactly as
-// every other model-facing function's do — because a description of an SDK function written on gg's
-// side is a description nothing can compare against the code. Only the *key* stays here, above.
-
-/// The per-agent state behind `object.list()` and `view.openDocsView()`: the run's enabled tools and
-/// this agent's ending role, which together decide which functions exist to be documented.
+/// The per-agent state behind `search` and `view.openDocsView()`: the run's enabled tools and this
+/// agent's ending role, which together decide which functions exist to be documented.
 pub struct DocsRuntime {
     /// The run's enabled gg tool names — the gate on which catalogue functions are bound, and so on
-    /// which functions a directory lists and a lookup will document.
+    /// which functions a search can find and a lookup will document.
     enabled: BTreeSet<String>,
     /// This agent's [ending role](EndingRole), the second gate: an ending call belonging to another
     /// role is not in this agent's scope, so documenting it would describe a function the model
@@ -272,71 +263,27 @@ impl DocsRuntime {
         self.language
     }
 
-    /// The directory for one grouping: its bound functions with one-line summaries, plus the
-    /// `list` meta function every grouping carries. An unknown grouping lists `list` alone.
-    ///
-    /// # Why two spellings of the grouping are accepted
-    ///
-    /// Because two different routes reach this, and they cannot ask in the same words. A compiled
-    /// arm calls the `docs.list-functions` import with whatever its own SDK closed over, which on a
-    /// [converted](crate::sandbox::SchemaVersion::V2) arm is the module path — `gg::files`. The
-    /// arms sharing the ECMAScript guest have no such freedom: that guest seeds each object's
-    /// `list` with the **API object** name it built the object under, so a PureScript program
-    /// writing `Gg.Files.list` reaches here with `fs` however its own module is spelled.
-    ///
-    /// Matching only [`object`](crate::sandbox::CatalogueFunction::object) would answer the second
-    /// route with a well-formed **empty** directory, which is the worst shape the failure could
-    /// take: a program gets a one-element array holding nothing but `list` itself, and reads it as
-    /// a capability this run withheld rather than as a question asked in the wrong words. So the
-    /// grouping an entry's [operation](crate::sandbox::operation_of) is filed under is accepted
-    /// beside it. The two agree by construction on every unconverted arm, and are disjoint on every
-    /// converted one — no arm spells a module `fs` — so accepting both can widen an answer that was
-    /// empty and can never merge two groupings that were meant to stay apart.
-    pub fn list(&self, grouping: &str) -> Vec<FunctionSummary> {
-        let mut out: Vec<FunctionSummary> = catalogue_functions(self.language)
-            .into_iter()
-            .filter(|function| self.grouped_under(function, grouping) && self.bound(function))
-            .map(|function| FunctionSummary {
-                name: function.name.to_string(),
-                summary: function.prose.brief.to_string(),
-            })
-            .collect();
-        if let Some(meta) = meta_function(self.language, LIST_FUNCTION) {
-            out.push(FunctionSummary {
-                name: meta.name.clone(),
-                summary: Prose::from_paragraph(&meta.doc).brief.to_string(),
-            });
-        }
-        out
-    }
-
-    /// Whether `grouping` names the heading `function` is listed under, in either of the two
-    /// spellings [`list`](Self::list) accepts.
-    fn grouped_under(&self, function: &CatalogueFunction, grouping: &str) -> bool {
-        function.object == grouping
-            || operation_of(function).is_some_and(|operation| operation.call.object == grouping)
-    }
-
     /// Every function of one **capability family** this agent binds, with one-line summaries.
     ///
-    /// # Why this is not [`list`](Self::list) with the objects passed in
+    /// # Why gg's family and not the arm's module
     ///
-    /// Because the grouping a function is filed under is the **arm's**, and a family is **gg's**. On
-    /// a catalogue written in the first schema those two happen to coincide — the filesystem family's
-    /// functions hang off an object every arm calls `fs` — and on a
-    /// [converted](crate::sandbox::SchemaVersion::V2) arm they do not: the same functions are filed
-    /// under `gg::files` or `Gg.Files`, and a caller passing gg's own word for the object gets an
-    /// empty answer rather than a wrong one.
+    /// Because the module a function is filed under is the **arm's**, and a family is **gg's**: the
+    /// same functions are filed under `gg::files` on one arm and `Gg.Files` on another, so a caller
+    /// passing gg's own word for the grouping would get an empty answer rather than a wrong one.
     ///
     /// Empty is exactly the failure worth designing out here, because the one caller is the
-    /// [built-in family skill](crate::skills)'s generated on-use script and an empty directory makes
-    /// it decline to generate a skill at all. So the family is resolved through the
-    /// [operation](crate::sandbox::operation_of) each entry binds, which is the identity both schemas
-    /// answer, and no arm's own vocabulary is quoted at it.
+    /// [built-in family skill](crate::skills)'s generated on-use script and an empty family makes it
+    /// decline to generate a skill at all. So the family is resolved through the
+    /// [operation](crate::sandbox::operation_of) each entry binds, which is an identity gg states,
+    /// and no arm's own vocabulary is quoted at it.
+    ///
+    /// **This is not a directory a model can reach.** It is host-side generation: nothing a program
+    /// calls arrives here, and the only thing that does is gg writing a skill's script for it. A
+    /// model that wants to find a function [searches](Self::search).
     ///
     /// An [alias](crate::sandbox::CatalogueFunction) is left out: it is a second way to reach an
-    /// operation the family already lists, and a directory that named both would open two
-    /// documentation views of one capability.
+    /// operation the family already names, and naming both would open two documentation views of
+    /// one capability.
     pub fn family(&self, family: &str) -> Vec<FunctionSummary> {
         catalogue_functions(self.language)
             .into_iter()
@@ -352,8 +299,8 @@ impl DocsRuntime {
     }
 
     /// One **function's** documentation by the name it is called by, or `None` for a name this run
-    /// did not bind. The `list` meta function is answered from its own text; every other name is a
-    /// catalogue function, gated by the enabled set.
+    /// did not bind. Every name is a catalogue function, gated by the enabled set — there is no
+    /// carve-out entry answered from anywhere else.
     ///
     /// Takes `&self`: a lookup is a pure projection of the catalogue through this agent's scope, and
     /// nothing about having read one changes what the next one says. That is the property the whole
@@ -361,15 +308,8 @@ impl DocsRuntime {
     /// [compaction](crate::compaction) or a [restore](crate::persistence) can re-derive it rather
     /// than replay a stored copy.
     pub fn read(&self, name: &str) -> Option<String> {
-        // The meta functions first, and by the name this language spells them: `list` is bound on
-        // every object, so it can never be shadowed by a catalogue entry and never needs a gate.
-        if let Some(meta) = meta_function(self.language, LIST_FUNCTION)
-            && meta.name == name
-        {
-            return Some(assemble(&meta.signatures, &meta.doc));
-        }
         let function = self.function(name)?;
-        Some(assemble(function.signatures, &function.prose.rendered()))
+        Some(assemble(&function))
     }
 
     /// One **type's** documentation by the name a signature writes it under: its declaration, the
@@ -413,12 +353,11 @@ impl DocsRuntime {
     /// bound function's return value plainly can be. Narrowing it to depth one would refuse an agent
     /// the declaration of a field of something it holds.
     ///
-    /// The `list` meta function counts, and has to: it is the carve-out bound on every object
-    /// whatever a run enables, so the type it hands back is reachable by an agent with no tools at
-    /// all. It has no catalogue entry to be found among the others, which is the only reason it is
-    /// named here separately rather than falling out of the same fold.
+    /// Every function this asks about is a catalogue function. There is no longer a carve-out entry
+    /// sitting outside the catalogue whose types had to be folded in separately — that was `list`,
+    /// and with it gone reachability is one fold over one array.
     fn type_is_reachable(&self, name: &str) -> bool {
-        let catalogued = catalogue_functions(self.language)
+        catalogue_functions(self.language)
             .into_iter()
             .any(|function| {
                 function
@@ -426,10 +365,7 @@ impl DocsRuntime {
                     .iter()
                     .any(|referenced| referenced.fqn() == name)
                     && self.bound(&function)
-            });
-        catalogued
-            || meta_function(self.language, LIST_FUNCTION)
-                .is_some_and(|meta| meta.types.iter().any(|referenced| referenced.fqn() == name))
+            })
     }
 
     /// One key's documentation, whichever kind of thing it addresses — a function first, a type
@@ -499,8 +435,9 @@ impl DocsRuntime {
             let declaration = match type_declaration(self.language, referenced.fqn()) {
                 Some(declaration) => declaration,
                 // A referenced name this language's catalogue does not declare has nothing to
-                // render, so there is no view to open for it. The agreement gate holds every arm to
-                // declaring what it references, so this is drift rather than a run-time condition.
+                // render, so there is no view to open for it. The name rule
+                // (`sandbox/signatures.fqn.rs`) holds every arm to declaring what it references, so
+                // this is drift rather than a run-time condition.
                 None => continue,
             };
             // Depth one, applied before the mode split: a referenced type no shape of this function
@@ -552,8 +489,7 @@ impl DocsRuntime {
     /// It answers from the same three gates [`read`](Self::read) failed against, and that is the
     /// whole reason it lives here rather than beside the refusal it feeds: a candidate list drawn
     /// from the catalogue instead of from this agent's scope would offer names the program cannot
-    /// call. The `list` meta function is a candidate like any other, since it is bound on every
-    /// object and answerable by [`read`](Self::read).
+    /// call.
     ///
     /// What counts as *near* is [`suggest`]'s to decide; what is *available* to be near is this
     /// method's.
@@ -572,8 +508,6 @@ impl DocsRuntime {
                 candidates.extend(function.fqn);
             }
         }
-        candidates
-            .extend(meta_function(self.language, LIST_FUNCTION).map(|meta| meta.name.as_str()));
         for declaration in &self.language.catalogue().types {
             if !self.type_is_reachable(declaration.key()) {
                 continue;
@@ -644,13 +578,12 @@ impl DocsRuntime {
 /// language that spells options with a default there is exactly one, and the rendering is the single
 /// line it always was.
 ///
-/// It takes the two fields rather than a [`CatalogueFunction`] because the
-/// [meta functions](crate::sandbox::MetaSignature) are documented by exactly this rendering and have
-/// no object to hang off — one assembly for the whole surface, so a lookup of `list` cannot come out
-/// looking like a different kind of thing than a lookup of `fs.readFile`.
-fn assemble(signatures: &[SignatureEntry], doc: &str) -> String {
+/// There is exactly one rendering, and every function on the surface goes through it. Nothing is
+/// documented from outside the catalogue any more — `list` was the last thing that was, and it is
+/// gone — so no lookup can come out looking like a different kind of thing than its neighbour.
+fn assemble(function: &CatalogueFunction) -> String {
     let mut text = String::new();
-    for entry in signatures {
+    for entry in function.signatures {
         text.push_str(&entry.signature);
         text.push('\n');
         for parameter in &entry.parameters {
@@ -658,7 +591,7 @@ fn assemble(signatures: &[SignatureEntry], doc: &str) -> String {
         }
     }
     text.push('\n');
-    text.push_str(doc);
+    text.push_str(&function.prose.rendered());
     text
 }
 
@@ -785,7 +718,8 @@ fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
 /// and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm carries no type
 /// of its own — the arm is the value — so it is rendered as the bare literal.
 ///
-/// Both the type's paragraph and each member's line are read through [`Prose`] rather than off the
+/// Both the type's paragraph and each member's line are read through
+/// [`Prose`](crate::sandbox::Prose) rather than off the
 /// `doc` field they used to be, because that field is the shape a
 /// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue writes and a
 /// [`V2`](crate::sandbox::SchemaVersion::V2) one omits entirely. Reaching for it directly renders a

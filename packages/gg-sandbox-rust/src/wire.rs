@@ -21,7 +21,7 @@ use crate::board::{
     BoardUsage, EpicAssignment, EpicCreated, IssueCreated, IssuePatch, IssueStatus,
 };
 use crate::context::{ArchiveHit, ArchiveSearch, MessageRole, ReclaimReport};
-use crate::core::{FunctionSummary, ToolError};
+use crate::core::ToolError;
 use crate::delegation::{AgentStatus, Brief, SubagentHandle, SubagentResult};
 use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, TextFile};
 use crate::memories::{MemoryHit, MemoryUsage};
@@ -333,10 +333,3 @@ pub(crate) fn program_summary(summary: gen::programs::ProgramSummary) -> Program
     }
 }
 
-/// One function in a module's directory.
-pub(crate) fn function_summary(summary: gen::docs::FunctionSummary) -> FunctionSummary {
-    FunctionSummary {
-        name: summary.name,
-        summary: summary.summary,
-    }
-}

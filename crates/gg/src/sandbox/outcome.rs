@@ -40,7 +40,7 @@ pub struct SandboxOutcome {
     /// turn streamed, whatever the roster caps did.
     ///
     /// A count rather than a roster, and a superset of the dispatched calls by two things: the
-    /// carve-outs no gg tool backs (a view, an ending, a program-library call, an `object.list()`),
+    /// carve-outs no gg tool backs (a view, an ending, a program-library call, a documentation search),
     /// and the calls the membrane refused. The model made those, so the API layer counts them; the
     /// tool layer does not, because nothing ran.
     pub api_calls: u64,

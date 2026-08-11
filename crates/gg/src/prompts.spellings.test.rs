@@ -21,8 +21,8 @@
 //!
 //! * [`no_template_spells_an_sdk_call_by_hand`] — no template contains a literal
 //!   `<object>.<name>` any registered SDK binds.
-//! * [`every_quoted_call_in_a_template_resolves_in_every_language`] — every `{{api.…}}` and
-//!   `{{meta.…}}` reference a template makes names a function every registered language catalogues.
+//! * [`every_quoted_call_in_a_template_resolves_in_every_language`] — every `{{api.…}}` reference a
+//!   template makes names a function every registered language catalogues.
 //!
 //! One reads the sources for the *other* vocabulary a code prompt must not use:
 //!
@@ -248,7 +248,7 @@ fn every_quoted_call_in_a_template_resolves_in_every_language() {
     );
 }
 
-/// Every `{{api.…}}` / `{{meta.…}}` path a template writes, split into its segments.
+/// Every `{{api.…}}` path a template writes, split into its segments.
 fn references(source: &str) -> Vec<Vec<String>> {
     let mut out = Vec::new();
     let mut rest = source;
@@ -258,7 +258,7 @@ fn references(source: &str) -> Vec<Vec<String>> {
             break;
         };
         let path = after[..close].trim();
-        if path.starts_with("api.") || path.starts_with("meta.") {
+        if path.starts_with("api.") {
             out.push(path.split('.').map(str::to_string).collect());
         }
         rest = &after[close + 2..];
@@ -266,11 +266,11 @@ fn references(source: &str) -> Vec<Vec<String>> {
     out
 }
 
-/// Whether one `{{api.…}}`/`{{meta.…}}` path names something `language`'s catalogue carries.
+/// Whether one `{{api.…}}` path names something `language`'s catalogue carries.
 fn resolves(language: &'static dyn ProgramLanguage, reference: &[String]) -> bool {
-    // `api.<object>.<key>.<field>` and `meta.<key>.<field>` are the only two shapes; the field is
-    // checked as well, because `{{api.view.open_text.cal}}` renders empty in every context that
-    // reaches it rather than failing.
+    // `api.<object>.<key>.<field>` is the only shape; the field is checked as well, because
+    // `{{api.view.open_text.cal}}` renders empty in every context that reaches it rather than
+    // failing.
     const FIELDS: [&str; 3] = ["name", "call", "signature"];
     match reference.first().map(String::as_str) {
         Some("api") => {
@@ -287,13 +287,6 @@ fn resolves(language: &'static dyn ProgramLanguage, reference: &[String]) -> boo
                         operation.call.object == object && operation.call.key == key
                     })
                 })
-        }
-        Some("meta") => {
-            let [_, key, field] = reference else {
-                return false;
-            };
-            FIELDS.contains(&field.as_str())
-                && crate::sandbox::meta_function(language, key).is_some()
         }
         _ => false,
     }
@@ -354,12 +347,6 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
             .into_iter()
             .map(|function| (function.object, function.name))
             .collect();
-        let meta: Vec<&str> = language
-            .catalogue()
-            .meta
-            .iter()
-            .map(|entry| entry.name.as_str())
-            .collect();
         // What the arm's own TYPES contribute to a module's vocabulary, which on a converted arm is
         // qualified by the same path its calls are. Two shapes: the type itself
         // (`gg.files.FileRead`), and — on a language whose union arms are qualified by the module
@@ -392,10 +379,7 @@ fn every_call_a_rendered_prompt_names_is_one_that_language_binds() {
                 continue;
             };
             let qualified = format!("{object}{}{name}", language.member_separator());
-            if !bound.contains(&(object, name))
-                && !meta.contains(&name)
-                && !published.contains(&qualified)
-            {
+            if !bound.contains(&(object, name)) && !published.contains(&qualified) {
                 offenders.push(format!(
                     "{}: `{span}` — `{object}` publishes no `{name}`",
                     language.display_name()

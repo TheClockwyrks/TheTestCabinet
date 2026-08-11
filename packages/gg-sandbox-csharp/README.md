@@ -47,8 +47,8 @@ path for binding a custom WIT world from managed .NET code, and this arm never a
 ## The SDK, and why it is source rather than a built assembly
 
 `src/Gg/` is eleven capability modules, each a `public static partial class` in `namespace Gg` with
-its own directory and its result types nested inside it, plus a class-less `core` module holding the
-`ToolException`, the `ToolErrorCode` and the `FunctionSummary` that every module's signatures name. It is **compiled with the model's program**, not
+its result types nested inside it, plus a class-less `core` module holding the `ToolException` and
+the `ToolErrorCode` that every module's signatures name. It is **compiled with the model's program**, not
 referenced as a built assembly — `crates/gg/src/sandbox/language/csharp.sdk.rs` carries the sources
 in gg's binary and writes them into the preparation's own workspace beside `program.cs`.
 

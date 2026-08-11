@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 module GG
-  # The types every other module's signatures name: how a call fails, and what a directory lists.
+  # The types every other module's signatures name: how a call fails, and what a patch leaves alone.
   #
   # A capability module owns the types it produces, so `GG::Files::TextFile` belongs to `GG::Files`
-  # and `GG::Board::IssueCreated` to `GG::Board`. The three declarations here belong to none of them
+  # and `GG::Board::IssueCreated` to `GG::Board`. The declarations here belong to none of them
   # because they belong to all of them: every function in this SDK raises `GG::Core::ToolError` when
-  # it fails, and every module's `list` answers with `GG::Core::FunctionSummary`.
+  # it fails.
   #
   # This module declares no function of its own, which is why it comes last in the surface: there is
   # nothing here to call, only shapes to read.
@@ -108,28 +108,6 @@ module GG
       #
       # Reserved for outcomes raised outside a tool implementation; no call in this SDK produces it.
       OTHER = :other
-    end
-
-    # One function in a module's directory, as `list` returns it.
-    #
-    # The summary is one line. A function's whole documentation — every shape it may be called in,
-    # what to put in each argument, and the types it refers to — is a view, opened with
-    # `GG::Views.open_docs_view`.
-    class FunctionSummary
-      include Value
-
-      # @return [String] The function's name in its module — `read_file` in `GG::Files.read_file`.
-      attr_reader :name
-
-      # @return [String] One line saying what it does.
-      attr_reader :summary
-
-      # @api private
-      def initialize(name:, summary:)
-        @name = name
-        @summary = summary
-        freeze
-      end
     end
 
     # The "leave this field exactly as it is" value a three-way patch argument defaults to.

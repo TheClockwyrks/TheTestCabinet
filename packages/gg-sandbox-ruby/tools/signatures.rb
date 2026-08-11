@@ -76,7 +76,6 @@ require "gg/core"
 require "gg/check"
 require "gg/surface"
 require "gg/wire"
-require "gg/directory"
 require "gg/lib"
 GG::Surface::MODULES.each { |name| require "gg/#{name.downcase}" }
 require "gg/scope"
@@ -544,17 +543,6 @@ functions = GG::Surface.registry.map do |entry|
   built
 end
 
-# The one function that belongs to no module, read from the one declaration that carries it.
-directory = at("GG::Directory.list", "the directory every module carries")
-directory_brief, directory_detail = documented(directory, "`list`")
-meta = [{
-  "key" => "list",
-  "name" => "list",
-  "signatures" => signatures(directory, "list").map { |s| s.transform_keys(&:to_s) },
-  "doc" => [directory_brief, directory_detail].compact.join("\n\n"),
-  "types" => close_over(deduped(returned(directory)))
-}]
-
 modules = MODULES.map do |mod|
   brief, detail = documented(at(mod.path, "the module table"), "the `#{mod.path}` module")
   {
@@ -586,7 +574,7 @@ end
 # names a method that exists.
 #
 # The first direction is the one that matters: a model-facing function nobody declared an operation
-# for is a function no documentation view opens, no directory lists and no search returns — present
+# for is a function no documentation view opens and no search returns — present
 # in the SDK, absent from the surface, and invisible in a diff. The second is checked by `method_at`
 # every time it looks one up.
 MODULES.each do |mod|
@@ -609,7 +597,7 @@ end
 # A declaration nothing refers to is a documentation view nothing can open: reachability from a
 # bound call is what gates a type view, so an unreferenced declaration is dead weight in the
 # catalogue and an unanswerable name to the one reader it exists for.
-reached = Set.new(functions.flat_map { |entry| entry["types"] } + meta.flat_map { |e| e["types"] })
+reached = Set.new(functions.flat_map { |entry| entry["types"] })
 unreached = TYPES.map { |(path, _mod, _object)| path }.reject { |path| reached.include?(path) }
 unless unreached.empty?
   raise "nothing in this surface refers to #{unreached.join(", ")} — a declaration only exists to " \
@@ -640,7 +628,6 @@ catalogue = {
   "generatedFrom" => GENERATED_FROM,
   "libraries" => libraries,
   "modules" => modules,
-  "meta" => meta,
   "functions" => functions,
   "types" => types
 }

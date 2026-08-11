@@ -69,10 +69,6 @@ pub(super) const SDK_SOURCES: &[SdkSource] = &[
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Context/Types.cs"),
     },
     SdkSource {
-        name: "Core/Directory.cs",
-        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Core/Directory.cs"),
-    },
-    SdkSource {
         name: "Core/Errors.cs",
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Core/Errors.cs"),
     },
@@ -97,12 +93,6 @@ pub(super) const SDK_SOURCES: &[SdkSource] = &[
     SdkSource {
         name: "GlobalUsings.cs",
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/GlobalUsings.cs"),
-    },
-    SdkSource {
-        name: "Internal/ModuleDirectory.cs",
-        text: include_str!(
-            "../../../../../packages/gg-sandbox-csharp/src/Gg/Internal/ModuleDirectory.cs"
-        ),
     },
     SdkSource {
         name: "Internal/Native.cs",

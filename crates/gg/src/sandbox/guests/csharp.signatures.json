@@ -114,7 +114,7 @@
       "id": "memories",
       "path": "Gg.Memories",
       "brief": "Durable memories, which survive a context compaction.",
-      "detail": "A run picks one of three memory strategies and binds only that strategy\u0027s calls: the scratchpad\u0027s \u0060Memories.WriteMemory\u0060 and \u0060Memories.UpdateMemory\u0060, or the file-shaped \u0060Memories.CreateMemory\u0060, \u0060Memories.ReadMemory\u0060 and \u0060Memories.EditMemory\u0060 \u2014 plus \u0060Memories.SearchMemories\u0060 where there is no pinned index. \u0060Memories.DeleteMemory\u0060 is bound under all three, the system prompt says which strategy is in force, and \u0060Memories.List\u0060 is the directory of what was really bound.\n\nA memory may carry \u0060code\u0060, which is a module in this language bound at \u0060lib.\u003Cname\u003E\u0060 in every later program \u2014 a helper written once. It costs no context window and is never shown back.",
+      "detail": "A run picks one of three memory strategies and binds only that strategy\u0027s calls: the scratchpad\u0027s \u0060Memories.WriteMemory\u0060 and \u0060Memories.UpdateMemory\u0060, or the file-shaped \u0060Memories.CreateMemory\u0060, \u0060Memories.ReadMemory\u0060 and \u0060Memories.EditMemory\u0060 \u2014 plus \u0060Memories.SearchMemories\u0060 where there is no pinned index. \u0060Memories.DeleteMemory\u0060 is bound under all three, and the system prompt says which strategy is in force.\n\nA memory may carry \u0060code\u0060, which is a module in this language bound at \u0060lib.\u003Cname\u003E\u0060 in every later program \u2014 a helper written once. It costs no context window and is never shown back.",
       "import": null
     },
     {
@@ -163,35 +163,8 @@
       "id": "core",
       "path": "Gg",
       "brief": "The types and the failure vocabulary every other module\u0027s signatures name.",
-      "detail": "They are declared directly in \u0060namespace Gg\u0060, which the SDK brings into every program\u0027s scope, so \u0060ToolException\u0060 and \u0060FunctionSummary\u0060 are written without a module prefix.",
+      "detail": "They are declared directly in \u0060namespace Gg\u0060, which the SDK brings into every program\u0027s scope, so \u0060ToolException\u0060 and \u0060ToolErrorCode\u0060 are written without a module prefix.",
       "import": null
-    }
-  ],
-  "meta": [
-    {
-      "key": "list",
-      "name": "List",
-      "signatures": [
-        {
-          "signature": "List() -\u003E IReadOnlyList\u003CFunctionSummary\u003E",
-          "parameters": []
-        }
-      ],
-      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call a program cannot make. One function\u0027s full signature, argument descriptions and types are opened as a view with \u0060Views.OpenDocsView\u0060.\n\nReturns: the functions this module really bound, each with its one-line summary.",
-      "types": [
-        {
-          "spelled": "FunctionSummary",
-          "fqn": "Gg.FunctionSummary"
-        },
-        {
-          "spelled": "ToolErrorCode",
-          "fqn": "Gg.ToolErrorCode"
-        },
-        {
-          "spelled": "ToolException",
-          "fqn": "Gg.ToolException"
-        }
-      ]
     }
   ],
   "functions": [
@@ -3461,31 +3434,6 @@
           "type": "bool",
           "kind": "field",
           "brief": "Whether gg\u0027s 256 KiB byte ceiling cut the returned text.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": []
-    },
-    {
-      "fqn": "Gg.FunctionSummary",
-      "module": "core",
-      "name": "FunctionSummary",
-      "declaration": "sealed record FunctionSummary(string Name, string Summary)",
-      "brief": "One function in a module\u0027s directory.",
-      "detail": null,
-      "members": [
-        {
-          "name": "Name",
-          "type": "string",
-          "kind": "field",
-          "brief": "The name a program calls it by \u2014 \u0060ReadFile\u0060 in \u0060Files.ReadFile(...)\u0060.",
-          "detail": null
-        },
-        {
-          "name": "Summary",
-          "type": "string",
-          "kind": "field",
-          "brief": "A one-line description of what it does.",
           "detail": null
         }
       ],

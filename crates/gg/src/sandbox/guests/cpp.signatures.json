@@ -135,7 +135,7 @@
       "id": "memories",
       "path": "gg::memories",
       "brief": "Keep durable memories that survive context compaction.",
-      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so `memories::list()` is the honest answer to what memory can do in a given run. The scratchpad keeps every memory in the context window; the two file-shaped strategies keep the contents outside it, one behind an index that is always in context and one behind a search.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
+      "detail": "A run picks one of three memory strategies and binds only that strategy's functions, so what this module offers is the honest answer to what memory can do in a given run. The scratchpad keeps every memory in the context window; the two file-shaped strategies keep the contents outside it, one behind an index that is always in context and one behind a search.\n\nEvery mutation hands back the budget after it, so a program decides whether to write another memory by reading numbers rather than by parsing a sentence about them.",
       "import": null
     },
     {
@@ -183,28 +183,9 @@
     {
       "id": "core",
       "path": "gg::core",
-      "brief": "The types every other module's signatures name: how a call fails, and what a directory carries.",
-      "detail": "It declares no capability of its own, which is why it carries no directory: a program reaches `core::tool_error` by catching one and `core::function_summary` by calling another module's `list`.",
+      "brief": "The types every other module's signatures name: how a call fails, and how it is classified.",
+      "detail": "It declares no capability of its own: a program reaches `core::tool_error` by catching one, and `core::tool_error_code` by branching on the failure it caught.",
       "import": null
-    }
-  ],
-  "meta": [
-    {
-      "key": "list",
-      "name": "list",
-      "signatures": [
-        {
-          "signature": "list() -> std::vector<core::function_summary>",
-          "parameters": []
-        }
-      ],
-      "doc": "List the functions this module offers, each with a one-line summary.\n\nOnly the functions this run actually bound are returned, so the directory never names a call the program cannot make. One function's full signature, argument descriptions and types are opened as a view with `views::open_docs_view`.",
-      "types": [
-        {
-          "spelled": "core::function_summary",
-          "fqn": "gg::core::function_summary"
-        }
-      ]
     }
   ],
   "functions": [
@@ -1802,7 +1783,7 @@
               "optional": false,
               "kind": "positional",
               "default": null,
-              "doc": "The function to document, by the name it is called under its module — `\"read_file\"` for `files::read_file`. A module's `list` is what says which names exist.",
+              "doc": "The function to document, by the name it is called under its module — `\"read_file\"` for `files::read_file`. Searching the documentation is what says which names exist.",
               "fields": []
             }
           ]
@@ -1869,7 +1850,7 @@
       "fqn": "gg::views::current",
       "call": null,
       "brief": "List what is open in the context window right now, with what each one costs.",
-      "detail": "Each entry carries its `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather than `list` because every module already carries a `list` of its own functions.\n\nReturns: every view open in the context window right now.",
+      "detail": "Each entry carries its `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. What it enumerates is the context window's contents, not any module's functions.\n\nReturns: every view open in the context window right now.",
       "signatures": [
         {
           "signature": "current() -> std::vector<views::open_view>",
@@ -3251,31 +3232,6 @@
           "type": "std::uint32_t",
           "kind": "field",
           "brief": "The last turn in the span, included.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": []
-    },
-    {
-      "fqn": "gg::core::function_summary",
-      "module": "core",
-      "name": "function_summary",
-      "declaration": "struct function_summary { std::string name; std::string summary; }",
-      "brief": "One function in a module's directory: its name, and one line saying what it does.",
-      "detail": "The whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `views::open_docs_view`.",
-      "members": [
-        {
-          "name": "name",
-          "type": "std::string",
-          "kind": "field",
-          "brief": "The name a program calls it by, under its own module (`read_file` in `files::read_file`).",
-          "detail": null
-        },
-        {
-          "name": "summary",
-          "type": "std::string",
-          "kind": "field",
-          "brief": "One line saying what it does.",
           "detail": null
         }
       ],

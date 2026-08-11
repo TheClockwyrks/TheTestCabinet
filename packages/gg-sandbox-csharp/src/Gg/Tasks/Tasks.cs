@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace Gg;
 
 /// <summary>A private task list, held as a graph with blocker edges.</summary>
@@ -10,9 +8,6 @@ namespace Gg;
 /// <ggmodule>tasks</ggmodule>
 public static partial class Tasks
 {
-    /// <inheritdoc cref="Internal.ModuleDirectory.List"/>
-    public static IReadOnlyList<FunctionSummary> List() => Internal.ModuleDirectory.List(typeof(Tasks));
-
     /// <summary>Add a task to the list.</summary>
     /// <param name="id">The unique short id other tasks reference it by.</param>
     /// <param name="title">What the task is.</param>

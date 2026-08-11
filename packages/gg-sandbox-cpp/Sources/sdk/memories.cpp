@@ -36,8 +36,6 @@ static test_cabinet_gg_memories_memory_input_t memory_input(
 
 namespace memories {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::memories"); }
-
 memories::memory_usage write_memory(std::string_view name, std::string_view description,
                                     std::string_view body, memories::memory_options options) {
   detail::scratch scratch;

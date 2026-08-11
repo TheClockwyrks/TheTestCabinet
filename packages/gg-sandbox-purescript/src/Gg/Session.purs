@@ -15,14 +15,11 @@ module Gg.Session
   ( finish
   , approve
   , requestChanges
-  , list
   ) where
 
 import Prelude
 
 import Effect (Effect)
-import Gg.Core (FunctionSummary)
-import Gg.Internal.Directory (directory)
 import Gg.Internal.Wire as Wire
 
 -- | End the session, reporting what was done in a sentence or two.
@@ -76,15 +73,3 @@ approve = Wire.call_ "approve" "review" "Gg.Session.approve" []
 requestChanges :: Array String -> Effect Unit
 requestChanges items =
   Wire.call_ "request_changes" "review" "Gg.Session.requestChanges" [ Wire.wire items ]
-
--- | List the functions this module offers, each with a one-line summary.
--- |
--- | Only the functions this run actually bound are returned, so the directory never names a call the
--- | program cannot make. One function's full signature, argument descriptions and types are opened as
--- | a view with `Gg.Views.openDocsView`.
--- |
--- | # Arguments
--- |
--- | (none — the module is the one the directory is declared in)
-list :: Effect (Array FunctionSummary)
-list = directory "Gg.Session.list" [ "harness", "review" ]

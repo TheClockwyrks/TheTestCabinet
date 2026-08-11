@@ -10,7 +10,6 @@ use crate::wire;
 /// The gg tools this module dispatches — see [`files::TOOLS`](crate::files::TOOLS).
 pub(crate) const TOOLS: &[&str] = &["read_skill"];
 
-crate::directory::directory_of!();
 
 /// Read a skill by name and hand back its body with the front matter stripped.
 ///

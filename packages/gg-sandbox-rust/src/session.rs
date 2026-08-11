@@ -13,7 +13,6 @@ use crate::bindings::test_cabinet::gg::session;
 use crate::core::ToolError;
 use crate::wire;
 
-crate::directory::directory_of!();
 
 /// End the session, reporting what was done in a sentence or two.
 ///

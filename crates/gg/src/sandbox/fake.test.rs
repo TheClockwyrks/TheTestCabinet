@@ -22,7 +22,7 @@ use super::invoker::{
 };
 use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
-use super::{FunctionSummary, ProgramScope, SandboxLimits, ToolApi};
+use super::{ProgramScope, SandboxLimits, ToolApi};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, SEARCH_RESULTS_VIEW, ViewKind};
 use crate::docs::DocSearch;
@@ -164,7 +164,7 @@ pub(crate) struct ApiLog(Arc<Mutex<Vec<RecordedApiCall>>>);
 pub(crate) struct RecordedApiCall {
     /// The API object — `fs`, `view`, `context`.
     pub(crate) object: String,
-    /// The function's language-independent key — `read_file`, `open_file`, `list`.
+    /// The function's language-independent key — `read_file`, `open_file`, `finish`.
     pub(crate) function: String,
     /// `None` until the call closed; `Some(ok)` once it did. A call still open when the program
     /// ended — impossible today, since the bracket is synchronous — would be visible as `None`.
@@ -557,16 +557,6 @@ impl ToolApi for FakeToolApi {
             "send_message",
             json!({ "agentId": agent_id, "message": message }),
         )
-    }
-
-    /// The fake does not model the catalogue: it echoes the object so a test can assert the request
-    /// reached the host, and otherwise stays out of the way. Documentation lookups are not tool
-    /// calls, so they are not recorded in the [call log](CallLog).
-    fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
-        vec![FunctionSummary {
-            name: format!("{object}Function"),
-            summary: format!("a function on `{object}`"),
-        }]
     }
 
     /// Opens a docs view for every name, so a program that asks for documentation gets a view rather

@@ -36,8 +36,6 @@ static std::vector<delegation::subagent_result> collect(sandbox_list_string_t* i
 
 namespace delegation {
 
-std::vector<core::function_summary> list() { return detail::module_directory("gg::delegation"); }
-
 // The named factories a program briefs a child with.
 brief brief::prompt(std::string instructions) { return brief(false, std::move(instructions)); }
 

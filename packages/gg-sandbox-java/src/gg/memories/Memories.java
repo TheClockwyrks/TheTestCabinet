@@ -1,6 +1,5 @@
 package gg.memories;
 
-import gg.FunctionSummary;
 import gg.ToolError;
 import gg.ToolErrorCode;
 import gg.internal.Read;
@@ -15,8 +14,8 @@ import org.teavm.jso.JSObject;
  * <p>A run picks one of three memory strategies and binds only that strategy's calls: the
  * scratchpad's {@code writeMemory} and {@code updateMemory}, or the file-shaped
  * {@code createMemory}, {@code readMemory} and {@code editMemory} — plus {@code searchMemories}
- * where there is no pinned index. {@code deleteMemory} is bound under all three, the system prompt
- * says which strategy is in force, and {@code list} is the directory of what was really bound.
+ * where there is no pinned index. {@code deleteMemory} is bound under all three, and the system
+ * prompt says which strategy is in force.
  *
  * <p>A memory may carry code, which is a module in this language bound at {@code lib.<name>} in
  * every later program — a helper written once. It costs no context window and is never shown back.
@@ -25,21 +24,6 @@ import org.teavm.jso.JSObject;
  */
 public final class Memories {
     private Memories() {
-    }
-
-    /**
-     * List the functions this module offers, each with a one-line summary.
-     *
-     * <p>Only the functions this run actually bound are returned, so the directory never names a
-     * call a program cannot make. One function's full signature, argument descriptions and types
-     * are opened as a view with {@code Views.openDocsView}.
-     *
-     * @return the functions this module really bound, each with its one-line summary
-     * @ggmeta list
-     */
-    public static List<FunctionSummary> list() {
-        return Read.functionSummaries(
-                Wire.call("list", Wire.memory(), "memory", "list", Wire.args()));
     }
 
     /**

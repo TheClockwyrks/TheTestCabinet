@@ -355,9 +355,4 @@ internal static class Native
 
     [MethodImpl(MethodImplOptions.InternalCall)]
     internal static extern bool Rerun(string source);
-
-    // --- the directory every object carries ---------------------------------------------------
-
-    [MethodImpl(MethodImplOptions.InternalCall)]
-    internal static extern void ListFunctions(string obj, out string[] names, out string[] summaries);
 }

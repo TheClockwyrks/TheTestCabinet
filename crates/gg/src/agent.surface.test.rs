@@ -288,7 +288,6 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
             ("writeFile".to_string(), "write_file".to_string()),
             ("editFile".to_string(), "edit_file".to_string()),
             ("listDir".to_string(), "list_dir".to_string()),
-            ("list".to_string(), "list".to_string()),
         ],
         "every bound `gg.files` call carries its own identity, in the order its SDK declares them"
     );
@@ -302,16 +301,12 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
             ("openDocsView".to_string(), "open_docs_view".to_string()),
             ("close".to_string(), "close".to_string()),
             ("current".to_string(), "current".to_string()),
-            ("list".to_string(), "list".to_string()),
         ],
         "the view channel is counted per function, tool or no tool"
     );
     assert_eq!(
         functions_on(&apis, "gg.session"),
-        vec![
-            ("finish".to_string(), "finish".to_string()),
-            ("list".to_string(), "list".to_string()),
-        ],
+        vec![("finish".to_string(), "finish".to_string()),],
         "the ending call is counted as itself"
     );
     assert!(
@@ -331,13 +326,11 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         !objects.contains(&"gg.programs"),
         "a module with nothing bound is absent rather than empty: {objects:?}"
     );
-    // Stated against the *catalogued* functions rather than the whole list, because every object
-    // carries `list`: an object with nothing else bound would be reported as a one-function object
-    // rather than an empty one, which is the same lie in a different shape.
+    // Nothing is appended to a module the catalogue does not carry, so a module reported at all is
+    // a module with a bound call on it.
     assert!(
-        apis.iter()
-            .all(|api| api.functions.iter().any(|function| function.name != "list")),
-        "no object is reported holding nothing but its `list`"
+        apis.iter().all(|api| !api.functions.is_empty()),
+        "no module is reported holding nothing"
     );
 
     // The reviewer's arm of the same rule: a dispatched role decides which verdict object exists.
@@ -353,7 +346,6 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         vec![
             ("approve".to_string(), "approve".to_string()),
             ("requestChanges".to_string(), "request_changes".to_string()),
-            ("list".to_string(), "list".to_string()),
         ]
     );
     assert!(
@@ -445,22 +437,20 @@ async fn a_disabled_capability_contributes_nothing_to_the_surface() {
     );
 }
 
-/// The `list()` meta function is bound on **every** object the guest creates, so the surface reports
-/// it on every object — last, and gated by nothing.
+/// **The surface reports exactly the catalogue's own bound entries, and nothing beside them.**
 ///
-/// It is catalogued in the section for the functions that hang off no object, so a surface built by
-/// walking the *object-bearing* sections alone is one function short on every object, and a reader
-/// asking *"was this agent offered `list`?"* gets silence about a call it always has.
+/// It used to end every object with a directory function that no catalogue entry named — bound on
+/// every object the guest created, catalogued on none, and therefore appended here by hand. That
+/// hand-append was the one place this readout could say something the catalogue did not, and with
+/// the directory deleted it is gone: what the console shows and what a program's scope binds are one
+/// projection of one array.
 ///
-/// Two things are asserted about how it is named, and they are different claims. Its **key** is gg's
-/// own [`LIST_FUNCTION`](crate::docs::LIST_FUNCTION), because that is what a call is recorded under;
-/// its **name** is whatever this language's SDK spells it, taken from the catalogue rather than from
-/// the key, because those two coincide in TypeScript and will not in every language. And the whole
-/// readout is checked against [`DocsRuntime::list`] rather than against a hand-written list, because
-/// the thing that must hold is that the console's readout and the directory the model itself gets
-/// from `object.list()` name the same functions in the same order.
+/// So the assertion is an equality against [`DocsRuntime`](crate::docs::DocsRuntime)'s own predicate
+/// — object by object, name for name, in catalogue order — rather than a hand-written list. A
+/// function reported and not bound is a call the console claims the agent had; a function bound and
+/// not reported is a call whose count joins to nothing.
 #[test]
-fn every_object_reports_the_list_meta_function_last_and_ungated() {
+fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
     set.agents[0]
         .capabilities
@@ -481,51 +471,25 @@ fn every_object_reports_the_list_meta_function_last_and_ungated() {
         GgProgramLanguage::TypeScript,
     );
 
-    // The name the SDK gives it, read from the catalogue — never gg's key for it.
-    let spelling = crate::sandbox::meta_function(
-        crate::sandbox::language(GgProgramLanguage::TypeScript),
-        crate::docs::LIST_FUNCTION,
-    )
-    .expect("`list` is catalogued")
-    .name
-    .clone();
-    assert_eq!(
-        spelling, "list",
-        "TypeScript's SDK spells the directory `list`"
-    );
-
     assert!(!apis.is_empty(), "the fixture binds objects to check");
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
     for api in &apis {
+        let expected: Vec<GgAgentApiFunction> = crate::sandbox::catalogue_functions(language)
+            .into_iter()
+            .filter(|function| function.object == api.object && docs.bound(function))
+            .map(|function| GgAgentApiFunction {
+                name: function.name.to_string(),
+                key: function.key.to_string(),
+            })
+            .collect();
         assert_eq!(
-            api.functions.last(),
-            Some(&GgAgentApiFunction {
-                name: spelling.clone(),
-                key: crate::docs::LIST_FUNCTION.to_string(),
-            }),
-            "`{}` ends with the SDK's own spelling of the directory, keyed by gg's name for it: \
-             {:?}",
-            api.object,
-            api.functions
-        );
-        assert_eq!(
-            api.functions
-                .iter()
-                .filter(|function| function.name == spelling)
-                .count(),
-            1,
-            "`{}` binds it once, not once per family it came from",
+            api.functions, expected,
+            "`{}` reports exactly what this agent binds of the catalogue",
             api.object
         );
-        assert_eq!(
-            api.functions
-                .iter()
-                .map(|function| function.name.as_str())
-                .collect::<Vec<_>>(),
-            docs.list(&api.object)
-                .iter()
-                .map(|summary| summary.name.as_str())
-                .collect::<Vec<_>>(),
-            "the surface's `{}` and the directory the model reads agree",
+        assert!(
+            !api.functions.iter().any(|function| function.key == "list"),
+            "`{}` reports no directory: there is none",
             api.object
         );
     }

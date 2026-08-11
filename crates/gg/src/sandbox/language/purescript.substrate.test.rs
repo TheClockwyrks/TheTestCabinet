@@ -945,11 +945,9 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
             "closed <- Gg.Views.close \"summary\"",
             "missing <- Gg.Views.close \"never opened\"",
             "open <- Gg.Views.current",
-            "directory <- Gg.Files.list",
             "Console.log (show (map _.selector open) <> \" \" <> show (map _.kind open))",
             "Console.log (show closed <> \" \" <> show missing)",
             "case read of\n                 Gg.Files.TextFile file -> Console.log file.contents\n                 Gg.Files.ImageFile picture -> Console.log picture.label",
-            "Console.log (show (map _.name directory))",
             "Gg.Session.finish \"read the file and showed myself the result\"",
         ])
         .replace(
@@ -974,25 +972,6 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
         lines[2].starts_with("contents of notes.md"),
         "{:?}",
         lines[2]
-    );
-    // The fake echoes the grouping it was asked about, so on its own this line *records* the
-    // argument `Gg.Files.list` passed rather than judging it. What judges it is the directory
-    // below: this arm rides the shared ECMAScript guest, whose `list` is seeded with the API object
-    // name it built the object under, so `Gg.Files.list` can only ever ask with `fs` however this
-    // arm's own module is spelled — and a host that answered only the module path would hand the
-    // program a well-formed empty array instead of a refusal.
-    assert_eq!(lines[3], "[\"fsFunction\"]");
-    let directory = crate::docs::DocsRuntime::new(
-        all_tools(),
-        EndingRole::Standard,
-        &[],
-        GgProgramLanguage::PureScript,
-    )
-    .list("fs");
-    assert!(
-        directory.iter().any(|entry| entry.name == "readFile"),
-        "`fs` is the grouping this arm's `list` asks with, and the real directory does not answer \
-         it: {directory:?}",
     );
     // Every view the program opened is recorded, the documentation one included.
     assert_eq!(
@@ -1235,16 +1214,6 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
         );
         wanted.entry(module).or_default().insert(name);
     }
-    // The directory is bound on every capability module rather than declared on one, so it is asked
-    // of each of them — which is also what proves the eleven declarations really exist rather than
-    // being one declaration the catalogue reports eleven times.
-    for entry in catalogue["meta"].as_array().expect("an array") {
-        let name = entry["name"].as_str().expect("a name").to_string();
-        for path in &capability_modules {
-            wanted.entry(path.clone()).or_default().insert(name.clone());
-        }
-    }
-
     let imports: String = wanted
         .iter()
         .map(|(module, names)| {

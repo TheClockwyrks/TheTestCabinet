@@ -28,9 +28,6 @@ namespace gg {
 /// <ggmodule>files</ggmodule>
 namespace files {
 
-/// \copydoc gg::detail::module_directory
-std::vector<core::function_summary> list();
-
 /// The window of lines a read covers; `{}` reads the whole file.
 ///
 /// Both fields are honoured only under a capped read policy; under the unlimited policy the whole

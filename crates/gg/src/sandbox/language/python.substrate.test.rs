@@ -1303,10 +1303,8 @@ fn what_a_run_withholds_is_not_on_the_module_it_would_hang_off() {
     assert!(
         error
             .message
-            .contains("`gg.files.read_file` is not one of the functions this run offers")
-            && error.message.contains("gg.files.list()"),
-        "the module is named — by the fully-qualified name the documentation is keyed by — and its \
-         directory is pointed at: {}",
+            .contains("`gg.files.read_file` is not one of the functions this run offers"),
+        "the module is named — by the fully-qualified name the documentation is keyed by: {}",
         error.message
     );
     assert!(log.calls().is_empty(), "nothing reached the host");
@@ -1362,11 +1360,11 @@ except ToolError as failure:
 
 /// The catalogue this arm commits, read as JSON so a check can walk it section by section.
 ///
-/// The *comparison* against the other arms is not here: the
-/// [agreement gate](super::super::agreement) runs over every registered language, so this one is
+/// Whether this arm covers gg's capabilities is not asked here: the
+/// [capability gate](super::super::agreement) runs over every registered language, so this one is
 /// inside it now that it is registered, and a second copy of that assertion would be a second thing
-/// to keep in step. What is here is the half no cross-language comparison can make — whether the
-/// surface this catalogue describes is the surface the committed `.wasm` really binds.
+/// to keep in step. What is here is the half that gate cannot make — whether the surface this
+/// catalogue describes is the surface the committed `.wasm` really binds.
 const SIGNATURES: &str = include_str!("../guests/python.signatures.json");
 
 #[test]
@@ -1395,26 +1393,14 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     };
     let review_endings = ["session.approve", "session.request_changes"];
 
-    // A standard agent that keeps a library gets every operation except the reviewer's two endings —
-    // plus the `list` every module carries, which is checked against each module that offered
-    // something rather than against a section of its own, because that is how it is bound.
-    let mut expected: Vec<(String, String)> = functions
+    // A standard agent that keeps a library gets every operation except the reviewer's two endings,
+    // and nothing beside them: the catalogue is the whole of the surface.
+    let expected: Vec<(String, String)> = functions
         .iter()
         .map(entry)
         .filter(|(operation, ..)| !review_endings.contains(&operation.as_str()))
         .map(|(_, module, name)| (module, name))
         .collect();
-    let meta: Vec<String> = catalogue["meta"]
-        .as_array()
-        .expect("an array")
-        .iter()
-        .map(|value| value["name"].as_str().expect("a name").to_string())
-        .collect();
-    let mut offered: Vec<String> = expected.iter().map(|(module, _)| module.clone()).collect();
-    offered.dedup();
-    for module in &offered {
-        expected.extend(meta.iter().map(|name| (module.clone(), name.clone())));
-    }
 
     let calls: Vec<String> = expected
         .iter()
@@ -1531,11 +1517,9 @@ print(len(open), [v.selector for v in open], open[0].kind is ViewKind.TEXT, open
 print(views.close("scratch"), views.close("never opened"), len(views.current()))
 
 # The documentation of a function, named by the FUNCTION rather than by a string — which works
-# because an SDK function's `__name__` is the name gg catalogues it under, and the one closure this
-# SDK builds is wrapped so that it keeps its own.
+# because an SDK function's `__name__` is the name gg catalogues it under.
 views.open_docs_view(files.read_file)
 views.open_docs_view("write_file")
-views.open_docs_view(files.list)
 
 whole = views.open_file("notes.md")
 print(type(whole).__name__, [v.region for v in views.current() if v.kind is ViewKind.FILE])
@@ -1557,10 +1541,10 @@ print(type(whole).__name__, [v.region for v in views.current() if v.kind is View
         ]
     );
 
-    // The three documentation lookups asked for the three names the SDK catalogues those functions
-    // under — including `list`, the one closure this SDK builds, which keeps its own `__name__`
-    // because `functools.wraps` copies it. A guest whose bound functions were anonymous wrappers
-    // needs a tag for this; Python needs nothing, and that is worth pinning rather than assuming.
+    // Both documentation lookups asked for the names the SDK catalogues those functions under: the
+    // one passed as a function resolved through its `__name__`, which is exactly the name gg keys
+    // documentation by. A guest whose bound functions were anonymous wrappers would need a tag for
+    // that; Python needs nothing, and it is worth pinning rather than assuming.
     let mut documented: Vec<&str> = outcome
         .views_opened
         .iter()
@@ -1568,7 +1552,7 @@ print(type(whole).__name__, [v.region for v in views.current() if v.kind is View
         .map(|view| view.selector.as_str())
         .collect();
     documented.sort_unstable();
-    assert_eq!(documented, ["list", "read_file", "write_file"]);
+    assert_eq!(documented, ["read_file", "write_file"]);
 
     // A view covering only part of a file carries one, and it lowers to the dataclass rather than to
     // whatever the membrane's `option<view-region>` looks like.
