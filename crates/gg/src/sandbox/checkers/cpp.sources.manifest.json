@@ -3,8 +3,8 @@
   "rebuild": "packages/gg-sandbox-cpp/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/checkers/cpp.guest.tar.gz": {
-      "bytes": 105888,
-      "sha256": "dfac4322d062b988b05092ebba472617ff2d55fdc6d0001ed72168dc7ffbf870"
+      "bytes": 105961,
+      "sha256": "5a9c6dae6ccd99c6aadab4ddb700c73a3c92cc9e7c4dfb1313b06fb47f66e943"
     },
     "crates/gg/src/sandbox/checkers/cpp.adapter.wasm": {
       "bytes": 52238,
@@ -41,7 +41,7 @@
     "packages/gg-sandbox-cpp/Sources/sdk/gg/shell.hpp": "65cbf2fe3dc3ddaad7270324448f6b74dba303155b905be9bb0f77dae06b4bc4",
     "packages/gg-sandbox-cpp/Sources/sdk/gg/skills.hpp": "244d40c2857c1bacc72b4370bfb7f92e2d9201c4a4a2efd309c7c5e39a1acb40",
     "packages/gg-sandbox-cpp/Sources/sdk/gg/tasks.hpp": "2b410299b66502016edc84b9ec4585cad7ede16538a2fed8a11afa80d5f6957c",
-    "packages/gg-sandbox-cpp/Sources/sdk/gg/views.hpp": "00964ce742b6c0c51c86fc417fda0e9f1c87569ae49ab1e2f45f069827a699e4",
+    "packages/gg-sandbox-cpp/Sources/sdk/gg/views.hpp": "ce6e1f4f737be09ebb021997f68a69813cd94e31a53e0d97f3d759c6e1d74882",
     "packages/gg-sandbox-cpp/Sources/sdk/memories.cpp": "ba5c8c55e54f058a17c7db9b24ab9c1df71c36c07b06bd1918b7de20835157de",
     "packages/gg-sandbox-cpp/Sources/sdk/programs.cpp": "90197dd671ed981df8c4cd67794a405d42151401c05a7d7b7f43cc554cb2a73a",
     "packages/gg-sandbox-cpp/Sources/sdk/runtime.cpp": "b68065f7f1e38ade48b4e7d1a675cba79761ea1fd12e38c2e7ccb4ce9c14b522",

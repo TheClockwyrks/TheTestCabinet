@@ -2092,18 +2092,61 @@ fn a_failed_call_carries_its_class_on_both_of_its_records() {
     );
 
     // The model-facing half. It exists for the calls that have no tool record at all — a carve-out,
-    // and a call the membrane refused before dispatch — which is why the class rides here too.
+    // and a call the membrane refused before dispatch — which is why the class rides here too, and
+    // why the operation rides beside it: *how often did this operation fail* is a question about
+    // results, and it must not require pairing each result back to its own call.
     let refused = GgTelemetryKind::ApiResult {
-        object: "fs".to_string(),
+        object: "files".to_string(),
         function: "read_file".to_string(),
+        operation: Some("files.read_file".to_string()),
         ok: false,
         failure: Some(GgToolFailure::LimitExceeded),
     };
     let value = serde_json::to_value(&refused).expect("serialize");
     assert_eq!(value["failure"], json!("limit-exceeded"));
+    assert_eq!(value["operation"], json!("files.read_file"));
     assert_eq!(
         serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
         refused
+    );
+}
+
+/// **A call names gg's own operation, not one arm's spelling of it** — the join a cross-language
+/// study is made of, and the one thing about a call that means the same in all eleven arms.
+///
+/// The carve-outs are the exception the shape has to carry: the documentation calls belong to no
+/// arm's catalogue, so there is no operation row to name, and they say so by omitting the field
+/// rather than by inventing an id. What they are recorded under is already gg's own vocabulary, so
+/// `object`.`function` reads exactly as an operation id would — which is what lets one consumer key
+/// both populations the same way.
+#[test]
+fn an_api_call_carries_the_operation_it_resolved_to() {
+    let call = GgTelemetryKind::ApiCall {
+        object: "files".to_string(),
+        function: "read_file".to_string(),
+        operation: Some("files.read_file".to_string()),
+    };
+    let value = serde_json::to_value(&call).expect("serialize");
+    assert_eq!(value["type"], json!("api_call"));
+    assert_eq!(value["operation"], json!("files.read_file"));
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        call
+    );
+
+    let carveout = GgTelemetryKind::ApiCall {
+        object: "docs".to_string(),
+        function: "search".to_string(),
+        operation: None,
+    };
+    let value = serde_json::to_value(&carveout).expect("serialize");
+    assert!(
+        value.get("operation").is_none(),
+        "a call gg has no operation for omits the field rather than guessing one: {value}"
+    );
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        carveout
     );
 }
 
@@ -2332,9 +2375,13 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
 /// The surface is what makes *"never offered"* and *"offered and never called"* different findings,
 /// so what has to survive the wire is exactly the join a consumer draws that distinction with: the
 /// tool names, and — in code mode — each bound function beside its own
-/// [`key`](GgAgentApiFunction::key), the language-independent identity its calls are recorded under.
-/// The join is `(object, key)` and nothing else, which is why a function no tool backs — the ending
-/// call asserted below — carries a figure on exactly the terms a tool-backed read does.
+/// [`operation`](GgAgentApiFunction::operation), gg's identity for what it does and the string its
+/// calls are recorded under. The join is that one string, which is why a function no tool backs —
+/// the ending call asserted below — carries a figure on exactly the terms a tool-backed read does.
+///
+/// The three per-agent settings ride here too, and the [mode](GgTelemetryKind::AgentSurface) is the
+/// one this asserts by name: it is the arm of a within-run comparison, and a run that recorded it
+/// nowhere would leave every measurement of it unattributable.
 ///
 /// The absences are as load-bearing as the values. A tool-calling agent sends no `apis` at all
 /// rather than an empty list, because it has no such surface; an agent that ablates nothing sends no
@@ -2346,24 +2393,27 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     let kind = GgTelemetryKind::AgentSurface {
         execution_mode: "responses_as_code".to_string(),
         program_language: Some(GgProgramLanguage::TypeScript),
+        doc_view_types: Some("return-and-parameters".to_string()),
         tools: vec!["read_file".to_string(), "finish".to_string()],
         apis: vec![
             GgAgentApi {
-                object: "fs".to_string(),
+                module: "files".to_string(),
+                path: "gg.files".to_string(),
                 description: "read, write, and edit workspace files".to_string(),
                 functions: vec![GgAgentApiFunction {
                     name: "readFile".to_string(),
-                    key: "read_file".to_string(),
+                    operation: "files.read_file".to_string(),
                 }],
             },
             // The ending call: bound by the agent's dispatched role rather than by a tool, and
-            // counted exactly as a tool-backed function is — its own key, its own figure.
+            // counted exactly as a tool-backed function is — its own operation, its own figure.
             GgAgentApi {
-                object: "harness".to_string(),
+                module: "session".to_string(),
+                path: "gg.session".to_string(),
                 description: "end your session".to_string(),
                 functions: vec![GgAgentApiFunction {
                     name: "finish".to_string(),
-                    key: "finish".to_string(),
+                    operation: "session.finish".to_string(),
                 }],
             },
         ],
@@ -2376,23 +2426,36 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     assert_eq!(value["type"], json!("agent_surface"));
     assert_eq!(value["executionMode"], json!("responses_as_code"));
     assert_eq!(value["programLanguage"], json!("typescript"));
+    assert_eq!(value["docViewTypes"], json!("return-and-parameters"));
     assert_eq!(value["tools"], json!(["read_file", "finish"]));
     assert_eq!(value["withheld"], json!(["write_file"]));
-    // Every function carries its own key — the ending call as much as the tool-backed read — and
-    // no gg tool name appears anywhere on the surface.
-    assert_eq!(value["apis"][0]["functions"][0]["key"], json!("read_file"));
-    assert_eq!(value["apis"][1]["functions"][0]["key"], json!("finish"));
+    // A module is named twice: once as gg knows it, and once as this arm spells it. A study
+    // grouping eleven arms reads the first; a reader quoting the model reads the second.
+    assert_eq!(value["apis"][0]["module"], json!("files"));
+    assert_eq!(value["apis"][0]["path"], json!("gg.files"));
+    // Every function carries its own operation — the ending call as much as the tool-backed read —
+    // and no gg tool name appears anywhere on the surface.
+    assert_eq!(
+        value["apis"][0]["functions"][0]["operation"],
+        json!("files.read_file")
+    );
+    assert_eq!(
+        value["apis"][1]["functions"][0]["operation"],
+        json!("session.finish")
+    );
     assert!(value["apis"][0]["functions"][0].get("tool").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, kind);
 
     // A tool-calling agent's surface omits `apis` entirely, and an agent that ablates nothing omits
     // `withheld` — both absences rather than empty arrays a consumer would have to interpret. Its
-    // `programLanguage` is absent on the same terms: it writes no programs, so naming a language
-    // would be reporting a fact about a surface it does not have.
+    // `programLanguage` and `docViewTypes` are absent on the same terms: it writes no programs and
+    // opens no documentation, so naming either would be reporting a fact about a surface it does
+    // not have.
     let tool_calling = GgTelemetryKind::AgentSurface {
         execution_mode: "tool_calling".to_string(),
         program_language: None,
+        doc_view_types: None,
         tools: vec!["shell".to_string()],
         apis: Vec::new(),
         withheld: Vec::new(),
@@ -2401,6 +2464,7 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     assert!(value.get("apis").is_none());
     assert!(value.get("withheld").is_none());
     assert!(value.get("programLanguage").is_none());
+    assert!(value.get("docViewTypes").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, tool_calling);
 }

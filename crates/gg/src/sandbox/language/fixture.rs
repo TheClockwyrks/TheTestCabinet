@@ -714,25 +714,26 @@ fn leak(json: String) -> &'static SignatureCatalogue {
 // The prompt
 // ---------------------------------------------------------------------------------------------
 
-/// The fixture's model-facing prose, written in the fixture's spellings.
+/// The fixture's model-facing prose, written in the fixture's own vocabulary.
 ///
 /// It is short — no language's real prompt is — but it carries the two things the per-language
-/// prompt tests read: headings the shared machinery has to render, and spellings that must be *this*
-/// language's rather than the other one's.
+/// prompt tests read: headings the shared machinery has to render, and a module list that must come
+/// from *this* language's catalogue rather than the other one's.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: FIXTURE_SYSTEM_TEMPLATE,
     system_template_name: "system-code.fixture",
-    nothing_shown_template: "Your program showed you nothing. Call `{{api.view.open_text.call}}`.",
+    nothing_shown_template: "Your program showed you nothing. Open a view of it.",
     nothing_shown_template_name: "code-nothing-shown.fixture",
 };
 
 /// The fixture's system prompt: enough Handlebars to prove the shared context renders against a
-/// template gg did not write in TypeScript, and enough resolved spellings to prove the right
+/// template gg did not write in TypeScript, and enough interpolated vocabulary to prove the right
 /// language's catalogue answered.
 ///
-/// Every call in it is a `{{api.…}}` reference, exactly as TypeScript's template is written, which is
-/// what makes "a template carries no spelling of its own" an assertion over two surfaces rather than
-/// over one.
+/// It names **no function**, exactly as every shipped template does not, which is what makes "a
+/// prompt names nothing a model has to be able to find for itself" an assertion over two surfaces
+/// rather than over one. What it does carry is the module list, because that is the one vocabulary
+/// the prompt is allowed to supply and the one whose per-language resolution has to be proven.
 const FIXTURE_SYSTEM_TEMPLATE: &str = "\
 ## Responses as Code
 
@@ -742,13 +743,12 @@ Answer with a program in the fixture language. Comments start with `#`.
 
 Call `{{ending.finish}}(summary)`.
 
-### Your APIs
+### Your modules
 
-{{#each apis}}- `{{object}}` — {{description}}
+{{#each modules}}- `{{path}}` — {{brief}}
 {{/each}}
 
-Read a file with `{{api.fs.read_file.call}}(path)` and show yourself something with \
-`{{api.view.open_text.signature}}`.
+Search these for the function you need, then open a documentation view of it.
 ";
 
 // ---------------------------------------------------------------------------------------------

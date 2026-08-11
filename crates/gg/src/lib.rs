@@ -27,6 +27,7 @@
 mod agent;
 mod archive;
 mod board;
+mod bootstrap;
 mod cancel;
 mod capture;
 mod client;

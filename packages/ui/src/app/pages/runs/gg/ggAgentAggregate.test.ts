@@ -90,11 +90,14 @@ function turn(agentId: string): HarnessEvent {
 // One model-facing call, as a responses-as-code program's turn streams it. The opening half
 // is what a count reads: it is emitted before the call runs, so a program stopped mid-call
 // still shows the call it was making.
-function apiCall(agentId: string, object: string, fn: string): HarnessEvent {
+function apiCall(agentId: string, module: string, fn: string): HarnessEvent {
   return gg(agentId, {
     type: "api_call",
-    object,
+    object: module,
     function: fn,
+    // gg's own identity for what was called — the key the count is kept under, and the one
+    // string that would be the same had the program been written in another language.
+    operation: `${module}.${fn}`,
   } as GgTelemetryKind);
 }
 
@@ -742,35 +745,38 @@ describe("deriveGgAgentSummaries", () => {
       .toEqual(["write_file"]);
   });
 
-  it("unions a responses-as-code profile's api objects, keeping each function's own key", () => {
-    // The key is the join key: a program's `readFile` is recorded as `fs.read_file` and its
-    // `openFile` as `view.open_file`, whether or not a gg tool runs underneath. Every bound
-    // function carries one, so every one of them has a figure of its own.
-    const fs: GgAgentApi = {
-      object: "fs",
+  it("unions a responses-as-code profile's modules, keeping each function's own operation", () => {
+    // The operation is the join key: a program's `readFile` is recorded as `files.read_file`
+    // and its `openFile` as `views.open_file`, whether or not a gg tool runs underneath.
+    // Every bound function carries one, so every one of them has a figure of its own.
+    const files: GgAgentApi = {
+      module: "files",
+      path: "gg.files",
       description: "Read and write the workspace.",
       functions: [
-        { name: "readFile", key: "read_file" },
-        { name: "writeFile", key: "write_file" },
+        { name: "readFile", operation: "files.read_file" },
+        { name: "writeFile", operation: "files.write_file" },
       ],
     };
-    const view: GgAgentApi = {
-      object: "view",
+    const views: GgAgentApi = {
+      module: "views",
+      path: "gg.views",
       description: "Show the model something.",
-      functions: [{ name: "openFile", key: "open_file" }],
+      functions: [{ name: "openFile", operation: "views.open_file" }],
     };
 
     const summaries = summarize(
       [
         spawn("root", "Root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
-        offered("w1", ["read_file", "write_file"], [fs, view]),
+        offered("w1", ["read_file", "write_file"], [files, views]),
         spawn("w2", "worker", "vendor/small", "root"),
-        // The second worker never bound `view` at all, so the object itself is partial.
+        // The second worker never bound the view module at all, so the module itself is
+        // partial.
         offered(
           "w2",
           ["read_file"],
-          [{ ...fs, functions: [fs.functions[0]!] }],
+          [{ ...files, functions: [files.functions[0]!] }],
         ),
       ],
       set(
@@ -783,35 +789,37 @@ describe("deriveGgAgentSummaries", () => {
     expect(surface.executionMode).toBe("responses_as_code");
     expect(surface.apis).toEqual([
       {
-        object: "fs",
+        module: "files",
+        path: "gg.files",
         description: "Read and write the workspace.",
         offeredBy: 2,
         functions: [
-          { name: "readFile", key: "read_file", offeredBy: 2 },
-          { name: "writeFile", key: "write_file", offeredBy: 1 },
+          { name: "readFile", key: "files.read_file", offeredBy: 2 },
+          { name: "writeFile", key: "files.write_file", offeredBy: 1 },
         ],
       },
       {
-        object: "view",
+        module: "views",
+        path: "gg.views",
         description: "Show the model something.",
         offeredBy: 1,
-        functions: [{ name: "openFile", key: "open_file", offeredBy: 1 }],
+        functions: [{ name: "openFile", key: "views.open_file", offeredBy: 1 }],
       },
     ]);
   });
 
   it("sums a profile's api calls across its instances, tool or no tool", () => {
     // The other half of the offered-versus-called contrast, and the half the old tool-keyed
-    // join could not produce: `view.openFile` runs a `read_file` and `view.current` runs
+    // join could not produce: `views.openFile` runs a `read_file` and `views.current` runs
     // nothing, and both are calls this profile's programs made.
     const summaries = summarize(
       [
         spawn("root", "Root", "vendor/big"),
         spawn("w1", "worker", "vendor/small", "root"),
-        apiCall("w1", "view", "open_file"),
-        apiCall("w1", "view", "current"),
+        apiCall("w1", "views", "open_file"),
+        apiCall("w1", "views", "current"),
         spawn("w2", "worker", "vendor/small", "root"),
-        apiCall("w2", "view", "open_file"),
+        apiCall("w2", "views", "open_file"),
       ],
       set(
         profile("Root", "vendor/big", ["subagents"]),
@@ -820,8 +828,8 @@ describe("deriveGgAgentSummaries", () => {
     );
 
     const worker = summaries.find((s) => s.name === "worker")!;
-    expect(worker.apiCalls.get("view.open_file")).toBe(2);
-    expect(worker.apiCalls.get("view.current")).toBe(1);
+    expect(worker.apiCalls.get("views.open_file")).toBe(2);
+    expect(worker.apiCalls.get("views.current")).toBe(1);
     expect(summaries.find((s) => s.name === "Root")!.apiCalls.size).toBe(0);
   });
 

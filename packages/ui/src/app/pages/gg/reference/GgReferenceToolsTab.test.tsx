@@ -39,13 +39,11 @@ const REFERENCE: GgReference = {
       id: "gg-filesystem",
       title: "Filesystem",
       description: "Reading, writing and editing files in the workspace.",
-      objects: ["fs"],
     },
     {
       id: "gg-shell",
       title: "Shell",
       description: "Running shell commands in the workspace.",
-      objects: ["system"],
     },
     // A code-only family: it has functions but no tools, so the Tools tree must not
     // show a folder for it.
@@ -54,13 +52,32 @@ const REFERENCE: GgReference = {
       title: "Views",
       description:
         "Showing yourself a file, a value, or a function's documentation.",
-      objects: ["view"],
     },
   ],
   // In the canonical vocabulary order, exactly as the payload arrives — which is *not*
   // the family order the tree is grouped by: `shell` leads the vocabulary while
   // Filesystem leads the families. That mismatch is the whole reason the opening
   // selection has to be read off the tree rather than off this array.
+  modules: [
+    {
+      id: "files",
+      path: "gg.files",
+      summary: "Read, write, edit and list the files of the workspace.",
+      category: "gg-filesystem",
+    },
+    {
+      id: "shell",
+      path: "gg.shell",
+      summary: "Run shell commands in the workspace.",
+      category: "gg-shell",
+    },
+    {
+      id: "views",
+      path: "gg.views",
+      summary: "Show the agent a file, a value, or a function's documentation.",
+      category: "gg-views",
+    },
+  ],
   tools: [
     {
       name: "shell",

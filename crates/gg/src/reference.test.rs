@@ -80,7 +80,7 @@ fn every_entry_maps_to_a_declared_category() {
         assert!(
             declared.contains(function.category.as_str()),
             "`{}.{}` is in category `{}`, which no family declares",
-            function.object,
+            function.module,
             function.name,
             function.category
         );
@@ -98,7 +98,6 @@ fn the_categories_are_the_families_in_order() {
         assert_eq!(category.id, family.id);
         assert_eq!(category.title, family.title);
         assert_eq!(category.description, family.description);
-        assert_eq!(category.objects, family.objects.to_vec());
         assert!(
             !category.title.trim().is_empty(),
             "`{}` has no display title",
@@ -181,7 +180,7 @@ fn every_catalogued_function_appears() {
     let emitted: BTreeSet<(String, String)> = reference
         .functions
         .iter()
-        .map(|f| (f.object.clone(), f.name.clone()))
+        .map(|f| (f.module.clone(), f.name.clone()))
         .collect();
 
     let catalogued = crate::sandbox::catalogue_functions(projected_language());
@@ -192,7 +191,10 @@ fn every_catalogued_function_appears() {
     );
     for function in &catalogued {
         assert!(
-            emitted.contains(&(function.object.to_string(), function.name.to_string())),
+            emitted.contains(&(
+                function.module.unwrap_or(function.object).to_string(),
+                function.name.to_string()
+            )),
             "`{}.{}` is documented by the catalogue but missing from the reference",
             function.object,
             function.name
@@ -207,19 +209,19 @@ fn every_catalogued_function_appears() {
                     .iter()
                     .all(|entry| !entry.signature.trim().is_empty()),
             "`{}.{}` came out with no signature",
-            function.object,
+            function.module,
             function.name
         );
         assert!(
             !function.doc.trim().is_empty(),
             "`{}.{}` came out with no documentation",
-            function.object,
+            function.module,
             function.name
         );
         assert!(
             !function.summary.trim().is_empty(),
             "`{}.{}` came out with no summary",
-            function.object,
+            function.module,
             function.name
         );
     }
@@ -237,11 +239,14 @@ fn every_referenced_type_resolves_to_a_declaration() {
     let by_name: std::collections::BTreeMap<(String, String), usize> = reference
         .functions
         .iter()
-        .map(|f| ((f.object.clone(), f.name.clone()), f.types.len()))
+        .map(|f| ((f.module.clone(), f.name.clone()), f.types.len()))
         .collect();
 
     for function in crate::sandbox::catalogue_functions(projected_language()) {
-        let key = (function.object.to_string(), function.name.to_string());
+        let key = (
+            function.module.unwrap_or(function.object).to_string(),
+            function.name.to_string(),
+        );
         assert_eq!(
             by_name.get(&key).copied(),
             Some(function.types.len()),

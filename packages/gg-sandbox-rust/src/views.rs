@@ -76,8 +76,11 @@ pub fn open_text(label: &str, body: &str) -> Result<(), ToolError> {
 ///
 /// # Arguments
 ///
-/// * `name` — The function to document, by the name it is called by in its module — `"read_file"` for
-///   `files::read_file`. Searching the documentation is what says which names exist.
+/// * `name` — The function to document, by the fully-qualified name its documentation is keyed
+///   by — `"gg::files::read_file"`. The bare name it is called by in its module (`"read_file"`)
+///   also resolves and is a fallback rather than the form to reach for: two modules are free to
+///   declare a `close`, and only the qualified name says which one is meant. Searching the
+///   documentation is what says which names exist.
 ///
 /// # Errors
 ///

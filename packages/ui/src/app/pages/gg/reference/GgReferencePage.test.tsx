@@ -33,7 +33,14 @@ const REFERENCE: GgReference = {
       id: "gg-filesystem",
       title: "Filesystem",
       description: "Reading, writing and editing files in the workspace.",
-      objects: ["fs"],
+    },
+  ],
+  modules: [
+    {
+      id: "files",
+      path: "gg.files",
+      summary: "Read, write, edit and list the files of the workspace.",
+      category: "gg-filesystem",
     },
   ],
   tools: [
@@ -47,7 +54,9 @@ const REFERENCE: GgReference = {
   ],
   functions: [
     {
-      object: "fs",
+      module: "files",
+      fqn: "gg.files.readFile",
+      operation: "files.read_file",
       name: "readFile",
       category: "gg-filesystem",
       summary: "Read a file.",
@@ -116,7 +125,7 @@ describe("GgReferencePage", () => {
       fireEvent.click(screen.getByRole("link", { name: "API" }));
     });
     expect(
-      screen.getByRole("heading", { name: "fs.readFile" }),
+      screen.getByRole("heading", { name: "gg.files.readFile" }),
     ).toBeInTheDocument();
     // No loading line on the way: the document was never thrown away.
     expect(screen.queryByText(/Loading gg/)).not.toBeInTheDocument();

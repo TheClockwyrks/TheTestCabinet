@@ -5,68 +5,130 @@
     {
       "id": "gg-filesystem",
       "title": "Filesystem",
-      "description": "Reading, writing and editing files in the workspace.",
-      "objects": ["fs"]
+      "description": "Reading, writing and editing files in the workspace."
     },
     {
       "id": "gg-shell",
       "title": "Shell",
-      "description": "Running shell commands in the workspace.",
-      "objects": ["system"]
+      "description": "Running shell commands in the workspace."
     },
     {
       "id": "gg-project",
       "title": "Project management",
-      "description": "The epic/issue board — decomposing work into issues other agents implement.",
-      "objects": ["project"]
+      "description": "The epic/issue board — decomposing work into issues other agents implement."
     },
     {
       "id": "gg-tasks",
       "title": "Tasks",
-      "description": "Your task list: a blocked-by DAG of the work you are steering by.",
-      "objects": ["tasks"]
+      "description": "Your task list: a blocked-by DAG of the work you are steering by."
     },
     {
       "id": "gg-memory",
       "title": "Memories",
-      "description": "Durable memories that outlive the conversation you wrote them in.",
-      "objects": ["memory"]
+      "description": "Durable memories that outlive the conversation you wrote them in."
     },
     {
       "id": "gg-skills",
       "title": "Skills",
-      "description": "Reading skills — including this one.",
-      "objects": ["skills"]
+      "description": "Reading skills — including this one."
     },
     {
       "id": "gg-context",
       "title": "Context",
-      "description": "Managing your own context window: evicting, archiving, searching, compacting.",
-      "objects": ["context"]
+      "description": "Managing your own context window: evicting, archiving, searching, compacting."
     },
     {
       "id": "gg-delegation",
       "title": "Delegation",
-      "description": "Delegating work to child agents, and handing your session on.",
-      "objects": ["agents"]
+      "description": "Delegating work to child agents, and handing your session on."
     },
     {
       "id": "gg-views",
       "title": "Views",
-      "description": "Showing yourself a file, a value, or a function's documentation.",
-      "objects": ["view"]
+      "description": "Showing yourself a file, a value, or a function's documentation."
     },
     {
       "id": "gg-programs",
       "title": "Program library",
-      "description": "Fetching a program you already ran, and handing a patched copy back.",
-      "objects": ["programs"]
+      "description": "Fetching a program you already ran, and handing a patched copy back."
     },
     {
       "id": "gg-session",
       "title": "Ending the session",
-      "description": "Ending your session — the one call that does.",
-      "objects": ["harness", "review", "judge"]
+      "description": "Ending your session — the one call that does."
+    }
+  ],
+  "modules": [
+    {
+      "id": "files",
+      "path": "gg.files",
+      "summary": "Read, write, edit and list the files of the workspace.",
+      "category": "gg-filesystem"
+    },
+    {
+      "id": "shell",
+      "path": "gg.shell",
+      "summary": "Run shell commands in the workspace.",
+      "category": "gg-shell"
+    },
+    {
+      "id": "board",
+      "path": "gg.board",
+      "summary": "The epic and issue board, shared by every agent in the run.",
+      "category": "gg-project"
+    },
+    {
+      "id": "tasks",
+      "path": "gg.tasks",
+      "summary": "The task list: a directed acyclic graph of work this agent is tracking for itself.",
+      "category": "gg-tasks"
+    },
+    {
+      "id": "memories",
+      "path": "gg.memories",
+      "summary": "Durable notes that survive a compaction of the context window.",
+      "category": "gg-memory"
+    },
+    {
+      "id": "views",
+      "path": "gg.views",
+      "summary": "Show the agent a file, a value, or a function's documentation.",
+      "category": "gg-views"
+    },
+    {
+      "id": "context",
+      "path": "gg.context",
+      "summary": "Manage the agent's own context window.",
+      "category": "gg-context"
+    },
+    {
+      "id": "delegation",
+      "path": "gg.delegation",
+      "summary": "Hand scoped work to child agents, and hand this session on to another agent.",
+      "category": "gg-delegation"
+    },
+    {
+      "id": "skills",
+      "path": "gg.skills",
+      "summary": "Read the skills this agent was given.",
+      "category": "gg-skills"
+    },
+    {
+      "id": "programs",
+      "path": "gg.programs",
+      "summary": "Fetch a program that already ran, and hand a patched copy back to be run in its place.",
+      "category": "gg-programs"
+    },
+    {
+      "id": "session",
+      "path": "gg.session",
+      "summary": "End the session, in the one shape this agent's role produces.",
+      "category": "gg-session"
+    },
+    {
+      "id": "core",
+      "path": "gg.core",
+      "summary": "The types every other capability module speaks in."
     }
   ],
   "tools": [
@@ -1176,8 +1238,10 @@
   ],
   "functions": [
     {
-      "object": "gg.files",
+      "module": "files",
       "name": "readFile",
+      "fqn": "gg.files.readFile",
+      "operation": "files.read_file",
       "category": "gg-filesystem",
       "summary": "Read a file, as either a `TextFile` or an `ImageFile`.",
       "signatures": [
@@ -1363,8 +1427,10 @@
       ]
     },
     {
-      "object": "gg.files",
+      "module": "files",
       "name": "readTextFile",
+      "fqn": "gg.files.readTextFile",
+      "operation": "files.read_text_file",
       "category": "gg-filesystem",
       "summary": "Read a text file and hand back its contents directly.",
       "signatures": [
@@ -1470,8 +1536,10 @@
       ]
     },
     {
-      "object": "gg.files",
+      "module": "files",
       "name": "writeFile",
+      "fqn": "gg.files.writeFile",
+      "operation": "files.write_file",
       "category": "gg-filesystem",
       "summary": "Write UTF-8 text to a file, creating parent directories and replacing what is there.",
       "signatures": [
@@ -1560,8 +1628,10 @@
       ]
     },
     {
-      "object": "gg.files",
+      "module": "files",
       "name": "editFile",
+      "fqn": "gg.files.editFile",
+      "operation": "files.edit_file",
       "category": "gg-filesystem",
       "summary": "Replace the one exact occurrence of some text in a file with something else.",
       "signatures": [
@@ -1658,8 +1728,10 @@
       ]
     },
     {
-      "object": "gg.files",
+      "module": "files",
       "name": "listDir",
+      "fqn": "gg.files.listDir",
+      "operation": "files.list_dir",
       "category": "gg-filesystem",
       "summary": "List a directory, sorted by name; the default lists the workspace root.",
       "signatures": [
@@ -1776,8 +1848,10 @@
       ]
     },
     {
-      "object": "gg.shell",
+      "module": "shell",
       "name": "shell",
+      "fqn": "gg.shell.shell",
+      "operation": "shell.shell",
       "category": "gg-shell",
       "summary": "Run a command with `sh -c` in the workspace and hand back its merged output.",
       "signatures": [
@@ -1897,8 +1971,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "createEpic",
+      "fqn": "gg.board.createEpic",
+      "operation": "board.create_epic",
       "category": "gg-project",
       "summary": "Create an epic to group related issues under one prefix.",
       "signatures": [
@@ -2048,8 +2124,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "createIssue",
+      "fqn": "gg.board.createIssue",
+      "operation": "board.create_issue",
       "category": "gg-project",
       "summary": "Create a self-contained, dispatchable issue and hand back the id the board assigned it.",
       "signatures": [
@@ -2247,8 +2325,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "updateIssue",
+      "fqn": "gg.board.updateIssue",
+      "operation": "board.update_issue",
       "category": "gg-project",
       "summary": "Revise an issue, changing at least one of its fields.",
       "signatures": [
@@ -2413,8 +2493,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "setIssueBlockedBy",
+      "fqn": "gg.board.setIssueBlockedBy",
+      "operation": "board.set_issue_blocked_by",
       "category": "gg-project",
       "summary": "Replace an issue's whole blocker set; an empty array clears every blocker.",
       "signatures": [
@@ -2503,8 +2585,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "removeEpic",
+      "fqn": "gg.board.removeEpic",
+      "operation": "board.remove_epic",
       "category": "gg-project",
       "summary": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.",
       "signatures": [
@@ -2612,8 +2696,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "removeIssue",
+      "fqn": "gg.board.removeIssue",
+      "operation": "board.remove_issue",
       "category": "gg-project",
       "summary": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.",
       "signatures": [
@@ -2721,8 +2807,10 @@
       ]
     },
     {
-      "object": "gg.board",
+      "module": "board",
       "name": "waitForIssue",
+      "fqn": "gg.board.waitForIssue",
+      "operation": "board.wait_for_issue",
       "category": "gg-project",
       "summary": "Register a wait on an issue, to be served after the program ends, and acknowledge it at once.",
       "signatures": [
@@ -2803,8 +2891,10 @@
       ]
     },
     {
-      "object": "gg.tasks",
+      "module": "tasks",
       "name": "addTask",
+      "fqn": "gg.tasks.addTask",
+      "operation": "tasks.add_task",
       "category": "gg-tasks",
       "summary": "Add a task to the graph and hand back the task budget.",
       "signatures": [
@@ -2935,8 +3025,10 @@
       ]
     },
     {
-      "object": "gg.tasks",
+      "module": "tasks",
       "name": "updateTask",
+      "fqn": "gg.tasks.updateTask",
+      "operation": "tasks.update_task",
       "category": "gg-tasks",
       "summary": "Revise a task's title, description or status, at least one of the three.",
       "signatures": [
@@ -3069,8 +3161,10 @@
       ]
     },
     {
-      "object": "gg.tasks",
+      "module": "tasks",
       "name": "setBlockedBy",
+      "fqn": "gg.tasks.setBlockedBy",
+      "operation": "tasks.set_blocked_by",
       "category": "gg-tasks",
       "summary": "Replace a task's whole blocker set; an empty array clears every blocker.",
       "signatures": [
@@ -3159,8 +3253,10 @@
       ]
     },
     {
-      "object": "gg.tasks",
+      "module": "tasks",
       "name": "completeTask",
+      "fqn": "gg.tasks.completeTask",
+      "operation": "tasks.complete_task",
       "category": "gg-tasks",
       "summary": "Mark a task done, which makes the tasks it was blocking actionable.",
       "signatures": [
@@ -3241,8 +3337,10 @@
       ]
     },
     {
-      "object": "gg.tasks",
+      "module": "tasks",
       "name": "removeTask",
+      "fqn": "gg.tasks.removeTask",
+      "operation": "tasks.remove_task",
       "category": "gg-tasks",
       "summary": "Remove a task and every blocker edge pointing at it, and hand back the task budget.",
       "signatures": [
@@ -3340,8 +3438,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "writeMemory",
+      "fqn": "gg.memories.writeMemory",
+      "operation": "memories.write_memory",
       "category": "gg-memory",
       "summary": "Record a durable memory that survives a compaction, and hand back the budget it now occupies.",
       "signatures": [
@@ -3491,8 +3591,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "updateMemory",
+      "fqn": "gg.memories.updateMemory",
+      "operation": "memories.update_memory",
       "category": "gg-memory",
       "summary": "Replace an existing memory's description and body, keyed on its name.",
       "signatures": [
@@ -3642,8 +3744,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "createMemory",
+      "fqn": "gg.memories.createMemory",
+      "operation": "memories.create_memory",
       "category": "gg-memory",
       "summary": "Record a memory whose contents stay out of the context window until they are read.",
       "signatures": [
@@ -3793,8 +3897,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "readMemory",
+      "fqn": "gg.memories.readMemory",
+      "operation": "memories.read_memory",
       "category": "gg-memory",
       "summary": "Read one memory's full contents by slug, which is the only thing that brings them into context.",
       "signatures": [
@@ -3875,8 +3981,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "editMemory",
+      "fqn": "gg.memories.editMemory",
+      "operation": "memories.edit_memory",
       "category": "gg-memory",
       "summary": "Revise a memory in place, replacing the one exact occurrence of some text with something else.",
       "signatures": [
@@ -4019,8 +4127,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "searchMemories",
+      "fqn": "gg.memories.searchMemories",
+      "operation": "memories.search_memories",
       "category": "gg-memory",
       "summary": "Find the memories mentioning any of some keywords, best first.",
       "signatures": [
@@ -4133,8 +4243,10 @@
       ]
     },
     {
-      "object": "gg.memories",
+      "module": "memories",
       "name": "deleteMemory",
+      "fqn": "gg.memories.deleteMemory",
+      "operation": "memories.delete_memory",
       "category": "gg-memory",
       "summary": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.",
       "signatures": [
@@ -4252,8 +4364,10 @@
       ]
     },
     {
-      "object": "gg.views",
+      "module": "views",
       "name": "openFile",
+      "fqn": "gg.views.openFile",
+      "operation": "views.open_file",
       "category": "gg-views",
       "summary": "Read a file and show it to the agent, handing the program the same value `gg.files.readFile` does.",
       "signatures": [
@@ -4439,8 +4553,10 @@
       ]
     },
     {
-      "object": "gg.views",
+      "module": "views",
       "name": "openText",
+      "fqn": "gg.views.openText",
+      "operation": "views.open_text",
       "category": "gg-views",
       "summary": "Show the agent a value the program computed, filed under a label.",
       "signatures": [
@@ -4528,8 +4644,10 @@
       ]
     },
     {
-      "object": "gg.views",
+      "module": "views",
       "name": "openDocsView",
+      "fqn": "gg.views.openDocsView",
+      "operation": "views.open_docs_view",
       "category": "gg-views",
       "summary": "Show the agent one function's full documentation: its signature, its description and its types.",
       "signatures": [
@@ -4609,8 +4727,10 @@
       ]
     },
     {
-      "object": "gg.views",
+      "module": "views",
       "name": "close",
+      "fqn": "gg.views.close",
+      "operation": "views.close",
       "category": "gg-views",
       "summary": "Close every view carrying a selector, and hand back how many were closed.",
       "signatures": [
@@ -4690,8 +4810,10 @@
       ]
     },
     {
-      "object": "gg.views",
+      "module": "views",
       "name": "current",
+      "fqn": "gg.views.current",
+      "operation": "views.current",
       "category": "gg-views",
       "summary": "List what is open in the context window right now.",
       "signatures": [
@@ -4825,8 +4947,10 @@
       ]
     },
     {
-      "object": "gg.context",
+      "module": "context",
       "name": "evictFileView",
+      "fqn": "gg.context.evictFileView",
+      "operation": "context.evict_file_view",
       "category": "gg-context",
       "summary": "Drop the contents of files already read out of the context window, and report what that freed.",
       "signatures": [
@@ -4934,8 +5058,10 @@
       ]
     },
     {
-      "object": "gg.context",
+      "module": "context",
       "name": "archiveThread",
+      "fqn": "gg.context.archiveThread",
+      "operation": "context.archive_thread",
       "category": "gg-context",
       "summary": "Move whole turns out of the context window, and report what that freed.",
       "signatures": [
@@ -5060,8 +5186,10 @@
       ]
     },
     {
-      "object": "gg.context",
+      "module": "context",
       "name": "searchArchive",
+      "fqn": "gg.context.searchArchive",
+      "operation": "context.search_archive",
       "category": "gg-context",
       "summary": "Search archived history for a case-insensitive substring, most recent first, up to eight hits.",
       "signatures": [
@@ -5181,8 +5309,10 @@
       ]
     },
     {
-      "object": "gg.context",
+      "module": "context",
       "name": "compact",
+      "fqn": "gg.context.compact",
+      "operation": "context.compact",
       "category": "gg-context",
       "summary": "Request a compaction: the detailed thread is dropped and restarted from a summary and some files.",
       "signatures": [
@@ -5271,8 +5401,10 @@
       ]
     },
     {
-      "object": "gg.delegation",
+      "module": "delegation",
       "name": "spawnSubagent",
+      "fqn": "gg.delegation.spawnSubagent",
+      "operation": "delegation.spawn_subagent",
       "category": "gg-delegation",
       "summary": "Delegate scoped work to a child agent, and hand back its handle at once.",
       "signatures": [
@@ -5400,8 +5532,10 @@
       ]
     },
     {
-      "object": "gg.delegation",
+      "module": "delegation",
       "name": "waitForSubagents",
+      "fqn": "gg.delegation.waitForSubagents",
+      "operation": "delegation.wait_for_subagents",
       "category": "gg-delegation",
       "summary": "Block until the named children have finished, and collect their results in dispatch order.",
       "signatures": [
@@ -5535,8 +5669,10 @@
       ]
     },
     {
-      "object": "gg.delegation",
+      "module": "delegation",
       "name": "sendMessage",
+      "fqn": "gg.delegation.sendMessage",
+      "operation": "delegation.send_message",
       "category": "gg-delegation",
       "summary": "Deliver a message to a running child agent's inbox, which it reads at its next turn.",
       "signatures": [
@@ -5625,8 +5761,10 @@
       ]
     },
     {
-      "object": "gg.delegation",
+      "module": "delegation",
       "name": "transitionState",
+      "fqn": "gg.delegation.transitionState",
+      "operation": "delegation.transition_state",
       "category": "gg-delegation",
       "summary": "Move the process this agent runs inside on to another of its states.",
       "signatures": [
@@ -5715,8 +5853,10 @@
       ]
     },
     {
-      "object": "gg.delegation",
+      "module": "delegation",
       "name": "exec",
+      "fqn": "gg.delegation.exec",
+      "operation": "delegation.exec",
       "category": "gg-delegation",
       "summary": "Continue this session as a different agent from the next turn on.",
       "signatures": [
@@ -5805,8 +5945,10 @@
       ]
     },
     {
-      "object": "gg.delegation",
+      "module": "delegation",
       "name": "fork",
+      "fqn": "gg.delegation.fork",
+      "operation": "delegation.fork",
       "category": "gg-delegation",
       "summary": "Run a copy of this agent, in parallel, on something this one will not do itself.",
       "signatures": [
@@ -5909,8 +6051,10 @@
       ]
     },
     {
-      "object": "gg.skills",
+      "module": "skills",
       "name": "readSkill",
+      "fqn": "gg.skills.readSkill",
+      "operation": "skills.read_skill",
       "category": "gg-skills",
       "summary": "Read a skill by name, returning its body with the front matter stripped.",
       "signatures": [
@@ -5991,8 +6135,10 @@
       ]
     },
     {
-      "object": "gg.programs",
+      "module": "programs",
       "name": "history",
+      "fqn": "gg.programs.history",
+      "operation": "programs.history",
       "category": "gg-programs",
       "summary": "List the programs this session has already run, oldest first.",
       "signatures": [
@@ -6095,8 +6241,10 @@
       ]
     },
     {
-      "object": "gg.programs",
+      "module": "programs",
       "name": "get",
+      "fqn": "gg.programs.get",
+      "operation": "programs.get",
       "category": "gg-programs",
       "summary": "Fetch the exact source of one program that ran, as a string; the default is the most recent.",
       "signatures": [
@@ -6176,8 +6324,10 @@
       ]
     },
     {
-      "object": "gg.programs",
+      "module": "programs",
       "name": "rerun",
+      "fqn": "gg.programs.rerun",
+      "operation": "programs.rerun",
       "category": "gg-programs",
       "summary": "Hand gg a program to run in place of this one, once this one has finished.",
       "signatures": [
@@ -6257,8 +6407,10 @@
       ]
     },
     {
-      "object": "gg.session",
+      "module": "session",
       "name": "finish",
+      "fqn": "gg.session.finish",
+      "operation": "session.finish",
       "category": "gg-session",
       "summary": "End the session, reporting what was done in a sentence or two.",
       "signatures": [
@@ -6339,8 +6491,10 @@
       ]
     },
     {
-      "object": "gg.session",
+      "module": "session",
       "name": "approve",
+      "fqn": "gg.session.approve",
+      "operation": "session.approve",
       "category": "gg-session",
       "summary": "Accept the work under review: it meets every completion criterion and stays in scope.",
       "signatures": [
@@ -6412,8 +6566,10 @@
       ]
     },
     {
-      "object": "gg.session",
+      "module": "session",
       "name": "requestChanges",
+      "fqn": "gg.session.requestChanges",
+      "operation": "session.request_changes",
       "category": "gg-session",
       "summary": "Reject the work under review, listing every change that must be made before it can be accepted.",
       "signatures": [

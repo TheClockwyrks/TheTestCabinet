@@ -4,7 +4,7 @@
       "description": "One [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) API function, as\nthe sandbox SDK declares it.\n\nEverything here is reflected out of the guest SDK's emitted `.d.ts` and its JSDoc, which is\nthe same material a model gets back from `view.openDocsView(...)` — so this page and the\ndocumentation lookup a program can perform mid-run cannot disagree.",
       "properties": {
         "category": {
-          "description": "The [category](GgReferenceCategory::id) the function's object belongs to.",
+          "description": "The [category](GgReferenceCategory::id) the function's module belongs to.",
           "type": "string"
         },
         "doc": {
@@ -15,6 +15,10 @@
           "description": "For an ending call, the ending role whose programs bind it (`standard`, `review`,\n`judge`); `None` for everything else, which every role reaches the same way.",
           "type": ["string", "null"]
         },
+        "fqn": {
+          "description": "The **fully-qualified name** this arm advertises it under (`gg.files.readFile`) — the key an\n`openDocsView` takes and the key a documentation search files its hit under.\n\nEmpty only where the arm's catalogue emits no qualified name, where the module's\n[path](GgReferenceModule::path) and this function's [name](Self::name) are all there is.",
+          "type": "string"
+        },
         "gate": {
           "description": "The gg tool whose being enabled binds this function, or `None` for one nothing gates —\nan ending call (decided by the agent's [role](Self::ending)), a view function bound to\nevery program whatever a run enables, or a program-library call (see\n[`library`](Self::library)).",
           "type": ["string", "null"]
@@ -23,12 +27,16 @@
           "description": "Whether this function belongs to the\n[program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a\n*capability* binds as a whole rather than a tool or a role, and therefore the one\nneither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.",
           "type": "boolean"
         },
+        "module": {
+          "description": "The [module](GgReferenceModule::id) the function lives in, by gg's id for it (`files`).",
+          "type": "string"
+        },
         "name": {
           "description": "The name a program calls it by (`readFile`).",
           "type": "string"
         },
-        "object": {
-          "description": "The API object the function hangs off in a program's scope (`fs`).",
+        "operation": {
+          "description": "gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this\ncall does (`files.read_file`) — the identity that is the same in all eleven arms, and the\nstring a run's calls are recorded under.\n\nEmpty where the arm named an operation gg does not have, which is a defect its own gate\nreports by name rather than something this page should paper over.",
           "type": "string"
         },
         "signatures": {
@@ -51,7 +59,7 @@
         }
       },
       "required": [
-        "object",
+        "module",
         "name",
         "category",
         "summary",
@@ -184,7 +192,7 @@
       "type": "object"
     },
     "GgReferenceCategory": {
-      "description": "One family of gg's surface: a group of tools and the API object(s) their\nresponses-as-code counterparts hang off.\n\nA category is not a capability. Several capabilities land in one family (the four\nfilesystem tools are four capabilities and one family), and the three code-only families\n(`view`, `programs`, and the ending call) have no tools at all — they exist only under\nresponses as code, which is exactly why the grouping is by *family* rather than by the\ncapability that switches something on.",
+      "description": "One family of gg's surface: a group of tools and the [module](GgReferenceModule) their\nresponses-as-code counterparts live in.\n\nA category is not a capability. Several capabilities land in one family (the four\nfilesystem tools are four capabilities and one family), and the three code-only families\n(`views`, `programs`, and the ending call) have no tools at all — they exist only under\nresponses as code, which is exactly why the grouping is by *family* rather than by the\ncapability that switches something on.",
       "properties": {
         "description": {
           "description": "The family's one-line description, **verbatim as a model sees it** — the line the\nbuilt-in skills index carries. Not editorialized here: a second, friendlier wording\nwould be a copy that drifts, and the point of the page is to show what is really said.",
@@ -194,19 +202,39 @@
           "description": "The family id — also the name of the built-in skill gg ships for it, so\n`gg-filesystem` here is the skill a model reads by that name.",
           "type": "string"
         },
-        "objects": {
-          "description": "The responses-as-code API objects this family's functions hang off (`[\"fs\"]`).\n\nA list rather than one name because of the ending family: `harness`, `review` and\n`judge` are one family grouped by role, and a given agent binds exactly one of them.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
         "title": {
           "description": "The display title for the family (`Filesystem`). Written for a human reading the\nconsole; it is *not* shown to a model, which is why it is separate from\n[`description`](Self::description).",
           "type": "string"
         }
       },
-      "required": ["id", "title", "description", "objects"],
+      "required": ["id", "title", "description"],
+      "type": "object"
+    },
+    "GgReferenceModule": {
+      "description": "One **capability module** of the responses-as-code surface — the grouping a program writes in\nfront of a call, and the folder the reference's API tab files that call under.\n\nIt carries gg's own [id](Self::id) for the module and the projected language's\n[spelling](Self::path) of it, because the two answer to different authorities: the id is what a\n[function](GgApiFunction::module) names and what the same module is called on every other arm,\nand the path is what a model actually writes in *this* one.",
+      "properties": {
+        "category": {
+          "description": "The [category](GgReferenceCategory::id) this module's calls belong to, or `None` for a\nmodule that carries no callable operation at all — the types-only module every arm has for\nthe declarations that belong to no capability.",
+          "type": ["string", "null"]
+        },
+        "id": {
+          "description": "gg's cross-arm id for the module — `files`, `views`, `session`.",
+          "type": "string"
+        },
+        "import": {
+          "description": "The literal line a program writes to bring the module into scope, where the arm needs one.\n`None` where the SDK is in scope already, which is every registered arm but PureScript.",
+          "type": ["string", "null"]
+        },
+        "path": {
+          "description": "The projected language's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.",
+          "type": "string"
+        },
+        "summary": {
+          "description": "The line the module's own declaration introduces it by, verbatim from the SDK — the same\nsentence the system prompt names it by. Never a second wording written for this page.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "path", "summary"],
       "type": "object"
     },
     "GgToolReference": {
@@ -291,6 +319,14 @@
       "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage",
       "default": "typescript",
       "description": "The [program language](GgProgramLanguage) the [functions](Self::functions) below are\nspelled in.\n\ngg's responses-as-code surface is one set of capabilities that every registered language\noffers under its own spellings — identical objects, identical gates, different function\nnames and signatures. So a page showing signatures has to say whose, and a reader comparing\ntwo arms of a cross-language study has to be able to tell which one they are reading. The\n[tools](Self::tools) are unaffected: a tool's name and JSON schema are the wire's, not any\nlanguage's.\n\n`#[serde(default)]` so an artifact generated before this field existed still decodes as the\ndefault language, which is the one it was in fact projected from."
+    },
+    "modules": {
+      "default": [],
+      "description": "The [capability modules](GgReferenceModule) the responses-as-code surface is divided into,\nin the order a model is presented with them.\n\nThe **module** is the unit of that surface: it is what the system prompt names, what a\ndocumentation search filters by, and what a program writes in front of every call it makes.\nSo the page is grouped by module and each [function](GgApiFunction::module) names the one it\nbelongs to.\n\n`#[serde(default)]` so an artifact generated before the surface was modules still decodes —\nas an empty list, which is honest: that artifact grouped its functions by the API object\nthey hung off, and there were no modules to describe.",
+      "items": {
+        "$ref": "#/$defs/GgReferenceModule"
+      },
+      "type": "array"
     },
     "tools": {
       "description": "Every tool gg can offer, in the canonical tool-vocabulary order.",

@@ -22,7 +22,7 @@ import type {
   GgAttributionRow,
   GgViewAttributionRow,
 } from "./ggContextAttribution";
-import { surfaceCallPhrase } from "./ggSurfaceCalls";
+import { docViewTypesPhrase, surfaceCallPhrase } from "./ggSurfaceCalls";
 import type {
   AgentTransition,
   AgentTreeNode,
@@ -531,8 +531,8 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   const { surface } = agent;
   const asApis = surface != null && readsAsApis(surface);
   // The profile's observed calls, keyed the way this section's entries are RECORDED: an API
-  // surface joins on `object.function` — the function the model wrote — and a tool surface on
-  // the gg tool name. Two layers over one core, and only the layer this section is showing.
+  // surface joins on the OPERATION — gg's own identity for what the call does — and a tool
+  // surface on the gg tool name. Two layers over one core, and only the layer this section is showing.
   // Both come off the raw per-layer records rather than off the profile's call breakdown,
   // which reports only the layer that profile's read-out is taken on: the two questions can
   // legitimately part company for a code profile that bound no API objects at all, which is
@@ -543,14 +543,17 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   if (!asApis && surface.tools.length === 0) return null;
   const label = asApis ? "APIs" : "Tools";
   // Entries under the names they are explained by. A chip reads by its bare function name
-  // under the object heading above it; a hover has to qualify it, since every object binds a
-  // `list` and `readFile` alone would not say whose.
+  // under the module heading above it; a hover has to qualify it, since two modules may each
+  // declare a `close` and `readFile` alone would not say whose.
+  //
+  // The key is left exactly as the surface reports it — gg's operation id, which is already
+  // whole — while the NAME is qualified by the module's spelling, because those are the two
+  // vocabularies: one to count in, one to read in.
   const shown: GgAgentSurfaceEntry[] = asApis
     ? surface.apis.flatMap((api) =>
         api.functions.map((fn) => ({
           ...fn,
-          name: `${api.object}.${fn.name}`,
-          key: fn.key ? `${api.object}.${fn.key}` : "",
+          name: `${api.path}.${fn.name}`,
         })),
       )
     : surface.tools;
@@ -576,22 +579,37 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
     >
       <span className={dash.cardLabel}>
         {asApis
-          ? `APIs · ${plural(surface.apis.length, "object")}`
+          ? `APIs · ${plural(surface.apis.length, "module")}`
           : `Tools · ${numberFmt.format(surface.tools.length)} offered`}
+        {/* The documentation mode, beside the label rather than buried below it: it is the ARM
+            of a comparison a single run holds both sides of, and the documentation figures
+            further down this detail are its effect. Showing the cost without the cause is
+            what makes a within-run A/B unreadable at exactly the grain it is read at. Only
+            for an API surface — a tool-calling profile has no documentation lookups — and only
+            where the profile's instances agree, since the aggregate reports no mode rather
+            than an arbitrary one when they do not. */}
+        {asApis && surface.docViewTypes && (
+          <span
+            className={styles.surfaceMode}
+            title={docViewTypesPhrase(surface.docViewTypes, "profile")}
+          >
+            docs: {surface.docViewTypes}
+          </span>
+        )}
       </span>
       {asApis ? (
         <ul className={styles.surfaceApis}>
           {surface.apis.map((api) => (
-            <li key={api.object} className={styles.surfaceApi}>
+            <li key={api.module || api.path} className={styles.surfaceApi}>
               <div className={styles.surfaceApiHead}>
-                <span className={styles.surfaceObject}>{api.object}</span>
+                <span className={styles.surfaceObject}>{api.path}</span>
                 <span className={styles.surfaceObjectDesc}>
                   {api.description}
                 </span>
               </div>
               <SurfaceEntries
                 entries={api.functions}
-                object={api.object}
+                module={api.path}
                 calls={calls}
                 instances={surface.reportingInstances}
               />
@@ -620,28 +638,33 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
 function entryCount(
   entry: GgAgentSurfaceEntry,
   calls: ReadonlyMap<string, number>,
-  object?: string,
 ): number | null {
   if (!entry.key) return null;
-  const key = object == null ? entry.key : `${object}.${entry.key}`;
-  return calls.get(key) ?? 0;
+  // The key is whole on both surfaces — a tool's own name, or gg's operation id — so nothing
+  // is prefixed here. It used to be, because an API function's key was bare and had to be
+  // qualified by the object it hung off; the operation carries its own namespace.
+  return calls.get(entry.key) ?? 0;
 }
 
 // The offered things themselves, as chips: a set rather than a ranking, so it is read for
 // what is and is not in it rather than down a column of counts.
 //
-// A chip reads by its bare name under the object heading above it, and explains itself by the
-// qualified one: `readFile` is not enough to say which object's function a hover is about, and
-// every object on the surface binds a `list`.
+// A chip reads by its bare name under the module heading above it, and explains itself by the
+// qualified one: `readFile` is not enough to say which module's function a hover is about, and
+// two modules may each declare a `close`.
 function SurfaceEntries({
   entries,
-  object,
+  module,
   calls,
   instances,
 }: {
   entries: readonly GgAgentSurfaceEntry[];
-  /** The object these functions sit on, where they sit on one — the qualifying prefix. */
-  object?: string;
+  /**
+   * The module these functions live in, where they live in one — the prefix a hover reads
+   * them by. It qualifies the NAME only: the count is joined on the entry's own key, which
+   * needs no qualifying.
+   */
+  module?: string;
   /** The profile's observed calls, keyed the way this section's entries are recorded. */
   calls: ReadonlyMap<string, number>;
   /** The instances the union was taken over — the denominator of "offered by N of them". */
@@ -651,8 +674,8 @@ function SurfaceEntries({
     <ul className={styles.surfaceEntries}>
       {entries.map((entry) => {
         const qualified =
-          object == null ? entry.name : `${object}.${entry.name}`;
-        const count = entryCount(entry, calls, object);
+          module == null ? entry.name : `${module}.${entry.name}`;
+        const count = entryCount(entry, calls);
         const partial = entry.offeredBy < instances;
         return (
           <li key={entry.name}>

@@ -55,6 +55,7 @@ function surface(
   tools: string[],
   apis?: GgAgentApi[],
   withheld?: string[],
+  docViewTypes?: string,
 ): HarnessEvent {
   return gg(agentId, {
     type: "agent_surface",
@@ -62,9 +63,11 @@ function surface(
     tools,
     // Omitted rather than empty for tool calling, exactly as gg writes it, so the reducer's
     // normalization is what these exercise. `withheld` is omitted the same way by an agent
-    // that ablated nothing — or whose ablation named nothing gg knows.
+    // that ablated nothing — or whose ablation named nothing gg knows, and `docViewTypes`
+    // by an agent that opens no documentation at all.
     ...(apis ? { apis } : {}),
     ...(withheld ? { withheld } : {}),
+    ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
 
@@ -136,7 +139,7 @@ describe("agent surface reduction", () => {
     expect(state.agents.get("agent-1")?.surface?.withheld).toEqual([]);
   });
 
-  it("keeps a responses-as-code agent's api objects and each function's own key", () => {
+  it("keeps a responses-as-code agent's modules and each function's own operation", () => {
     const state = reduceGgEvents([
       spawn("root", "Root"),
       surface(
@@ -144,36 +147,77 @@ describe("agent surface reduction", () => {
         ["read_file", "finish"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [{ name: "readFile", key: "read_file" }],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
           {
-            object: "view",
+            module: "views",
+            path: "gg.views",
             description: "Show the model something.",
-            // No tool backs this one, and it carries a key all the same: the API layer
-            // counts it exactly as it counts the read next to it.
-            functions: [{ name: "openFile", key: "open_file" }],
+            // No tool backs this one, and it carries an operation all the same: the API
+            // layer counts it exactly as it counts the read next to it.
+            functions: [{ name: "openFile", operation: "views.open_file" }],
           },
         ],
       ),
     ]);
 
     const apis = state.agents.get("root")!.surface!.apis;
-    expect(apis.map((api) => api.object)).toEqual(["fs", "view"]);
-    expect(apis[0]!.functions[0]!.key).toBe("read_file");
-    expect(apis[1]!.functions[0]!.key).toBe("open_file");
+    // Both names survive the reduction, because they are for different readers: the id is
+    // what a cross-arm reader groups by, and the path is what the model wrote.
+    expect(apis.map((api) => api.module)).toEqual(["files", "views"]);
+    expect(apis.map((api) => api.path)).toEqual(["gg.files", "gg.views"]);
+    expect(apis[0]!.functions[0]!.operation).toBe("files.read_file");
+    expect(apis[1]!.functions[0]!.operation).toBe("views.open_file");
   });
 
-  it("counts each api function's calls under its own identity", () => {
-    // The complaint this accounting exists to answer: `view.openFile` runs a `read_file`
-    // and `context.list` runs nothing at all, and both are calls the model made.
+  it("keeps the documentation mode each instance was on, and normalizes its absence", () => {
+    // The arm of a per-agent A/B. It has to land on the instance, not the run: one run can
+    // hold two agents in two modes, and a reader attributing the documentation band's tokens
+    // to a mode needs the mode of the agent that spent them.
+    const state = reduceGgEvents([
+      spawn("root", "Root"),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            module: "files",
+            path: "gg.files",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile", operation: "files.read_file" }],
+          },
+        ],
+        undefined,
+        "return-and-parameters",
+      ),
+      spawn("agent-1", "reviewer", "root"),
+      surface("agent-1", ["read_file"]),
+    ]);
+    expect(state.agents.get("root")?.surface?.docViewTypes).toBe(
+      "return-and-parameters",
+    );
+    // A tool-calling instance opens no documentation and reports no mode; the reducer settles
+    // that to null rather than leaving every consumer to tell absent from empty.
+    expect(state.agents.get("agent-1")?.surface?.docViewTypes).toBeNull();
+  });
+
+  it("counts each api call under the operation it resolved to", () => {
+    // The complaint this accounting exists to answer: `views.openFile` runs a `read_file`
+    // and a documentation search runs nothing at all, and both are calls the model made.
+    //
+    // The key is the OPERATION, so the same count is produced by an arm that spelled the
+    // call `readFile` and one that spelled it `read_file`. A carve-out has no operation and
+    // is counted under the pair gg records it as, which is the same shape.
     const state = reduceGgEvents([
       spawn("root", "Root"),
       gg("root", {
         type: "api_call",
-        object: "view",
+        object: "views",
         function: "open_file",
+        operation: "views.open_file",
       } as GgTelemetryKind),
       gg("root", {
         type: "tool_call",
@@ -182,26 +226,27 @@ describe("agent surface reduction", () => {
       } as GgTelemetryKind),
       gg("root", {
         type: "api_result",
-        object: "view",
+        object: "views",
         function: "open_file",
+        operation: "views.open_file",
         ok: true,
       } as GgTelemetryKind),
       gg("root", {
         type: "api_call",
-        object: "context",
-        function: "list",
+        object: "docs",
+        function: "search",
       } as GgTelemetryKind),
       gg("root", {
         type: "api_call",
-        object: "context",
-        function: "list",
+        object: "docs",
+        function: "search",
       } as GgTelemetryKind),
     ]);
 
-    expect(state.apiCalls.get("view.open_file")).toBe(1);
-    expect(state.apiCalls.get("context.list")).toBe(2);
-    // The tool layer records what ran, and is not where a function's count comes from.
-    expect(state.apiCalls.get("fs.read_file")).toBeUndefined();
+    expect(state.apiCalls.get("views.open_file")).toBe(1);
+    expect(state.apiCalls.get("docs.search")).toBe(2);
+    // The tool layer records what ran, and is not where a call's count comes from.
+    expect(state.apiCalls.get("files.read_file")).toBeUndefined();
   });
 
   it("leaves a stream that never reported one with no surface", () => {
@@ -217,40 +262,62 @@ describe("agent surface reduction", () => {
 });
 
 describe("apiCallSpellings", () => {
-  it("maps the recorded identity back to the spelling the model wrote", () => {
-    // The wire carries the snake_case, language-independent key and nothing else, so every
-    // read-out of what an agent CALLED has to come back through the surface to say it the
-    // way the program said it.
+  it("maps the recorded operation back to the spelling the model wrote", () => {
+    // The wire carries gg's operation id and nothing else, so every read-out of what an
+    // agent CALLED has to come back through the surface to say it the way the program said
+    // it — and the two vocabularies genuinely differ, which is the point: `files.read_file`
+    // is what a Rust arm's program would be recorded under too.
     const spellings = apiCallSpellings([
       {
-        object: "fs",
+        module: "files",
+        path: "gg.files",
         description: "the workspace",
         functions: [
-          { name: "readFile", key: "read_file" },
-          { name: "list", key: "list" },
+          { name: "readFile", operation: "files.read_file" },
+          { name: "readTextFile", operation: "files.read_text_file" },
         ],
       },
       {
-        object: "view",
+        module: "views",
+        path: "gg.views",
         description: "show yourself something",
-        functions: [{ name: "openFile", key: "open_file" }],
+        functions: [{ name: "openFile", operation: "views.open_file" }],
       },
     ]);
-    expect(spellings.get("fs.read_file")).toBe("fs.readFile");
-    expect(spellings.get("view.open_file")).toBe("view.openFile");
-    // Namespaced on both sides. `list` is a call from before the per-module directory was
-    // deleted, and it is here as exactly that: a record already written cannot be rewritten, so
-    // the reducer must go on resolving a key no surface gg emits today still carries.
-    expect(spellings.get("fs.list")).toBe("fs.list");
+    expect(spellings.get("files.read_file")).toBe("gg.files.readFile");
+    expect(spellings.get("files.read_text_file")).toBe("gg.files.readTextFile");
+    expect(spellings.get("views.open_file")).toBe("gg.views.openFile");
+  });
+
+  it("keeps an arm's canonical binding where two spellings serve one operation", () => {
+    // An arm may offer a method beside the free function — the same operation, reached two
+    // ways — and both rows carry the same figure, because gg counts what was done. The name
+    // shown is the first, which is the binding every arm has; the alias follows it in the
+    // catalogue and would otherwise overwrite it.
+    const spellings = apiCallSpellings([
+      {
+        module: "delegation",
+        path: "gg.delegation",
+        description: "hand work to children",
+        functions: [
+          { name: "sendMessage", operation: "delegation.send_message" },
+          { name: "SubagentHandle.send", operation: "delegation.send_message" },
+        ],
+      },
+    ]);
+    expect(spellings.get("delegation.send_message")).toBe(
+      "gg.delegation.sendMessage",
+    );
   });
 
   it("skips a function with no recorded identity rather than guessing one", () => {
-    // A record written before gg counted a call per function. Reversing the snake_case
-    // convention is not a rule this console may assume, so the entry is simply absent and
-    // its caller falls back to the identity the call was actually recorded under.
+    // A record written before gg counted a call per function. No rule turns one vocabulary
+    // into the other, so the entry is simply absent and its caller falls back to the identity
+    // the call was actually recorded under.
     const spellings = apiCallSpellings([
       {
-        object: "fs",
+        module: "files",
+        path: "gg.files",
         description: "the workspace",
         functions: [{ name: "readFile" }],
       },

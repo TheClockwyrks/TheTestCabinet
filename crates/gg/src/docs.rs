@@ -1,9 +1,12 @@
 //! The documentation carve-out's runtime state.
 //!
 //! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the system prompt no
-//! longer lists every tool signature. It names the modules a program has and tells the model two
-//! things it can always do: `search` for a function by keyword, and `view.openDocsView(name)` to
-//! read what one of them is. This is the host state behind those two calls.
+//! longer lists every tool signature — and, since the prompt rewrite, names no function at all. It
+//! names the modules a program's surface is divided into and says, in words, that a model can always
+//! do two things: search for a function by keyword, and open a documentation view of one to read
+//! what it is. This is the host state behind those two calls, and it is the only route to them: the
+//! model reads their spellings out of the [bootstrap](crate::bootstrap) turn its session opens with,
+//! not out of the prompt.
 //!
 //! **There is no directory.** Nothing enumerates a module's functions, and that is a decision rather
 //! than an omission: a call that hands back a whole module defeats the point of making a model
@@ -369,6 +372,38 @@ impl DocsRuntime {
     /// names each half also answers to.
     pub fn read_any(&self, key: &str) -> Option<String> {
         self.read(key).or_else(|| self.read_type(key))
+    }
+
+    /// **The single key** whatever `name` addresses is filed under, or `None` when this agent binds
+    /// nothing under it. Resolution only — nothing is rendered.
+    ///
+    /// Every entry answers to two strings: its fully-qualified name and its bare one. That is
+    /// deliberate — a model reads the first in a search hit and writes the second at a call site,
+    /// and refusing either would be refusing documentation over a spelling. What must not follow is
+    /// that the two spellings address two different *things*. The
+    /// [documentation band](crate::context::OpenDocview) is keyed by the string a view was opened
+    /// under, and it rests on a re-open being a total no-op; a lookup spelled one way and then the
+    /// other would place the same page twice, so the model pays for one page twice and a study
+    /// reading the band counts one page as two — noise landing on the very measurement the band
+    /// exists to support.
+    ///
+    /// So matching stays lenient and *identity* is canonicalized here: a function's
+    /// [fully-qualified name](CatalogueFunction) where its arm emits one, and a type's
+    /// [`key`](crate::sandbox::TypeDeclaration::key) — which is the normalization the type half
+    /// already applied to itself. A caller that holds a canonical key already (a
+    /// [restore](crate::persistence::restore_docviews), a [compaction](crate::compaction)) is
+    /// unaffected, because a canonical key resolves to itself.
+    ///
+    /// It asks the two questions [`read_any`](Self::read_any) asks, in the same order and against
+    /// the same gates, so the two agree on what exists and on which of a function and a type wins a
+    /// collision.
+    pub fn docview_key(&self, name: &str) -> Option<String> {
+        if let Some(function) = self.function(name) {
+            return Some(function.fqn.unwrap_or(function.name).to_string());
+        }
+        let declaration = type_declaration(self.language, name)?;
+        self.type_is_reachable(declaration.key())
+            .then(|| declaration.key().to_string())
     }
 
     /// The SDK types to open beside the function called `name`, under `mode` — the whole of the

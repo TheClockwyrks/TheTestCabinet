@@ -10,12 +10,12 @@
 import type { GgProgramLanguage } from "./gg";
 
 /**
- * One family of gg's surface: a group of tools and the API object(s) their
- * responses-as-code counterparts hang off.
+ * One family of gg's surface: a group of tools and the [module](GgReferenceModule) their
+ * responses-as-code counterparts live in.
  *
  * A category is not a capability. Several capabilities land in one family (the four
  * filesystem tools are four capabilities and one family), and the three code-only families
- * (`view`, `programs`, and the ending call) have no tools at all — they exist only under
+ * (`views`, `programs`, and the ending call) have no tools at all — they exist only under
  * responses as code, which is exactly why the grouping is by *family* rather than by the
  * capability that switches something on.
  */
@@ -37,13 +37,42 @@ export type GgReferenceCategory = {
    * would be a copy that drifts, and the point of the page is to show what is really said.
    */
   description: string;
+};
+
+/**
+ * One **capability module** of the responses-as-code surface — the grouping a program writes in
+ * front of a call, and the folder the reference's API tab files that call under.
+ *
+ * It carries gg's own [id](Self::id) for the module and the projected language's
+ * [spelling](Self::path) of it, because the two answer to different authorities: the id is what a
+ * [function](GgApiFunction::module) names and what the same module is called on every other arm,
+ * and the path is what a model actually writes in *this* one.
+ */
+export type GgReferenceModule = {
   /**
-   * The responses-as-code API objects this family's functions hang off (`["fs"]`).
-   *
-   * A list rather than one name because of the ending family: `harness`, `review` and
-   * `judge` are one family grouped by role, and a given agent binds exactly one of them.
+   * gg's cross-arm id for the module — `files`, `views`, `session`.
    */
-  objects: Array<string>;
+  id: string;
+  /**
+   * The projected language's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.
+   */
+  path: string;
+  /**
+   * The line the module's own declaration introduces it by, verbatim from the SDK — the same
+   * sentence the system prompt names it by. Never a second wording written for this page.
+   */
+  summary: string;
+  /**
+   * The [category](GgReferenceCategory::id) this module's calls belong to, or `None` for a
+   * module that carries no callable operation at all — the types-only module every arm has for
+   * the declarations that belong to no capability.
+   */
+  category?: string;
+  /**
+   * The literal line a program writes to bring the module into scope, where the arm needs one.
+   * `None` where the SDK is in scope already, which is every registered arm but PureScript.
+   */
+  import?: string;
 };
 
 /**
@@ -236,15 +265,32 @@ export type GgApiSignature = {
  */
 export type GgApiFunction = {
   /**
-   * The API object the function hangs off in a program's scope (`fs`).
+   * The [module](GgReferenceModule::id) the function lives in, by gg's id for it (`files`).
    */
-  object: string;
+  module: string;
   /**
    * The name a program calls it by (`readFile`).
    */
   name: string;
   /**
-   * The [category](GgReferenceCategory::id) the function's object belongs to.
+   * The **fully-qualified name** this arm advertises it under (`gg.files.readFile`) — the key an
+   * `openDocsView` takes and the key a documentation search files its hit under.
+   *
+   * Empty only where the arm's catalogue emits no qualified name, where the module's
+   * [path](GgReferenceModule::path) and this function's [name](Self::name) are all there is.
+   */
+  fqn?: string;
+  /**
+   * gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this
+   * call does (`files.read_file`) — the identity that is the same in all eleven arms, and the
+   * string a run's calls are recorded under.
+   *
+   * Empty where the arm named an operation gg does not have, which is a defect its own gate
+   * reports by name rather than something this page should paper over.
+   */
+  operation?: string;
+  /**
+   * The [category](GgReferenceCategory::id) the function's module belongs to.
    */
   category: string;
   /**
@@ -332,6 +378,20 @@ export type GgReference = {
    * workspace, then the work, then yourself".
    */
   categories: Array<GgReferenceCategory>;
+  /**
+   * The [capability modules](GgReferenceModule) the responses-as-code surface is divided into,
+   * in the order a model is presented with them.
+   *
+   * The **module** is the unit of that surface: it is what the system prompt names, what a
+   * documentation search filters by, and what a program writes in front of every call it makes.
+   * So the page is grouped by module and each [function](GgApiFunction::module) names the one it
+   * belongs to.
+   *
+   * `#[serde(default)]` so an artifact generated before the surface was modules still decodes —
+   * as an empty list, which is honest: that artifact grouped its functions by the API object
+   * they hung off, and there were no modules to describe.
+   */
+  modules: Array<GgReferenceModule>;
   /**
    * Every tool gg can offer, in the canonical tool-vocabulary order.
    */

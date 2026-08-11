@@ -716,6 +716,26 @@ pub fn operation_by_call(call: SurfaceCall) -> Option<&'static Operation> {
         .find(|operation| operation.call.object == call.object && operation.call.key == call.key)
 }
 
+/// The [family](Operation::family) whose operations are namespaced on `module` — `gg-filesystem` for
+/// `files` — or `None` for a module that carries no operation at all.
+///
+/// The [reference](crate::reference) is the caller: it files a module under the family the console
+/// groups by, and the module id *is* the namespace of every operation in it, so the join is the
+/// table's rather than a second mapping written beside it. `None` is a real answer rather than a
+/// defect — every arm has a module for the type declarations that belong to no capability, and
+/// nothing in it is callable — which is why the caller renders it as "no category" instead of
+/// falling back to a family it guessed.
+///
+/// A namespace that covered two families would make this ambiguous; the capability gate holds the
+/// two in bijection in both directions (`identities` in `language/agreement.rs`), so the first match
+/// is the only match.
+pub fn family_of_module(module: &str) -> Option<&'static str> {
+    OPERATIONS
+        .iter()
+        .find(|operation| operation.id.namespace == module)
+        .map(|operation| operation.family)
+}
+
 /// **What one agent was granted**, and therefore the one answer to "may this agent call X".
 ///
 /// It is the counterpart of [`Binding`]: a binding says what buys an operation, and this says what

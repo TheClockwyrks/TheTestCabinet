@@ -145,10 +145,9 @@ use crate::modules::{
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
-    self, ApiView, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView,
-    FixBriefContext, MemoriesView, MergeBriefContext, NumberedItem, ReadFileView,
-    ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView,
-    SystemContext, TasksView,
+    self, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, FixBriefContext,
+    MemoriesView, MergeBriefContext, ModuleView, NumberedItem, ReadFileView, ReviewBriefContext,
+    ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::sandbox::{
     self, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits, SandboxOutcome,
@@ -3059,6 +3058,13 @@ async fn run_agent(
         emitter.emit(GgTelemetryKind::AgentSurface {
             execution_mode: execution_mode(code.enabled).to_string(),
             program_language: code.enabled.then_some(code.language),
+            // The arm of the documentation A/B this instance is on — reported here, beside the
+            // language, because both are per-agent knobs a single run may hold two of, and a study
+            // that cannot read an agent's arm off its own surface event cannot attribute the
+            // documentation band's tokens to anything. The resolved mode, never the configured
+            // string: an unreadable value is warned about at launch and runs as the default, and
+            // recording what was written would file the run under an arm it was never on.
+            doc_view_types: code.enabled.then(|| code.doc_view_types.id().to_string()),
             tools: registry
                 .tool_names()
                 .into_iter()
@@ -5412,6 +5418,21 @@ impl Agent {
             // the same task, and the handoff note at the tail says what changed.
             Opening::Carried { .. } => true,
         };
+
+        // The bootstrap turn: on a code agent's fresh window, a synthesized program that opens the
+        // documentation of the calls discovery itself is made of, and the views it opened. First of
+        // every seeding step, because the prompt names no function and this is the only thing that
+        // hands the model its way in — see `crate::bootstrap` for why it is a program, why it is
+        // here rather than three steps later, and why it carries only the bootstrap calls.
+        if !carried {
+            let placed = crate::bootstrap::seed_bootstrap(context, &docs);
+            if placed > 0 {
+                emitter.emit(log(
+                    "debug",
+                    format!("opened {placed} documentation view(s) to bootstrap discovery"),
+                ));
+            }
+        }
 
         // The two **opening** hooks, in the order a run happens: the session's, once ever and
         // before anything else, then this agent's. Both may insert into the window they are firing
@@ -8529,49 +8550,54 @@ struct PromptInputs<'a> {
     fences_are_stripped: bool,
 }
 
-/// The API objects a code program has this run, in the catalogue's own order, each with the one-line
-/// description the prompt names it by, and the functions it actually binds.
+/// The capability modules a code program has this run, in the catalogue's own order, each with the
+/// one-line description the prompt names it by, and the functions it actually binds.
 ///
-/// An object appears exactly when the agent may call at least one of its functions — grouped by the
+/// A module appears exactly when the agent may call at least one of its functions — grouped by the
 /// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest binds a
 /// program's scope under, and decided by
 /// [`DocsRuntime::bound`](crate::docs::DocsRuntime::bound), which is the *one* implementation of
 /// "may this agent call X" and used to have a verbatim copy here. So a withheld capability drops its
-/// whole object rather than leaving a named-but-empty one, a reviewer is shown a `review` object
-/// where an implementer is not, and this readout cannot report a call the model's own documentation
-/// would refuse to describe.
+/// whole module rather than leaving a named-but-empty one, a reviewer is shown the ending module's
+/// verdict calls where an implementer is not, and this readout cannot report a call the model's own
+/// documentation would refuse to describe.
 ///
 /// **It is not what the guest binds**, and since every SDK became static the two are deliberately
 /// different: a program's scope carries every function its language has, and this reports what the
 /// agent may *call*. That is the question an ablation asks — "was this agent offered that call at
 /// all?" — and answering it with the language's compiled surface would report every agent as having
 /// everything.
-/// `view` always appears, because it carries the one thing nothing gates: the channel a program puts
-/// material into its own window with — including documentation, which is why the object that used to
-/// exist purely to hold the doc lookup no longer has to. A run that offers no tools at all must
-/// still be able to show its model something.
+/// The view module always appears, because it carries the one thing nothing gates: the channel a
+/// program puts material into its own window with — including documentation. A run that offers no
+/// tools at all must still be able to show its model something.
 ///
-/// The objects, the order they are shown in and the sentence each is introduced by are the
-/// **catalogue's**, reflected from the doc comment written on that object's declaration in the guest
+/// The modules, the order they are shown in and the sentence each is introduced by are the
+/// **catalogue's**, reflected from the doc comment written on that module's declaration in the guest
 /// SDK — the same material a documentation search and the [reference](crate::reference) render.
-/// Nothing about an object is authored here, because a table here would be a second copy of prose
+/// Nothing about a module is authored here, because a table here would be a second copy of prose
 /// the model also meets by two other routes and nothing would keep the copies equal. What this
-/// function decides is only which of those objects *this* agent binds, and it has two consumers with
-/// opposite needs. The [prompt](api_views) takes objects and descriptions **without**
-/// the functions, because a model discovers those on demand — by searching, and with
-/// `view.openDocsView()` — rather than being shown every signature up front; the
+/// function decides is only which of those modules *this* agent binds, and it has two consumers with
+/// opposite needs. The [prompt](module_views) takes modules and descriptions **without**
+/// the functions, because a model discovers those on demand — by searching, and then opening a
+/// documentation view — rather than being shown every signature up front; the
 /// [surface event](GgTelemetryKind::AgentSurface) takes the functions too, because a console reader
 /// asking *"was this agent offered that call at all?"* is asking the question the on-demand
 /// discovery deliberately does not answer up front. Both read this, so neither can drift from what
 /// the guest actually binds.
 ///
-/// Each function carries its own language-independent
-/// [key](crate::sandbox::signatures::CatalogueFunction::key) — never a gg tool name, and never the
-/// spelling one SDK gives it — because that key is what every call the program makes is
-/// [recorded](test_cabinet_core::gg::GgTelemetryKind::ApiCall) under. So a consumer joins a bound
-/// function to its own count, whether or not a tool backs it, and a function offered and never
-/// called reports a real zero. What is reported is exactly the catalogue's own entries: nothing is
-/// appended that the catalogue does not carry.
+/// # Every row is named twice, and the two names are for different readers
+///
+/// A module carries gg's [id](test_cabinet_core::gg::GgAgentApi::module) for it and this arm's
+/// [spelling](test_cabinet_core::gg::GgAgentApi::path) of it, and each function carries gg's
+/// [operation](crate::sandbox::signatures::CatalogueFunction::operation) beside the name the model
+/// writes. That is not redundancy: eleven arms spell one surface eleven ways *by design*, so a
+/// readout keyed on the spelling can be quoted back at the model but cannot be compared across arms,
+/// and one keyed on the operation can be compared but reads as nothing the model ever typed. The
+/// operation is what every call the program makes is
+/// [recorded](test_cabinet_core::gg::GgTelemetryKind::ApiCall) under, so a consumer joins a bound
+/// function to its own count on that and on nothing else — whether or not a tool backs it, and a
+/// function offered and never called reports a real zero. What is reported is exactly the
+/// catalogue's own entries: nothing is appended that the catalogue does not carry.
 fn api_surface(
     registry: &ToolRegistry,
     role: EndingRole,
@@ -8597,26 +8623,31 @@ fn api_surface(
     // In the catalogue's order, which is the order the SDK declares them in — read through the
     // normalized reading of the two schemas, so that an arm whose surface is API objects and an arm
     // whose surface is modules both arrive here as the same list of groupings.
-    let objects = crate::sandbox::catalogue_modules(language);
-    // Grouped by object rather than filtered per object, so the catalogue is walked once.
+    let modules = crate::sandbox::catalogue_modules(language);
+    // Keyed by gg's module id rather than by the arm's spelling of it, because that id is the half
+    // of an operation a consumer groups eleven arms by; the spelling comes off the module view
+    // below. An unconverted arm's id is its object's own name, so the two coincide there.
     let mut bound: BTreeMap<&'static str, Vec<GgAgentApiFunction>> = BTreeMap::new();
     for function in crate::sandbox::catalogue_functions(language) {
         if docs.bound(&function) {
             bound
-                .entry(function.object)
+                .entry(function.module.unwrap_or(function.object))
                 .or_default()
                 .push(GgAgentApiFunction {
                     name: function.name.to_string(),
-                    key: function.key.to_string(),
+                    // An entry naming an operation gg does not have reports none rather than a
+                    // fabricated one: it is a defect the capability gate reports by name, and a
+                    // guess here would put a call under an id nothing else in the run uses.
+                    operation: function.operation.unwrap_or_default().to_string(),
                 });
         }
     }
-    objects
+    modules
         .iter()
         .filter_map(|described| {
-            let object = described.path;
-            bound.remove(object).map(|functions| GgAgentApi {
-                object: object.to_string(),
+            bound.remove(described.id).map(|functions| GgAgentApi {
+                module: described.id.to_string(),
+                path: described.path.to_string(),
                 description: described.prose.rendered().into_owned(),
                 functions,
             })
@@ -8624,23 +8655,60 @@ fn api_surface(
         .collect()
 }
 
-/// The API objects a code program has this run as the **system prompt** names them: the object and
-/// its one-line description, and deliberately not its functions — a model discovers those on demand
-/// by searching, and reads one with `view.openDocsView()`.
+/// The capability modules a code program's surface is divided into this run as the **system prompt**
+/// names them: the path, the line the module's own declaration introduces it by, and the import that
+/// brings it into scope where this arm needs one.
 ///
-/// A projection of [`api_surface`], which owns the objects, the prose and the binding rule.
-fn api_views(
+/// Deliberately not the functions in them. That is the whole shape of the discovery design: a model
+/// is given the places its surface is filed under and finds the calls itself, by searching and
+/// opening a documentation view. This list is the only vocabulary the prompt supplies, which is what
+/// makes the first hop an exact lookup rather than a ranking.
+///
+/// A projection of [`api_surface`], which owns the modules, their order and the binding rule — but
+/// **not** their prose. The surface event carries a module's whole documentation and the prompt
+/// carries only the [brief](crate::sandbox::signatures::Prose::brief) of it, and that difference is
+/// load-bearing rather than a matter of length.
+///
+/// A module's *detail* is written for a reader who has already decided to use the family, so it says
+/// what the family is for — and on most arms it does that by naming calls, sometimes in a fenced
+/// worked example. Rendering it here would put those names into the one document that tells the
+/// model, in as many words, that it names none, which is worse than merely verbose: a model handed
+/// `programs.rerun` in a module bullet never makes the search-then-open round trip that the whole
+/// discovery design exists to require, and the sentences around the bullet are false while it does
+/// not. The brief is the single line the module's own declaration introduces it by — no examples, no
+/// second paragraph — and it is exactly what this list has always been documented as carrying.
+///
+/// Both halves are read from the same [module view](crate::sandbox::ModuleView) the description came
+/// from, so the prompt's wording and the console's remain two projections of one authored source
+/// rather than two copies that can drift.
+pub(crate) fn module_views(
     registry: &ToolRegistry,
     role: EndingRole,
     library: bool,
     docview_close: bool,
     program_language: GgProgramLanguage,
-) -> Vec<ApiView> {
+) -> Vec<ModuleView> {
+    // The brief and the import line, keyed by gg's id for each module, so the join below is by the
+    // identity the surface reports rather than by position — `api_surface` filters to the bound
+    // modules and this list does not.
+    let described: BTreeMap<&'static str, (&'static str, Option<&'static str>)> =
+        crate::sandbox::catalogue_modules(crate::sandbox::language(program_language))
+            .into_iter()
+            .map(|module| (module.id, (module.prose.brief, module.import)))
+            .collect();
     api_surface(registry, role, library, docview_close, program_language)
         .into_iter()
-        .map(|api| ApiView {
-            object: api.object,
-            description: api.description,
+        // A bound module always has a catalogue entry — `api_surface` derives its list from the very
+        // same `catalogue_modules` call — so the lookup cannot miss; it is written as a filter
+        // rather than an `expect` because a module gg could not describe has nothing to say in a
+        // prompt, and dropping the row is the honest rendering of that.
+        .filter_map(|api| {
+            let (brief, import) = described.get(api.module.as_str()).copied()?;
+            Some(ModuleView {
+                import: import.map(str::to_string),
+                path: api.path,
+                brief: brief.to_string(),
+            })
         })
         .collect()
 }
@@ -8669,23 +8737,20 @@ fn execution_mode(code_enabled: bool) -> &'static str {
 /// the prefix a message actually carries cannot drift; this function owns only the *descriptions* and
 /// the *gating*. A gate that is off drops its heading entirely — the model is never told about a
 /// message kind this run cannot produce, matching every other section's ablation behaviour.
-fn code_heading_views(
-    language: GgProgramLanguage,
+///
+/// **No description names a call**, and the `View` row is the one that had to be reworded for that
+/// to be true. It used to open with *"a value you showed yourself with `gg.views.openText`"*, spelled
+/// per arm — which put a catalogued function into every rendered prompt, on every arm, under every
+/// capability set including the one that grants nothing. The section is a reading guide: it tells a
+/// model what a heading it *meets* means, not what to write to produce one. Saying the message holds
+/// a value the program put there loses nothing a reader needs, and the call that puts it there is
+/// found the way every other call is.
+pub(crate) fn code_heading_views(
     memories: bool,
     tasks: bool,
     board: bool,
     files: bool,
 ) -> Vec<CodeHeadingView> {
-    // The one call these descriptions quote, spelled the way *this* run's language spells it. Read
-    // from the language's catalogue rather than written into the sentence below, because a
-    // description authored here is rendered into every language's template — the `.hbs` files carry
-    // the `{{#each codeHeadings}}` loop, not the words — so a spelling frozen here would reach a
-    // model that does not bind it.
-    let text_view = format!(
-        "a value you showed yourself with `{}`; the view's label follows the heading, as \
-         `View: changed-files`",
-        crate::sandbox::spell(crate::sandbox::language(language), sandbox::VIEW_OPEN_TEXT)
-    );
     // (source, one-line description, whether this run can produce it). The heading word itself comes
     // from `code_heading(source)`, the single source of truth both this list and the prefix share.
     let rows: &[(GgContextSource, &str, bool)] = &[
@@ -8744,9 +8809,10 @@ fn code_heading_views(
         ),
         (
             GgContextSource::TextView,
-            &text_view,
-            // Ungated, unlike every other row: the `view` object is bound whatever the capability
-            // set says, so any code run can produce this message kind.
+            "a value your program put into your window; the view's label follows the heading, as \
+             `View: changed-files`",
+            // Ungated, unlike every other row: the view module is bound whatever the capability set
+            // says, so any code run can produce this message kind.
             true,
         ),
     ];
@@ -8863,9 +8929,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     // protocol; each remaining heading is listed exactly when the capability that produces its message
     // kind is on, so the prompt describes only what this run can actually show — the same ablation
     // discipline every other section follows.
-    let code_headings = if let Some(language) = program_language {
+    let code_headings = if program_language.is_some() {
         code_heading_views(
-            language,
             describes(memories),
             describes(tasks),
             // Gated on this agent's own capability, exactly as the board section below is: an agent
@@ -8883,13 +8948,14 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     prompts::render_system(
         &SystemContext {
             responses_as_code,
-            // Which language's responses-as-code template renders, and therefore which spellings
-            // every quoted call in it carries. `None` selects the tool-calling arm.
+            // Which language's responses-as-code template renders, and therefore which arm's module
+            // paths it names. `None` selects the tool-calling arm.
             language: program_language,
-            // The API objects the model can inspect — only under responses-as-code, where a program
-            // reaches them by name; the tool-calling path puts the tools in the request instead.
-            apis: match program_language {
-                Some(language) => api_views(
+            // The modules the surface is divided into — only under responses-as-code, where a
+            // program reaches them by path and a model has to be told where to start looking; the
+            // tool-calling path puts the tools in the request instead.
+            modules: match program_language {
+                Some(language) => module_views(
                     registry,
                     ending_role,
                     program_library,

@@ -131,13 +131,22 @@ export interface GgAgentSurface {
   // string on the wire rather than a union, so an unrecognised mode from a newer gg
   // reads through rather than breaking the fold.
   executionMode: string;
+  // Which SDK types an `openDocsView` of a function opened beside it for this instance —
+  // "off", "return" or "return-and-parameters" — as gg RESOLVED it, not as the profile
+  // wrote it. Null for a tool-calling instance, which opens no documentation, and for a
+  // stream recorded before gg reported the mode.
+  //
+  // It is the arm of a per-agent A/B, which is why it rides on the instance rather than on
+  // the run: one run may hold two agents in two modes, and a reader attributing the
+  // documentation band's tokens to a mode needs the mode of the agent that spent them.
+  docViewTypes: string | null;
   // Every gg tool this instance was offered, in the order the model was shown them
   // (the registry's own order, then the ending calls its role may finish with).
   // Populated in BOTH modes — a responses-as-code program reaches these same tools
   // through its `apis`, and its calls are still recorded under these names.
   tools: string[];
-  // The namespaced API objects a responses-as-code program binds, each function
-  // carrying the tool that gates it. Empty for a tool-calling instance, which has no
+  // The capability modules a responses-as-code program binds, each function carrying gg's
+  // own operation id for what it does. Empty for a tool-calling instance, which has no
   // such surface — normalized here so a consumer never has to tell the wire's absent
   // key from an empty one.
   apis: GgAgentApi[];
@@ -1886,8 +1895,17 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // Each agent's own SDK spellings, off the surface it reported when it was built — which
   // always precedes its first call (see `apiCallSpellings`).
   const feedSpellings = new Map<string, ReadonlyMap<string, string>>();
-  const apiCallName = (agentId: string, object: string, fn: string): string => {
-    const key = `${object}.${fn}`;
+  // Keyed on the identity a call is RECORDED under — gg's operation id where there is one,
+  // and the carve-out's own `object.function` pair where there is not, which reads exactly
+  // like one. The fallback is the key itself: a record whose surface never arrived is shown
+  // under the name it really carries rather than under a guess at the arm's spelling.
+  const apiCallName = (
+    agentId: string,
+    object: string,
+    fn: string,
+    operation?: string | null,
+  ): string => {
+    const key = operation || `${object}.${fn}`;
     return feedSpellings.get(agentId)?.get(key) ?? key;
   };
   const foldFeedRows = (
@@ -1912,7 +1930,12 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           // never inside two calls at once, so a second opening half means the first one's
           // result never arrived (a truncated stream, or a record from before gg emitted
           // results). Overwriting is that close.
-          const name = apiCallName(emitter, gg.object, gg.function);
+          const name = apiCallName(
+            emitter,
+            gg.object,
+            gg.function,
+            gg.operation,
+          );
           const row: FeedRow = {
             ...base,
             label: "call",
@@ -1928,7 +1951,12 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           // Mirrors the `tool_result` row exactly — same labels, same tones, same
           // `name: summary` detail — so the two modes read identically apart from the
           // vocabulary, and a failed call reads the way a failed tool result always has.
-          const name = apiCallName(emitter, gg.object, gg.function);
+          const name = apiCallName(
+            emitter,
+            gg.object,
+            gg.function,
+            gg.operation,
+          );
           feed.push({
             ...base,
             label: gg.ok ? "result" : "result ✗",
@@ -2241,12 +2269,15 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         });
         break;
       case "api_call": {
-        // One model-facing call, counted under the function the model wrote. The OPENING
-        // half is what counts: it is emitted before the call runs, so a program stopped
-        // mid-call still shows the call it was making rather than losing it for want of a
-        // result. `api_result` carries the verdict, which the surface does not read — a
-        // call that threw is still a call the model made.
-        const key = `${gg.object}.${gg.function}`;
+        // One model-facing call, counted under gg's own identity for what it does — the
+        // operation, which is the key the agent's own surface reports each bound function
+        // under, and the only key that means the same thing in another language's arm. A
+        // carve-out has no operation and is counted under the pair gg records it as, which
+        // is the same shape. The OPENING half is what counts: it is emitted before the call
+        // runs, so a program stopped mid-call still shows the call it was making rather
+        // than losing it for want of a result. `api_result` carries the verdict, which the
+        // surface does not read — a call that threw is still a call the model made.
+        const key = gg.operation || `${gg.object}.${gg.function}`;
         apiCalls.set(key, (apiCalls.get(key) ?? 0) + 1);
         break;
       }
@@ -2304,6 +2335,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         );
         node.surface = {
           executionMode: gg.executionMode,
+          docViewTypes: gg.docViewTypes ?? null,
           tools: gg.tools,
           apis: gg.apis ?? [],
           withheld: gg.withheld ?? [],

@@ -246,6 +246,18 @@
   min-width: 0;
 }
 
+// The documentation arm this profile's instances ran under, sitting on the surface card's
+// own label row. Lower-case against the label's uppercase and un-tracked, because it is a
+// configured VALUE (`return-and-parameters`) rather than a heading, and reading it as one
+// would make it look like a second section rather than a qualifier on the first.
+.surfaceMode {
+  margin-left: t.$space-xs;
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .surfaceEntries {
   list-style: none;
   margin: 0;

@@ -393,10 +393,18 @@ async fn an_unreadable_healing_param_is_logged_at_warn() {
 // The assistant-message mode, end to end
 // ---------------------------------------------------------------------------
 
-/// The `assistant`-role message from a recorded turn's request.
+/// The **last** `assistant`-role message in a recorded turn's request — the prior turn's reply, as
+/// the transcript stored it.
+///
+/// The last rather than the first, and that is not incidental. A code agent's window opens with a
+/// synthesized assistant turn of gg's own: the [bootstrap](crate::bootstrap) program that opens the
+/// documentation of the calls discovery is made of. It sits ahead of every reply the model has
+/// actually sent, so reading the first assistant message here would read gg's program and never the
+/// model's.
 fn assistant_message(request: &[Message]) -> String {
     request
         .iter()
+        .rev()
         .find(|message| message.role == crate::model::Role::Assistant)
         .and_then(|message| message.content.clone())
         .expect("the turn's request carries the prior assistant turn")

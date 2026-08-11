@@ -43,8 +43,9 @@
 
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, RefusableCall, ToolApi, wire_failure};
+use crate::sandbox::invoker::ApiIdentity;
 use crate::sandbox::language::SurfaceCall;
-use crate::sandbox::{Binding, operation_by_call};
+use crate::sandbox::{Binding, Operation, operation_by_call};
 
 /// Proof that a model-facing API call is being recorded around whatever is done with it.
 ///
@@ -112,15 +113,19 @@ impl<A: ToolApi> MembraneState<A> {
         body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
     ) -> Result<R, ToolError> {
         // A call gg has no operation for is drift rather than a run-time condition, and it is
-        // treated as ungated for the reason `operation_of` hands back an `Option` at all: taking a
-        // run down over a table that has fallen behind is the larger failure.
-        // `every_host_function_records_its_own_api_call` holds the recorded set equal to the
-        // table's, so the `unwrap_or` is unreachable in a correct build.
-        let binding =
-            operation_by_call(call).map_or(Binding::Always, |operation| operation.binding);
+        // treated as ungated — and recorded with no operation — for the reason `operation_of` hands
+        // back an `Option` at all: taking a run down over a table that has fallen behind is the
+        // larger failure. `every_host_function_records_its_own_api_call` holds the recorded set
+        // equal to the table's, so neither fallback is reachable in a correct build.
+        let operation = operation_by_call(call);
+        let binding = operation.map_or(Binding::Always, |operation| operation.binding);
+        let id = rendered(operation);
         self.bracketed(
-            call.object,
-            call.key,
+            ApiIdentity {
+                object: call.object,
+                function: call.key,
+                operation: id.as_deref(),
+            },
             RefusableCall::Surface(call),
             binding,
             body,
@@ -137,6 +142,12 @@ impl<A: ToolApi> MembraneState<A> {
     /// words for them instead, which is a name in the record that joins to gg's own vocabulary
     /// rather than to a spelling nobody wrote — and, for the same reason, they hand over their gate
     /// rather than having one looked up for them.
+    ///
+    /// They record **no operation**, which is the honest answer rather than a gap: gg's operations
+    /// table is what an operation id comes from, these calls are in no row of it, and a synthesized
+    /// `docs.search` would be an id that joins to nothing else in the run. What they are recorded
+    /// under already reads as one, because gg's own words for them are exactly the shape of an
+    /// operation id.
     pub(super) fn recorded_on<R>(
         &mut self,
         object: &'static str,
@@ -145,8 +156,11 @@ impl<A: ToolApi> MembraneState<A> {
         body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
     ) -> Result<R, ToolError> {
         self.bracketed(
-            object,
-            function,
+            ApiIdentity {
+                object,
+                function,
+                operation: None,
+            },
             RefusableCall::Carveout { object, function },
             binding,
             body,
@@ -155,15 +169,17 @@ impl<A: ToolApi> MembraneState<A> {
 
     /// The bracket itself: open the record, check the gate, run the body, close the record with
     /// whatever verdict came out of it.
+    ///
+    /// Both halves are handed the **same** [identity](ApiIdentity), so a closing record cannot name
+    /// a different call from the opening one it answers.
     fn bracketed<R>(
         &mut self,
-        object: &str,
-        function: &str,
+        call: ApiIdentity<'_>,
         refusable: RefusableCall<'_>,
         binding: Binding,
         body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
     ) -> Result<R, ToolError> {
-        self.api.api.begin_api_call(object, function);
+        self.api.api.begin_api_call(call);
         self.api_calls = self.api_calls.saturating_add(1);
         let result = self
             .granted(refusable, binding)
@@ -173,7 +189,7 @@ impl<A: ToolApi> MembraneState<A> {
         // record at all, and a typed conversion that failed over a tool that answered `ok` is a
         // failure here and a success there.
         let failure = result.as_ref().err().map(|error| wire_failure(error.code));
-        self.api.api.end_api_call(object, function, failure);
+        self.api.api.end_api_call(call, failure);
         result
     }
 
@@ -201,10 +217,16 @@ impl<A: ToolApi> MembraneState<A> {
         call: SurfaceCall,
         body: impl FnOnce(&mut Self, Recording) -> R,
     ) -> R {
-        self.api.api.begin_api_call(call.object, call.key);
+        let id = rendered(operation_by_call(call));
+        let identity = ApiIdentity {
+            object: call.object,
+            function: call.key,
+            operation: id.as_deref(),
+        };
+        self.api.api.begin_api_call(identity);
         self.api_calls = self.api_calls.saturating_add(1);
         let value = body(self, Recording(()));
-        self.api.api.end_api_call(call.object, call.key, None);
+        self.api.api.end_api_call(identity, None);
         value
     }
 
@@ -213,6 +235,18 @@ impl<A: ToolApi> MembraneState<A> {
     pub(super) fn api(&mut self, recording: Recording) -> &mut A {
         self.api.get(recording)
     }
+}
+
+/// One operation's id as the record spells it — `files.read_file` — or `None` where there is no
+/// operation to spell.
+///
+/// Rendered per call rather than held on the [table](crate::sandbox::operations::OPERATIONS) as a
+/// third `&'static str`, because the id is deliberately stored as its two halves: both are read
+/// separately, and a single string would have to be split at a dot to recover either — which is
+/// wrong the day a key contains one. A short allocation on a path that already allocates two owned
+/// names for the event is the cheaper end of that trade.
+fn rendered(operation: Option<&'static Operation>) -> Option<String> {
+    operation.map(|operation| operation.id.to_string())
 }
 
 #[cfg(test)]

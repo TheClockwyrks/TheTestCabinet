@@ -84,9 +84,11 @@ public enum views {
     /// documentation again replaces the view rather than adding a second copy, and `views.close`
     /// closes it.
     ///
-    /// - Parameter name: The function to document, by the name it is called by in its module —
-    ///   `"readFile"` for `files.readFile`. Searching the documentation is what says which names
-    ///   exist.
+    /// - Parameter name: The function to document, by the fully-qualified name its documentation
+    ///   is keyed by — `"gg.files.readFile"`. The bare name it is called by in its module
+    ///   (`"readFile"`) also resolves and is a fallback rather than the form to reach for: two
+    ///   modules are free to declare a `close`, and only the qualified name says which one is
+    ///   meant. Searching the documentation is what says which names exist.
     /// - Throws: `core.ToolError` with `.notFound` for an unknown or unbound name.
     /// - ggop: views.open_docs_view
     public static func openDocsView(_ name: String) throws {

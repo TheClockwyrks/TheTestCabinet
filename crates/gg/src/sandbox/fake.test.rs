@@ -18,7 +18,7 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
 
 use super::invoker::{
-    DocSearchQuery, DocSearchResult, SandboxViewOpened, ViewOpenOutcome, ViewRefusal,
+    ApiIdentity, DocSearchQuery, DocSearchResult, SandboxViewOpened, ViewOpenOutcome, ViewRefusal,
 };
 use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
@@ -162,10 +162,14 @@ pub(crate) struct ApiLog(Arc<Mutex<Vec<RecordedApiCall>>>);
 /// One bracketed API call, as [`ApiLog`] records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RecordedApiCall {
-    /// The API object — `fs`, `view`, `context`.
+    /// The legacy grouping gg files the call under — `fs`, `view`, `docs`. Not a module id; see
+    /// [`ApiIdentity`](crate::sandbox::invoker::ApiIdentity).
     pub(crate) object: String,
-    /// The function's language-independent key — `read_file`, `open_file`, `finish`.
+    /// gg's own key for the function — `read_file`, `open_file`, `finish`.
     pub(crate) function: String,
+    /// gg's [operation](crate::sandbox::operations::OperationId) id for it — `files.read_file` —
+    /// or `None` for a carve-out no operations row covers.
+    pub(crate) operation: Option<String>,
     /// `None` until the call closed; `Some(ok)` once it did. A call still open when the program
     /// ended — impossible today, since the bracket is synchronous — would be visible as `None`.
     pub(crate) ok: Option<bool>,
@@ -194,14 +198,25 @@ impl ApiLog {
             .collect()
     }
 
+    /// Every call under gg's own identity for it, in order, skipping the carve-outs that have
+    /// none — the assertion for "what operations did the model reach for?", which is the question
+    /// that means the same thing in every arm.
+    pub(crate) fn operations(&self) -> Vec<String> {
+        self.calls()
+            .into_iter()
+            .filter_map(|call| call.operation)
+            .collect()
+    }
+
     /// Open one call's record.
-    fn begin(&self, object: &str, function: &str) {
+    fn begin(&self, call: ApiIdentity<'_>) {
         self.0
             .lock()
             .expect("the api log is never poisoned")
             .push(RecordedApiCall {
-                object: object.to_string(),
-                function: function.to_string(),
+                object: call.object.to_string(),
+                function: call.function.to_string(),
+                operation: call.operation.map(str::to_string),
                 ok: None,
                 failure: None,
             });
@@ -302,12 +317,12 @@ impl FakeToolApi {
 
 #[allow(dead_code)]
 impl ToolApi for FakeToolApi {
-    fn begin_api_call(&mut self, object: &str, function: &str) {
-        self.api.begin(object, function);
+    fn begin_api_call(&mut self, call: ApiIdentity<'_>) {
+        self.api.begin(call);
     }
 
-    fn end_api_call(&mut self, object: &str, function: &str, failure: Option<GgToolFailure>) {
-        self.api.end(object, function, failure);
+    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>) {
+        self.api.end(call.object, call.function, failure);
     }
 
     fn shell(&mut self, command: String, timeout: std::time::Duration) -> ToolOutcome {

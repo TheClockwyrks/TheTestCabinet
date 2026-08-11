@@ -3,8 +3,8 @@
   "rebuild": "packages/gg-sandbox-python/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/guests/python.component.wasm": {
-      "bytes": 25014261,
-      "sha256": "c373901e7bea0bc13b26d086d7eb366e69631770f4efd27700d687f7fcb01be0"
+      "bytes": 25026878,
+      "sha256": "10bdd3fa9fb713d0380b9d9b8137cb7a334d4efc1c74845d0ff06600018cb7e0"
     }
   },
   "wit": {
@@ -30,7 +30,7 @@
     "packages/gg-sandbox-python/src/gg/shell.py": "00c449b48eb5cf2c92f713770cf08424114fc6f843598b309e56aa4227a9b978",
     "packages/gg-sandbox-python/src/gg/skills.py": "3973e230712b5d28bf0b62aa33f277e19021e271ac15b6c5feecf74b9773f44a",
     "packages/gg-sandbox-python/src/gg/tasks.py": "ce6ff2c3b37dd3466a3eb8aa4a565629ac74de0883899b06ae78b5ba918cb65f",
-    "packages/gg-sandbox-python/src/gg/views.py": "ff554d303efc36ce361efe36db26f8a874a4e54dcd43618ca7c0a5e16722c53e",
+    "packages/gg-sandbox-python/src/gg/views.py": "c3cfd379d6ab68f78a865c10cd7e2948d002b8f7c04ffb9bfb97cafddbab795a",
     "packages/gg-sandbox-python/src/library.py": "09e757f5fa1aa7cfc3df426a63c531b641497be69bb4a5700b2d31e7875f6eb3",
     "packages/gg-sandbox-python/src/shim.py": "f3b46668512c76c067d92b88e5c06b14a5e4f00329b25aa1d829dd4e7801f2a7",
     "packages/gg-sandbox-python/build.sh": "11e157536e677f3cca8b07656e32c1342fcb2348442c69ccd121923232cdd4b4",

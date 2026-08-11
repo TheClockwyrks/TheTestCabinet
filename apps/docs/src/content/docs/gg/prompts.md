@@ -145,43 +145,44 @@ The code arm teaches five things the tool-calling arm has no need of:
   would resume only after the program had already returned, which is why
   [healing](/gg/response-healing/) unwraps an `async` wrapper rather than running one.
 - **How to show itself something.** A program's values live and die inside the turn, so
-  the opening paragraphs name the
-  [`view` object](/gg/responses-as-code/#showing-yourself-things) as the channel that
-  carries — `view.openText`'s own signature for a value the program computed,
-  `view.openFile(path)` for a file — and say plainly that `console.log()` will not be
-  visible, which is the one sentence keeping a model from writing its answer somewhere
-  only the operator can read it. Neither call is *typed into* the template: it writes
-  `{{api.view.open_text.signature}}` and the run's own catalogue answers, so what the model
-  reads is what its SDK really declares. See
-  [nothing quotes a call by hand](/gg/program-languages/#nothing-quotes-a-call-by-hand). The `openFile` line grows a second half when, and only
-  when, this run's [read mode](/gg/filesystem/#read-modes) caps a read: the windowed form,
-  `view.openFile(path, { offset: 400, limit: 200 })`, with the run's own line cap
-  interpolated and the promise that a larger `limit` is honored. Under `unlimited` the
-  call takes no `offset`/`limit` at all, so naming them there would sell the one arm that
-  cannot use them a pair of knobs that do nothing — which is worse than saying nothing,
-  because the model spends the turn wondering why the window it asked for was ignored.
-  `openText` is never withheld (the object is bound whatever a run enables, since a run
-  with no tools at all must still be able to show its model something); the two lines whose
-  call a run can withhold — `openFile`, and `system.shell` below — are each gated on this
-  run binding it, because naming a call it does not bind is a `ReferenceError` the model
-  copies verbatim.
-- **How to run a command.** `system.shell(command)` earns a line of its own, naming what
-  it hands back: the `exitCode` and the merged output, to the **program**, with the
-  reminder to open a view on that output to read it yourself. The surface is otherwise
-  read on demand, and this is one of the places that rule does not pay — running a build
-  or a test is the most common thing a program does, and a model that has to search the
-  call out spends a turn on it. The line is gated on `shell` being
-  offered and on nothing else; in particular it is not gated on whether the run
-  [offloads](/gg/shell/#output-offloading) that output, which is a fact about what comes
-  back rather than about whether the call exists at all.
-- **What is in scope, and how to read its documentation.** One line per API object — its
-  name and what it is for — and then `view.openDocsView(fn)`. No signatures and no type
-  declarations: the prompt names the argument shape of the two or three calls a program
-  cannot bootstrap without, and nothing else. The rest of the surface is
-  [read on demand](/gg/responses-as-code/#the-typed-tool-surface) rather than dumped up
-  front, and what a call's options are, what it throws, and the rest of the `view`
-  object's own functions (`view.close`, `view.current`) are answers the model asks for
-  rather than paragraphs it is handed.
+  the opening paragraphs name the channel that carries — a **view**, of a value the
+  program computed or of a file it read — and say plainly that nothing `console.log()`
+  writes is readable by the model, which is the one sentence keeping it from writing its
+  answer somewhere it will never see. Neither the call that opens a view nor the one that
+  reads a file is named: **the prompt names no function at all**, and what a model needs
+  in order to write one it finds by searching. What the prompt does state is the half a
+  search could not tell it, because it is a fact about *this run* rather than about the
+  SDK: when this run's [read mode](/gg/filesystem/#read-modes) caps a read, the cap, that
+  a window can be named with an offset and a limit, and that a larger limit is honored.
+  Under `unlimited` a read takes no window at all, so naming one there would sell the one
+  arm that cannot use it a pair of knobs that do nothing. Showing yourself a value is never
+  withheld (a run with no tools at all must still be able to show its model something); the
+  sentence about reading a file is gated on this run binding a read, on the same ablation
+  discipline every other section follows.
+- **How to run a command.** Running a command earns a line of its own, naming what it
+  hands back: the `exitCode` and the merged output, to the **program**, with the reminder
+  to open a view on that output to read it yourself. That is what a search cannot supply
+  in time — a model that discovers the return shape by trying it has already spent the
+  turn. The line is gated on `shell` being offered and on nothing else; in particular it
+  is not gated on whether the run [offloads](/gg/shell/#output-offloading) that output,
+  which is a fact about what comes back rather than about whether the call exists at all.
+- **What is in scope, and how to read its documentation.** One line per **module** — its
+  path, the line its own declaration introduces it by, and the import that brings it into
+  scope on the one arm that needs one. No functions, no signatures, no type declarations.
+  The module list is **the only vocabulary the prompt supplies**, and that is load-bearing
+  rather than minimal: with no directory call and no function named anywhere, a module path
+  is the agent's only entry point, and it turns the first hop of discovery from a ranking
+  problem into an exact lookup. Everything after it — which functions a module holds, what
+  their options are, what they throw — is
+  [read on demand](/gg/responses-as-code/#the-typed-tool-surface).
+
+  Because the calls that *do* the discovering are themselves functions, the prompt cannot
+  name those either, and a model that could not look anything up could not look up how to
+  look things up. That fixed point is broken outside the prompt: every code agent's session
+  opens with a **synthesized assistant turn** — a program gg wrote in that agent's own
+  language, opening the documentation of the discovery calls, with the views it opened
+  beside it. The calls therefore arrive as source the model can copy rather than as prose
+  quoting them, and the prompt points at that turn instead of repeating it.
 
   **There is no directory call, and that is a decision rather than an omission.** Nothing
   enumerates a module's functions, because a call that hands back a whole module defeats

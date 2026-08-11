@@ -1526,12 +1526,13 @@ pub(crate) fn modules_of(catalogue: &'static SignatureCatalogue) -> Vec<ModuleVi
 pub struct ModuleView {
     /// gg's cross-arm id for the module, or — on a [`V1`](SchemaVersion::V1) arm — the API object's
     /// own name, which is the most identity that arm has.
-    #[allow(
-        dead_code,
-        reason = "the cross-arm join key, read by the readouts that group eleven arms together — \
-                  the console's module grouping and the reference projection — which move onto it \
-                  as the arms are converted. Every reader today wants the arm's own spelling."
-    )]
+    ///
+    /// The cross-arm join key: it is what the [surface event](test_cabinet_core::gg::GgAgentApi)
+    /// and the [reference](crate::reference) group by, and the namespace half of every
+    /// [operation](super::operations::OperationId) the module's calls are recorded under. The
+    /// [path](Self::path) beside it is what a model reads, and the two are separate because one arm
+    /// spelling `gg::files` and another `Gg.Files` must still be one module to a reader comparing
+    /// them.
     pub id: &'static str,
     /// This language's own spelling of the module path, and what a model reads.
     pub path: &'static str,

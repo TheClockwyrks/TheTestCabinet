@@ -218,6 +218,8 @@ function offered(
    * produces, since such a name withholds nothing at all.
    */
   withheld?: string[],
+  /** The documentation arm this instance ran under, where the fixture is about that. */
+  docViewTypes?: string,
 ): HarnessEvent {
   return gg(agentId, {
     type: "agent_surface",
@@ -225,6 +227,7 @@ function offered(
     tools,
     ...(apis ? { apis } : {}),
     ...(withheld?.length ? { withheld } : {}),
+    ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
 
@@ -239,57 +242,68 @@ const TOOL_SURFACE_EVENTS: HarnessEvent[] = [
 ];
 
 // One model-facing call, as a responses-as-code program's turn streams it.
-function apiCall(agentId: string, object: string, fn: string): HarnessEvent {
+function apiCall(agentId: string, module: string, fn: string): HarnessEvent {
   return gg(agentId, {
     type: "api_call",
-    object,
+    object: module,
     function: fn,
+    // gg's own identity for the call, which is what a count joins on.
+    operation: `${module}.${fn}`,
   } as GgTelemetryKind);
 }
 
-// The same run with both reviewers running programs instead: one object, whose functions
+// The same run with both reviewers running programs instead: one module, whose functions
 // cover both cases — one each instance called, and one no gg tool backs at all, which used
 // to be reported as having no count and is now counted like anything else.
 const API_SURFACE_EVENTS: HarnessEvent[] = [
   ...EVENTS,
   ...["r1", "r2"].flatMap((id) => [
-    offered(id, ["read_file"], [
-      {
-        object: "fs",
-        description: "the run's working tree",
-        functions: [
-          { name: "readFile", key: "read_file" },
-          { name: "watch", key: "watch" },
-        ],
-      },
-    ] as GgAgentApi[]),
-    apiCall(id, "fs", "read_file"),
+    offered(
+      id,
+      ["read_file"],
+      [
+        {
+          module: "files",
+          path: "gg.files",
+          description: "the run's working tree",
+          functions: [
+            { name: "readFile", operation: "files.read_file" },
+            { name: "watch", operation: "files.watch" },
+          ],
+        },
+      ] as GgAgentApi[],
+      undefined,
+      "return-and-parameters",
+    ),
+    apiCall(id, "files", "read_file"),
   ]),
 ];
 
-// The same again, over the three functions that share one core: `fs.readFile`,
-// `fs.readTextFile` and `view.openFile` all run a `read_file`, and each is recorded as
-// itself. Both reviewers wrote `view.openFile` and neither wrote the other two, so a profile
+// The same again, over the three functions that share one core: `files.readFile`,
+// `files.readTextFile` and `views.openFile` all run a `read_file`, and each is recorded as
+// itself. Both reviewers wrote `views.openFile` and neither wrote the other two, so a profile
 // that read every file through one of them must not be reported as having called the rest.
 const SHARED_CORE_EVENTS: HarnessEvent[] = [
   ...EVENTS,
   ...["r1", "r2"].flatMap((id) => [
     offered(id, ["read_file"], [
       {
-        object: "fs",
+        module: "files",
+        path: "gg.files",
         description: "the run's working tree",
         functions: [
-          { name: "readFile", key: "read_file" },
-          { name: "readTextFile", key: "read_text_file" },
+          { name: "readFile", operation: "files.read_file" },
+          { name: "readTextFile", operation: "files.read_text_file" },
         ],
       },
       {
-        object: "view",
+        module: "views",
+        path: "gg.views",
         description: "show yourself a file",
-        functions: [{ name: "openFile", key: "open_file" }],
+        functions: [{ name: "openFile", operation: "views.open_file" }],
       },
     ] as GgAgentApi[]),
-    apiCall(id, "view", "open_file"),
+    apiCall(id, "views", "open_file"),
   ]),
 ];
 
@@ -454,20 +468,42 @@ describe("GgAgentsSummary offered surface", () => {
     expect(sectionOrder(detail)[0]).toBe("surface");
   });
 
-  it("heads a responses-as-code profile's surface APIs, by object", () => {
+  it("heads a responses-as-code profile's surface APIs, by module", () => {
     const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
       name: "reviewer apis",
     });
-    expect(within(detail).getByText("APIs · 1 object")).toBeInTheDocument();
+    expect(within(detail).getByText("APIs · 1 module")).toBeInTheDocument();
     expect(within(detail).queryByText(/^Tools · /)).toBeNull();
-    // The object is named with the description its own programs are shown it by, and the
-    // functions it binds are listed under it.
-    expect(within(section).getByText("fs")).toBeInTheDocument();
+    // The module is named by the arm's own spelling of it — what the programs wrote — with
+    // the description those programs are shown it by, and the functions it binds under it.
+    expect(within(section).getByText("gg.files")).toBeInTheDocument();
     expect(
       within(section).getByText("the run's working tree"),
     ).toBeInTheDocument();
     expect(within(section).getByText("readFile")).toBeInTheDocument();
+  });
+
+  it("names the documentation arm on the surface card the cost is read beside", () => {
+    // The documentation mode is the CAUSE whose effect this detail's documentation figures
+    // are, and the profile card is where a reader compares two arms of a within-run A/B. The
+    // aggregate has always folded the mode; nothing rendered it, so the card showed the cost
+    // with no arm on it.
+    const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
+    const mode = within(detail).getByText("docs: return-and-parameters");
+    expect(mode).toBeInTheDocument();
+    expect(mode).toHaveAttribute(
+      "title",
+      expect.stringContaining("every type a function's signature names"),
+    );
+
+  });
+
+  it("says nothing about a documentation mode on a tool-calling profile", () => {
+    // A tool-calling agent makes no documentation lookups, so naming a mode would report an
+    // arm it never ran under rather than the absence of one.
+    const { detail } = openReviewer(stubNav(), TOOL_SURFACE_EVENTS);
+    expect(within(detail).queryByText(/^docs: /)).toBeNull();
   });
 
   it("keeps an offered tool nobody called, and says so", () => {
@@ -531,7 +567,7 @@ describe("GgAgentsSummary offered surface", () => {
     expect(untooled).toHaveAttribute("data-uncalled");
     expect(untooled).toHaveAttribute(
       "title",
-      "fs.watch was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
+      "gg.files.watch was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     // …and the one both instances called reads as its own figure, on its own identity.
     expect(
@@ -542,8 +578,8 @@ describe("GgAgentsSummary offered surface", () => {
   });
 
   it("counts three functions over one core as three functions", () => {
-    // `fs.readFile`, `fs.readTextFile` and `view.openFile` all run a `read_file`. Both
-    // reviewers wrote `view.openFile` and neither wrote the other two, so claiming the tool's
+    // `files.readFile`, `files.readTextFile` and `views.openFile` all run a `read_file`. Both
+    // reviewers wrote `views.openFile` and neither wrote the other two, so claiming the tool's
     // figure for each in turn would report six calls where two happened — and would leave two
     // functions the model genuinely never wrote reading as ones it used.
     const { detail } = openReviewer(stubNav(), SHARED_CORE_EVENTS);
@@ -555,7 +591,7 @@ describe("GgAgentsSummary offered surface", () => {
     expect(within(called).getByText("2×")).toBeInTheDocument();
     expect(called).toHaveAttribute(
       "title",
-      "view.openFile was called 2 times.",
+      "gg.views.openFile was called 2 times.",
     );
 
     for (const name of ["readFile", "readTextFile"]) {
@@ -588,7 +624,7 @@ describe("GgAgentsSummary offered surface", () => {
     expect(within(detail).getByText("API calls · 2")).toBeInTheDocument();
     expect(within(detail).queryByText(/^Tool calls · /)).toBeNull();
     // The function its programs wrote, not the tool that served it.
-    expect(within(detail).getByText("fs.readFile")).toBeInTheDocument();
+    expect(within(detail).getByText("gg.files.readFile")).toBeInTheDocument();
     expect(within(detail).queryByText("read_file")).toBeNull();
   });
 

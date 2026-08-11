@@ -47,13 +47,22 @@
 //! A span that names something the [`PREAMBLE`] does not bind fails here with `E0425` naming it.
 //! That is the intended way to find out that the prompt gained an example with a new free variable
 //! in it: bind it there, in the shape the prose implies.
+//!
+//! # What is left in the prompt to read
+//!
+//! Almost nothing, and that is the design rather than a regression. The prompt names no function, so
+//! its worked programs and its inline calls went with the names in them; what this gate reads there
+//! now is the one call the prompt still writes because no catalogue carries it and a search could
+//! never hand it over — the constructor a program builds a failure of its own with. Everything else
+//! it compiles comes from the **catalogue**, which is what a model is shown when it opens a
+//! documentation view, and which is untouched by any of that.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::prompts::{
-    ApiView, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
+    ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system_for,
 };
 use crate::sandbox::{
@@ -200,9 +209,10 @@ fn everything_on() -> SystemContext {
         responses_as_code: true,
         language: Some(GgProgramLanguage::Rust),
         program_library: true,
-        apis: vec![ApiView {
-            object: "gg::files".to_string(),
-            description: "Read, write, edit and list the files of the workspace.".to_string(),
+        modules: vec![ModuleView {
+            path: "gg::files".to_string(),
+            brief: "Read, write, edit and list the files of the workspace.".to_string(),
+            import: None,
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),
@@ -324,17 +334,30 @@ fn every_rust_example_a_model_is_shown_compiles() {
 
     // The gate must not be able to go quiet. These are floors, not counts: an example added is
     // welcome, an example that stopped being recognised as one is the failure this catches.
+    //
+    // Both floors came DOWN when the prompt stopped naming functions. The template's two worked
+    // programs and its dozen inline calls were exactly the thing the rewrite removed — a model
+    // finds a call by searching for it, and a prompt that pre-writes twelve of them has decided
+    // which twelve are cheap. So what this gate reads is now almost entirely the **catalogue**,
+    // whose fences come from the SDK's own `///` comments and are the code a model is shown when it
+    // opens a documentation view. That half is untouched and is the half that grows.
+    //
+    // Lowering a floor is therefore the right move here and is the wrong move almost everywhere
+    // else: it was done because the examples were deliberately deleted, in the same change, by the
+    // stage whose whole subject is what the prompt may say. If this fails again, read the templates
+    // before touching the number.
     assert!(
-        fenced_count >= 4,
+        fenced_count >= 3,
         "only {fenced_count} fenced Rust examples were found across the prompt, the notice and the \
-         catalogue. A ```rust fence lost its tag, or a template stopped rendering a section — \
-         either way this gate is no longer reading what a model is shown."
+         catalogue. A ```rust fence lost its tag, or an SDK doc comment lost its example — either \
+         way this gate is no longer reading what a model is shown."
     );
     assert!(
-        inline >= 13,
-        "only {inline} inline Rust calls were found in the prompt and the notice, against the 13 a \
-         maximal context renders today. One stopped being recognised as a call — read `call_path` \
-         against what the templates now write, rather than lowering this."
+        inline >= 1,
+        "no inline Rust call was found in the prompt or the notice. The prompt names no function, \
+         so this floor is about the ONE thing it still writes — the failure constructor, which no \
+         catalogue carries and which a model therefore cannot look up. If that went, the arm's \
+         programs can no longer build a failure of their own."
     );
 
     let mut program = PREAMBLE.to_string();

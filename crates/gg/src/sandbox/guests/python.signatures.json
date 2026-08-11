@@ -1934,7 +1934,7 @@
               "optional": false,
               "kind": "positional",
               "default": null,
-              "doc": "The function to document: the function object itself (`files.read_file`) or the name it is called by in its module (`\"read_file\"`).",
+              "doc": "The function to document: the function object itself (`files.read_file`), or the fully-qualified name its documentation is keyed by (`\"gg.files.read_file\"`). The bare name it is called by in its module (`\"read_file\"`) also resolves and is a fallback rather than the form to reach for: two modules are free to declare a `close`, and only the qualified name says which one is meant.",
               "fields": []
             }
           ]

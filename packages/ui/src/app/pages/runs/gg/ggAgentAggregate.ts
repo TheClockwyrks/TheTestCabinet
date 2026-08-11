@@ -99,7 +99,8 @@ export interface GgAgentSurfaceEntry {
   /**
    * This entry's language-independent identity — the join key into the profile's call counts:
    * {@link GgAgentSummary.toolCalls} for a tool entry, {@link GgAgentSummary.apiCalls} for an
-   * API one. Equal to {@link name} for a tool; the catalogue key for a function.
+   * API one. Equal to {@link name} for a tool; gg's own operation id (`files.read_file`) for a
+   * function, which is what its calls are recorded under whatever language wrote them.
    *
    * Empty only on a record written before gg counted a call per function, where a consumer
    * must say the record predates the accounting rather than report a zero.
@@ -115,15 +116,17 @@ export interface GgAgentSurfaceEntry {
   offeredBy: number;
 }
 
-/** One namespaced API object of a profile's offered surface, unioned across its instances. */
+/** One capability module of a profile's offered surface, unioned across its instances. */
 export interface GgAgentSurfaceApi {
-  /** The object a program calls through — `fs`, `view`, `harness`. */
-  object: string;
-  /** The one-line description the agents' own system prompts name the object by. */
+  /** gg's cross-arm id for the module — `files`, `views`, `session`. */
+  module: string;
+  /** This arm's own spelling of it, and what the model writes — `gg.files`. */
+  path: string;
+  /** The one-line description the agents' own system prompts name the module by. */
   description: string;
-  /** The functions its instances bound on it, in catalogue order (first-seen wins). */
+  /** The functions its instances bound in it, in catalogue order (first-seen wins). */
   functions: GgAgentSurfaceEntry[];
-  /** How many of the profile's reporting instances bound the object at all. */
+  /** How many of the profile's reporting instances bound the module at all. */
   offeredBy: number;
 }
 
@@ -148,6 +151,18 @@ export interface GgAgentSurfaceSummary {
    */
   executionMode: string | null;
   /**
+   * Which SDK types an `openDocsView` opened beside a function for this profile's instances —
+   * `off`, `return` or `return-and-parameters`, as gg resolved it. Null for a tool-calling
+   * profile, for a record written before gg reported the mode, and — like
+   * {@link executionMode} — where instances somehow disagree.
+   *
+   * It is here because the mode is an arm of a comparison a single run can hold both sides
+   * of: what it cost is read off the documentation band of the very agents this summary is
+   * about, and a page that showed the cost without the arm would be showing an effect with no
+   * cause on it.
+   */
+  docViewTypes: string | null;
+  /**
    * How many instances this union was taken over — the denominator every `offeredBy` reads
    * against. It counts the instances that REPORTED a surface, not every instance of the
    * profile, so a run that mixes reporting and pre-`agent_surface` instances still reads
@@ -156,7 +171,7 @@ export interface GgAgentSurfaceSummary {
   reportingInstances: number;
   /** Every gg tool any instance was offered, in the order the model was shown them. */
   tools: GgAgentSurfaceEntry[];
-  /** The API objects a responses-as-code profile's programs bind. Empty for tool calling. */
+  /** The modules a responses-as-code profile's programs bind. Empty for tool calling. */
   apis: GgAgentSurfaceApi[];
   /**
    * The tools an ablation took off this profile — gg's own account of it, and only the
@@ -398,23 +413,29 @@ export function mergeAgentSurfaces(
   if (parts.length === 0) return null;
 
   const tools = new Map<string, GgAgentSurfaceEntry>();
-  // Each object's own fold: its description (first seen), how many instances bound it, and
-  // its functions in the same first-seen order the objects themselves keep.
+  // Each module's own fold, keyed by gg's id for it: its spelling and description (first
+  // seen), how many instances bound it, and its functions in the same first-seen order the
+  // modules themselves keep.
   const apis = new Map<
     string,
     {
+      path: string;
       description: string;
       offeredBy: number;
       functions: Map<string, GgAgentSurfaceEntry>;
     }
   >();
   const modes = new Set<string>();
+  // The documentation mode, folded like the execution mode beside it: a set, so instances
+  // that disagree produce no answer rather than an arbitrary one.
+  const docModes = new Set<string>();
   // A set, not a tally: every instance of a profile is ablated identically, so a name is
   // either in the profile's control arm or it is not.
   const withheld = new Set<string>();
 
   for (const part of parts) {
     modes.add(part.executionMode);
+    if (part.docViewTypes) docModes.add(part.docViewTypes);
     for (const name of part.withheld) withheld.add(name);
     for (const name of part.tools) {
       const at = tools.get(name);
@@ -422,14 +443,19 @@ export function mergeAgentSurfaces(
       else tools.set(name, { name, key: name, offeredBy: 1 });
     }
     for (const api of part.apis) {
-      let group = apis.get(api.object);
+      // Keyed on gg's module id rather than on the arm's spelling: an `exec` successor may
+      // legitimately write its programs in another language, and folding by the spelling
+      // would report one module as two the moment it did.
+      const id = api.module || api.path;
+      let group = apis.get(id);
       if (!group) {
         group = {
+          path: api.path,
           description: api.description,
           offeredBy: 0,
           functions: new Map(),
         };
-        apis.set(api.object, group);
+        apis.set(id, group);
       }
       group.offeredBy += 1;
       for (const fn of api.functions) {
@@ -438,7 +464,7 @@ export function mergeAgentSurfaces(
         else
           group.functions.set(fn.name, {
             name: fn.name,
-            key: fn.key ?? "",
+            key: fn.operation ?? "",
             offeredBy: 1,
           });
       }
@@ -449,10 +475,12 @@ export function mergeAgentSurfaces(
     // One mode is the answer; a profile whose instances somehow disagree has none, since
     // naming either would decide the read-out's whole shape on a coin toss.
     executionMode: modes.size === 1 ? [...modes][0]! : null,
+    docViewTypes: docModes.size === 1 ? [...docModes][0]! : null,
     reportingInstances: parts.length,
     tools: [...tools.values()],
-    apis: [...apis.entries()].map(([object, group]) => ({
-      object,
+    apis: [...apis.entries()].map(([module, group]) => ({
+      module,
+      path: group.path,
       description: group.description,
       functions: [...group.functions.values()],
       offeredBy: group.offeredBy,

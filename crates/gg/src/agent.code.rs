@@ -54,9 +54,9 @@ use crate::knowledge::{KnowledgeError, KnowledgeModules, KnowledgeOrigin, Pendin
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    DocSearchQuery, DocSearchResult, PreparedProgram, ProgramError, ProgramLanguage, ProgramScope,
-    RunEnding, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
-    run_prepared_program,
+    ApiIdentity, DocSearchQuery, DocSearchResult, PreparedProgram, ProgramError, ProgramLanguage,
+    ProgramScope, RunEnding, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome,
+    ViewRefusal, run_prepared_program,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -2465,19 +2465,26 @@ impl ToolApi for LoopToolApi {
     /// It is not recorded for [replay](crate::capture): replay re-feeds a *tool's* recorded outcome
     /// to a re-run, and an API call has no outcome of its own to feed — the call is re-made and
     /// re-recorded when the program runs again.
-    fn begin_api_call(&mut self, object: &str, function: &str) {
+    fn begin_api_call(&mut self, call: ApiIdentity<'_>) {
         self.emitter.emit(GgTelemetryKind::ApiCall {
-            object: object.to_string(),
-            function: function.to_string(),
+            object: call.object.to_string(),
+            function: call.function.to_string(),
+            operation: call.operation.map(str::to_string),
         });
     }
 
     /// Stream the closing half, with the verdict the program saw and — when it threw — the class it
     /// was thrown with.
-    fn end_api_call(&mut self, object: &str, function: &str, failure: Option<GgToolFailure>) {
+    ///
+    /// The operation is repeated rather than left to be recovered from the opening half: a study
+    /// counting how often one operation failed reads results, and pairing each result back to its
+    /// own call would mean re-deriving a bracket across every child event a delegation emitted
+    /// inside it.
+    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>) {
         self.emitter.emit(GgTelemetryKind::ApiResult {
-            object: object.to_string(),
-            function: function.to_string(),
+            object: call.object.to_string(),
+            function: call.function.to_string(),
+            operation: call.operation.map(str::to_string),
             ok: failure.is_none(),
             failure,
         });
@@ -3090,7 +3097,15 @@ impl ToolApi for LoopToolApi {
     /// model whose types were closed and whose function was not gets them back by asking for the
     /// function again — which is the only thing it has to ask for.
     fn open_docs_view(&mut self, name: String) -> Result<Vec<SandboxViewOpened>, ViewRefusal> {
-        let Some(read) = self.docs.read_any(&name) else {
+        // Resolved to the one key the entry is filed under before anything is read, because an entry
+        // answers to its bare name *and* to its fully-qualified one: filing the view under whichever
+        // of the two the model happened to type would put the same page in the window twice for an
+        // agent that spelled one lookup both ways. See `DocsRuntime::docview_key`.
+        let Some((key, read)) = self
+            .docs
+            .docview_key(&name)
+            .and_then(|key| Some((key.clone(), self.docs.read_any(&key)?)))
+        else {
             return Err(docs_not_found_refusal(&name, &self.docs.suggest(&name)));
         };
         // Resolved from the catalogue and this agent's bound set, never from the window: what the
@@ -3098,10 +3113,10 @@ impl ToolApi for LoopToolApi {
         // separate question each `open_docview` answers for itself.
         let types = self.docs.types_to_open(&name, self.doc_view_types);
         let mut opened = Vec::new();
-        if let DocviewOpen::Placed { tokens } = self.context.open_docview(name.clone(), read) {
+        if let DocviewOpen::Placed { tokens } = self.context.open_docview(key.clone(), read) {
             opened.push(SandboxViewOpened {
                 kind: ViewKind::Docs,
-                selector: name,
+                selector: key,
                 tokens: tokens as u64,
                 // Never true on this path, and the field is filled in rather than left to a default
                 // so that the one place it could become true is here: a docview is never superseded.

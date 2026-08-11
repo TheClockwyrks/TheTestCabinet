@@ -3,6 +3,7 @@ import type {
   GgApiFunction,
   GgReference,
   GgReferenceCategory,
+  GgReferenceModule,
 } from "@test-cabinet/run-record/gg-reference";
 import {
   FsExplorer,
@@ -17,62 +18,74 @@ import panels from "../../runs/gg/GgPanels.module.scss";
 import styles from "./GgReference.module.scss";
 
 // The **API** tab: every function a responses-as-code program can call, grouped by the
-// object it hangs off.
+// capability module it lives in.
 //
-// Grouped by object rather than by family because that is how a program reaches them —
-// `fs.readFile`, not "the filesystem family's read call" — and because the objects are
-// what a model itself enumerates mid-run with `object.list()`. The *order* is still the
-// families', so the two tabs walk gg's surface in the same sequence, and each object
-// carries its family's own one-line description as a caption: which of thirteen objects
-// you want is a question the object names alone do not answer.
+// Grouped by module because that is what the surface *is*: a program writes
+// `gg.files.readFile`, the system prompt names the modules and no function at all, and a
+// documentation search filters by module. The order is the modules' own — the sequence a
+// model is presented with them in — and each folder carries the line the module's own
+// declaration introduces it by, since which of twelve modules you want is a question the
+// paths alone do not answer.
 //
-// The whole tab is the same material a program gets back from `view.openDocsView(...)`,
-// reflected out of the guest SDK's emitted declarations — so what is read here and what
+// The join between a folder and its functions is gg's module **id**, never the path: the
+// path is one arm's spelling (`gg.files` here, `gg::files` in the Rust arm) and grouping by
+// it would silently empty every folder the day the projected language changed.
+//
+// The whole tab is the same material a program gets back from `openDocsView(...)`,
+// reflected out of the guest SDK's own declarations — so what is read here and what
 // a model can look up for itself mid-session cannot disagree.
 //
 // This is the tab's *body*, not a page: the frame around it — the header, the tab bar and
 // the fetch both tabs read from — is `GgReferencePage`'s, and lives above the two so
 // switching tabs does not throw the document away. See `GgReferencePage.tsx`.
 
-/** One object's folder in the sidebar: the object, the family it came from, its functions. */
-interface ObjectGroup {
-  object: string;
-  category: GgReferenceCategory;
+/** One module's folder in the sidebar: the module, the family it came from, its functions. */
+interface ModuleGroup {
+  module: GgReferenceModule;
+  category: GgReferenceCategory | null;
   functions: GgApiFunction[];
 }
 
-/** How a function is addressed, in the URL and in the tree: `fs.readFile`. */
+/**
+ * How a function is addressed, in the URL and in the tree: the fully-qualified name the arm
+ * advertises it under (`gg.files.readFile`) — which is exactly what a model passes to
+ * `openDocsView`, so a link to this page and a lookup a program makes name the same thing.
+ *
+ * The fallback is for an arm whose catalogue emits no qualified name: `module.name` is then all
+ * the identity there is, and it is still unique, since a module cannot declare one name twice.
+ */
 function functionId(fn: GgApiFunction): string {
-  return `${fn.object}.${fn.name}`;
+  return fn.fqn || `${fn.module}.${fn.name}`;
 }
 
 export function GgReferenceApiTab({ reference }: { reference: GgReference }) {
   const folders = useFsFolders();
   const { requested, select } = useEntrySelection("fn");
 
-  // Objects in family order, and within a family in the order the family declares them
-  // (which matters for exactly one family: the ending call's `harness` / `review` /
-  // `judge` are three spellings of one thing, one per agent role, and they read as a set
-  // in that order). An object with no functions is dropped — the payload should carry
-  // none, but a folder with nothing in it would be a claim that gg offers an object a
-  // program cannot call anything on.
-  const groups = useMemo<ObjectGroup[]>(
+  // Modules in the order the payload presents them, which is the order a model meets them
+  // in its own system prompt. A module with no functions is dropped rather than shown
+  // empty: every arm carries one for the type declarations that belong to no capability,
+  // and a folder with nothing in it would read as a module offering nothing to call.
+  const groups = useMemo<ModuleGroup[]>(
     () =>
-      reference.categories
-        .flatMap((category) =>
-          category.objects.map((object) => ({
-            object,
-            category,
-            functions: reference.functions.filter((fn) => fn.object === object),
-          })),
-        )
+      reference.modules
+        .map((module) => ({
+          module,
+          category:
+            reference.categories.find(
+              (category) => category.id === module.category,
+            ) ?? null,
+          functions: reference.functions.filter(
+            (fn) => fn.module === module.id,
+          ),
+        }))
         .filter((group) => group.functions.length > 0),
     [reference],
   );
 
   // With no `?fn=`, the pane opens on the first row of the **tree** — not on
   // `reference.functions[0]`. The payload is in catalogue order, which begins with the
-  // *ending* call (the last family), so the first entry of the array sits eleven folders
+  // *ending* call (the last module), so the first entry of the array sits ten folders
   // down a sidebar that scrolls: the pane would open on something the reader cannot see
   // is selected, and the tree would look as though nothing were. Walking the groups is
   // the same walk the sidebar below does, so the highlight is always its first row.
@@ -82,31 +95,35 @@ export function GgReferenceApiTab({ reference }: { reference: GgReference }) {
       : (reference.functions.find((fn) => functionId(fn) === requested) ??
         null);
 
-  // Thirteen folders of functions scroll well past the fold, so a link to `judge.verdict`
-  // would otherwise open beside a tree still showing `fs`.
+  // Twelve folders of functions scroll well past the fold, so a link to a session call
+  // would otherwise open beside a tree still showing the filesystem module.
   useRevealSelection(requested != null, selected != null);
 
   return (
     <FsExplorer
-      sidebarLabel="API objects"
+      sidebarLabel="API modules"
       tree={groups.map((group) => (
         <FsFolder
-          key={group.object}
+          key={group.module.id}
           depth={0}
           // Open by default, like the Tools tree: this is a fixed document read by
           // scanning, not a live stream that needs collapsing.
-          open={folders.isOpen(group.object, true)}
-          onToggle={() => folders.toggle(group.object, true)}
-          ariaLabel={`${group.object} functions`}
-          name={group.object}
+          open={folders.isOpen(group.module.id, true)}
+          onToggle={() => folders.toggle(group.module.id, true)}
+          ariaLabel={`${group.module.path} functions`}
+          name={group.module.path}
           meta={<span className={panels.fsMeta}>{group.functions.length}</span>}
         >
-          {/* The family's own line, as the folder's first child rather than as a second
+          {/* The module's own line, as the folder's first child rather than as a second
               line in its row — see `.objectCaption`. `fsIndent(1)` is the same inline
               indent the function rows below take, which is what puts it in their column
-              instead of against the sidebar's edge. */}
+              instead of against the sidebar's edge.
+
+              The module's summary rather than its family's description: the family is a
+              grouping of gg's, and what a reader picking a folder wants is the sentence
+              the module itself is introduced by — the same one the model is given. */}
           <li className={styles.objectCaption} style={fsIndent(1)}>
-            {group.category.description}
+            {group.module.summary}
           </li>
           {group.functions.map((fn) => (
             <FsFileRow
@@ -131,6 +148,10 @@ export function GgReferenceApiTab({ reference }: { reference: GgReference }) {
               (category) => category.id === selected.category,
             ) ?? null
           }
+          module={
+            reference.modules.find((module) => module.id === selected.module) ??
+            null
+          }
         />
       ) : (
         <div className={panels.panelBody}>
@@ -150,22 +171,37 @@ export function GgReferenceApiTab({ reference }: { reference: GgReference }) {
 function FunctionDetail({
   fn,
   category,
+  module,
 }: {
   fn: GgApiFunction;
   /** The function's family, or `null` if the payload names one it does not carry. */
   category: GgReferenceCategory | null;
+  /** The module it lives in, or `null` if the payload names one it does not carry. */
+  module: GgReferenceModule | null;
 }) {
   return (
     <div className={panels.panelBody}>
       <div className={styles.detail}>
         <header className={styles.detailHead}>
-          <h2 className={styles.detailTitle}>
-            {fn.object}.{fn.name}
-          </h2>
+          <h2 className={styles.detailTitle}>{functionId(fn)}</h2>
           <div className={styles.meta}>
             <span className={styles.chip}>
               {category?.title ?? fn.category}
             </span>
+            {/* gg's own name for what this call DOES, which is the one thing about it that
+                is the same in all eleven language arms — and the string a run's records
+                name it by, so a reader who has this page open and a run's calls in front
+                of them is looking at the same identifier in both. */}
+            {fn.operation && (
+              <span className={`${styles.chip} ${styles.chipKey}`}>
+                {fn.operation}
+              </span>
+            )}
+            {/* The line a program writes to reach the module, where the arm needs one.
+                Ten of eleven arms put the SDK in scope already and carry none. */}
+            {module?.import && (
+              <span className={styles.chip}>{module.import}</span>
+            )}
             {/* What binds the call, in the one vocabulary that actually decides it. Most
                 functions are bound by a *tool* being enabled — responses as code is the
                 same surface as the toolset, reached differently — while the ending call
@@ -202,9 +238,7 @@ function FunctionDetail({
 
             Wrapped: a signature is one logical line, so folding it costs nothing and
             scrolling it sideways would hide the return type. */}
-        <Section
-          label={fn.signatures.length > 1 ? "Signatures" : "Signature"}
-        >
+        <Section label={fn.signatures.length > 1 ? "Signatures" : "Signature"}>
           <div className={styles.typeList}>
             {fn.signatures.map((entry) => (
               <div key={entry.signature} className={styles.typeList}>
@@ -221,12 +255,14 @@ function FunctionDetail({
         {fn.types.length > 0 && (
           <Section label="Types">
             <p className={styles.note}>
-              The declarations this signature refers to, transitively closed —
-              exactly what a{" "}
-              <code>
-                view.openDocsView(&quot;{fn.object}.{fn.name}&quot;)
-              </code>{" "}
-              lookup appends to a session that has not already been shown them.
+              Every declaration this signature reaches, <em>transitively
+              closed</em> — which is more than any one lookup appends. A{" "}
+              <code>openDocsView(&quot;{functionId(fn)}&quot;)</code> mid-session
+              goes exactly <em>one</em> level deep and opens only what that
+              agent&rsquo;s documentation mode selects: the return position under{" "}
+              <code>return</code> (the default), everything the signature names
+              under <code>return-and-parameters</code>, nothing under{" "}
+              <code>off</code> — and nothing it has already been shown.
             </p>
             <div className={styles.typeList}>
               {fn.types.map((type) => (

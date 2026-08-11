@@ -76,6 +76,19 @@ pub struct GgReference {
     /// prompt's API table and the built-in skills index list them in, which is roughly "the
     /// workspace, then the work, then yourself".
     pub categories: Vec<GgReferenceCategory>,
+    /// The [capability modules](GgReferenceModule) the responses-as-code surface is divided into,
+    /// in the order a model is presented with them.
+    ///
+    /// The **module** is the unit of that surface: it is what the system prompt names, what a
+    /// documentation search filters by, and what a program writes in front of every call it makes.
+    /// So the page is grouped by module and each [function](GgApiFunction::module) names the one it
+    /// belongs to.
+    ///
+    /// `#[serde(default)]` so an artifact generated before the surface was modules still decodes —
+    /// as an empty list, which is honest: that artifact grouped its functions by the API object
+    /// they hung off, and there were no modules to describe.
+    #[serde(default)]
+    pub modules: Vec<GgReferenceModule>,
     /// Every tool gg can offer, in the canonical tool-vocabulary order.
     pub tools: Vec<GgToolReference>,
     /// Every function a [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
@@ -83,12 +96,12 @@ pub struct GgReference {
     pub functions: Vec<GgApiFunction>,
 }
 
-/// One family of gg's surface: a group of tools and the API object(s) their
-/// responses-as-code counterparts hang off.
+/// One family of gg's surface: a group of tools and the [module](GgReferenceModule) their
+/// responses-as-code counterparts live in.
 ///
 /// A category is not a capability. Several capabilities land in one family (the four
 /// filesystem tools are four capabilities and one family), and the three code-only families
-/// (`view`, `programs`, and the ending call) have no tools at all — they exist only under
+/// (`views`, `programs`, and the ending call) have no tools at all — they exist only under
 /// responses as code, which is exactly why the grouping is by *family* rather than by the
 /// capability that switches something on.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -106,11 +119,37 @@ pub struct GgReferenceCategory {
     /// built-in skills index carries. Not editorialized here: a second, friendlier wording
     /// would be a copy that drifts, and the point of the page is to show what is really said.
     pub description: String,
-    /// The responses-as-code API objects this family's functions hang off (`["fs"]`).
-    ///
-    /// A list rather than one name because of the ending family: `harness`, `review` and
-    /// `judge` are one family grouped by role, and a given agent binds exactly one of them.
-    pub objects: Vec<String>,
+}
+
+/// One **capability module** of the responses-as-code surface — the grouping a program writes in
+/// front of a call, and the folder the reference's API tab files that call under.
+///
+/// It carries gg's own [id](Self::id) for the module and the projected language's
+/// [spelling](Self::path) of it, because the two answer to different authorities: the id is what a
+/// [function](GgApiFunction::module) names and what the same module is called on every other arm,
+/// and the path is what a model actually writes in *this* one.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReferenceModule {
+    /// gg's cross-arm id for the module — `files`, `views`, `session`.
+    pub id: String,
+    /// The projected language's own spelling of it — `gg.files` in TypeScript, `gg::files` in Rust.
+    pub path: String,
+    /// The line the module's own declaration introduces it by, verbatim from the SDK — the same
+    /// sentence the system prompt names it by. Never a second wording written for this page.
+    pub summary: String,
+    /// The [category](GgReferenceCategory::id) this module's calls belong to, or `None` for a
+    /// module that carries no callable operation at all — the types-only module every arm has for
+    /// the declarations that belong to no capability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub category: Option<String>,
+    /// The literal line a program writes to bring the module into scope, where the arm needs one.
+    /// `None` where the SDK is in scope already, which is every registered arm but PureScript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub import: Option<String>,
 }
 
 /// One tool, exactly as it is sent to the provider.
@@ -188,11 +227,28 @@ pub struct GgToolVariant {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgApiFunction {
-    /// The API object the function hangs off in a program's scope (`fs`).
-    pub object: String,
+    /// The [module](GgReferenceModule::id) the function lives in, by gg's id for it (`files`).
+    pub module: String,
     /// The name a program calls it by (`readFile`).
     pub name: String,
-    /// The [category](GgReferenceCategory::id) the function's object belongs to.
+    /// The **fully-qualified name** this arm advertises it under (`gg.files.readFile`) — the key an
+    /// `openDocsView` takes and the key a documentation search files its hit under.
+    ///
+    /// Empty only where the arm's catalogue emits no qualified name, where the module's
+    /// [path](GgReferenceModule::path) and this function's [name](Self::name) are all there is.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub fqn: String,
+    /// gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this
+    /// call does (`files.read_file`) — the identity that is the same in all eleven arms, and the
+    /// string a run's calls are recorded under.
+    ///
+    /// Empty where the arm named an operation gg does not have, which is a defect its own gate
+    /// reports by name rather than something this page should paper over.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub operation: String,
+    /// The [category](GgReferenceCategory::id) the function's module belongs to.
     pub category: String,
     /// The one-line summary a search result carries — the first sentence of
     /// [`doc`](Self::doc).

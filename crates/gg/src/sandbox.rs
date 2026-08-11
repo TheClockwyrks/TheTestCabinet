@@ -108,8 +108,8 @@ pub use language::{
     MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY,
     MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_RERUN, PrepareFailure,
     PreparedModule, PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES,
-    SurfaceCall, UnreachableTail, VIEW_CLOSE, VIEW_OPEN_FILE, VIEW_OPEN_TEXT, all_languages,
-    language, resolve_program_language, spell,
+    SurfaceCall, UnreachableTail, VIEW_CLOSE, all_languages, language, resolve_program_language,
+    spell,
 };
 
 // Named only in documentation and in the seam's own tests today, but exported all the same: they
@@ -121,8 +121,8 @@ pub use language::{
 #[allow(unused_imports)]
 pub use language::{
     CompilerCommand, CompilerDaemon, CompilerPool, CompilerReport, PrepareContext, PrepareError,
-    PromptDialect, ResolvedProgramLanguage, VIEW_OPEN_DOCS_VIEW, Workspace, daemon, place,
-    place_tree, shared_toolchain_dir,
+    PromptDialect, ResolvedProgramLanguage, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, VIEW_OPEN_TEXT,
+    Workspace, daemon, place, place_tree, shared_toolchain_dir,
 };
 
 // The seam's second implementation, which exists only under test. Re-exported for the one consumer
@@ -145,7 +145,7 @@ pub use operations::{Binding, operation_of};
 // decide whether a call is serviced or refused; the documentation runtime holds one to decide what
 // a search may return. Two readers, one implementation — see [`Grants`](operations::Grants) — and
 // one construction of the capability half of it, so the two cannot be built from different lists.
-pub use operations::{Grants, operation_by_call, surface_capabilities};
+pub use operations::{Grants, family_of_module, operation_by_call, surface_capabilities};
 
 // The whole table, for the gates that resolve every operation against every registered language and
 // against what the membrane records. A production reader resolves one entry at a time through
@@ -171,11 +171,12 @@ pub use outcome::{
 // The rest of the sandbox's surface, re-exported so `sandbox` is the single name the loop and the
 // prompt import from.
 pub use {
-    invoker::DocSearchQuery, invoker::DocSearchResult, invoker::FunctionSummary,
-    invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened, invoker::ViewOpenOutcome,
-    invoker::ViewRefusal, limits::resolve_sandbox_limits, membrane::RunEnding,
-    signatures::CatalogueFunction, signatures::Parameter, signatures::ParameterKind,
-    signatures::TypeDeclaration, signatures::catalogue_functions, signatures::type_declaration,
+    invoker::ApiIdentity, invoker::DocSearchQuery, invoker::DocSearchResult,
+    invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened,
+    invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
+    membrane::RunEnding, signatures::CatalogueFunction, signatures::Parameter,
+    signatures::ParameterKind, signatures::TypeDeclaration, signatures::catalogue_functions,
+    signatures::type_declaration,
 };
 
 // The catalogue types nothing outside `sandbox` names *yet*, exported all the same because they are

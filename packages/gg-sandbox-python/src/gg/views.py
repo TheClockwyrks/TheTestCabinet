@@ -145,8 +145,11 @@ def open_docs_view(target: Callable[..., object] | str) -> None:
     again replaces the view rather than adding a second copy, and `close` closes it.
 
     Args:
-        target: The function to document: the function object itself (`files.read_file`) or the name
-            it is called by in its module (`"read_file"`).
+        target: The function to document: the function object itself (`files.read_file`), or the
+            fully-qualified name its documentation is keyed by (`"gg.files.read_file"`). The bare
+            name it is called by in its module (`"read_file"`) also resolves and is a fallback
+            rather than the form to reach for: two modules are free to declare a `close`, and only
+            the qualified name says which one is meant.
 
     Raises:
         ToolError: `not-found` for an unknown or unbound name.

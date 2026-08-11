@@ -17,9 +17,9 @@ runs untrusted controllers in), so it is a low-risk capability to bring to gg.
 
 It is a capability like any other, which is the point. Turn it on and the model is
 offered **no native tool definitions at all** — the [system prompt](/gg/prompts/) names
-the API objects the program is given, and the model reads the functions on them on demand
-by searching and then `view.openDocsView()`; turn it off and the same run executes as ordinary
-tool calling. Freeze the model, the test case and the rest of the
+the modules the program's surface is divided into and no function whatever, and the model
+finds the functions on demand by searching for one and opening a documentation view of it;
+turn it off and the same run executes as ordinary tool calling. Freeze the model, the test case and the rest of the
 [capability set](/gg/overview/#the-capability-set), vary this one toggle, and the
 difference is attributable to the shape of the response. That A/B — do code-shaped
 responses help a model tackle the large [Hard](/testing/end-to-end/) cases? — is what
@@ -285,12 +285,14 @@ not tools: no capability offers them, they dispatch nothing, and each is declare
 interfaces and gg's tool vocabulary is not perturbed by them. A signature and a sentence of
 documentation exist for every function **the run actually offers**, reflected out of that
 language's SDK's own emitted declarations by the same build that produces its component; the
-prompt names the objects — plus the argument shape of the two or three calls a program
-cannot bootstrap without, `view.openText`, `view.openFile` and `system.shell`, each named
-only when this run binds it — and the model reads the rest of the functions on demand by
-searching and then `view.openDocsView()`. A hand-written list would drift, and a prompt
-that describes a signature the sandbox does not have is worse than no prompt, because the
-model has no way to discover the lie.
+prompt names the **modules** and no function at all, states the run's own limits on a read
+and on a command where a search could not supply them in time, and leaves everything else to
+be found by searching and opening a documentation view. A hand-written list would drift, and
+a prompt that describes a signature the sandbox does not have is worse than no prompt,
+because the model has no way to discover the lie. The calls that do the finding are the one
+thing a model could not have found: those arrive in a **synthesized opening turn**, a program
+gg writes in the agent's own language whose views are the documentation of exactly those
+calls.
 
 ### Reading the documentation is opening a view
 
@@ -1407,9 +1409,12 @@ record, the [session-record](/gg/session-record/) capture and the console's acti
 Beside them, every call a program made is bracketed on the stream as it happens — an
 `api_call` before the work and an `api_result` after it — and that pair is what the console's
 activity feed reads a code agent by. It reads it in **the model's own vocabulary**: the feed
-says `fs.readFile`, because that is what the program wrote, and the `read_file` gg dispatched
-to serve it is folded into the same row rather than repeating one action in the layer below.
-The calls **no gg tool backs at all** — `context.list`, a view call, an ending call, a
+says `gg.files.readFile`, because that is what the program wrote — resolved from the
+`operation` the pair carries (`files.read_file`) through the agent's own reported surface,
+which is the one place gg's identity for a call and this arm's spelling of it are stated
+together — and the `read_file` gg dispatched to serve it is folded into the same row rather
+than repeating one action in the layer below.
+The calls **no gg tool backs at all** — a documentation search, a view call, an ending call, a
 [program-library](/gg/program-library/) call — appear there for the same reason: they are
 things the agent did, and a feed reading only the tool layer showed them as nothing at all,
 so an operator watching a live run could not see the agent finish.
@@ -1754,7 +1759,28 @@ reported at launch, rather than quietly running the default arm under a configur
 
 All five are resolved **per agent**, from the profile that agent runs under, so a root that
 opens every type a signature names and a reviewer subagent that opens none are one
-configuration — and, in principle, so are a root and a reviewer writing different languages.
+configuration — and so are a root and a reviewer writing different languages.
+
+That is what makes an A/B of any of them a **within-run** comparison, and each agent's
+resolved settings are on its own `agent_surface`
+[event](/gg/telemetry/#what-an-agent-is-offered) — the language and the documentation mode
+beside the execution mode. So the two arms share the task, the workspace, the models and the
+wall clock, and a reader answers *"which arm was this agent on, and what did it cost?"* by
+joining that event to the same agent's context breakdown (its `docs_view` and
+`search_results` bands) and to its own `api_call` records. Nothing about the arm has to be
+re-read from the configuration, which is what a run-level dimension could not have told you
+anyway: it is one value, and this run has two.
+
+Two things about that join are worth stating plainly, since both figures read plausibly
+while meaning something other than what they look like. The **`search_results` band is
+reserved** and reads zero for every run today: the host implements the documentation search
+and the membrane records it, but no arm's SDK publishes it yet, so no program can reach it.
+And **`api_call` counts lookups rather than the views a lookup placed** — which is precisely
+what `docViewTypes` changes, since one `openDocsView` is one `api_call` under every mode and
+places a different number of views under each. The figure that moves with the knob is the
+`docs_view` band itself: each placed view is a `context_message` on it, labelled with what it
+documents and carrying what it cost. See
+[the telemetry page](/gg/telemetry/#what-an-agent-is-offered).
 
 The ceilings that bound the *run* rather than one program — turns, wall clock,
 consecutive errors, recent error rate, cost — are not params of this capability at all.

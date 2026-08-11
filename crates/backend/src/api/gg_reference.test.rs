@@ -30,9 +30,40 @@ fn the_embedded_artifact_is_populated() {
     assert!(!reference.categories.is_empty(), "families are listed");
     assert!(!reference.tools.is_empty(), "tools are listed");
     assert!(
+        !reference.modules.is_empty(),
+        "the capability modules the functions are filed under are listed"
+    );
+    assert!(
         !reference.functions.is_empty(),
         "responses-as-code functions are listed"
     );
+}
+
+/// **Every function names a module the same document declares.** The API tab is a folder per module
+/// with its functions inside, so a function whose module is not in the list has no folder to sit in
+/// and vanishes from the page while remaining in the payload — the exact failure a regenerated
+/// artifact against a half-converted arm would produce, and one no reader of the page could
+/// diagnose.
+#[test]
+fn every_function_is_filed_under_a_module_the_document_declares() {
+    let reference = reference();
+    let declared: HashSet<&str> = reference.modules.iter().map(|m| m.id.as_str()).collect();
+    for function in &reference.functions {
+        assert!(
+            declared.contains(function.module.as_str()),
+            "function {}.{} is filed under the module `{}`, which the document does not declare",
+            function.module,
+            function.name,
+            function.module
+        );
+    }
+    for module in &reference.modules {
+        assert!(
+            !module.path.trim().is_empty() && !module.summary.trim().is_empty(),
+            "the module `{}` carries the spelling and the line the page renders it by",
+            module.id
+        );
+    }
 }
 
 /// Every tool carries the two things the page exists to show: the prose the model was
@@ -82,7 +113,7 @@ fn every_entry_names_a_category_the_document_defines() {
         assert!(
             categories.contains(function.category.as_str()),
             "function {}.{} names the known family {}",
-            function.object,
+            function.module,
             function.name,
             function.category
         );
@@ -98,21 +129,21 @@ fn every_function_carries_its_signature_and_docs() {
         assert!(
             !function.signatures.is_empty(),
             "{}.{} carries a signature",
-            function.object,
+            function.module,
             function.name
         );
         for entry in &function.signatures {
             assert!(
                 !entry.signature.trim().is_empty(),
                 "{}.{} carries its signature",
-                function.object,
+                function.module,
                 function.name
             );
             for parameter in &entry.parameters {
                 assert!(
                     !parameter.doc.trim().is_empty(),
                     "{}.{}'s `{}` carries its description",
-                    function.object,
+                    function.module,
                     function.name,
                     parameter.name
                 );
@@ -121,13 +152,13 @@ fn every_function_carries_its_signature_and_docs() {
         assert!(
             !function.doc.trim().is_empty(),
             "{}.{} carries its documentation",
-            function.object,
+            function.module,
             function.name
         );
         assert!(
             !function.summary.trim().is_empty(),
             "{}.{} carries its summary",
-            function.object,
+            function.module,
             function.name
         );
     }

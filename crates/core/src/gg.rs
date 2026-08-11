@@ -668,54 +668,78 @@ impl std::fmt::Display for GgModuleDisposition {
     }
 }
 
-/// One namespaced API object a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a
+/// One **capability module** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a
 /// row of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s
 /// [`apis`](GgTelemetryKind::AgentSurface::apis) list.
 ///
-/// An object is present exactly when the agent binds at least one of its functions, so a withheld
-/// capability drops the whole object rather than leaving a named-but-empty one. The
+/// A module is present exactly when the agent binds at least one of its functions, so a withheld
+/// capability drops the whole module rather than leaving a named-but-empty one. The
 /// [description](Self::description) is the same one-line prose the agent's own system prompt names
-/// the object by — the surface reports what the model was told, not a second wording of it.
+/// the module by — the surface reports what the model was told, not a second wording of it.
+///
+/// # Two names, because two readers want different ones
+///
+/// A module has gg's [id](Self::module) for it and the arm's own [spelling](Self::path) of it, and
+/// they are separate fields because they answer to different authorities. Eleven language arms
+/// spell the same module `gg::files`, `gg.files` and `Gg.Files`, so a reader grouping a
+/// cross-language study by the spelling would report one module as three; a reader quoting what the
+/// model actually wrote must use the spelling and nothing else. The id is the same word the
+/// [operation](GgTelemetryKind::ApiCall::operation) ids of its calls are namespaced on, which is
+/// what makes "the calls this agent made in the module it was offered" a join rather than a guess.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentApi {
-    /// The object a program calls through — `fs`, `view`, `harness`.
-    pub object: String,
-    /// The one-line description of the object the agent's system prompt carries.
+    /// gg's cross-arm id for the module — `files`, `views`, `session`.
+    ///
+    /// Empty only on a record written before gg reported one, where the surface was grouped by the
+    /// API object a function hung off and [`path`](Self::path) is all the identity there is.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub module: String,
+    /// This arm's own spelling of the module, and what the model reads — `gg.files`, `gg::files`.
+    pub path: String,
+    /// The one-line description of the module the agent's system prompt carries.
     pub description: String,
-    /// The functions this instance actually binds on the object, in catalogue order — exactly the
+    /// The functions this instance actually binds in the module, in catalogue order — exactly the
     /// catalogue's own entries for it, with nothing appended that the catalogue does not carry.
-    /// Never empty: an object with nothing bound is absent instead.
+    /// Never empty: a module with nothing bound is absent instead.
     pub functions: Vec<GgAgentApiFunction>,
 }
 
-/// One function bound on a [`GgAgentApi`] — what a
+/// One function bound in a [`GgAgentApi`] — what a
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.
 ///
-/// The load-bearing field is [`key`](Self::key): every model-facing call a program makes is recorded
-/// under its **own** identity — the object it hangs off and this key — as an
+/// The load-bearing field is [`operation`](Self::operation): every model-facing call a program makes
+/// is recorded under gg's own identity for it as an
 /// [`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a
-/// bound function to how many times this agent actually called it is a join on `(object, key)` and
-/// on nothing else. No gg tool name appears here, and none is needed: the API surface and the tool
-/// vocabulary are two independent surfaces over one core, and a function no tool backs — a view
-/// call, an ending call, a program-library call — is counted exactly as a function one does.
+/// bound function to how many times this agent actually called it is a join on that one string. No
+/// gg tool name appears here, and none is needed: the API surface and the tool vocabulary are two
+/// independent surfaces over one core, and a function no tool backs — a view call, an ending call, a
+/// program-library call — is counted exactly as a function one does.
+///
+/// Two rows may name one operation. An arm may offer a second way in — the method it hangs off the
+/// type the call operates on, beside the free function every arm has — and both spellings are the
+/// same operation, so both carry the same figure. That is the truth about the run: gg counts what
+/// was done, not which of an arm's synonyms did it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentApiFunction {
     /// The name a program calls it by — `readFile`, `openDocsView`, `finish`.
     pub name: String,
-    /// This function's language-independent identity — `read_file`, `open_docs_view`, `finish` —
-    /// which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it by, so a count
-    /// survives a run whose programs were written in another language with other spellings.
+    /// gg's own identity for what this call does — `files.read_file`, `views.open_docs_view`,
+    /// `session.finish` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it
+    /// by, so a count survives a run whose programs were written in another language with other
+    /// spellings.
     ///
-    /// Absent only on a record written before gg recorded a call per function, where a consumer must
-    /// say the record predates the accounting rather than report a zero: zero accuses the model of
-    /// ignoring what it was offered.
+    /// Absent on a record written before gg recorded a call per function, and on the vanishingly
+    /// rare entry whose arm named an operation gg does not have — in both cases a consumer must say
+    /// there is no count rather than report a zero, since zero accuses the model of ignoring what it
+    /// was offered.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
-    pub key: String,
+    pub operation: String,
 }
 
 /// The stable id of the Phase 2 [compaction] capability: the automatic
@@ -5324,19 +5348,19 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure: Option<GgToolFailure>,
     },
-    /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called a function on one of its
-    /// API objects — the **model-facing** record, emitted once per call the program makes.
+    /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its
+    /// modules offer it — the **model-facing** record, emitted once per call the program makes.
     ///
     /// It is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool
     /// vocabulary are two surfaces over one core, so a call is recorded here under what the *model
-    /// wrote* (`view`.`open_file`) and there under what *ran* (`read_file`), and neither figure is
+    /// wrote* (`views.open_file`) and there under what *ran* (`read_file`), and neither figure is
     /// derived from the other. That independence is the whole reason this event exists: a call no
-    /// tool backs — `view.openText`, `harness.finish`, `programs.get` — has no `ToolCall` to be
+    /// tool backs — `views.openText`, `session.finish`, `programs.get` — has no `ToolCall` to be
     /// counted through, and used to be counted nowhere at all.
     ///
     /// It carries **no arguments**. A bridged call's `ToolCall` already carries them, and a
-    /// carve-out's are either trivial (`harness.finish()`) or enormous
-    /// (`view.openText(label, body)`) — so a second copy would double the stream's largest payloads
+    /// carve-out's are either trivial (`session.finish()`) or enormous
+    /// (`views.openText(label, body)`) — so a second copy would double the stream's largest payloads
     /// to say nothing new.
     ///
     /// Emitted **before** the call runs, so anything the call produces — a delegation's child
@@ -5344,12 +5368,42 @@ pub enum GgTelemetryKind {
     /// [`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent
     /// answering with tool calls rather than programs emits none of these.
     ApiCall {
-        /// The API object the function hangs off — `fs`, `view`, `harness`, `context`.
+        /// The **legacy** grouping gg files the call under — `fs`, `view`, `harness`, `memory`,
+        /// `agents`, `project`, `system`, `review`, `context`, `tasks`, `skills`, `programs`,
+        /// `docs`.
+        ///
+        /// **It does not join to anything, and in particular it is not a
+        /// [module](GgAgentApi::module).** The two vocabularies were written at different times and
+        /// disagree on eight of their twelve entries — a call filed here under `fs` sits in the
+        /// module a surface reports as `files`, `view`/`views`, `harness`/`session`,
+        /// `memory`/`memories`, `agents`/`delegation`, `project`/`board`, `system`/`shell` — so
+        /// grouping `api_call` by this field and looking the groups up among an agent's offered
+        /// modules yields empty folders and reads as *every function was offered and none was
+        /// called*. Join on [`operation`](Self::ApiCall::operation), which is the one key both
+        /// sides carry and the one this pair is retained beside rather than replaced by.
         object: String,
-        /// The function's language-independent identity — `read_file`, `open_file`, `finish` — the
-        /// same [`key`](GgAgentApiFunction::key) the agent's [surface](Self::AgentSurface) reports
-        /// it under, never one language's spelling of it.
+        /// gg's own key for the function within that grouping — `read_file`, `open_file`, `finish`.
+        /// The other half of the legacy pair, and it carries the same caveat
+        /// [`object`](Self::ApiCall::object) does.
         function: String,
+        /// **The cross-arm join key**: gg's [operation](Self::ApiCall::operation) id for what was
+        /// called — `files.read_file` — the same string the agent's
+        /// [surface](GgAgentApiFunction::operation) reports the bound function under.
+        ///
+        /// It is here because eleven arms legitimately spell one operation eleven ways, and by
+        /// design they do: an arm's surface answers to its own language, so `read_file`,
+        /// `readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things
+        /// gg has exactly one name for. A study comparing arms — or comparing two agents of one run
+        /// written in two languages — joins on this and on nothing else.
+        ///
+        /// `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/)
+        /// carve-outs, which no arm's catalogue spells and which therefore name no operation. They
+        /// are already recorded under gg's own words for them, so `object`.`function` reads exactly
+        /// as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
+        /// operations table's to give. Also absent on a stream recorded before gg carried it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        operation: Option<String>,
     },
     /// The [`ApiCall`](Self::ApiCall) beside this one returned.
     ///
@@ -5359,10 +5413,19 @@ pub enum GgTelemetryKind {
     /// a failed call here and a successful one on the tool stream. The API layer is the one the
     /// model experienced.
     ApiResult {
-        /// The API object, repeated so this event stands alone.
+        /// The [legacy grouping](Self::ApiCall::object), repeated so this event stands alone —
+        /// including its caveat: it is not a module id and joins to nothing.
         object: String,
-        /// The function's language-independent identity.
+        /// gg's own key for the function, repeated for the same reason.
         function: String,
+        /// The [operation](Self::ApiCall::operation), repeated for the same reason — and it is the
+        /// repetition that earns its keep here rather than a formality: *how often did this
+        /// operation fail* is a question about results, and answering it by pairing each result
+        /// with the call before it would mean re-deriving a bracket across every child event a
+        /// delegation emitted inside it.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        operation: Option<String>,
         /// Whether the call returned a value to the program rather than throwing into it.
         ok: bool,
         /// The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
@@ -5930,8 +5993,21 @@ pub enum GgTelemetryKind {
     /// The two [execution modes](Self::AgentSurface::execution_mode) offer the same capabilities
     /// through different surfaces, so the payload reports both shapes and each mode fills the one
     /// that describes it: a tool-calling agent is offered tool names, and a responses-as-code agent
-    /// composes those same tools as functions on namespaced [objects](GgAgentApi), which is what
+    /// composes those same tools as functions in capability [modules](GgAgentApi), which is what
     /// [`apis`](Self::AgentSurface::apis) enumerates.
+    ///
+    /// # It is where a within-run comparison reads its arm from
+    ///
+    /// Three of these fields are per-**agent** settings rather than per-run ones — the
+    /// [execution mode](Self::AgentSurface::execution_mode), the
+    /// [program language](Self::AgentSurface::program_language), and the
+    /// [documentation-view type mode](Self::AgentSurface::doc_view_types) — so one run can hold two
+    /// agents that differ in any of them. That is deliberate, and it is what makes an A/B *within*
+    /// one run possible: both arms then share the task, the workspace, the models and the wall
+    /// clock, so a difference between them is a difference the knob made. Every one of the three is
+    /// reported here, on the event emitted once per incarnation, because a study that cannot read
+    /// an agent's arm off the record cannot attribute anything to it — and the run's log is not the
+    /// record.
     AgentSurface {
         /// How this instance answers a turn: `tool_calling`, or `responses_as_code` when the
         /// [capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent
@@ -5947,6 +6023,29 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "contract", ts(optional))]
         program_language: Option<GgProgramLanguage>,
+        /// Which SDK types an `openDocsView` of a function opens **beside** it for this instance —
+        /// `off` (none), `return` (the return position, the default), or `return-and-parameters`
+        /// (everything the signature names). `None` for a tool-calling instance, which opens no
+        /// documentation views, and on a stream recorded before gg reported the mode.
+        ///
+        /// The value is the mode gg **resolved**, never the string the profile wrote: an unreadable
+        /// one falls back to the default and is warned about at launch, and reporting the raw text
+        /// here would file that run under an arm it was never on.
+        ///
+        /// It is reported for one reason, and the reason decides the field rather than decorating
+        /// it. The three modes are meant to be compared against each other — opening the return
+        /// type is not obviously cheaper than opening nothing, since a returned record's own fields
+        /// may send the agent back for two more lookups — and the comparison is only worth anything
+        /// if a reader of the events can tell which arm an agent was on. Joined by
+        /// [`agent_id`](GgTelemetryEvent::agent_id) to that agent's per-band
+        /// [context breakdown](Self::ContextBreakdown) — the
+        /// [documentation band](GgContextSource::DocsView) and the
+        /// [search band](GgContextSource::SearchResults) beside it — and to its
+        /// `views.open_docs_view` [calls](Self::ApiCall), it is what makes *"which mode was this
+        /// agent on, and what did it cost"* answerable from the stream alone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        doc_view_types: Option<String>,
         /// Every gg tool name this instance is offered, in the order the model is shown them: the
         /// registry's tools in registration order, then the ending calls its dispatched role may
         /// end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
@@ -5960,7 +6059,7 @@ pub enum GgTelemetryKind {
         /// tools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under
         /// these names.
         tools: Vec<String>,
-        /// The namespaced API objects a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
+        /// The capability modules a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
         /// binds, in the order the system prompt lists them. Empty for a tool-calling agent, which
         /// has no such surface — not merely unknown for one.
         // Omitted from the wire whenever it is empty, which is every tool-calling agent — so it has

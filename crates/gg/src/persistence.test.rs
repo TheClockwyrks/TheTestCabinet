@@ -615,8 +615,27 @@ fn a_documentation_view_is_recorded_by_key_and_re_rendered() {
 
     // Idempotent by construction, and for a stronger reason than the text half's: re-opening a key
     // that is already open is a no-op rather than a supersede, so nothing moves either.
-    restore_docviews(&mut next, &recorded.docviews, &docs);
+    assert_eq!(
+        restore_docviews(&mut next, &recorded.docviews, &docs),
+        0,
+        "the count is what arrived, not what was attempted: nothing came back, so the note this \
+         number is written into must not claim two views did"
+    );
     assert_eq!(next.open_docviews(), window.open_docviews());
+
+    // The mixed case, which is the one a real code agent is always in: the `bootstrap` turn puts
+    // its key in the window before this restore runs, so a desk that holds it plus one more must
+    // report one.
+    let mut seeded = context();
+    seeded.open_docview(
+        "readFile".to_string(),
+        docs.read("readFile").expect("readFile is bound"),
+    );
+    assert_eq!(
+        restore_docviews(&mut seeded, &recorded.docviews, &docs),
+        1,
+        "the key already open is a no-op and the other is a placement"
+    );
 }
 
 /// **A key this instance's scope does not bind is skipped, not restored.**

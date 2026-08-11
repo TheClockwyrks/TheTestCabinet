@@ -96,8 +96,11 @@ public static partial class Views
     /// and closes like anything else.
     /// </remarks>
     /// <param name="name">
-    /// The name a program calls the function by — <c>ReadFile</c>, <c>CreateIssue</c>,
-    /// <c>Finish</c>. Searching the documentation is what says which names exist.
+    /// The fully-qualified name the function's documentation is keyed by —
+    /// <c>"Gg.Files.ReadFile"</c>. The name a program calls it by (<c>"ReadFile"</c>) also resolves
+    /// and is a fallback rather than the form to reach for: two modules are free to declare a
+    /// <c>Close</c>, and only the qualified name says which one is meant. Searching the
+    /// documentation is what says which names exist.
     /// </param>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.NotFound"/> for a name no function on this surface has.

@@ -61,7 +61,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_PERSISTENCE, GgAgentConfig, GgProgramLanguage, GgTelemetryKind,
 };
 
-use crate::context::{ContextModel, OpenFileView, OpenTextView, Retention};
+use crate::context::{ContextModel, DocviewOpen, OpenFileView, OpenTextView, Retention};
 use crate::docs::DocsRuntime;
 use crate::model::ToolCall;
 use crate::sandbox::FileWindow;
@@ -393,15 +393,23 @@ pub fn restore_text_views(context: &mut ContextModel, views: &[OpenTextView]) ->
 ///
 /// No skip-if-already-open pass, for the reason the text half has none and a stronger one:
 /// [`open_docview`](ContextModel::open_docview) is a no-op on a key that is open, so the restore is
-/// idempotent by construction. Returns how many were re-opened.
+/// idempotent by construction.
+///
+/// Returns how many views actually **arrived**, which is not the same as how many keys were tried
+/// and is the number the [note](restore_note) reports to an operator. Every code agent's saved desk
+/// holds the [bootstrap](crate::bootstrap) key — the bootstrap is seeded first of all the opening
+/// steps and this restore runs last of them, so by the time it reaches that key the view is already
+/// in the window — and counting the no-op would tell the operator a view came back when nothing did.
+/// With a longer desk the note would be over by exactly the number of bootstrap keys.
 pub fn restore_docviews(context: &mut ContextModel, keys: &[String], docs: &DocsRuntime) -> usize {
     let mut restored = 0;
     for key in keys {
         let Some(body) = docs.read_any(key) else {
             continue;
         };
-        context.open_docview(key.clone(), body);
-        restored += 1;
+        if let DocviewOpen::Placed { .. } = context.open_docview(key.clone(), body) {
+            restored += 1;
+        }
     }
     restored
 }

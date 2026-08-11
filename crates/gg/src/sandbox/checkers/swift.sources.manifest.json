@@ -3,12 +3,12 @@
   "rebuild": "packages/gg-sandbox-swift/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/checkers/swift.guest.tar.gz": {
-      "bytes": 180441,
-      "sha256": "0c8e945d5aa2882f4a02ab5d3b9e8c85216d1a46312415355121c078acc87fcc"
+      "bytes": 180476,
+      "sha256": "220e0fe397cd6377c2a0caefe674d7c36a745bfcc85eb092ae820d59e4c2c331"
     },
     "crates/gg/src/sandbox/checkers/swift.libraries.tar.gz": {
-      "bytes": 3437911,
-      "sha256": "b3a9c95802894bccd80a9e5e5dd845b17dd99a64610827b9198cfa8d88951792"
+      "bytes": 3437962,
+      "sha256": "b6caa036e09cda408a8da7d96868fde1133e79d51af5f5f8e9434bf615e885ff"
     },
     "crates/gg/src/sandbox/checkers/swift.adapter.wasm": {
       "bytes": 52238,
@@ -42,7 +42,7 @@
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Shell.swift": "9a43a3ea4f34e5a094645df45605f6e204260fb3055986f4053404de58446326",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Skills.swift": "d3a00674833cb08ac6700997e70f3c7bf473b3fe73830c62ba766a731b586f82",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Tasks.swift": "fb45c6afcc03f05482c4ff0e62f1dc7aa8c2f6fd110cbc78b202ee5bd2d4891f",
-    "packages/gg-sandbox-swift/Sources/SDK/Modules/Views.swift": "9893ce316578fa9bb73b7b9f2218e1b085cfe9519c4c01e5eb8f2012bd1020e4",
+    "packages/gg-sandbox-swift/Sources/SDK/Modules/Views.swift": "c5d0b64640e56dd32c2ff47cb4548471b9ef502975b697db496b5ff441e02f4b",
     "packages/gg-sandbox-swift/Sources/gg-shell.h": "f39e7e021159caab032d74a3fcd816e16acb883fb94999f035ac9b5449def6ba",
     "packages/gg-sandbox-swift/Sources/shell.swift": "290f537855fc6a866984071530d74cd8655bf1056ad39fd61dc134950f6fa88c",
     "packages/gg-sandbox-swift/build.sh": "e26335b097ad14da66fe82e4bde83882d17d4fc115bec66ec6904f008d2ab338",

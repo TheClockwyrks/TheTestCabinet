@@ -18,9 +18,9 @@ The telemetry must let the console display:
 - For each agent, whether it is **actively executing or blocked** waiting on other
   agents.
 - For each agent, **what it was offered to call** — the toolset gg resolved for it, or
-  the API objects a [code-shaped](/gg/responses-as-code/) agent's programs bind — because
-  a tool that was never on the table and a tool the model ignored are otherwise the same
-  silence (see [below](#what-an-agent-is-offered)).
+  the capability modules a [code-shaped](/gg/responses-as-code/) agent's programs bind —
+  because a tool that was never on the table and a tool the model ignored are otherwise the
+  same silence (see [below](#what-an-agent-is-offered)).
 - Every **succession** — an [`exec`](/gg/fork-and-exec/), a `fork`, or an
   [FSM transition](/gg/fsms/). One `agent_transition` on the outgoing instance's stream
   carries what happened to each [module](/gg/modules/) — one row per kind naming its
@@ -212,14 +212,16 @@ identically down to the order of the cards) reads a run through these surfaces:
   event rather than re-read from the configuration, so a `disabledTools` entry that
   names nothing gg offers is never shown here as an applied ablation. A code agent reads
   the same thing through its
-  objects: one card per object, carrying the one-line description its own system prompt
-  introduced the object by, over the functions this instance bound, each carrying **its
+  modules: one card per module, carrying the one-line description its own system prompt
+  introduced the module by, over the functions this instance bound, each carrying **its
   own** count. No gg tool name appears anywhere on that file: gg records a model-facing
-  call under the function the model wrote, so a view call, a documentation lookup, an
+  call under the **operation** it resolved to, so a view call, a documentation lookup, an
   ending call and a [program-library](/gg/program-library/) call are counted exactly as a
   file read is, and three functions over one core
-  (`fs.readFile`, `fs.readTextFile` and `view.openFile` all run a `read_file`) are three
-  figures rather than one shared between them. The only row with no figure at all is one
+  (`files.readFile`, `files.readTextFile` and `views.openFile` all run a `read_file`) are
+  three figures rather than one shared between them. The card also names the
+  **documentation mode** this instance ran under — the arm of the per-agent A/B described
+  below — because the tokens that mode cost are this agent's own. The only row with no figure at all is one
   read off a record written **before** gg counted per function — a fact about the record,
   said as one on hover, since a zero there would accuse the model of ignoring everything
   it was given.
@@ -330,11 +332,30 @@ two are separate surfaces over one core of typed functions, so a program's `view
 runs a `read_file`, a `fs.readTextFile` runs the same one, and a `context.list` runs nothing
 at all. gg therefore records the model-facing call in its own right:
 
-- **`api_call`** / **`api_result`** — one pair per call a program makes, naming the API
-  `object` and the function's language-independent `function` key (`view` / `open_file`),
-  and nothing else. No tool name, and no arguments: the `ToolCall` beside a bridged call
-  already carries those, and a carve-out's are either trivial (`list("fs")`) or enormous
-  (`view.openText(label, body)`). The opening half is emitted **before** the call runs, so a
+- **`api_call`** / **`api_result`** — one pair per call a program makes, naming the
+  **`operation`** it resolved to (`files.read_file`) beside the older grouping and key gg
+  files it under (`fs` / `read_file`), and nothing else. No tool name, and no arguments: the
+  `ToolCall` beside a bridged call already carries those, and a carve-out's are either
+  trivial (`session.finish()`) or enormous (`views.openText(label, body)`).
+
+  The `object` / `function` pair is **legacy, and joins to nothing.** It predates the module
+  vocabulary and disagrees with it on eight of its twelve entries — `fs` against the module
+  `files`, `view` against `views`, `harness` against `session`, `memory` against `memories`,
+  `agents` against `delegation`, `project` against `board`, `system` against `shell` — so
+  grouping `api_call` by `object` and looking those groups up among an agent's `apis` finds
+  nothing and reads as *every function was offered and none was called*. It is kept because
+  it is what older records carry and because it is the whole identity of a carve-out; it is
+  not a key.
+
+  The `operation` is the field a study joins on, and it exists because eleven
+  [language arms](/gg/program-languages/) legitimately spell one surface eleven ways: a
+  program that wrote `readFile`, one that wrote `read_file` and one that wrote `ReadFile`
+  are one operation, `files.read_file`, and it is the same string the agent's own
+  `agent_surface` reports the bound function under. The two
+  [documentation](/gg/responses-as-code/) carve-outs are the one population with no
+  operation — no arm's catalogue spells them, so gg has no row to name — and they are
+  recorded under gg's own words for them, which read exactly as an operation id does
+  (`docs`.`search`). The opening half is emitted **before** the call runs, so a
   bridged `tool_call`/`tool_result` pair and a delegation's whole subtree of child events
   land inside the bracket. `ok` is the verdict the *program* saw, settled after the result
   was converted into what it was handed — which can legitimately differ from the
@@ -348,10 +369,11 @@ question a [toolset ablation](/gg/toolset-ablation/) is run to answer. So the of
 is its own event, the other half of the pair `agent_modules` opens:
 
 - **`agent_surface`** — the **offered set**: how the instance answers a turn
-  (`executionMode`, `tool_calling` or `responses_as_code`), every gg tool it was offered
-  (`tools`), for a [responses-as-code](/gg/responses-as-code/) agent the namespaced
-  API objects its programs bind (`apis`), and the ablation gg really applied to it
-  (`withheld`). Emitted **once per incarnation, for every
+  (`executionMode`, `tool_calling` or `responses_as_code`), which language its programs are
+  written in (`programLanguage`) and which SDK types its documentation lookups opened beside
+  a function (`docViewTypes`), every gg tool it was offered (`tools`), for a
+  [responses-as-code](/gg/responses-as-code/) agent the capability modules its programs bind
+  (`apis`), and the ablation gg really applied to it (`withheld`). Emitted **once per incarnation, for every
   instance** — the root, every subagent, every successor — immediately after that
   instance's `agent_modules`, and **un-gated**: an agent offered nothing at all still says
   so, which is a finding rather than an absence. It is never re-emitted, for the same
@@ -366,7 +388,7 @@ is its own event, the other half of the pair `agent_modules` opens:
   `disabledTools` [ablation](/gg/toolset-ablation/) that strikes a tool whose capability is
   on. Re-deriving it from the run's capability set can know none of those, which is why it
   is a fact the run reports rather than one a console computes. It is populated in **both**
-  execution modes: a code agent reaches these same tools through its objects, and its calls
+  execution modes: a code agent reaches these same tools through its modules, and its calls
   are recorded under these names.
 
   It ends with the **ending calls** the agent's dispatched role may finish on — `finish`,
@@ -376,27 +398,60 @@ is its own event, the other half of the pair `agent_modules` opens:
   *"was `finish` offered?"* with silence.
 
   `apis` is present only for a code agent — empty for a tool-calling one, which has no such
-  surface rather than an unknown one. One entry per object (`fs`, `view`, `harness`),
-  carrying the same one-line description the agent's own system prompt introduced the
-  object by and the functions this instance actually bound; an object nothing bound is
-  absent rather than listed empty. What is reported is exactly the catalogue's own entries:
-  nothing is appended that no SDK declaration produced, so the read-out and what a program's
-  scope really binds are one projection of one array. Each function names its own
-  language-independent **key** (`read_file`, `open_file`, `finish`), and that field
-  is the load-bearing one: every call a program makes is recorded as an `api_call` under
-  exactly that key, so it is the join from a bound function to how many times *it* was
-  called. No gg tool name appears here at all. A responses-as-code agent does not call
-  tools — it writes `view.openFile`, and the `read_file` underneath is gg's business — so
-  naming one would report a call the model never made.
+  surface rather than an unknown one. One entry per **capability module**, named twice: gg's
+  cross-arm id for it (`module`: `files`) and this arm's own spelling of it (`path`:
+  `gg.files` in TypeScript, `gg::files` in Rust). Both are there because they answer to
+  different authorities — a reader comparing two language arms groups by the id, and a
+  reader quoting what the model wrote must use the spelling. Each entry carries the
+  one-line description the agent's own system prompt introduced the module by and the
+  functions this instance actually bound; a module nothing bound is absent rather than
+  listed empty. What is reported is exactly the catalogue's own entries: nothing is appended
+  that no SDK declaration produced, so the read-out and what a program's scope really binds
+  are one projection of one array. Each function names the **operation** it serves
+  (`files.read_file`, `views.open_docs_view`, `session.finish`), and that field is the
+  load-bearing one: every call a program makes is recorded as an `api_call` under exactly
+  that id, so it is the join from a bound function to how many times *it* was called. No gg
+  tool name appears here at all. A responses-as-code agent does not call tools — it writes
+  `views.openFile`, and the `read_file` underneath is gg's business — so naming one would
+  report a call the model never made.
 
-  The join is at the grain of the **function**, which is what makes the two halves of the
+  The join is at the grain of the **operation**, which is what makes the two halves of the
   contrast trustworthy in both directions. A function with no tool behind it is counted like
   any other, so an ending call and a view call have figures instead of blanks; and
-  three functions over one core (`fs.readFile`, `fs.readTextFile`, `view.openFile` all run a
-  `read_file`) are three figures, so a function the model genuinely ignored reads as ignored
-  rather than inheriting its neighbour's calls. The only entry with no figure is one from a
-  record written *before* gg counted per function, and the console says exactly that — a
-  zero there would accuse the model of ignoring what it was given.
+  three functions over one core (`files.readFile`, `files.readTextFile`, `views.openFile`
+  all run a `read_file`) are three figures, so a function the model genuinely ignored reads
+  as ignored rather than inheriting its neighbour's calls. Where one arm offers two
+  spellings of one operation — a method beside the free function — both rows carry the same
+  figure, because gg counts what was done rather than which synonym did it. The only entry
+  with no figure is one from a record written *before* gg counted per function, and the
+  console says exactly that — a zero there would accuse the model of ignoring what it was
+  given.
+
+  `executionMode`, `programLanguage` and `docViewTypes` are all **per agent**, and that is
+  what makes a within-run comparison possible: one run may drive its root in one language
+  and at one documentation mode and a subagent in another, so both arms share the task, the
+  workspace, the models and the wall clock. Each instance reports its own, so answering
+  *"which arm was this agent on, and what did it cost?"* is a join by `agentId` from this
+  event to that agent's `context_breakdown` bands (`docs_view` and `search_results`) and to
+  its `api_call` counts — no configuration re-reading, and no run-level dimension that would
+  have to pick one of the two arms to name.
+
+  Two caveats a study has to carry, because both figures read plausibly while meaning
+  something other than what they look like:
+
+  - **`search_results` is reserved and reads zero for every run today**, and so does any
+    count of `docs.search` calls. The host implements the search and the membrane records
+    it, but no [language arm](/gg/program-languages/) publishes it in its SDK yet, so no
+    program can reach it. A study that reported *the agents never searched* from those
+    figures would be reporting something they could not do rather than something they chose
+    not to.
+  - **`api_call` counts lookups, not the views a lookup placed** — and views per lookup is
+    exactly what `docViewTypes` changes. One `openDocsView` is one `api_call` under every
+    mode, while it places the function's view alone under `off` and that view plus the types
+    the mode selects otherwise. To count what a lookup actually cost, read the placed views:
+    each is a `context_message` on the `docs_view` band whose `label` names what it
+    documents and whose `tokens` say what it cost, and each turn's `prompt` event points at
+    the ones resident that turn.
 
   `withheld` is the other side of `tools`: what this instance's per-agent
   `disabledTools` [ablation](/gg/toolset-ablation/) actually took away, which is the

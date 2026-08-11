@@ -413,6 +413,52 @@ fn cache_breakpoints_snap_the_rolling_markers_to_a_stable_grid() {
     assert_eq!(cache_breakpoints(&messages), vec![1, 16, 24, 27]);
 }
 
+/// **The anchor stops at the first assistant turn even when the opening context continues past it**
+/// — the shape a [responses-as-code](crate::bootstrap) run is always in, pinned so that it is a
+/// known consequence rather than a surprise.
+///
+/// Every other breakpoint test opens on a bare `[system, user]`, where the anchor lands at index 1
+/// either way and the two modes are indistinguishable. A code agent's window is not that shape: the
+/// bootstrap pushes a synthesized assistant turn immediately after the build prompt, and the
+/// documentation views it opened, the hook notes, the autoloaded specifications and a persistent
+/// agent's restored desk all arrive *after* it. So the anchor names a two-message prefix rather than
+/// the whole preamble.
+///
+/// Nothing goes uncached by it: what the anchor stops short of is a prefix of what the next marker
+/// covers, which is what the second half asserts. The transport is pure over messages and a
+/// synthesized assistant turn is indistinguishable from a real one on the wire, so this is where
+/// that layering lands rather than a placement bug — see [`cache_breakpoints`].
+#[test]
+fn the_anchor_stops_at_a_synthesized_assistant_turn() {
+    let mut messages = vec![
+        Message::system("sys"),
+        Message::user("build it"),
+        // The bootstrap's synthesized program, and the documentation view it opened.
+        Message::assistant(Some("gg.views.openDocsView(...)".to_string()), vec![]),
+        Message::user("Documentation: gg.views.openDocsView"),
+    ];
+    for spec in 0..4 {
+        messages.push(Message::user(format!("Specification: spec-{spec}")));
+    }
+    assert_eq!(
+        cache_breakpoints(&messages),
+        vec![1, 7],
+        "the anchor is the build prompt, and the tail covers everything seeded after the bootstrap"
+    );
+
+    // With the thread under way the grid points take over, and the earliest of them still covers
+    // every opening message the anchor did not.
+    for turn in 0..12 {
+        messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
+    }
+    let breakpoints = cache_breakpoints(&messages);
+    assert_eq!(breakpoints, vec![1, 8, 16, 19]);
+    assert!(
+        breakpoints[1] >= 7,
+        "the opening context ends at 7, so the first rolling marker covers all of it: {breakpoints:?}"
+    );
+}
+
 /// A long thread never exceeds Anthropic's four-breakpoint cap, whatever its shape — exceeding it
 /// is a hard request error, so this is a bound and not a preference.
 #[test]

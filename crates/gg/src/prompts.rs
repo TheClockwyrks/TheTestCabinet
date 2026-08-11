@@ -41,13 +41,28 @@
 //! [`render_memories`]) are then pure **state** — a heading and the current items — rather than
 //! re-teaching the tools on every turn they are refreshed.
 //!
-//! # The prompt does not describe the API — the model discovers it
+//! # The prompt names no functions at all — the model discovers them
 //!
-//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt names the
-//! [API objects](SystemContext::apis) a program has (`fs`, `project`, `harness`, …) and how to
-//! inspect them — searching, and `view.openDocsView()` — rather than listing every signature up front.
-//! The signatures and documentation live behind the [docs carve-out](crate::docs), reflected from
-//! the SDK's own declarations, so a description the sandbox cannot back can never reach a model.
+//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt names
+//! **no call**. Each capability section says that the agent has the capability, what it is for and
+//! how it behaves, and stops there; the signatures and documentation live behind the
+//! [docs carve-out](crate::docs), reflected from the SDK's own declarations, and are reached by
+//! searching for them and opening a documentation view.
+//!
+//! The one vocabulary the prompt does supply is the [capability modules](SystemContext::modules) a
+//! program's surface is divided into (`gg::files`, `gg.board`, `Gg.Memories`, …). That is
+//! deliberate and it is load-bearing: with no directory call and no function named anywhere, a
+//! module path is the agent's only entry point, and it turns the first hop of discovery from a
+//! ranking problem into an exact lookup — *show me this module*. Everything after it is search,
+//! briefs, and a documentation view.
+//!
+//! Two things follow for anyone editing a template. A sentence that quotes a call is not a stale
+//! sentence, it is a **banned** one — `prompts.spellings.test.rs` fails the build over it — because
+//! a name written here is a name nothing keeps in step with the SDK that declares it, and because
+//! naming one call while eleven others are discovered is a bias in a study that measures discovery.
+//! And a capability whose calls a model cannot *find* is, from outside, indistinguishable from one
+//! the run withheld — which is why `docs.discoverability.test.rs` is a first-class gate rather than
+//! a nicety.
 //!
 //! # The prose gg *does* author, and why it is versioned like code
 //!
@@ -80,7 +95,6 @@
 //! agent must do — and stops there. It does **not** teach the agent how to end its session: the
 //! ending calls are in the system prompt already, and are the only ones that agent's role has.
 
-use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use handlebars::{Handlebars, RenderError};
@@ -100,9 +114,8 @@ const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs"
 // `system-code.<language id>` by [`engine`].
 //
 // It carries the same capability sections as the tool-calling arm plus the code-protocol framing
-// (the reply *is* a program, discovery through search and `view.openDocsView()`, the message
-// headings), with each capability's calls named in their grouped form — methods on an API object
-// (`tasks.addTask`, `agents.spawnSubagent`, `project.createEpic`) rather than free-standing tools.
+// (the reply *is* a program, how the modules are reached, how documentation is discovered, the
+// message headings) — describing each capability rather than naming the calls behind it.
 //
 // # Why per language, rather than one template with a language block
 //
@@ -112,11 +125,11 @@ const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs"
 // line, and adding a language would mean editing the one file every language shares: the opposite
 // of additive.
 //
-// What a template does **not** carry is a single function *name*. Every call it quotes is resolved
-// from that language's committed catalogue at render time, through the `api` variables
-// [`spellings`] builds — `{{api.view.open_text.signature}}`, never
-// `view.openText(label, body)`. That is the rule the whole surface follows: nothing a model reads
-// about the SDK is written anywhere but on the declaration it describes.
+// What a template does **not** carry is a single function *name*, in any form: not typed by hand,
+// and not resolved from the catalogue either. The vocabulary a template may write is the
+// [module paths](SystemContext::modules) the run's own catalogue publishes, interpolated from the
+// context, and nothing finer. That is the rule the whole surface follows: what a model reads about
+// a function is read where that function is declared, at the moment the model asks for it.
 //
 // Two further reasons. The template is **operator-facing product surface** —
 // [`default_system_prompt_template_code`] seeds the console's override editor — and an operator
@@ -295,55 +308,31 @@ fn engine() -> &'static Handlebars<'static> {
 }
 
 // ---------------------------------------------------------------------------
-// The SDK's spellings, as a template reads them
+// What a template may read out of the arm's own artifact
 // ---------------------------------------------------------------------------
 
-/// How one function is written, in the three forms a prompt ever needs to quote it in.
+/// The facts about one arm's artifact that a template interpolates rather than restates.
 ///
-/// Every field is read out of the language's committed [catalogue](crate::sandbox), never authored:
-/// a template that wanted to say `view.openText(label: string, body: string): void` writes
-/// `{{api.view.open_text.signature}}` and gets whatever that language's SDK actually declares —
-/// including, when the SDK is wrong, nothing at all, because a name the catalogue does not carry is
-/// a strict-mode render failure rather than a sentence quietly describing a call that does not
-/// exist.
-#[derive(Debug, Serialize)]
-struct CallSpelling {
-    /// The bare name a program calls (`openText`) — for the places a prompt quotes a function's
-    /// name as a string argument.
-    name: String,
-    /// The name qualified by its object (`view.openText`) — how a program actually writes the call.
-    call: String,
-    /// The qualified signature (`view.openText(label: string, body: string): void`) — the first
-    /// shape the language offers the function in.
-    ///
-    /// The *first*, where a language offers several: an overload group's shapes are all correct and
-    /// a prompt quoting every one of them in a sentence would be a paragraph. The full set is what a
-    /// documentation lookup renders, which is the place a model goes when the shape is the question.
-    signature: String,
-}
-
-/// The whole model-facing surface as one language spells it, keyed the only way a template may key
-/// it: by gg's own language-independent identity.
+/// This used to be the whole model-facing surface, keyed by gg's own identity for each call, so that
+/// a template could quote `{{api.view.open_text.signature}}` and get whatever that language's SDK
+/// declared. That namespace is **gone**, with the design it served: the prompt names no function at
+/// all, so there is nothing left for a call-spelling map to be quoted into, and keeping one would be
+/// keeping the loaded gun of a template that *could* name a call.
 ///
-/// `api.<object>.<key>` — `{{api.programs.rerun.call}}`, `{{api.system.shell.signature}}` — where
-/// `<object>` and `<key>` are exactly the pair a [`SurfaceCall`](crate::sandbox::SurfaceCall) names.
-/// A template therefore never contains a spelling, and a language that renamed a function renames it
-/// in every prompt with nothing to keep in step.
-///
-/// There is no second namespace beside it. `meta.<key>` used to carry the functions that hung off
-/// no object, and `list` was the whole of that vocabulary; with the directory deleted every
-/// model-facing call a template can name hangs off something, so one namespace covers the surface.
+/// What survives is the one thing that is a fact about the arm rather than about a function.
 #[derive(Debug, Serialize)]
 struct Spellings {
-    /// Every catalogued function, by object then key.
-    api: BTreeMap<&'static str, BTreeMap<&'static str, CallSpelling>>,
     /// The [libraries](crate::sandbox::LibraryGroup) this language's programs may import, in the
     /// groups its own artifact files them under — `{{#each libraries}}- {{group}}: {{modules}}`.
     ///
-    /// Here for the reason [`api`](Self::api) is: what a model may reach for is a fact about the
+    /// Interpolated rather than written out because what a model may reach for is a fact about the
     /// arm's artifact, and a template that listed it in prose would be a second copy of that fact
     /// with nothing to keep it honest. Empty for a language whose catalogue declares none, in which
     /// case its `{{#if libraries}}` section renders nothing at all.
+    ///
+    /// It is not a counter-example to the no-names rule: a library is a *dependency the program may
+    /// import*, declared by the arm's build rather than by gg, and none of them is a call gg's
+    /// documentation surface describes. The rule is about gg's own functions.
     libraries: Vec<LibraryGroupSpelling>,
 }
 
@@ -361,11 +350,11 @@ struct LibraryGroupSpelling {
     modules: String,
 }
 
-/// A context with its language's spellings folded in, which is what every language-specific template
-/// is rendered against.
+/// A context with its language's artifact facts folded in, which is what every language-specific
+/// template is rendered against.
 ///
-/// Flattened rather than nested so a template reads `{{api.…}}` beside `{{ending.…}}` and neither
-/// knows the other arrived by a different route.
+/// Flattened rather than nested so a template reads `{{libraries}}` beside `{{ending.…}}` and
+/// neither knows the other arrived by a different route.
 #[derive(Debug, Serialize)]
 struct Spelled<'a, T> {
     #[serde(flatten)]
@@ -374,43 +363,13 @@ struct Spelled<'a, T> {
     spellings: Spellings,
 }
 
-/// Every spelling `language`'s committed catalogue carries, in the shape a template addresses them.
+/// What `language`'s committed catalogue contributes to a render, in the shape a template addresses
+/// it.
 ///
-/// Built per render rather than cached: it is one walk of a 47-entry catalogue against a prompt that
-/// is assembled once per turn, and a cache keyed by language would be a second copy of the catalogue
-/// to invalidate.
+/// Built per render rather than cached: it is a walk of one short list against a prompt that is
+/// assembled once per turn, and a cache keyed by language would be a second copy of the catalogue to
+/// invalidate.
 fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
-    let mut api: BTreeMap<&'static str, BTreeMap<&'static str, CallSpelling>> = BTreeMap::new();
-    // How this language joins an object to one of its functions: `.` everywhere but Rust, where an
-    // API object is a module and the step is `::`.
-    let separator = language.member_separator();
-    for function in crate::sandbox::catalogue_functions(language) {
-        // A template addresses a call by gg's OWN identity — `{{api.view.open_text.call}}` — and
-        // renders the ARM's spelling of it. Those are two different strings on a converted arm,
-        // where the entry is grouped under a module path rather than under gg's object, so the key
-        // is taken from the operation and the rendered call from the entry beside it.
-        let Some(operation) = crate::sandbox::operation_of(&function) else {
-            continue;
-        };
-        let call = format!("{}{separator}{}", function.object, function.name);
-        let signature = match function.signatures.first() {
-            Some(entry) => format!("{}{separator}{}", function.object, entry.signature),
-            None => call.clone(),
-        };
-        // An alias is a second way to reach one operation, so it must not displace the canonical
-        // binding under the key both of them answer to.
-        if function.alias_of.is_some() {
-            continue;
-        }
-        api.entry(operation.call.object).or_default().insert(
-            operation.call.key,
-            CallSpelling {
-                name: function.name.to_string(),
-                call,
-                signature,
-            },
-        );
-    }
     let libraries = language
         .catalogue()
         .libraries
@@ -420,23 +379,19 @@ fn spellings(language: &dyn crate::sandbox::ProgramLanguage) -> Spellings {
             modules: group.modules.join(", "),
         })
         .collect();
-    Spellings { api, libraries }
+    Spellings { libraries }
 }
 
 /// The plain sentence a code turn that showed itself nothing degrades to when its notice template
 /// fails to render.
 ///
-/// Written here rather than authored per language because the *sentence* is gg's — it explains what
-/// a view is for — while the two calls in it are the language's, resolved from its catalogue like
-/// every other call gg quotes. A turn with degraded wording is recoverable where a panicked run is
-/// not.
-pub(crate) fn nothing_shown_fallback(language: &dyn crate::sandbox::ProgramLanguage) -> String {
-    format!(
-        "Your program ran and put nothing in your context. Open a view to see something: `{}` for \
-         a value you computed, `{}` for a file.",
-        crate::sandbox::spell(language, crate::sandbox::VIEW_OPEN_TEXT),
-        crate::sandbox::spell(language, crate::sandbox::VIEW_OPEN_FILE),
-    )
+/// One sentence for every arm, because there is nothing language-specific left in it to author: the
+/// notice says what a view is *for*, and the calls that open one are the model's to find. A turn
+/// with degraded wording is recoverable where a panicked run is not.
+pub(crate) fn nothing_shown_fallback() -> String {
+    "Your program ran and put nothing in your context. A value your program computed is not \
+     something you can read; open a view of it and it arrives on your next turn."
+        .to_string()
 }
 
 /// Render the registered template `name` with `context`, trimmed.
@@ -516,19 +471,27 @@ pub struct SystemContext {
     /// or ignore it deliberately, for a value none of them has anything to say about.
     #[serde(skip)]
     pub language: Option<GgProgramLanguage>,
-    /// The API objects a code program has this run, each with a one-line description — the section
-    /// the prompt names so a model knows which vocabulary its searches can use. Empty on the
-    /// tool-calling path (where tools are in the request); on the code path it always carries at
-    /// least `harness`. Not the *functions* — those are discovered on demand by searching and then
-    /// `view.openDocsView()`, which is the whole point of the redesign — only the objects and what each is for.
+    /// The capability **modules** a code program's surface is divided into this run, each with the
+    /// line its own declaration introduces it by — and **the only vocabulary the prompt supplies**.
+    ///
+    /// Not the functions: those are discovered on demand, by searching for one and opening its
+    /// documentation, which is the whole point of the redesign. A module path is what makes that
+    /// safe rather than a guessing game — it is an exact lookup into the surface, so the first hop
+    /// of discovery cannot be lost to a ranking, and an agent that knows nothing else knows where to
+    /// start.
+    ///
+    /// Empty on the tool-calling path, where the tools are in the request and there is no module
+    /// structure to name; on the code path it always carries at least the module that puts material
+    /// into the agent's own window, since a run with no tools at all must still be able to show its
+    /// model something.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub apis: Vec<ApiView>,
+    pub modules: Vec<ModuleView>,
     /// The [message headings](crate::context::code_heading) this run's synthesized `user` messages
     /// can carry — the vocabulary the prompt names so a model reading a plain-text transcript knows
     /// what a `Task`, an `Output`, or a `Memories` block in front of it is. Empty on the tool-calling
     /// path (message kinds are carried by role there); on the code path it lists the base headings
     /// plus one per enabled capability that synthesizes a message kind of its own — the same
-    /// per-capability gating [`apis`](Self::apis) and every other section follows.
+    /// per-capability gating [`modules`](Self::modules) and every other section follows.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub code_headings: Vec<CodeHeadingView>,
     /// Whether this agent keeps a [program library](crate::programs) — the
@@ -713,16 +676,32 @@ pub struct CodeHeadingView {
     pub description: String,
 }
 
-/// One API object a code program has, as the system prompt names it: the object identifier a
-/// program reaches (`fs`) and a one-line description of what it is for. The functions on it are not
-/// listed — the model discovers those by searching and then `view.openDocsView()`.
+/// One capability module a code program's surface is divided into, as the system prompt names it:
+/// the path this language spells it under, the line it is introduced by, and the import that brings
+/// it into scope where the arm needs one.
+///
+/// The functions in it are not listed. That is the redesign in one struct: a model is given the
+/// places its surface is filed under and finds the calls itself.
+///
+/// Every field is the **catalogue's**, reflected from the doc comment written on the module's own
+/// declaration in the guest SDK — the same material a documentation search and the
+/// [reference](crate::reference) render. Nothing about a module is authored in a template, because a
+/// sentence written there would be a second copy of prose the model also meets by two other routes,
+/// with nothing to keep the copies equal.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ApiView {
-    /// The object identifier a program reaches (`fs`, `project`, `harness`).
-    pub object: String,
-    /// A one-line description of what the object is for.
-    pub description: String,
+pub struct ModuleView {
+    /// The path this language spells the module under (`gg::files`, `gg.board`, `Gg.Memories`).
+    pub path: String,
+    /// The one line the module's own declaration introduces it by.
+    pub brief: String,
+    /// The literal line a program writes to bring the module into scope, where this arm needs one.
+    ///
+    /// `None` on ten of the eleven arms, whose SDKs are already in a program's scope — and a real
+    /// import line on the one whose language has no way of doing that. It is carried per module
+    /// rather than stated once in prose because the answer is the arm's, and the arms disagree.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub import: Option<String>,
 }
 
 /// One available skill as the system prompt lists it.
@@ -894,14 +873,13 @@ pub fn render_system(context: &SystemContext, template_override: Option<&str>) -
         .responses_as_code
         .then(|| context.language.unwrap_or_default());
     let builtin = system_template_name(program_language);
-    // The spellings are the code arm's: a tool-calling prompt names free-standing tools, which have
-    // no program language and no catalogue entry to be spelled from. The empty maps it gets instead
-    // are what make an override written for the wrong arm fail to render rather than quote a call
-    // that arm's model cannot make.
+    // The artifact facts are the code arm's: a tool-calling run has no program language, so it has
+    // no artifact and no library list. The empty list it gets instead is what makes an override
+    // written for the wrong arm render an empty section rather than a list of crates its model
+    // cannot import.
     let spellings = match program_language {
         Some(id) => spellings(language(id)),
         None => Spellings {
-            api: BTreeMap::new(),
             libraries: Vec::new(),
         },
     };
@@ -954,7 +932,7 @@ pub(crate) fn render_code_nothing_shown_for(
         language.prompt().nothing_shown_template_name,
         &spellings(language),
     )
-    .unwrap_or_else(|_| nothing_shown_fallback(language))
+    .unwrap_or_else(|_| nothing_shown_fallback())
 }
 
 /// The built-in **tool-calling** system-prompt template, verbatim — the default an operator's

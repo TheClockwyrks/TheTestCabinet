@@ -148,6 +148,48 @@ fn read_any_resolves_a_function_or_a_type() {
     assert!(docs.read_any("neitherOne").is_none());
 }
 
+/// **Two spellings of one lookup are one key**, so the documentation band never holds a page twice.
+///
+/// Every entry answers to its fully-qualified name and to its bare one, on purpose: a model reads
+/// the first in a search hit and writes the second at a call site. The band, though, is keyed by the
+/// string a view was opened under and rests on a re-open being a total no-op — so an agent that
+/// spelled one lookup both ways would be holding, and paying for, the same documentation twice, and
+/// a reader attributing context to a documentation mode would count one page as two.
+///
+/// A type is asserted beside the function because the two halves resolve through different code and
+/// only one of them was ever normalized: [`TypeDeclaration::key`](crate::sandbox::TypeDeclaration)
+/// is where this rule came from, and this is the function half catching up to it.
+#[test]
+fn a_lookup_spelled_either_way_resolves_to_one_key() {
+    let docs = DocsRuntime::new(
+        enabled(),
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+
+    let key = docs.docview_key("readFile").expect("readFile is bound");
+    assert_eq!(
+        key, "gg.files.readFile",
+        "the fully-qualified name is the key"
+    );
+    assert_eq!(docs.docview_key("gg.files.readFile"), Some(key));
+
+    let key = docs.docview_key("FileRead").expect("FileRead is reachable");
+    assert_eq!(docs.docview_key("gg.files.FileRead"), Some(key));
+
+    // The same three gates the reader answers against, so a name the agent cannot look up has no
+    // key either — a key resolved for a withheld call would file a view nothing may render.
+    assert_eq!(docs.docview_key("neitherOne"), None);
+    let ablated = DocsRuntime::new(
+        Vec::new(),
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    assert_eq!(ablated.docview_key("readFile"), None);
+}
+
 /// **A lookup says what each argument is for, and what each field of the result means.**
 ///
 /// A signature and a paragraph leave a model to infer the rest from names alone, and the two things

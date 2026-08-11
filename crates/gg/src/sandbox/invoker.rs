@@ -189,27 +189,59 @@ pub struct ViewOpenOutcome {
 /// the model never made.
 pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
 
+/// **What one model-facing call is recorded as** — the identity the API layer's own
+/// [record](test_cabinet_core::gg::GgTelemetryKind::ApiCall) carries, and the argument both halves
+/// of the bracket take.
+///
+/// Three fields rather than one, because they answer to different authorities and a reader wants a
+/// different one for each question:
+///
+/// * [`operation`](Self::operation) is **gg's** identity for what was done (`files.read_file`). It
+///   is the cross-arm join: eleven language arms legitimately spell one operation eleven ways, so it
+///   is the only key under which two arms' calls can be counted together. It is `None` for the
+///   documentation carve-outs alone, which no arm's catalogue spells and which therefore have no row
+///   in [`OPERATIONS`](super::operations::OPERATIONS) to name.
+/// * [`object`](Self::object) and [`function`](Self::function) are the **legacy** grouping and key
+///   gg files the call under. They are never one SDK's spelling either — a program that wrote
+///   `readFile` is recorded as `read_file` — and they carry the whole identity of a carve-out, whose
+///   pair reads exactly as an operation id would (`docs`.`search`). For the rest of the population
+///   they do not: the grouping predates the module vocabulary and disagrees with it on eight of
+///   twelve entries (`fs`/`files`, `view`/`views`, `harness`/`session`, `memory`/`memories`,
+///   `agents`/`delegation`, `project`/`board`, `system`/`shell`), so nothing may be joined on this
+///   pair. That is what `operation` is for.
+///
+/// Grouped into one value rather than passed as three arguments so that the opening and the closing
+/// half of a bracket cannot describe two different calls: they are handed the same value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApiIdentity<'a> {
+    /// The legacy grouping gg files the call under — `fs`, `view`, `harness`, `memory`, `agents`,
+    /// `project`, `system`, `review`, `context`, `tasks`, `skills`, `programs`, `docs`. Not a
+    /// module id; see the type's own note.
+    pub object: &'a str,
+    /// gg's own key for the function within that grouping — `read_file`, `open_text`, `finish`.
+    pub function: &'a str,
+    /// gg's [operation](super::operations::OperationId) id, rendered — `files.read_file`. `None` for
+    /// a carve-out no operations row covers.
+    pub operation: Option<&'a str>,
+}
+
 /// The native, typed surface the membrane calls — one standard method per gg API function, plus the
 /// two documentation carve-outs. No method takes a serde_json::Value: a program's typed call reaches
 /// gg's tools without a round trip through JSON. `&mut self` because a call records what it composed.
 pub trait ToolApi: Send + 'static {
-    /// A program has begun a model-facing call to `function` on `object` — the **opening** half of
-    /// the API layer's own record, taken whether or not a gg tool backs the call.
+    /// A program has begun a model-facing [call](ApiIdentity) — the **opening** half of the API
+    /// layer's own record, taken whether or not a gg tool backs the call.
     ///
     /// Independent of the tool layer by construction: the membrane brackets every host function with
     /// this pair, and only *some* of those host functions go on to dispatch a tool. That is what
-    /// makes `view.openFile` a `view.open_file` here and a `read_file` on the tool stream, and what
-    /// gives `context.list` — which dispatches nothing at all — a count.
+    /// makes `views.openFile` a `views.open_file` here and a `read_file` on the tool stream, and
+    /// what gives `views.current` — which dispatches nothing at all — a count.
     ///
     /// Called **before** the work, so anything the call produces (a bridged `ToolCall`/`ToolResult`
     /// pair, a delegation's whole subtree of child events) lands inside the bracket, exactly as the
     /// tool layer's own [`ToolCall`](test_cabinet_core::gg::GgTelemetryKind::ToolCall) brackets what
     /// it dispatches.
-    ///
-    /// The `function` is the language-independent
-    /// [key](crate::sandbox::SurfaceCall::key), never one SDK's spelling, so two arms of a
-    /// cross-language study compare like with like.
-    fn begin_api_call(&mut self, object: &str, function: &str);
+    fn begin_api_call(&mut self, call: ApiIdentity<'_>);
 
     /// That call returned — the **closing** half, with the verdict the *program* saw.
     ///
@@ -225,7 +257,7 @@ pub trait ToolApi: Send + 'static {
     /// beside an optional class, so a caller cannot record a failure with no reason or a reason on a
     /// call that succeeded. For the calls that never reach a tool — a carve-out no tool backs, and a
     /// call the membrane refused before dispatch — this is the **only** record of why they failed.
-    fn end_api_call(&mut self, object: &str, function: &str, failure: Option<GgToolFailure>);
+    fn end_api_call(&mut self, call: ApiIdentity<'_>, failure: Option<GgToolFailure>);
 
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome;
     fn read_file(

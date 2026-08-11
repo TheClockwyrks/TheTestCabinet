@@ -449,7 +449,8 @@ fn main() -> Result<()> {
         TsModule {
             file: "gg-reference.ts",
             decls: ts_decls![&cfg;
-                ggref::GgReferenceCategory, ggref::GgToolVariant, ggref::GgToolReference,
+                ggref::GgReferenceCategory, ggref::GgReferenceModule, ggref::GgToolVariant,
+                ggref::GgToolReference,
                 ggref::GgApiTypeMember, ggref::GgApiType, ggref::GgApiParameterPassing,
                 ggref::GgApiParameter, ggref::GgApiSignature, ggref::GgApiFunction,
                 ggref::GgReference,
@@ -857,6 +858,7 @@ fn main() -> Result<()> {
             root: Some("GgReference"),
             owns: &[
                 "GgReferenceCategory",
+                "GgReferenceModule",
                 "GgToolReference",
                 "GgToolVariant",
                 "GgApiFunction",

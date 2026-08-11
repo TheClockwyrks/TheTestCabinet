@@ -1076,11 +1076,28 @@ impl From<GgPromptCacheTtl> for CacheTtl {
 ///
 /// A marker caches the request prefix that *ends at* it, so where they go is the whole design:
 ///
-/// - **The anchor** — the last message of the opening context, taken as everything before the
-///   first assistant turn: the system prompt, the build prompt, and any autoloaded specifications.
-///   This is the run's fixed preamble, it is the single largest static block gg sends, and because
-///   Anthropic orders a request `tools → system → messages` a marker here covers the tool schemas
-///   too. It never moves, so every turn after the first reads it.
+/// - **The anchor** — the message before the first assistant turn. That is the run's fixed
+///   preamble, it is the single largest static block gg sends, and because Anthropic orders a
+///   request `tools → system → messages` a marker here covers the tool schemas too. It never moves,
+///   so every turn after the first reads it.
+///
+///   **How much of the preamble it covers depends on the execution mode**, and that is worth being
+///   exact about rather than describing the tool-calling case as if it were both. Under tool
+///   calling the first assistant turn is the model's first reply, so the anchor sits at the end of
+///   the whole opening context — the system prompt, the build prompt, the hook notes and any
+///   autoloaded specifications. Under [responses-as-code](crate::bootstrap) the opening context
+///   *contains* an assistant turn: the synthesized bootstrap program is pushed immediately after
+///   the build prompt, so the anchor stops there and the material seeded after it — the bootstrap's
+///   own documentation views, the hook notes, the specifications, a persistent agent's restored
+///   desk — is covered by the grid points and the tail instead of by the anchor.
+///
+///   This function is deliberately not given the means to tell those apart. It is pure over
+///   `messages`, which is the whole of what the transport layer knows; a synthesized assistant turn
+///   and a model's own reply are the same thing on the wire, and threading gg's context bands down
+///   here to distinguish them would put the window model inside the HTTP client. The consequence is
+///   bounded: everything the anchor stops short of is a *prefix* of what the next marker covers, so
+///   nothing goes uncached — one of the four available markers simply names a shorter prefix than
+///   it does under tool calling.
 /// - **Up to two grid points** — the rolling breakpoints over the accumulating thread, snapped to
 ///   multiples of [`CACHE_BREAKPOINT_STRIDE`] so they name the *same* prefix from one turn to the
 ///   next (see that constant). Two rather than one so that the turn which crosses a fresh grid

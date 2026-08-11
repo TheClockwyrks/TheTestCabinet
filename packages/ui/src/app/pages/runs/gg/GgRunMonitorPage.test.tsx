@@ -244,6 +244,7 @@ function surface(
   tools: string[],
   apis: GgAgentApi[] = [],
   withheld: string[] = [],
+  docViewTypes?: string,
 ): HarnessEvent {
   return ggFrom(agentId, undefined, {
     type: "agent_surface",
@@ -251,6 +252,9 @@ function surface(
     tools,
     apis,
     withheld,
+    // Omitted by a tool-calling instance, which opens no documentation at all, and by
+    // every record written before gg reported the mode.
+    ...(docViewTypes ? { docViewTypes } : {}),
   } as GgTelemetryKind);
 }
 
@@ -288,25 +292,28 @@ function sessionStartedAblating(
 // One model-facing call, as a responses-as-code program's turn streams it. The opening
 // half is emitted before the work, so anything the call runs — a bridged tool, a whole
 // delegated sub-run — arrives between it and its result.
-function apiCall(object: string, fn: string, agentId = "root"): HarnessEvent {
+function apiCall(module: string, fn: string, agentId = "root"): HarnessEvent {
   return ggFrom(agentId, undefined, {
     type: "api_call",
-    object,
+    object: module,
     function: fn,
+    // gg's own identity for the call: what every row's count joins on.
+    operation: `${module}.${fn}`,
   } as GgTelemetryKind);
 }
 
 // …and the closing half, carrying the verdict.
 function apiResult(
-  object: string,
+  module: string,
   fn: string,
   ok = true,
   agentId = "root",
 ): HarnessEvent {
   return ggFrom(agentId, undefined, {
     type: "api_result",
-    object,
+    object: module,
     function: fn,
+    operation: `${module}.${fn}`,
     ok,
   } as GgTelemetryKind);
 }
@@ -1299,8 +1306,8 @@ describe("GgRunMonitorPage", () => {
 
   it("names a code agent's surface APIs, and counts each function as itself", () => {
     // A responses-as-code instance is offered the same core through namespaced objects, so
-    // the file is called `apis` and reads by object. Every call it makes is recorded under
-    // the function the model WROTE, so each row carries its own figure — including the ones
+    // the file is called `apis` and reads by module. Every call it makes is recorded under
+    // gg's own operation for it, so each row carries its own figure — including the ones
     // no gg tool backs, which used to carry none at all. No tool name appears on this file.
     renderMonitor([
       sessionStarted(["shell", "filesystem"]),
@@ -1315,31 +1322,33 @@ describe("GgRunMonitorPage", () => {
         ["read_file", "write_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", key: "read_file" },
-              { name: "writeFile", key: "write_file" },
+              { name: "readFile", operation: "files.read_file" },
+              { name: "writeFile", operation: "files.write_file" },
               // The meta function every object binds, reported last, exactly where the
               // agent's own `object.list()` puts it. Nothing dispatches it; it is counted
               // all the same.
-              { name: "list", key: "list" },
+              { name: "list", operation: "files.list" },
             ],
           },
           {
-            object: "view",
+            module: "views",
+            path: "gg.views",
             description: "Put material in front of the model.",
             functions: [
-              { name: "openFile", key: "open_file" },
-              { name: "list", key: "list" },
+              { name: "openFile", operation: "views.open_file" },
+              { name: "list", operation: "views.list" },
             ],
           },
         ],
       ),
       // What the model wrote, and what that ran. Only the first is what a row counts.
-      apiCall("fs", "read_file"),
+      apiCall("files", "read_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
-      apiCall("view", "open_file"),
+      apiCall("views", "open_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
     openTab("Instances");
@@ -1351,34 +1360,37 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByText("Read and write the workspace."),
     ).toBeInTheDocument();
-    expect(surfaceRow("offered apis", "fs.readFile")).toHaveTextContent(
-      /^1×fs\.readFile$/,
+    expect(surfaceRow("offered apis", "gg.files.readFile")).toHaveTextContent(
+      /^1×gg\.files\.readFile$/,
     );
-    expect(surfaceRow("offered apis", "fs.writeFile")).toHaveTextContent(
-      /^0×fs\.writeFile$/,
+    expect(surfaceRow("offered apis", "gg.files.writeFile")).toHaveTextContent(
+      /^0×gg\.files\.writeFile$/,
     );
     // The call no tool backs — and the whole complaint this accounting answers. It was
     // written once, it reads as once, and the `read_file` it ran through is nowhere on the
     // page.
-    const view = surfaceRow("offered apis", "view.openFile");
-    expect(view).toHaveTextContent(/^1×view\.openFile$/);
+    const view = surfaceRow("offered apis", "gg.views.openFile");
+    expect(view).toHaveTextContent(/^1×gg\.views\.openFile$/);
     expect(view).not.toHaveAttribute("data-uncalled");
-    expect(view).toHaveAttribute("title", "view.openFile was called 1 time.");
+    expect(view).toHaveAttribute(
+      "title",
+      "gg.views.openFile was called 1 time.",
+    );
     // `list` is bound on every object, and now reads as a real zero rather than as a blank:
     // "offered and not used" is an answer, "no count" was not.
-    const list = surfaceRow("offered apis", "fs.list");
+    const list = surfaceRow("offered apis", "gg.files.list");
     expect(list).toHaveAttribute("data-uncalled");
-    expect(list).toHaveTextContent(/^0×fs\.list$/);
+    expect(list).toHaveTextContent(/^0×gg\.files\.list$/);
     expect(
       within(screen.getByRole("region", { name: "offered apis" })).getByText(
-        "view.list",
+        "gg.views.list",
       ),
     ).toBeInTheDocument();
     // No gg tool name anywhere on a responses-as-code agent's API surface.
     const apis = screen.getByRole("region", { name: "offered apis" });
     expect(within(apis).queryByText("read_file")).toBeNull();
     expect(within(apis).queryByText("write_file")).toBeNull();
-    expect(screen.getByText(/2 objects · 5 functions/)).toBeInTheDocument();
+    expect(screen.getByText(/2 modules · 5 functions/)).toBeInTheDocument();
   });
 
   it("counts three functions over one core as three functions", () => {
@@ -1401,38 +1413,115 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", key: "read_file" },
-              { name: "readTextFile", key: "read_text_file" },
+              { name: "readFile", operation: "files.read_file" },
+              { name: "readTextFile", operation: "files.read_text_file" },
             ],
           },
           {
-            object: "view",
+            module: "views",
+            path: "gg.views",
             description: "Put material in front of the model.",
-            functions: [{ name: "openFile", key: "open_file" }],
+            functions: [{ name: "openFile", operation: "views.open_file" }],
           },
         ],
       ),
       // One call, written as `view.openFile` — and the `read_file` it ran through, which
       // belongs to the execution record and not to any of these rows.
-      apiCall("view", "open_file"),
+      apiCall("views", "open_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
     openTab("Instances");
     openFile("root apis");
 
-    const called = surfaceRow("offered apis", "view.openFile");
-    expect(called).toHaveTextContent(/^1×view\.openFile$/);
-    expect(called).toHaveAttribute("title", "view.openFile was called 1 time.");
+    const called = surfaceRow("offered apis", "gg.views.openFile");
+    expect(called).toHaveTextContent(/^1×gg\.views\.openFile$/);
+    expect(called).toHaveAttribute(
+      "title",
+      "gg.views.openFile was called 1 time.",
+    );
     // The two the model did not write. Under the old tool-keyed join both read as called
     // once, because the read they share a core with had run.
-    for (const name of ["fs.readFile", "fs.readTextFile"]) {
+    for (const name of ["gg.files.readFile", "gg.files.readTextFile"]) {
       const row = surfaceRow("offered apis", name);
       expect(row).toHaveAttribute("data-uncalled");
       expect(row).toHaveTextContent(`0×${name}`);
     }
+  });
+
+  it("names the documentation arm a code instance was on", () => {
+    // The knob is per agent and it is an arm of a comparison, so the instance's own file is
+    // where it belongs: two instances of one run may be on two arms, and the documentation
+    // tokens each spent are its own. A page that showed the cost and not the arm would be
+    // showing an effect with no cause on it.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            module: "files",
+            path: "gg.files",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile", operation: "files.read_file" }],
+          },
+        ],
+        [],
+        "return-and-parameters",
+      ),
+    ]);
+    openTab("Instances");
+    openFile("root apis");
+
+    const chip = screen.getByText("docs: return-and-parameters");
+    expect(chip).toBeInTheDocument();
+    // And it says what the mode did, in the vocabulary of what it cost — not merely that a
+    // setting was set.
+    expect(chip.getAttribute("title")).toMatch(
+      /every type a function's signature names/,
+    );
+    expect(chip.getAttribute("title")).toMatch(/per-agent setting/);
+  });
+
+  it("says nothing about documentation for an instance that reported no mode", () => {
+    // A tool-calling instance opens no documentation, and a record written before gg
+    // reported the mode has none to report. Neither may read as "off", which is a real arm
+    // of the comparison and a different finding entirely.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            module: "files",
+            path: "gg.files",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile", operation: "files.read_file" }],
+          },
+        ],
+      ),
+    ]);
+    openTab("Instances");
+    openFile("root apis");
+
+    expect(screen.queryByText(/^docs: /)).toBeNull();
   });
 
   it("counts a function offered and not used as a real zero", () => {
@@ -1454,11 +1543,12 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", key: "read_file" },
-              { name: "readTextFile", key: "read_text_file" },
+              { name: "readFile", operation: "files.read_file" },
+              { name: "readTextFile", operation: "files.read_text_file" },
             ],
           },
         ],
@@ -1467,12 +1557,12 @@ describe("GgRunMonitorPage", () => {
     openTab("Instances");
     openFile("root apis");
 
-    const row = surfaceRow("offered apis", "fs.readTextFile");
+    const row = surfaceRow("offered apis", "gg.files.readTextFile");
     expect(row).toHaveAttribute("data-uncalled");
-    expect(row).toHaveTextContent(/^0×fs\.readTextFile$/);
+    expect(row).toHaveTextContent(/^0×gg\.files\.readTextFile$/);
     expect(row).toHaveAttribute(
       "title",
-      "fs.readTextFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
+      "gg.files.readTextFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     // And the words the figure replaced are gone from the row entirely — not moved into the
     // hover text, which is where a replaced wording usually survives. The tooltip says the
@@ -3180,24 +3270,26 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", key: "read_file" },
-              { name: "list", key: "list" },
+              { name: "readFile", operation: "files.read_file" },
+              { name: "list", operation: "files.list" },
             ],
           },
           {
-            object: "context",
+            module: "context",
+            path: "gg.context",
             description: "Manage the window.",
-            functions: [{ name: "list", key: "list" }],
+            functions: [{ name: "list", operation: "context.list" }],
           },
         ],
       ),
       gg({ type: "turn_started" }),
-      // A bridged call: the program wrote `fs.readFile`, and gg dispatched `read_file`
+      // A bridged call: the program wrote `gg.files.readFile`, and gg dispatched `read_file`
       // inside the bracket to serve it. ONE action ⇒ one row.
-      apiCall("fs", "read_file"),
+      apiCall("files", "read_file"),
       gg({
         type: "tool_call",
         name: "read_file",
@@ -3209,32 +3301,33 @@ describe("GgRunMonitorPage", () => {
         ok: true,
         summary: "412 B",
       }),
-      apiResult("fs", "read_file"),
+      apiResult("files", "read_file"),
       // A call no tool backs at all — invisible in the feed until the feed started
       // reading the layer the model calls on.
       apiCall("context", "list"),
       apiResult("context", "list"),
       // …and one that failed, which reads the way a failed tool result always has.
-      apiCall("fs", "list"),
-      apiResult("fs", "list", false),
+      apiCall("files", "list"),
+      apiResult("files", "list", false),
     ]);
     openTab("Instances");
     openFile("root activity");
 
     // The model's own spelling, resolved off the surface it reported — never the
     // snake_case identity the wire records the call under.
-    expect(screen.getByText("fs.readFile")).toBeInTheDocument();
+    expect(screen.getByText("gg.files.readFile")).toBeInTheDocument();
     // The bridged tool's args survive on the API row: `api_call` carries none, so
     // absorbing them is the only way the path stays on the page at all.
     expect(screen.getByText('{"path":"level.json"}')).toBeInTheDocument();
     // …as does the result's summary.
-    expect(screen.getByText("fs.readFile: 412 B")).toBeInTheDocument();
+    expect(screen.getByText("gg.files.readFile: 412 B")).toBeInTheDocument();
     // And the tool underneath appears NOWHERE: one action, one row.
     expect(screen.queryByText("read_file")).toBeNull();
     expect(screen.queryByText(/^read_file: /)).toBeNull();
 
-    // The tool-less call is in the feed, both halves.
-    expect(screen.getAllByText("context.list").length).toBeGreaterThan(0);
+    // The tool-less call is in the feed, both halves — under this arm's spelling of it,
+    // resolved off the surface exactly as the bridged call above was.
+    expect(screen.getAllByText("gg.context.list").length).toBeGreaterThan(0);
     // A failed call reads as a failed result, in the same words a tool failure does.
     expect(screen.getAllByText("RESULT ✗")).toHaveLength(1);
     // The gutter says CALL, not TOOL: this agent called no tool.
@@ -3287,9 +3380,10 @@ describe("GgRunMonitorPage", () => {
         ["spawn_agent"],
         [
           {
-            object: "agents",
+            module: "delegation",
+            path: "gg.delegation",
             description: "Delegate work.",
-            functions: [{ name: "spawn", key: "spawn_agent" }],
+            functions: [{ name: "spawn", operation: "delegation.spawn_agent" }],
           },
         ],
       ),
@@ -3300,7 +3394,7 @@ describe("GgRunMonitorPage", () => {
         depth: 1,
       } as GgTelemetryKind),
       surface("agent-0", ["read_file"]),
-      apiCall("agents", "spawn"),
+      apiCall("delegation", "spawn"),
       // The child's whole sub-run nests inside the parent's open bracket.
       ggFrom("agent-0", "root", {
         type: "tool_call",
@@ -3313,7 +3407,7 @@ describe("GgRunMonitorPage", () => {
         ok: true,
         summary: "1 kB",
       } as GgTelemetryKind),
-      apiResult("agents", "spawn"),
+      apiResult("delegation", "spawn"),
     ]);
     openTab("Instances");
     openFolder("agent agent-0");
@@ -3345,14 +3439,15 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
             functions: [{ name: "readFile" }],
           },
         ],
       ),
       gg({ type: "turn_started" }),
-      apiCall("fs", "read_file"),
+      apiCall("files", "read_file"),
       gg({ type: "turn_started" }),
       gg({ type: "tool_call", name: "read_file", args: { path: "c.ts" } }),
     ]);
@@ -3360,7 +3455,7 @@ describe("GgRunMonitorPage", () => {
     openFile("root activity");
 
     // The unresolvable spelling reads as the wire's, never as a blank and never as a guess.
-    expect(screen.getByText("fs.read_file")).toBeInTheDocument();
+    expect(screen.getByText("files.read_file")).toBeInTheDocument();
     // The next turn's tool row is its own row, not swallowed into the stranded bracket.
     expect(screen.getByText("read_file")).toBeInTheDocument();
     expect(screen.getByText('{"path":"c.ts"}')).toBeInTheDocument();
@@ -3383,16 +3478,17 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [{ name: "readFile", key: "read_file" }],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
       ),
       gg({ type: "turn_started" }),
-      apiCall("fs", "read_file"),
+      apiCall("files", "read_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
-      apiResult("fs", "read_file"),
+      apiResult("files", "read_file"),
       // A tool-calling sibling on the same run, to prove the choice is per instance.
       ggFrom("agent-0", "root", {
         type: "agent_spawned",
@@ -3412,7 +3508,7 @@ describe("GgRunMonitorPage", () => {
     // The code agent's panel names, and itemizes, what its program wrote.
     expect(screen.getByText("API calls")).toBeInTheDocument();
     expect(screen.queryByText("Tool calls")).toBeNull();
-    expect(screen.getByText("fs.readFile")).toBeInTheDocument();
+    expect(screen.getByText("gg.files.readFile")).toBeInTheDocument();
     expect(screen.queryByText("read_file")).toBeNull();
 
     openFolder("agent agent-0");
@@ -3436,18 +3532,19 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [{ name: "readFile", key: "read_file" }],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
       ),
-      apiCall("fs", "read_file"),
+      apiCall("files", "read_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
-      apiResult("fs", "read_file"),
+      apiResult("files", "read_file"),
     ]);
     // The Dashboard is the default tab.
-    expect(screen.getByText("fs.readFile")).toBeInTheDocument();
+    expect(screen.getByText("gg.files.readFile")).toBeInTheDocument();
     expect(screen.queryByText("read_file")).toBeNull();
   });
 
@@ -3467,9 +3564,10 @@ describe("GgRunMonitorPage", () => {
         ["read_file"],
         [
           {
-            object: "fs",
+            module: "files",
+            path: "gg.files",
             description: "Read and write the workspace.",
-            functions: [{ name: "readFile", key: "read_file" }],
+            functions: [{ name: "readFile", operation: "files.read_file" }],
           },
         ],
       ),

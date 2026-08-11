@@ -100,8 +100,11 @@ public final class Views {
      * in one turn, use it in the next. Opening the same function's documentation again replaces the
      * view rather than adding a second copy, and {@link #close} closes it.
      *
-     * @param name The function to document, by the name it is called by — {@code "readFile"} for
-     *     {@code Files.readFile}. Searching the documentation is what says which names exist.
+     * @param name The function to document, by the fully-qualified name its documentation is
+     *     keyed by — {@code "gg.files.Files.readFile"}. The bare name it is called by
+     *     ({@code "readFile"}) also resolves and is a fallback rather than the form to reach for:
+     *     two modules are free to declare a {@code close}, and only the qualified name says which
+     *     one is meant. Searching the documentation is what says which names exist.
      * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for an unknown or unbound name.
      * @ggop views.open_docs_view
      */

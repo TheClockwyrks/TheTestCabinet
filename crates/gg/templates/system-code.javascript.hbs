@@ -6,29 +6,29 @@ Each turn, your entire response will be processed as a JavaScript program. Do
 not include any plain text, Markdown formatting, or other non-code text in your
 responses.
 
-Any views that your code opens will be provided to you on the next turn. Use
-`{{api.view.open_text.signature}}` to view the contents of a string
-variable.
+Any views that your code opens will be provided to you on the next turn.
+Opening a view of a value you computed is how you read that value.
 
 {{#if readFile.offered}}
-Use `{{api.view.open_file.call}}(path)` to read a file.
-{{#if readFile.capped}}Reading a file returns {{readFile.lineCap}} lines per call. To read a different part of one, pass a line window as a second argument: `{{api.view.open_file.call}}(path, { offset: 400, limit: 200 })` reads 200 lines starting at line 400. A `limit` larger than {{readFile.lineCap}} is honored.{{/if}}
+You can read a workspace file, which arrives as a view of it.
+{{#if readFile.capped}}Reading a file returns {{readFile.lineCap}} lines per call. To read a different part of one, pass a line window as a second argument — an `offset` and a `limit`. A `limit` larger than {{readFile.lineCap}} is honored.{{/if}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 {{/if}}
 
 {{#if shell.offered}}
-Use `{{api.system.shell.signature}}` to run a shell command in the workspace. It
-returns the command's `exitCode` and its merged output to your program — open a
-view on that output if you need to read it yourself.
+You can run a shell command in the workspace. It returns the command's `exitCode`
+and its merged output to your program — open a view on that output if you need to
+read it yourself.
 {{/if}}
 
-Views are the only way that you can read data from your code. `console.log()`
-will not be visible. Returning a value does nothing — the value is discarded.
+Views are the only way that you can read data from your code. Nothing
+`console.log()` writes is readable by you. Returning a value does nothing — the
+value is discarded.
 
 All functions are synchronous. Do not use `await` or treat return values as
 promises.
 
-The signatures below are written with type annotations. They say what each call
+Signatures are written with type annotations. They say what each call
 takes and what it hands back; your own program may use them or leave them off,
 and any it uses are erased before it runs.
 
@@ -52,20 +52,20 @@ complete.
 Return your verdict with `{{ending.approve}}` or `{{ending.requestChanges}}`.
 {{/if}}
 
-### Your APIs
+### Your modules
 
 Your program is given these modules, each grouping the functions and the types of
 one capability. Call one with `<module>.<function>(args...)`.
 
-{{#each apis}}
-- `{{object}}`: {{description}}
+{{#each modules}}
+- `{{path}}`: {{brief}}{{#if import}} — brought into scope with `{{import}}`{{/if}}
 {{/each}}
 
 **gg's own surface needs no import.** Every module above is already bound in your
-program's scope under `gg`, so `{{api.fs.read_file.call}}(path)` is a call you can
-write as it stands, and that path is also the name the documentation is keyed by.
-A module is reachable only through `gg`, which is deliberate: `files` and `board`
-are names you will want for your own variables, and they are yours.
+program's scope under `gg`, so a path written the way it is written above is a
+call you can write as it stands, and that path is also the name the documentation
+is keyed by. A module is reachable only through `gg`, which is deliberate: `files`
+and `board` are names you will want for your own variables, and they are yours.
 
 gg does seed a few short names of its own into that scope — `gg`, `ToolError` and
 `lib` among them — and your program is evaluated as the body of a function whose
@@ -73,7 +73,7 @@ parameters those names are, so redeclaring one is a `SyntaxError` that ends the
 turn before a line of it runs. A top-level `const` named for what it holds, rather
 than for a bare capability word, will not hit one.
 
-Each module owns the types the signatures below name, so a type is written under
+Each module owns the types its signatures name, so a type is written under
 the module that hands it back — `gg.files.FileRead`, `gg.tasks.TaskStatus`,
 `gg.views.OpenView` — and two modules are free to name a type the same. These
 names are documentation and nothing else: they do not exist while your program
@@ -83,33 +83,36 @@ runs, so there is no `FileRead` to test a value against and no
 `code` — and everything else you discriminate on is an ordinary property, such
 as the `kind` a read file carries.
 
-One call tells you what a function does.
+**These paths are the only names this prompt gives you, and that is deliberate.**
+No function is named anywhere in it. You find one by **searching** the
+documentation — by keyword, or by naming one of the modules above, which is an
+exact lookup of everything in it — and a search answers with one-line briefs and
+opens itself as a view. Reading one of those briefs in full means **opening a
+documentation view** of it, by the fully-qualified name the brief carries: that
+view holds the whole signature, the description, and the types it names.
 
-`{{api.view.open_docs_view.signature}}` **opens a view** directly, of one function's full
-signature, documentation, and the types it uses. Pass the function itself
-(`{{api.view.open_docs_view.call}}({{api.view.open_text.call}})`) or its name
-(`{{api.view.open_docs_view.call}}("{{api.view.open_text.name}}")`).
+Your window already holds a worked example of the second half. The program at the
+top of this session is one gg wrote on your behalf, and the documentation beside
+it is what that program opened.
 
-You are reading a view, so what you asked for arrives on your next
-turn and is not available during the turn you ask for it. Ask in one turn, use it
-in the next.
+You are reading a view, so what you asked for arrives on your next turn and is
+not available during the turn you ask for it. Ask in one turn, use it in the
+next.
+
+Every function is bound in every program whatever this run enabled, so a call to
+one this run withheld is not a name that is missing — it runs, and fails, naming
+the capability it needed. What you can find is what you can use; what your
+program may write is a wider set than that.
 
 {{#if programLibrary}}
 ### Reusing a program you already ran
 
-gg keeps the source of every program you run. `{{api.programs.get.call}}()` returns the last
-one; `{{api.programs.get.call}}(turn)` returns the one from that turn, and
-`{{api.programs.history.call}}()` lists the turns it still holds.
+gg keeps the source of every program you run: you can fetch the last one, or the
+one from a turn you name, and list the turns it still holds.
 
 Use this when a program was nearly right. Fetch it, patch it as a string, and
-hand it back with `{{api.programs.rerun.call}}(source)` — gg runs what you hand over as this
-turn's program, so a one-character fix costs one line instead of the whole
-program again:
-
-```
-const source = {{api.programs.get.call}}();
-{{api.programs.rerun.call}}(source.replace("cosnt total", "const total"));
-```
+hand it back — gg runs what you hand over as this turn's program, so a
+one-character fix costs one line instead of the whole program again.
 
 Everything the handing-over program already did stands, so hand over before
 doing work you do not want done twice. Hand over once per turn: the first
@@ -143,8 +146,7 @@ there is a process fact you could not otherwise know.
 ## Skills
 
 You have skills available — short guides, and in some cases reusable **code**,
-for parts of this task. Read one with `{{api.skills.read_skill.call}}(name)`. These are the
-skills you have:
+for parts of this task. Read one by name. These are the skills you have:
 
 {{#each skills}}
 - `{{name}}` — {{description}}
@@ -172,13 +174,12 @@ created to record important details. These are shown in full.
 {{#if memories.markdown}}
 You have read-only access to another agent's memories, which are notes it
 created to record important details. Refer to the memory index to determine
-relevant memories, then use `{{api.memory.read_memory.call}}` to read the memory in full.
+relevant memories, then read one in full.
 {{/if}}
 {{#if memories.keywordSearch}}
 You have read-only access to another agent's memories, which are notes it
-created to record important details. Use `{{api.memory.search_memories.call}}` to perform
-keyword search to locate relevant memories, then use `{{api.memory.read_memory.call}}` to read
-a memory in full.
+created to record important details. Search them by keyword to locate the
+relevant ones, then read one in full.
 {{/if}}
 {{else}}
 {{#if memories.scratchpad}}
@@ -219,21 +220,20 @@ A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{#if tasks}}
 ## Tasks
 
-You have access to a task list in the `gg.tasks` module. Use `{{api.tasks.add_task.call}}` to add
-work, `{{api.tasks.update_task.call}}` to update a task's data, `{{api.tasks.complete_task.call}}` to mark a
-task as completed, and `{{api.tasks.remove_task.call}}` to drop a task. At most
-{{tasks.maxTasks}} may be recorded.
+You have access to a task list. You can add work to it, revise a task's data,
+mark one completed and drop one. At most {{tasks.maxTasks}} may be recorded.
 
-Tasks are required to form a directed acyclic graph. You may record task
-dependencies when adding a task or with `{{api.tasks.set_blocked_by.call}}`. Cycles will be
+Tasks are required to form a directed acyclic graph. You may record a task's
+dependencies when you add it, or set them afterwards. Cycles will be
 automatically rejected.
 {{/if}}
 
 {{#if subagents}}
 ## Subagents
 
-Use `{{api.agents.spawn_subagent.call}}` to delegate work to another agent. You have the
-following agents available to you:
+You can delegate work to another agent: you name the agent and give it either a
+prompt to work from or an issue to implement — one or the other, never both and
+never neither. You have the following agents available to you:
 
 {{#each spawnableAgents}}
 - `{{name}}`{{#if description}}: {{description}}{{/if}}
@@ -246,14 +246,12 @@ agents listed above.
 {{#if board}}
 ## Project management
 
-You have access to a shared project board, reached through the `gg.board`
-module, that you and other agents may use. This board is shared across the entire
-run.
+You have access to a shared project board that you and other agents may use.
+This board is shared across the entire run.
 
 Use epics to group related issues. Epics are used exclusively for organizational
-purposes and can be created using `{{api.project.create_epic.call}}`. Issues represent units
-of work to be completed and are created using `{{api.project.create_issue.call}}`, which
-returns the ID of the created issue. All issues are handled in isolated
+purposes. Issues represent units of work to be completed, and filing one gives
+you back the ID of the issue you filed. All issues are handled in isolated
 worktrees.
 
 Issues may have dependencies configured. Submitting an issue will cause an agent
@@ -267,8 +265,8 @@ You may assign an issue to any of the following agents:
 - `{{name}}`{{#if description}}: {{description}}{{/if}}
 {{/each}}
 
-Use `{{api.project.wait_for_issue.call}}` to suspend until the issue you specify has been
-completed and merged into the main worktree.
+You can suspend until an issue you name has been completed and merged into the
+main worktree.
 
 {{#if board.reviewerAgents}}
 {{#if board.reviewersRequired}}

@@ -2,8 +2,8 @@
 // views hover with, and the spelling every other view of a call reads it back in.
 //
 // gg records every model-facing call under its own identity: a tool call under the tool, and a
-// responses-as-code program's call under the API function the model wrote (`view.open_file`,
-// `context.list`), whether or not a gg tool runs underneath it. So a count is per entry, full
+// responses-as-code program's call under the OPERATION it resolved to (`views.open_file`,
+// `files.read_file`), whether or not a gg tool runs underneath it. So a count is per entry, full
 // stop, and this file has no arithmetic left in it — only the wording and the vocabulary.
 //
 // It used to have plenty. When a call was recorded under the *tool* behind it, one gate backed
@@ -46,19 +46,25 @@ export function surfaceCallPhrase(name: string, count: number | null): string {
 
 /**
  * The SDK spelling of every function an instance's API surface binds, keyed by the identity its
- * calls are RECORDED under: `fs.read_file` → `fs.readFile`, `view.open_file` → `view.openFile`.
+ * calls are RECORDED under: `files.read_file` → `gg.files.readFile`.
  *
- * The wire carries the language-independent key and nothing else — an `api_call` names
- * `(object, key)` (see `GgAgentApiFunction.key`), deliberately, so a count survives a run whose
- * programs were written in another language with other spellings. But the model wrote
- * `fs.readFile`, and a read-out of what an agent did should say what the agent said. The surface
- * carries both halves, and it is emitted when the incarnation is built — before that agent's
- * first call — so the lookup is always populated by the time a call needs it.
+ * The wire carries gg's own operation id and nothing else — an `api_call` names
+ * `files.read_file` (see `GgAgentApiFunction.operation`), deliberately, so a count survives a run
+ * whose programs were written in another language with other spellings, and so two arms of a
+ * cross-language study can be counted together at all. But the model wrote `gg.files.readFile`,
+ * and a read-out of what an agent did should say what the agent said. The surface carries both
+ * halves — gg's identity and this arm's spelling of it — and it is emitted when the incarnation is
+ * built, before that agent's first call, so the lookup is always populated by the time a call needs
+ * it.
  *
- * A function with no `key` (a record written before gg counted per function) is skipped rather
- * than guessed at: the reverse of the snake_case convention is not a rule this console may
- * assume, and a caller that misses is expected to fall back to the wire spelling, which is at
- * least the identity the call was actually recorded under.
+ * A function with no `operation` (a record written before gg counted per function, or an entry
+ * naming an operation gg does not have) is skipped rather than guessed at: no rule turns one
+ * vocabulary into the other, and a caller that misses is expected to fall back to the wire
+ * identity, which is at least what the call was actually recorded under.
+ *
+ * Where two spellings serve one operation — an arm that offers a method beside the free function —
+ * the first wins, which is the arm's own canonical binding: the catalogue declares it first and an
+ * alias after it.
  */
 export function apiCallSpellings(
   apis: readonly GgAgentApi[],
@@ -66,9 +72,43 @@ export function apiCallSpellings(
   const spellings = new Map<string, string>();
   for (const api of apis) {
     for (const fn of api.functions) {
-      if (!fn.key) continue;
-      spellings.set(`${api.object}.${fn.key}`, `${api.object}.${fn.name}`);
+      if (!fn.operation || spellings.has(fn.operation)) continue;
+      spellings.set(fn.operation, `${api.path}.${fn.name}`);
     }
   }
   return spellings;
+}
+
+/**
+ * What one documentation mode did, said plainly — the hover behind every place the mode is
+ * named.
+ *
+ * It lives beside the surface wording rather than in a component because two views show the
+ * mode and they must say the same thing about it: an instance's chip in the explorer, and the
+ * profile-level surface card a reader compares two arms of a within-run A/B on. The mode is
+ * the *cause* whose effect that card's documentation figures are, and a card that showed the
+ * cost without the arm would be showing an effect with nothing on it.
+ *
+ * `subject` is who the sentence is about, because the two callers are at different grains: one
+ * instance, or every instance of a profile.
+ *
+ * The unknown case is a mode from a newer gg than this console: it is named rather than
+ * explained, because a wrong explanation of a real setting is worse than none.
+ */
+export function docViewTypesPhrase(
+  mode: string,
+  subject: "instance" | "profile" = "instance",
+): string {
+  const what =
+    mode === "off"
+      ? "opened no type documentation beside a function it looked up"
+      : mode === "return"
+        ? "opened the documentation of a function's return type beside it"
+        : mode === "return-and-parameters"
+          ? "opened the documentation of every type a function's signature names — its return and its arguments"
+          : "ran under a documentation mode this console does not know";
+  const who = subject === "profile" ? "Every instance of this agent" : "This instance";
+  const whose =
+    subject === "profile" ? "these agents' own documentation band" : "this agent's own documentation band";
+  return `${who} ${what}. It is a per-agent setting, so another agent of the same run may have been on another mode; what it cost is ${whose}.`;
 }

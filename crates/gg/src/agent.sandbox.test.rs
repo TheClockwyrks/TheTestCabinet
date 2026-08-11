@@ -266,20 +266,23 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     assert_eq!(summary.code_executions, 2);
 
     // (d) the instance's own surface says what it was offered, in the shape a code agent reaches it
-    // through: objects with the functions bound on them, each naming the gg tool its calls are
-    // recorded under — which is the join a reader needs to tell "never offered" from "never called".
-    let (mode, language, tools, apis) = events
+    // through: capability modules with the functions bound in them, each naming gg's own operation
+    // for what it does — which is the join a reader needs to tell "never offered" from "never
+    // called", and the only one that means the same thing in another language's arm.
+    let (mode, language, doc_view_types, tools, apis) = events
         .iter()
         .find_map(|event| match &event.kind {
             GgTelemetryKind::AgentSurface {
                 execution_mode,
                 program_language,
+                doc_view_types,
                 tools,
                 apis,
                 ..
             } => Some((
                 execution_mode.clone(),
                 *program_language,
+                doc_view_types.clone(),
                 tools.clone(),
                 apis.clone(),
             )),
@@ -287,6 +290,10 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
         })
         .expect("an AgentSurface event");
     assert_eq!(mode, "responses_as_code");
+    // The documentation A/B's arm, reported by an agent that configured nothing: the default is a
+    // arm of the comparison like any other, and a record that omitted it would leave this run
+    // unattributable rather than obviously default.
+    assert_eq!(doc_view_types.as_deref(), Some("return"));
     // Per instance, because the capability is per agent: the surface is where a reader learns which
     // arm *this* agent was in, and the spellings under `apis` are that language's.
     assert_eq!(
@@ -299,15 +306,15 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     );
     let fs = apis
         .iter()
-        .find(|api| api.object == "gg.files")
+        .find(|api| api.path == "gg.files")
         .expect("the `gg.files` module the program composed its calls on");
     assert_eq!(
         fs.functions
             .iter()
             .find(|function| function.name == "writeFile")
-            .map(|function| function.key.as_str()),
-        Some("write_file"),
-        "the composed call carries its own identity, which is what its count joins on"
+            .map(|function| function.operation.as_str()),
+        Some("files.write_file"),
+        "the composed call carries gg's own identity for it, which is what its count joins on"
     );
 }
 
@@ -750,6 +757,13 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
 /// A program's delegation still goes through the scheduler: the code-mode parent's program spawns a
 /// subagent (also code-driven) and waits for it, the child runs and writes its file, and the agent
 /// tree records the spawn — exactly as a tool-calling delegation would.
+///
+/// It carries the **within-run A/B** too, because it is the one scenario here that drives two agents
+/// under two profiles: the parent opens documentation with `return-and-parameters` and the child
+/// with `off`, and each reports its own arm on its own surface event. That is what makes the knob
+/// observable rather than merely configurable — a study reads an agent's arm off the stream and
+/// joins it to that agent's own documentation band, with the task, the workspace and the wall clock
+/// held constant because both arms are in one run.
 #[tokio::test]
 async fn a_program_subagent_still_honours_the_scheduler() {
     let dir = TempDir::new().unwrap();
@@ -759,9 +773,16 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     // the waiting parent frees its slot — the scheduler's blocked-frees-slot rule).
     let mut set = subagent_set(1, 3, &["subagent"]);
     for agent in &mut set.agents {
-        agent
-            .capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+        // The documentation mode is per agent, so the two profiles take opposite arms of it.
+        let mode = if agent.name == ROOT_AGENT {
+            "return-and-parameters"
+        } else {
+            "off"
+        };
+        agent.capabilities.push(GgCapabilityConfig {
+            params: json!({ "docViewTypes": mode }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE)
+        });
     }
     let inv = invocation(dir.path(), set);
     let factory = ScriptedFactory::new()
@@ -817,6 +838,37 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     );
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.execution_mode, "responses_as_code");
+
+    // **The A/B is legible from the events alone.** Two agents, two documentation modes, each
+    // reported on the surface of the instance it applies to and keyed by that instance's own id —
+    // which is the same id its context breakdowns and its calls carry, so "which arm was this, and
+    // what did its documentation cost" is a join and not an inference.
+    //
+    // The run-level dimension deliberately does not carry this and must not: it is one value for a
+    // run that here holds two, so a study reading it would attribute both arms to one.
+    let modes: Vec<(String, Option<String>)> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::AgentSurface { doc_view_types, .. } => Some((
+                event.agent_id.clone().unwrap_or_default(),
+                doc_view_types.clone(),
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(modes.len(), 2, "one surface per instance: {modes:?}");
+    assert_eq!(
+        modes
+            .iter()
+            .map(|(_, mode)| mode.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("return-and-parameters"), Some("off")],
+        "each instance reports the arm its own profile put it on: {modes:?}"
+    );
+    assert_ne!(
+        modes[0].0, modes[1].0,
+        "and each is attributed to the instance it describes: {modes:?}"
+    );
 }
 
 /// **A bare `fs.readFile` of a picture shows the model nothing.**

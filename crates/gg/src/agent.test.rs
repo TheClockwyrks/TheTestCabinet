@@ -1582,31 +1582,35 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
 // Prompt and accounting helpers
 // ---------------------------------------------------------------------------
 
-/// Under responses-as-code the system prompt names the API objects a program has — one per module
-/// with a bound function — rather than listing every tool. It never lists the tool *functions*: the
-/// model discovers those by searching. `harness` is always named, since it
-/// carries `finish` whatever a run enables. (What each capability's section *says* is covered by the
-/// [prompt template tests](crate::prompts); this covers the wiring from a run's registry into the
-/// rendering context.)
+/// Under responses-as-code the system prompt names the **modules** a program's surface is divided
+/// into — one per module with a bound function — and no function at all. The module list is the only
+/// vocabulary the prompt supplies, and the model finds a call by searching from it. The session
+/// module is always named, since it carries the ending whatever a run enables. (What each
+/// capability's section *says* is covered by the [prompt template tests](crate::prompts); this
+/// covers the wiring from a run's registry into the rendering context.)
 #[test]
-fn system_prompt_names_the_api_objects_in_code_mode() {
+fn system_prompt_names_the_modules_in_code_mode() {
     let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let full = system_prompt(PromptInputs {
         program_language: Some(GgProgramLanguage::TypeScript),
         ..runtimes.inputs(&registry)
     });
-    // The file and shell objects are present (the minimal set binds their tools); the harness object
+    // The file and shell modules are present (the minimal set binds their tools); the session module
     // always is. The prompt teaches discovery, not a tool list.
     assert!(full.contains("`gg.files`"), "{full}");
     assert!(full.contains("`gg.shell`"), "{full}");
     assert!(full.contains("`gg.session`"), "{full}");
-    assert!(full.contains("gg.views.openDocsView"), "{full}");
-    // No tool function is spelled out in the prompt.
+    assert!(full.contains("searching"), "{full}");
+    assert!(full.contains("documentation view"), "{full}");
+    // No function is spelled out in the prompt — not the one this run binds, and not the one that
+    // reads documentation either.
     assert!(!full.contains("writeFile"), "{full}");
     assert!(!full.contains("write_file"), "{full}");
+    assert!(!full.contains("openDocsView"), "{full}");
 
-    // A run that enables nothing still has `harness` (and so `finish`), and no workspace objects.
+    // A run that enables nothing still has the session module (and so its ending), and no workspace
+    // modules.
     let empty_set = GgAgentConfig {
         capabilities: Vec::new(),
         ..GgAgentConfig::root()
@@ -8551,25 +8555,31 @@ impl ModelClient for SharedClient {
 /// — are hand-maintained, so a band added to the contract does not appear here on its own. This
 /// pins the two facts that would otherwise go wrong silently: that the word the model is taught is
 /// the word [`code_heading`] actually prefixes a text view with, and that it is taught to **every**
-/// code run. The `view` object is bound whatever the capability set says, so a run with no tools at
+/// code run. The view module is bound whatever the capability set says, so a run with no tools at
 /// all can still produce a `View` message — and a model that met one it had never been told about
 /// would be reading an unexplained block in its own window.
+///
+/// It used to assert the row **named** the call that produces the message, spelled per arm. That is
+/// now the opposite of what is required: the description reached every rendered prompt on every arm,
+/// so the one row nothing gates was also the one place a catalogued function was guaranteed to leak
+/// into a document that promises it names none. The label half is what the reader actually needs —
+/// it is how a block in the window is matched to the value that produced it — and it is what
+/// survives.
 #[test]
 fn the_view_heading_is_documented_for_every_code_run() {
-    let ablated = code_heading_views(GgProgramLanguage::TypeScript, false, false, false, false);
+    let ablated = code_heading_views(false, false, false, false);
     let heading = code_heading(GgContextSource::TextView).expect("a text view carries a heading");
     let row = ablated
         .iter()
         .find(|view| view.heading == heading)
         .unwrap_or_else(|| panic!("no `{heading}` row in {ablated:#?}"));
     // The heading a text view actually carries is `View: {label}`, so the description has to say
-    // where the label goes or the model cannot match a block to its own `view.openText` call.
+    // where the label goes or the model cannot match a block to the value it showed itself.
     assert!(row.description.contains("label"), "{row:#?}");
-    // Spelled the way the run's own language spells it, read from that language's catalogue rather
-    // than from this assertion: the description is authored in Rust and rendered into *every*
-    // language's template, so a spelling frozen here would reach a model that does not bind it.
+    // And it says it without naming the call, which the prompt's own contract forbids and which
+    // `a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session` holds end to end.
     assert!(
-        row.description.contains(&crate::sandbox::spell(
+        !row.description.contains(&crate::sandbox::spell(
             crate::sandbox::language(GgProgramLanguage::TypeScript),
             crate::sandbox::VIEW_OPEN_TEXT
         )),
@@ -8581,7 +8591,7 @@ fn the_view_heading_is_documented_for_every_code_run() {
     let file = code_heading(GgContextSource::FileView).expect("a file view carries a heading");
     assert!(!ablated.iter().any(|view| view.heading == file));
     assert!(
-        code_heading_views(GgProgramLanguage::TypeScript, false, false, false, true)
+        code_heading_views(false, false, false, true)
             .iter()
             .any(|view| view.heading == file)
     );

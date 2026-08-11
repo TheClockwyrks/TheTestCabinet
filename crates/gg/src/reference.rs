@@ -67,7 +67,8 @@ use test_cabinet_core::gg::{
 };
 use test_cabinet_core::gg_reference::{
     GgApiFunction, GgApiParameter, GgApiParameterPassing, GgApiSignature, GgApiType,
-    GgApiTypeMember, GgReference, GgReferenceCategory, GgToolReference, GgToolVariant,
+    GgApiTypeMember, GgReference, GgReferenceCategory, GgReferenceModule, GgToolReference,
+    GgToolVariant,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -120,6 +121,7 @@ pub fn reference() -> GgReference {
         // documentation of gg as configured by nobody.
         language: reference_language(),
         categories: categories(),
+        modules: modules(),
         tools: tools(),
         functions: functions(),
     }
@@ -147,7 +149,31 @@ fn categories() -> Vec<GgReferenceCategory> {
             id: family.id.to_string(),
             title: family.title.to_string(),
             description: family.description.to_string(),
-            objects: family.objects.iter().map(|o| (*o).to_string()).collect(),
+        })
+        .collect()
+}
+
+/// The [modules](GgReferenceModule) the projected language's surface is divided into, in the order
+/// that language presents them.
+///
+/// The order is the **catalogue's**, not the families': it is the order the module list in a real
+/// system prompt renders in, so the page walks the surface in the sequence a model actually meets
+/// it. Nothing is filtered — a module with no callable function is still part of the surface, and
+/// its declarations are what the types on the functions above it refer to.
+///
+/// Every field is read off the catalogue except the family, which is joined through gg's
+/// [operations table](crate::sandbox::family_of_module) on the module id. That join is the point of
+/// the id existing: the module *path* is one arm's spelling and belongs to no family, while the id
+/// is the namespace every operation in the module is filed under.
+fn modules() -> Vec<GgReferenceModule> {
+    crate::sandbox::catalogue_modules(crate::sandbox::language(reference_language()))
+        .into_iter()
+        .map(|module| GgReferenceModule {
+            id: module.id.to_string(),
+            path: module.path.to_string(),
+            summary: module.prose.brief.to_string(),
+            category: crate::sandbox::family_of_module(module.id).map(str::to_string),
+            import: module.import.map(str::to_string),
         })
         .collect()
 }
@@ -550,8 +576,13 @@ fn functions() -> Vec<GgApiFunction> {
     catalogued
         .iter()
         .map(|function| GgApiFunction {
-            object: function.object.to_string(),
+            // gg's id for the module, so the page's folders and its entries are joined on the one
+            // name that is not a spelling — and so a reader comparing two arms is comparing the
+            // same module rather than two strings that happen to differ.
+            module: function.module.unwrap_or(function.object).to_string(),
             name: function.name.to_string(),
+            fqn: function.fqn.unwrap_or_default().to_string(),
+            operation: function.operation.unwrap_or_default().to_string(),
             category: category_of_function(function),
             summary: function.prose.brief.to_string(),
             signatures: signatures(function.signatures),

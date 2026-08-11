@@ -15,9 +15,18 @@ So the reference is not written at all. It is **projected out of gg's own defini
   provider — the same name, the same description, the same JSON-Schema parameters; and
 - every **API function** entry is the committed
   [signature catalogue](/gg/responses-as-code/), reflected out of the sandbox SDK's own
-  emitted `.d.ts` and its JSDoc — the same material a program gets back from
-  `view.openDocsView(...)` mid-run: every shape the function may be called in, a line per
-  argument, and every type it refers to with a line per member.
+  emitted declarations and their doc comments — the same material a program gets back from
+  `openDocsView(...)` mid-run: every shape the function may be called in, and a line per
+  argument.
+
+  Its **Types** section is the one place the page shows *more* than a lookup does, and
+  deliberately: it lists every declaration the signature reaches, transitively closed, so a
+  reader can see the whole shape of what a function hands back. A lookup mid-run goes exactly
+  one level deep and opens only what that agent's `docViewTypes`
+  [mode](/gg/responses-as-code/#configuring-it) selects — the return position by default,
+  everything the signature names under `return-and-parameters`, nothing under `off` — minus
+  anything the session has already been shown. Sizing a run's per-lookup context cost from
+  this list overstates it.
 
 It is the same rule the [built-in skills](/gg/skills/) obey, and for the same reason: a
 tool that is renamed is renamed in the one place its name appears.
@@ -28,7 +37,7 @@ The console serves it at **gg → Reference**, in two tabs — **Tools** and **A
 intro names the [program language](/gg/program-languages/) the API signatures are spelled in,
 beside the gg version they were projected from — gg's **default** language, which is the arm a
 run that configures none is held to. It says so because a signature *is* a spelling: a run
-configured to another language offers exactly these functions, on exactly these objects, under
+configured to another language offers exactly these operations, in exactly these modules, under
 that language's own names, and a reader comparing two arms of a cross-language study has to be
 able to tell which surface is on screen. Both tabs are
 ordered by the eleven families gg divides its surface into (`Filesystem`, `Shell`,
@@ -40,14 +49,26 @@ differently:
 - the **Tools** tab groups by family, and shows only the families that have tools. `Views`,
   `Program library` and `Ending the session` are responses-as-code carve-outs with no
   native tools at all, so eight folders appear rather than eleven.
-- the **API** tab groups by the thirteen **objects** a program calls through — `fs`,
-  `system`, `project`, `tasks`, `memory`, `skills`, `context`, `agents`, `view`,
-  `programs`, `harness`, `review`, `judge` — because that is how a program reaches them
-  (`fs.readFile`, not "the filesystem family's read call") and it is what a model itself
-  reaches mid-run. Each folder is captioned with its family's own one-line description; the
-  last family supplies three objects, one per agent role. What a folder holds is exactly the
-  catalogue's own entries — nothing is appended that no SDK declaration produced, which is
-  also how an instance's own [surface](/gg/telemetry/#what-an-agent-is-offered) reports it.
+- the **API** tab groups by the **capability modules** a program calls through — `gg.files`,
+  `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.skills`, `gg.context`,
+  `gg.delegation`, `gg.views`, `gg.programs`, `gg.session` — because that is how a program
+  reaches them (`gg.files.readFile`, not "the filesystem family's read call"), it is the only
+  vocabulary the [system prompt](/gg/prompts/) supplies, and it is what a model itself
+  searches by mid-run. Each folder is captioned with the module's **own** one-line
+  description, reflected from its declaration; the folders are joined to their functions by
+  gg's cross-arm module id rather than by the spelling, so the page groups the same way
+  whichever language it is projected from. What a folder holds is exactly the catalogue's own
+  entries — nothing is appended that no SDK declaration produced, which is also how an
+  instance's own [surface](/gg/telemetry/#what-an-agent-is-offered) reports it. A module in
+  which nothing is callable — the one every arm has for the type declarations that belong to
+  no capability — is not shown as an empty folder.
+
+  A function's own entry names it by the **fully-qualified name** a documentation lookup
+  takes (`gg.files.readFile`) and, beside it, the gg
+  [operation](/gg/telemetry/#what-an-agent-is-offered) it serves (`files.read_file`) — the
+  one identity on the page that is the same in every language arm, and the string a run's
+  `api_call` records name it by. A reader with this page open and a run's calls in front of
+  them is looking at the same identifier in both.
 
 An API function shows **every signature** the SDK offers it in, each above its own argument
 list. There is usually exactly one — TypeScript spells an optional argument with `?` — but a
@@ -61,7 +82,7 @@ Descriptions and documentation are rendered verbatim, whitespace and all, rather
 markdown: the point of the page is to see what the model sees.
 
 Each tab is its own address — `/gg/reference/tools` and `/gg/reference/api` — and the
-selected entry rides in the query string (`?tool=compact`, `?fn=fs.readFile`), so one
+selected entry rides in the query string (`?tool=compact`, `?fn=gg.files.readFile`), so one
 tool or one function is a link you can paste into an issue.
 
 Each tool also carries what the definitions themselves do not:

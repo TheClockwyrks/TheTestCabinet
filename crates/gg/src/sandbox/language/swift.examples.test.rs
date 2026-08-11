@@ -47,8 +47,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::compile::compile_program;
 use crate::prompts::{
-    ApiView, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
-    ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
+    AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView, MemoriesView,
+    ModuleView, ReadFileView, ShellView, SkillView, SpawnableAgentView, SystemContext, TasksView,
     render_code_nothing_shown_for, render_system_for,
 };
 use crate::sandbox::{
@@ -74,9 +74,10 @@ fn everything_on() -> SystemContext {
         responses_as_code: true,
         language: Some(GgProgramLanguage::Swift),
         program_library: true,
-        apis: vec![ApiView {
-            object: "gg.files".to_string(),
-            description: "Read, write, edit and list the files of the workspace.".to_string(),
+        modules: vec![ModuleView {
+            path: "gg.files".to_string(),
+            brief: "Read, write, edit and list the files of the workspace.".to_string(),
+            import: None,
         }],
         code_headings: vec![CodeHeadingView {
             heading: "File".to_string(),

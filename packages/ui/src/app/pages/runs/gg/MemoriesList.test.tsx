@@ -82,7 +82,12 @@ describe("MemoriesList", () => {
         memory={memory({
           scope: "inherited",
           memories: [
-            { name: "controls", description: "Input scheme.", len: 20, lines: 1 },
+            {
+              name: "controls",
+              description: "Input scheme.",
+              len: 20,
+              lines: 1,
+            },
             { name: "runbook", description: "How to roll.", len: 40, lines: 2 },
           ],
           count: 2,
@@ -122,7 +127,12 @@ describe("MemoriesList", () => {
         memory={memory({
           scope: "isolated",
           memories: [
-            { name: "controls", description: "Input scheme.", len: 20, lines: 1 },
+            {
+              name: "controls",
+              description: "Input scheme.",
+              len: 20,
+              lines: 1,
+            },
           ],
           history: [],
         })}

@@ -1,36 +1,40 @@
 {
   "$defs": {
     "GgAgentApi": {
-      "description": "One namespaced API object a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a\nrow of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s\n[`apis`](GgTelemetryKind::AgentSurface::apis) list.\n\nAn object is present exactly when the agent binds at least one of its functions, so a withheld\ncapability drops the whole object rather than leaving a named-but-empty one. The\n[description](Self::description) is the same one-line prose the agent's own system prompt names\nthe object by — the surface reports what the model was told, not a second wording of it.",
+      "description": "One **capability module** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a\nrow of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s\n[`apis`](GgTelemetryKind::AgentSurface::apis) list.\n\nA module is present exactly when the agent binds at least one of its functions, so a withheld\ncapability drops the whole module rather than leaving a named-but-empty one. The\n[description](Self::description) is the same one-line prose the agent's own system prompt names\nthe module by — the surface reports what the model was told, not a second wording of it.\n\n# Two names, because two readers want different ones\n\nA module has gg's [id](Self::module) for it and the arm's own [spelling](Self::path) of it, and\nthey are separate fields because they answer to different authorities. Eleven language arms\nspell the same module `gg::files`, `gg.files` and `Gg.Files`, so a reader grouping a\ncross-language study by the spelling would report one module as three; a reader quoting what the\nmodel actually wrote must use the spelling and nothing else. The id is the same word the\n[operation](GgTelemetryKind::ApiCall::operation) ids of its calls are namespaced on, which is\nwhat makes \"the calls this agent made in the module it was offered\" a join rather than a guess.",
       "properties": {
         "description": {
-          "description": "The one-line description of the object the agent's system prompt carries.",
+          "description": "The one-line description of the module the agent's system prompt carries.",
           "type": "string"
         },
         "functions": {
-          "description": "The functions this instance actually binds on the object, in catalogue order — exactly the\ncatalogue's own entries for it, with nothing appended that the catalogue does not carry.\nNever empty: an object with nothing bound is absent instead.",
+          "description": "The functions this instance actually binds in the module, in catalogue order — exactly the\ncatalogue's own entries for it, with nothing appended that the catalogue does not carry.\nNever empty: a module with nothing bound is absent instead.",
           "items": {
             "$ref": "#/$defs/GgAgentApiFunction"
           },
           "type": "array"
         },
-        "object": {
-          "description": "The object a program calls through — `fs`, `view`, `harness`.",
+        "module": {
+          "description": "gg's cross-arm id for the module — `files`, `views`, `session`.\n\nEmpty only on a record written before gg reported one, where the surface was grouped by the\nAPI object a function hung off and [`path`](Self::path) is all the identity there is.",
+          "type": "string"
+        },
+        "path": {
+          "description": "This arm's own spelling of the module, and what the model reads — `gg.files`, `gg::files`.",
           "type": "string"
         }
       },
-      "required": ["object", "description", "functions"],
+      "required": ["path", "description", "functions"],
       "type": "object"
     },
     "GgAgentApiFunction": {
-      "description": "One function bound on a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.\n\nThe load-bearing field is [`key`](Self::key): every model-facing call a program makes is recorded\nunder its **own** identity — the object it hangs off and this key — as an\n[`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a\nbound function to how many times this agent actually called it is a join on `(object, key)` and\non nothing else. No gg tool name appears here, and none is needed: the API surface and the tool\nvocabulary are two independent surfaces over one core, and a function no tool backs — a view\ncall, an ending call, a program-library call — is counted exactly as a function one does.",
+      "description": "One function bound in a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.\n\nThe load-bearing field is [`operation`](Self::operation): every model-facing call a program makes\nis recorded under gg's own identity for it as an\n[`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a\nbound function to how many times this agent actually called it is a join on that one string. No\ngg tool name appears here, and none is needed: the API surface and the tool vocabulary are two\nindependent surfaces over one core, and a function no tool backs — a view call, an ending call, a\nprogram-library call — is counted exactly as a function one does.\n\nTwo rows may name one operation. An arm may offer a second way in — the method it hangs off the\ntype the call operates on, beside the free function every arm has — and both spellings are the\nsame operation, so both carry the same figure. That is the truth about the run: gg counts what\nwas done, not which of an arm's synonyms did it.",
       "properties": {
-        "key": {
-          "description": "This function's language-independent identity — `read_file`, `open_docs_view`, `finish` —\nwhich is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it by, so a count\nsurvives a run whose programs were written in another language with other spellings.\n\nAbsent only on a record written before gg recorded a call per function, where a consumer must\nsay the record predates the accounting rather than report a zero: zero accuses the model of\nignoring what it was offered.",
-          "type": "string"
-        },
         "name": {
           "description": "The name a program calls it by — `readFile`, `openDocsView`, `finish`.",
+          "type": "string"
+        },
+        "operation": {
+          "description": "gg's own identity for what this call does — `files.read_file`, `views.open_docs_view`,\n`session.finish` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it\nby, so a count survives a run whose programs were written in another language with other\nspellings.\n\nAbsent on a record written before gg recorded a call per function, and on the vanishingly\nrare entry whose arm named an operation gg does not have — in both cases a consumer must say\nthere is no count rather than report a zero, since zero accuses the model of ignoring what it\nwas offered.",
           "type": "string"
         }
       },
@@ -1463,15 +1467,19 @@
       "type": "object"
     },
     {
-      "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called a function on one of its\nAPI objects — the **model-facing** record, emitted once per call the program makes.\n\nIt is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool\nvocabulary are two surfaces over one core, so a call is recorded here under what the *model\nwrote* (`view`.`open_file`) and there under what *ran* (`read_file`), and neither figure is\nderived from the other. That independence is the whole reason this event exists: a call no\ntool backs — `view.openText`, `harness.finish`, `programs.get` — has no `ToolCall` to be\ncounted through, and used to be counted nowhere at all.\n\nIt carries **no arguments**. A bridged call's `ToolCall` already carries them, and a\ncarve-out's are either trivial (`harness.finish()`) or enormous\n(`view.openText(label, body)`) — so a second copy would double the stream's largest payloads\nto say nothing new.\n\nEmitted **before** the call runs, so anything the call produces — a delegation's child\nevents, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its\n[`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent\nanswering with tool calls rather than programs emits none of these.",
+      "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called one of the functions its\nmodules offer it — the **model-facing** record, emitted once per call the program makes.\n\nIt is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool\nvocabulary are two surfaces over one core, so a call is recorded here under what the *model\nwrote* (`views.open_file`) and there under what *ran* (`read_file`), and neither figure is\nderived from the other. That independence is the whole reason this event exists: a call no\ntool backs — `views.openText`, `session.finish`, `programs.get` — has no `ToolCall` to be\ncounted through, and used to be counted nowhere at all.\n\nIt carries **no arguments**. A bridged call's `ToolCall` already carries them, and a\ncarve-out's are either trivial (`session.finish()`) or enormous\n(`views.openText(label, body)`) — so a second copy would double the stream's largest payloads\nto say nothing new.\n\nEmitted **before** the call runs, so anything the call produces — a delegation's child\nevents, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its\n[`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent\nanswering with tool calls rather than programs emits none of these.",
       "properties": {
         "function": {
-          "description": "The function's language-independent identity — `read_file`, `open_file`, `finish` — the\nsame [`key`](GgAgentApiFunction::key) the agent's [surface](Self::AgentSurface) reports\nit under, never one language's spelling of it.",
+          "description": "gg's own key for the function within that grouping — `read_file`, `open_file`, `finish`.\nThe other half of the legacy pair, and it carries the same caveat\n[`object`](Self::ApiCall::object) does.",
           "type": "string"
         },
         "object": {
-          "description": "The API object the function hangs off — `fs`, `view`, `harness`, `context`.",
+          "description": "The **legacy** grouping gg files the call under — `fs`, `view`, `harness`, `memory`,\n`agents`, `project`, `system`, `review`, `context`, `tasks`, `skills`, `programs`,\n`docs`.\n\n**It does not join to anything, and in particular it is not a\n[module](GgAgentApi::module).** The two vocabularies were written at different times and\ndisagree on eight of their twelve entries — a call filed here under `fs` sits in the\nmodule a surface reports as `files`, `view`/`views`, `harness`/`session`,\n`memory`/`memories`, `agents`/`delegation`, `project`/`board`, `system`/`shell` — so\ngrouping `api_call` by this field and looking the groups up among an agent's offered\nmodules yields empty folders and reads as *every function was offered and none was\ncalled*. Join on [`operation`](Self::ApiCall::operation), which is the one key both\nsides carry and the one this pair is retained beside rather than replaced by.",
           "type": "string"
+        },
+        "operation": {
+          "description": "**The cross-arm join key**: gg's [operation](Self::ApiCall::operation) id for what was\ncalled — `files.read_file` — the same string the agent's\n[surface](GgAgentApiFunction::operation) reports the bound function under.\n\nIt is here because eleven arms legitimately spell one operation eleven ways, and by\ndesign they do: an arm's surface answers to its own language, so `read_file`,\n`readFile`, `ReadFile` and `readTextFile`-as-a-method are all real spellings of things\ngg has exactly one name for. A study comparing arms — or comparing two agents of one run\nwritten in two languages — joins on this and on nothing else.\n\n`None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/)\ncarve-outs, which no arm's catalogue spells and which therefore name no operation. They\nare already recorded under gg's own words for them, so `object`.`function` reads exactly\nas an operation id would (`docs`.`search`) — the identity is there, it is simply not the\noperations table's to give. Also absent on a stream recorded before gg carried it.",
+          "type": ["string", "null"]
         },
         "type": {
           "const": "api_call",
@@ -1496,16 +1504,20 @@
           "description": "The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that\nthrew. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.\n\nThis is the **model's** view of why its call failed — the same `code` the program itself\nbranches on in a `catch` — and it is the only record of it for the calls that never\nreach a tool: a carve-out no tool backs, and a call the membrane refused before dispatch\n(a spent wall-clock budget, a name this run does not offer) which has no `ToolResult` to\ncarry a class on."
         },
         "function": {
-          "description": "The function's language-independent identity.",
+          "description": "gg's own key for the function, repeated for the same reason.",
           "type": "string"
         },
         "object": {
-          "description": "The API object, repeated so this event stands alone.",
+          "description": "The [legacy grouping](Self::ApiCall::object), repeated so this event stands alone —\nincluding its caveat: it is not a module id and joins to nothing.",
           "type": "string"
         },
         "ok": {
           "description": "Whether the call returned a value to the program rather than throwing into it.",
           "type": "boolean"
+        },
+        "operation": {
+          "description": "The [operation](Self::ApiCall::operation), repeated for the same reason — and it is the\nrepetition that earns its keep here rather than a formality: *how often did this\noperation fail* is a question about results, and answering it by pairing each result\nwith the call before it would mean re-deriving a bracket across every child event a\ndelegation emitted inside it.",
+          "type": ["string", "null"]
         },
         "type": {
           "const": "api_result",
@@ -2123,14 +2135,18 @@
       "type": "object"
     },
     {
-      "description": "What one agent instance is **offered**: the calls it may make, as its incarnation opens —\nthe other half of the pair [`AgentModules`](Self::AgentModules) opens, which says what it\n*holds*.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentModules`](Self::AgentModules), and\nun-gated: an agent offered nothing at all still reports an empty\n[`tools`](Self::AgentSurface::tools), which is a finding rather than an absence. It is\nemitted once and never re-emitted, for the same reason a roster is: everything that changes\nwhat an agent holds — an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork` — mints a new\nagent id, and the new instance reports its own surface.\n\nIt exists because *\"the model was never given that tool\"* and *\"the model was given it and\nnever touched it\"* are different findings, and nothing else in the record tells them apart:\na [`ToolCall`](Self::ToolCall) reports only what was called, and re-deriving the offered set\nfrom the run's capability set cannot know about a\n[module binding](GgModuleKind), a [memory](CAPABILITY_MEMORIES) strategy, where the instance\nstands in its machine, or the per-tool\n[ablation](GgAgentConfig::disabled_tools) that withheld one tool of an enabled capability.\n[`tools`](Self::AgentSurface::tools) is the resolved, post-gating, post-`disabledTools` set,\nso a consumer joining it to this agent's calls can say which of the two happened, and\n[`withheld`](Self::AgentSurface::withheld) names that ablation as gg understood it — the one\nthing a consumer must not re-derive from the configuration, because a name gg does not\nrecognize withholds nothing at all.\n\nThe two [execution modes](Self::AgentSurface::execution_mode) offer the same capabilities\nthrough different surfaces, so the payload reports both shapes and each mode fills the one\nthat describes it: a tool-calling agent is offered tool names, and a responses-as-code agent\ncomposes those same tools as functions on namespaced [objects](GgAgentApi), which is what\n[`apis`](Self::AgentSurface::apis) enumerates.",
+      "description": "What one agent instance is **offered**: the calls it may make, as its incarnation opens —\nthe other half of the pair [`AgentModules`](Self::AgentModules) opens, which says what it\n*holds*.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentModules`](Self::AgentModules), and\nun-gated: an agent offered nothing at all still reports an empty\n[`tools`](Self::AgentSurface::tools), which is a finding rather than an absence. It is\nemitted once and never re-emitted, for the same reason a roster is: everything that changes\nwhat an agent holds — an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork` — mints a new\nagent id, and the new instance reports its own surface.\n\nIt exists because *\"the model was never given that tool\"* and *\"the model was given it and\nnever touched it\"* are different findings, and nothing else in the record tells them apart:\na [`ToolCall`](Self::ToolCall) reports only what was called, and re-deriving the offered set\nfrom the run's capability set cannot know about a\n[module binding](GgModuleKind), a [memory](CAPABILITY_MEMORIES) strategy, where the instance\nstands in its machine, or the per-tool\n[ablation](GgAgentConfig::disabled_tools) that withheld one tool of an enabled capability.\n[`tools`](Self::AgentSurface::tools) is the resolved, post-gating, post-`disabledTools` set,\nso a consumer joining it to this agent's calls can say which of the two happened, and\n[`withheld`](Self::AgentSurface::withheld) names that ablation as gg understood it — the one\nthing a consumer must not re-derive from the configuration, because a name gg does not\nrecognize withholds nothing at all.\n\nThe two [execution modes](Self::AgentSurface::execution_mode) offer the same capabilities\nthrough different surfaces, so the payload reports both shapes and each mode fills the one\nthat describes it: a tool-calling agent is offered tool names, and a responses-as-code agent\ncomposes those same tools as functions in capability [modules](GgAgentApi), which is what\n[`apis`](Self::AgentSurface::apis) enumerates.\n\n# It is where a within-run comparison reads its arm from\n\nThree of these fields are per-**agent** settings rather than per-run ones — the\n[execution mode](Self::AgentSurface::execution_mode), the\n[program language](Self::AgentSurface::program_language), and the\n[documentation-view type mode](Self::AgentSurface::doc_view_types) — so one run can hold two\nagents that differ in any of them. That is deliberate, and it is what makes an A/B *within*\none run possible: both arms then share the task, the workspace, the models and the wall\nclock, so a difference between them is a difference the knob made. Every one of the three is\nreported here, on the event emitted once per incarnation, because a study that cannot read\nan agent's arm off the record cannot attribute anything to it — and the run's log is not the\nrecord.",
       "properties": {
         "apis": {
-          "description": "The namespaced API objects a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program\nbinds, in the order the system prompt lists them. Empty for a tool-calling agent, which\nhas no such surface — not merely unknown for one.",
+          "description": "The capability modules a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program\nbinds, in the order the system prompt lists them. Empty for a tool-calling agent, which\nhas no such surface — not merely unknown for one.",
           "items": {
             "$ref": "#/$defs/GgAgentApi"
           },
           "type": "array"
+        },
+        "docViewTypes": {
+          "description": "Which SDK types an `openDocsView` of a function opens **beside** it for this instance —\n`off` (none), `return` (the return position, the default), or `return-and-parameters`\n(everything the signature names). `None` for a tool-calling instance, which opens no\ndocumentation views, and on a stream recorded before gg reported the mode.\n\nThe value is the mode gg **resolved**, never the string the profile wrote: an unreadable\none falls back to the default and is warned about at launch, and reporting the raw text\nhere would file that run under an arm it was never on.\n\nIt is reported for one reason, and the reason decides the field rather than decorating\nit. The three modes are meant to be compared against each other — opening the return\ntype is not obviously cheaper than opening nothing, since a returned record's own fields\nmay send the agent back for two more lookups — and the comparison is only worth anything\nif a reader of the events can tell which arm an agent was on. Joined by\n[`agent_id`](GgTelemetryEvent::agent_id) to that agent's per-band\n[context breakdown](Self::ContextBreakdown) — the\n[documentation band](GgContextSource::DocsView) and the\n[search band](GgContextSource::SearchResults) beside it — and to its\n`views.open_docs_view` [calls](Self::ApiCall), it is what makes *\"which mode was this\nagent on, and what did it cost\"* answerable from the stream alone.",
+          "type": ["string", "null"]
         },
         "executionMode": {
           "description": "How this instance answers a turn: `tool_calling`, or `responses_as_code` when the\n[capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent\nproperty, not a run-wide one — one run may drive a code-shaped root and a tool-calling\nreviewer — which is why it is reported here rather than read off the session summary.",

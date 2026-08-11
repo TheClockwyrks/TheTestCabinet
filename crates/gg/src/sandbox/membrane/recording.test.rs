@@ -23,6 +23,7 @@ use super::super::test_cabinet::gg::context::{Host as ContextHost, TurnRange};
 use super::super::test_cabinet::gg::delegation::{
     Host as DelegationHost, SpawnRequest, SubagentBrief,
 };
+use super::super::test_cabinet::gg::docs::Host as DocsHost;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::super::test_cabinet::gg::memories::{Host as MemoriesHost, MemoryEdit, MemoryInput};
@@ -198,6 +199,72 @@ fn every_host_function_records_its_own_api_call() {
     assert!(
         recorded.calls().iter().all(|call| call.ok.is_some()),
         "every bracket closed: {:?}",
+        recorded.calls()
+    );
+}
+
+/// **Every recorded call also names the operation it resolved to** — the identity that is the same
+/// in all eleven arms, and therefore the only key a cross-language study can count on.
+///
+/// The `(object, key)` pair asserted above is gg's own vocabulary too, but it is the *transitional*
+/// half of it: it is the pair an arm's catalogue used to file a function under, and it is not the
+/// name the agent's reported surface groups by any more. The operation is, so a call that arrived
+/// without one would be a call that can be seen happening and cannot be attributed to anything the
+/// agent was offered.
+///
+/// The one legitimate absence is the documentation carve-out, which is in no row of the table —
+/// asserted in `a_documentation_call_records_no_operation_it_does_not_have` rather than excused
+/// here, because the population this walks is exactly the population that must have one.
+#[test]
+fn every_recorded_call_names_the_operation_it_resolved_to() {
+    let log = CallLog::default();
+    let (mut state, recorded) = recording_membrane(&log);
+
+    call_everything(&mut state);
+
+    let got: BTreeSet<String> = recorded.operations().into_iter().collect();
+    let want: BTreeSet<String> = OPERATIONS
+        .iter()
+        .map(|operation| operation.id.to_string())
+        .collect();
+    assert_eq!(
+        got, want,
+        "every model-facing call is recorded under gg's own identity for it"
+    );
+    // Both halves of the bracket, because the two answer different questions — *what did this
+    // agent do* is asked of the calls and *what failed* is asked of the results, and a result that
+    // had to be paired back to its call to be attributed would have to be paired across every child
+    // event a delegation emitted inside it.
+    assert!(
+        recorded
+            .calls()
+            .iter()
+            .all(|call| call.operation.is_some() && call.ok.is_some()),
+        "the closing half carries the operation too: {:?}",
+        recorded.calls()
+    );
+}
+
+/// **A documentation call records no operation, because gg has none to record.**
+///
+/// The carve-outs are not in the operations table: no arm's catalogue spells them, so there is no
+/// row to resolve and a synthesized id would be a string that joins to nothing else in the run.
+/// What they *are* recorded under is already gg's own vocabulary — `docs.search` — which is the
+/// same shape an operation id has, so one consumer keys both populations the same way.
+///
+/// Asserted rather than left implicit because the tempting repair is to invent the id, and an
+/// invented one would be indistinguishable on the wire from a real one.
+#[test]
+fn a_documentation_call_records_no_operation_it_does_not_have() {
+    let log = CallLog::default();
+    let (mut state, recorded) = recording_membrane(&log);
+
+    let _ = state.search("read".to_string(), None, None, None, None, None);
+
+    assert_eq!(recorded.names(), vec!["docs.search"]);
+    assert!(
+        recorded.operations().is_empty(),
+        "a carve-out names no operation rather than a guessed one: {:?}",
         recorded.calls()
     );
 }

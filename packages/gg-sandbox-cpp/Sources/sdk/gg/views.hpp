@@ -114,9 +114,11 @@ void open_text(std::string_view label, std::string_view body);
 ///
 /// <ggop>views.open_docs_view</ggop>
 ///
-/// \param name The function to document, by the name it is called under its module —
-///   `"read_file"` for `files::read_file`. Searching the documentation is what says which names
-///   exist.
+/// \param name The function to document, by the fully-qualified name its documentation is keyed
+///   by — `"gg::files::read_file"`. The bare name it is called under its module (`"read_file"`)
+///   also resolves and is a fallback rather than the form to reach for: two modules are free to
+///   declare a `close`, and only the qualified name says which one is meant. Searching the
+///   documentation is what says which names exist.
 /// \throws core::tool_error `not_found` for an unknown or unbound name.
 void open_docs_view(std::string_view name);
 

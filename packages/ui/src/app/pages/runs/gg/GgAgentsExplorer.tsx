@@ -29,7 +29,11 @@ import {
   shortTokens,
 } from "./useGgRunState";
 import { cx } from "./ggFsTree";
-import { apiCallSpellings, surfaceCallPhrase } from "./ggSurfaceCalls";
+import {
+  apiCallSpellings,
+  docViewTypesPhrase,
+  surfaceCallPhrase,
+} from "./ggSurfaceCalls";
 import {
   FsExplorer,
   FsFileRow,
@@ -1139,7 +1143,11 @@ function SurfaceFile({
         // function, on the function's own identity — never against the tools those calls
         // happened to run through. The two are different layers and only one of them is
         // the model's own vocabulary.
-        <ApiSurface apis={surface.apis} calls={state.apiCalls} />
+        <ApiSurface
+          apis={surface.apis}
+          calls={state.apiCalls}
+          docViewTypes={surface.docViewTypes}
+        />
       ) : (
         <ToolSurface tools={surface.tools} calls={toolCalls} />
       )}
@@ -1189,16 +1197,26 @@ function ToolSurface({
 }
 
 // The offered set of a responses-as-code instance, grouped the way its programs address
-// it: one card per namespaced object, carrying the same one-line description the agent's
-// own system prompt introduced the object by, over the functions this instance actually
-// binds. An object it was not given is absent entirely rather than listed empty, which is
+// it: one card per capability module, carrying the same one-line description the agent's
+// own system prompt introduced the module by, over the functions this instance actually
+// binds. A module it was not given is absent entirely rather than listed empty, which is
 // gg's own reporting and not a choice this view makes.
+//
+// A row reads by the arm's own spelling and counts by gg's operation id — the two names
+// every surface row carries, and the reason a count survives an arm that spells the call
+// differently.
 function ApiSurface({
   apis,
   calls,
+  docViewTypes,
 }: {
   apis: readonly GgAgentApi[];
   calls: ReadonlyMap<string, number>;
+  /**
+   * Which SDK types this instance's documentation lookups opened beside a function, as gg
+   * resolved it — the arm of a per-agent comparison. Null where the record predates it.
+   */
+  docViewTypes: string | null;
 }) {
   const functions = apis.reduce(
     (total, api) => total + api.functions.length,
@@ -1208,25 +1226,38 @@ function ApiSurface({
     <section className={panels.agentSection} aria-label="offered apis">
       <div className={panels.toolsHead}>
         <span className={panels.subPanelLabel}>APIs</span>
+        {/* The documentation arm this instance was on. It belongs on this file rather than
+            on the run's header for the reason it is per agent at all: two instances of one
+            run may be on two arms, and the tokens each spent on documentation are its own.
+            Read beside its own agent's context breakdown, this is what says which mode
+            those tokens belong to. */}
+        {docViewTypes && (
+          <span
+            className={panels.toolsRate}
+            title={docViewTypesPhrase(docViewTypes)}
+          >
+            docs: {docViewTypes}
+          </span>
+        )}
         <span
           className={panels.toolsRate}
           title={
-            "The objects this instance's programs are bound against. Every call a program " +
+            "The modules this instance's programs are bound against. Every call a program " +
             "makes is recorded under the function the model wrote, so each row carries its " +
             "own figure — a view, an ending and a documentation lookup are counted exactly " +
             "as a file read is — and a function it was offered and did not use reads a " +
             "real 0× rather than an absence."
           }
         >
-          {apis.length} object{apis.length === 1 ? "" : "s"} · {functions}{" "}
+          {apis.length} module{apis.length === 1 ? "" : "s"} · {functions}{" "}
           function{functions === 1 ? "" : "s"}
         </span>
       </div>
       <ul className={panels.knowledgeList}>
         {apis.map((api) => (
-          <li key={api.object} className={panels.knowledgeRow}>
+          <li key={api.module || api.path} className={panels.knowledgeRow}>
             <div className={panels.knowledgeHead}>
-              <span className={panels.knowledgeName}>{api.object}</span>
+              <span className={panels.knowledgeName}>{api.path}</span>
               <span className={panels.knowledgeBadge}>
                 {api.functions.length} fn
               </span>
@@ -1236,13 +1267,11 @@ function ApiSurface({
               {api.functions.map((fn) => (
                 <SurfaceRow
                   key={fn.name}
-                  name={`${api.object}.${fn.name}`}
-                  // On the function's OWN identity, which is what its calls are recorded
-                  // under. A record written before gg counted per function carries no key,
-                  // and says so rather than reporting a zero it cannot support.
-                  count={
-                    fn.key ? (calls.get(`${api.object}.${fn.key}`) ?? 0) : null
-                  }
+                  name={`${api.path}.${fn.name}`}
+                  // On gg's OWN identity for the call, which is what its records name it
+                  // by. A record written before gg counted per function carries no
+                  // operation, and says so rather than reporting a zero it cannot support.
+                  count={fn.operation ? (calls.get(fn.operation) ?? 0) : null}
                 />
               ))}
             </ul>

@@ -135,9 +135,7 @@ describe("axisTicks", () => {
     const ticks = axisTicks(labels(50, 70));
     expect(ticks.length).toBeLessThanOrEqual(12);
     // An even stride, so the axis reads as a scale rather than an arbitrary sample.
-    const gaps = ticks
-      .slice(1)
-      .map((t, i) => Number(t) - Number(ticks[i]!));
+    const gaps = ticks.slice(1).map((t, i) => Number(t) - Number(ticks[i]!));
     expect(new Set(gaps).size).toBe(1);
   });
 

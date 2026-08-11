@@ -1,7 +1,21 @@
-use test_cabinet_core::gg::GgProgramLanguage;
+use std::sync::Arc;
+
+use test_cabinet_core::gg::{
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK,
+    CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_WRITE_FILE, GgAgentConfig, GgCapabilityConfig, GgProgramLanguage, GgSubagentRef,
+};
 
 use super::*;
+use crate::archive::ArchiveRuntime;
+use crate::board::{BoardCaps, BoardRuntime};
 use crate::ending::EndingRole;
+use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
+use crate::modules::{CapabilityModules, ModuleHandle};
+use crate::skills::{SkillLibrary, SkillsRuntime, parse_skill};
+use crate::tasks::{TaskMode, TasksRuntime};
+use crate::tools::{AgentFacts, ToolRegistry};
 
 /// A rendered prompt with every run of whitespace collapsed to one space.
 ///
@@ -32,15 +46,16 @@ fn bare_system() -> SystemContext {
 /// ones under test.
 fn full_system() -> SystemContext {
     SystemContext {
-        apis: vec![
-            ApiView {
-                object: "fs".to_string(),
-                description: "read, write, and edit workspace files".to_string(),
+        modules: vec![
+            ModuleView {
+                path: "fs".to_string(),
+                brief: "read, write, and edit workspace files".to_string(),
+                import: None,
             },
-            ApiView {
-                object: "harness".to_string(),
-                description: "the run itself — end it with `finish`, and read documentation"
-                    .to_string(),
+            ModuleView {
+                path: "harness".to_string(),
+                brief: "the run itself — end it with `finish`, and read documentation".to_string(),
+                import: None,
             },
         ],
         responses_as_code: false,
@@ -192,19 +207,21 @@ fn code_mode_names_objects_and_teaches_discovery() {
     let context = SystemContext {
         responses_as_code: true,
         language: Some(GgProgramLanguage::TypeScript),
-        apis: vec![
-            ApiView {
-                object: "fs".to_string(),
-                description: "read, write, and edit workspace files".to_string(),
+        modules: vec![
+            ModuleView {
+                path: "fs".to_string(),
+                brief: "read, write, and edit workspace files".to_string(),
+                import: None,
             },
-            ApiView {
-                object: "system".to_string(),
-                description: "run shell commands in the workspace".to_string(),
+            ModuleView {
+                path: "system".to_string(),
+                brief: "run shell commands in the workspace".to_string(),
+                import: None,
             },
-            ApiView {
-                object: "harness".to_string(),
-                description: "the run itself — end it with `finish`, and read documentation"
-                    .to_string(),
+            ModuleView {
+                path: "harness".to_string(),
+                brief: "the run itself — end it with `finish`, and read documentation".to_string(),
+                import: None,
             },
         ],
         ..SystemContext::default()
@@ -220,8 +237,10 @@ fn code_mode_names_objects_and_teaches_discovery() {
         "`system`",
         "run shell commands in the workspace",
         "`harness`",
-        "gg.views.openDocsView",
-        "finish",
+        // Discovery is taught as a mechanism rather than as two calls: the prompt names neither
+        // the search nor the documentation view, because naming either would be naming a function.
+        "searching",
+        "documentation view",
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
     }
@@ -254,26 +273,31 @@ fn code_mode_names_objects_and_teaches_discovery() {
 /// operator's stream — so the prompt has to name the channel that carries, show it being used, and
 /// say plainly where logging goes instead.
 ///
-/// The teaching is drawn from what the run actually binds: `view.openText` is ungated (a run with
-/// no tools at all must still be able to show its model something), while the `view.openFile` line
-/// appears only when this run offers `read_file`.
+/// The teaching is drawn from what the run actually binds: showing yourself a value you computed is
+/// ungated (a run with no tools at all must still be able to show its model something), while the
+/// sentence about reading a file appears only when this run offers `read_file`.
+///
+/// **Neither is named as a call**, and that is the change this test now guards from the other side:
+/// what a model can *do* is stated, and which function does it is left to a search. So the gating
+/// is asserted over the sentence rather than over a spelling.
 ///
 /// It is taught in the opening paragraphs rather than under a section of its own — the rewrite in
 /// `b60d2798` folded the old *Showing yourself things* section into the intro, on the reasoning
 /// that the one fact a code-mode model has to hold from its first turn should not be four screens
-/// down. So these assertions pin the *content* — the calls, the gating, where logging goes — and
-/// not the heading it happens to sit under.
+/// down. So these assertions pin the *content* — the channel, the gating, that logging is unread —
+/// and not the heading it happens to sit under.
 #[test]
 fn code_mode_teaches_views_rather_than_logging() {
     let with_reads = render_system(
         &SystemContext {
             responses_as_code: true,
             language: Some(GgProgramLanguage::TypeScript),
-            apis: vec![ApiView {
-                object: "view".to_string(),
-                description: "show yourself a file or a value — the only way material enters your \
+            modules: vec![ModuleView {
+                path: "view".to_string(),
+                brief: "show yourself a file or a value — the only way material enters your \
                               context"
                     .to_string(),
+                import: None,
             }],
             read_file: ReadFileView {
                 offered: true,
@@ -284,20 +308,34 @@ fn code_mode_teaches_views_rather_than_logging() {
         None,
     );
     let flat_reads = flat(&with_reads);
-    // The channel that carries: views are what the next turn is built from, and both calls that
-    // open one are named where the model first meets them. The *argument shape* of each is
-    // [another test](code_mode_names_the_argument_shapes_a_program_starts_from)'s subject; what is
-    // asserted here is that the call is named at all, and named under the right gate.
+    // The channel that carries: views are what the next turn is built from, and both things a view
+    // is opened *of* are stated where the model first meets them — the value it computed, and the
+    // file it reads. Neither is named as a call; the sentence is what is asserted.
     assert!(flat_reads.contains("next turn"), "{with_reads}");
-    assert!(flat_reads.contains("gg.views.openText"), "{with_reads}");
-    assert!(flat_reads.contains("gg.views.openFile"), "{with_reads}");
-    // Logging is named, as the thing that does NOT reach the model — never as an instruction.
+    assert!(
+        flat_reads.contains("Opening a view of a value you computed"),
+        "{with_reads}"
+    );
+    assert!(
+        flat_reads.contains("You can read a workspace file"),
+        "{with_reads}"
+    );
+    // Logging is named, as the thing that does NOT reach the model — never as an instruction, and
+    // never with the channel it *does* reach named either. A prompt that says where the output goes
+    // gives a model a reason to aim at it, and most runs have only their result and metrics read.
     assert!(flat_reads.contains("the only way"), "{with_reads}");
     assert!(flat_reads.contains("console.log"), "{with_reads}");
     assert!(
         !flat_reads.contains("Use `console.log()`"),
         "the prompt still instructs the model to log:\n{with_reads}"
     );
+    for aimed in ["the run's operator", "goes to the run"] {
+        assert!(
+            !flat_reads.contains(aimed),
+            "the prompt names a destination for output the model cannot read (`{aimed}`), which \
+             is a channel it will start writing to:\n{with_reads}"
+        );
+    }
     assert!(
         !with_reads.contains("\n\n\n"),
         "blank-line run:\n{with_reads}"
@@ -309,114 +347,57 @@ fn code_mode_teaches_views_rather_than_logging() {
         &SystemContext {
             responses_as_code: true,
             language: Some(GgProgramLanguage::TypeScript),
-            apis: vec![ApiView {
-                object: "view".to_string(),
-                description: "show yourself a file or a value".to_string(),
+            modules: vec![ModuleView {
+                path: "view".to_string(),
+                brief: "show yourself a file or a value".to_string(),
+                import: None,
             }],
             ..SystemContext::default()
         },
         None,
     );
-    assert!(no_reads.contains("gg.views.openText"), "{no_reads}");
-    assert!(!no_reads.contains("gg.views.openFile"), "{no_reads}");
+    assert!(
+        no_reads.contains("Opening a view of a value you computed"),
+        "{no_reads}"
+    );
+    assert!(
+        !no_reads.contains("You can read a workspace file"),
+        "{no_reads}"
+    );
     assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
 }
 
-/// One function's signature as TypeScript's committed catalogue declares it, qualified by its
-/// object — what a prompt that quotes a signature must be quoting.
-fn catalogued_signature(object: &str, key: &str) -> String {
-    catalogued_signature_in(
-        crate::sandbox::language(GgProgramLanguage::TypeScript),
-        object,
-        key,
-    )
-}
+// The four helpers that resolved one function's name, qualified name and signature out of a
+// language's committed catalogue are **gone with the thing they served**. They existed so a test
+// could assert that a template quoted the SDK's own declaration rather than a copy of it; no
+// template quotes a declaration any more, and a helper kept for a rule nobody enforces is a helper
+// that will be used to write the rule back. What resolves per language here now is the ending call
+// and nothing else, and `crate::sandbox::spell` is the one call that does it.
 
-/// One function's **name**, qualified by its object, as `language`'s catalogue spells it — the
-/// `object.name` head a template renders from an `{{api.…}}.call` reference.
-fn catalogued_call_in(
-    language: &'static dyn crate::sandbox::ProgramLanguage,
-    object: &str,
-    key: &str,
-) -> String {
-    let function = catalogued_in(language, object, key);
-    format!(
-        "{}{}{}",
-        function.object,
-        language.member_separator(),
-        function.name
-    )
-}
-
-/// The catalogue entry gg's own `(object, key)` pair names, in `language`'s catalogue.
+/// **The code prompt states the run's own limits on the two things a program cannot get started
+/// without — and names neither call.**
 ///
-/// Resolved through the [operation](crate::sandbox::operation_of) rather than by looking for gg's
-/// pair in the entry, because an arm reshaped into capability modules files that pair nowhere: it
-/// groups the same call under a module path and names the operation on the declaration. The
-/// canonical binding is what a prompt quotes, so an alias is skipped here exactly as
-/// [`spell`](crate::sandbox::spell) skips it.
-fn catalogued_in(
-    language: &'static dyn crate::sandbox::ProgramLanguage,
-    object: &str,
-    key: &str,
-) -> crate::sandbox::CatalogueFunction {
-    crate::sandbox::catalogue_functions(language)
-        .into_iter()
-        .find(|function| {
-            function.alias_of.is_none()
-                && crate::sandbox::operation_of(function).is_some_and(|resolved| {
-                    resolved.call.object == object && resolved.call.key == key
-                })
-        })
-        .unwrap_or_else(|| panic!("`{object}.{key}` is catalogued"))
-}
-
-/// The same, for any language the seam registers — including the
-/// [fixture](crate::sandbox::fixture_languages), which is the only way to assert that a prompt
-/// quoted *that* language's shape rather than TypeScript's.
+/// It used to name the argument shape of the file read and the shell call, on the reasoning that
+/// discovering each cost a turn. That reasoning is retired with the rest of the naming: the prompt
+/// names no function, and the turn a model spends finding one is the round trip the design is
+/// measuring rather than an overhead to remove.
 ///
-/// Written this way rather than as a literal because the literal is the defect: a signature typed
-/// into a test is a second copy of the SDK's declaration, and a test that pinned one would go on
-/// passing after the SDK's argument was renamed and the prompt started describing a call nobody has.
-fn catalogued_signature_in(
-    language: &'static dyn crate::sandbox::ProgramLanguage,
-    object: &str,
-    key: &str,
-) -> String {
-    let function = catalogued_in(language, object, key);
-    format!(
-        "{}{}{}",
-        function.object,
-        language.member_separator(),
-        function
-            .signatures
-            .first()
-            .expect("every catalogue entry carries a signature")
-            .signature
-    )
-}
-
-/// **The code prompt names the shape of the calls a program cannot get started without.**
-///
-/// The surface is otherwise [read on demand](https://docs.testcabinet.ai/gg/responses-as-code/), and
-/// that stays true — but three calls are load-bearing enough that discovering them costs a turn each,
-/// and a turn spent finding `system.shell` is a turn not spent working. So the opening section names
-/// the argument shape of exactly these, and no others.
-///
-/// Both facts under test are **gated**, on the same rule every named call in this prompt follows: a
-/// call named to a run that does not bind it is a `ReferenceError` the model copies verbatim, and an
-/// argument named to a run where it does nothing is worse than not naming it — the model spends the
-/// turn wondering why the window it asked for was ignored.
+/// What survives — and is the whole of what is asserted here — is the half a search could never tell
+/// the model, because it is a fact about **this run** rather than about the SDK: that a read is
+/// capped at a number, that a window can be named to move it, that a limit larger than the cap is
+/// honored, and what a command hands back. Each is gated, on the same rule every section follows: a
+/// run that withholds the capability says none of it.
 #[test]
-fn code_mode_names_the_argument_shapes_a_program_starts_from() {
+fn code_mode_states_the_run_limits_a_program_starts_from() {
     let code = |read_file: ReadFileView, shell: ShellView| {
         render_system(
             &SystemContext {
                 responses_as_code: true,
                 language: Some(GgProgramLanguage::TypeScript),
-                apis: vec![ApiView {
-                    object: "view".to_string(),
-                    description: "show yourself a file or a value".to_string(),
+                modules: vec![ModuleView {
+                    path: "view".to_string(),
+                    brief: "show yourself a file or a value".to_string(),
+                    import: None,
                 }],
                 read_file,
                 shell,
@@ -440,7 +421,11 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
     );
     let flat_capped = flat(&capped);
     assert!(
-        flat_capped.contains("gg.views.openFile(path, { offset: 400, limit: 200 })"),
+        flat_capped.contains("Reading a file returns 250 lines per call"),
+        "{capped}"
+    );
+    assert!(
+        flat_capped.contains("an `offset` and a `limit`"),
         "{capped}"
     );
     assert!(
@@ -456,7 +441,10 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
         },
         ShellView::default(),
     );
-    assert!(uncapped.contains("gg.views.openFile(path)"), "{uncapped}");
+    assert!(
+        uncapped.contains("You can read a workspace file"),
+        "{uncapped}"
+    );
     assert!(!uncapped.contains("offset"), "{uncapped}");
     assert!(!uncapped.contains("limit"), "{uncapped}");
 
@@ -469,11 +457,10 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
             ..ShellView::default()
         },
     );
-    // The signature is quoted from the catalogue rather than written out here, which is the whole
-    // of what this asserts: whatever the SDK declares `shell` to take is what the prompt says it
-    // takes, and a renamed argument reaches the model without anyone editing a template.
+    // What the call hands back rather than what it is called: a model that does not know a command
+    // returns its output to the program will open a view it did not need, or go looking for a log.
     assert!(
-        with_shell.contains(&catalogued_signature("system", "shell")),
+        with_shell.contains("You can run a shell command in the workspace"),
         "{with_shell}"
     );
     assert!(with_shell.contains("`exitCode`"), "{with_shell}");
@@ -483,7 +470,7 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
     );
 
     let without_shell = code(ReadFileView::default(), ShellView::default());
-    assert!(!without_shell.contains("system.shell"), "{without_shell}");
+    assert!(!without_shell.contains("shell command"), "{without_shell}");
     assert!(
         !without_shell.contains("\n\n\n"),
         "blank-line run:\n{without_shell}"
@@ -567,10 +554,11 @@ fn no_run_describes_compaction() {
     for responses_as_code in [false, true] {
         // `harness` is the object a standard role's `finish` lives on, and the code template
         // renders its object list, so a realistic code context carries at least it.
-        let apis = if responses_as_code {
-            vec![ApiView {
-                object: "harness".to_string(),
-                description: "end your session".to_string(),
+        let modules = if responses_as_code {
+            vec![ModuleView {
+                path: "harness".to_string(),
+                brief: "end your session".to_string(),
+                import: None,
             }]
         } else {
             Vec::new()
@@ -579,7 +567,7 @@ fn no_run_describes_compaction() {
             &SystemContext {
                 responses_as_code,
                 language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
-                apis,
+                modules,
                 ending: ending_view(EndingRole::Standard, responses_as_code),
                 ..SystemContext::default()
             },
@@ -661,9 +649,10 @@ fn code_mode_names_the_grouped_ending_calls() {
             &SystemContext {
                 responses_as_code: true,
                 language: Some(GgProgramLanguage::TypeScript),
-                apis: vec![ApiView {
-                    object: "harness".to_string(),
-                    description: "read documentation".to_string(),
+                modules: vec![ModuleView {
+                    path: "harness".to_string(),
+                    brief: "read documentation".to_string(),
+                    import: None,
                 }],
                 ending: ending_view(role, true),
                 ..SystemContext::default()
@@ -703,23 +692,30 @@ fn the_task_section_carries_the_tool_instructions() {
     assert!(flat(&prompt).contains("At most 100 may be recorded."));
 }
 
-/// The two execution modes render **different** capability sections: a tool-calling run names each
-/// capability's free-standing tools (`add_task`, `spawn_subagent`, `create_epic`), while a
-/// responses-as-code run names their grouped methods (`tasks.addTask`, `agents.spawnSubagent`,
-/// `project.createEpic`) — because in code mode there is no free-standing `add_task`, only a method
-/// on the `tasks` object. This is the whole point of the split, so it is pinned directly: the same
-/// context, rendered in each mode, must teach the calls that mode actually offers.
+/// The two execution modes render **different** capability sections, and the split is now asymmetric.
+///
+/// A tool-calling run names each capability's free-standing tools (`add_task`, `spawn_subagent`,
+/// `create_epic`) — correctly, because those names *are* what such a model requests, and they arrive
+/// with the request's own tool schemas whether the prompt names them or not. A responses-as-code run
+/// names **no call at all**: it says what each capability is, lists the modules its surface is
+/// divided into, and leaves the functions to be searched for.
+///
+/// So this pins both halves. The tool arm must still name its tools; the code arm must name neither
+/// a tool name (which is not what a program calls) nor a grouped call (which is what the model is
+/// meant to discover). The same context, rendered in each mode, must teach what that mode offers and
+/// nothing the other one does.
 #[test]
 fn the_two_modes_name_calls_in_their_own_form() {
-    // A context with every call-naming section on, in the given mode. `apis` carries `harness` so
-    // the code arm has an object to render; it is inert on the tool-calling arm.
+    // A context with every capability section on, in the given mode. `modules` carries `harness` so
+    // the code arm has a module to render; it is inert on the tool-calling arm.
     fn every_section_on(responses_as_code: bool) -> SystemContext {
         SystemContext {
             responses_as_code,
             language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
-            apis: vec![ApiView {
-                object: "harness".to_string(),
-                description: "the run itself".to_string(),
+            modules: vec![ModuleView {
+                path: "harness".to_string(),
+                brief: "the run itself".to_string(),
+                import: None,
             }],
             tasks: Some(TasksView { max_tasks: 100 }),
             subagents: true,
@@ -769,18 +765,20 @@ fn the_two_modes_name_calls_in_their_own_form() {
         );
     }
 
-    // Responses-as-code: the grouped methods, and none of the free-standing tool names.
+    // Responses-as-code: neither vocabulary. Not the free-standing tool names, which are not what a
+    // program calls, and not the grouped calls either, which are what a model is meant to find.
     let code = flat(&render_system(&every_section_on(true), None));
     for grouped in [
-        "`gg.tasks.addTask`",
-        "`gg.tasks.setBlockedBy`",
-        "`gg.delegation.spawnSubagent`",
-        "`gg.board.createEpic`",
-        "`gg.board.createIssue`",
+        "gg.tasks.addTask",
+        "gg.tasks.setBlockedBy",
+        "gg.delegation.spawnSubagent",
+        "gg.board.createEpic",
+        "gg.board.createIssue",
     ] {
         assert!(
-            code.contains(grouped),
-            "code mode missing `{grouped}`:\n{code}"
+            !code.contains(grouped),
+            "code mode names `{grouped}`. The prompt names no function — say what the capability \
+             is and let the model search for the call:\n{code}"
         );
     }
     for tool in [
@@ -792,6 +790,18 @@ fn the_two_modes_name_calls_in_their_own_form() {
         assert!(
             !code.contains(tool),
             "code mode leaked free-standing tool `{tool}`:\n{code}"
+        );
+    }
+    // And what it says instead: each capability described, so a section that lost its calls did not
+    // lose its subject with them.
+    for stated in [
+        "You have access to a task list",
+        "delegate work to another agent",
+        "shared project board",
+    ] {
+        assert!(
+            code.contains(stated),
+            "code mode no longer describes a capability it granted (`{stated}`):\n{code}"
         );
     }
 }
@@ -927,9 +937,10 @@ fn code_mode_with_no_workspace_tools_still_names_harness() {
     let context = SystemContext {
         responses_as_code: true,
         language: Some(GgProgramLanguage::TypeScript),
-        apis: vec![ApiView {
-            object: "harness".to_string(),
-            description: "read documentation".to_string(),
+        modules: vec![ModuleView {
+            path: "harness".to_string(),
+            brief: "read documentation".to_string(),
+            import: None,
         }],
         ending: ending_view(EndingRole::Standard, true),
         ..SystemContext::default()
@@ -992,17 +1003,31 @@ fn the_code_turn_has_no_result_template_to_render() {
 /// The one notice a **successful** program can earn: it ran, and it put nothing in the window.
 ///
 /// It exists for a protocol reason rather than an informational one — a request whose last message
-/// is the assistant's own is a request to continue that message — so it earns its place by also
-/// naming the two calls that would have put something there.
+/// is the assistant's own is a request to continue that message — so it earns its place by telling
+/// the model the two things that turn cost it: that a view is the only channel back, and that what
+/// it wrote to this arm's own output is not readable by it.
+///
+/// It names **no call**, on the same rule the prompt follows. It also does not name a *destination*
+/// for the vanished output: the half of the old sentence that earns its place is "you cannot read
+/// it", and the half that had to go named a channel the model then had a reason to aim at.
 #[test]
-fn the_nothing_shown_notice_names_the_calls_that_would_have_shown_something() {
+fn the_nothing_shown_notice_says_a_view_is_the_only_channel_back() {
     let rendered = render_code_nothing_shown(GgProgramLanguage::TypeScript);
-    assert!(rendered.contains("gg.views.openText"), "{rendered}");
-    assert!(rendered.contains("gg.views.openFile"), "{rendered}");
     assert!(
-        rendered.contains("console.log"),
-        "a model whose output vanished must be told where it went: {rendered}"
+        rendered.contains("A view is the only way to see anything"),
+        "{rendered}"
     );
+    assert!(
+        rendered.contains("nothing `console.log` writes is readable by you"),
+        "a model whose output vanished must be told it cannot read it: {rendered}"
+    );
+    for aimed in ["operator", "goes to the run"] {
+        assert!(
+            !rendered.contains(aimed),
+            "the notice names a destination for output the model cannot read (`{aimed}`): \
+             {rendered}"
+        );
+    }
     assert_no_blank_run(&rendered);
 }
 
@@ -1115,9 +1140,10 @@ fn an_assigned_issue_names_the_issue_and_its_worktree() {
         responses_as_code,
         language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
         // The code arm lists the objects a program reaches; the tool-calling arm ignores them.
-        apis: vec![ApiView {
-            object: "fs".to_string(),
-            description: "read, write, and edit workspace files".to_string(),
+        modules: vec![ModuleView {
+            path: "fs".to_string(),
+            brief: "read, write, and edit workspace files".to_string(),
+            import: None,
         }],
         // No `board`: this profile may not author the board, only work an issue on it.
         board: None,
@@ -1669,7 +1695,7 @@ fn the_context_usage_signal_renders() {
 const REQUIRED_SECTIONS: &[&str] = &[
     "## Responses as Code",
     "### Ending your session",
-    "### Your APIs",
+    "### Your modules",
     "### Reusing a program you already ran",
     "### Messages you receive",
     "## Skills",
@@ -1708,9 +1734,10 @@ pub(super) fn every_code_section_on(language: GgProgramLanguage) -> SystemContex
         responses_as_code: true,
         language: Some(language),
         custom_instructions: Some("Prefer the smaller change.".to_string()),
-        apis: vec![ApiView {
-            object: "harness".to_string(),
-            description: "the run itself".to_string(),
+        modules: vec![ModuleView {
+            path: "harness".to_string(),
+            brief: "the run itself".to_string(),
+            import: None,
         }],
         read_file: ReadFileView {
             offered: true,
@@ -1979,7 +2006,7 @@ fn every_language_renders_its_nothing_shown_notice() {
         assert!(!rendered.trim().is_empty(), "{language}: an empty notice");
         assert_ne!(
             rendered,
-            super::nothing_shown_fallback(crate::sandbox::language(language)),
+            super::nothing_shown_fallback(),
             "{language}: the notice fell back, so its template did not render"
         );
     }
@@ -1995,9 +2022,13 @@ fn every_language_renders_its_nothing_shown_notice() {
 /// rather than through the override path — because the registered name is the path a run takes.
 ///
 /// Three things are asserted, and the third is the one that would catch a regression: each document
-/// carries its own language's spellings; neither carries the other's marker; and both are rendered
-/// from *one* [`SystemContext`], so the shared machinery — the sections, the API list, the ending
+/// is written in its own language's words; neither carries the other's marker; and both are rendered
+/// from *one* [`SystemContext`], so the shared machinery — the sections, the module list, the ending
 /// block — is genuinely shared and only the wording is per language.
+///
+/// The **spellings** half of this used to be carried by the two calls each template quoted from its
+/// own catalogue. With no template naming a function, what distinguishes the documents is their
+/// prose and their module lists, and that is what is read here.
 #[test]
 fn each_language_renders_its_own_prompt_and_not_another_languages() {
     let context = every_code_section_on(GgProgramLanguage::TypeScript);
@@ -2024,23 +2055,22 @@ fn each_language_renders_its_own_prompt_and_not_another_languages() {
         "one language's prompt leaked into the other's:\n{typescript}"
     );
 
-    // Both shapes the fixture's template quotes, each read from the fixture's own catalogue: the
-    // call with its argument named, and the whole signature. A test that spelled either of them out
-    // would stop being a statement about what the fixture declares the moment the fixture's
-    // arguments were renamed — which is the defect the templates themselves were fixed for.
-    assert!(
-        rendered.contains(&format!(
-            "{}(path)",
-            catalogued_call_in(fixture, "fs", "read_file")
-        )) && rendered.contains(&catalogued_signature_in(fixture, "view", "open_text")),
-        "the fixture's prompt quotes the fixture's spellings:\n{rendered}"
-    );
+    // Neither document carries the other's spellings. This is the assertion the two calls the
+    // fixture's template used to quote from its own catalogue were carrying; what carries it now is
+    // that TypeScript's names appear in no document rendered for another arm — which is exactly what
+    // a template copied between arms and left unedited would break.
+    //
+    // The **ending** is deliberately not read here even though it is the one name still resolved per
+    // language, because this test renders one `SystemContext` for both arms on purpose, and the
+    // ending reaches the template as data on that context rather than through a catalogue: both
+    // documents necessarily carry the same one. The gate that spells it per arm is
+    // `every_language_prompt_states_what_the_run_configured`.
     assert!(
         !rendered.contains("readFile") && !rendered.contains("openText"),
-        "the fixture's prompt quotes no other language's spellings:\n{rendered}"
+        "the fixture's prompt quotes another language's spellings:\n{rendered}"
     );
 
-    // One context, two documents: the API list the run built is in both.
+    // One context, two documents: the module list the run built is in both.
     for document in [&typescript, &rendered] {
         assert!(
             document.contains("`harness`"),
@@ -2049,19 +2079,28 @@ fn each_language_renders_its_own_prompt_and_not_another_languages() {
     }
 }
 
-/// **The "nothing shown" notice is per language too**, for the same reason the prompt is: it names
-/// the calls that would have shown the model something, and those are spellings.
+/// **The "nothing shown" notice is per language too**, for what is left of the reason the prompt is.
+///
+/// It no longer names the calls that would have shown the model something — nothing gg says does —
+/// so what it is per language *for* is now the arm's own dead channel: the notice tells a model that
+/// what it wrote to `println!`, `puts` or `Console.WriteLine` is unreadable, and each of those is a
+/// word only one arm's model would recognize.
+///
+/// Asserted through the seam's fixture, whose notice is its own sentence: if the selection were not
+/// per language the shipped TypeScript one would render here instead.
 #[test]
 fn each_language_words_its_own_nothing_shown_notice() {
     let fixture = crate::sandbox::fixture_languages()
         .next()
         .expect("the seam registers a fixture language under test");
     let rendered = render_code_nothing_shown_for(fixture);
-    assert!(rendered.contains("views.open_text"), "{rendered}");
-    assert!(!rendered.contains("openText"), "{rendered}");
+    assert_eq!(
+        rendered,
+        "Your program showed you nothing. Open a view of it."
+    );
     assert_ne!(
         rendered,
-        super::nothing_shown_fallback(fixture),
+        super::nothing_shown_fallback(),
         "the notice fell back, so its template did not render"
     );
 }
@@ -2104,10 +2143,11 @@ fn surface_call((object, key): (&str, &str)) -> crate::sandbox::SurfaceCall {
 /// must not fail a test — a prompt is prose and it is meant to be edited. Dropping `{{#each
 /// board.reviewerAgents}}` must.
 const REQUIRED_PHRASES: &[(&str, &str)] = &[
-    // ### Your APIs — the objects a program is given, and what each is for. Without these a model
-    // is told to call `<object>.<function>()` and never told which objects it has.
-    ("the API object the run granted", "`harness`"),
-    ("the API object's description", "the run itself"),
+    // ### Your modules — the modules a program's surface is divided into, and what each is for.
+    // Without these a model is told to call `<module>.<function>()`, told no function, and never
+    // told where to start looking: the module list is the only vocabulary the prompt supplies.
+    ("the module the run granted", "`harness`"),
+    ("the module's description", "the run itself"),
     // ### Ending your session — the call is deliberately NOT here. It is the one entry that would
     // have to be a different literal per language, because it reaches the template as data rather
     // than through the catalogue, and this table's whole discipline is that every phrase in it is a
@@ -2119,7 +2159,7 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
         "the message heading's description",
         "the task you are working on",
     ),
-    // ## Skills — the library's roster. `skills.readSkill(name)` accepts these names and no others.
+    // ## Skills — the library's roster. Reading a skill takes one of these names and no others.
     ("the skill's name", "`gg-filesystem`"),
     ("the skill's description", "reading and writing files"),
     // ## Memory — the budget a model has to write within.
@@ -2127,7 +2167,7 @@ const REQUIRED_PHRASES: &[(&str, &str)] = &[
     ("the memory scope", "`run`"),
     // ## Tasks — the ceiling.
     ("the task ceiling", "100"),
-    // ## Subagents — the roster `spawn_subagent` accepts.
+    // ## Subagents — the roster a delegation may name.
     ("the spawnable agent's name", "`helper`"),
     ("the spawnable agent's description", "does scoped work"),
     // ## Project management — the two rosters an issue names.
@@ -2228,99 +2268,216 @@ fn every_language_prompt_states_the_rules_a_program_runs_under() {
     }
 }
 
-/// Every capability [`every_code_section_on`] grants, paired with the call a program reaches it
-/// through — the positive half of gg's capability model.
+/// **A rendered prompt names no function of gg's surface — except the one that ends the session.**
 ///
-/// [`a_capability_the_run_withheld_is_absent_from_its_prompt`] asserts the negative half: a call the
-/// run withheld is never advertised. On its own that is satisfied by a prompt that advertises
-/// nothing at all. This is the half that says the section a run *did* turn on names the call it is
-/// about — a model handed "You have access to a task list" and no call spends its turns guessing at
-/// one, and it looks from the outside exactly like a model that cannot use tasks.
+/// The positive half of the capability model, and the shape of it inverted. It used to be
+/// `REQUIRED_CALLS`: a table pairing every capability with the call its section had to name, so a
+/// model handed "You have access to a task list" and no call could not be mistaken for a model that
+/// simply could not use tasks. With the prompt naming nothing, that table is retired rather than
+/// retargeted — pointing it at the prompt and the bootstrap would force one named call per granted
+/// capability, which is exactly the immediate function information the design removes.
 ///
-/// Named by [`SurfaceCall`](crate::sandbox::SurfaceCall) rather than by literal, so each is asserted
-/// in whichever way its own language spells it and a call renamed in a catalogue is a failure here
-/// rather than a sentence quietly naming something no scope holds.
-const REQUIRED_CALLS: &[(&str, (&str, &str))] = &[
-    // The opening section: the two ways to see anything, the way to read documentation, and the way
-    // out to the workspace.
-    ("show itself a value it computed", ("view", "open_text")),
-    ("read a file", ("view", "open_file")),
-    (
-        "read one function's documentation",
-        ("view", "open_docs_view"),
-    ),
-    ("run a command", ("system", "shell")),
-    // ### Reusing a program you already ran
-    ("fetch a program it already ran", ("programs", "get")),
-    ("list the programs gg still holds", ("programs", "history")),
-    ("hand a patched program back", ("programs", "rerun")),
-    // ## Skills
-    ("read a skill", ("skills", "read_skill")),
-    // ## Tasks
-    ("record work", ("tasks", "add_task")),
-    ("revise a task", ("tasks", "update_task")),
-    ("complete a task", ("tasks", "complete_task")),
-    ("drop a task", ("tasks", "remove_task")),
-    ("record a task dependency", ("tasks", "set_blocked_by")),
-    // ## Subagents
-    ("delegate", ("agents", "spawn_subagent")),
-    // ## Project management
-    ("group issues", ("project", "create_epic")),
-    ("file an issue", ("project", "create_issue")),
-    (
-        "suspend until an issue lands",
-        ("project", "wait_for_issue"),
-    ),
-];
-
-/// **A prompt names the call for every capability its run granted**, in every registered language.
+/// What it was protecting moved to [the discoverability gate](crate::docs), which verifies the same
+/// property end to end and far better: for every capability an agent is granted, the words a model
+/// would reach for return something it may actually call, through the real catalogue, the real
+/// ranking and the real permission filter.
+///
+/// So this asserts the other side. Every arm's prompt is rendered with every section on, and the
+/// only catalogued spelling allowed to appear anywhere in it is the **ending** call — which is bound
+/// to a role rather than to a capability, is therefore outside the discoverability gate's reach, and
+/// would leave an agent unable to stop if it were not named. Any other call appearing here is a
+/// section that has started teaching the surface again.
+///
+/// # It is rendered through the real projections, and that is the whole of its worth
+///
+/// Two of the [`SystemContext`] fields a prompt is built from carry text that is **not** a
+/// template's: [`modules`](SystemContext::modules), whose lines are the catalogue's own prose, and
+/// [`code_headings`](SystemContext::code_headings), whose descriptions are authored in Rust. Both
+/// are exactly where a call name gets in — and running this against
+/// [`every_code_section_on_for`]'s literals, which is what it used to do, is running it against the
+/// one input that cannot exhibit the failure. It passed over a prompt that named a function on
+/// every arm.
+///
+/// So the two fields come from [`module_views`](crate::agent::module_views) and
+/// [`code_heading_views`](crate::agent::code_heading_views), the functions the loop itself calls,
+/// driven by a real [`ToolRegistry`] over real capability modules. Everything else stays the
+/// fixture's, because everything else is a template's own words and the fixture renders every
+/// section of them.
+///
+/// Two capability configurations, because one is not enough in either direction. A **granted** agent
+/// binds every module its arm declares — nothing gated can hide a leak from the scan — and an
+/// **ablated** one binds only what nothing gates, which is where an unconditional leak lives and
+/// where a leak that rides on a granted capability must not appear at all. The module-coverage
+/// assertion below is what keeps the first claim honest as the surface grows.
 #[test]
-fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
-    for language in all_languages() {
-        let name = language.display_name();
-        let rendered = render_system_for(
-            language,
-            &every_code_section_on(GgProgramLanguage::TypeScript),
-        );
-        for (what, call) in REQUIRED_CALLS {
-            let spelling = crate::sandbox::spell(language, surface_call(*call));
+fn a_rendered_prompt_names_no_function_but_the_one_that_ends_the_session() {
+    let granted = maximal_agent();
+    let modules = maximal_modules();
+    let full = ToolRegistry::from_run(&granted, &modules, &AgentFacts::default());
+    let bare = ToolRegistry::from_run(
+        &GgAgentConfig {
+            capabilities: Vec::new(),
+            ..GgAgentConfig::root()
+        },
+        &CapabilityModules::inert(),
+        &AgentFacts::default(),
+    );
+
+    for (what, registry, extras) in [("granted", &full, true), ("ablated", &bare, false)] {
+        for &id in GgProgramLanguage::ALL {
+            let language = crate::sandbox::language(id);
+            let name = language.display_name();
+            // The fixture supplies the sections; the loop's own projections supply the two fields
+            // whose text is the catalogue's rather than a template's.
+            let mut context = every_code_section_on_for(language);
+            context.modules =
+                crate::agent::module_views(registry, EndingRole::Standard, extras, extras, id);
+            context.code_headings = crate::agent::code_heading_views(true, true, true, true);
+
+            // Every module this arm declares a function in is one this scan has read, or the
+            // configurations above have stopped being maximal and a leak could hide behind a gate.
+            // A module with no functions — the type-only `core` one — is dropped by the surface
+            // itself and has no line in any prompt, so it is not one of them.
+            if what == "granted" {
+                let rendered_modules: Vec<&str> = context
+                    .modules
+                    .iter()
+                    .map(|view| view.path.as_str())
+                    .collect();
+                for module in crate::sandbox::catalogue_modules(language) {
+                    let has_functions = crate::sandbox::catalogue_functions(language)
+                        .iter()
+                        .any(|function| function.module == Some(module.id));
+                    assert!(
+                        !has_functions || rendered_modules.contains(&module.path),
+                        "{name}: `{}` binds functions but no configuration here renders it, so \
+                         this gate cannot see what its line says",
+                        module.path
+                    );
+                }
+            }
+
+            let rendered = render_system_for(language, &context);
+            // The ending this context was rendered with, spelled as this arm writes it: the one
+            // exception, named rather than pattern-matched so widening it is a visible edit.
+            let allowed = [context.ending.finish.as_str()];
+            let separator = language.member_separator();
+            for function in crate::sandbox::catalogue_functions(language) {
+                for spelling in [
+                    format!("{}{separator}{}", function.object, function.name),
+                    function.fqn.unwrap_or(function.name).to_string(),
+                ] {
+                    if allowed.contains(&spelling.as_str()) {
+                        continue;
+                    }
+                    assert!(
+                        !rendered.contains(&spelling),
+                        "{name} ({what}): the prompt names `{spelling}`. No call belongs in it — \
+                         say what the capability is and which module it lives in, and let the \
+                         model search:\n{rendered}"
+                    );
+                }
+            }
             assert!(
-                rendered.contains(&spelling),
-                "{name}: the prompt no longer tells the model how to {what} \
-                 (`{spelling}`):\n{rendered}"
+                rendered.contains(&context.ending.finish),
+                "{name} ({what}): the prompt no longer names the call that ends the session, which \
+                 is the one a model cannot discover — an ending is bound to a role, and the \
+                 discoverability gate covers capabilities:\n{rendered}"
             );
         }
     }
 }
 
-/// **A read-only memory holder is told the calls its implementation leaves it**, spelled the way
-/// its own language writes them.
+/// A profile with **every capability that contributes a tool** switched on, so the surface it binds
+/// is every module its arm declares a function in.
 ///
-/// A holder that may write is told what its store *is* and left to find the calls it has by
-/// searching. A read-only holder cannot be left to that: it is being
-/// told about somebody else's memories, most of the object is withheld from it, and the one or two
-/// calls it does hold are named in the same sentence as the instruction to use them. That makes the
-/// naming load-bearing rather than convenient — drop it and the section describes an index the
-/// agent has no way to open an entry of.
+/// A maximal profile rather than an enumerated one: the point of the gate above is that no module's
+/// line escapes the scan, and a hand-listed set would quietly stop covering a capability added after
+/// it was written. `gg reference` builds the same shape for the same reason.
+fn maximal_agent() -> GgAgentConfig {
+    GgAgentConfig {
+        capabilities: [
+            CAPABILITY_SHELL,
+            CAPABILITY_READ_FILE,
+            CAPABILITY_WRITE_FILE,
+            CAPABILITY_EDIT_FILE,
+            CAPABILITY_LIST_DIR,
+            CAPABILITY_SKILLS,
+            CAPABILITY_MEMORIES,
+            CAPABILITY_TASKS,
+            CAPABILITY_PROJECT_MANAGEMENT,
+            CAPABILITY_AGENT_MANAGED_CONTEXT,
+            CAPABILITY_SUBAGENTS,
+            CAPABILITY_EXEC,
+            CAPABILITY_FORK,
+        ]
+        .into_iter()
+        .map(GgCapabilityConfig::enabled)
+        .collect(),
+        // The delegation tools are gated on there being somewhere to delegate *to*, so a roster of
+        // one — carrying every scope — is what makes that module bind at all.
+        subagents: vec![GgSubagentRef::any(PLACEHOLDER_AGENT)],
+        ..GgAgentConfig::root()
+    }
+}
+
+/// The module set [`maximal_agent`]'s registry is assembled against: every stateful capability's
+/// store bound, since a capability whose module is disabled offers no tools and so contributes no
+/// module to the surface.
+///
+/// The skill library holds one skill rather than none, because an empty one withholds `read_skill`
+/// entirely — there would be nothing to read — and the skills module would vanish with it.
+fn maximal_modules() -> CapabilityModules {
+    let library = Arc::new(SkillLibrary::empty().with_builtins(vec![parse_skill(
+        &format!("---\nname: {PLACEHOLDER_SKILL}\ndescription: A skill.\n---\n"),
+        PLACEHOLDER_SKILL,
+    )]));
+    CapabilityModules::inert()
+        .with(ModuleHandle::Skills(SkillsRuntime::new(library)))
+        .with(ModuleHandle::Memories(MemoriesRuntime::new(
+            MemoryStrategy::Scratchpad,
+            MemoryCaps::for_strategy(MemoryStrategy::Scratchpad),
+        )))
+        .with(ModuleHandle::Tasks(TasksRuntime::with_mode(
+            MAXIMAL_TASK_CEILING,
+            TaskMode::Simple,
+        )))
+        .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
+        .with(ModuleHandle::Archive(ArchiveRuntime::new()))
+}
+
+/// The one agent [`maximal_agent`]'s roster names, and the one skill [`maximal_modules`]'s library
+/// holds. Neither is ever reached: they exist so the capability that would otherwise withhold its
+/// tools has something to point at.
+const PLACEHOLDER_AGENT: &str = "helper";
+const PLACEHOLDER_SKILL: &str = "a-skill";
+
+/// The ceiling [`maximal_modules`]'s task list carries. Any positive number does — no task tool's
+/// definition mentions it, and nothing here ever adds a task.
+const MAXIMAL_TASK_CEILING: usize = 100;
+
+/// **A read-only memory holder's section is written for a reader, not a curator.**
+///
+/// A holder that may write is told to record what matters. A read-only holder is being told about
+/// somebody else's memories, and most of the family is withheld from it, so the same paragraph would
+/// be an instruction it cannot follow — an agent told to write memories regularly and then refused
+/// every call that writes one spends its turns looking for the one it was promised.
+///
+/// It used to assert that the section **named** the one or two calls such a holder keeps, on the
+/// grounds that the naming was load-bearing where the writing half's was not. It is not asserted any
+/// more, because the prompt names no call at all: a read-only holder finds the read side the way
+/// every other agent finds every other call, and the
+/// [discoverability gate](crate::docs) is what holds that it can. What survives is the half that was
+/// always the section's own — that the prose changes shape.
 ///
 /// The tool-calling rendering of the same property is
-/// [`the_memory_section_changes_shape_for_a_read_only_holder`]; this is the code-mode half, where
-/// the call is a method on an object and its spelling is the language's.
+/// [`the_memory_section_changes_shape_for_a_read_only_holder`]; this is the code-mode half.
 #[test]
-fn a_read_only_memory_holder_is_told_the_calls_it_keeps() {
-    let implementations = [
-        (
-            "a markdown index",
-            (true, false),
-            &[("memory", "read_memory")][..],
-        ),
-        (
-            "keyword search",
-            (false, true),
-            &[("memory", "search_memories"), ("memory", "read_memory")][..],
-        ),
-    ];
-    for (what, (markdown, keyword_search), calls) in implementations {
+fn a_read_only_memory_holder_is_told_the_memories_are_not_its_own() {
+    for (what, (markdown, keyword_search)) in [
+        ("a markdown index", (true, false)),
+        ("keyword search", (false, true)),
+    ] {
         for language in all_languages() {
             let name = language.display_name();
             let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
@@ -2329,15 +2486,17 @@ fn a_read_only_memory_holder_is_told_the_calls_it_keeps() {
             memories.markdown = markdown;
             memories.keyword_search = keyword_search;
             memories.read_only = true;
-            let rendered = render_system_for(language, &context);
-            for call in calls {
-                let spelling = crate::sandbox::spell(language, surface_call(*call));
-                assert!(
-                    rendered.contains(&spelling),
-                    "{name}: a read-only holder reading {what} is not told about \
-                     `{spelling}`:\n{rendered}"
-                );
-            }
+            let rendered = flat(&render_system_for(language, &context));
+            assert!(
+                rendered.contains("read-only access to another agent's memories"),
+                "{name}: a read-only holder reading {what} is not told whose memories these \
+                 are:\n{rendered}"
+            );
+            assert!(
+                !rendered.contains("Write memory"),
+                "{name}: a read-only holder reading {what} is told to write memories it cannot \
+                 write:\n{rendered}"
+            );
         }
     }
 }
@@ -2410,9 +2569,10 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
         let context = SystemContext {
             responses_as_code: true,
             language: Some(GgProgramLanguage::TypeScript),
-            apis: vec![ApiView {
-                object: "harness".to_string(),
-                description: "the run itself".to_string(),
+            modules: vec![ModuleView {
+                path: "harness".to_string(),
+                brief: "the run itself".to_string(),
+                import: None,
             }],
             ending: EndingView {
                 standard: true,
