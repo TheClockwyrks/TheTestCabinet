@@ -137,6 +137,45 @@ pub(super) fn evaluate_as(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(program, enabled, modules, ending, library, false, responder)
+}
+
+/// [`evaluate_as`] for an agent that also holds `docview-close`.
+///
+/// Its own function rather than a seventh argument on the one above, because every other caller here
+/// wants the default and a second bare `false` at the end of an argument list says nothing about
+/// which flag it is. What it buys is the only way to drive
+/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
+/// refuses the call before this arm's lowering of the answer is ever reached.
+pub(super) fn evaluate_closing_docviews(
+    program: &str,
+    enabled: &[String],
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(
+        program,
+        enabled,
+        &[],
+        RunEnding::None,
+        false,
+        true,
+        responder,
+    )
+}
+
+/// What both of the above are: one evaluation, with every flag the scope carries stated.
+///
+/// It is also where the component-before-store ordering [`evaluate_as`]'s documentation explains
+/// actually happens, since that is a property of this body rather than of either wrapper.
+fn evaluate_granting(
+    program: &str,
+    enabled: &[String],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    docview_close: bool,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
@@ -150,7 +189,7 @@ pub(super) fn evaluate_as(
         modules,
         ending,
         library,
-        docview_close: false,
+        docview_close,
     };
     let mut store = bounded_store(
         MembraneState::new(api, language(), scope, limits, None),

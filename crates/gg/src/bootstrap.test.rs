@@ -6,9 +6,10 @@
 //! so a model copying it copies something that works; and that running it twice adds nothing, which
 //! is what makes it safe beside a persistent agent's restore.
 //!
-//! The fourth is [`the_search_call_is_still_uncatalogued`], which is not about the bootstrap
-//! behaving — it is the forcing function that promotes the second bootstrap call into
-//! [`BOOTSTRAP_CALLS`] the moment there is one to promote.
+//! A fourth used to sit here — `the_search_call_is_still_uncatalogued`, a forcing function holding
+//! the documentation search to being absent from [`BOOTSTRAP_CALLS`] while no arm's SDK published
+//! it. It is gone because it has done its job: the search has an operation, it is in the list, and
+//! the first test above is now what fails on an arm that does not catalogue it.
 
 use std::sync::Arc;
 
@@ -177,26 +178,21 @@ fn a_tool_calling_window_is_not_seeded() {
     assert!(ctx.items().is_empty());
 }
 
-/// **The documentation search is still a call no arm catalogues** — and the day it is one, this
-/// fails and it must be promoted into [`BOOTSTRAP_CALLS`].
+/// **Every bootstrap call is one gg has an operation for.**
 ///
-/// The forcing function, written the way the discoverability gate's waivers are: the gap is recorded
-/// as an assertion rather than as a comment, so it cannot be closed quietly. Searching is bound into
-/// every program's scope at the membrane and is what the prompt tells a model to do — but no arm's
-/// SDK publishes it, so gg has no name to open a documentation view of and nothing to render behind
-/// that name. Until an arm does, the bootstrap can only carry the half that exists.
-///
-/// The pair is the one the [membrane](crate::sandbox) records the call under, which is gg's own
-/// vocabulary for a carve-out no catalogue spells.
+/// The list is written by hand, and a [`SurfaceCall`] naming a pair no row carries would be seeded
+/// as a key [`bootstrap_keys`] can never resolve — so the bootstrap would quietly shrink to whatever
+/// was left, which is the failure the whole turn exists to prevent.
 #[test]
-fn the_search_call_is_still_uncatalogued() {
-    const DOCS_SEARCH: (&str, &str) = ("docs", "search");
-    assert!(
-        !OPERATIONS.iter().any(|operation| {
-            operation.call.object == DOCS_SEARCH.0 && operation.call.key == DOCS_SEARCH.1
-        }),
-        "gg now has an operation for the documentation search, so an arm can catalogue it and the \
-         bootstrap can open its documentation. Add it to BOOTSTRAP_CALLS — a prompt that tells a \
-         model to search while nothing shows it how is the gap this test exists to close."
-    );
+fn every_bootstrap_call_is_an_operation_gg_has() {
+    for call in BOOTSTRAP_CALLS {
+        assert!(
+            OPERATIONS.iter().any(|operation| {
+                operation.call.object == call.object && operation.call.key == call.key
+            }),
+            "the bootstrap opens `{}.{}`, which gg has no operation for",
+            call.object,
+            call.key
+        );
+    }
 }

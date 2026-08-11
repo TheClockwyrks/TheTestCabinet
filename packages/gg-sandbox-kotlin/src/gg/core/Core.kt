@@ -1,7 +1,7 @@
 /**
  * The failure type, the failure codes, and the small values every other module speaks in.
  *
- * It catalogues no capability of its own. What it holds is the vocabulary the other eleven modules
+ * It catalogues no capability of its own. What it holds is the vocabulary the other twelve modules
  * share, gathered here so that no module has to reach into another to name a failure — and so that a
  * program catching one writes a single `import gg.core.ToolError` rather than one per module it
  * calls. The session-wide `lib` namespace sits here for the same reason: a code module arrives from

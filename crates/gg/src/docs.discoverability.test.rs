@@ -38,11 +38,11 @@
 //!   somebody writes down the words a model would look for it by.
 
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
-    CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
-    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
-    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WRITE_FILE,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_DOCVIEW_CLOSE,
+    CAPABILITY_EDIT_FILE, CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR,
+    CAPABILITY_MEMORIES, CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
 };
 use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
 
@@ -68,6 +68,7 @@ const CAPABILITY_KEYWORDS: &[(&str, &[&str])] = &[
     (CAPABILITY_PROJECT_MANAGEMENT, &["issue", "epic", "board"]),
     (CAPABILITY_SUBAGENTS, &["subagent", "delegate", "spawn"]),
     (CAPABILITY_PROGRAM_LIBRARY, &["program", "rerun", "history"]),
+    (CAPABILITY_DOCVIEW_CLOSE, &["close", "documentation"]),
     (
         CAPABILITY_AGENT_MANAGED_CONTEXT,
         &["archive", "evict", "context"],
@@ -320,11 +321,12 @@ fn a_withheld_capability_is_not_findable_by_the_same_words() {
 /// new capability and one that exists, is granted, and is never found.
 ///
 /// A capability with **no** operation is skipped rather than exempted, and needs no waiver: there is
-/// nothing to discover, so there is nothing to be undiscoverable.
-/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) is the live example — the two
-/// calls it buys are refused at the membrane under gg's own names because no arm's committed
-/// catalogue spells them yet, so they are in no catalogue for a search to return. The moment an arm
-/// catalogues them they become operations, and this test demands a row for them on the same commit.
+/// nothing to discover, so there is nothing to be undiscoverable. There is none today.
+/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) was the live example for as
+/// long as the two calls it buys were gated inline at the membrane and in no row of
+/// [`OPERATIONS`] — which is exactly the shape of gap this file exists to make impossible, and it
+/// survived here only because a capability that grants nothing grants nothing to find. Enrolling
+/// those calls is what made this test demand its row.
 #[test]
 fn every_capability_with_a_call_has_natural_words_written_down() {
     for capability in GG_CAPABILITY_CATALOG {

@@ -3,12 +3,12 @@
   "rebuild": "packages/gg-sandbox-swift/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/checkers/swift.guest.tar.gz": {
-      "bytes": 180476,
-      "sha256": "220e0fe397cd6377c2a0caefe674d7c36a745bfcc85eb092ae820d59e4c2c331"
+      "bytes": 188685,
+      "sha256": "de33cc29ed68ef40a64c554bc38581806f9a984b5330713a326e1989aac9e454"
     },
     "crates/gg/src/sandbox/checkers/swift.libraries.tar.gz": {
-      "bytes": 3437962,
-      "sha256": "b6caa036e09cda408a8da7d96868fde1133e79d51af5f5f8e9434bf615e885ff"
+      "bytes": 3437906,
+      "sha256": "4488a802e1074f0d5e3af92a3b4f22535588d73262b63d14c32fdc1da69a3cf5"
     },
     "crates/gg/src/sandbox/checkers/swift.adapter.wasm": {
       "bytes": 52238,
@@ -35,6 +35,7 @@
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Context.swift": "25f9c3bfd7d58b91a12d7c6bc275474f42a3c2a742a69aad36d8c60454e7c2f3",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Core.swift": "ad2022d7b8d1669325a4792d52a618cf13fccb894cbdc9a7632862a4fa62749d",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Delegation.swift": "82b740b36c4a26fdbfaf5d0995ae52957c319bee9b5419893e33b0b6994e6773",
+    "packages/gg-sandbox-swift/Sources/SDK/Modules/Docs.swift": "c67a41e5a47bce1ff993dc415a45ec80a8a5c3ce515b6247bfdc8dea77e379df",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Files.swift": "8f5b39d95e91d5cd62cfa96fb7041fc5cc1d902cb5ebb38ae3566334a61a0794",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Memories.swift": "5e6a4468294bc97bcda1a083f2b318ccaaed217f285567ccda267250ef81da8e",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Programs.swift": "5176b74d3a30a83a66d7b38bf8e41f1ae73d028c83181ab40f4ce1c3241ada9b",
@@ -42,7 +43,7 @@
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Shell.swift": "9a43a3ea4f34e5a094645df45605f6e204260fb3055986f4053404de58446326",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Skills.swift": "d3a00674833cb08ac6700997e70f3c7bf473b3fe73830c62ba766a731b586f82",
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Tasks.swift": "fb45c6afcc03f05482c4ff0e62f1dc7aa8c2f6fd110cbc78b202ee5bd2d4891f",
-    "packages/gg-sandbox-swift/Sources/SDK/Modules/Views.swift": "c5d0b64640e56dd32c2ff47cb4548471b9ef502975b697db496b5ff441e02f4b",
+    "packages/gg-sandbox-swift/Sources/SDK/Modules/Views.swift": "89559505b95a8fcb7135b7002f4e66359591969b13cff35b9d51d194811c9668",
     "packages/gg-sandbox-swift/Sources/gg-shell.h": "f39e7e021159caab032d74a3fcd816e16acb883fb94999f035ac9b5449def6ba",
     "packages/gg-sandbox-swift/Sources/shell.swift": "290f537855fc6a866984071530d74cd8655bf1056ad39fd61dc134950f6fa88c",
     "packages/gg-sandbox-swift/build.sh": "e26335b097ad14da66fe82e4bde83882d17d4fc115bec66ec6904f008d2ab338",

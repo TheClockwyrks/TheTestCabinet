@@ -57,7 +57,7 @@
 // What makes `files::read_file(…)` reachable without writing `gg::`.
 //
 // A using-directive rather than declaring the modules at global scope, and the reason is not a
-// collision — measured against this arm's own pinned `clang++`, every one of the twelve module
+// collision — measured against this arm's own pinned `clang++`, every one of the thirteen module
 // names compiles as a fresh `namespace` at global scope beside this prelude, `shell` and `core`
 // included. It is that the modules have to live inside `gg` for the fully-qualified name a program
 // writes and a search hit shows — `gg::files::read_file` — to be a real C++ path rather than a

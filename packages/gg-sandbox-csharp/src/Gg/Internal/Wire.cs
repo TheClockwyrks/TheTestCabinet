@@ -48,4 +48,20 @@ internal static class Wire
     // A list argument the caller left out. The bridge lowers an empty array as an empty list, which
     // is what every one of these means: "no blockers", "no reviewers".
     internal static string[] Or(string[]? values) => values ?? [];
+
+    // A `Docs.DocKind` on its way out, as the wire's own word for it. The documentation index types
+    // its `kind` as a plain string rather than as a WIT enum, so the two words are written here —
+    // once, in C#, where dropping or renaming a member of the enum stops this compiling.
+    internal static string? Word(Gg.Docs.DocKind? kind) => kind switch
+    {
+        Gg.Docs.DocKind.Function => "function",
+        Gg.Docs.DocKind.Type => "type",
+        _ => null,
+    };
+
+    // A `kind` on its way back. Anything that is not the word for a type is a function, because the
+    // wire's vocabulary is closed at two and a third word would be gg and this SDK disagreeing about
+    // what a catalogue holds — which is not a thing to raise at the program that merely searched.
+    internal static Gg.Docs.DocKind Kind(string word) =>
+        word == "type" ? Gg.Docs.DocKind.Type : Gg.Docs.DocKind.Function;
 }

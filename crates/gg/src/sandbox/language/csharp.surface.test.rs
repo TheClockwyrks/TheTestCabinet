@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::GUEST_COMPONENT;
-use super::substrate::{evaluate, logs, prepare, program_error};
+use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare, program_error};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
@@ -368,10 +368,10 @@ fn every_tool_crosses_the_membrane_from_its_csharp_spelling() {
 }
 
 #[test]
-fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_csharp_too() {
-    // Two of the four families that are NOT gg tools, so neither appears in the crossing table above
-    // — and both are where a program puts something in front of the model, which makes them the ones
-    // a silent bridging mistake would cost the most.
+fn the_view_object_the_documentation_the_helper_and_the_standard_ending_are_reached_too() {
+    // Three of the five families that are NOT gg tools, so none of them appears in the crossing table
+    // above — and two of them are where a program puts something in front of the model, which makes
+    // them the ones a silent bridging mistake would cost the most.
     let (outcome, log) = evaluate(
         &prepare(
             r####"
@@ -427,6 +427,77 @@ Session.Finish("read the file and showed myself the result");
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "notes.md", "offset": 1, "limit": 2 }))
+    );
+
+    // THE DOCUMENTATION MODULE, which is the family a session begins in: the prompt names no
+    // function, so this is the only call a model can make before it has been told a name. It is also
+    // the one part of this arm's surface with a *new* lowering under it — the search's page crosses
+    // the interpreter's frame as one array per hit field, plus a sixth array carrying the page's own
+    // two numbers — so what is checked here is that the envelope survives that trip whole.
+    //
+    // The double models no catalogue, so an empty page is the honest answer and the ranking is
+    // `DocsRuntime`'s to be right about.
+    let (outcome, _log) = run_with(
+        r####"
+var all = Docs.Search("view");
+var narrowed = Docs.Search("", module: "Gg.Views", kind: Docs.DocKind.Function, limit: 5);
+Console.WriteLine($"{all.Total} {all.Offset} {all.Hits.Count}");
+Console.WriteLine(narrowed.Hits.Count == 0);
+try
+{
+    Docs.Close("Gg.Files.ReadFile");
+}
+catch (ToolException failure)
+{
+    Console.WriteLine($"{failure.Code} {failure.Tool}");
+}
+"####,
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["0 0 0", "True", "Unavailable close"],
+        "the documentation module did not answer from its C# spellings"
+    );
+    // A search is not a tool call and not a view the program named: its results go into the window
+    // under gg's own constant selector, so a second search replaces the first rather than piling up.
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| (view.kind, view.selector.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (
+                crate::context::ViewKind::Search,
+                crate::context::SEARCH_RESULTS_VIEW
+            ),
+            (
+                crate::context::ViewKind::Search,
+                crate::context::SEARCH_RESULTS_VIEW
+            ),
+        ],
+        "each search placed its page in the window"
+    );
+
+    // And the same two closing calls for an agent that HOLDS `docview-close`. This is the only path
+    // that reaches `gg_close_doc_view` and `gg_close_doc_views` in the bridge at all: without the
+    // capability the membrane refuses before either C function runs. The double holds no window, so
+    // `0` is the honest count and a successful call rather than a failure.
+    let (outcome, _log) = evaluate_closing_docviews(
+        &prepare(
+            r####"
+Console.WriteLine($"{Docs.Close("Gg.Files.ReadFile")} {Docs.CloseAll()}");
+"####,
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["0 0"],
+        "the capability was granted and the closes still did not answer"
     );
 }
 
@@ -814,6 +885,7 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
             ("board", "Gg.Board"),
             ("tasks", "Gg.Tasks"),
             ("memories", "Gg.Memories"),
+            ("docs", "Gg.Docs"),
             ("views", "Gg.Views"),
             ("context", "Gg.Context"),
             ("delegation", "Gg.Delegation"),

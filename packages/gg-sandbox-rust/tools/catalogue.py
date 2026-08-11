@@ -6,7 +6,7 @@ declaration it belongs to, as a ``#[doc(alias = "ggop:…")]`` on that declarati
 id as a ``#[doc(alias = "ggmodule:…")]`` on its own ``pub mod``. A side table naming every function
 twice was precisely the second copy that drifts, and it does not exist any more.
 
-What is left is a table of twelve module identities, and it is here rather than in ``src/`` for two
+What is left is a table of thirteen module identities, and it is here rather than in ``src/`` for two
 reasons: the ORDER is model-facing — it is the sequence a documentation index and the run's agent
 surface present the modules in — and the PATH is the string gg matches a fully-qualified name's
 prefix against, so a module that misspelled its own path would be reporting names nothing could
@@ -39,6 +39,7 @@ MODULES = [
     Module("tasks", "tasks", "gg::tasks"),
     Module("memories", "memories", "gg::memories"),
     Module("views", "views", "gg::views"),
+    Module("docs", "docs", "gg::docs"),
     Module("context", "context", "gg::context"),
     Module("delegation", "delegation", "gg::delegation"),
     Module("skills", "skills", "gg::skills"),

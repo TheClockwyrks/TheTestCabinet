@@ -30,6 +30,8 @@ const objectFor = (name) => {
       return typeof tasks === "undefined" ? undefined : tasks;
     case "memory":
       return typeof memory === "undefined" ? undefined : memory;
+    case "docs":
+      return typeof docs === "undefined" ? undefined : docs;
     case "view":
       return typeof view === "undefined" ? undefined : view;
     case "context":

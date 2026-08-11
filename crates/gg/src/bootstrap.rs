@@ -63,20 +63,25 @@
 
 use crate::context::ContextModel;
 use crate::docs::DocsRuntime;
-use crate::sandbox::{SurfaceCall, VIEW_OPEN_DOCS_VIEW, catalogue_functions, operation_of};
+use crate::sandbox::{
+    DOCS_SEARCH, SurfaceCall, VIEW_OPEN_DOCS_VIEW, catalogue_functions, operation_of,
+};
 
 /// **The calls the bootstrap opens the documentation of** — the ones discovery is made of, and
 /// nothing else.
 ///
-/// There are two of them in the design and one of them here, and the gap is not an oversight.
-/// Opening a documentation view by name is catalogued on all eleven arms and is what this seeds.
-/// Searching is the other half — it is bound into every program's scope at the
-/// [membrane](crate::sandbox), it is what the prompt tells a model to do, and **no arm's SDK
-/// publishes it yet**, so there is no name to open a view of and no documentation behind that name
-/// to render. It belongs in this list the moment an arm catalogues it;
-/// `the_search_call_is_still_uncatalogued` in this module's tests is what makes that promotion
-/// happen rather than being noticed.
-pub(crate) const BOOTSTRAP_CALLS: &[SurfaceCall] = &[VIEW_OPEN_DOCS_VIEW];
+/// Both halves of the loop the [prompt](crate::prompts) describes, in the order it describes them:
+/// a model searches for what it needs and then opens a documentation view of what it found. Seeding
+/// them in that order means the transcript's first turn reads as the loop rather than as two
+/// unrelated calls, and the model's own example of a well-formed turn is the one it will spend the
+/// session repeating.
+///
+/// Searching was withheld from this list for as long as no arm's SDK published it: gg cannot open a
+/// documentation view of a name that is in no catalogue, so a run would have seeded a key that
+/// rendered nothing. It is here because the call now has a row in gg's own
+/// [operations table](crate::sandbox::operation_of) — until each arm follows, an arm that does not
+/// catalogue it is skipped by [`bootstrap_keys`] and fails the capability gate by name.
+pub(crate) const BOOTSTRAP_CALLS: &[SurfaceCall] = &[DOCS_SEARCH, VIEW_OPEN_DOCS_VIEW];
 
 /// Seed `context` with the bootstrap turn: one program that opens the
 /// [bootstrap calls](BOOTSTRAP_CALLS)' documentation, then those views.

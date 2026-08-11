@@ -2775,10 +2775,10 @@ another arm — and every one of them is a difference the design leaves each lan
 
 - **A capability module is a Rust module.**
   `files::read_file("src/main.rs", files::ReadOptions::default())?` is a path and a call, which is
-  how Rust namespaces anything. There are eleven of them — `files`, `shell`, `board`, `tasks`,
-  `memories`, `views`, `context`, `delegation`, `skills`, `programs`, `session` — plus a twelfth,
-  `core`, which declares no function and holds the three types every other module's signatures
-  name. gg writes one line in front of every program, `use gg::prelude::*;`, so every module name
+  how Rust namespaces anything. There are twelve of them — `files`, `shell`, `board`, `tasks`,
+  `memories`, `views`, `docs`, `context`, `delegation`, `skills`, `programs`, `session` — plus a
+  thirteenth, `core`, which declares no function and holds the three types every other module's
+  signatures name. gg writes one line in front of every program, `use gg::prelude::*;`, so every module name
   and those three types are already in scope. A **glob** rather than a list of imports, and that is
   the load-bearing part: Rust lets an explicit `use` shadow a glob-imported name, so a program that
   writes `use std::fs;` gets the standard library's where an explicit import gg wrote would have
@@ -2915,13 +2915,13 @@ Every difference below is a spelling rather than an identity, and the
 [capability gate](#the-capability-gate) accepts each of them:
 
 - **A capability module is a caseless `enum`**, which is Swift's own namespace inside a module, so
-  `files.readFile(…)` is a call on a namespace and nothing is constructed first. There are eleven of
-  them — `files`, `shell`, `board`, `tasks`, `memories`, `views`, `context`, `delegation`, `skills`,
-  `programs`, `session` — plus a twelfth, `core`, which declares no function and holds the types
-  every other module's signatures name. The module's *name* is gg's identity rather than this SDK's
+  `files.readFile(…)` is a call on a namespace and nothing is constructed first. There are twelve of
+  them — `files`, `shell`, `board`, `tasks`, `memories`, `views`, `docs`, `context`, `delegation`,
+  `skills`, `programs`, `session` — plus a thirteenth, `core`, which declares no function and holds
+  the types every other module's signatures name. The module's *name* is gg's identity rather than this SDK's
   spelling, so this is the one place the SDK departs from Swift's UpperCamelCase convention for
   types, and it is a departure the surface's own rules force.
-- **Not thirteen real Swift modules behind an `@_exported` umbrella**, which was the shape the
+- **Not that many real Swift modules behind an `@_exported` umbrella**, which was the shape the
   design expected and the one measurement replaced. The umbrella *does* re-export transitively —
   compiled and checked, rather than read — so that was not what decided it. A module of its own
   would have to be called `GgFiles` where the vocabulary every arm shares is `files`, and a program
@@ -3396,10 +3396,10 @@ three-way `text-edit` is a `Tasks.TextEdit` whose `default` is `Keep` — so an 
 mention a description does not touch it, and clearing one is `Tasks.TextEdit.Clear` rather than a
 sentinel.
 
-**This arm's surface is eleven capability modules, and each is a `public static partial class` in
+**This arm's surface is twelve capability modules, and each is a `public static partial class` in
 `namespace Gg`** — `Gg.Files`, `Gg.Shell`, `Gg.Board`, `Gg.Views` — with its result types nested
 inside it, so `Gg.Files.FileRead` and `Gg.Tasks.TextEdit` are the names a program writes and the
-names a documentation view is opened by. A twelfth, class-less `core` module holds the two
+names a documentation view is opened by. A thirteenth, class-less `core` module holds the two
 declarations every other module's signatures name (`ToolException` and `ToolErrorCode`), which sit
 directly in `namespace Gg` so that a `catch (ToolException failure)` needs no prefix.
 

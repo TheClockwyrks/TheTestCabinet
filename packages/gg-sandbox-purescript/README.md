@@ -63,7 +63,7 @@ and read by another does not compile at all.
 | `src/` | The hand-written, idiomatic SDK. `Gg/<Module>.purs` is one **capability module** each — `Gg.Files`, `Gg.Shell`, `Gg.Board`, … — owning the functions it binds and the types they produce; `Gg/Core.purs` binds no capability and holds the failure types every signature names; `Gg/Internal/` is the bridge, which no model ever sees. |
 | `build.sh` | Vendors the toolchain, resolves the set, stages the sources **and the SDK**, compiles, packs and writes the manifest. |
 | `signatures.sh` | Regenerates the committed catalogue: unpacks the tree, stages the working `src/` over it, compiles with `--codegen docs`, and runs `tools/signatures.mjs`. |
-| `tools/catalogue.mjs` | The one thing the sources cannot say: which twelve modules the surface is divided into, and in what order a reader meets them. Nothing else — a function's gg operation id is written in its own doc comment, and every word a model reads is a doc comment in `src/`. |
+| `tools/catalogue.mjs` | The one thing the sources cannot say: which thirteen modules the surface is divided into, and in what order a reader meets them. Nothing else — a function's gg operation id is written in its own doc comment, and every word a model reads is a doc comment in `src/`. |
 | `tools/signatures.mjs` | The reflector: `purs`' own `docs.json` plus that module table, emitted as the catalogue. |
 
 ## Rebuilding

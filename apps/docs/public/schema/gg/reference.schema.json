@@ -3,6 +3,10 @@
     "GgApiFunction": {
       "description": "One [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) API function, as\nthe sandbox SDK declares it.\n\nEverything here is reflected out of the guest SDK's emitted `.d.ts` and its JSDoc, which is\nthe same material a model gets back from `view.openDocsView(...)` — so this page and the\ndocumentation lookup a program can perform mid-run cannot disagree.",
       "properties": {
+        "capability": {
+          "description": "The **capability** that buys this function, by gg's own id for it (`program-library`,\n`docview-close`), or `None` for a function no capability gates.\n\n[`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names\nthe third and last thing that can withhold a call — so a reader that finds all three empty\nmay say the function is always available, and one that does not must not. It exists because\n[`library`](Self::library) could only ever answer for one capability, and the moment a second\nbought part of the surface every call it withheld read as ungated.",
+          "type": ["string", "null"]
+        },
         "category": {
           "description": "The [category](GgReferenceCategory::id) the function's module belongs to.",
           "type": "string"
@@ -24,7 +28,7 @@
           "type": ["string", "null"]
         },
         "library": {
-          "description": "Whether this function belongs to the\n[program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a\n*capability* binds as a whole rather than a tool or a role, and therefore the one\nneither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.",
+          "description": "Whether this function belongs to the\n[program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a\n*capability* binds as a whole rather than a tool or a role, and therefore the one\nneither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.\n\nKept as a boolean because it is a published field, and now a projection of\n[`capability`](Self::capability) rather than a second fact: it is that field compared\nagainst the program library's id.",
           "type": "boolean"
         },
         "module": {

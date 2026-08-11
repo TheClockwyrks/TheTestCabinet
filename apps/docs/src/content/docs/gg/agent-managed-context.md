@@ -165,11 +165,17 @@ agent makes for a whole session. A close removes an item from the middle and cos
 every cached token after it. Whether that reclaim pays for the invalidation is a measurement
 rather than an answer, so it is a toggle.
 
-Until every program language's SDK spells that call, `view.close` also sweeps the
-documentation band **for an agent that holds the capability**, and only for one — so a run
-without `docview-close` still cannot reclaim a documentation view by any route, which is the
-arm of the comparison the toggle exists to measure. The sweep is transitional: each arm's own
-`docs.close` replaces it, and the sentence goes with it.
+So `view.close` does **not** reach the documentation band at all, in any configuration. Every
+arm's SDK now spells `docs.close` and `docs.close_all`, which is the only route to a
+documentation view, and each refuses by name — naming the capability — for an agent the run
+did not give it. A shared sweep would have had to do one of two worse things: spend a
+capability the caller never asked about, or answer `0` for an agent that lacks it, which the
+model cannot tell apart from a selector that named nothing. A refusal is an answer; a silent
+zero is not.
+
+It also keeps the telemetry attributable. `close_docs_views` has exactly one producer, so a
+capability ablation can say which call reclaimed a documentation view — where two routes, one
+of them never naming the capability it depended on, could not.
 
 `view.close` sits **beside** `evict_file_view` rather than inside it, and the two differences
 are the whole reason it is documented separately:

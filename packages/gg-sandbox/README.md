@@ -77,10 +77,12 @@ this run offers, and binds each module under its bare id as well, so
 as `ToolError` is, and filed under their module's name, so `gg.files.FileRead` is
 where the declaration lives and `FileRead` is what a signature writes.
 
-Three families are model-facing and are **not** gg tools, so no `ALL_TOOL_NAMES`
+Four families are model-facing and are **not** gg tools, so no `ALL_TOOL_NAMES`
 entry stands for one: the ending calls of `src/gg/session.ts`, which a role buys;
-the view calls of `src/gg/views.ts`, four of which nothing gates at all; and the
-program library of `src/gg/programs.ts`, which a capability buys. Keeping them out
+the view calls of `src/gg/views.ts`, four of which nothing gates at all; the
+documentation calls of `src/gg/docs.ts`, of which the search is bound to every
+program and the two closes are bought by a capability; and the program library of
+`src/gg/programs.ts`, which a capability buys. Keeping them out
 of the tool vocabulary is what keeps `boundTools() == ALL_TOOL_NAMES` — the one
 drift gate that inspects the committed `.wasm` rather than a source file — in exact
 bijection.

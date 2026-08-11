@@ -98,7 +98,8 @@ public final class Views {
      * arrives in the next prompt under a {@code Documentation} heading keyed by the name, exactly as
      * a file or a computed value arrives — so it is not available in the turn that asks for it. Ask
      * in one turn, use it in the next. Opening the same function's documentation again replaces the
-     * view rather than adding a second copy, and {@link #close} closes it.
+     * view rather than adding a second copy, and {@code gg.docs.Docs.close} closes it — not
+     * {@link #close}, which does not reach documentation.
      *
      * @param name The function to document, by the fully-qualified name its documentation is
      *     keyed by — {@code "gg.files.Files.readFile"}. The bare name it is called by
@@ -116,14 +117,19 @@ public final class Views {
     /**
      * Close every view carrying a selector, freeing the tokens they occupied.
      *
-     * <p>For a file that is every page of that path, for a text view the one with that label, for a
-     * documentation view the function's name. Closing a selector that is not open hands back
-     * {@code 0} rather than failing, so a program that tidies up unconditionally needs no guard.
-     * Closing a file view forgets what was read rather than what exists; closing a text view
-     * discards the only copy of what it held.
+     * <p>For a file that is every page of that path, for a text view the one with that label, for
+     * the results of a search the label {@code search results}. Closing a selector that is not open
+     * hands back {@code 0} rather than failing, so a program that tidies up unconditionally needs
+     * no guard. Closing a file view forgets what was read rather than what exists; closing a text
+     * view discards the only copy of what it held.
      *
-     * @param selector What the view is filed under: a file's path, a text view's label, or a
-     *     documentation view's function name.
+     * <p>Documentation views are not reached from here: {@code gg.docs.Docs.close} is what takes
+     * one away, and it is bought by a capability this call is not. A sweep that included them would
+     * hand back {@code 0} for an agent that may not close one, which reads as a selector that named
+     * nothing.
+     *
+     * @param selector What the view is filed under: a file's path, a text view's label, or
+     *     {@code search results}.
      * @return how many views were closed
      * @ggop views.close
      */
@@ -155,8 +161,8 @@ public final class Views {
      * One view open in the context window, as the current set reports it.
      *
      * @param kind Whether it is a file, a text or a documentation view.
-     * @param selector What {@link Views#close} takes: a file's path, a text view's label, or a
-     *     documentation view's function name.
+     * @param selector What closes it: a path, a label or {@code search results} for
+     *     {@link Views#close}; a docs view's key goes to {@code Docs.close}.
      * @param tokens Roughly what holding it costs, in tokens.
      * @param region The line window a paged file view covers; empty for a whole-file view and for
      *     every text view.
@@ -166,6 +172,9 @@ public final class Views {
 
         /**
          * Close this view, which is {@link Views#close} on its own selector.
+         *
+         * <p>A documentation view is the one this does not take away, because {@link Views#close}
+         * does not reach that band: {@code gg.docs.Docs.close} is the call for one of those.
          *
          * @return how many views were closed, which is one unless it had already gone
          * @ggalias views.close

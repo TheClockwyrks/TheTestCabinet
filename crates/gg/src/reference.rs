@@ -594,6 +594,13 @@ fn functions() -> Vec<GgApiFunction> {
             // boolean. The wire field stays a boolean because it is a published contract, and it is
             // read off the id rather than restated.
             library: function.capability == Some(CAPABILITY_PROGRAM_LIBRARY),
+            // ...and the capability itself is carried, because the boolean beside it can only ever
+            // answer for one of them. `docview-close` is the second capability to buy part of the
+            // surface, and projecting only the library's id would have published `gg.docs.close` as
+            // gated by nothing — which the page renders affirmatively as "always available", an
+            // operator planning a capability ablation being told the opposite of the truth by the
+            // artifact whose whole purpose is to be gg's surface as gg itself sees it.
+            capability: function.capability.map(str::to_string),
             types: types(language, function.types),
         })
         .collect()

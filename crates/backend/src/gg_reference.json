@@ -43,6 +43,11 @@
       "description": "Delegating work to child agents, and handing your session on."
     },
     {
+      "id": "gg-docs",
+      "title": "Documentation",
+      "description": "Finding a function by keyword, and reclaiming the documentation you have read."
+    },
+    {
       "id": "gg-views",
       "title": "Views",
       "description": "Showing yourself a file, a value, or a function's documentation."
@@ -88,6 +93,12 @@
       "path": "gg.memories",
       "summary": "Durable notes that survive a compaction of the context window.",
       "category": "gg-memory"
+    },
+    {
+      "id": "docs",
+      "path": "gg.docs",
+      "summary": "Find a function by searching for it, and take a documentation view back out of the window.",
+      "category": "gg-docs"
     },
     {
       "id": "views",
@@ -4364,6 +4375,366 @@
       ]
     },
     {
+      "module": "docs",
+      "name": "search",
+      "fqn": "gg.docs.search",
+      "operation": "docs.search",
+      "category": "gg-docs",
+      "summary": "Search everything this agent can call, and every type their signatures name, best match first.",
+      "signatures": [
+        {
+          "signature": "search(query: string, options?: { module?: string; type?: string; kind?: DocKind; offset?: number; limit?: number; }): DocSearch",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The words to look for, as one string. Several specific words beat a sentence; it may be empty only when a filter says what to look at instead.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "{ module?: string; type?: string; kind?: DocKind; offset?: number; limit?: number; }",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The filters and the page. Omit it for the first page of everything the query ranked.",
+              "fields": [
+                {
+                  "name": "module",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "One module, named either the way a program writes it (`gg.files`) or by gg's own id (`files`). Exact and case-insensitive.",
+                  "fields": []
+                },
+                {
+                  "name": "type",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "One type's own name, narrowing to that type and the functions whose signatures mention it — what can be done with a value of this shape.",
+                  "fields": []
+                },
+                {
+                  "name": "kind",
+                  "type": "DocKind",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "`\"function\"` or `\"type\"`, to see only one of them. Any other word is refused.",
+                  "fields": []
+                },
+                {
+                  "name": "offset",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "How many hits to skip, for reading past the first page. Defaults to none.",
+                  "fields": []
+                },
+                {
+                  "name": "limit",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "How many hits to return: 20 by default, 100 at most, and zero is refused. Compare it against `total` to see how much of the answer this page is.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "doc": "Search everything this agent can call, and every type their signatures name, best match first.\n\nMatching is case-insensitive substring matching over names, signatures, briefs and detailed descriptions, so `docs` finds `openDocsView`. A hit whose own name matched is ranked above one that merely mentions the word in a paragraph, and the query is split on whitespace, so several specific words work better than a sentence.\n\nThe filters compose with the query and with each other, and each is an exact lookup rather than another thing to rank: an empty query with `module` is that module's whole directory, which is the first hop worth making. A query that is blank **and** carries no filter is `invalid-argument`, because a search that asked for nothing and a search that found nothing are different answers; so is an unrecognised `kind`, which would otherwise silently widen a search believed to be narrow.\n\nThe page comes back as a value **and** opens as a view labelled `search results`, so the results can be read next turn without being shown deliberately. That view is replaced by the next search rather than accumulating, and `gg.views.close(\"search results\")` takes it away.",
+      "library": false,
+      "types": [
+        {
+          "name": "DocKind",
+          "declaration": "type DocKind = \"function\" | \"type\"",
+          "doc": "Which of the two things a documentation entry is.",
+          "members": [
+            {
+              "name": "\"function\"",
+              "doc": "A function a program calls."
+            },
+            {
+              "name": "\"type\"",
+              "doc": "A type a signature names."
+            }
+          ]
+        },
+        {
+          "name": "DocHit",
+          "declaration": "interface DocHit { key: string; kind: DocKind; module: string; name: string; summary: string; }",
+          "doc": "One entry a search matched: enough to choose from, and no more.",
+          "members": [
+            {
+              "name": "key",
+              "type": "string",
+              "doc": "The fully-qualified name it is documented under, and what `gg.views.openDocsView` takes."
+            },
+            {
+              "name": "kind",
+              "type": "DocKind",
+              "doc": "Whether this entry is a function or a type."
+            },
+            {
+              "name": "module",
+              "type": "string",
+              "doc": "The module it lives in, written the way a program writes it.\n\nA function has exactly one. A **type** has as many as there are modules whose functions mention it, and they arrive comma-separated — so this is a description rather than something to hand back to the `module` filter, which takes one module and nothing else."
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The name a program calls it by, or the type's own name."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "Its brief, and only its brief. Everything else written about it is what a view holds."
+            }
+          ]
+        },
+        {
+          "name": "DocSearch",
+          "declaration": "interface DocSearch { total: number; offset: number; hits: DocHit[]; }",
+          "doc": "One page of search results, and the total behind it.",
+          "members": [
+            {
+              "name": "total",
+              "type": "number",
+              "doc": "How many entries matched before paging, so a capped page is distinguishable from a whole one."
+            },
+            {
+              "name": "offset",
+              "type": "number",
+              "doc": "The offset this page starts at, echoed back, so paging needs nothing tracked on the side."
+            },
+            {
+              "name": "hits",
+              "type": "DocHit[]",
+              "doc": "The page itself, best first."
+            }
+          ]
+        },
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "docs",
+      "name": "close",
+      "fqn": "gg.docs.close",
+      "operation": "docs.close",
+      "category": "gg-docs",
+      "summary": "Close the documentation view opened under `key`, and hand back how many were closed.",
+      "signatures": [
+        {
+          "signature": "close(key: string): number",
+          "parameters": [
+            {
+              "name": "key",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The fully-qualified name the view was opened under, as a search hit reports it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Close the documentation view opened under `key`, and hand back how many were closed.\n\nA key that is not open closes zero rather than failing, so tidying up unconditionally needs no guard. There is no cascade: closing a function's view leaves the views of the types it named exactly where they were, and closing a type's leaves the functions. Nothing remembers why a view was opened, so a type closed here is opened again by the next function that mentions it.\n\nThrows `ToolError` with `unavailable` for an agent this run did not give the closing of documentation views. Opening one only ever appends to the end of the prompt, while closing one rewrites its middle and costs the run every cached token after it — which is why opening is always available and closing is bought.",
+      "library": false,
+      "capability": "docview-close",
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "docs",
+      "name": "closeAll",
+      "fqn": "gg.docs.closeAll",
+      "operation": "docs.close_all",
+      "category": "gg-docs",
+      "summary": "Close every documentation view at once, and hand back how many went.",
+      "signatures": [
+        {
+          "signature": "closeAll(): number",
+          "parameters": []
+        }
+      ],
+      "doc": "Close every documentation view at once, and hand back how many went.\n\nThe blanket form of `close`, on the same terms and behind the same capability: no cascade to worry about because nothing is left, and zero rather than a failure when none was open. It is the call for reclaiming the window between one piece of work and the next, where naming each key would be a list to keep.\n\nThrows `ToolError` with `unavailable` for an agent this run did not give the closing of documentation views.",
+      "library": false,
+      "capability": "docview-close",
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
       "module": "views",
       "name": "openFile",
       "fqn": "gg.views.openFile",
@@ -4665,7 +5036,7 @@
           ]
         }
       ],
-      "doc": "Show the agent one function's full documentation: its signature, its description and its types.\n\nOnly the types it names that have not already been shown this session are appended, so re-reading costs nothing twice. The argument is the function itself, as in `gg.views.openDocsView(gg.files.readFile)`, or its name as a string.\n\nIt is a **view** rather than a return value, so the documentation arrives in the next prompt under a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn and using it in the next is the shape that works. Opening the same function again replaces the view, and `close` takes the same name.\n\nThrows `ToolError` with `not-found` for an unknown or unbound name; searching the documentation is what says which names exist.",
+      "doc": "Show the agent one function's full documentation: its signature, its description and its types.\n\nOnly the types it names that have not already been shown this session are appended, so re-reading costs nothing twice. The argument is the function itself, as in `gg.views.openDocsView(gg.files.readFile)`, or its name as a string.\n\nIt is a **view** rather than a return value, so the documentation arrives in the next prompt under a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn and using it in the next is the shape that works. Opening the same function again replaces the view, and `gg.docs.close` takes the same name to put it away — not the `close` in this module, which does not reach documentation.\n\nThrows `ToolError` with `not-found` for an unknown or unbound name; searching the documentation is what says which names exist.",
       "library": false,
       "types": [
         {
@@ -4742,13 +5113,13 @@
               "type": "string",
               "optional": false,
               "passing": "positional",
-              "doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+              "doc": "What the view is filed under: a file's path, a text view's label, or `search results`.",
               "fields": []
             }
           ]
         }
       ],
-      "doc": "Close every view carrying a selector, and hand back how many were closed.\n\nFor a file that is every page of that path, for a text view the one with that label, and for a documentation view the function's name. Closing a selector that is not open returns zero rather than failing, so a program that tidies up unconditionally needs no guard on every call.\n\nClosing a file view forgets what was read, not what exists. Closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.",
+      "doc": "Close every view carrying a selector, and hand back how many were closed.\n\nFor a file that is every page of that path, for a text view the one with that label, and for the results of a search the label `search results`. Closing a selector that is not open returns zero rather than failing, so a program that tidies up unconditionally needs no guard on every call.\n\nDocumentation views are not among them: `gg.docs.close` is what takes one of those away, and it is bought by a capability this call is not. A sweep that quietly reached them would answer zero for an agent that may not close one, which reads exactly like a selector that named nothing.\n\nClosing a file view forgets what was read, not what exists. Closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.",
       "library": false,
       "types": [
         {
@@ -4874,7 +5245,7 @@
             {
               "name": "selector",
               "type": "string",
-              "doc": "What `close` takes: a file's path, a text view's label, or a docs view's function name."
+              "doc": "What closes it.\n\nA file's path, a text view's label or `search results` for `close`, and for a documentation view the key `gg.docs.close` takes."
             },
             {
               "name": "tokens",
@@ -6149,6 +6520,7 @@
       ],
       "doc": "List the programs this session has already run, oldest first.\n\nEach entry carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes rather than sources, so `get` is what fetches one. The list survives a compaction, which makes it the way to find a program whose text has left the context window.\n\nThrows `ToolError` with `unavailable` for an agent with no program library. It is empty, never an error, for one that has a library and has run nothing yet.",
       "library": true,
+      "capability": "program-library",
       "types": [
         {
           "name": "ProgramSummary",
@@ -6264,6 +6636,7 @@
       ],
       "doc": "Fetch the exact source of one program that ran, as a string; the default is the most recent.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `rerun`. What comes back is the program that **executed**, so a turn whose program was itself handed over by `rerun` yields the program that ran rather than the few lines that asked for it, and fetch, patch and run compose turn after turn.\n\nThrows `ToolError` with `not-found`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
       "library": true,
+      "capability": "program-library",
       "types": [
         {
           "name": "ToolErrorCode",
@@ -6347,6 +6720,7 @@
       ],
       "doc": "Hand gg a program to run in place of this one, once this one has finished.\n\nNothing is undone: every call the handing-over program already made stands, and the program that runs next sees the world this one left behind — so handing over before doing work that should not happen twice is the shape that works.\n\nThe first call stands and a second is refused, because a silently replaced program is a change nobody can see. A failed handing-over program cancels the hand-over along with everything else it decided, and the turn is reported as an ordinary error instead.\n\nThrows `ToolError` with `invalid-argument` for a blank source, and `refused` for a second hand-over in one turn.",
       "library": true,
+      "capability": "program-library",
       "types": [
         {
           "name": "ToolErrorCode",

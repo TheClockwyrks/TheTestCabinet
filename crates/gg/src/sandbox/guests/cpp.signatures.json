@@ -146,6 +146,13 @@
       "import": null
     },
     {
+      "id": "docs",
+      "path": "gg::docs",
+      "brief": "Find the functions and types this run bound, and take their documentation back out of context.",
+      "detail": "Discovery is two steps: `docs::search` answers with one-line briefs, each carrying the fully-qualified name it is keyed by, and `views::open_docs_view` reads one of those names in full. Nothing else names a function — the system prompt lists the modules and stops there.\n\nSearching is bound to every program whatever a run enables, because an agent that cannot find its own surface does not have one. Closing is the exception and is bought by a capability: opening documentation only ever adds to the end of the prompt, while closing it rewrites the middle.",
+      "import": null
+    },
+    {
       "id": "context",
       "path": "gg::context",
       "brief": "Reclaim room in the agent's own context window.",
@@ -1811,7 +1818,7 @@
       "fqn": "gg::views::close",
       "call": null,
       "brief": "Close every view carrying `selector`, freeing the tokens they occupied.",
-      "detail": "For a file that is every page of that path, for a text view the one with that label, and for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held.\n\nReturns: how many views were closed.",
+      "detail": "For a file that is every page of that path, for a text view the one with that label, and for the results of a search the label `search results`. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held.\n\nDocumentation views are not reached from here. `docs::close` is what takes one away, and it is bought by a capability this call is not — so a sweep that included them would hand back `0` for an agent that may not close one, which reads as a selector that named nothing.\n\nReturns: how many views were closed.",
       "signatures": [
         {
           "signature": "close(std::string_view selector) -> std::uint32_t",
@@ -1822,7 +1829,7 @@
               "optional": false,
               "kind": "positional",
               "default": null,
-              "doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+              "doc": "What the view is filed under: a file's path, a text view's label, or `search results`.",
               "fields": []
             }
           ]
@@ -1885,6 +1892,143 @@
           "fqn": "gg::views::open_view"
         }
       ]
+    },
+    {
+      "operation": "docs.search",
+      "aliasOf": null,
+      "module": "docs",
+      "kind": "function",
+      "receiver": null,
+      "name": "search",
+      "fqn": "gg::docs::search",
+      "call": null,
+      "brief": "Search the bound functions and types by keyword, by module, or by both — best match first.",
+      "detail": "Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `open_docs_view` and `view` finds every call that mentions one. Ranking is by the kind of evidence that matched: an entry whose own name matched outranks one that merely mentions the word in a paragraph, however often it mentions it. Only what this run bound is ever returned, so nothing a search finds is something the program cannot call.\n\nThe result is a value and a view. The value is readable in the turn that asked for it; the view puts the same page in the next prompt under the selector `search results`, replaced by the next search rather than accumulating, and closed by `views::close`. A hit carries a brief and no more — reading one in full is `views::open_docs_view` on its `key`.\n\nReturns: the page that matched, best first, and how many matched behind it.\nThrows: core::tool_error `invalid_argument` when `query` is empty and no filter is set — asking for nothing and matching nothing are different answers — and when `limit` is `0`, which is a page that could never answer anything.",
+      "signatures": [
+        {
+          "signature": "search(std::string_view query, docs::search_filters filters = {}) -> docs::doc_search",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The words to look for, matched as case-insensitive substrings. Several specific words rank an entry above one vague word. It may be empty when `filters` narrows the search.",
+              "fields": []
+            },
+            {
+              "name": "filters",
+              "type": "docs::search_filters",
+              "optional": true,
+              "kind": "positional",
+              "default": "{}",
+              "doc": "The filters and the page; `{}` searches the whole bound surface and takes the first page.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "types": [
+        {
+          "spelled": "docs::search_filters",
+          "fqn": "gg::docs::search_filters"
+        },
+        {
+          "spelled": "docs::doc_search",
+          "fqn": "gg::docs::doc_search"
+        },
+        {
+          "spelled": "core::tool_error",
+          "fqn": "gg::core::tool_error"
+        },
+        {
+          "spelled": "core::tool_error_code",
+          "fqn": "gg::core::tool_error_code"
+        },
+        {
+          "spelled": "docs::doc_kind",
+          "fqn": "gg::docs::doc_kind"
+        },
+        {
+          "spelled": "docs::doc_hit",
+          "fqn": "gg::docs::doc_hit"
+        }
+      ],
+      "returns": [
+        {
+          "spelled": "docs::doc_search",
+          "fqn": "gg::docs::doc_search"
+        }
+      ]
+    },
+    {
+      "operation": "docs.close",
+      "aliasOf": null,
+      "module": "docs",
+      "kind": "function",
+      "receiver": null,
+      "name": "close",
+      "fqn": "gg::docs::close",
+      "call": null,
+      "brief": "Take one documentation view out of the context window, by the key it was opened under.",
+      "detail": "The removal does not cascade: closing a function's view leaves the views of the types it named, and closing a type's leaves every function beside it, because nothing records why a view was opened. A type closed here is opened again by the next function that mentions it.\n\nReturns: how many views were closed, which is `0` when that key is not open — not a failure, so a program that tidies up unconditionally needs no guard.\nThrows: core::tool_error `unavailable` when this agent was not given the capability that buys closing documentation.",
+      "signatures": [
+        {
+          "signature": "close(std::string_view key) -> std::uint32_t",
+          "parameters": [
+            {
+              "name": "key",
+              "type": "std::string_view",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The fully-qualified name the view was opened under, as a hit's `key` reports it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "types": [
+        {
+          "spelled": "core::tool_error",
+          "fqn": "gg::core::tool_error"
+        },
+        {
+          "spelled": "core::tool_error_code",
+          "fqn": "gg::core::tool_error_code"
+        }
+      ],
+      "returns": []
+    },
+    {
+      "operation": "docs.close_all",
+      "aliasOf": null,
+      "module": "docs",
+      "kind": "function",
+      "receiver": null,
+      "name": "close_all",
+      "fqn": "gg::docs::close_all",
+      "call": null,
+      "brief": "Take every documentation view out of the context window, and report how many went.",
+      "detail": "The blanket form of `docs::close`, on the same terms and behind the same capability: what it frees is every documentation view the session has opened, and none of the file or text views beside them.\n\nReturns: how many views were closed.\nThrows: core::tool_error `unavailable` when this agent was not given the capability that buys closing documentation.",
+      "signatures": [
+        {
+          "signature": "close_all() -> std::uint32_t",
+          "parameters": []
+        }
+      ],
+      "types": [
+        {
+          "spelled": "core::tool_error",
+          "fqn": "gg::core::tool_error"
+        },
+        {
+          "spelled": "core::tool_error_code",
+          "fqn": "gg::core::tool_error_code"
+        }
+      ],
+      "returns": []
     },
     {
       "operation": "context.evict_file_view",
@@ -2729,7 +2873,7 @@
       "fqn": "gg::views::open_view::close",
       "call": null,
       "brief": "Close this view, freeing the tokens it occupied.",
-      "detail": "Returns: how many views were closed, which is `0` when it has been closed already.",
+      "detail": "A documentation view is the one this does not take away, because `views::close` does not reach that band: `docs::close(selector)` is the call for one of those.\n\nReturns: how many views were closed, which is `0` when it has been closed already.",
       "signatures": [
         {
           "signature": "close() -> std::uint32_t",
@@ -3486,6 +3630,155 @@
       "memberFunctions": []
     },
     {
+      "fqn": "gg::docs::doc_hit",
+      "module": "docs",
+      "name": "doc_hit",
+      "declaration": "struct doc_hit { std::string key; docs::doc_kind kind; std::string module; std::string name; std::string summary; }",
+      "brief": "One entry a search matched: enough to choose from, and no more.",
+      "detail": null,
+      "members": [
+        {
+          "name": "key",
+          "type": "std::string",
+          "kind": "field",
+          "brief": "The fully-qualified name it is keyed by, which is what opening and closing its view take.",
+          "detail": null
+        },
+        {
+          "name": "kind",
+          "type": "docs::doc_kind",
+          "kind": "field",
+          "brief": "Whether this is a function or a type.",
+          "detail": null
+        },
+        {
+          "name": "module",
+          "type": "std::string",
+          "kind": "field",
+          "brief": "The module it lives in.",
+          "detail": "One for a function, and for a type every module whose bound functions mention it, comma-separated. That plurality is why it is a description rather than something to feed back to a `module` filter, which takes one module and compares it whole."
+        },
+        {
+          "name": "name",
+          "type": "std::string",
+          "kind": "field",
+          "brief": "The name a program calls it by, or the type's own name.",
+          "detail": null
+        },
+        {
+          "name": "summary",
+          "type": "std::string",
+          "kind": "field",
+          "brief": "Its one-line brief, and only that. The rest is what a documentation view holds.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "fqn": "gg::docs::doc_kind",
+      "module": "docs",
+      "name": "doc_kind",
+      "declaration": "enum class doc_kind { function, type }",
+      "brief": "Which of the two kinds of entry a search hit documents.",
+      "detail": null,
+      "members": [
+        {
+          "name": "function",
+          "type": null,
+          "kind": "variant",
+          "brief": "A function a program calls.",
+          "detail": null
+        },
+        {
+          "name": "type",
+          "type": null,
+          "kind": "variant",
+          "brief": "A type a function's signature names.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "fqn": "gg::docs::doc_search",
+      "module": "docs",
+      "name": "doc_search",
+      "declaration": "struct doc_search { std::uint32_t total; std::uint32_t offset; std::vector<docs::doc_hit> hits; }",
+      "brief": "One page of what a search matched, and the total behind it.",
+      "detail": null,
+      "members": [
+        {
+          "name": "total",
+          "type": "std::uint32_t",
+          "kind": "field",
+          "brief": "How many entries matched before paging, so a capped page is legible rather than guessed at.",
+          "detail": null
+        },
+        {
+          "name": "offset",
+          "type": "std::uint32_t",
+          "kind": "field",
+          "brief": "The offset this page starts at, echoed back.",
+          "detail": null
+        },
+        {
+          "name": "hits",
+          "type": "std::vector<docs::doc_hit>",
+          "kind": "field",
+          "brief": "The page itself, best first.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "fqn": "gg::docs::search_filters",
+      "module": "docs",
+      "name": "search_filters",
+      "declaration": "struct search_filters { std::optional<std::string_view> module; std::optional<std::string_view> type; std::optional<docs::doc_kind> kind; std::optional<std::uint32_t> offset; std::optional<std::uint32_t> limit; }",
+      "brief": "The filters and the page a search runs under; `{}` narrows nothing.",
+      "detail": "An aggregate filled in with designated initialisers, which is what C++ offers in place of named arguments: `docs::search(\"read\", {.module = \"files\", .limit = 5})`. Every field composes with the query and with the others.",
+      "members": [
+        {
+          "name": "module",
+          "type": "std::optional<std::string_view>",
+          "kind": "field",
+          "brief": "One module to look in, by gg's id (`files`) or by this arm's path (`gg::files`).",
+          "detail": "Empty looks in all of them. Exact and case-insensitive, because a module filter is a lookup rather than a search: an empty query and a module is that module's whole directory."
+        },
+        {
+          "name": "type",
+          "type": "std::optional<std::string_view>",
+          "kind": "field",
+          "brief": "One type's own name (`file_read`), narrowing to it and to the functions that mention it.",
+          "detail": "What a value of this shape can be used for, in other words: every function whose signature takes or returns it, beside the type's own declaration."
+        },
+        {
+          "name": "kind",
+          "type": "std::optional<docs::doc_kind>",
+          "kind": "field",
+          "brief": "Whether to return only functions or only types; empty returns both.",
+          "detail": null
+        },
+        {
+          "name": "offset",
+          "type": "std::optional<std::uint32_t>",
+          "kind": "field",
+          "brief": "How many hits to skip, for paging through a total larger than one page.",
+          "detail": null
+        },
+        {
+          "name": "limit",
+          "type": "std::optional<std::uint32_t>",
+          "kind": "field",
+          "brief": "How many hits to return; empty takes the default page of 20, and the ceiling is 100.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
       "fqn": "gg::files::dir_entry",
       "module": "files",
       "name": "dir_entry",
@@ -4050,8 +4343,8 @@
           "name": "selector",
           "type": "std::string",
           "kind": "field",
-          "brief": "What closing it takes: a file's path, a text view's label, or a docs view's function name.",
-          "detail": null
+          "brief": "What closes it.",
+          "detail": "A file's path, a text view's label or `search results` for `views::close`, and for a documentation view the key `docs::close` takes."
         },
         {
           "name": "tokens",

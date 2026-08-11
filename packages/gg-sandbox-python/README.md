@@ -99,8 +99,8 @@ to it, because CPython is inside the component and is the first thing to read it
 
 ## What a program can reach
 
-* **The gg surface**, as the capability modules `scope.py` binds — `files`, `shell`,
-  `board`, `tasks`, `memories`, `views`, `context`, `delegation`, `skills`,
+* **The gg surface**, as the capability modules `scope.py` binds — `docs`, `files`,
+  `shell`, `board`, `tasks`, `memories`, `views`, `context`, `delegation`, `skills`,
   `programs`, `session` — plus every type they speak in, written bare. Each module is
   bound twice, under its own id and on a `gg` name, and the two are the same object:
   `gg.files.read_file` is the fully-qualified name the documentation is keyed by and

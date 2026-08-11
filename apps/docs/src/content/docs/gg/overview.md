@@ -263,7 +263,7 @@ saved, launched, and analyzed in the console is
 
 - [Skills](/gg/skills/) — pre-authored knowledge, catalogued in the prompt and read by
   name: prose retained across compaction once read, code bound into the agent's
-  programs, or both. gg ships eleven of its own, one per family of the functions it
+  programs, or both. gg ships twelve of its own, one per family of the functions it
   offers.
 - [Memories](/gg/memories/) — the same, but curated by the model itself, and
   bounded — code included.

@@ -222,9 +222,20 @@ function FunctionDetail({
                 program library
               </span>
             )}
+            {/* Any other capability that buys the call, named. `library` answers for
+                exactly one of them, so a call bought by a second — `docview-close` is
+                the first — would otherwise show nothing at all here. */}
+            {fn.capability && !fn.library && (
+              <span className={`${styles.chip} ${styles.chipKey}`}>
+                bought by {fn.capability}
+              </span>
+            )}
             {/* Nothing gates a view function: every program gets them whatever a run
-                enables, and saying so is more useful than an empty metadata row. */}
-            {!fn.gate && !fn.ending && !fn.library && (
+                enables, and saying so is more useful than an empty metadata row. This is
+                an affirmative claim, so it is guarded on every field that can withhold a
+                call — a tool, a role, and a capability. An unrecognised gate must leave
+                the row empty rather than let this assert availability it cannot check. */}
+            {!fn.gate && !fn.ending && !fn.library && !fn.capability && (
               <span className={styles.chip}>always available</span>
             )}
           </div>

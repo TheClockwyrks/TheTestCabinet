@@ -29,6 +29,7 @@
 #include "gg/context.hpp"
 #include "gg/core.hpp"
 #include "gg/delegation.hpp"
+#include "gg/docs.hpp"
 #include "gg/files.hpp"
 #include "gg/memories.hpp"
 #include "gg/programs.hpp"

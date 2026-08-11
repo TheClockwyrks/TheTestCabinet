@@ -28,7 +28,7 @@
 // than gg's.
 
 // == gg ==
-// The whole model-facing surface: the eleven capability modules, the types nested in them, and the
+// The whole model-facing surface: the twelve capability modules, the types nested in them, and the
 // exception they throw.
 global using Gg;
 

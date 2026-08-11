@@ -71,7 +71,11 @@ class OpenView:
     """Whether it is a file, text, or documentation view."""
 
     selector: str
-    """What `close` takes: a file's path, a text view's label, or a docs view's function name."""
+    """What closes it.
+
+    A file's path, a text view's label or `search results` for `close`, and for a documentation view
+    the key `docs.close` takes.
+    """
 
     tokens: int
     """Roughly what holding it costs, in tokens."""
@@ -142,7 +146,8 @@ def open_docs_view(target: Callable[..., object] | str) -> None:
     value — the documentation arrives in the next prompt under a `Documentation` heading keyed by the
     function name, exactly as a file or a computed value arrives — so it is not available in the turn
     it is asked for. Ask in one turn, use it in the next. Opening the same function's documentation
-    again replaces the view rather than adding a second copy, and `close` closes it.
+    again replaces the view rather than adding a second copy, and `docs.close` closes it — not the
+    `close` in this module, which does not reach documentation.
 
     Args:
         target: The function to document: the function object itself (`files.read_file`), or the
@@ -184,16 +189,20 @@ def _docs_name(target: object) -> str:
 def close(selector: str) -> int:
     """Close every view carrying `selector`, freeing the tokens they occupied.
 
-    For a file that is every page of that path, for a text view the one with that label, for a
-    documentation view the function's name. The number closed comes back. Closing a selector that is
-    not open hands back `0` rather than failing, so a program that tidies up unconditionally need not
-    guard every call. Closing a file view forgets what was read, not what exists; closing a text view
-    discards the only copy of what it held, so anything needed later belongs in a file or a memory
-    first.
+    For a file that is every page of that path, for a text view the one with that label, for the
+    results of a search the label `search results`. The number closed comes back. Closing a selector
+    that is not open hands back `0` rather than failing, so a program that tidies up unconditionally
+    need not guard every call. Closing a file view forgets what was read, not what exists; closing a
+    text view discards the only copy of what it held, so anything needed later belongs in a file or
+    a memory first.
+
+    Documentation views are not reached from here. `docs.close` is what takes one away, and it is
+    bought by a capability this call is not — so a sweep that included them would answer `0` for an
+    agent that may not close one, which is indistinguishable from a selector that named nothing.
 
     Args:
-        selector: What the view is filed under: a file's path, a text view's label, or a
-            documentation view's function name.
+        selector: What the view is filed under: a file's path, a text view's label, or
+            `search results`.
     """
     return _call(wire.close_view, selector)
 

@@ -273,6 +273,13 @@
 	],
 	"modules": [
 		{
+			"id": "docs",
+			"path": "Gg.Docs",
+			"brief": "Find what the agent can call, and take a documentation view back out of the window.",
+			"detail": "The system prompt names modules and no function at all, so this is the module every other one is reached through: `search` turns a keyword or a module id into fully-qualified names, and `Gg.Views.openDocsView` reads one of those names in full.\n\nSearching is bound in every program whatever a run enables, because an agent must always be able to find the functions it does hold. Closing a documentation view is the exception and is bought by a capability: opening one only ever appends to the prompt, while closing one rewrites its middle, and those are different enough trades to be different decisions.",
+			"import": "import Gg.Docs as Gg.Docs"
+		},
+		{
 			"id": "files",
 			"path": "Gg.Files",
 			"brief": "Read, write, edit and list the files of the workspace.",
@@ -358,6 +365,185 @@
 		}
 	],
 	"functions": [
+		{
+			"operation": "docs.search",
+			"aliasOf": null,
+			"module": "docs",
+			"kind": "function",
+			"receiver": null,
+			"name": "search",
+			"fqn": "Gg.Docs.search",
+			"call": null,
+			"brief": "Search every function and type the agent can call, by keyword and by filter.",
+			"detail": "This is how a name is found. Matching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `openDocsView`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned, so nothing a search finds is something the run withheld. The filters compose with each other and with the query.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`, so it can be read on the next turn without a program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n# Raises\n\n`InvalidArgument` for an empty query with no filter at all — nothing matched and nothing was asked for are different answers — and for a `limit` of zero, which asks for a page that answers nothing. A module or type name gg does not hold is not among them: it matches nothing.",
+			"signatures": [
+				{
+					"signature": "search :: String -> { module? :: String, type? :: String, kind? :: Gg.Docs.DocKind, offset? :: Int, limit? :: Int } -> Effect Gg.Docs.DocSearch",
+					"parameters": [
+						{
+							"name": "query",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The words to match, as a case-insensitive substring. It may be empty when at least one filter is given.",
+							"fields": []
+						},
+						{
+							"name": "options",
+							"type": "{ module? :: String, type? :: String, kind? :: Gg.Docs.DocKind, offset? :: Int, limit? :: Int }",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The filters and the page; `{}` ranks the query alone.",
+							"fields": [
+								{
+									"name": "module",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "One module's id — `files`, `views`, `docs` — matched exactly. An empty query with a module is that module's whole directory rather than a search. A module filter is a lookup, so a name no module has matches nothing rather than failing.",
+									"fields": []
+								},
+								{
+									"name": "type",
+									"type": "String",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "One type's name, narrowing to that type and to the functions that take or return it. Like `options.module`, a name nothing declares matches nothing rather than failing.",
+									"fields": []
+								},
+								{
+									"name": "kind",
+									"type": "Gg.Docs.DocKind",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "Whether to return functions or types. The default returns both.",
+									"fields": []
+								},
+								{
+									"name": "offset",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "How many hits to skip, for reading past the first page. The default starts at the best hit.",
+									"fields": []
+								},
+								{
+									"name": "limit",
+									"type": "Int",
+									"optional": true,
+									"kind": "positional",
+									"default": null,
+									"doc": "The most hits to return. The default is gg's own page size and there is a ceiling above it, so comparing the hits against `total` is the only way to see a capped page. Zero is refused rather than read as \"no cap\".",
+									"fields": []
+								}
+							]
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Docs.DocKind",
+					"fqn": "Gg.Docs.DocKind"
+				},
+				{
+					"spelled": "Gg.Docs.DocSearch",
+					"fqn": "Gg.Docs.DocSearch"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Docs.DocHit",
+					"fqn": "Gg.Docs.DocHit"
+				}
+			],
+			"returns": [
+				{
+					"spelled": "Gg.Docs.DocSearch",
+					"fqn": "Gg.Docs.DocSearch"
+				}
+			]
+		},
+		{
+			"operation": "docs.close",
+			"aliasOf": null,
+			"module": "docs",
+			"kind": "function",
+			"receiver": null,
+			"name": "close",
+			"fqn": "Gg.Docs.close",
+			"call": null,
+			"brief": "Take one documentation view out of the context window, by the key it was opened under.",
+			"detail": "How many were closed comes back; a key that is not open closes `0` rather than failing. The removal has no cascade: closing a type's view leaves every function view beside it, and closing a function's leaves its types. Nothing records why a view was opened, so a type that is closed is opened again by the next function that mentions it.\n\n# Raises\n\n`Unavailable` under a run that did not enable closing documentation views.",
+			"signatures": [
+				{
+					"signature": "close :: String -> Effect Int",
+					"parameters": [
+						{
+							"name": "key",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The fully-qualified name the view was opened under, as a search hit reports it.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
+			"operation": "docs.close_all",
+			"aliasOf": null,
+			"module": "docs",
+			"kind": "function",
+			"receiver": null,
+			"name": "closeAll",
+			"fqn": "Gg.Docs.closeAll",
+			"call": null,
+			"brief": "Take every documentation view out of the context window and report how many went.",
+			"detail": "The blanket form of `close`, on exactly the same terms and behind the same capability: no cascade to consider because nothing is left, and `0` rather than a failure when none was open.\n\n# Raises\n\n`Unavailable` under a run that did not enable closing documentation views.",
+			"signatures": [
+				{
+					"signature": "closeAll :: Effect Int",
+					"parameters": []
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
 		{
 			"operation": "files.read_file",
 			"aliasOf": null,
@@ -2230,7 +2416,7 @@
 			"fqn": "Gg.Views.close",
 			"call": null,
 			"brief": "Close every view carrying a selector, freeing the tokens they occupied.",
-			"detail": "How many were closed comes back. For a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard on every call. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.",
+			"detail": "How many were closed comes back. For a file that is every page of that path, for a text view the one with that label, for the results of a search the label `search results`. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard on every call. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.\n\nDocumentation views are not reached from here. `Gg.Docs.close` is what takes one away, and it is bought by a capability this call is not — so a sweep that included them would hand back `0` for an agent that may not close one, which reads as a selector that named nothing.",
 			"signatures": [
 				{
 					"signature": "close :: String -> Effect Int",
@@ -2241,7 +2427,7 @@
 							"optional": false,
 							"kind": "positional",
 							"default": null,
-							"doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+							"doc": "What the view is filed under: a file's path, a text view's label, or `search results`.",
 							"fields": []
 						}
 					]
@@ -3138,6 +3324,109 @@
 		}
 	],
 	"types": [
+		{
+			"fqn": "Gg.Docs.DocKind",
+			"module": "docs",
+			"name": "DocKind",
+			"declaration": "data DocKind = FunctionEntry | TypeEntry",
+			"brief": "Which of the two kinds of thing a documentation entry describes.",
+			"detail": null,
+			"members": [
+				{
+					"name": "FunctionEntry",
+					"type": null,
+					"kind": "variant",
+					"brief": "A function a program calls.",
+					"detail": null
+				},
+				{
+					"name": "TypeEntry",
+					"type": null,
+					"kind": "variant",
+					"brief": "A type a function takes or hands back.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Docs.DocHit",
+			"module": "docs",
+			"name": "DocHit",
+			"declaration": "type DocHit = { key :: String, kind :: Gg.Docs.DocKind, module :: String, name :: String, summary :: String }",
+			"brief": "One entry a search matched: enough to choose from, and no more.",
+			"detail": null,
+			"members": [
+				{
+					"name": "key",
+					"type": "String",
+					"kind": "field",
+					"brief": "The fully-qualified name `Gg.Views.openDocsView` takes to read the whole entry.",
+					"detail": null
+				},
+				{
+					"name": "kind",
+					"type": "Gg.Docs.DocKind",
+					"kind": "field",
+					"brief": "Whether it is a function or a type.",
+					"detail": null
+				},
+				{
+					"name": "module",
+					"type": "String",
+					"kind": "field",
+					"brief": "The module it lives in.",
+					"detail": "A function has exactly one. A type shows every module in which a function the agent can call mentions it — never one nothing is held in, and comma-separated when there are several, which makes it a description rather than something to pass back as `options.module`."
+				},
+				{
+					"name": "name",
+					"type": "String",
+					"kind": "field",
+					"brief": "The name a program calls it by, or the type's own name.",
+					"detail": null
+				},
+				{
+					"name": "summary",
+					"type": "String",
+					"kind": "field",
+					"brief": "Its one-line brief, and only that. The rest is what a documentation view holds.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
+		{
+			"fqn": "Gg.Docs.DocSearch",
+			"module": "docs",
+			"name": "DocSearch",
+			"declaration": "type DocSearch = { total :: Int, offset :: Int, hits :: Array Gg.Docs.DocHit }",
+			"brief": "A page of search results, with the total behind it.",
+			"detail": null,
+			"members": [
+				{
+					"name": "total",
+					"type": "Int",
+					"kind": "field",
+					"brief": "How many entries matched before paging, which tells a capped page from a complete answer.",
+					"detail": null
+				},
+				{
+					"name": "offset",
+					"type": "Int",
+					"kind": "field",
+					"brief": "The offset this page starts at, echoed back.",
+					"detail": null
+				},
+				{
+					"name": "hits",
+					"type": "Array Gg.Docs.DocHit",
+					"kind": "field",
+					"brief": "The page itself, best first.",
+					"detail": null
+				}
+			],
+			"memberFunctions": []
+		},
 		{
 			"fqn": "Gg.Files.FileRead",
 			"module": "files",

@@ -3,6 +3,7 @@ package gg.internal;
 import gg.board.Board;
 import gg.context.Context;
 import gg.delegation.Delegation;
+import gg.docs.Docs;
 import gg.files.Files;
 import gg.memories.Memories;
 import gg.programs.Programs;
@@ -112,6 +113,20 @@ public final class Read {
                     Wire.string(hit, "excerpt")));
         }
         return List.copyOf(out);
+    }
+
+    /** One page of a documentation search. */
+    public static Docs.DocSearch docSearch(JSObject value) {
+        JSArray<JSObject> array = Wire.array(value, "hits");
+        List<Docs.DocHit> hits = new ArrayList<>(array.getLength());
+        for (int index = 0; index < array.getLength(); index++) {
+            JSObject hit = array.get(index);
+            hits.add(new Docs.DocHit(Wire.string(hit, "key"), docKind(Wire.string(hit, "kind")),
+                    Wire.string(hit, "module"), Wire.string(hit, "name"),
+                    Wire.string(hit, "summary")));
+        }
+        return new Docs.DocSearch(Wire.integer(value, "total"), Wire.integer(value, "offset"),
+                List.copyOf(hits));
     }
 
     /** The task budget. */
@@ -226,6 +241,11 @@ public final class Read {
             case "tool" -> Context.MessageRole.TOOL;
             default -> Context.MessageRole.USER;
         };
+    }
+
+    /** Which kind a documentation entry is, from the word the wire used. */
+    private static Docs.DocKind docKind(String wire) {
+        return "type".equals(wire) ? Docs.DocKind.TYPE : Docs.DocKind.FUNCTION;
     }
 
     /** Which kind a view is, from the word the wire used. */

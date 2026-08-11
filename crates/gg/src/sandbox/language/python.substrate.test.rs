@@ -1542,8 +1542,16 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     assert_eq!(logs(&outcome), [vec!["ok"; types.len()].join(",")]);
 }
 
+/// The three module families that are **not** gg tools, driven end to end: views, documentation and
+/// the program library.
+///
+/// None of them appears in the crossing table above, because none of them dispatches through the
+/// tool seam. Two of the three are where a program puts something in front of the model and the
+/// third is how it finds anything at all, which makes a silent bridging mistake here cost more than
+/// one anywhere else — a model that cannot search has no route to the surface the prompt refuses to
+/// name.
 #[test]
-fn the_views_module_and_the_program_library_are_reached_in_python_too() {
+fn the_views_the_docs_and_the_program_library_modules_are_reached_in_python_too() {
     // Neither family is a gg tool, so neither appears in the crossing table above — and both are
     // where a program puts something in front of the model, which makes them the two families a
     // silent bridging mistake would cost the most.
@@ -1685,4 +1693,68 @@ programs.rerun(source.replace("ran", "walked"))
         Some("print('the program that walked')"),
         "the patched program is what gg was handed"
     );
+
+    // The documentation module, which is the loop the prompt describes made of real calls. `search`
+    // is bound in every program whatever a run enables — so it is driven here with **no** tool
+    // offered at all — and `close`/`close_all` are bought by a capability, so this store grants it
+    // and the one after it does not. The double answers an empty page, which is the whole of what a
+    // double can honestly say about a real index; what is proven is the crossing, the lowering of
+    // the record and the enum argument, and the view the host opens on the way back.
+    let log = CallLog::default();
+    let api = FakeToolApi::new(&log);
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: false,
+        docview_close: true,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(api, python(), scope, limits, None),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    bound
+        .call_run(
+            &mut store,
+            r#"
+page = docs.search("read", module="files", type="FileRead", kind=DocKind.FUNCTION, limit=5)
+print(type(page).__name__, page.total, page.offset, page.hits)
+print(docs.close("gg.files.read_file"), docs.close_all())
+"#,
+            &[],
+            &[],
+            RunEnding::None.into(),
+            false,
+        )
+        .expect("the program runs");
+    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    assert_eq!(logs(&outcome), ["DocSearch 0 0 []", "0 0"]);
+    let searched: Vec<&str> = outcome
+        .views_opened
+        .iter()
+        .filter(|view| view.kind == crate::context::ViewKind::Search)
+        .map(|view| view.selector.as_str())
+        .collect();
+    assert_eq!(
+        searched,
+        [crate::context::SEARCH_RESULTS_VIEW],
+        "a search leaves its own page in the window"
+    );
+
+    // And without the capability, closing is refused by the host rather than missing from the
+    // module — the same shape every other bought call refuses in, and a value a program can catch.
+    let (outcome, _log) = run_with(
+        r#"
+try:
+    docs.close_all()
+except ToolError as failure:
+    print(failure.tool, failure.code is ToolErrorCode.UNAVAILABLE)
+"#,
+        &all_tools(),
+        &[],
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["close_all True"]);
 }

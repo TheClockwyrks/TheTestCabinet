@@ -72,7 +72,9 @@ pub fn open_text(label: &str, body: &str) -> Result<(), ToolError> {
 /// value — the documentation arrives in the next prompt under a `Documentation` heading keyed by the
 /// function name, exactly as a file or a computed value arrives — so it is not available in the turn
 /// it is asked for. Ask in one turn, use it in the next. Opening the same function's documentation
-/// again replaces the view rather than adding a second copy, and [`close`] closes it.
+/// again replaces the view rather than adding a second copy, and
+/// [`docs::close`](crate::docs::close) closes it — not [`close`], which does not reach
+/// documentation.
 ///
 /// # Arguments
 ///
@@ -92,16 +94,20 @@ pub fn open_docs_view(name: &str) -> Result<(), ToolError> {
 
 /// Close every view carrying `selector`, freeing the tokens they occupied.
 ///
-/// For a file that is every page of that path, for a text view the one with that label, for a
-/// documentation view the function's name. Closing a selector that is not open hands back `0` rather
-/// than failing, so a program that tidies up unconditionally need not guard every call. Closing a
-/// file view forgets what was read, not what exists; closing a text view discards the only copy of
-/// what it held, so anything needed later belongs in a file or a memory first.
+/// For a file that is every page of that path, for a text view the one with that label, and for the
+/// results of a search the label `search results`. Closing a selector that is not open hands back
+/// `0` rather than failing, so a program that tidies up unconditionally need not guard every call.
+/// Closing a file view forgets what was read, not what exists; closing a text view discards the only
+/// copy of what it held, so anything needed later belongs in a file or a memory first.
+///
+/// Documentation views are not reached from here. [`docs::close`](crate::docs::close) is what takes
+/// one away, and it is bought by a capability this call is not — so a sweep that included them would
+/// hand back `0` for an agent that may not close one, which reads as a selector that named nothing.
 ///
 /// # Arguments
 ///
-/// * `selector` — What the view is filed under: a file's path, a text view's label, or a
-///   documentation view's function name.
+/// * `selector` — What the view is filed under: a file's path, a text view's label, or
+///   `search results`.
 #[doc(alias = "ggop:views.close")]
 pub fn close(selector: &str) -> Result<u32, ToolError> {
     wire::lift(views::close_view(selector))
@@ -146,8 +152,10 @@ pub struct ViewRegion {
 pub struct OpenView {
     /// Whether it is a file, text, or documentation view.
     pub kind: ViewKind,
-    /// What [`close`] takes: a file's path, a text view's label, or a documentation view's function
-    /// name.
+    /// What closes it.
+    ///
+    /// A file's path, a text view's label or `search results` for [`close`], and for a documentation
+    /// view the key [`docs::close`](crate::docs::close) takes.
     pub selector: String,
     /// Roughly what holding it costs, in tokens.
     pub tokens: u64,

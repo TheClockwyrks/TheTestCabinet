@@ -21,14 +21,14 @@
 //!
 //! # What a Swift program calls, and how it is in scope
 //!
-//! The surface is divided into **twelve capability modules**, and each is a caseless `enum` — Swift's
-//! own namespace inside a module — so `files.readFile("src/main.swift")` is a call on a namespace and
-//! nothing is constructed first. A caseless `enum` rather than thirteen real Swift modules behind an
-//! `@_exported` umbrella: the umbrella was measured and does re-export transitively, but a module of
-//! its own would have to be called `GgFiles` where the whole scheme's vocabulary is `files`, and a
-//! program whose own `let files` shadowed it would be shadowing the same name either way. The fully
-//! qualified `gg.files.readFile` is the escape from that shadowing, and it is a real path a program
-//! may write, which is why it is the name this arm catalogues.
+//! The surface is divided into **thirteen capability modules**, and each is a caseless `enum` —
+//! Swift's own namespace inside a module — so `files.readFile("src/main.swift")` is a call on a
+//! namespace and nothing is constructed first. A caseless `enum` rather than that many real Swift
+//! modules behind an `@_exported` umbrella: the umbrella was measured and does re-export
+//! transitively, but a module of its own would have to be called `GgFiles` where the whole scheme's
+//! vocabulary is `files`, and a program whose own `let files` shadowed it would be shadowing the
+//! same name either way. The fully qualified `gg.files.readFile` is the escape from that shadowing,
+//! and it is a real path a program may write, which is why it is the name this arm catalogues.
 //!
 //! Every call **throws**, so `try` is the whole of the ceremony and a failure is an ordinary Swift
 //! `Error` a `catch` branches on. Optional arguments are **default values**, required ones are

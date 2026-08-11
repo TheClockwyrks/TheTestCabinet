@@ -118,6 +118,13 @@
       "import": null
     },
     {
+      "id": "docs",
+      "path": "Gg.Docs",
+      "brief": "Search this surface\u0027s own documentation, and take a documentation view back out.",
+      "detail": "Nothing names the functions of this surface up front, so \u0060Docs.Search\u0060 is where a program starts: it answers with briefs and with the fully-qualified names \u0060Views.OpenDocsView\u0060 takes, which is the whole of the loop from \u0022what do I have\u0022 to reading one entry in full.\n\nA search only ever returns what this agent may actually call. The compiler is less careful \u2014 the SDK is one library and every module of it compiles \u2014 so a program can write a call that a search would never have shown it, and what happens then is a \u0060ToolErrorCode.Unavailable\u0060 naming the capability the run withheld.",
+      "import": null
+    },
+    {
       "id": "views",
       "path": "Gg.Views",
       "brief": "Put a file, a computed value or a function\u0027s documentation into the context window.",
@@ -1742,6 +1749,175 @@
       ]
     },
     {
+      "operation": "docs.search",
+      "aliasOf": null,
+      "module": "docs",
+      "kind": "static-method",
+      "receiver": null,
+      "name": "Search",
+      "fqn": "Gg.Docs.Search",
+      "call": null,
+      "brief": "Find what this agent can call, by keyword or by module, and read the briefs.",
+      "detail": "Matching is case-insensitive substring over names, signatures, briefs and detailed descriptions, so \u0060\u0022foobar\u0022\u0060 finds \u0060GetFoobar\u0060. Hits are ranked by what matched: an entry whose own name carries the word comes before one that merely mentions it in a paragraph.\n\nThe filters compose with the query and with each other, and \u0060module\u0060 is a lookup rather than a search \u2014 an empty query with a module named is that module\u0027s whole directory. An empty query with no filter at all is refused, because a search that asked for nothing and a search that found nothing are different answers.\n\nThe page comes back as a value and is opened as a view, so the next turn can read it without the program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n\u0060\u0060\u0060csharp\nvar found = Docs.Search(\u0022memory\u0022, limit: 5);\nforeach (var hit in found.Hits)\n{\n    Views.OpenDocsView(hit.Key);\n}\n\u0060\u0060\u0060\n\nReturns: one page of matches, best first, and the total behind it.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 for an empty query with no filter beside it, and for a \u0060limit\u0060 of zero, which is a page that could answer nothing.",
+      "signatures": [
+        {
+          "signature": "Search(string query, string? module = null, string? type = null, Docs.DocKind? kind = null, uint? offset = null, uint? limit = null) -\u003E Docs.DocPage",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "string",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The words to look for. Empty is allowed only alongside a filter, and is how a module\u0027s whole directory is listed.",
+              "fields": []
+            },
+            {
+              "name": "module",
+              "type": "string?",
+              "optional": true,
+              "kind": "keyword",
+              "default": "null",
+              "doc": "One module, by gg\u0027s own id (\u0060\u0022views\u0022\u0060) or by the path this arm writes it as (\u0060\u0022Gg.Views\u0022\u0060). Exact and case-insensitive: a module filter is a lookup, so a name no module has matches nothing rather than failing.",
+              "fields": []
+            },
+            {
+              "name": "type",
+              "type": "string?",
+              "optional": true,
+              "kind": "keyword",
+              "default": "null",
+              "doc": "One type\u0027s name, which narrows to that type and to the functions taking or returning it.",
+              "fields": []
+            },
+            {
+              "name": "kind",
+              "type": "Docs.DocKind?",
+              "optional": true,
+              "kind": "keyword",
+              "default": "null",
+              "doc": "Narrow to functions or to types. Left out, both are searched.",
+              "fields": []
+            },
+            {
+              "name": "offset",
+              "type": "uint?",
+              "optional": true,
+              "kind": "keyword",
+              "default": "null",
+              "doc": "How many hits to skip. Left out, the page starts at the first.",
+              "fields": []
+            },
+            {
+              "name": "limit",
+              "type": "uint?",
+              "optional": true,
+              "kind": "keyword",
+              "default": "null",
+              "doc": "How many hits to return: 20 where it is left out, 100 at most, and zero refused. Compare it against \u0060Docs.DocPage.Total\u0060 to see how much of the answer this page is.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "returns": [
+        {
+          "spelled": "Docs.DocPage",
+          "fqn": "Gg.Docs.DocPage"
+        }
+      ],
+      "types": [
+        {
+          "spelled": "Docs.DocHit",
+          "fqn": "Gg.Docs.DocHit"
+        },
+        {
+          "spelled": "Docs.DocKind",
+          "fqn": "Gg.Docs.DocKind"
+        },
+        {
+          "spelled": "Docs.DocPage",
+          "fqn": "Gg.Docs.DocPage"
+        },
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
+      "operation": "docs.close",
+      "aliasOf": null,
+      "module": "docs",
+      "kind": "static-method",
+      "receiver": null,
+      "name": "Close",
+      "fqn": "Gg.Docs.Close",
+      "call": null,
+      "brief": "Take one documentation view back out of the context window, by its key.",
+      "detail": "A plain removal with no cascade: closing a function\u0027s view leaves the views of the types it mentions exactly where they are, and closing a type\u0027s leaves the functions. A key that is not open closes zero rather than failing, so a program that tidies up unconditionally needs no guard, and a type closed here is opened again by the next function that mentions it.\n\nReturns: how many views were closed, which is one unless it had already gone.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.Unavailable\u0060 when this agent may not close documentation views.",
+      "signatures": [
+        {
+          "signature": "Close(string key) -\u003E uint",
+          "parameters": [
+            {
+              "name": "key",
+              "type": "string",
+              "optional": false,
+              "kind": "positional",
+              "default": null,
+              "doc": "The fully-qualified name the view was opened under, as \u0060Docs.DocHit.Key\u0060 reports it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "returns": [],
+      "types": [
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
+      "operation": "docs.close_all",
+      "aliasOf": null,
+      "module": "docs",
+      "kind": "static-method",
+      "receiver": null,
+      "name": "CloseAll",
+      "fqn": "Gg.Docs.CloseAll",
+      "call": null,
+      "brief": "Take every documentation view out of the context window at once.",
+      "detail": "The blanket form of \u0060Docs.Close\u0060, on the same terms: no cascade to worry about, and nothing open is not a failure.\n\nReturns: how many views went.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.Unavailable\u0060 when this agent may not close documentation views.",
+      "signatures": [
+        {
+          "signature": "CloseAll() -\u003E uint",
+          "parameters": []
+        }
+      ],
+      "returns": [],
+      "types": [
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
       "operation": "views.open_file",
       "aliasOf": null,
       "module": "views",
@@ -1873,7 +2049,7 @@
       "fqn": "Gg.Views.OpenDocsView",
       "call": null,
       "brief": "Show the full documentation for one function in the context window.",
-      "detail": "Its signature, its description, what each argument takes, and the declarations of any types it refers to that the session has not already been shown. It is a view rather than a return value: the documentation arrives in the next prompt, under a \u0060Documentation\u0060 heading, and closes like anything else.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a name no function on this surface has.",
+      "detail": "Its signature, its description, what each argument takes, and the declarations of any types it refers to that the session has not already been shown. It is a view rather than a return value: the documentation arrives in the next prompt, under a \u0060Documentation\u0060 heading, and \u0060Docs.Close\u0060 is what takes it away again \u2014 not \u0060Views.Close\u0060, which does not reach documentation.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a name no function on this surface has.",
       "signatures": [
         {
           "signature": "OpenDocsView(string name) -\u003E void",
@@ -3260,6 +3436,109 @@
           "type": "string",
           "kind": "field",
           "brief": "Its final message \u2014 the whole of what it hands back.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "fqn": "Gg.Docs.DocHit",
+      "module": "docs",
+      "name": "DocHit",
+      "declaration": "sealed record DocHit(string Key, Docs.DocKind Kind, string Module, string Name, string Summary)",
+      "brief": "One entry a search matched: enough to choose from, and no more.",
+      "detail": null,
+      "members": [
+        {
+          "name": "Key",
+          "type": "string",
+          "kind": "field",
+          "brief": "The fully-qualified name \u0060Views.OpenDocsView\u0060 takes to read the whole entry.",
+          "detail": null
+        },
+        {
+          "name": "Kind",
+          "type": "Docs.DocKind",
+          "kind": "field",
+          "brief": "Whether it is a function or a type.",
+          "detail": null
+        },
+        {
+          "name": "Module",
+          "type": "string",
+          "kind": "field",
+          "brief": "The module it lives in; for a type, every module mentioning it, comma-separated \u2014 so not one to hand back as a filter.",
+          "detail": null
+        },
+        {
+          "name": "Name",
+          "type": "string",
+          "kind": "field",
+          "brief": "The name a program calls it by, or the type\u0027s own name.",
+          "detail": null
+        },
+        {
+          "name": "Summary",
+          "type": "string",
+          "kind": "field",
+          "brief": "Its one-line brief, and only that.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "fqn": "Gg.Docs.DocKind",
+      "module": "docs",
+      "name": "DocKind",
+      "declaration": "enum DocKind { Function, Type }",
+      "brief": "Which of the two things a documentation entry describes.",
+      "detail": "The taxonomy is closed at two because a surface is functions and the types their signatures name, and nothing else is documented separately: a module is a heading, and a parameter is documented on the function that takes it.",
+      "members": [
+        {
+          "name": "Function",
+          "type": null,
+          "kind": "variant",
+          "brief": "One callable function.",
+          "detail": null
+        },
+        {
+          "name": "Type",
+          "type": null,
+          "kind": "variant",
+          "brief": "One type a function\u0027s signature names.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": []
+    },
+    {
+      "fqn": "Gg.Docs.DocPage",
+      "module": "docs",
+      "name": "DocPage",
+      "declaration": "sealed record DocPage(uint Total, uint Offset, IReadOnlyList\u003CDocs.DocHit\u003E Hits)",
+      "brief": "One page of search results, with the total behind it.",
+      "detail": "\u0060Docs.DocPage.Total\u0060 counts what matched before paging, so a capped page and a complete answer are told apart without guessing at the page size.",
+      "members": [
+        {
+          "name": "Total",
+          "type": "uint",
+          "kind": "field",
+          "brief": "How many entries matched in all, before this page was cut from them.",
+          "detail": null
+        },
+        {
+          "name": "Offset",
+          "type": "uint",
+          "kind": "field",
+          "brief": "The offset this page starts at, echoed back.",
+          "detail": null
+        },
+        {
+          "name": "Hits",
+          "type": "IReadOnlyList\u003CDocs.DocHit\u003E",
+          "kind": "field",
+          "brief": "The page itself, best first.",
           "detail": null
         }
       ],

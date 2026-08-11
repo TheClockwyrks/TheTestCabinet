@@ -17,7 +17,7 @@
 
 use serde_json::{Value, json};
 
-use super::substrate::{evaluate, logs, prepare, program_error};
+use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare, program_error};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
@@ -382,9 +382,9 @@ fn every_tool_crosses_the_membrane_from_its_rust_spelling() {
 
 #[test]
 fn the_views_module_the_helper_and_the_standard_ending_are_reached_in_rust_too() {
-    // Two of the four families that are NOT gg tools, so neither appears in the crossing table
-    // above — and both are where a program puts something in front of the model, which makes them
-    // the ones a silent bridging mistake would cost the most.
+    // Three of the families that are NOT gg tools, so none of them appears in the crossing table
+    // above — and they are where a program puts something in front of the model and finds out what
+    // it may call at all, which makes them the ones a silent bridging mistake would cost the most.
     let (outcome, log) = evaluate(
         &prepare(
             r####"
@@ -402,6 +402,24 @@ gg::log(match read {
     files::FileRead::Text(file) => file.contents.lines().next().unwrap_or_default().to_string(),
     files::FileRead::Image(picture) => picture.label,
 });
+let found = docs::search(
+    "open",
+    docs::SearchOptions {
+        module: Some("views"),
+        kind: Some(docs::DocKind::Function),
+        limit: Some(5),
+        ..Default::default()
+    },
+)?;
+gg::log(format!("{} {} {}", found.total, found.offset, found.hits.len()));
+match docs::close("gg::views::open_text") {
+    Ok(count) => gg::log(format!("closed {count}")),
+    Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+}
+match docs::close_all() {
+    Ok(count) => gg::log(format!("closed {count}")),
+    Err(failure) => gg::log(format!("{:?} on {}", failure.code, failure.tool)),
+}
 session::finish("read the file and showed the result")?;
 "####,
         ),
@@ -420,14 +438,25 @@ session::finish("read the file and showed the result")?;
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    // Every view the program opened is recorded, the documentation one included.
+    // A search hands the program a page it can read in the turn that asked for it — the count, the
+    // echoed offset, and the hits themselves. The double models no catalogue, so the honest page is
+    // an empty one; what this proves is the crossing, which is the half no other test covers on this
+    // arm. The ranking over a real catalogue is `docs::search`'s own to prove.
+    assert_eq!(lines[3], "0 0 0");
+    // Closing documentation is the one part of this family a run buys, and this run did not: the
+    // program is refused by the host under the call's own name rather than by a name that was never
+    // in scope, because a compiled arm cannot withhold a name.
+    assert_eq!(lines[4], "Unavailable on close");
+    assert_eq!(lines[5], "Unavailable on close_all");
+    // Every view the program opened is recorded, the documentation one and the search's own
+    // included — a search puts its page in the window as well as handing it back.
     assert_eq!(
         outcome
             .views_opened
             .iter()
             .map(|view| view.selector.as_str())
             .collect::<Vec<_>>(),
-        ["notes.md", "summary", "read_file"]
+        ["notes.md", "summary", "read_file", "search results"]
     );
     assert!(
         matches!(
@@ -437,6 +466,20 @@ session::finish("read the file and showed the result")?;
         "the ending the program declared: {:?}",
         outcome.completion
     );
+
+    // And the same two calls once the run has bought the capability, which is the only way to reach
+    // their answer at all: refused, the count a program reads is never lowered. The double holds no
+    // window, so nothing is open and `0` is the honest number — a success, exactly as it is in
+    // production for a key that is not open.
+    let (granted, _log) = evaluate_closing_docviews(
+        &prepare(
+            r####"
+gg::log(format!("{} {}", docs::close("gg::views::open_text")?, docs::close_all()?));
+"####,
+        ),
+        canned_outcome,
+    );
+    assert_eq!(logs(&granted), ["0 0"]);
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
     // `views::open_file` performs. Neither has a tool name of its own, which is exactly the point —
@@ -718,6 +761,7 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
             "gg::tasks",
             "gg::memories",
             "gg::views",
+            "gg::docs",
             "gg::context",
             "gg::delegation",
             "gg::skills",

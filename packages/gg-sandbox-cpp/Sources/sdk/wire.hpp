@@ -44,6 +44,7 @@ extern "C" {
 #include "gg/context.hpp"
 #include "gg/core.hpp"
 #include "gg/delegation.hpp"
+#include "gg/docs.hpp"
 #include "gg/files.hpp"
 #include "gg/memories.hpp"
 #include "gg/programs.hpp"
@@ -104,10 +105,15 @@ std::vector<std::string> lift(const sandbox_list_string_t& texts);
 // value with no `else`.
 [[noreturn]] void fail(test_cabinet_gg_types_tool_error_t& failure);
 
-// The two nullable scalars the reads take, as the ABI spells an optional `u32` argument: a pointer
-// that is null for the absent case.
+// The two nullable scalars a read's window and a search's page are, as the ABI spells an optional
+// `u32` argument: a pointer that is null for the absent case.
+//
+// One type for both because the two are the same pair — an offset and a count, either of which may
+// be left out — and the ABI shape is what this class exists to produce. The reads name it in their
+// own terms with `files::read_window`; a page arrives as the two optionals it already is.
 struct window {
   explicit window(const files::read_window& from);
+  window(std::optional<std::uint32_t> offset, std::optional<std::uint32_t> limit);
 
   std::uint32_t* offset();
   std::uint32_t* limit();
@@ -129,6 +135,7 @@ tasks::task_usage lift_task_usage(const test_cabinet_gg_tasks_task_usage_t& wire
 board::board_usage lift_board_usage(const test_cabinet_gg_board_board_usage_t& wire);
 context::reclaim_report lift_reclaim_report(test_cabinet_gg_context_reclaim_report_t& wire);
 context::archive_search lift_archive_search(test_cabinet_gg_context_archive_search_t& wire);
+docs::doc_search lift_doc_search(test_cabinet_gg_docs_doc_search_t& wire);
 views::open_view lift_open_view(const test_cabinet_gg_views_open_view_t& wire);
 programs::program_summary lift_program_summary(const test_cabinet_gg_programs_program_summary_t& wire);
 delegation::subagent_handle lift_subagent_handle(test_cabinet_gg_delegation_subagent_handle_t& wire);
@@ -138,6 +145,10 @@ delegation::subagent_result lift_subagent_result(const test_cabinet_gg_delegatio
 test_cabinet_gg_tasks_task_status_t lower(tasks::task_status status);
 test_cabinet_gg_board_issue_status_t lower(board::issue_status status);
 files::entry_kind lift_entry_kind(test_cabinet_gg_files_entry_kind_t wire);
+// A documentation entry's kind, which the wire spells as a word in both directions because WIT has
+// no closed set for it that both sides of the boundary would agree on.
+std::string_view lower(docs::doc_kind kind);
+docs::doc_kind lift_doc_kind(const sandbox_string_t& wire);
 context::message_role lift_message_role(test_cabinet_gg_context_message_role_t wire);
 views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire);
 delegation::agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire);

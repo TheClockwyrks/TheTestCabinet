@@ -10,6 +10,9 @@ import gg.context.ReclaimReport
 import gg.delegation.AgentEnding
 import gg.delegation.SubagentHandle
 import gg.delegation.SubagentResult
+import gg.docs.DocHit
+import gg.docs.DocKind
+import gg.docs.DocSearch
 import gg.files.DirEntry
 import gg.files.EntryKind
 import gg.files.FileRead
@@ -131,6 +134,23 @@ internal object Read {
             )
         }
 
+    /** One page of a documentation search. */
+    fun docSearch(value: JSObject): DocSearch =
+        DocSearch(
+            total = ggInteger(value, "total"),
+            offset = ggInteger(value, "offset"),
+            hits =
+                each(ggArray(value, "hits")) {
+                    DocHit(
+                        key = ggString(it, "key"),
+                        kind = docKind(ggString(it, "kind")),
+                        module = ggString(it, "module"),
+                        name = ggString(it, "name"),
+                        summary = ggString(it, "summary"),
+                    )
+                },
+        )
+
     /** The task budget. */
     fun taskUsage(value: JSObject): TaskUsage =
         TaskUsage(count = ggInteger(value, "count"), maxTasks = ggInteger(value, "maxTasks"))
@@ -245,6 +265,10 @@ internal object Read {
             "tool" -> MessageRole.TOOL
             else -> MessageRole.USER
         }
+
+    /** Which kind a documentation entry is, from the word the wire used. */
+    private fun docKind(wire: String): DocKind =
+        if (wire == "type") DocKind.TYPE else DocKind.FUNCTION
 
     /** Which kind a view is, from the word the wire used. */
     private fun viewKind(wire: String): ViewKind =

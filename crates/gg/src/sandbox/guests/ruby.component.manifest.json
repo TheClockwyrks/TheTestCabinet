@@ -3,8 +3,8 @@
   "rebuild": "packages/gg-sandbox-ruby/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/guests/ruby.component.wasm": {
-      "bytes": 21328419,
-      "sha256": "ca186eeac594afe3d082f92ba8e452073807eb10917914b43cc0eb4404de5bf3"
+      "bytes": 21481416,
+      "sha256": "f0aca9a0dff963f5d3fba0532a5f21ce892d8718ffef85b6d3cb366a44d8151f"
     }
   },
   "wit": {
@@ -22,6 +22,7 @@
     "packages/gg-sandbox-ruby/src/gg/context.rb": "f0838449a25be37ff00cf59eff305501f0f229edf0f144a8904bf6cb22edc15d",
     "packages/gg-sandbox-ruby/src/gg/core.rb": "603efe8de3dd45b1ab6de8d8421ea8c1a583c87664325c97e97b4660d48330cb",
     "packages/gg-sandbox-ruby/src/gg/delegation.rb": "84eeb036a38b4dc54389f74a20ac46ae4fdc62cc56f1ddb7ec1195011c6318fb",
+    "packages/gg-sandbox-ruby/src/gg/docs.rb": "6678173c9ed486a8e897d4c9865ade1d1b238a2a09be4e30a959adf541a291d3",
     "packages/gg-sandbox-ruby/src/gg/files.rb": "dd8f1888e76bf43d88a0a9bea217e56e9f4cc81bac19734c323c9332a1f23183",
     "packages/gg-sandbox-ruby/src/gg/lib.rb": "27f8b06133cef57a8a2ad99e35e396947e8967b7d3cda775967074c9590dc776",
     "packages/gg-sandbox-ruby/src/gg/memories.rb": "308a66e1874d679effe772427945137c15fdabb96cb7c36b1ac441ce4374c493",
@@ -30,14 +31,14 @@
     "packages/gg-sandbox-ruby/src/gg/session.rb": "4cc45f974c8a88a094bc51cbb0b1e668a41723b613e5064f9f253553a79a5cae",
     "packages/gg-sandbox-ruby/src/gg/shell.rb": "2a98e0f38ef83ebd83ff28858b2e68aaa8bcf2fcc97ef4d9a05175259cbb4b68",
     "packages/gg-sandbox-ruby/src/gg/skills.rb": "ce4e8187f2bf2503e40c256aa301e3f6e7fd302d25b445ff3f4f4c50018f8c12",
-    "packages/gg-sandbox-ruby/src/gg/surface.rb": "89ec05f125c7e8c600ca472ffe602e52f469f4ef145c22bee27ba928964e3b0a",
+    "packages/gg-sandbox-ruby/src/gg/surface.rb": "abc6d31b8d3c38181cff00db0bb1f8ac980f9e78285377310144ac52434d9dfc",
     "packages/gg-sandbox-ruby/src/gg/tasks.rb": "5b023ca0d3e7322d17759976ad3c5b5472fc0eed8196f8bd23cb47a4d6a7bf12",
     "packages/gg-sandbox-ruby/src/gg/value.rb": "9d1bf5b7a499e4dc38a90a26ffeba398e1d4c75474e701e2c941eafa0100a141",
-    "packages/gg-sandbox-ruby/src/gg/views.rb": "73a7e76546154b36a94560af281ba146780791a9427c723cb614b68ff94f660f",
+    "packages/gg-sandbox-ruby/src/gg/views.rb": "381892150c275f37c424036ba702208c9dd033a117da8f33040d6ceb71470d24",
     "packages/gg-sandbox-ruby/src/gg/wire.rb": "e4869f92af33212e76f860c897203dafb20429e6facf3f2d48d59cfd45b1e555",
     "packages/gg-sandbox-ruby/src/library.rb": "a9689d4dc9499496cf7569f130ed28f49dfe1c967cf9244e17a076065e67cf9d",
     "packages/gg-sandbox-ruby/src/shim.js": "b7539ad632aeb2b78727d6b285c6154b66ff666763f970cdc9f38a47e2750d11",
     "packages/gg-sandbox-ruby/build.sh": "9f80cad60b89845f3ff836f0a0b306f177e30ca44ead206b4162ed6d578c78c6",
-    "packages/gg-sandbox-ruby/tools/guest.mjs": "17f3f0e7eefee747d4c14f5d8d8235242f38a38075e09a1976b15aea1442871a"
+    "packages/gg-sandbox-ruby/tools/guest.mjs": "f8eeed127625bf2e2eb945a02876e16bf8794a1aab67e9fc02fe90bd9efc97fc"
   }
 }

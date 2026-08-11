@@ -340,6 +340,36 @@ internal static class Native
         out long[] offsets,
         out long[] limits);
 
+    // --- docs ---------------------------------------------------------------------------------
+
+    // The page's two numbers arrive as ONE array, `[total, offset]`, for the reason `Wire.Board`'s
+    // do: the interpreter refuses to build a frame for an internal call much wider than this, one
+    // array per hit field already spends five arguments, and the query and its four filters spend
+    // six more. `kind` is the wire's own word rather than the SDK's enum — `Wire.Word` and
+    // `Wire.Kind` are the two ends of that translation, and they are in managed code so that
+    // renaming a member of `Docs.DocKind` is a compile error rather than a mapping in a C file
+    // nothing checks.
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern bool SearchDocs(
+        string query,
+        string? module,
+        string? type,
+        string? kind,
+        int offset,
+        int limit,
+        out uint[] page,
+        out string[] keys,
+        out string[] kinds,
+        out string[] modules,
+        out string[] names,
+        out string[] summaries);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern bool CloseDocView(string key, out uint closed);
+
+    [MethodImpl(MethodImplOptions.InternalCall)]
+    internal static extern bool CloseDocViews(out uint closed);
+
     // --- programs -----------------------------------------------------------------------------
 
     [MethodImpl(MethodImplOptions.InternalCall)]

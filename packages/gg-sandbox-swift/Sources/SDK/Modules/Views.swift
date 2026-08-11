@@ -81,8 +81,8 @@ public enum views {
     /// value — the documentation arrives in the next prompt under a `Documentation` heading keyed by
     /// the function name, exactly as a file or a computed value arrives — so it is not available in
     /// the turn it is asked for. Ask in one turn, use it in the next. Opening the same function's
-    /// documentation again replaces the view rather than adding a second copy, and `views.close`
-    /// closes it.
+    /// documentation again replaces the view rather than adding a second copy, and `docs.close`
+    /// closes it — not `views.close`, which does not reach documentation.
     ///
     /// - Parameter name: The function to document, by the fully-qualified name its documentation
     ///   is keyed by — `"gg.files.readFile"`. The bare name it is called by in its module
@@ -103,14 +103,18 @@ public enum views {
 
     /// Close every view carrying `selector`, freeing the tokens they occupied.
     ///
-    /// For a file that is every page of that path, for a text view the one with that label, for a
-    /// documentation view the function's name. Closing a selector that is not open hands back `0`
-    /// rather than failing, so a program that tidies up unconditionally need not guard every call.
-    /// Closing a file view forgets what was read, not what exists; closing a text view discards the
-    /// only copy of what it held, so anything needed later belongs in a file or a memory first.
+    /// For a file that is every page of that path, for a text view the one with that label, and for
+    /// the results of a search the label `search results`. Closing a selector that is not open hands
+    /// back `0` rather than failing, so a program that tidies up unconditionally need not guard every
+    /// call. Closing a file view forgets what was read, not what exists; closing a text view discards
+    /// the only copy of what it held, so anything needed later belongs in a file or a memory first.
     ///
-    /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or a
-    ///   documentation view's function name.
+    /// Documentation views are not reached from here. `docs.close` is what takes one away, and it is
+    /// bought by a capability this call is not — so a sweep that included them would hand back `0`
+    /// for an agent that may not close one, which reads as a selector that named nothing.
+    ///
+    /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or
+    ///   `search results`.
     /// - Returns: how many views were closed.
     /// - ggop: views.close
     @discardableResult
@@ -177,8 +181,10 @@ public enum views {
     public struct OpenView: Sendable {
         /// Whether it is a file, text, or documentation view.
         public let kind: ViewKind
-        /// What `views.close` takes: a file's path, a text view's label, or a documentation view's
-        /// function name.
+        /// What closes it.
+        ///
+        /// A file's path, a text view's label or `search results` for `views.close`, and for a
+        /// documentation view the key `docs.close` takes.
         public let selector: String
         /// Roughly what holding it costs, in tokens.
         public let tokens: Int
@@ -199,6 +205,9 @@ extension views.OpenView {
     ///
     /// `views.close` for the common case where the open view is in hand. Every view under the same
     /// selector closes, which for a paged file is every page of that path.
+    ///
+    /// A documentation view is the one this does not take away, because `views.close` does not reach
+    /// that band: `docs.close(selector)` is the call for one of those.
     ///
     /// - Returns: how many views were closed.
     /// - ggop-alias: views.close

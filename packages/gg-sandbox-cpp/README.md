@@ -56,7 +56,7 @@ three-element vector reads whatever is there. gg compiles every translation unit
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
 | `build.sh` | Compiles those bindings, the SDK and the shell for wasm, cuts the committed archive, fetches the adapter, and writes the manifest. |
 | `signatures.sh` | Dumps the SDK's comment AST with `clang++ -ast-dump=json` and writes `crates/gg/src/sandbox/guests/cpp.signatures.json`. Run by `scripts/ci/contract-drift.sh` on every CI run; writes exactly one file. |
-| `tools/catalogue.py` | The twelve module identities, and the order a reader meets them in. Nothing else: a function's gg operation id is written on its own declaration. |
+| `tools/catalogue.py` | The thirteen module identities, and the order a reader meets them in. Nothing else: a function's gg operation id is written on its own declaration. |
 | `tools/signatures.py` | The reflector: clang's comment AST in, the committed catalogue out. |
 
 ## What a C++ program looks like
@@ -83,7 +83,7 @@ int main() {
 
 ## What the SDK looks like, and the two decisions behind it
 
-**The surface is twelve capability modules, one header and one namespace each, under `namespace
+**The surface is thirteen capability modules, one header and one namespace each, under `namespace
 gg`.** `gg::files` is a namespace, a header, a translation unit and the prefix of every name the
 module declares, so `gg::files::read_file` and `gg::files::file_read` are both real C++ paths a
 program can write and two modules may each offer a `close`. The prelude ends with
@@ -94,7 +94,7 @@ rather than nested inside it, so a program's own file-scope `namespace files { â
 *reference to 'files' is ambiguous*, naming both at the model's own line. The declaration itself is
 accepted; `gg::files::` and `::files::` each resolve the use, and block scope is unaffected. No
 module name collides with anything the prelude already declares: measured against this arm's pinned
-`clang++`, all twelve compile as a fresh `namespace` at global scope beside it.
+`clang++`, all thirteen compile as a fresh `namespace` at global scope beside it.
 
 **It reads like the standard library**, because it arrives in the same prelude as `<vector>` and is
 called with `std::string` arguments: `snake_case` functions, `snake_case` types, `enum class` for a

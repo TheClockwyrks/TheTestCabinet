@@ -45,11 +45,11 @@ the installer lays one out. Without it every program on this arm fails with
 `SCRIPTING_ERROR: Unable to evaluate script, no scripting plugin loaded` — a sentence about
 gg's packaging wearing the shape of a diagnostic about the model's program.
 
-## The surface is twelve packages, and a program writes a name in full
+## The surface is thirteen packages, and a program writes a name in full
 
 Every function, every type and every member is reached by a **module-qualified** name:
-`gg.files.readFile`, `gg.files.FileRead`, `gg.delegation.SubagentHandle.send`. Twelve packages
-carry them — `gg.files`, `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.views`,
+`gg.files.readFile`, `gg.files.FileRead`, `gg.delegation.SubagentHandle.send`. Thirteen packages
+carry them — `gg.files`, `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.docs`, `gg.views`,
 `gg.context`, `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session`, plus `gg.core` for the
 failure type and the values every other module speaks in — and each owns the types it produces,
 so two of them are free to declare a `Usage` and neither has to be renamed.
@@ -65,10 +65,10 @@ can write as it stands. That keeps the substrate's headline property intact: *a 
 `import` in it is compiled byte for byte, with a shift of zero*, where every other compiled arm
 writes a header and moves every diagnostic back over it.
 
-Twelve star imports were the alternative and they **buy nothing**. Every name in this arm's
+A star import per package was the alternative and it **buys nothing**. Every name in this arm's
 documentation is written in full — `gg.files.readFile` is the fully-qualified name the catalogue
 carries and the spelling a model reads — so a header of star imports would shorten nothing a model
-was ever going to write, while putting twelve lines in front of every program. They would also
+was ever going to write, while putting a line per module in front of every program. They would also
 cost something: two modules are free to declare a type of the same name, and two star imports
 decide between them by a rule that is nowhere in the call. A program that wants the short form
 still writes its own import — gg hoists it — and picks which names it is importing.

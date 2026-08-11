@@ -51,7 +51,7 @@ which is what gets both the message and the model's own line and column out.
 | `swift-version.sh` | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
 | `build.sh` | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two committed archives, fetches the adapter, and writes the manifest. |
-| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out. `tools/catalogue.py` is the module table — gg's twelve ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
+| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out. `tools/catalogue.py` is the module table — gg's thirteen ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
 
 ## What a Swift program looks like
 
@@ -65,16 +65,16 @@ try views.openText("build", body: built.output)
 try session.finish("looked at \(sources.count) sources")
 ```
 
-Every capability module — `files`, `shell`, `board`, `tasks`, `memories`, `views`, `context`,
-`delegation`, `skills`, `programs`, `session`, and `core` for the types the rest share — is a
-caseless `enum`, which is Swift's own namespace, so a call is a call on a namespace and nothing is
-constructed first. Each owns the types it produces (`files.FileRead`, `board.IssueCreated`), so two
+Every capability module — `files`, `shell`, `board`, `tasks`, `memories`, `views`, `docs`,
+`context`, `delegation`, `skills`, `programs`, `session`, and `core` for the types the rest
+share — is a caseless `enum`, which is Swift's own namespace, so a call is a call on a namespace
+and nothing is constructed first. Each owns the types it produces (`files.FileRead`, `board.IssueCreated`), so two
 modules are free to declare a type of one name. The module names are gg's **identity** rather than
 this SDK's spelling: they are the vocabulary every arm shares, and no language may rename them,
 which is the one place this SDK departs from Swift's UpperCamelCase convention for types and the
 reason it does.
 
-A caseless `enum` rather than thirteen real Swift modules behind an `@_exported` umbrella. The
+A caseless `enum` rather than that many real Swift modules behind an `@_exported` umbrella. The
 umbrella was measured and does re-export transitively, so that was not what decided it: a module of
 its own would have to be called `GgFiles` where the vocabulary is `files`, and a program that
 declares its own `files` shadows either shape equally. What answers the shadowing is the fully

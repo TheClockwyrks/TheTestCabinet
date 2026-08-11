@@ -99,6 +99,10 @@ internal external fun tasksObject(): JSObject?
 @JSBody(script = "return typeof memory === 'undefined' ? null : memory;")
 internal external fun memoryObject(): JSObject?
 
+/** The guest's `docs` object, or `null` when the guest does not export it. */
+@JSBody(script = "return typeof docs === 'undefined' ? null : docs;")
+internal external fun docsObject(): JSObject?
+
 /** The guest's `view` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof view === 'undefined' ? null : view;")
 internal external fun viewObject(): JSObject?

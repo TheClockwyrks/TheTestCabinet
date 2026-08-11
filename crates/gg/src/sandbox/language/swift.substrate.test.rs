@@ -105,6 +105,32 @@ pub(super) fn evaluate(
     library: bool,
     responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(component, enabled, ending, library, false, responder)
+}
+
+/// [`evaluate`] for an agent that also holds `docview-close`.
+///
+/// Its own function rather than a sixth argument on the one above, because every other caller here
+/// wants the default and a second bare `false` at the end of an argument list says nothing about
+/// which flag it is. What it buys is the only way to drive
+/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
+/// refuses the call before this arm's lifting of the answer is ever reached.
+pub(super) fn evaluate_closing_docviews(
+    component: &[u8],
+    responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(component, &[], RunEnding::None, false, true, responder)
+}
+
+/// What both of the above are: one evaluation, with every flag the scope carries stated.
+fn evaluate_granting(
+    component: &[u8],
+    enabled: &[String],
+    ending: RunEnding,
+    library: bool,
+    docview_close: bool,
+    responder: impl FnMut(&str, &serde_json::Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
     let api = FakeToolApi::with(&log, responder);
@@ -116,7 +142,7 @@ pub(super) fn evaluate(
         modules: &[],
         ending,
         library,
-        docview_close: false,
+        docview_close,
     };
     let mut store = bounded_store(
         MembraneState::new(

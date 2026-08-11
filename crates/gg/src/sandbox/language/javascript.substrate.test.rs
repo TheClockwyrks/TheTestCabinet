@@ -34,6 +34,7 @@
 use serde_json::json;
 use test_cabinet_core::gg::GgProgramLanguage;
 
+use crate::context::ViewKind;
 use crate::ending::EndingRole;
 use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::sandbox::{
@@ -218,6 +219,15 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         "} catch (error) {\n",
         "  console.log(String(error instanceof ToolError));\n",
         "}\n",
+        // The call the whole discovery loop begins at, written the way the prompt describes it: a
+        // query, a module filter and a page, and a value the program reads fields off. The double
+        // holds no catalogue, so what is being observed here is the envelope crossing the membrane
+        // and the SDK's own lowering of an options object into six positional arguments — the
+        // ranking is `DocsRuntime`'s and is tested against the real committed catalogue.
+        "const found = gg.docs.search(\"view\", { module: \"gg.views\", kind: \"function\", limit: 5 });\n",
+        "console.log(JSON.stringify({\n",
+        "  total: found.total, offset: found.offset, hits: found.hits.length,\n",
+        "}));\n",
         "gg.session.finish(\"drove the documented spelling\");\n",
     ));
     assert!(
@@ -239,15 +249,20 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         ],
         "every module reached gg's dispatch from its `gg.`-qualified spelling"
     );
-    // A view is not a tool call, so `gg.views.openText` shows up here rather than in the log above.
+    // A view is not a tool call, so `gg.views.openText` shows up here rather than in the log above —
+    // and neither is a search, which places its results in the window under gg's own constant
+    // selector rather than under anything the program chose.
     assert_eq!(
         outcome
             .views_opened
             .iter()
-            .map(|view| view.selector.as_str())
+            .map(|view| (view.kind, view.selector.as_str()))
             .collect::<Vec<_>>(),
-        ["scratch"],
-        "`gg.views.openText` opened the view its documented spelling names"
+        [
+            (ViewKind::Text, "scratch"),
+            (ViewKind::Search, crate::context::SEARCH_RESULTS_VIEW),
+        ],
+        "the documented spellings of `openText` and `search` each opened the view they name"
     );
     // The bare `ToolError` a `catch` narrows on — the one thing the prompt teaches that is not a
     // tool call.
@@ -255,6 +270,18 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
     assert_eq!(
         lines[0], "true",
         "`ToolError` is bound bare, so `instanceof` narrows a caught failure"
+    );
+    // The search's page came back as a value the program read fields off, envelope and all: a total
+    // it can compare its page against, the offset echoed back so paging needs nothing tracked, and
+    // hits it can index. The double finds nothing, which is the honest answer for a catalogue it
+    // does not model — an empty page is still a page.
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&lines[1]).unwrap_or_else(|error| panic!(
+            "the search's line is not JSON ({error}): {}",
+            lines[1]
+        )),
+        json!({ "total": 0, "offset": 0, "hits": 0 }),
+        "`gg.docs.search` handed the program a page it could read"
     );
     assert!(
         matches!(
@@ -358,5 +385,40 @@ fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
         1,
         "and the reach is recorded, which is what an ablation counts: {:?}",
         outcome.refusals
+    );
+
+    // A capability buys a call the same way a tool does, and the documentation family is where the
+    // two halves of that rule are visible side by side: searching is bound whatever a run enables,
+    // because a model that cannot search cannot learn what it holds, and closing a documentation
+    // view is bought — so this program's first call answers and its second is refused.
+    let (outcome, log) = run_with(
+        concat!(
+            "console.log(String(gg.docs.search(\"view\").total));\n",
+            "try {\n",
+            "  gg.docs.closeAll();\n",
+            "} catch (error) {\n",
+            "  console.log(`${error instanceof ToolError} ${error.code} ${error.tool}`);\n",
+            "  console.log(error.message);\n",
+            "}\n",
+        ),
+        &all_tools(),
+    );
+    let lines = logs(&outcome);
+    assert_eq!(
+        lines[0], "0",
+        "searching is never bought, so it answered: {lines:?}"
+    );
+    assert_eq!(
+        lines[1], "true unavailable close_all",
+        "and closing is, so it refused as a value the program narrowed: {lines:?}"
+    );
+    assert!(
+        lines[2].contains("docview-close"),
+        "naming the capability that is missing rather than merely saying no: {lines:?}"
+    );
+    assert!(
+        log.calls().is_empty(),
+        "neither call is a gg tool: {:?}",
+        log.names()
     );
 }

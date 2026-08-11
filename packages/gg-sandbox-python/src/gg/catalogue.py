@@ -21,6 +21,7 @@ would dispatch, read by `gg.scope.bound_tools` and by nothing else.
 from __future__ import annotations
 
 MODULE_ORDER: tuple[str, ...] = (
+    "docs",
     "files",
     "shell",
     "board",
@@ -41,6 +42,10 @@ tuple is the join between `gg.files` the Python module and `files.read_file` the
 order is model-facing: it is the sequence the system prompt lists modules in and the sequence the
 run's agent surface reports, running from the modules almost every run has to the ones a particular
 shape of agent has.
+
+`docs` is first because it is the one module no run can withhold and the one a session begins in:
+the prompt names modules and no function, so finding a name is the first thing a program does and
+every other module is reached through it.
 
 `core` is last and carries no function at all: it holds the types every other module's signatures
 name, so it is a module for the sake of the names its types are qualified by.

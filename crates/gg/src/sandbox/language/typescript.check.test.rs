@@ -43,9 +43,23 @@ try {
   if (error instanceof ToolError) console.log(error.tool, error.code);
 }
 lib.anything.at.all(1, 2, 3);
-gg.session.finish(`saw ${names.length} files`);
+const found = gg.docs.search("open a file", { module: "gg.views", kind: "function", limit: 5 });
+for (const hit of found.hits) gg.views.openDocsView(hit.key);
+gg.session.finish(`saw ${names.length} files of ${found.total}`);
 "#;
     assert_eq!(diagnostics(clean), None, "the program type-checks");
+
+    // The discovery loop's own line, checked: a search's page is a typed value whose hits carry the
+    // key an `openDocsView` takes, so the two halves of the loop compose without a cast. The `kind`
+    // filter is a closed union rather than a `string`, which is the one filter whose typo the host
+    // refuses at run time — so on this arm the compiler catches it a turn earlier.
+    let mistyped = "gg.docs.search(\"x\", { kind: \"functions\" });\n";
+    let text = diagnostics(mistyped).expect("`functions` is not one of the two kinds");
+    assert!(
+        text.contains("is not assignable to type 'DocKind | undefined'")
+            && text.contains(r#"Did you mean '"function"'"#),
+        "the checker names the kind a search accepts, and the one word away it was: {text}"
+    );
 }
 
 #[test]

@@ -23,6 +23,7 @@ use crate::board::{
 use crate::context::{ArchiveHit, ArchiveSearch, MessageRole, ReclaimReport};
 use crate::core::ToolError;
 use crate::delegation::{AgentStatus, Brief, SubagentHandle, SubagentResult};
+use crate::docs::{DocHit, DocKind, DocSearch};
 use crate::files::{DirEntry, EntryKind, FileRead, ImageFile, ReadOptions, TextFile};
 use crate::memories::{MemoryHit, MemoryUsage};
 use crate::programs::ProgramSummary;
@@ -275,6 +276,35 @@ pub(crate) fn archive_search(found: gen::context::ArchiveSearch) -> ArchiveSearc
                     gen::context::MessageRole::Tool => MessageRole::Tool,
                 },
                 text: hit.text,
+            })
+            .collect(),
+    }
+}
+
+/// One page of what a documentation search found.
+///
+/// The wire spells a hit's kind as a **word**, because WIT has no closed set to spell it as that
+/// both sides of a component boundary would agree on. The SDK spells it as a [`DocKind`], which is
+/// what makes a `match` on it exhaustive and a filter unmisspellable — and `type` is the only word
+/// the index files anything but a function under, so anything else lifts to
+/// [`DocKind::Function`] rather than costing every hit a fallible parse for a case the host cannot
+/// produce.
+pub(crate) fn doc_search(found: gen::docs::DocSearch) -> DocSearch {
+    DocSearch {
+        total: found.total,
+        offset: found.offset,
+        hits: found
+            .hits
+            .into_iter()
+            .map(|hit| DocHit {
+                key: hit.key,
+                kind: match hit.kind.as_str() {
+                    "type" => DocKind::Type,
+                    _ => DocKind::Function,
+                },
+                module: hit.module,
+                name: hit.name,
+                summary: hit.summary,
             })
             .collect(),
     }

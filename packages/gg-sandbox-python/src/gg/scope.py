@@ -30,13 +30,14 @@ from __future__ import annotations
 from types import ModuleType
 from typing import Any
 
-from . import board, context, core, delegation, files, memories, programs
+from . import board, context, core, delegation, docs, files, memories, programs
 from . import session as session_module
 from . import shell, skills, tasks, views
 from ._registry import ATTRIBUTE, REGISTRY
 from .catalogue import GG_TOOLS, MODULE_ORDER, PACKAGE, TOOL_BOUND
 
 _MODULES: dict[str, ModuleType] = {
+    "docs": docs,
     "files": files,
     "shell": shell,
     "board": board,

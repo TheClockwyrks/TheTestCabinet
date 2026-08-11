@@ -91,23 +91,24 @@ const DEFAULT_IMPORTS: [&str; 8] = [
 /// **Imports rather than a static import of everything**, which is what this arm's surface used to
 /// be. `import static gg.Gg.*` put twelve *values* into scope, so `fs` was a name that had to be
 /// known before anything could be reached and shadowing one was a program that silently called
-/// something else. A module is a class here, so what arrives is twelve *types* — `Files`, `Views`,
-/// `Board` — each of which a search can hand back and none of which a local variable can quietly
-/// replace.
+/// something else. A module is a class here, so what arrives is one *type* per module — `Files`,
+/// `Views`, `Docs` — each of which a search can hand back and none of which a local variable can
+/// quietly replace.
 ///
 /// Type-import-on-demand rather than one single-type import per module, because the second would be
-/// twelve lines that mean the same thing and would still have to grow by hand when a module is
+/// a line per class that means the same thing and would still have to grow by hand when a module is
 /// added. The one thing it costs is that a program declaring its own `Files` makes that name
 /// ambiguous — which is javac's own rule for on-demand imports, is a located compile error rather
 /// than a silent substitution, and is the reason a single-type import would be worse rather than
 /// better: that one would shadow the model's own class instead.
-const SURFACE_IMPORTS: [&str; 12] = [
+const SURFACE_IMPORTS: [&str; 13] = [
     "gg.*",
     "gg.files.*",
     "gg.shell.*",
     "gg.board.*",
     "gg.tasks.*",
     "gg.memories.*",
+    "gg.docs.*",
     "gg.views.*",
     "gg.context.*",
     "gg.delegation.*",

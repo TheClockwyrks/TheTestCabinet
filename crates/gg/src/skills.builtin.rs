@@ -81,7 +81,7 @@ pub(crate) struct Family {
     /// through the [operation](crate::sandbox::operation_of) instead, which both shapes of catalogue
     /// answer.
     pub(crate) objects: &'static [&'static str],
-    /// The gg tool names in it. Empty for the three families that are responses-as-code carve-outs
+    /// The gg tool names in it. Empty for the four families that are responses-as-code carve-outs
     /// and have no native tools at all — they are offered only in code mode.
     pub(crate) tools: &'static [&'static str],
 }
@@ -184,6 +184,13 @@ pub(crate) const FAMILIES: &[Family] = &[
         ],
     },
     Family {
+        id: "gg-docs",
+        title: "Documentation",
+        description: "Finding a function by keyword, and reclaiming the documentation you have read.",
+        objects: &["docs"],
+        tools: &[],
+    },
+    Family {
         id: "gg-views",
         title: "Views",
         description: "Showing yourself a file, a value, or a function's documentation.",
@@ -219,10 +226,10 @@ pub(crate) const FAMILIES: &[Family] = &[
 /// fact: a family's skill is built from a [directory](crate::docs::DocsRuntime) exactly when the
 /// agent writes programs, and the language is only there to say how the entries in it are spelled.
 ///
-/// A family with nothing bound is not offered at all. In code mode the three carve-out families
-/// (`view`, `programs`, `harness`) are decided by [`DocsRuntime`](crate::docs::DocsRuntime) rather
-/// than by a tool name, so they are asked for their directory; under native tool calling they do not
-/// exist, and are absent.
+/// A family with nothing bound is not offered at all. In code mode the four carve-out families
+/// (`docs`, `view`, `programs`, `harness`) are decided by [`DocsRuntime`](crate::docs::DocsRuntime)
+/// rather than by a tool name, so they are asked for their directory; under native tool calling they
+/// do not exist, and are absent.
 pub fn builtin_skills(
     offered: &[String],
     definitions: &[ToolDefinition],

@@ -40,18 +40,20 @@ run that configures none is held to. It says so because a signature *is* a spell
 configured to another language offers exactly these operations, in exactly these modules, under
 that language's own names, and a reader comparing two arms of a cross-language study has to be
 able to tell which surface is on screen. Both tabs are
-ordered by the eleven families gg divides its surface into (`Filesystem`, `Shell`,
-`Project management`, `Tasks`, `Memories`, `Skills`, `Context`, `Delegation`, `Views`,
-`Program library`, `Ending the session`), in the order the system prompt's own API table
+ordered by the twelve families gg divides its surface into (`Filesystem`, `Shell`,
+`Project management`, `Tasks`, `Memories`, `Skills`, `Context`, `Delegation`,
+`Documentation`, `Views`, `Program library`, `Ending the session`), in the order the
+system prompt's own API table
 uses — but they are *grouped* differently, because a tool and an API call are addressed
 differently:
 
-- the **Tools** tab groups by family, and shows only the families that have tools. `Views`,
-  `Program library` and `Ending the session` are responses-as-code carve-outs with no
-  native tools at all, so eight folders appear rather than eleven.
+- the **Tools** tab groups by family, and shows only the families that have tools.
+  `Documentation`, `Views`, `Program library` and `Ending the session` are
+  responses-as-code carve-outs with no native tools at all, so eight folders appear rather
+  than twelve.
 - the **API** tab groups by the **capability modules** a program calls through — `gg.files`,
-  `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.skills`, `gg.context`,
-  `gg.delegation`, `gg.views`, `gg.programs`, `gg.session` — because that is how a program
+  `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`, `gg.docs`, `gg.views`, `gg.context`,
+  `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session` — because that is how a program
   reaches them (`gg.files.readFile`, not "the filesystem family's read call"), it is the only
   vocabulary the [system prompt](/gg/prompts/) supplies, and it is what a model itself
   searches by mid-run. Each folder is captioned with the module's **own** one-line

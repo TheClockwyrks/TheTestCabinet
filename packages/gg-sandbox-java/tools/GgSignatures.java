@@ -973,7 +973,7 @@ public final class GgSignatures implements Doclet {
     /**
      * A model-facing type's fully-qualified name: its module's path, then the type.
      *
-     * <p>For the eleven modules that are a class, that is the class the type is nested in — which is
+     * <p>For the twelve modules that are a class, that is the class the type is nested in — which is
      * what makes the name module-qualified without the module having to be a package a call site
      * could not write. For {@code core} it is the package, because that module <em>is</em> the
      * package.
@@ -1032,7 +1032,7 @@ public final class GgSignatures implements Doclet {
      *
      * <p>{@code Files.FileRead} rather than {@code FileRead}, because a type nested in a module class
      * is what a program writes there — the import header brings the module class into scope and
-     * nothing else — and because it is what makes one spelling name one type across twelve modules.
+     * nothing else — and because it is what makes one spelling name one type across thirteen modules.
      */
     private String spelled(DeclaredType declared) {
         Element element = declared.asElement();

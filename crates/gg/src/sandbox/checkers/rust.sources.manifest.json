@@ -3,8 +3,8 @@
   "rebuild": "packages/gg-sandbox-rust/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/checkers/rust.libraries.tar.gz": {
-      "bytes": 9389397,
-      "sha256": "0ecc950ac3174127984187dcdb330333cfd12d7fac68b6529f4a3fd72d2b0ff5"
+      "bytes": 9406347,
+      "sha256": "fe0fe48d217c606163a6bdc0a08d726d9e1b7c4ae018bff5869ae61e66c902ec"
     }
   },
   "wit": {
@@ -20,8 +20,9 @@
     "packages/gg-sandbox-rust/src/context.rs": "0bb49b09ee9c1f575a4f55da8b9beb79bc4f79764d840a0cf8c44dc903ae3d37",
     "packages/gg-sandbox-rust/src/core.rs": "71c866396da14803346eaf5b395775c5ba5a1f85c870e9f854c4c824c85fd2a9",
     "packages/gg-sandbox-rust/src/delegation.rs": "e819bb86d383793e105edd51f03a955b5f9c5cc8913b2a0d26bd27dfcbaf3b64",
+    "packages/gg-sandbox-rust/src/docs.rs": "7b6e59648c7e0100582aba5dc64fcbcfb991bab343fd1209aecbef4c406cedbd",
     "packages/gg-sandbox-rust/src/files.rs": "2e0fbf583e90a4c93916d400e4adc37db4f1b254ef51970280e31ea7a03b780a",
-    "packages/gg-sandbox-rust/src/lib.rs": "8678b29f7329f42a01b42af77d84d0ff4879aea7f2971f0066b232b4f42250b7",
+    "packages/gg-sandbox-rust/src/lib.rs": "f78da4d210e42c91415e1b172007a266bead3da4f7a068a7fde4a304b1b1a7f5",
     "packages/gg-sandbox-rust/src/memories.rs": "d471115e589286bb50c68f841a83d6d6b5aa02464e91baf814993d115e7afdef",
     "packages/gg-sandbox-rust/src/program.rs": "d0a6f8d4358bbfcde73d7ed585244e3fd61b8abbfaec7835112dd46d308f6f69",
     "packages/gg-sandbox-rust/src/programs.rs": "282c5e1f190db0f399c54db1c898cc6d3ff747b8d37ba74106bb1bb711d15ec6",
@@ -29,8 +30,8 @@
     "packages/gg-sandbox-rust/src/shell.rs": "eabbf31ebdad225314265647c2213fdd796882091a7b6ecf568789a5f943d404",
     "packages/gg-sandbox-rust/src/skills.rs": "a6089f0bd70723cfa8e505ab640b4a1219272d6b0ae59330796cb3bdddfbb08d",
     "packages/gg-sandbox-rust/src/tasks.rs": "2777e7baec4402c40dc1fa56158c261cc989b6a8c2c2882dbaa4239adf8e4f2b",
-    "packages/gg-sandbox-rust/src/views.rs": "83ab16c6524ceafdc013e4fab8e1471e6de82edeeb5f36481e8fd824f9cebc1c",
-    "packages/gg-sandbox-rust/src/wire.rs": "ba1a9fceae0093607b0a9be4fa2dd3e990cdd1a4d76fc2ada27a5522e6a23182",
+    "packages/gg-sandbox-rust/src/views.rs": "285d1682e4d33c87ebc13400c77184c15b22bb495c50a99ba5d0276d16dc26c1",
+    "packages/gg-sandbox-rust/src/wire.rs": "0a41ec3a07cf7c955a3f08198bd92e49ff2db47df4ecc9901062acb747706b04",
     "packages/gg-sandbox-rust/Cargo.lock": "11f27e175ff7f4947829a5099275d9294daf395c1257f1baeecf1a376d555291",
     "packages/gg-sandbox-rust/Cargo.toml": "e07cefab72ff5b62f64080f5b7d36d9adc69c3ef4fbbce3b3cc2fba8f2315f09",
     "packages/gg-sandbox-rust/bindings.sh": "8e984eae8dfc2d8a77b60b011c187f282751a4557bbac82ca1e9a0b2db90b0e9",

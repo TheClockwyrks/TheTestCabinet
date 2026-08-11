@@ -83,6 +83,12 @@ window::window(const files::read_window& from) : offset_(from.offset), limit_(fr
   if (limit_.has_value()) limit_value_ = *limit_;
 }
 
+window::window(std::optional<std::uint32_t> offset, std::optional<std::uint32_t> limit)
+    : offset_(offset), limit_(limit) {
+  if (offset_.has_value()) offset_value_ = *offset_;
+  if (limit_.has_value()) limit_value_ = *limit_;
+}
+
 std::uint32_t* window::offset() { return offset_.has_value() ? &offset_value_ : nullptr; }
 
 std::uint32_t* window::limit() { return limit_.has_value() ? &limit_value_ : nullptr; }
@@ -167,6 +173,19 @@ views::view_kind lift_view_kind(test_cabinet_gg_views_view_kind_t wire) {
     case TEST_CABINET_GG_VIEWS_VIEW_KIND_TEXT: return views::view_kind::text;
     default: return views::view_kind::docs;
   }
+}
+
+std::string_view lower(docs::doc_kind kind) {
+  switch (kind) {
+    case docs::doc_kind::type: return "type";
+    default: return "function";
+  }
+}
+
+// `type` is the only word the documentation index files anything but a function under, so anything
+// else is a function rather than a parse this SDK could fail — the wire cannot produce a third.
+docs::doc_kind lift_doc_kind(const sandbox_string_t& wire) {
+  return lift(wire) == "type" ? docs::doc_kind::type : docs::doc_kind::function;
 }
 
 delegation::agent_status lift_agent_status(test_cabinet_gg_delegation_agent_status_t wire) {
@@ -264,6 +283,20 @@ context::archive_search lift_archive_search(test_cabinet_gg_context_archive_sear
                                               lift(hit.text)};
                          });
   test_cabinet_gg_context_archive_search_free(&wire);
+  return found;
+}
+
+docs::doc_search lift_doc_search(test_cabinet_gg_docs_doc_search_t& wire) {
+  docs::doc_search found;
+  found.total = wire.total;
+  found.offset = wire.offset;
+  found.hits = lift_each(wire.hits.ptr, wire.hits.len,
+                         [](const test_cabinet_gg_docs_doc_hit_t& hit) {
+                           return docs::doc_hit{lift(hit.key), lift_doc_kind(hit.kind),
+                                                lift(hit.module), lift(hit.name),
+                                                lift(hit.summary)};
+                         });
+  test_cabinet_gg_docs_doc_search_free(&wire);
   return found;
 }
 

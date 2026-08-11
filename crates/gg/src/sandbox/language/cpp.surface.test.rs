@@ -33,7 +33,7 @@
 
 use serde_json::{Value, json};
 
-use super::substrate::{evaluate, logs, prepare};
+use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
@@ -405,9 +405,9 @@ fn every_tool_crosses_the_membrane_from_its_cpp_spelling() {
 
 #[test]
 fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
-    // Two of the four families that are NOT gg tools, so neither appears in the crossing table
-    // above — and both are where a program puts something in front of the model, which makes them
-    // the ones a silent bridging mistake would cost the most.
+    // Three of the families that are NOT gg tools, so none of them appears in the crossing table
+    // above — and they are where a program puts something in front of the model and finds out what
+    // it may call at all, which makes them the ones a silent bridging mistake would cost the most.
     let (outcome, log) = evaluate(
         &prepare(&program(
             r####"
@@ -424,6 +424,19 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
                                 ? std::get<files::text_file>(read).contents
                                 : std::get<files::image_file>(read).label;
   log(shown.substr(0, shown.find('\n')));
+  const auto found = docs::search(
+      "open", {.module = "views", .kind = docs::doc_kind::function, .limit = 5});
+  log(std::format("{} {} {}", found.total, found.offset, found.hits.size()));
+  try {
+    log(std::format("closed {}", docs::close("gg::views::open_text")));
+  } catch (const core::tool_error &failure) {
+    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
+  }
+  try {
+    log(std::format("closed {}", docs::close_all()));
+  } catch (const core::tool_error &failure) {
+    log(std::format("{} on {}", core::gg_name(failure.code()), failure.tool()));
+  }
   session::finish("read the file and showed myself the result");
 "####,
         )),
@@ -438,14 +451,25 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
     // unconditionally does not have to guard every call.
     assert_eq!(lines[1], "1 0");
     assert_eq!(lines[2], "contents of notes.md");
-    // Every view the program opened is recorded, the documentation one included.
+    // A search hands the program a page it can read in the turn that asked for it — the count, the
+    // echoed offset, and the hits themselves. The double models no catalogue, so the honest page is
+    // an empty one; what this proves is the crossing, which is the half no other test covers on this
+    // arm. The ranking over a real catalogue is the documentation runtime's own to prove.
+    assert_eq!(lines[3], "0 0 0");
+    // Closing documentation is the one part of this family a run buys, and this run did not: the
+    // program is refused by the host, as the exception a C++ author catches, under the call's own
+    // name rather than by a name that was never in scope — a compiled arm cannot withhold a name.
+    assert_eq!(lines[4], "unavailable on close");
+    assert_eq!(lines[5], "unavailable on close_all");
+    // Every view the program opened is recorded, the documentation one and the search's own
+    // included — a search puts its page in the window as well as handing it back.
     assert_eq!(
         outcome
             .views_opened
             .iter()
             .map(|view| view.selector.as_str())
             .collect::<Vec<_>>(),
-        ["notes.md", "summary", "read_file"]
+        ["notes.md", "summary", "read_file", "search results"]
     );
     assert!(
         matches!(
@@ -455,6 +479,20 @@ fn the_view_object_the_helper_and_the_standard_ending_are_reached_in_cpp_too() {
         "the ending the program declared: {:?}",
         outcome.completion
     );
+
+    // And the same two calls once the run has bought the capability, which is the only way to reach
+    // their answer at all: refused, the count a program reads is never lifted. The double holds no
+    // window, so nothing is open and `0` is the honest number — a success, exactly as it is in
+    // production for a key that is not open.
+    let (granted, _log) = evaluate_closing_docviews(
+        &prepare(&program(
+            r####"
+  log(std::format("{} {}", docs::close("gg::views::open_text"), docs::close_all()));
+"####,
+        )),
+        canned_outcome,
+    );
+    assert_eq!(logs(&granted), ["0 0"]);
 
     // Two reads reached gg's dispatch and both arrived as `read_file`: the helper's, and the one
     // `views::open_file` performs. Neither has a tool name of its own, which is exactly the point — a
@@ -814,7 +852,7 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         "packages/gg-sandbox-cpp/Sources/sdk/ (clang++ -ast-dump=json)"
     );
 
-    // The twelve modules, in the order a model is presented with them, each spelled as a C++
+    // The thirteen modules, in the order a model is presented with them, each spelled as a C++
     // program writes it and introduced by the first line of its own namespace's documentation.
     assert_eq!(
         section(&catalogue, "modules")
@@ -828,6 +866,7 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
             ("tasks", "gg::tasks"),
             ("memories", "gg::memories"),
             ("views", "gg::views"),
+            ("docs", "gg::docs"),
             ("context", "gg::context"),
             ("delegation", "gg::delegation"),
             ("skills", "gg::skills"),

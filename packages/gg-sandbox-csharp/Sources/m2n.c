@@ -21,19 +21,24 @@
 //
 // # Why four, and why they are written here rather than generated
 //
-// The bridge is *designed* to need almost none. Forty-two of its forty-six functions already fit a
-// shape the class library uses; two more were made to fit by narrowing a `long` argument to an `int`
-// where the value is a `u32` anyway, and two by handing a record's numbers back as one array rather
-// than as an `out` parameter each — which the interpreter forces regardless, since it refuses to
-// build a frame for an internal call of fourteen arguments at all. What is left is these, three of
+// The bridge is *designed* to need almost none. Forty-four of its forty-nine functions already fit a
+// shape the class library uses; two of those were made to fit by narrowing a `long` argument to an
+// `int` where the value is a `u32` anyway, and two by handing a record's numbers back as one array
+// rather than as an `out` parameter each — which the interpreter forces regardless, since it refuses
+// to build a frame for an internal call of fourteen arguments at all. What is left is these, four of
 // them simply wider than anything in the BCL:
 //
 // | Cookie | What needs it |
 // | --- | --- |
 // | `IIDIIII` | `Shell`, whose timeout is the surface's one `double` |
 // | `IIIIIIIIIII` | `UpdateIssue`, ten arguments |
-// | `IIIIIIIIIIIII` | `RecordMemory`, twelve |
+// | `IIIIIIIIIIIII` | `RecordMemory` and `SearchDocs`, twelve each |
 // | `IIIIIIIIIIII` | `CreateIssue`, eleven |
+//
+// `SearchDocs` is the one of those five that arrives at twelve *after* the same array trick: a page
+// of five-field hits plus a total and an offset is fifteen arguments written out, and folding the
+// page's own two numbers into a sixth array is what brings it under the ceiling at all. It shares a
+// cookie with the memory-recording calls rather than needing a fifth trampoline.
 //
 // # How they are installed
 //
@@ -84,7 +89,7 @@ static void gg_invoke_i11(void *target_func, MonoInterpMethodArguments *margs) {
   *(int *)mono_wasm_interp_method_args_get_retval(margs) = res;
 }
 
-/// `int f(void* × 12)` — the three memory-recording calls.
+/// `int f(void* × 12)` — the three memory-recording calls, and the documentation search.
 static void gg_invoke_i13(void *target_func, MonoInterpMethodArguments *margs) {
   typedef int (*T)(int, int, int, int, int, int, int, int, int, int, int, int);
   const int res = ((T)target_func)(GG_I(0), GG_I(1), GG_I(2), GG_I(3), GG_I(4), GG_I(5), GG_I(6),

@@ -95,14 +95,50 @@ fn evaluate(
 }
 
 /// [`evaluate`], with the agent's [ending group](RunEnding) and its
-/// [program-library](crate::sandbox::ProgramScope) flag said out loud — the two facts that decide
-/// which of this SDK's objects the guest binds.
+/// [program-library](crate::sandbox::ProgramScope) flag said out loud — two of the three facts that
+/// decide what this agent is permitted once the guest has bound the whole SDK.
 pub(super) fn evaluate_as(
     program: &str,
     enabled: &[String],
     modules: &[CodeModule],
     ending: RunEnding,
     library: bool,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(program, enabled, modules, ending, library, false, responder)
+}
+
+/// [`evaluate_as`] for an agent that also holds `docview-close`.
+///
+/// Its own function rather than a seventh argument on the one above, because every other caller here
+/// wants the default and a second bare `false` at the end of an argument list says nothing about
+/// which flag it is. What it buys is the only way to drive
+/// [`docs.close`](crate::sandbox::DOCS_CLOSE) to a *success*: without the capability the membrane
+/// refuses the call before this arm's lowering of the answer is ever reached.
+pub(super) fn evaluate_closing_docviews(
+    program: &str,
+    enabled: &[String],
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(
+        program,
+        enabled,
+        &[],
+        RunEnding::None,
+        false,
+        true,
+        responder,
+    )
+}
+
+/// What both of the above are: one evaluation, with every flag the scope carries stated.
+fn evaluate_granting(
+    program: &str,
+    enabled: &[String],
+    modules: &[CodeModule],
+    ending: RunEnding,
+    library: bool,
+    docview_close: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
@@ -114,7 +150,7 @@ pub(super) fn evaluate_as(
         modules,
         ending,
         library,
-        docview_close: false,
+        docview_close,
     };
     // The component is resolved BEFORE the store, and the order is the whole of it rather than a
     // tidying. `bounded_store` arms the guest's execution deadline the instant it builds the state —

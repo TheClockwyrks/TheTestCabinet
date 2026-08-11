@@ -941,15 +941,20 @@ impl<A: ToolApi> MembraneState<A> {
     /// [`SandboxRefusal`] under gg's own `object.key` identity,
     /// caught or uncaught, whatever the guest made of the throw. That is the record a toolset
     /// ablation joins on, and `/gg/static-sdks/` tells an operator the same thing.
-    fn granted(&mut self, call: RefusableCall<'_>, binding: Binding) -> Result<(), ToolError> {
+    fn granted(&mut self, call: SurfaceCall, binding: Binding) -> Result<(), ToolError> {
         if self.grants.permits(binding) {
             return Ok(());
         }
-        let message = self.withheld(&call.spelled(self.language), binding);
-        self.record_refusal(&call.recorded_as(), &message);
+        // Three different names for one call, and each is the only one right where it goes. The
+        // model is quoted the call in the language it is writing, because a refusal it can act on
+        // names something it could type. The roster is keyed on gg's own `(object, key)` pair,
+        // because a cross-arm readout joins on an identity no arm chose. And the error carries the
+        // bare key, because a catch site branches on the thing that failed rather than on prose.
+        let message = self.withheld(&spell(self.language, call), binding);
+        self.record_refusal(&format!("{}.{}", call.object, call.key), &message);
         Err(ToolError {
             code: ErrorCode::Unavailable,
-            tool: call.identity().to_string(),
+            tool: call.key.to_string(),
             message,
         })
     }
@@ -1092,66 +1097,6 @@ impl<A: ToolApi> MembraneState<A> {
     }
 }
 
-/// The membrane's `error-code` as the contract publishes it on an
-/// [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult).
-///
-/// The two enums are one-to-one, and the conversion is written out by hand rather than derived: the
-/// WIT enum is the guest's vocabulary and the contract's is a published wire value, and a `From`
-/// that made them interchangeable would let a change to either travel silently to the other. It is
-/// taken from the `ToolError` the program was actually thrown, rather than from the outcome behind
-/// it, so a refusal — which has no outcome at all — is classified by the same function as everything
-/// else.
-/// How a model-facing call names itself when the [gate](MembraneState::granted) refuses it — the
-/// three different names one refusal needs, in one place rather than at every gate.
-///
-/// Two shapes, because gg's model-facing surface has two: the catalogued calls, which every arm
-/// spells its own way and which gg files under an `(object, key)` pair, and the
-/// [documentation carve-out](docs)'s own calls, which no arm's committed catalogue spells yet — so
-/// there is nothing to resolve a spelling *from*, and a guessed one would be a name in the record
-/// that joins to nothing.
-#[derive(Debug, Clone, Copy)]
-enum RefusableCall<'a> {
-    /// A catalogued call, named by gg's own [`(object, key)`](SurfaceCall) pair and spelled by the
-    /// arm the program is written in.
-    Surface(SurfaceCall),
-    /// A carve-out call, named in gg's own vocabulary because that is the only vocabulary it has.
-    Carveout {
-        /// gg's word for the family — `docs`.
-        object: &'a str,
-        /// gg's word for the call within it — `search`, `close`.
-        function: &'a str,
-    },
-}
-
-impl<'a> RefusableCall<'a> {
-    /// How a program written in `language` would **write** this call — the name a refusal quotes,
-    /// because a model reads a name it could type.
-    fn spelled(self, language: &'static dyn ProgramLanguage) -> String {
-        match self {
-            Self::Surface(call) => spell(language, call),
-            Self::Carveout { object, function } => format!("{object}.{function}"),
-        }
-    }
-
-    /// The whole identity the [refusal roster](capture) files it under: enough to say *which* call
-    /// was reached for, in gg's own words, in an artifact a cross-arm readout joins on.
-    fn recorded_as(self) -> String {
-        match self {
-            Self::Surface(call) => format!("{}.{}", call.object, call.key),
-            Self::Carveout { object, function } => format!("{object}.{function}"),
-        }
-    }
-
-    /// gg's own key for the call, which is what [`ToolError::tool`] carries so a catch site can
-    /// branch on the thing that failed without parsing prose.
-    fn identity(self) -> &'a str {
-        match self {
-            Self::Surface(call) => call.key,
-            Self::Carveout { function, .. } => function,
-        }
-    }
-}
-
 /// The clause a [capability refusal](MembraneState::withheld) ends with: what an agent that was not
 /// given `id` does not have, said in the words a model can act on.
 ///
@@ -1182,7 +1127,15 @@ pub(super) fn wire_failure(code: ErrorCode) -> GgToolFailure {
     }
 }
 
-/// A tool's own failure classification as the membrane's `error-code`.
+/// A tool's own failure classification as the membrane's `error-code`, which is also how the
+/// contract publishes it on an [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult).
+///
+/// The two enums are one-to-one, and the conversion is written out by hand rather than derived: the
+/// WIT enum is the guest's vocabulary and the contract's is a published wire value, and a `From`
+/// that made them interchangeable would let a change to either travel silently to the other. It is
+/// taken from the `ToolError` the program was actually thrown, rather than from the outcome behind
+/// it, so a refusal — which has no outcome at all — is classified by the same function as everything
+/// else.
 ///
 /// An **unclassified** failure becomes `other`, which is honest: it is raised outside a tool
 /// implementation (the loop's own refusals and degradation paths), where there is no tool

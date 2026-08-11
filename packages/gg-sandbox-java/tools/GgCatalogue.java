@@ -9,7 +9,7 @@ package tools;
  * a type's module is the module class that encloses it. A side table naming every function twice was
  * precisely the second copy that drifts, and it does not exist any more.
  *
- * <p>What is left is a table of twelve module identities, and it is here rather than on the classes
+ * <p>What is left is a table of thirteen module identities, and it is here rather than on the classes
  * for two reasons: the <b>order</b> is model-facing — it is the sequence a documentation index and
  * the run's agent surface present the modules in — and the <b>path</b> is the string gg matches a
  * fully-qualified name's prefix against, so a class that misspelled its own package would be
@@ -50,6 +50,7 @@ final class GgCatalogue {
         new Module("board", "gg.board.Board", "gg.board.Board"),
         new Module("tasks", "gg.tasks.Tasks", "gg.tasks.Tasks"),
         new Module("memories", "gg.memories.Memories", "gg.memories.Memories"),
+        new Module("docs", "gg.docs.Docs", "gg.docs.Docs"),
         new Module("views", "gg.views.Views", "gg.views.Views"),
         new Module("context", "gg.context.Context", "gg.context.Context"),
         new Module("delegation", "gg.delegation.Delegation", "gg.delegation.Delegation"),

@@ -9,7 +9,7 @@ package tools
  * as an `@ggmodule` tag in the file-level KDoc above its `package` line. A side table naming every
  * function twice was precisely the second copy that drifts, and it does not exist any more.
  *
- * What is left is a table of twelve module identities, and it is here rather than in `src/` for two
+ * What is left is a table of thirteen module identities, and it is here rather than in `src/` for two
  * reasons: the **order** is model-facing — it is the sequence a documentation index and the run's
  * agent surface present the modules in — and the **path** is the string gg matches a fully-qualified
  * name's prefix against, so a module that misspelled its own path would be reporting names nothing
@@ -40,6 +40,7 @@ internal object GgCatalogue {
             Module("board", "gg.board"),
             Module("tasks", "gg.tasks"),
             Module("memories", "gg.memories"),
+            Module("docs", "gg.docs"),
             Module("views", "gg.views"),
             Module("context", "gg.context"),
             Module("delegation", "gg.delegation"),

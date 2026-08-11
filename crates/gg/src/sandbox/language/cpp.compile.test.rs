@@ -148,6 +148,10 @@ const SDK_HEADERS: &[(&str, &str)] = &[
         include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/delegation.hpp"),
     ),
     (
+        "sdk/gg/docs.hpp",
+        include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/docs.hpp"),
+    ),
+    (
         "sdk/gg/files.hpp",
         include_str!("../../../../../packages/gg-sandbox-cpp/Sources/sdk/gg/files.hpp"),
     ),

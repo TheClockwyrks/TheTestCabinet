@@ -931,11 +931,12 @@ fn every_tool_crosses_the_membrane_from_its_purescript_spelling() {
 }
 
 #[test]
-fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in_purescript_too() {
-    // The four families that are NOT gg tools, so none of them appears in the crossing table above —
-    // and two of them are where a program puts something in front of the model, which makes them the
-    // ones a silent bridging mistake would cost the most. Between this and the table, every function
-    // this arm's catalogue describes has been driven through the real membrane.
+fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_purescript_too() {
+    // The families that are NOT gg tools, so none of them appears in the crossing table above — two
+    // of them are where a program puts something in front of the model and one is how it finds
+    // anything at all, which makes them the ones a silent bridging mistake would cost the most.
+    // Between this and the table, every function this arm's catalogue describes has been driven
+    // through the real membrane.
     let (outcome, log) = run_as(
         &program_of(&[
             "text <- Gg.Files.readTextFile \"notes.md\" { limit: 2 }",
@@ -1060,6 +1061,89 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
         "{:?}",
         outcome.completion
     );
+
+    // The documentation module, which is the loop the prompt describes made of real calls. `search`
+    // is bound in every program whatever a run enables — so it is driven with **no** tool offered at
+    // all — and `close`/`closeAll` are bought by a capability, so this store grants it and the run
+    // after it does not. The double answers an empty page, which is the whole of what a double can
+    // honestly say about a real index; what is proven is the crossing, the optional-argument record
+    // (whose `module` and `type` labels are reserved words this arm writes as labels anyway), the
+    // constructor the kind filter lowers from, and the view the host opens on the way back.
+    let limits = SandboxLimits::default();
+    let log = CallLog::default();
+    let api = FakeToolApi::new(&log);
+    let component = component();
+    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: false,
+        docview_close: true,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(api, purescript(), scope, limits, None),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    let searching = prepare(
+        &program_of(&[
+            "page <- Gg.Docs.search \"read\" \
+             { module: \"files\", type: \"FileRead\", kind: Gg.Docs.FunctionEntry, limit: 5 }",
+            "closed <- Gg.Docs.close \"Gg.Files.readFile\"",
+            "emptied <- Gg.Docs.closeAll",
+            "Console.log (show page.total <> \" \" <> show page.offset <> \" \" \
+             <> show (map _.key page.hits))",
+            "Console.log (show closed <> \" \" <> show emptied)",
+        ])
+        .replace(
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Effect.Class.Console as Console\n",
+        ),
+    );
+    bound
+        .call_run(
+            &mut store,
+            &searching,
+            &[],
+            &[],
+            RunEnding::None.into(),
+            false,
+        )
+        .expect("the program runs");
+    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    assert_eq!(logs(&outcome), ["0 0 []", "0 0"]);
+    let searched: Vec<&str> = outcome
+        .views_opened
+        .iter()
+        .filter(|view| view.kind == crate::context::ViewKind::Search)
+        .map(|view| view.selector.as_str())
+        .collect();
+    assert_eq!(
+        searched,
+        [crate::context::SEARCH_RESULTS_VIEW],
+        "a search leaves its own page in the window"
+    );
+
+    // And without the capability, closing is refused by the host rather than missing from the
+    // module — the same shape every other bought call refuses in, and a value `attempt` narrows.
+    let (outcome, _log) = run_with(
+        &program_of(&[
+            "outcome <- Gg.Core.attempt Gg.Docs.closeAll",
+            "case outcome of\n                 \
+             Left failure -> Console.log (failure.tool <> \" \" <> show failure.code)\n                 \
+             Right count -> Console.log (show count)",
+        ])
+        .replace(
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Data.Either (Either(..))\n\
+             import Effect.Class.Console as Console\n",
+        ),
+        &all_tools(),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["close_all Unavailable"]);
 }
 
 #[test]
@@ -1157,7 +1241,7 @@ fn every_optional_argument_is_a_field_of_a_record() {
         .filter(|field| field["optional"] == json!(true))
         .count();
     assert_eq!(
-        optional, 36,
+        optional, 41,
         "the optional record fields the surface declares"
     );
 }

@@ -60,6 +60,7 @@ import * as boardMod from "./gg/board.js";
 import * as contextMod from "./gg/context.js";
 import { ToolError } from "./gg/core.js";
 import * as delegationMod from "./gg/delegation.js";
+import * as docsMod from "./gg/docs.js";
 import * as filesMod from "./gg/files.js";
 import * as memoriesMod from "./gg/memories.js";
 import * as programsMod from "./gg/programs.js";
@@ -104,6 +105,7 @@ const MODULES: Readonly<Partial<Record<ModuleId, Readonly<Record<string, unknown
   board: boardMod,
   tasks: tasksMod,
   memories: memoriesMod,
+  docs: docsMod,
   views: viewsMod,
   context: contextMod,
   delegation: delegationMod,

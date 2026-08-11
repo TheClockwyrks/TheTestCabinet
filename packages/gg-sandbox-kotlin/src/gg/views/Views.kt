@@ -101,15 +101,19 @@ public fun openDocsView(name: String) {
 /**
  * Close every view carrying `selector`, freeing the tokens they occupied.
  *
- * For a file that is every page of that path, for a text view the one with that label, and for a
- * documentation view the function's name. Closing a selector that is not open hands back `0` rather
- * than failing, so a program that tidies up unconditionally needs no guard. Closing a file view
- * forgets what was read rather than what exists; closing a text view discards the only copy of what
- * it held.
+ * For a file that is every page of that path, for a text view the one with that label, and for the
+ * results of a search the label `search results`. Closing a selector that is not open hands back `0`
+ * rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file
+ * view forgets what was read rather than what exists; closing a text view discards the only copy of
+ * what it held.
+ *
+ * Documentation views are not reached from here: `gg.docs.close` is what takes one away, and it is
+ * bought by a capability this call is not. A sweep that included them would hand back `0` for an
+ * agent that may not close one, which reads as a selector that named nothing.
  *
  * @ggop views.close
- * @param selector What the view is filed under: a file's path, a text view's label, or a
- *   documentation view's function name.
+ * @param selector What the view is filed under: a file's path, a text view's label, or
+ *   `search results`.
  * @return how many views were closed
  * @throws ToolError `INVALID_ARGUMENT` for an empty selector.
  */
@@ -134,7 +138,10 @@ public fun current(): List<OpenView> =
  * One view open in the context window.
  *
  * @property kind Whether it is a file, text, or documentation view.
- * @property selector What closing the view takes: a path, a label, or a function's name.
+ * @property selector What closes it.
+ *
+ *   A path, a label or `search results` for `gg.views.close`, and for a documentation view the key
+ *   `gg.docs.close` takes.
  * @property tokens Roughly what holding it costs, in tokens.
  * @property region The line window a paged file view covers; `null` for a whole-file view and for
  *   text views.
@@ -150,6 +157,9 @@ public data class OpenView(
      *
      * `gg.views.close` for the common case where the listed view is in hand, written as a member so
      * that the value carrying the selector is what the call hangs off.
+     *
+     * A documentation view is the one this does not take away, because `gg.views.close` does not
+     * reach that band: `gg.docs.close(selector)` is the call for one of those.
      *
      * @ggalias views.close
      * @return how many views were closed, which is `0` when this one has already gone

@@ -83,6 +83,14 @@ pub(super) const SDK_SOURCES: &[SdkSource] = &[
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Delegation/Types.cs"),
     },
     SdkSource {
+        name: "Docs/Docs.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Docs/Docs.cs"),
+    },
+    SdkSource {
+        name: "Docs/Types.cs",
+        text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Docs/Types.cs"),
+    },
+    SdkSource {
         name: "Files/Files.cs",
         text: include_str!("../../../../../packages/gg-sandbox-csharp/src/Gg/Files/Files.cs"),
     },

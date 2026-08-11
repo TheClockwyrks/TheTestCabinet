@@ -1131,8 +1131,11 @@ async fn run_code_program(
     // rather than from a second flag — so the object a program sees and the state gg would answer it
     // from can never disagree.
     let library = programs.is_enabled();
-    // Whether this agent may take a documentation view back out of its window. Held beside the
-    // library flag because the two are the surface's only capability-bought families.
+    // Whether this agent may take a documentation view back out of its window — what decides
+    // whether `docs.close` and `docs.close_all` are names its programs can reach at all. Held
+    // beside the library flag because the two are the surface's only capability-bought families,
+    // and it goes to the scope alone: the api needs no copy of it, because closing documentation is
+    // reachable only through the calls the scope binds and the membrane refuses.
     let docview_close = turn.docview_close;
     // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
@@ -1144,7 +1147,6 @@ async fn run_code_program(
         skills,
         docs,
         doc_view_types: turn.doc_view_types,
-        docview_close,
         programs,
         knowledge,
         subagents,
@@ -1736,14 +1738,6 @@ pub(super) struct LoopToolApi {
     /// asked for — this agent's resolved [`DocViewTypes`], read at each open rather than baked into
     /// the runtime, because it governs what is *placed in the window* and not what a lookup says.
     pub(super) doc_view_types: DocViewTypes,
-    /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE).
-    ///
-    /// The membrane already refuses `docs.close` / `docs.close_all` without it, so this is not a
-    /// second copy of that gate: it is what lets `view.close` keep reaching the documentation band
-    /// for the agents that bought the right to reclaim one, until stage 4 of the documentation plan
-    /// gives every arm's SDK a spelling of `docs.close` and this can go. See
-    /// [`close_view`](Self::close_view).
-    pub(super) docview_close: bool,
     /// This agent's [program library](crate::programs) — the source of every program it has run,
     /// which its own programs read through `programs.get` / `programs.history`.
     ///
@@ -2390,6 +2384,23 @@ fn docs_close_event(key: Option<&str>, closed: &ViewsClosed) -> Option<GgTelemet
 ///
 /// A hit's brief is shown whole and nothing else is: choosing is what this list is for, and reading
 /// is what a documentation view is for.
+///
+/// # Why each line leads with the key rather than the name
+///
+/// The identifier on a hit's line is the one the model is about to type into an
+/// [`open_docs_view`](ToolApi::open_docs_view), so it has to be the one that call takes: the
+/// **fully-qualified** [`key`](crate::docs::DocHit::key), not the bare
+/// [`name`](crate::docs::DocHit::name). A bare name is not an identity on a schema-v2 arm — several
+/// modules offer a `close`, and [`DocsRuntime::function`](crate::docs::DocsRuntime) resolves a bare
+/// one to whichever the catalogue happens to list first — so a list rendered by name would hand the
+/// model an ambiguous string and silently answer with the wrong entry's page. Every arm's system
+/// prompt already promises the opposite, telling a model to open a view *by the fully-qualified name
+/// the brief carries*; this is the line that carries it.
+///
+/// The module is not repeated beside it for the same reason: on a schema-v2 arm the key already
+/// begins with the module, and a **type**'s [`module`](crate::docs::DocHit::module) is the joined
+/// list of every module whose functions mention it, which as a parenthesised suffix is a
+/// twelve-item blob rather than a fact worth reading.
 fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
     let mut asked: Vec<String> = Vec::new();
     if !query.query.trim().is_empty() {
@@ -2414,16 +2425,15 @@ fn render_search_results(query: &DocSearchQuery, page: &DocSearch) -> String {
     let first = page.offset as usize + 1;
     let last = page.offset as usize + page.hits.len();
     let mut body = format!(
-        "{} match(es) for {asked}, showing {first}-{last}. Open one by its name to read it in \
-         full.\n",
+        "{} match(es) for {asked}, showing {first}-{last}. Open one by the name shown to read it \
+         in full.\n",
         page.total
     );
     for hit in &page.hits {
         body.push_str(&format!(
-            "\n{} ({}, {}) — {}",
-            hit.name,
+            "\n{} ({}) — {}",
+            hit.key,
             hit.kind.id(),
-            hit.module,
             hit.summary
         ));
     }
@@ -3247,26 +3257,25 @@ impl ToolApi for LoopToolApi {
     /// every search regardless, so a close of it can never be the thing that cost a run its cached
     /// prefix. A view the model can see in `current()` and cannot close would be a trap.
     ///
-    /// The **documentation** band is swept only for an agent that holds
-    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE), and that condition is a
-    /// dated stopgap rather than the design.
+    /// The **documentation** band is deliberately *not* among them, and it is the one band this
+    /// sweep does not reach.
     ///
-    /// The design is [`close_docviews`](Self::close_docviews): closing documentation is its own call
-    /// because it is its own decision — the one close that can invalidate a cached prompt prefix,
-    /// bought by a capability this call is not — and a shared sweep whose behaviour turns on a
-    /// capability it does not name is exactly the shape that design avoids. But **no arm's SDK
-    /// spells `docs.close` yet**: the calls exist in the WIT and on this api, and every committed
-    /// catalogue still documents `view.close` as the way to close *"a documentation view, the
-    /// function's name"*. Removing this sweep before the spellings land would leave a documentation
-    /// view unreclaimable in every configuration on all eleven arms — a band that compaction
-    /// re-seeds and archival retains, growing by up to one type view per lookup, with nothing in the
-    /// language able to take one back out.
+    /// Closing documentation is [`close_docviews`](Self::close_docviews), because it is its own
+    /// decision rather than a side effect of tidying: it is the one close that rewrites the middle
+    /// of the prompt instead of appending to the end, so it costs the run every cached token after
+    /// the view it took away, and it is bought by
+    /// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) where this call is bound to
+    /// every program. A sweep that reached the documentation band would therefore have to either
+    /// spend a capability the caller did not ask about or silently do nothing for an agent that
+    /// lacks it — and a call that answers `0` where the honest answer is *you may not* is
+    /// indistinguishable, to the model reading it, from a selector that named nothing. `docs.close`
+    /// refuses by name instead, which is an answer.
     ///
-    /// So the sweep stays until **stage 4** of the documentation plan gives each arm its own
-    /// `docs.close`, and it is gated on the capability so that the *semantics* are already the final
-    /// ones: an agent without it cannot reclaim a docview by any route, which is the arm of the
-    /// comparison where the cached prefix is provably intact for the whole session. Delete this half
-    /// on the commit that lands the last arm's spelling.
+    /// Every arm's SDK now spells that call, so it is a route a model can actually take; while it
+    /// did not, this sweep stood in for one, gated on the capability so the semantics were already
+    /// these. Nothing stands in for it now, which is also what makes
+    /// [`GgContextAction::CloseDocsViews`] mean one thing: `close_docviews` is its only producer, so
+    /// a capability ablation can attribute every documentation close to the call that was bought.
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
         if let Some(refusal) = close_selector_refusal(&selector) {
             return Err(refusal);
@@ -3274,24 +3283,17 @@ impl ToolApi for LoopToolApi {
         let files = self.context.evict_file_views(Some(&selector));
         let texts = self.context.close_text_views(Some(&selector));
         let searches = self.context.close_search_views(Some(&selector));
-        let docs = match self.docview_close {
-            true => self.context.close_docviews(Some(&selector)),
-            false => ViewsClosed::default(),
-        };
         for event in [
             view_close_event(GgContextAction::EvictFileViews, &selector, &files),
             view_close_event(GgContextAction::CloseTextViews, &selector, &texts),
             view_close_event(GgContextAction::CloseSearchViews, &selector, &searches),
-            docs_close_event(Some(&selector), &docs),
         ]
         .into_iter()
         .flatten()
         {
             self.emitter.emit(event);
         }
-        Ok(saturating_u32(
-            files.items + texts.items + searches.items + docs.reclaimed.items,
-        ))
+        Ok(saturating_u32(files.items + texts.items + searches.items))
     }
     fn current_views(&mut self) -> Vec<OpenViewInfo> {
         self.context.open_views()

@@ -88,13 +88,17 @@ module GG
     # The capability modules the surface is divided into, **in the order a reader meets them**.
     #
     # It runs from the modules almost every run has to the ones a particular shape of agent has,
-    # because a model reads a list from the top. `Core` is last and declares no function at all:
-    # it holds the failure every call may raise and the summary every directory is made of.
+    # because a model reads a list from the top. `Docs` is first because it is the one module no run
+    # can withhold and the one a session begins in: the prompt names modules and no function, so
+    # finding a name is the first thing a program does and every other module is reached through it.
+    # `Core` is last and declares no function at all: it holds the failure every call may raise and
+    # the summary every directory is made of.
     #
     # Constant names rather than the modules themselves, so this file stays pure data that the
     # reflector can require before anything that touches the membrane is loaded. Each module's gg
     # id is its name in lower case, and the reflector asserts that of every one of them.
     MODULES = %w[
+      Docs
       Files
       Shell
       Board

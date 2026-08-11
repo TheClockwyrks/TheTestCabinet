@@ -88,8 +88,12 @@ impl DocKind {
 /// spelling a model of *this* arm reads, which today is the API object a function hangs off and
 /// becomes the idiomatic module path when each arm's catalogue carries one.
 ///
-/// A module filter accepts either, so a prompt naming gg's id and a model typing what it sees in the
-/// hits both work.
+/// A module filter accepts either, so a prompt naming gg's id and a model typing a path it has seen
+/// both work. It takes **one** module, though, and a [hit](DocHit::module) is not always one: a
+/// type's is the joined list of every module whose functions mention it, so handing that string back
+/// as a filter matches nothing. Each arm's documentation says so on the field, because the joining
+/// is what a model sees rather than something the filter could quietly undo — accepting a list here
+/// would turn an exact lookup into a disjunction nothing else on this surface has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DocModule {
     /// gg's language-independent id for the module (`files`).

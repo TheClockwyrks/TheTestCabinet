@@ -198,13 +198,14 @@ pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
 ///
 /// * [`operation`](Self::operation) is **gg's** identity for what was done (`files.read_file`). It
 ///   is the cross-arm join: eleven language arms legitimately spell one operation eleven ways, so it
-///   is the only key under which two arms' calls can be counted together. It is `None` for the
-///   documentation carve-outs alone, which no arm's catalogue spells and which therefore have no row
-///   in [`OPERATIONS`](super::operations::OPERATIONS) to name.
+///   is the only key under which two arms' calls can be counted together. Every model-facing call
+///   now carries one: the three documentation calls were the last that did not, because they were
+///   the last with no row in [`OPERATIONS`](super::operations::OPERATIONS) to name, and `None` is
+///   left reachable only as the drift answer for a pair gg has renamed out from under a caller.
 /// * [`object`](Self::object) and [`function`](Self::function) are the **legacy** grouping and key
 ///   gg files the call under. They are never one SDK's spelling either — a program that wrote
-///   `readFile` is recorded as `read_file` — and they carry the whole identity of a carve-out, whose
-///   pair reads exactly as an operation id would (`docs`.`search`). For the rest of the population
+///   `readFile` is recorded as `read_file` — and on the documentation family the pair reads exactly
+///   as its operation id does (`docs`.`search`). For the rest of the population
 ///   they do not: the grouping predates the module vocabulary and disagrees with it on eight of
 ///   twelve entries (`fs`/`files`, `view`/`views`, `harness`/`session`, `memory`/`memories`,
 ///   `agents`/`delegation`, `project`/`board`, `system`/`shell`), so nothing may be joined on this
@@ -220,13 +221,15 @@ pub struct ApiIdentity<'a> {
     pub object: &'a str,
     /// gg's own key for the function within that grouping — `read_file`, `open_text`, `finish`.
     pub function: &'a str,
-    /// gg's [operation](super::operations::OperationId) id, rendered — `files.read_file`. `None` for
-    /// a carve-out no operations row covers.
+    /// gg's [operation](super::operations::OperationId) id, rendered — `files.read_file`. `None`
+    /// only for a pair no operations row covers, which today means a pair gg has renamed out from
+    /// under a caller; see the type's own note.
     pub operation: Option<&'a str>,
 }
 
 /// The native, typed surface the membrane calls — one standard method per gg API function, plus the
-/// two documentation carve-outs. No method takes a serde_json::Value: a program's typed call reaches
+/// two the documentation family needs (a search, and one close that both documentation closes reach
+/// through). No method takes a serde_json::Value: a program's typed call reaches
 /// gg's tools without a round trip through JSON. `&mut self` because a call records what it composed.
 pub trait ToolApi: Send + 'static {
     /// A program has begun a model-facing [call](ApiIdentity) — the **opening** half of the API

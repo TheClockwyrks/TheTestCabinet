@@ -2,7 +2,7 @@
 //! wrote**, that no host function is missing one, and that the record is independent of the tool
 //! record beside it.
 //!
-//! The centrepiece is [`every_host_function_records_its_own_api_call`], which calls all forty-eight
+//! The centrepiece is [`every_host_function_records_its_own_api_call`], which calls all fifty
 //! of them and compares the identities recorded against
 //! [`OPERATIONS`](crate::sandbox::OPERATIONS). It is deliberately exhaustive rather
 //! than a sample: a host function that forgot its bracket produces a *silent zero* on the console —
@@ -143,6 +143,10 @@ fn call_everything(state: &mut MembraneState<FakeToolApi>) {
     let _ = state.exec("critic".to_string(), None);
     let _ = state.fork("try the other branch".to_string());
 
+    let _ = state.search("read".to_string(), None, None, None, None, None);
+    let _ = state.close_doc_view("readFile".to_string());
+    let _ = state.close_doc_views();
+
     let _ = state.open_file_view("src/main.rs".to_string(), None, None);
     let _ = state.open_text_view("findings".to_string(), "all green".to_string());
     let _ = state.open_docs_view("readFile".to_string());
@@ -212,9 +216,9 @@ fn every_host_function_records_its_own_api_call() {
 /// without one would be a call that can be seen happening and cannot be attributed to anything the
 /// agent was offered.
 ///
-/// The one legitimate absence is the documentation carve-out, which is in no row of the table —
-/// asserted in `a_documentation_call_records_no_operation_it_does_not_have` rather than excused
-/// here, because the population this walks is exactly the population that must have one.
+/// There is no longer any absence to excuse. The documentation calls were the last three that
+/// recorded no operation, because they were the last three with no row in the table; enrolling them
+/// makes this an equality over the whole surface rather than an equality with a footnote.
 #[test]
 fn every_recorded_call_names_the_operation_it_resolved_to() {
     let log = CallLog::default();
@@ -245,26 +249,30 @@ fn every_recorded_call_names_the_operation_it_resolved_to() {
     );
 }
 
-/// **A documentation call records no operation, because gg has none to record.**
+/// **A documentation call records the operation gg has for it**, like every other model-facing call.
 ///
-/// The carve-outs are not in the operations table: no arm's catalogue spells them, so there is no
-/// row to resolve and a synthesized id would be a string that joins to nothing else in the run.
-/// What they *are* recorded under is already gg's own vocabulary — `docs.search` — which is the
-/// same shape an operation id has, so one consumer keys both populations the same way.
+/// It used to record none, and the absence was honest at the time: the three documentation calls
+/// were in no row of the table, so there was no id to resolve and a synthesized one would have been
+/// a string that joined to nothing else in the run. What that cost was invisible from here and
+/// total from a model's side — a call with no operation is a call no gate, no coverage check and no
+/// arm's catalogue is required to know about, which is why the
+/// [prompt](crate::prompts) could tell a model to search while no SDK published a search.
 ///
-/// Asserted rather than left implicit because the tempting repair is to invent the id, and an
-/// invented one would be indistinguishable on the wire from a real one.
+/// Asserted rather than left to the exhaustive pair above because the identity is the whole point of
+/// enrolling them: `docs.search` on the wire is now the same kind of name as `files.read_file`, and
+/// a consumer keys one population rather than two.
 #[test]
-fn a_documentation_call_records_no_operation_it_does_not_have() {
+fn a_documentation_call_records_the_operation_gg_files_it_under() {
     let log = CallLog::default();
     let (mut state, recorded) = recording_membrane(&log);
 
     let _ = state.search("read".to_string(), None, None, None, None, None);
 
     assert_eq!(recorded.names(), vec!["docs.search"]);
-    assert!(
-        recorded.operations().is_empty(),
-        "a carve-out names no operation rather than a guessed one: {:?}",
+    assert_eq!(
+        recorded.operations(),
+        vec!["docs.search".to_string()],
+        "the call is recorded under gg's own identity for it: {:?}",
         recorded.calls()
     );
 }

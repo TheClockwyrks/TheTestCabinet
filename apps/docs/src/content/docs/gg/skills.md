@@ -156,7 +156,7 @@ same reason.
 
 ## The skills gg ships
 
-gg writes **eleven skills of its own**, one per family of the functions it offers, so the
+gg writes **twelve skills of its own**, one per family of the functions it offers, so the
 capability is worth enabling in a workspace that authored none — which is almost all of
 them. Before them, a run that had not thought to fill a skills directory got a mechanism
 with nothing in it.
@@ -171,6 +171,7 @@ with nothing in it.
 | `gg-skills` | Reading skills — including this one. |
 | `gg-context` | [Managing its own window](/gg/agent-managed-context/): evicting, archiving, searching, compacting. |
 | `gg-delegation` | [Delegating](/gg/subagents/) work to child agents, and [handing its session on](/gg/fork-and-exec/). |
+| `gg-docs` | Finding a function by keyword, and reclaiming the documentation it has read. |
 | `gg-views` | [Showing itself](/gg/responses-as-code/#showing-yourself-things) a file, a value, or a function's documentation. |
 | `gg-programs` | [Fetching a program it already ran](/gg/program-library/), and handing a patched copy back. |
 | `gg-session` | [Ending its session](/gg/ending-a-session/#ending-calls) — the one call that does. |

@@ -32,7 +32,8 @@
 //!
 //! # No arm, and no committed catalogue, ever learns a capability id
 //!
-//! [`Binding::Capability`] names a gg capability id (`program-library`), and that name appears
+//! [`Binding::Capability`] names a gg capability id (`program-library`, `docview-close`), and that
+//! name appears
 //! **only** here. It is not in any `signatures.json`, not in any SDK, and not in anything a
 //! reflector emits — a catalogue that carried one would be an arm asserting something about gg's
 //! configuration surface, which is the one thing an arm cannot be held to. The
@@ -60,15 +61,15 @@ use crate::tools::ALL_TOOL_NAMES;
 use super::language::{
     AGENTS_EXEC, AGENTS_FORK, AGENTS_SEND_MESSAGE, AGENTS_SPAWN_SUBAGENT, AGENTS_TRANSITION_STATE,
     AGENTS_WAIT_FOR_SUBAGENTS, CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW,
-    CONTEXT_SEARCH_ARCHIVE, FS_EDIT_FILE, FS_LIST_DIR, FS_READ_FILE, FS_READ_TEXT_FILE,
-    FS_WRITE_FILE, HARNESS_FINISH, MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY,
-    MEMORY_READ_MEMORY, MEMORY_SEARCH_MEMORIES, MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY,
-    PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN, PROJECT_CREATE_EPIC, PROJECT_CREATE_ISSUE,
-    PROJECT_REMOVE_EPIC, PROJECT_REMOVE_ISSUE, PROJECT_SET_ISSUE_BLOCKED_BY, PROJECT_UPDATE_ISSUE,
-    PROJECT_WAIT_FOR_ISSUE, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SKILLS_READ_SKILL,
-    SYSTEM_SHELL, SurfaceCall, TASKS_ADD_TASK, TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK,
-    TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, VIEW_CLOSE, VIEW_CURRENT, VIEW_OPEN_DOCS_VIEW,
-    VIEW_OPEN_FILE, VIEW_OPEN_TEXT,
+    CONTEXT_SEARCH_ARCHIVE, DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, FS_EDIT_FILE, FS_LIST_DIR,
+    FS_READ_FILE, FS_READ_TEXT_FILE, FS_WRITE_FILE, HARNESS_FINISH, MEMORY_CREATE_MEMORY,
+    MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY, MEMORY_SEARCH_MEMORIES,
+    MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN,
+    PROJECT_CREATE_EPIC, PROJECT_CREATE_ISSUE, PROJECT_REMOVE_EPIC, PROJECT_REMOVE_ISSUE,
+    PROJECT_SET_ISSUE_BLOCKED_BY, PROJECT_UPDATE_ISSUE, PROJECT_WAIT_FOR_ISSUE, REVIEW_APPROVE,
+    REVIEW_REQUEST_CHANGES, SKILLS_READ_SKILL, SYSTEM_SHELL, SurfaceCall, TASKS_ADD_TASK,
+    TASKS_COMPLETE_TASK, TASKS_REMOVE_TASK, TASKS_SET_BLOCKED_BY, TASKS_UPDATE_TASK, VIEW_CLOSE,
+    VIEW_CURRENT, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, VIEW_OPEN_TEXT,
 };
 use super::signatures::CatalogueFunction;
 
@@ -131,7 +132,8 @@ pub enum Binding {
     /// express, because nothing dispatches it and no role decides it.
     Capability(&'static str),
     /// Bound to every program whatever a run enables. A run that offers no tools at all must still
-    /// be able to show its model something, which is why the view surface is mostly this.
+    /// be able to show its model something — and must always be able to *find* what it does hold —
+    /// which is why the view surface is mostly this and why the documentation search is exactly it.
     Always,
 }
 
@@ -209,8 +211,8 @@ pub struct Operation {
     /// One bit rather than a shape, because the shape is spelling — an optional argument is an
     /// overload pair in one language and a default in another — while *takes nothing* is a property
     /// of the operation that every arm must agree on. It is what catches the failure a reflector
-    /// emitting empty parameters for everything would otherwise slip past: three operations take no
-    /// input, and any arm claiming a fourth is wrong about its own signatures.
+    /// emitting empty parameters for everything would otherwise slip past: four operations take no
+    /// input, and any arm claiming a fifth is wrong about its own signatures.
     pub takes_input: bool,
     /// Which languages are expected to offer it. See [`Applicability`].
     pub applies: Applicability,
@@ -227,6 +229,7 @@ pub(crate) const FAMILY_MEMORY: &str = "gg-memory";
 pub(crate) const FAMILY_SKILLS: &str = "gg-skills";
 pub(crate) const FAMILY_CONTEXT: &str = "gg-context";
 pub(crate) const FAMILY_DELEGATION: &str = "gg-delegation";
+pub(crate) const FAMILY_DOCS: &str = "gg-docs";
 pub(crate) const FAMILY_VIEWS: &str = "gg-views";
 pub(crate) const FAMILY_PROGRAMS: &str = "gg-programs";
 pub(crate) const FAMILY_SESSION: &str = "gg-session";
@@ -234,7 +237,7 @@ pub(crate) const FAMILY_SESSION: &str = "gg-session";
 /// [`Operation::takes_input`], spelled. A bare `true` at the end of a row says nothing about which
 /// field it is, and this table is read far more often than it is written.
 const TAKES_INPUT: bool = true;
-/// [`Operation::takes_input`], spelled — the three operations a program calls with nothing.
+/// [`Operation::takes_input`], spelled — the operations a program calls with nothing.
 const NO_INPUT: bool = false;
 
 /// One operation, spelled compactly: its id, its family, the call today's catalogues file it under,
@@ -278,9 +281,31 @@ macro_rules! operation {
 /// tool added to gg fails this file to compile until it has an operation. That is the one direction
 /// where derivation is safe, because the tool vocabulary is already gg's own.
 ///
-/// The [documentation carve-out](crate::docs)'s own calls are deliberately absent, exactly as they
-/// were absent from the table this replaces: no arm's committed catalogue spells them, so there is
-/// no binding for a row here to join to and nothing a spelling could be resolved from.
+/// # The `docs` family, and why it is a family of its own
+///
+/// The three [documentation](crate::docs) calls were the one part of the model-facing surface this
+/// table did not carry. The host implemented all three — the index, the ranking, the permission
+/// filter, the WIT interface, the membrane — and none of them was ever enrolled here, so the
+/// register gate (`language/register.rs`) and the capability gate (`language/agreement.rs`), which
+/// are both keyed on this table, had nothing to look for. Every arm's SDK could therefore omit them
+/// with every gate green, and every arm did: the [prompt](crate::prompts) tells a model to search
+/// and no arm gives it a name to call. Enrolling them is what turns that silence into eleven named
+/// failures.
+///
+/// They are filed under a **twelfth** family rather than joined to `views`, for three reasons that
+/// point the same way. Their gating does not fit that family's rule — a view is bound to every
+/// program except where it reads the workspace (the capability gate's `views` rule), and two of
+/// these are bought by a capability, so folding them in would mean weakening the rule that keeps a
+/// gate off the only channel into a model's window. The namespace and the family are held in
+/// bijection, so a `views` family would force `views.search`, naming a search over gg's
+/// documentation after the surface a model shows *itself* things through. And the seam is already
+/// drawn this way everywhere else: they have their own WIT interface, their own membrane file, and
+/// their own [runtime](crate::docs::DocsRuntime).
+///
+/// What stays behind in `views` is [`open_docs_view`](super::language::VIEW_OPEN_DOCS_VIEW), and
+/// that is the right side of the line rather than a leftover: opening a documentation view *is*
+/// putting material into the window, which is what the view family is, and it is the one of the four
+/// that a run can neither buy nor withhold.
 pub const OPERATIONS: &[Operation] = &[
     operation!(
         "shell",
@@ -571,6 +596,30 @@ pub const OPERATIONS: &[Operation] = &[
         TAKES_INPUT
     ),
     operation!(
+        "docs",
+        "search",
+        FAMILY_DOCS,
+        DOCS_SEARCH,
+        Binding::Always,
+        TAKES_INPUT
+    ),
+    operation!(
+        "docs",
+        "close",
+        FAMILY_DOCS,
+        DOCS_CLOSE,
+        Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
+        TAKES_INPUT
+    ),
+    operation!(
+        "docs",
+        "close_all",
+        FAMILY_DOCS,
+        DOCS_CLOSE_ALL,
+        Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
+        NO_INPUT
+    ),
+    operation!(
         "views",
         "open_file",
         FAMILY_VIEWS,
@@ -818,10 +867,11 @@ impl Grants {
 /// [documentation runtime](crate::docs::DocsRuntime) is constructed at three separate call sites;
 /// while each of them wrote the list out for itself, the docs runtime's grant could never carry
 /// `docview-close` and the membrane's could, so the "one predicate over one value" the whole design
-/// rests on held for the predicate and not for the value. It caused nothing only because
-/// `docview-close` has no row in [`OPERATIONS`] yet — the two calls it buys are gated inline — so
-/// the first arm to catalogue them would have made it a real defect: an agent granted the capability
-/// could call them and could never find them.
+/// rests on held for the predicate and not for the value. It cost nothing only while
+/// `docview-close` had no row in [`OPERATIONS`] — the two calls it buys were gated inline, at the
+/// membrane, and were in no catalogue for a search to filter. Now that they are rows, the defect it
+/// prevents is live: an agent granted the capability would be able to call them and never able to
+/// find them.
 ///
 /// The flags come in resolved rather than as a profile, because *resolved* is what the caller knows:
 /// an agent whose profile asks for a program library it was not given keeps neither the object nor

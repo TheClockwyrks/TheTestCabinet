@@ -7,7 +7,7 @@
  * that declaration's `# Arguments` list already lived; a side table naming every function twice was
  * precisely the second copy that drifts, and it does not exist any more.
  *
- * What is left is a table of twelve module identities, and it is here rather than in `src/` for two
+ * What is left is a table of thirteen module identities, and it is here rather than in `src/` for two
  * reasons. The ORDER is model-facing — it is the sequence a documentation index and the run's agent
  * surface present the modules in — and the PATH is the string gg matches a fully-qualified name's
  * prefix against, so a module that misspelled its own path would be reporting names nothing could
@@ -22,10 +22,14 @@
  * The modules the surface is divided into, IN THE ORDER IT IS PRESENTED IN.
  *
  * It runs from the modules almost every run has to the ones a particular shape of agent has, because
- * a model reads a list from the top. `Gg.Core` is last and deliberately: it binds no operation at
- * all, only the two failure types and the three helpers that read a failure.
+ * a model reads a list from the top. `Gg.Docs` is first because it is the one module no run can
+ * withhold and the one a session begins in: the prompt names modules and no function, so finding a
+ * name is the first thing a program does and every other module is reached through it. `Gg.Core` is
+ * last and deliberately: it binds no operation at all, only the two failure types and the three
+ * helpers that read a failure.
  */
 export const MODULES = [
+  { id: "docs", path: "Gg.Docs" },
   { id: "files", path: "Gg.Files" },
   { id: "shell", path: "Gg.Shell" },
   { id: "board", path: "Gg.Board" },

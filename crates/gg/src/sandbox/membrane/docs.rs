@@ -10,7 +10,7 @@
 //! not a tool — and goes straight to the [api](super::ToolApi), whose loop-side implementation
 //! answers it against the agent's [`DocsRuntime`](crate::docs).
 //!
-//! # Two of the three are unconditional, and one is bought
+//! # One of the three is unconditional, and two are bought
 //!
 //! Searching is bound into every program's scope whatever a run enables, because a model must
 //! always be able to discover the functions it *does* have. **Closing** a documentation view is not:
@@ -25,28 +25,11 @@
 //! Reading what a function *does* is [`view.openDocsView`](super::views), because documentation is
 //! material the model reads and every channel into the model is a view.
 
-use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
-
 use super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
-use crate::sandbox::Binding;
 use crate::sandbox::invoker::{DocSearchQuery, ViewRefusal};
-
-/// The object a documentation call is recorded under.
-///
-/// gg's own name for the family rather than any SDK's spelling of it, because no arm's committed
-/// catalogue spells these two calls yet — so there is nothing to resolve a spelling *from*, and a
-/// guessed one would be a name in the record that joins to nothing. See
-/// [`MembraneState::granted`](super::MembraneState).
-pub(super) const DOCS_OBJECT: &str = "docs";
-
-/// The function a documentation search is recorded under.
-const SEARCH_FUNCTION: &str = "search";
-/// The function a targeted documentation close is recorded and refused under.
-const CLOSE_DOC_VIEW_FUNCTION: &str = "close";
-/// The function a blanket documentation close is recorded and refused under.
-const CLOSE_DOC_VIEWS_FUNCTION: &str = "close_all";
+use crate::sandbox::language::{DOCS_CLOSE, DOCS_CLOSE_ALL, DOCS_SEARCH, SurfaceCall};
 
 impl<A: ToolApi> DocsHost for MembraneState<A> {
     /// Search the surface this agent binds, hand the program its page, and leave the results in the
@@ -72,78 +55,66 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<DocSearch, ToolError> {
-        self.recorded_on(
-            DOCS_OBJECT,
-            SEARCH_FUNCTION,
-            Binding::Always,
-            |state, rec| {
-                let request = DocSearchQuery {
-                    query,
-                    module,
-                    declared_type: r#type,
-                    kind,
-                    offset,
-                    limit,
-                };
-                match state.api(rec).search_docs(request) {
-                    Ok(found) => {
-                        state.record_view_opened(found.opened);
-                        Ok(DocSearch {
-                            total: found.page.total,
-                            offset: found.page.offset,
-                            hits: found
-                                .page
-                                .hits
-                                .into_iter()
-                                .map(|hit| DocHit {
-                                    key: hit.key,
-                                    kind: hit.kind.id().to_string(),
-                                    module: hit.module,
-                                    name: hit.name,
-                                    summary: hit.summary,
-                                })
-                                .collect(),
-                        })
-                    }
-                    Err(refusal) => Err(state.refuse_docs(SEARCH_FUNCTION, refusal)),
+        self.recorded(DOCS_SEARCH, |state, rec| {
+            let request = DocSearchQuery {
+                query,
+                module,
+                declared_type: r#type,
+                kind,
+                offset,
+                limit,
+            };
+            match state.api(rec).search_docs(request) {
+                Ok(found) => {
+                    state.record_view_opened(found.opened);
+                    Ok(DocSearch {
+                        total: found.page.total,
+                        offset: found.page.offset,
+                        hits: found
+                            .page
+                            .hits
+                            .into_iter()
+                            .map(|hit| DocHit {
+                                key: hit.key,
+                                kind: hit.kind.id().to_string(),
+                                module: hit.module,
+                                name: hit.name,
+                                summary: hit.summary,
+                            })
+                            .collect(),
+                    })
                 }
-            },
-        )
+                Err(refusal) => Err(state.refuse_docs(DOCS_SEARCH, refusal)),
+            }
+        })
     }
 
     /// Close the documentation view keyed by `key`, and report how many went.
     ///
-    /// The capability is handed to the [bracket](super::recording) rather than checked in this
-    /// body, on exactly the terms every other gated call obeys: the API call is still opened and
-    /// still counted as a failure, because "the model reached for something this run does not offer
-    /// it" is the fact a capability ablation exists to measure, and a refusal that closed no bracket
-    /// would be invisible to it. It is stated here rather than looked up because this call is a
-    /// carve-out that no arm's catalogue spells, so gg has no operation row to read a gate off.
+    /// The capability is read off the [operation](crate::sandbox::operation_of) gg files this call
+    /// under, by the [bracket](super::recording), on exactly the terms every other gated call obeys:
+    /// the API call is still opened and still counted as a failure, because "the model reached for
+    /// something this run does not offer it" is the fact a capability ablation exists to measure,
+    /// and a refusal that closed no bracket would be invisible to it.
     fn close_doc_view(&mut self, key: String) -> Result<u32, ToolError> {
-        self.recorded_on(
-            DOCS_OBJECT,
-            CLOSE_DOC_VIEW_FUNCTION,
-            Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
-            |state, rec| match state.api(rec).close_docviews(Some(key.clone())) {
+        self.recorded(DOCS_CLOSE, |state, rec| {
+            match state.api(rec).close_docviews(Some(key.clone())) {
                 Ok(closed) => {
                     if closed > 0 {
                         state.record_view_closed(&key);
                     }
                     Ok(closed)
                 }
-                Err(refusal) => Err(state.refuse_docs(CLOSE_DOC_VIEW_FUNCTION, refusal)),
-            },
-        )
+                Err(refusal) => Err(state.refuse_docs(DOCS_CLOSE, refusal)),
+            }
+        })
     }
 
     /// Close every documentation view, and report how many went. The blanket form, on the same
     /// terms and behind the same capability.
     fn close_doc_views(&mut self) -> Result<u32, ToolError> {
-        self.recorded_on(
-            DOCS_OBJECT,
-            CLOSE_DOC_VIEWS_FUNCTION,
-            Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
-            |state, rec| match state.api(rec).close_docviews(None) {
+        self.recorded(DOCS_CLOSE_ALL, |state, rec| {
+            match state.api(rec).close_docviews(None) {
                 Ok(closed) => {
                     if closed > 0 {
                         // Recorded under gg's own word for *all of them*, because the view report is
@@ -153,9 +124,9 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
                     }
                     Ok(closed)
                 }
-                Err(refusal) => Err(state.refuse_docs(CLOSE_DOC_VIEWS_FUNCTION, refusal)),
-            },
-        )
+                Err(refusal) => Err(state.refuse_docs(DOCS_CLOSE_ALL, refusal)),
+            }
+        })
     }
 }
 
@@ -164,11 +135,11 @@ impl<A: ToolApi> MembraneState<A> {
     /// the [view](super::views) family's `refuse_view` for the two calls that live on this
     /// interface rather than on `views`, and filed in the same view report for the same reason:
     /// nothing was dispatched and no tool was withheld.
-    fn refuse_docs(&mut self, function: &str, refusal: ViewRefusal) -> ToolError {
+    fn refuse_docs(&mut self, call: SurfaceCall, refusal: ViewRefusal) -> ToolError {
         self.record_view_refusal(&refusal.message);
         ToolError {
             code: super::error_code(Some(refusal.failure)),
-            tool: function.to_string(),
+            tool: call.key.to_string(),
             message: refusal.message,
         }
     }

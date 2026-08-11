@@ -1069,6 +1069,79 @@ static MonoBoolean gg_request_changes(MonoArray *items) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// docs
+// ---------------------------------------------------------------------------------------------
+
+/// The search's page, lowered the way every `list<record>` here is — one managed array per field —
+/// with the two numbers that describe the page itself handed back as a sixth array rather than as
+/// two more `out` parameters. That is the same subtraction [`board_array`] makes and for the same
+/// reason: twelve arguments is as wide a frame as the interpreter builds for an internal call, and
+/// this one already spends six on the query and its filters.
+static MonoBoolean gg_search_docs(MonoString *query, MonoString *module, MonoString *type,
+                                  MonoString *kind, int32_t offset, int32_t limit, MonoArray **page,
+                                  MonoArray **keys, MonoArray **kinds, MonoArray **modules,
+                                  MonoArray **names, MonoArray **summaries) {
+  char *query_utf8 = lift(query);
+  char *module_utf8 = lift(module);
+  char *type_utf8 = lift(type);
+  char *kind_utf8 = lift(kind);
+  sandbox_string_t owned_query = borrow(query_utf8);
+  sandbox_string_t owned_module = borrow(module_utf8);
+  sandbox_string_t owned_type = borrow(type_utf8);
+  sandbox_string_t owned_kind = borrow(kind_utf8);
+  uint32_t offset_storage = 0;
+  uint32_t limit_storage = 0;
+  test_cabinet_gg_docs_doc_search_t result;
+  test_cabinet_gg_docs_tool_error_t failure;
+  const bool ok = test_cabinet_gg_docs_search(
+      &owned_query, module_utf8 == NULL ? NULL : &owned_module,
+      type_utf8 == NULL ? NULL : &owned_type, kind_utf8 == NULL ? NULL : &owned_kind,
+      maybe_u32(offset, &offset_storage), maybe_u32(limit, &limit_storage), &result, &failure);
+  if (query_utf8 != NULL) mono_free(query_utf8);
+  if (module_utf8 != NULL) mono_free(module_utf8);
+  if (type_utf8 != NULL) mono_free(type_utf8);
+  if (kind_utf8 != NULL) mono_free(kind_utf8);
+  if (!ok) {
+    park(&failure);
+    return 0;
+  }
+  *page = uint_array(2);
+  uint_array_set(*page, 0, result.total);
+  uint_array_set(*page, 1, result.offset);
+  *keys = string_array(result.hits.len);
+  *kinds = string_array(result.hits.len);
+  *modules = string_array(result.hits.len);
+  *names = string_array(result.hits.len);
+  *summaries = string_array(result.hits.len);
+  for (size_t index = 0; index < result.hits.len; index++) {
+    mono_array_setref(*keys, index, lower(&result.hits.ptr[index].key));
+    mono_array_setref(*kinds, index, lower(&result.hits.ptr[index].kind));
+    mono_array_setref(*modules, index, lower(&result.hits.ptr[index].module));
+    mono_array_setref(*names, index, lower(&result.hits.ptr[index].name));
+    mono_array_setref(*summaries, index, lower(&result.hits.ptr[index].summary));
+  }
+  test_cabinet_gg_docs_doc_search_free(&result);
+  return 1;
+}
+
+static MonoBoolean gg_close_doc_view(MonoString *key, uint32_t *closed) {
+  char *utf8 = lift(key);
+  sandbox_string_t owned = borrow(utf8);
+  test_cabinet_gg_docs_tool_error_t failure;
+  const bool ok = test_cabinet_gg_docs_close_doc_view(&owned, closed, &failure);
+  if (utf8 != NULL) mono_free(utf8);
+  if (!ok) park(&failure);
+  return ok ? 1 : 0;
+}
+
+static MonoBoolean gg_close_doc_views(uint32_t *closed) {
+  test_cabinet_gg_docs_tool_error_t failure;
+  const bool ok = test_cabinet_gg_docs_close_doc_views(closed, &failure);
+  if (!ok) park(&failure);
+  return ok ? 1 : 0;
+}
+
+// ---------------------------------------------------------------------------------------------
 // views
 // ---------------------------------------------------------------------------------------------
 
@@ -1211,7 +1284,8 @@ static MonoBoolean gg_rerun(MonoString *source) {
 ///
 /// The tool name lives here rather than in a second list so that `bound-tools` and the bindings are
 /// one statement. A row with no tool name is one of the model-facing carve-outs that is not a gg
-/// tool: an ending, a view, a program-library call, or the feedback channel.
+/// tool: an ending, a view, a documentation search or close, a program-library call, or the feedback
+/// channel.
 typedef struct {
   const char *managed;
   const void *native;
@@ -1258,6 +1332,9 @@ static const binding_t bindings[] = {
     {"Gg.Internal.Native::Finish", (const void *)gg_finish, NULL},
     {"Gg.Internal.Native::Approve", (const void *)gg_approve, NULL},
     {"Gg.Internal.Native::RequestChanges", (const void *)gg_request_changes, NULL},
+    {"Gg.Internal.Native::SearchDocs", (const void *)gg_search_docs, NULL},
+    {"Gg.Internal.Native::CloseDocView", (const void *)gg_close_doc_view, NULL},
+    {"Gg.Internal.Native::CloseDocViews", (const void *)gg_close_doc_views, NULL},
     {"Gg.Internal.Native::OpenFileView", (const void *)gg_open_file_view, NULL},
     {"Gg.Internal.Native::OpenTextView", (const void *)gg_open_text_view, NULL},
     {"Gg.Internal.Native::OpenDocsView", (const void *)gg_open_docs_view, NULL},

@@ -111,7 +111,7 @@ module GG
     # keyed by the function name, exactly as a file or a computed value arrives — so it is not
     # available in the turn it is asked for. Ask in one turn, use it in the next. Opening the same
     # function's documentation again replaces the view rather than adding a second copy, and
-    # `GG::Views.close` closes it.
+    # `GG::Docs.close` closes it — not `GG::Views.close`, which does not reach documentation.
     #
     # @param target [Symbol, String, Method] The function to document, by its fully-qualified name
     #   (`"GG::Files.read_file"`), by the name it is called by in its module, or as the method
@@ -126,14 +126,18 @@ module GG
 
     # Close every view carrying `selector`, freeing the tokens they occupied.
     #
-    # For a file that is every page of that path, for a text view the one with that label, for a
-    # documentation view the function's name. Closing a selector that is not open hands back `0`
-    # rather than failing, so a program that tidies up unconditionally need not guard every call.
-    # Closing a file view forgets what was read, not what exists; closing a text view discards the
-    # only copy of what it held, so anything needed later belongs in a file or a memory first.
+    # For a file that is every page of that path, for a text view the one with that label, for the
+    # results of a search the label `search results`. Closing a selector that is not open hands back
+    # `0` rather than failing, so a program that tidies up unconditionally need not guard every
+    # call. Closing a file view forgets what was read, not what exists; closing a text view discards
+    # the only copy of what it held, so anything needed later belongs in a file or a memory first.
+    #
+    # Documentation views are not reached from here. `GG::Docs.close` is what takes one away, and it
+    # is bought by a capability this call is not — so a sweep that included them would answer `0`
+    # for an agent that may not close one, which reads as a selector that named nothing.
     #
     # @param selector [String] What the view is filed under: a file's path, a text view's label, or
-    #   a documentation view's function name.
+    #   `search results`.
     # @return [Integer] how many views were closed
     def self.close(selector)
       Wire.call("close", "views", "closeView", [selector])
@@ -205,8 +209,12 @@ module GG
       # @return [GG::Views::ViewKind] Whether it is a file, text, or documentation view.
       attr_reader :kind
 
-      # @return [String] What `GG::Views.close` takes: a file's path, a text view's label, or a
-      #   documentation view's function name.
+      # What closes it.
+      #
+      # A file's path, a text view's label or `search results` for `GG::Views.close`, and for a
+      # documentation view the key `GG::Docs.close` takes.
+      #
+      # @return [String] the selector this view is filed under
       attr_reader :selector
 
       # @return [Integer] Roughly what holding it costs, in tokens.
@@ -229,6 +237,9 @@ module GG
       #
       # `GG::Views.close` with the selector already supplied, which is what makes tidying a window
       # read as ordinary Ruby: `GG::Views.current.each(&:close)`.
+      #
+      # A documentation view is the one this does not take away, because `GG::Views.close` does not
+      # reach that band: `GG::Docs.close(selector)` is the call for one of those.
       #
       # @return [Integer] how many views were closed, counting every page of one file
       def close

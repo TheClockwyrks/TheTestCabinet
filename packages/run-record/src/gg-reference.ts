@@ -328,8 +328,23 @@ export type GgApiFunction = {
    * [program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a
    * *capability* binds as a whole rather than a tool or a role, and therefore the one
    * neither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.
+   *
+   * Kept as a boolean because it is a published field, and now a projection of
+   * [`capability`](Self::capability) rather than a second fact: it is that field compared
+   * against the program library's id.
    */
   library: boolean;
+  /**
+   * The **capability** that buys this function, by gg's own id for it (`program-library`,
+   * `docview-close`), or `None` for a function no capability gates.
+   *
+   * [`gate`](Self::gate) names a *tool*, [`ending`](Self::ending) names a *role*, and this names
+   * the third and last thing that can withhold a call — so a reader that finds all three empty
+   * may say the function is always available, and one that does not must not. It exists because
+   * [`library`](Self::library) could only ever answer for one capability, and the moment a second
+   * bought part of the surface every call it withheld read as ungated.
+   */
+  capability?: string;
   /**
    * The declarations of every type this function's signature refers to, transitively closed
    * — exactly what a `view.openDocsView` lookup appends for the types the session has not

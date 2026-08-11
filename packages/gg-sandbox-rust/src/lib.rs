@@ -18,11 +18,12 @@
 //! session::finish(&format!("looked at {} sources", sources.len()))?;
 //! ```
 //!
-//! # The surface is eleven capability modules
+//! # The surface is twelve capability modules
 //!
-//! [`files`], [`shell`], [`board`], [`tasks`], [`memories`], [`views`], [`context`], [`delegation`],
-//! [`skills`], [`programs`] and [`session`] — plus [`core`], which declares no function at all and
-//! holds the three types every other module's signatures name. A module is Rust's own unit of
+//! [`files`], [`shell`], [`board`], [`tasks`], [`memories`], [`views`], [`docs`], [`context`],
+//! [`delegation`], [`skills`], [`programs`] and [`session`] — plus [`core`], which declares no
+//! function at all and holds the three types every other module's signatures name. A module is
+//! Rust's own unit of
 //! grouping, so `files::read_file` is an ordinary path, `gg::files::read_file` is the same function
 //! written in full, and `use gg::files;` is how a program that wants only one of them shortens it.
 //!
@@ -38,8 +39,9 @@
 //!
 //! The functions a run does **not** offer are still names this crate exports: a program that calls one
 //! gets a [`ToolError`] carrying [`Unavailable`](ToolErrorCode::Unavailable) rather than a compile
-//! error, because what a run enables is decided per run and this crate is compiled once. Each
-//! module's `list` reports what that module really bound for this run.
+//! error, because what a run enables is decided per run and this crate is compiled once.
+//! [`docs::search`] is what reports the surface this run really bound: it returns only entries that
+//! are callable here, so what it finds is what compiles *and* runs.
 //!
 //! # Three rules every program here obeys
 //!
@@ -123,6 +125,9 @@ pub mod core;
 #[doc(alias = "ggmodule:delegation")]
 pub mod delegation;
 
+#[doc(alias = "ggmodule:docs")]
+pub mod docs;
+
 #[doc(alias = "ggmodule:files")]
 pub mod files;
 
@@ -164,8 +169,8 @@ pub use crate::program::Failure;
 /// that had to name one would be a `match` nobody writes.
 pub mod prelude {
     pub use crate::{
-        board, context, delegation, files, log, memories, programs, session, shell, skills, tasks,
-        views,
+        board, context, delegation, docs, files, log, memories, programs, session, shell, skills,
+        tasks, views,
     };
 
     pub use crate::core::{ToolError, ToolErrorCode};

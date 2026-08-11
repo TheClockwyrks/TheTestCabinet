@@ -43,12 +43,34 @@ fn functions() -> Vec<CatalogueFunction> {
     catalogue_functions(typescript())
 }
 
-/// One projected function by the name a program calls it by.
+/// One projected function by the name a program calls it by, which must name exactly one.
+///
+/// A bare name is unique across this SDK only by accident, and it stopped being so: `close` is
+/// `gg.views.close` and `gg.docs.close`, because gg files a documentation view's removal under its
+/// own object and the SDK spells each of them the way its operation key does. So a lookup that
+/// silently took the first match would quietly re-aim an expectation at the wrong module rather than
+/// fail — use [`member`] wherever a name is shared.
 fn function(name: &str) -> CatalogueFunction {
+    let matched: Vec<CatalogueFunction> = functions()
+        .into_iter()
+        .filter(|function| function.name == name)
+        .collect();
+    match <[CatalogueFunction; 1]>::try_from(matched) {
+        Ok([function]) => function,
+        Err(matched) => panic!(
+            "`{name}` names {} catalogued functions ({:?}), so it has to be looked up by module",
+            matched.len(),
+            matched.iter().map(|f| f.object).collect::<Vec<_>>()
+        ),
+    }
+}
+
+/// One projected function by the module it is declared in and the name it is called by.
+fn member(object: &str, name: &str) -> CatalogueFunction {
     functions()
         .into_iter()
-        .find(|function| function.name == name)
-        .unwrap_or_else(|| panic!("`{name}` is catalogued"))
+        .find(|function| function.object == object && function.name == name)
+        .unwrap_or_else(|| panic!("`{object}.{name}` is catalogued"))
 }
 
 /// The one way a TypeScript function may be called.
@@ -81,19 +103,26 @@ fn the_committed_catalogue_parses() {
     );
 }
 
-/// **Every function that is not a gg tool carries a `key`.**
+/// **Every function that is not a gg tool carries a `key`, and no two claim one identity.**
 ///
 /// A tool's identity is its gg tool name; the carve-outs have none, so the key is the only thing
 /// that says a second language's `request_changes` and this one's `requestChanges` are one function.
 /// Without it the surfaces of two languages could only be compared by spelling, which is precisely
 /// the thing a cross-language study leaves free to differ.
 ///
+/// The identity is the **pair** — the grouping and the key — which is what
+/// [the search index files an entry under](crate::docs::DocsRuntime) and what gg's operation ids
+/// are built from. The key alone was unique only for as long as no two groupings shared one word,
+/// and `close` is now `gg.views.close` and `gg.docs.close`: taking a documentation view out of the
+/// window is bought by a capability and taking any other view out is not, so they are two
+/// operations, and a rule reading half of an identity would have called them one.
+///
 /// Asked of every projected function rather than of the sections a carve-out used to arrive in: this
 /// arm files every call in one array now, and the identity rule was never about which section an
 /// entry sat in.
 #[test]
 fn every_carve_out_entry_carries_an_identity() {
-    let mut seen: Vec<&str> = Vec::new();
+    let mut seen: Vec<(&str, &str)> = Vec::new();
     for function in functions() {
         assert!(
             !function.key.is_empty(),
@@ -105,12 +134,14 @@ fn every_carve_out_entry_carries_an_identity() {
         if function.alias_of.is_some() {
             continue;
         }
+        let identity = (function.object, function.key);
         assert!(
-            !seen.contains(&function.key),
-            "two functions claim the identity `{}`",
+            !seen.contains(&identity),
+            "two functions claim the identity `{}.{}`",
+            function.object,
             function.key
         );
-        seen.push(function.key);
+        seen.push(identity);
     }
 
     // The projection the docs runtime reads carries a tool's identity too — its own gg tool name,
@@ -214,8 +245,7 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
     );
 
     for name in ["openText", "openDocsView", "close", "current"] {
-        let entry = function(name);
-        assert_eq!(entry.object, "gg.views");
+        let entry = member("gg.views", name);
         assert!(
             entry.gate.is_none() && entry.ending.is_none() && entry.capability.is_none(),
             "`{name}` is bound whatever a run enables"

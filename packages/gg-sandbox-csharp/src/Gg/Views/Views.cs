@@ -93,7 +93,8 @@ public static partial class Views
     /// Its signature, its description, what each argument takes, and the declarations of any types
     /// it refers to that the session has not already been shown. It is a view rather than a return
     /// value: the documentation arrives in the next prompt, under a <c>Documentation</c> heading,
-    /// and closes like anything else.
+    /// and <see cref="Docs.Close"/> is what takes it away again — not <see cref="Close"/>, which
+    /// does not reach documentation.
     /// </remarks>
     /// <param name="name">
     /// The fully-qualified name the function's documentation is keyed by —

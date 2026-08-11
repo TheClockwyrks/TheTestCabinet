@@ -20,7 +20,7 @@
 use serde_json::{Value, json};
 
 use super::compile::compile_program;
-use super::substrate::{evaluate_as, logs, program_error};
+use super::substrate::{evaluate_as, evaluate_closing_docviews, logs, program_error};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::PrepareContext;
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, typescript as typescript_language};
@@ -50,6 +50,14 @@ fn run_as(
         Err(failure) => panic!("the Java toolchain did not compile this program: {failure}"),
     };
     evaluate_as(&prepared, enabled, &[], ending, library, responder)
+}
+
+/// One Java program through the production prepare step, or a panic with what the toolchain said.
+fn prepare_program(source: &str) -> String {
+    match compile_program(source, &PrepareContext::new()) {
+        Ok(prepared) => prepared.source,
+        Err(failure) => panic!("the Java toolchain did not compile this program: {failure}"),
+    }
 }
 
 /// Compile and run one Java program with `enabled`'s tools offered and no ending group.
@@ -365,8 +373,8 @@ fn every_tool_crosses_the_membrane_from_its_java_spelling() {
 }
 
 #[test]
-fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in_java_too() {
-    // The four families that are NOT gg tools, so none of them appears in the crossing table above —
+fn the_documentation_the_views_the_program_library_the_helper_and_the_endings_are_reached_too() {
+    // The five families that are NOT gg tools, so none of them appears in the crossing table above —
     // and two of them are where a program puts something in front of the model, which makes them the
     // ones a silent bridging mistake would cost the most. Between this, the table, and the member
     // functions driven at the end of this function, every entry this arm's catalogue describes has
@@ -526,6 +534,74 @@ fn the_view_object_the_program_library_the_helper_and_the_endings_are_reached_in
     assert_eq!(
         log.args("send_message"),
         Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+
+    // THE DOCUMENTATION MODULE, which is the family a session begins in: the prompt names no
+    // function, so this is the only call a model can make before it has been told a name. It is
+    // driven from Java's own spellings — the bare overload, and the one that carries the filters as
+    // a chained `SearchFilters`, which is how this arm expresses an options object a language with
+    // keyword arguments would write inline.
+    //
+    // The double models no catalogue, so an empty page is the honest answer and the ranking is
+    // `DocsRuntime`'s to be right about. What is observed here is this arm's own half: that the
+    // filters reach the guest as one object rather than as five arguments, and that the envelope
+    // comes back as a `DocSearch` a program reads fields off.
+    let (outcome, _log) = run_with(
+        "Docs.DocSearch all = Docs.search(\"view\");\n\
+         Docs.DocSearch narrowed = Docs.search(\"\",\n\
+         \x20       new Docs.SearchFilters().module(\"gg.views.Views\")\n\
+         \x20               .kind(Docs.DocKind.FUNCTION).limit(5));\n\
+         System.out.println(all.total() + \" \" + all.offset() + \" \" + all.hits().size());\n\
+         System.out.println(String.valueOf(narrowed.hits().isEmpty()));\n\
+         try {\n\
+         \x20   Docs.close(\"gg.files.Files.readFile\");\n\
+         } catch (ToolError failure) {\n\
+         \x20   System.out.println(failure.code() + \" \" + failure.tool());\n\
+         }\n",
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["0 0 0", "true", "UNAVAILABLE close"],
+        "the documentation module did not answer from its Java spellings"
+    );
+    // A search is not a tool call and not a view the program named: its results go into the window
+    // under gg's own constant selector, so a second search replaces the first rather than piling up.
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| (view.kind, view.selector.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            (
+                crate::context::ViewKind::Search,
+                crate::context::SEARCH_RESULTS_VIEW
+            ),
+            (
+                crate::context::ViewKind::Search,
+                crate::context::SEARCH_RESULTS_VIEW
+            ),
+        ],
+        "each search placed its page in the window"
+    );
+
+    // And the same two closing calls for an agent that HOLDS `docview-close`, which is the only way
+    // to reach this arm's lowering of what they answer: the double holds no window, so nothing is
+    // open and `0` is the honest count — a successful call rather than a failure, exactly as it is
+    // in production.
+    let (outcome, _log) = evaluate_closing_docviews(
+        &prepare_program(
+            "System.out.println(Docs.close(\"gg.files.Files.readFile\") + \" \" + Docs.closeAll());\n",
+        ),
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["0 0"],
+        "the capability was granted and the closes still did not answer"
     );
 
     // Exhaustive by construction, the way the crossing table is: a sixth member function added to
@@ -703,7 +779,7 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
         );
     }
     assert_eq!(
-        groups, 14,
+        groups, 15,
         "the entries this arm expresses as an overload group rather than as a default argument"
     );
 

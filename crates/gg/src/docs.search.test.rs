@@ -142,17 +142,31 @@ fn the_tiers_are_ordered_name_then_prefix_then_text() {
 
 /// **Breadth outranks frequency**: an entry mentioning both words beats one that repeats one of
 /// them.
+///
+/// Read between two entries at one tier rather than off the top of the page, because the tier is
+/// compared first and one of this query's words is a whole function name — `docs.search` — which
+/// takes the exact-identifier tier and therefore the first place. That is the ranking working: a
+/// word that names something outranks the same word in a paragraph, which the case above this one
+/// asserts directly. What is left to observe is the tie, and `searchMemories` and `searchArchive`
+/// are it: both are named for the term `search`, so neither can win on tier, and one of them says
+/// `search` twice while the other also says `memory` and `keyword`.
 #[test]
 fn matching_more_of_the_query_ranks_higher() {
     let docs = full();
     let found = docs
         .search(ask("memory search keyword"))
         .expect("a usable query");
-    assert_eq!(
-        found.hits.first().map(|hit| hit.key.as_str()),
-        Some(key_of("searchMemories").as_str()),
-        "{:?}",
-        keys(&found)
+    let ranked = keys(&found);
+    let at = |name: &str| {
+        let key = key_of(name);
+        ranked
+            .iter()
+            .position(|found| *found == key)
+            .unwrap_or_else(|| panic!("`{name}` matched: {ranked:?}"))
+    };
+    assert!(
+        at("searchMemories") < at("searchArchive"),
+        "the entry answering more of the query comes first: {ranked:?}"
     );
 }
 

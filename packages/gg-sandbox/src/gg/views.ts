@@ -45,7 +45,12 @@ export interface OpenView {
   /** Whether it is a file, a text, or a documentation view. */
   kind: ViewKind;
 
-  /** What `close` takes: a file's path, a text view's label, or a docs view's function name. */
+  /**
+   * What closes it.
+   *
+   * A file's path, a text view's label or `search results` for `close`, and for a documentation
+   * view the key `gg.docs.close` takes.
+   */
   selector: string;
 
   /** Roughly what holding it costs, in tokens. */
@@ -113,7 +118,8 @@ export function openText(label: string, body: string): void {
  * It is a **view** rather than a return value, so the documentation arrives in the next prompt under
  * a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn
  * and using it in the next is the shape that works. Opening the same function again replaces the
- * view, and `close` takes the same name.
+ * view, and `gg.docs.close` takes the same name to put it away — not the `close` in this module,
+ * which does not reach documentation.
  *
  * Throws `ToolError` with `not-found` for an unknown or unbound name; searching the documentation is
  * what says which names exist.
@@ -162,16 +168,20 @@ function docsName(target: Function | string): string {
 /**
  * Close every view carrying a selector, and hand back how many were closed.
  *
- * For a file that is every page of that path, for a text view the one with that label, and for a
- * documentation view the function's name. Closing a selector that is not open returns zero rather
- * than failing, so a program that tidies up unconditionally needs no guard on every call.
+ * For a file that is every page of that path, for a text view the one with that label, and for the
+ * results of a search the label `search results`. Closing a selector that is not open returns zero
+ * rather than failing, so a program that tidies up unconditionally needs no guard on every call.
+ *
+ * Documentation views are not among them: `gg.docs.close` is what takes one of those away, and it is
+ * bought by a capability this call is not. A sweep that quietly reached them would answer zero for an
+ * agent that may not close one, which reads exactly like a selector that named nothing.
  *
  * Closing a file view forgets what was read, not what exists. Closing a text view discards the only
  * copy of what it held, so anything needed later belongs in a file or a memory first.
  *
  * @ggop views.close
- * @param selector What the view is filed under: a file's path, a text view's label, or a
- * documentation view's function name.
+ * @param selector What the view is filed under: a file's path, a text view's label, or `search
+ * results`.
  */
 export function close(selector: string): number {
   // A `u32`, so already a `number` — the `bigint` conversion `current` makes is not needed here.

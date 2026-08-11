@@ -1,10 +1,14 @@
 """gg's Python SDK: the capability modules a program written in Python calls gg through.
 
-The surface is **twelve modules** — `gg.files`, `gg.shell`, `gg.board`, `gg.tasks`, `gg.memories`,
-`gg.views`, `gg.context`, `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session`, and a
-`gg.core` that declares no function and holds the types the other eleven's signatures name. Each
-module owns the types it produces, so `gg.files.FileRead` is both the key a documentation view is
-opened by and a path a program can write.
+The surface is **thirteen modules** — `gg.docs`, `gg.files`, `gg.shell`, `gg.board`, `gg.tasks`,
+`gg.memories`, `gg.views`, `gg.context`, `gg.delegation`, `gg.skills`, `gg.programs`, `gg.session`,
+and a `gg.core` that declares no function and holds the types the other twelve's signatures name.
+Each module owns the types it produces, so `gg.files.FileRead` is both the key a documentation view
+is opened by and a path a program can write.
+
+`gg.docs` comes first because a session starts there: the system prompt names modules and no
+function, so a program finds a name by searching this module and reads it in full by opening a
+documentation view of what it found.
 
 A program does not normally import anything from here. `gg.scope` binds the modules this run offers,
 and every type they speak in, directly into the program's own namespace, so `files.read_file("a.py")`
@@ -46,6 +50,7 @@ from . import (
     context,
     core,
     delegation,
+    docs,
     files,
     memories,
     programs,
@@ -66,6 +71,7 @@ __all__ = [
     "context",
     "core",
     "delegation",
+    "docs",
     "files",
     "memories",
     "programs",

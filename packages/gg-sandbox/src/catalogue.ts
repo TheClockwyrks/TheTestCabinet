@@ -27,6 +27,7 @@ export type ModuleId =
   | "board"
   | "tasks"
   | "memories"
+  | "docs"
   | "views"
   | "context"
   | "delegation"
@@ -53,6 +54,7 @@ export const MODULE_ORDER: readonly ModuleId[] = [
   "board",
   "tasks",
   "memories",
+  "docs",
   "views",
   "context",
   "delegation",
@@ -87,6 +89,11 @@ export const SURFACE = "gg";
  * business. A reviewer that calls `harness.finish` therefore gets gg's own sentence — it ends its
  * session with a verdict, and here are the two calls that do — instead of a `ReferenceError` naming
  * an identifier.
+ *
+ * `docs` is its own object name, exactly as `tasks` and `context` are theirs, because gg files the
+ * documentation calls under a `docs` object of its own rather than under `view`. Its entry is here
+ * for the same one reader: a sibling arm's bundle reaches `docs.search` as a free identifier, and a
+ * search is the call no arm can be without.
  */
 export const LEGACY_GROUPINGS: Readonly<
   Partial<Record<ModuleId, readonly string[]>>
@@ -96,6 +103,7 @@ export const LEGACY_GROUPINGS: Readonly<
   board: ["project"],
   tasks: ["tasks"],
   memories: ["memory"],
+  docs: ["docs"],
   views: ["view"],
   context: ["context"],
   delegation: ["agents"],
@@ -220,6 +228,9 @@ export const TOOL_BOUND: Readonly<Record<string, string>> = {
  */
 export const OPERATIONS: readonly string[] = [
   ...Object.keys(TOOL_BOUND),
+  "docs.search",
+  "docs.close",
+  "docs.close_all",
   "views.open_text",
   "views.open_docs_view",
   "views.close",

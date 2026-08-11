@@ -418,7 +418,7 @@ def declare_type(module: str, path: str, name: str, declared: Any) -> Declared:
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 """Every identifier in a piece of written type text, which is what a reference is looked up by.
 
-The SDK's type names are unique across its twelve modules, so a bare name resolves to exactly one
+The SDK's type names are unique across its thirteen modules, so a bare name resolves to exactly one
 declaration and the lookup needs no scope. That uniqueness is asserted below rather than assumed.
 """
 

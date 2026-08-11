@@ -334,6 +334,11 @@ fn a_search_close_reports_its_own_band() {
 /// a complete answer, and an agent that stops at the first five hits of twenty has lost three
 /// quarters of what it was looking for — which is the exact failure the envelope's `total` exists to
 /// prevent and which a rendering that dropped it would undo.
+///
+/// The hit carries a `key` that differs from its `name` on purpose. A hit whose two identifiers are
+/// the same string — which is what a schema-v1 arm produced, and what this case used to build —
+/// cannot tell the two apart, so it would pass just as readily against a rendering that printed the
+/// wrong one.
 #[test]
 fn the_results_view_says_how_much_of_the_answer_it_is() {
     let query = DocSearchQuery {
@@ -345,9 +350,9 @@ fn the_results_view_says_how_much_of_the_answer_it_is() {
         total: 9,
         offset: 3,
         hits: vec![crate::docs::DocHit {
-            key: "readFile".to_string(),
+            key: "gg.files.readFile".to_string(),
             kind: crate::docs::DocKind::Function,
-            module: "fs".to_string(),
+            module: "gg.files".to_string(),
             name: "readFile".to_string(),
             summary: "Read a file.".to_string(),
         }],
@@ -361,8 +366,53 @@ fn the_results_view_says_how_much_of_the_answer_it_is() {
         "{body}"
     );
     assert!(
-        body.contains("readFile (function, fs) — Read a file."),
-        "one line per hit, brief and all: {body}"
+        body.contains("gg.files.readFile (function) — Read a file."),
+        "one line per hit, keyed by the name an open takes, brief and all: {body}"
+    );
+}
+
+/// **Two entries sharing a bare name render as two distinguishable lines** — which is the whole
+/// reason the line leads with the key.
+///
+/// `close` is the real case: `gg.docs.close` and `gg.views.close` are two different calls, one of
+/// them bought by a capability the other is not. Rendered by bare name they are the same string
+/// twice, and a model picking one of them by typing what it read would be answered with whichever
+/// the catalogue lists first — silently, and with a page documenting a call it may not hold.
+#[test]
+fn two_hits_sharing_a_name_are_told_apart() {
+    let query = DocSearchQuery {
+        query: "close".to_string(),
+        ..DocSearchQuery::default()
+    };
+    let page = DocSearch {
+        total: 2,
+        offset: 0,
+        hits: vec![
+            crate::docs::DocHit {
+                key: "gg.docs.close".to_string(),
+                kind: crate::docs::DocKind::Function,
+                module: "gg.docs".to_string(),
+                name: "close".to_string(),
+                summary: "Close a documentation view.".to_string(),
+            },
+            crate::docs::DocHit {
+                key: "gg.views.close".to_string(),
+                kind: crate::docs::DocKind::Function,
+                module: "gg.views".to_string(),
+                name: "close".to_string(),
+                summary: "Close every view carrying a selector.".to_string(),
+            },
+        ],
+    };
+
+    let body = render_search_results(&query, &page);
+    assert!(
+        body.contains("gg.docs.close (function) — Close a documentation view."),
+        "{body}"
+    );
+    assert!(
+        body.contains("gg.views.close (function) — Close every view carrying a selector."),
+        "{body}"
     );
 }
 
@@ -384,4 +434,42 @@ fn an_empty_results_view_says_what_to_try_instead() {
     );
     assert!(body.starts_with("No documentation matches"), "{body}");
     assert!(body.contains("substring"), "{body}");
+}
+
+/// **`view.close` does not reach the documentation band, and `docs.close` is the only thing that
+/// does** — so [`GgContextAction::CloseDocsViews`] has exactly one producer.
+///
+/// This is a source-level assertion because the seam it guards is a *deletion*: the production
+/// [`close_view`](LoopToolApi::close_view) no longer sweeps documentation, and a deletion has no
+/// value to assert on. What a regression would look like is a second
+/// `context.close_docviews(...)` appearing in this file — which is exactly what this counts.
+///
+/// The property is worth holding rather than trusting to review because both halves of it are
+/// invisible at the call site. `view.close` is bound to every program while closing documentation
+/// is bought by
+/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE), so a sweep reintroduced here
+/// would have to either spend a capability its caller never asked about or answer `0` for an agent
+/// that lacks it — and `0` is indistinguishable, to the model reading it, from a selector that named
+/// nothing. It would also give the capability two routes, one of which never names it, which is what
+/// makes a capability ablation unable to attribute a close.
+#[test]
+fn closing_documentation_has_exactly_one_producer() {
+    let source = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/agent.code.rs"),
+    )
+    .expect("gg's code-turn api is readable");
+
+    let closes: Vec<&str> = source
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with("//") && !line.starts_with("///"))
+        .filter(|line| line.contains(".close_docviews("))
+        .collect();
+
+    assert_eq!(
+        closes,
+        ["let closed = self.context.close_docviews(key.as_deref());"],
+        "`close_docviews` is the only call that may take a documentation view out of the window; \
+         a second one here is `view.close` reaching a band it does not name and cannot refuse from"
+    );
 }

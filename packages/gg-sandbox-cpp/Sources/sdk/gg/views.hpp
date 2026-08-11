@@ -51,7 +51,10 @@ struct view_region {
 struct open_view {
   /// Whether it is a file, text, or documentation view.
   views::view_kind kind{};
-  /// What closing it takes: a file's path, a text view's label, or a docs view's function name.
+  /// What closes it.
+  ///
+  /// A file's path, a text view's label or `search results` for `views::close`, and for a
+  /// documentation view the key `docs::close` takes.
   std::string selector;
   /// Roughly what holding it costs, in tokens.
   std::uint64_t tokens{};
@@ -59,6 +62,9 @@ struct open_view {
   std::optional<views::view_region> region;
 
   /// Close this view, freeing the tokens it occupied.
+  ///
+  /// A documentation view is the one this does not take away, because `views::close` does not reach
+  /// that band: `docs::close(selector)` is the call for one of those.
   ///
   /// <ggop-alias>views.close</ggop-alias>
   ///
@@ -124,16 +130,20 @@ void open_docs_view(std::string_view name);
 
 /// Close every view carrying `selector`, freeing the tokens they occupied.
 ///
-/// For a file that is every page of that path, for a text view the one with that label, and for a
-/// documentation view the function's name. Closing a selector that is not open hands back `0`
-/// rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file
-/// view forgets what was read rather than what exists; closing a text view discards the only copy
-/// of what it held.
+/// For a file that is every page of that path, for a text view the one with that label, and for the
+/// results of a search the label `search results`. Closing a selector that is not open hands back
+/// `0` rather than failing, so a program that tidies up unconditionally needs no guard. Closing a
+/// file view forgets what was read rather than what exists; closing a text view discards the only
+/// copy of what it held.
+///
+/// Documentation views are not reached from here. `docs::close` is what takes one away, and it is
+/// bought by a capability this call is not — so a sweep that included them would hand back `0` for
+/// an agent that may not close one, which reads as a selector that named nothing.
 ///
 /// <ggop>views.close</ggop>
 ///
-/// \param selector What the view is filed under: a file's path, a text view's label, or a
-///   documentation view's function name.
+/// \param selector What the view is filed under: a file's path, a text view's label, or
+///   `search results`.
 /// \returns how many views were closed.
 std::uint32_t close(std::string_view selector);
 

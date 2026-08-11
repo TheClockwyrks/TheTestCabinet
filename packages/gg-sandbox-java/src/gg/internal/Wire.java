@@ -121,6 +121,10 @@ public final class Wire {
     @JSBody(script = "return typeof memory === 'undefined' ? null : memory;")
     public static native JSObject memory();
 
+    /** The guest's {@code docs} object, or {@code null} when the guest does not export it. */
+    @JSBody(script = "return typeof docs === 'undefined' ? null : docs;")
+    public static native JSObject docs();
+
     /** The guest's {@code view} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof view === 'undefined' ? null : view;")
     public static native JSObject view();

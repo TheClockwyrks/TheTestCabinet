@@ -3,7 +3,7 @@
 	"esbuild": "0.28.1",
 	"registry": "80.3.0",
 	"sdk": "gg-sdk",
-	"modules": 324,
+	"modules": 325,
 	"packages": [
 		{
 			"name": "arrays",

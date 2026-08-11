@@ -6,9 +6,10 @@
 // comment, and a type's module is written on the module class that contains it. A side table naming
 // every function twice was precisely the second copy that drifts, and it does not exist any more.
 //
-// What is left is a table of eleven module identities, and it is here rather than on the classes for
-// two reasons: the ORDER is model-facing — it is the sequence a documentation index and the run's
-// agent surface present the modules in — and the PATH is the string gg matches a fully-qualified
+// What is left is a table of twelve capability modules and the class-less `core` beside them, and it
+// is here rather than on the classes for two reasons: the ORDER is model-facing — it is the sequence
+// a documentation index and the run's agent surface present the modules in — and the PATH is the
+// string gg matches a fully-qualified
 // name's prefix against, so a class that misspelled its own namespace would be reporting a name
 // nothing could open. The class's own `<ggmodule>` says which of these rows it is, and `Signatures`
 // asserts the two sets are equal in both directions.
@@ -34,6 +35,7 @@ internal static class Catalogue
         new("board", "Board", "Gg.Board"),
         new("tasks", "Tasks", "Gg.Tasks"),
         new("memories", "Memories", "Gg.Memories"),
+        new("docs", "Docs", "Gg.Docs"),
         new("views", "Views", "Gg.Views"),
         new("context", "Context", "Gg.Context"),
         new("delegation", "Delegation", "Gg.Delegation"),

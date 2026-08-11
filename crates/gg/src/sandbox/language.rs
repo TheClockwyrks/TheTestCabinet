@@ -748,6 +748,20 @@ pub const VIEW_CLOSE: SurfaceCall = SurfaceCall::new("view", "close");
 /// What is open in the agent's window right now.
 pub const VIEW_CURRENT: SurfaceCall = SurfaceCall::new("view", "current");
 
+/// **The call the whole discovery loop begins at**: search the surface this agent binds by keyword,
+/// by module, or by both, and read the briefs that come back.
+///
+/// The prompt names no function, so this is the only way a model can learn what it holds without
+/// having been told a name first — which is why it is bound to every program whatever a run enables.
+pub const DOCS_SEARCH: SurfaceCall = SurfaceCall::new("docs", "search");
+
+/// Take one documentation view back out of the agent's window, by the key it was opened under.
+pub const DOCS_CLOSE: SurfaceCall = SurfaceCall::new("docs", "close");
+
+/// Take **every** documentation view out of the agent's window — the blanket form of
+/// [`DOCS_CLOSE`], behind the same capability.
+pub const DOCS_CLOSE_ALL: SurfaceCall = SurfaceCall::new("docs", "close_all");
+
 /// The [program library](crate::programs)'s own directory.
 pub const PROGRAMS_HISTORY: SurfaceCall = SurfaceCall::new("programs", "history");
 

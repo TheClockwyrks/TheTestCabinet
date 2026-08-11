@@ -688,12 +688,13 @@ fn a_gating_rule_gg_gets_wrong_is_caught() {
             "`approve` is bound as a `standard` ending",
         ),
         (
-            "a capability buying a family the program library does not own",
+            "a capability buying an operation outside the family gg paired it with",
             Box::new(|rows: &mut Vec<Operation>| {
                 row(rows, "files.read_file").binding =
                     Binding::Capability(CAPABILITY_PROGRAM_LIBRARY);
             }),
-            "the program library is the only family a capability buys",
+            "`files.read_file` is filed under `gg-filesystem` and is bought by `program-library`, \
+             which buys the `gg-programs` family",
         ),
         (
             "a program-library call bought by something other than the capability",
@@ -708,6 +709,35 @@ fn a_gating_rule_gg_gets_wrong_is_caught() {
                 row(rows, "programs.rerun").binding = Binding::Capability("time-travel");
             }),
             "`programs.rerun` is bought by `time-travel`, which is not a gg capability",
+        ),
+        (
+            "a capability paired with a family it then buys nothing in",
+            Box::new(|rows: &mut Vec<Operation>| {
+                // Both of `docview-close`'s rows re-gated, leaving the pairing behind: the sort of
+                // waiver a later edit appends to without re-deriving whether it should exist.
+                row(rows, "docs.close").binding = Binding::Always;
+                row(rows, "docs.close_all").binding = Binding::Always;
+            }),
+            "the capability `docview-close` is paired with the `gg-docs` family and buys nothing \
+             in it",
+        ),
+        (
+            "the documentation search bought by a capability",
+            Box::new(|rows: &mut Vec<Operation>| {
+                // The gravest gate gg could get wrong: a run able to withhold the search could
+                // withhold an agent's knowledge of its own capabilities, in all eleven arms at once.
+                row(rows, "docs.search").binding = Binding::Capability(CAPABILITY_DOCVIEW_CLOSE);
+            }),
+            "the documentation call `docs.search` is bound by Capability(\"docview-close\") where \
+             gg binds it by Always",
+        ),
+        (
+            "a documentation close handed to every program",
+            Box::new(|rows: &mut Vec<Operation>| {
+                row(rows, "docs.close").binding = Binding::Always;
+            }),
+            "the documentation call `docs.close` is bound by Always where gg binds it by \
+             Capability(\"docview-close\")",
         ),
         (
             "one operation written down twice",
@@ -776,8 +806,8 @@ fn a_gating_rule_gg_gets_wrong_is_caught() {
 
 /// **gg's own table passes its own gating rules** — the negative control for the row above.
 ///
-/// Without it, thirteen rows that all complain would be indistinguishable from a rule that complains
-/// about everything.
+/// Without it, eighteen rows that all complain would be indistinguishable from a rule that
+/// complains about everything.
 #[test]
 fn gg_s_own_operations_table_is_not_a_disagreement() {
     let found = disagreements_against(OPERATIONS, &[]);

@@ -44,10 +44,11 @@
 //! **Gating, over the table alone** ([`gating`]). Every [`Binding::Tool`] names a real gg tool and
 //! every gg tool buys something; an operation that is gg's own name for a tool is bought by *that*
 //! tool; the ending operations are gg's three under the roles [`EndingRole::tools`] gives them; a
-//! view is gated exactly where it reads the workspace; a capability buys the
-//! [program library](crate::programs) and nothing else. This runs once rather than eleven times,
-//! and it is *stronger* than the per-arm version it replaces: gating is stated in one place, so an
-//! arm has no field left to be wrong in.
+//! view is gated exactly where it reads the workspace; the documentation search is bound to every
+//! program and the two documentation closes are bought; a capability buys only the family gg paired
+//! it with, and buys the [program library](crate::programs) entire. This runs once rather than
+//! eleven times, and it is *stronger* than the per-arm version it replaces: gating is stated in one
+//! place, so an arm has no field left to be wrong in.
 //!
 //! **Capability coverage, per arm** ([`coverage`]). Every operation gg offers has exactly one
 //! canonical binding on every arm that is not excused; every operation an arm names is one gg has;
@@ -144,11 +145,12 @@
 //! [`tools`] is a bijection of *sets*, so two rows that swapped their gates would satisfy it, and
 //! that fault is worse than an arm's: every arm reads its gates from this one table, so a run would
 //! withhold the call it enabled in all eleven at once. [`tool_named`] closes it wherever the
-//! operation's own key is a tool name, which is 35 of the 47 rows. The twelve it does not reach are
+//! operation's own key is a tool name, which is 35 of the 50 rows. The fifteen it does not reach are
 //! the rows where the binding is a real decision rather than a restatement of the key —
-//! `files.read_text_file` on the `read_file` tool, the five views, the three program-library calls
-//! and the three endings — and of those, all but `files.read_text_file` have a named rule of their
-//! own ([`views`], [`capabilities`], [`endings`]). So exactly one row's gate rests on review alone.
+//! `files.read_text_file` on the `read_file` tool, the five views, the three documentation calls,
+//! the three program-library calls and the three endings — and of those, all but
+//! `files.read_text_file` have a named rule of their own ([`views`], [`documentation`],
+//! [`programs`], [`capabilities`], [`endings`]). So exactly one row's gate rests on review alone.
 //!
 //! # Why it returns disagreements rather than asserting them
 //!
@@ -162,7 +164,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage,
+};
 use test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG;
 
 use crate::ending::EndingRole;
@@ -171,7 +175,8 @@ use crate::tools::{ALL_TOOL_NAMES, READ_FILE_TOOL};
 
 use super::{ProgramLanguage, all_languages};
 use crate::sandbox::operations::{
-    Applicability, Binding, FAMILY_PROGRAMS, FAMILY_VIEWS, OPERATIONS, Operation, OperationId,
+    Applicability, Binding, FAMILY_DOCS, FAMILY_PROGRAMS, FAMILY_VIEWS, OPERATIONS, Operation,
+    OperationId,
 };
 use crate::sandbox::signatures::{
     CatalogueFunction, EntryKind, Parameter, SchemaVersion, SignatureEntry,
@@ -205,6 +210,30 @@ impl fmt::Display for Disagreement {
 
 /// The operation that opens a **view of a file**, which is the one view call a gg tool gates.
 const OPEN_FILE: &str = "open_file";
+
+/// The operation that **searches** the documentation, which is the one documentation call nothing
+/// gates.
+const SEARCH: &str = "search";
+
+/// **Which family each capability buys part of** — the only pairs a [`Binding::Capability`] may be
+/// written as, and the whole of what makes the host-side capability synthesis safe.
+///
+/// A capability id lives in gg and in nothing an arm commits, so the
+/// [projection](crate::sandbox::catalogue_functions) can only carry one onto a catalogue entry by
+/// reading it off this table's [`Binding`]. What that costs is stated here rather than assumed: a
+/// capability appearing on an operation gg has not paired with a family is a gate nobody wrote down
+/// the shape of, and it would document a withheld call or withhold a documented one with nothing
+/// going red.
+///
+/// The pairing is one-way about *coverage*. A family gg names here must have at least one operation
+/// bought by the capability beside it, or the row is dead — but the converse does not hold, and the
+/// documentation family is why: [`docs.search`](SEARCH) is bound to every program and its two
+/// siblings are bought, so a rule requiring the whole family would be wrong. Which of a family's
+/// operations the capability reaches is the family's own rule ([`programs`], [`documentation`]).
+const CAPABILITY_FAMILIES: &[(&str, &str)] = &[
+    (CAPABILITY_PROGRAM_LIBRARY, FAMILY_PROGRAMS),
+    (CAPABILITY_DOCVIEW_CLOSE, FAMILY_DOCS),
+];
 
 /// Every way `languages` fail to describe one capability surface. Empty is the passing answer.
 ///
@@ -262,7 +291,9 @@ fn gating(operations: &'static [Operation], out: &mut Vec<Disagreement>) {
     tool_named(operations, &mut complain);
     endings(operations, &mut complain);
     views(operations, &mut complain);
+    documentation(operations, &mut complain);
     capabilities(operations, &mut complain);
+    programs(operations, &mut complain);
     exemptions(operations, &mut complain);
 }
 
@@ -458,37 +489,112 @@ fn views(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
     }
 }
 
-/// A capability buys the [program library](crate::programs) and nothing else, and the id it names is
-/// a real one.
+/// **Every capability buys the family gg paired it with**, the id it names is a real one, and no
+/// pairing is dead.
 ///
-/// This is the invariant the whole host-side synthesis rests on: the capability id lives in gg, and
-/// the *only* reason an arm's catalogue can stay ignorant of it is that exactly one family is bought
-/// this way and gg knows which. A second capability appearing in the table without the
-/// [projection](crate::sandbox::catalogue_functions) learning about it would silently document a
-/// withheld family.
+/// This is the invariant the whole host-side synthesis rests on: the capability id lives in gg and
+/// in nothing an arm commits, so the *only* reason a catalogue can stay ignorant of it is that gg
+/// knows, per operation, which capability reaches it. A capability appearing on a row gg has not
+/// paired with that row's family would be a gate whose shape nobody wrote down — and the
+/// [projection](crate::sandbox::catalogue_functions) would carry it onto the entry regardless,
+/// silently documenting a withheld call or withholding a documented one.
+///
+/// The dead-pairing half is the same rule [`Applicability`]'s dead exemptions are held to, and it
+/// bites in the same way: a row in [`CAPABILITY_FAMILIES`] naming a family nothing in it is bought
+/// by is a waiver left behind after the operations it excused were re-gated, and it makes the next
+/// capability written into that family look reviewed when it was not.
 fn capabilities(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
     let catalog: BTreeSet<&str> = GG_CAPABILITY_CATALOG.iter().copied().collect();
+    let mut bought: BTreeSet<&str> = BTreeSet::new();
     for operation in operations {
-        match (operation.binding, operation.family == FAMILY_PROGRAMS) {
-            (Binding::Capability(id), true) => {
-                if !catalog.contains(id) {
-                    complain(format!(
-                        "`{}` is bought by `{id}`, which is not a gg capability",
-                        operation.id
-                    ));
-                }
-            }
-            (Binding::Capability(id), false) => complain(format!(
-                "`{}` is bought by the capability `{id}`, and the program library is the only \
-                 family a capability buys",
+        let Binding::Capability(id) = operation.binding else {
+            continue;
+        };
+        bought.insert(id);
+        if !catalog.contains(id) {
+            complain(format!(
+                "`{}` is bought by `{id}`, which is not a gg capability",
+                operation.id
+            ));
+        }
+        match CAPABILITY_FAMILIES
+            .iter()
+            .find(|(capability, _)| *capability == id)
+        {
+            None => complain(format!(
+                "`{}` is bought by the capability `{id}`, which gg pairs with no family — a \
+                 capability gate is synthesized host-side from the family an operation sits in, so \
+                 there is nothing for it to be synthesized from",
                 operation.id
             )),
-            (_, true) => complain(format!(
+            Some((_, family)) if *family != operation.family => complain(format!(
+                "`{}` is filed under `{}` and is bought by `{id}`, which buys the `{family}` \
+                 family",
+                operation.id, operation.family
+            )),
+            Some(_) => {}
+        }
+    }
+    for (capability, family) in CAPABILITY_FAMILIES {
+        if !bought.contains(capability) {
+            complain(format!(
+                "the capability `{capability}` is paired with the `{family}` family and buys \
+                 nothing in it — a pairing that gates no operation is a waiver waiting to be \
+                 appended to"
+            ));
+        }
+    }
+}
+
+/// The [program library](crate::programs) is bought whole, by its own capability.
+///
+/// It is the one family where the capability is the *only* gate on every member: the object is
+/// bound or absent entire, because an agent that may fetch a program it ran may re-run it, and one
+/// that may do neither has no library at all.
+fn programs(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    for operation in operations
+        .iter()
+        .filter(|operation| operation.family == FAMILY_PROGRAMS)
+    {
+        if operation.binding != Binding::Capability(CAPABILITY_PROGRAM_LIBRARY) {
+            complain(format!(
                 "`{}` belongs to the program library and is bound by {:?} rather than by the \
                  capability that buys the whole family",
                 operation.id, operation.binding
-            )),
-            (_, false) => {}
+            ));
+        }
+    }
+}
+
+/// **Searching the documentation is bound to every program; closing a documentation view is bought.**
+///
+/// The [views](views) rule from the other side, and load-bearing for the same reason. With the
+/// [prompt](crate::prompts) naming no function, a search is how an agent learns what it holds — so a
+/// run able to withhold it could withhold an agent's knowledge of its own capabilities, and a gate
+/// that slipped onto this row would do exactly that in all eleven arms at once. What the agent may
+/// *find* is still per agent, because the runtime filters every hit through
+/// [`Grants::permits`](crate::sandbox::Grants::permits), so the call being unconditional costs
+/// nothing a capability was buying.
+///
+/// Closing is the exception and is bought by
+/// [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE): an open only ever appends to
+/// the prompt, where a close rewrites its middle and costs the run every cached token after it.
+/// Whether that trade pays is a measurement, so it is a toggle.
+fn documentation(operations: &'static [Operation], complain: &mut impl FnMut(String)) {
+    for operation in operations
+        .iter()
+        .filter(|operation| operation.family == FAMILY_DOCS)
+    {
+        let expected = if operation.id.key == SEARCH {
+            Binding::Always
+        } else {
+            Binding::Capability(CAPABILITY_DOCVIEW_CLOSE)
+        };
+        if operation.binding != expected {
+            complain(format!(
+                "the documentation call `{}` is bound by {:?} where gg binds it by {expected:?}",
+                operation.id, operation.binding
+            ));
         }
     }
 }

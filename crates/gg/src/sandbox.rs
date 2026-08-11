@@ -104,12 +104,12 @@ pub(crate) mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
-    CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, FileWindow, HARNESS_FINISH,
-    MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY, MEMORY_READ_MEMORY,
-    MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_RERUN, PrepareFailure,
-    PreparedModule, PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES,
-    SurfaceCall, UnreachableTail, VIEW_CLOSE, all_languages, language, resolve_program_language,
-    spell,
+    CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, DOCS_SEARCH, FileWindow,
+    HARNESS_FINISH, MEMORY_CREATE_MEMORY, MEMORY_DELETE_MEMORY, MEMORY_EDIT_MEMORY,
+    MEMORY_READ_MEMORY, MEMORY_UPDATE_MEMORY, MEMORY_WRITE_MEMORY, PROGRAMS_GET, PROGRAMS_RERUN,
+    PrepareFailure, PreparedModule, PreparedProgram, ProgramLanguage, REVIEW_APPROVE,
+    REVIEW_REQUEST_CHANGES, SurfaceCall, UnreachableTail, VIEW_CLOSE, all_languages, language,
+    resolve_program_language, spell,
 };
 
 // Named only in documentation and in the seam's own tests today, but exported all the same: they

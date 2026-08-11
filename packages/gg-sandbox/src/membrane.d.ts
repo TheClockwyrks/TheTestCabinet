@@ -470,6 +470,61 @@ declare module "test-cabinet:gg/session" {
 }
 
 /**
+ * Finding a function, and taking its documentation back out again — the second model-facing
+ * carve-out, beside `session`, and never a gg tool. `src/gg/docs.ts` is its only importer.
+ *
+ * `search` is bound into every program's scope whatever a run enables: the system prompt names no
+ * function, so this is the only way a model learns what it holds. The two closing calls are bought
+ * by a capability and refused at the membrane without it — opening a documentation view only
+ * appends to the prompt, while closing one rewrites its middle.
+ *
+ * The host filters every hit through the same predicate that decides what this agent may call, so a
+ * search never returns something the search's own caller could not have used.
+ */
+declare module "test-cabinet:gg/docs" {
+  /** One entry a search matched: enough to choose from, and no more. */
+  export interface DocHitRaw {
+    /** What `openDocsView` takes to read the whole entry. */
+    key: string;
+    /** `"function"` or `"type"`, as a bare string — the WIT declares no enum for it. */
+    kind: string;
+    /** The module the entry lives in. */
+    module: string;
+    /** The name a program calls it by, or the type's own name. */
+    name: string;
+    /** Its one-line brief, and only that. */
+    summary: string;
+  }
+
+  /** One page of results, with the total behind it. */
+  export interface DocSearchRaw {
+    /** How many entries matched before paging. */
+    total: number;
+    /** The offset this page starts at, echoed back. */
+    offset: number;
+    /** The page itself, best first. */
+    hits: DocHitRaw[];
+  }
+
+  /**
+   * Search everything this agent can call, and everything its signatures mention. Each `option<T>`
+   * is a required positional that may be `undefined`.
+   */
+  export function search(
+    query: string,
+    module: string | undefined,
+    type: string | undefined,
+    kind: string | undefined,
+    offset: number | undefined,
+    limit: number | undefined,
+  ): DocSearchRaw;
+  /** Close the documentation view keyed by `key`, and return how many were closed. */
+  export function closeDocView(key: string): number;
+  /** Close every documentation view, and return how many went. */
+  export function closeDocViews(): number;
+}
+
+/**
  * Putting material into the agent's own context window — the third model-facing carve-out, beside
  * `session` and `docs`, and never a gg tool. `src/tools/views.ts` is its only importer.
  *
@@ -496,7 +551,7 @@ declare module "test-cabinet:gg/views" {
   export interface OpenViewRaw {
     /** Whether it is a file, text, or documentation view. */
     kind: ViewKindRaw;
-    /** What `closeView` takes: a file view's path, a text view's label, or a docs view's function name. */
+    /** What closes it: `closeView` for a file, text or search-results view, `closeDocView` for a docs view. */
     selector: string;
     /** Roughly what holding it costs, in tokens. A `u64`, so a `bigint` here. */
     tokens: bigint;

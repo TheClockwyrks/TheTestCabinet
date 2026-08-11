@@ -21,9 +21,9 @@ every Rust program in the study. It carries the hand-written, idiomatic SDK a mo
 calls, the shell gg's generated entry file names, and the generated bindings both are
 written against.
 
-The SDK is **eleven capability modules** — `files`, `shell`, `board`, `tasks`,
-`memories`, `views`, `context`, `delegation`, `skills`, `programs`, `session` — plus a
-twelfth, `core`, which declares no function and holds the three types every other
+The SDK is **twelve capability modules** — `files`, `shell`, `board`, `tasks`,
+`memories`, `views`, `docs`, `context`, `delegation`, `skills`, `programs`, `session` —
+plus a thirteenth, `core`, which declares no function and holds the three types every other
 module's signatures name. Each module owns the types it produces, so `gg::files::FileRead`
 is at once the path a program writes and the key its documentation view is opened by, and
 two modules are free to declare a type of the same name. `gg::prelude` re-exports the
