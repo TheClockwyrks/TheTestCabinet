@@ -111,5 +111,32 @@ uvx --quiet --from "componentize-py==$COMPONENTIZE_VERSION" componentize-py \
 	-p "$ROOT/$BUILD_DIR/vendor" \
 	-o "$ROOT/$COMPONENT"
 
+# 4. Record what went into the component, beside it. Nothing in CI rebuilds this artifact — and the
+#    build is not even byte-reproducible, so nothing in CI could — which leaves this manifest and the
+#    Rust test that recomputes it as the only thing standing between an SDK edit committed without a
+#    rebuild and every Python program in the run being evaluated by last month's guest.
+#    `requirements.txt` is in it beside the SDK tree because step 1 vendors exactly what it pins and
+#    step 3 bakes the closure of what the shim imports: a wheel bumped there without a rebuild is a
+#    library the prompt names at one version and the guest carries at another.
+#
+#    `build.sh` records ITSELF, because the recipe is an input as much as any file it reads: the
+#    flags below decide what the artifact is, and editing one without re-running this script leaves
+#    the checkout describing something the committed bytes are not. That an edit to it fails the
+#    gate until it is run is the intended reading — editing the recipe and not cooking is exactly
+#    the state the gate exists to name.
+echo "Recording the component manifest ..."
+node "$ROOT/scripts/gg-artifact-manifest.mjs" \
+	--arm python \
+	--rebuild "$PACKAGE/build.sh" \
+	--artifact "$COMPONENT" \
+	--source-root "$PACKAGE/src" \
+	--source-file "$PACKAGE/requirements.txt" \
+	--source-file "$PACKAGE/build.sh" \
+	--ignore "$PACKAGE/src/__pycache__" \
+	--ignore "$PACKAGE/src/gg/__pycache__" \
+	--wit crates/gg/wit \
+	--pin "componentizePy=$COMPONENTIZE_VERSION" \
+	--out "$DEST_DIR/python.component.manifest.json"
+
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
 echo "Remember to commit the refreshed artifact together with the source change."

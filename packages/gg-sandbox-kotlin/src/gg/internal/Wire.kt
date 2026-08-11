@@ -68,55 +68,62 @@ import org.teavm.jso.core.JSString
 // The API objects
 // -------------------------------------------------------------------------------------------
 
-// Each object is reached through `typeof` rather than by name, because a capability this run withheld
-// is not a binding at all in the guest's scope and reading an undeclared identifier throws. Nothing
-// can reach these by string: they are the enclosing function's own parameters.
+// Each object is reached through `typeof` rather than by name, because reading an undeclared
+// identifier throws. Nothing can reach these by string: they are the enclosing function's own
+// parameters.
+//
+// THE GUEST BINDS EVERY MODULE, WHATEVER THE RUN ENABLED, so none of these answers `null` in a run
+// whose artifacts agree. It did not always: the guest's scope used to be built from the run's
+// enabled tools, and a capability the run withheld was simply not a binding — which is the case
+// these `typeof` guards were written for and the case that no longer exists. What a `null` means
+// now is that this SDK and the guest component disagree about what is exported, which is drift
+// between two artifacts rather than anything a run decided.
 
-/** The guest's `fs` object, or `null` when this run did not bind it. */
+/** The guest's `fs` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof fs === 'undefined' ? null : fs;")
 internal external fun fsObject(): JSObject?
 
-/** The guest's `system` object, or `null` when this run did not bind it. */
+/** The guest's `system` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof system === 'undefined' ? null : system;")
 internal external fun systemObject(): JSObject?
 
-/** The guest's `project` object, or `null` when this run did not bind it. */
+/** The guest's `project` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof project === 'undefined' ? null : project;")
 internal external fun projectObject(): JSObject?
 
-/** The guest's `tasks` object, or `null` when this run did not bind it. */
+/** The guest's `tasks` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof tasks === 'undefined' ? null : tasks;")
 internal external fun tasksObject(): JSObject?
 
-/** The guest's `memory` object, or `null` when this run did not bind it. */
+/** The guest's `memory` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof memory === 'undefined' ? null : memory;")
 internal external fun memoryObject(): JSObject?
 
-/** The guest's `view` object, or `null` when this run did not bind it. */
+/** The guest's `view` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof view === 'undefined' ? null : view;")
 internal external fun viewObject(): JSObject?
 
-/** The guest's `context` object, or `null` when this run did not bind it. */
+/** The guest's `context` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof context === 'undefined' ? null : context;")
 internal external fun contextObject(): JSObject?
 
-/** The guest's `agents` object, or `null` when this run did not bind it. */
+/** The guest's `agents` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof agents === 'undefined' ? null : agents;")
 internal external fun agentsObject(): JSObject?
 
-/** The guest's `skills` object, or `null` when this run did not bind it. */
+/** The guest's `skills` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof skills === 'undefined' ? null : skills;")
 internal external fun skillsObject(): JSObject?
 
-/** The guest's `programs` object, or `null` when this run did not bind it. */
+/** The guest's `programs` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof programs === 'undefined' ? null : programs;")
 internal external fun programsObject(): JSObject?
 
-/** The guest's `harness` object, or `null` when this run did not bind it. */
+/** The guest's `harness` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof harness === 'undefined' ? null : harness;")
 internal external fun harnessObject(): JSObject?
 
-/** The guest's `review` object, or `null` when this run did not bind it. */
+/** The guest's `review` object, or `null` when the guest does not export it. */
 @JSBody(script = "return typeof review === 'undefined' ? null : review;")
 internal external fun reviewObject(): JSObject?
 
@@ -160,9 +167,15 @@ private external fun apply(target: JSObject?, name: String, args: JSArray<JSObje
 /**
  * One call on one API object: the value it returned, or a raised [ToolError].
  *
- * @param tool the gg name a refusal is reported under when this run bound nothing here
+ * The `null` branch is **not** a withheld capability and does not say it is. Every module is bound
+ * in every program and every call on one is the host's to permit or refuse, so the only way [apply]
+ * finds nothing is that this SDK names a function the run's guest component does not export — the
+ * two artifacts disagreeing, which a model can do nothing about and must not be told to look for a
+ * capability over.
+ *
+ * @param tool the gg name the failure is reported under
  * @param target the API object, as one of this file's accessors answered
- * @param owner the object's own name, for the refusal's sentence
+ * @param owner the object's own name, for the failure's sentence
  * @param name the function to call on it
  * @param args the arguments, already lowered
  */
@@ -177,9 +190,10 @@ internal fun ggCall(
         apply(target, name, args)
             ?: throw ToolError(
                 tool,
-                ToolErrorCode.UNAVAILABLE,
-                "`$owner.$name` is not available in this run: this program's capability set does " +
-                    "not offer it",
+                ToolErrorCode.OTHER,
+                "`$owner.$name` did not reach the guest: gg's SDK declares it and this run's " +
+                    "guest does not export it, which is a mismatch between the two rather than " +
+                    "anything this program did",
             )
     if (ggBool(outcome, "ok")) {
         return ggGet(outcome, "value") ?: JSObjects.create()

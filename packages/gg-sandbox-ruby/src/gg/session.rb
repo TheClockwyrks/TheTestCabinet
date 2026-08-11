@@ -27,7 +27,7 @@ module GG
       Wire.call("finish", "session", "finish", [summary])
       nil
     end
-    operation :finish, "session.finish", ending: "standard"
+    operation :finish, "session.finish"
 
     # Accept the work under review: it meets every completion criterion and stays in scope.
     #
@@ -40,7 +40,7 @@ module GG
       Wire.call("approve", "session", "approve", [])
       nil
     end
-    operation :approve, "session.approve", ending: "review"
+    operation :approve, "session.approve"
 
     # Reject the work under review, listing every change that must be made before it can be
     # accepted.
@@ -57,6 +57,6 @@ module GG
                 [Check.strings("request_changes", "items", items)])
       nil
     end
-    operation :request_changes, "session.request_changes", ending: "review"
+    operation :request_changes, "session.request_changes"
   end
 end

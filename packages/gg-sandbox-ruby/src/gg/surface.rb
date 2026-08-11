@@ -8,7 +8,7 @@ module GG
   # binds, and there is exactly one place either of them learns it: the `operation` line written
   # under the method's own `end`.
   #
-  # 1. `GG::Scope`, which binds the subset of them this run offers onto the modules a program calls.
+  # 1. `GG::Scope`, which binds every one of them onto the modules a program calls, at load time.
   # 2. `tools/signatures.rb`, which requires this SDK, reads {registry} and reflects each entry's
   #    YARD documentation into `crates/gg/src/sandbox/guests/ruby.signatures.json`.
   #
@@ -20,14 +20,14 @@ module GG
   # `module_function` and `alias_method`: immediately after the `end` it is about, naming the method
   # it is about.
   #
-  # ## Why an entry carries a gate at all
+  # ## Why an entry still names a gg tool, and nothing else about gating
   #
-  # The **catalogue** carries none: which capability buys an operation is gg's to state, once, in
-  # its own operations table, and this reflector emits no gate field of any kind. What the *guest*
-  # still needs is different — it builds the surface a program is handed out of the run's enabled
-  # set, so it has to know which gg tool name buys which method. That is a run-time binding fact
-  # rather than a documentation one, and it disappears from here entirely once the SDK becomes
-  # static and the host refuses a withheld call outright.
+  # It does not carry a gate. Which capability buys an operation is gg's to state, once, in its own
+  # operations table, and the **host** refuses a call this agent was not granted — the SDK is
+  # static, every declaration below is bound onto its module at load time, and no run's enabled set
+  # is read anywhere in this package. The `tool:` that survives is a different claim: it says which
+  # gg tool this SDK implements a method *for*, which is what `GG::Scope.bound_tools` answers the
+  # component's drift export with.
   #
   # @api private
   module Surface
@@ -48,45 +48,22 @@ module GG
       # @return [Boolean] whether this is a second way to reach {operation} rather than the first
       attr_reader :aliased
 
-      # @return [String, nil] the gg tool that must be enabled, or nil when no tool gates it
+      # @return [String, nil] the gg tool this SDK implements it for, or nil when no tool dispatches
+      #   it
       attr_reader :tool
-
-      # @return [String, nil] the ending role whose programs bind it, or nil
-      attr_reader :ending
-
-      # @return [Boolean] whether the program library capability binds it
-      attr_reader :library
 
       # @param owner [Module] the module or class the method is declared on
       # @param name [Symbol] the method's own name
       # @param operation [String] gg's operation id
       # @param aliased [Boolean] whether it is a second way to reach that operation
-      # @param tool [String, nil] the gg tool that must be enabled
-      # @param ending [String, nil] the ending role whose programs bind it
-      # @param library [Boolean] whether the program library capability binds it
-      def initialize(owner:, name:, operation:, aliased:, tool:, ending:, library:)
+      # @param tool [String, nil] the gg tool this SDK implements it for
+      def initialize(owner:, name:, operation:, aliased:, tool:)
         @owner = owner
         @name = name
         @operation = operation
         @aliased = aliased
         @tool = tool
-        @ending = ending
-        @library = library
         freeze
-      end
-
-      # Whether this run offers the method, given what it enabled.
-      #
-      # @param enabled [Array<String>] the run's enabled gg tool names
-      # @param ending [String] the ending role this program is given
-      # @param library [Boolean] whether this agent keeps a program library
-      # @return [Boolean] whether to bind it
-      def offered?(enabled, ending, library)
-        return library if @library
-        return @ending == ending unless @ending.nil?
-        return true if @tool.nil?
-
-        enabled.include?(@tool)
       end
 
       # Whether the method is a module function rather than a member of a value.
@@ -176,28 +153,25 @@ module GG
       #
       # @param name [Symbol] the method this module declares
       # @param id [String] gg's operation id, `namespace.key`
-      # @param tool [String, nil] the gg tool that must be enabled for a program to be given it
-      # @param ending [String, nil] the ending role whose programs are given it
-      # @param library [Boolean] whether the program library capability gives it
+      # @param tool [String, nil] the gg tool this SDK implements it for
       # @return [Entry] the recorded declaration
-      def operation(name, id, tool: nil, ending: nil, library: false)
+      def operation(name, id, tool: nil)
         Surface.declare(Entry.new(owner: self, name: name, operation: id, aliased: false,
-                                  tool: tool, ending: ending, library: library))
+                                  tool: tool))
       end
 
       # Declare that the instance method `name` is a **second** way to reach the operation `id`.
       #
-      # A member function is bound exactly when the module function it stands beside is, so it
-      # carries the same gate and states it the same way.
+      # A member function is a second way into a capability the module function already carries, so
+      # it names the same operation and the same tool.
       #
       # @param name [Symbol] the method this class declares
       # @param id [String] gg's operation id, `namespace.key`
-      # @param tool [String, nil] the gg tool that must be enabled for a program to be given it
-      # @param library [Boolean] whether the program library capability gives it
+      # @param tool [String, nil] the gg tool this SDK implements it for
       # @return [Entry] the recorded declaration
-      def member_operation(name, id, tool: nil, library: false)
+      def member_operation(name, id, tool: nil)
         Surface.declare(Entry.new(owner: self, name: name, operation: id, aliased: true,
-                                  tool: tool, ending: nil, library: library))
+                                  tool: tool))
       end
     end
   end

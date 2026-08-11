@@ -235,6 +235,13 @@ end
 # `GG::Core::UNCHANGED` is the one of those a program writes. A declaration marked `@api private` is
 # bridge rather than surface and is left out — as is the whole of `GG::Wire`, `GG::Check` and the
 # rest, which live outside every capability module and are therefore never looked at here.
+#
+# **Ordered by where each is written, not by what `Module#constants` hands back.** CRuby's constant
+# table is a hash keyed on symbol ids, so `constants(false)` answers in an order that shifts when
+# unrelated symbols are interned elsewhere in the SDK — which showed up as a hundred and sixty lines
+# of pure reordering in the committed catalogue after an edit that touched no type at all. The line
+# YARD recorded is the order a reader of the source sees, it is what the sentence above claims, and
+# it does not move unless the source does.
 def declared_types(mod)
   mod.constant.constants(false).filter_map do |name|
     value = mod.constant.const_get(name)
@@ -245,7 +252,7 @@ def declared_types(mod)
     next if private?(object)
 
     [path, object]
-  end
+  end.sort_by { |(path, object)| [object.files.first&.last || 0, path] }
 end
 
 TYPES = MODULES.flat_map { |mod| declared_types(mod).map { |(path, object)| [path, mod, object] } }

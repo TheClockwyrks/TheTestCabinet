@@ -1,33 +1,33 @@
 # frozen_string_literal: true
 
 module GG
-  # The surface a program is handed: the capability modules, carrying exactly the functions this run
-  # offers.
+  # The surface a program is handed: the capability modules, carrying every function this SDK
+  # declares.
   #
-  # Two things are built here, and the difference between them is the whole of gg's capability model
-  # as this guest sees it.
+  # **Nothing here varies with the run, and nothing here is a gate.** Every declaration
+  # `GG::Surface` recorded is bound onto its module at load time — inside the heap
+  # `componentize-js` snapshots — and stays there for every program of every run. A call this agent
+  # was not granted is an ordinary Ruby call that reaches the host, and what comes back is a
+  # `GG::Core::ToolError` naming the capability that is missing and why: a value a `rescue` clause
+  # can catch and act on, where a `NoMethodError` from Opal was only ever a dead end.
   #
-  # **The module functions are built from the run.** Every declaration `GG::Surface` recorded is
-  # lifted off its module at load time and put back on it by {install}, once per run, for exactly
-  # the subset this run enables. So what a module answers to is what a program really has, and a
-  # name reached for and not offered raises with a sentence naming the module and what it does
-  # offer.
+  # The gate is the **host's**, from gg's own operations table, and it is the same one that decides
+  # what a `docs.search` will show this agent. There is one reading of "may this agent call X" and
+  # it is not in this file.
   #
-  # **It is not the enforcement.** The **host** refuses a call outside the run's enabled set,
-  # whichever name a program used to make it. What is built here is the *surface*, and the surface
-  # is what a model reads.
+  # **The types are not built at all**, for the same reason they never were: a type is not a
+  # capability. `GG::Core::ToolError` is what a `rescue` clause catches and
+  # `GG::Tasks::TaskStatus::DONE` is what a status argument is, and both are declared by this SDK
+  # once, into the pre-initialised heap, where they stay.
   #
-  # **The types are not built at all.** A type is not a capability: `GG::Core::ToolError` is what a
-  # `rescue` clause catches and `GG::Tasks::TaskStatus::DONE` is what a status argument is, and both
-  # are declared by this SDK once, into the component's pre-initialised heap, where they stay.
+  # ## Why the implementations are still lifted off and put back
   #
-  # ## Why the implementations are lifted off and put back rather than left in place
-  #
-  # Because a module that always answered every name would be a module that answered for calls this
-  # run withheld, and the message a program gets for one would be gg's refusal three steps later
-  # rather than a `NoMethodError` on the line that wrote it. Lifting happens once, at load,
-  # inside the snapshot `componentize-js` bakes; putting back happens per run and is the only
-  # per-turn cost.
+  # Not for gating — for **arity and keywords**. Opal lowers keyword arguments to a trailing hash
+  # and silently ignores keys the target does not declare, so `create_issue(reviewer: [...])` — the
+  # singular/plural typo — would otherwise be accepted and file an issue with no reviewer, a failure
+  # the model cannot see. Each implementation is therefore lifted off its module, its calling shape
+  # reflected once, and put back behind a forwarder that checks both. All of it happens at load, so
+  # a turn pays nothing.
   #
   # @api private
   module Scope
@@ -43,57 +43,55 @@ module GG
     # entire point is what a language costs.
     IMPLEMENTATIONS = {}
 
-    # The declarations installed by the last {install}, so a second run does not leave the first
-    # run's surface behind.
-    @installed = []
+    # The module paths a program may reach, in presentation order — read by `shim.js` for the
+    # unknown-name hint, and constant because the surface is.
+    MODULE_PATHS = []
 
-    class << self
-      # @return [Array<Surface::Entry>] the declarations currently bound onto their modules
-      attr_reader :installed
-    end
-
-    # Lift every module function off the module that declares it, recording its implementation and
-    # its calling shape. Called at load time; see {IMPLEMENTATIONS}.
+    # Lift every module function off the module that declares it, record its implementation and its
+    # calling shape, and put it straight back behind the forwarder that checks both. Called at load
+    # time; see {IMPLEMENTATIONS}.
     #
     # A member function is left exactly where it is: it is a second way to reach an operation the
     # module function already carries, it hangs off a value a program can only be holding because
-    # that operation ran, and lifting it would mean rebinding an unbound instance method on every
-    # run for no gain.
+    # that operation ran, and lifting it would mean rebinding an unbound instance method for no
+    # gain.
     #
     # @return [void]
     def self.lift
-      Surface.registry.each do |entry|
-        next unless entry.module_function?
-
+      declared = Surface.registry.select(&:module_function?)
+      declared.each do |entry|
         callable = entry.owner.method(entry.name)
         IMPLEMENTATIONS[entry] = [callable, keywords(callable), arity(callable)].freeze
         entry.owner.singleton_class.send(:remove_method, entry.name)
       end
       # Only where there is a surface to be outside of. `GG::Core` declares types and no function
-      # at all, so a name it does not have is an ordinary Ruby mistake rather than a withheld
-      # capability, and pointing at a directory it never carries would be an invitation to a call
-      # that does not exist.
+      # at all, so a name it does not have is an ordinary Ruby mistake, and pointing at a directory
+      # it never carries would be an invitation to a call that does not exist.
       MODULES.select { |mod| Surface.declared_on(mod).any? }.each { |mod| refuse_unknown(mod) }
       IMPLEMENTATIONS.freeze
+      declared.each { |entry| bind(entry) }
+      MODULES.select { |mod| declared.any? { |entry| entry.owner.equal?(mod) } }
+             .each { |mod| MODULE_PATHS << mod.name.to_s }
+      MODULE_PATHS.freeze
     end
 
-    # Answer a name a module does not offer with the module, the name, and where to look.
+    # Answer a name a module does not declare with the module, the name, and what it does declare.
     #
-    # `GG::Files.read_file` in a run with reading withheld is the single most likely mistake a model
-    # makes against this surface, and the difference between `undefined method 'read_file' for
-    # GG::Files` and a sentence naming what that module does offer is a turn.
+    # Every gg function is bound, so a name that lands here is one gg does not have — a typo, or a
+    # call out of another arm's vocabulary. The difference between `undefined method 'read_fil' for
+    # GG::Files` and a sentence listing what that module declares is a turn.
     #
     # @param mod [Module] the capability module to install the refusal on
     # @return [void]
     def self.refuse_unknown(mod)
       mod.singleton_class.send(:define_method, :method_missing) do |name, *_args|
-        offered = Scope.installed.select { |entry| entry.owner.equal?(mod) }.map(&:name).sort
+        declares = Surface.declared_on(mod).map(&:name).sort
         raise NoMethodError,
-              "`#{mod.name}.#{name}` is not one of the names this run offers; " \
-              "it offers #{offered.join(', ')}"
+              "`#{mod.name}.#{name}` is not one of the names gg declares there; " \
+              "it declares #{declares.join(', ')}"
       end
       mod.singleton_class.send(:define_method, :respond_to_missing?) do |name, include_private = false|
-        Scope.installed.any? { |entry| entry.owner.equal?(mod) && entry.name.to_s == name.to_s } ||
+        Surface.declared_on(mod).any? { |entry| entry.name.to_s == name.to_s } ||
           super(name, include_private)
       end
     end
@@ -199,36 +197,13 @@ module GG
     # it catches the failure no compiler can: a tool added, renamed or removed in gg, with a stale
     # `.wasm` still checked in.
     #
-    # @return [Array<String>] every gg tool this SDK really defines a method for
+    # @return [Array<String>] every gg tool this SDK really defines a method for, in declaration
+    #   order
     def self.bound_tools
       Surface.registry.select { |entry| IMPLEMENTATIONS.key?(entry) }
              .reject(&:aliased)
              .filter_map(&:tool)
              .uniq
-    end
-
-    # Put back onto each capability module exactly the functions this run offers, and nothing
-    # else.
-    #
-    # @param enabled [Array<String>] the run's enabled gg tool names
-    # @param ending [String] the role whose ending group this program is given; `none` binds no
-    #   ending at all, which is what an on-use script runs under
-    # @param library [Boolean] whether this agent keeps a program library
-    # @return [Array<String>] the module paths a program may reach, in presentation order
-    def self.install(enabled, ending, library)
-      on = enabled.to_a
-      @installed.each { |entry| entry.owner.singleton_class.send(:remove_method, entry.name) }
-
-      offered = Surface.registry.select do |entry|
-        IMPLEMENTATIONS.key?(entry) && entry.offered?(on, ending, library)
-      end
-      offered.each { |entry| bind(entry) }
-      @installed = offered
-
-      # A module with nothing on it is not a module a program may reach: reaching it would teach a
-      # model nothing, and `GG::Core` declares no function at all.
-      MODULES.select { |mod| offered.any? { |entry| entry.owner.equal?(mod) } }
-             .map { |mod| mod.name.to_s }
     end
 
     # Bind one declaration back onto the module that declares it, behind the forwarder that says

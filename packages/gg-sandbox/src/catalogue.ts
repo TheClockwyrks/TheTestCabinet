@@ -1,23 +1,23 @@
 /**
  * What this guest needs in order to build a program's surface — and nothing a model ever reads.
  *
- * It is deliberately much smaller than it was. Every fact about what a function is *called*, what it
- * *does*, which module it lives in and which gg operation it binds is now written on the declaration
- * itself — the module it is declared in, its export, its JSDoc, its `@ggop` — so none of that is
- * here. What is left is the one thing a declaration cannot state, because it is not a fact about this
- * SDK at all: **what buys a call at run time**.
+ * It is deliberately much smaller than it was, and it lost its whole reason for existing in the
+ * process. Every fact about what a function is *called*, what it *does*, which module it lives in
+ * and which gg operation it binds is written on the declaration itself — the module it is declared
+ * in, its export, its JSDoc, its `@ggop`. And the one thing a declaration could not state — **what
+ * buys a call at run time** — is no longer this guest's business at all.
  *
- * gg owns that. Its operations table says whether an operation is bought by a gg tool, by a
- * capability, by a role's ending, or by nothing. The guest is told only the three run facts the host
- * passes to `run` — the enabled tool names, the ending role, and whether this agent keeps a program
- * library — so it needs its own reading of the same question to decide which functions a program is
- * given. That reading is below.
+ * gg owns that, and gg enforces it. Its operations table says whether an operation is bought by a gg
+ * tool, by a capability, by a role's ending, or by nothing, and the **membrane** checks it when the
+ * call arrives. This guest binds every function it has into every program's scope, unconditionally:
+ * the SDK is static, a withheld call is a call that reaches the host and is refused there with a
+ * sentence naming what is missing, and there is no reading of a run's enabled set anywhere in this
+ * package any more.
  *
- * It is **not** the enforcement, and it is not asserted in the signature catalogue either. The host
- * refuses a withheld call whichever name a program used to reach it, and the committed catalogue
- * carries no gate at all, because a gate an arm asserted would be an arm asserting something only gg
- * can be held to. What is here decides the *surface* a model is shown, which is a different and much
- * weaker claim.
+ * What is left here is the module vocabulary a scope is assembled from, the alias names two sibling
+ * arms resolve against this same scope, and the one table that is a claim about *this package*
+ * rather than about a run: which gg tool each operation this SDK implements would dispatch, read by
+ * `boundTools` and by nothing else.
  */
 
 /** The gg module ids this SDK is divided into, in the order the surface is presented in. */
@@ -73,34 +73,36 @@ export const MODULE_ORDER: readonly ModuleId[] = [
 export const SURFACE = "gg";
 
 /**
- * The **API object** each module's functions used to hang off, kept for one reader and no second.
+ * The **API object** names each module's functions are also reachable under, kept for one reader and
+ * no second.
  *
- * That reader is the PureScript arm, which compiles to a bundle this same component evaluates and
- * resolves these as free identifiers. Its SDK is its own — `Gg.Files`, `Gg.Views` — and the names
- * below are the lowering it was written against, so removing one would break an arm this package does
- * not own.
+ * That reader is the PureScript, Java and Kotlin arms' compiled bundles, which this same component
+ * evaluates and which resolve these as free identifiers. Their SDKs are their own — `Gg.Files`,
+ * `Gg.Views` — and the names below are the lowering they were written against, so removing one would
+ * break an arm this package does not own.
  *
- * `session` maps to whichever object the bound ending group belongs to, which is decided per program
- * rather than here, so it is deliberately absent.
+ * `session` has **two**, and that is the whole of what the static scope changed here. An ending group
+ * used to be chosen per program from the agent's role, so a reviewer's scope carried `review` and no
+ * `harness`; now both are bound, always, and which of them the host will accept is the host's
+ * business. A reviewer that calls `harness.finish` therefore gets gg's own sentence — it ends its
+ * session with a verdict, and here are the two calls that do — instead of a `ReferenceError` naming
+ * an identifier.
  */
-export const LEGACY_GROUPING: Readonly<Partial<Record<ModuleId, string>>> = {
-  files: "fs",
-  shell: "system",
-  board: "project",
-  tasks: "tasks",
-  memories: "memory",
-  views: "view",
-  context: "context",
-  delegation: "agents",
-  skills: "skills",
-  programs: "programs",
+export const LEGACY_GROUPINGS: Readonly<
+  Partial<Record<ModuleId, readonly string[]>>
+> = {
+  files: ["fs"],
+  shell: ["system"],
+  board: ["project"],
+  tasks: ["tasks"],
+  memories: ["memory"],
+  views: ["view"],
+  context: ["context"],
+  delegation: ["agents"],
+  skills: ["skills"],
+  programs: ["programs"],
+  session: ["harness", "review"],
 };
-
-/** The legacy grouping the `standard` ending group hangs off, for the two readers above. */
-export const LEGACY_STANDARD_ENDING = "harness";
-
-/** The legacy grouping the `review` ending group hangs off, for the two readers above. */
-export const LEGACY_REVIEW_ENDING = "review";
 
 /**
  * Every gg tool, in `ALL_TOOL_NAMES` order.
@@ -152,6 +154,12 @@ export const GG_TOOLS: readonly string[] = [
 /**
  * Every operation a gg **tool** buys, and which tool buys it.
  *
+ * It no longer decides anything a program can see: the scope is static, so this table is read by
+ * {@link "./shim.js".boundTools} alone — the export gg compares against its own tool vocabulary on
+ * the committed artifact. What buys a call at *run time* is gg's own operations table, checked at
+ * the membrane; what is here is only "which gg tool does this SDK implement a function for", which
+ * is a claim about this package rather than about a run.
+ *
  * Three of these are not one-to-one, and each says something real. `files.read_text_file` is a helper
  * rather than a tool of its own, so it is bought by the read it is built on; `views.open_file`
  * performs that same read on the way to showing the file, so a run with reading withheld must not get
@@ -198,52 +206,46 @@ export const TOOL_BOUND: Readonly<Record<string, string>> = {
 };
 
 /**
- * The operations nothing gates, bound into every program whatever a run enables.
+ * **Every gg operation this SDK implements**, in catalogue order.
  *
- * The same carve-out the endings have, and for the same reason: a run that offers no tools at all
- * must still be able to show its model something, and must always be able to read what the functions
- * it does have do.
+ * It states one thing and gates nothing: that this package declares a function for each of these,
+ * and for nothing else. `tools/signatures.mjs` reads it in both directions — a declaration whose
+ * `@ggop` names an operation that is not here is refused, and an operation here that no declaration
+ * binds is refused — so a function added without an operation, or an operation added without a
+ * function, fails the reflector rather than reaching a model as an absence.
+ *
+ * What buys any of them at run time is gg's business and is written down in gg's own operations
+ * table. Nothing here is read on a turn path: {@link buildScope} binds what the modules export, and
+ * the membrane decides what happens when one is called.
  */
-export const ALWAYS_BOUND: readonly string[] = [
+export const OPERATIONS: readonly string[] = [
+  ...Object.keys(TOOL_BOUND),
   "views.open_text",
   "views.open_docs_view",
   "views.close",
   "views.current",
-];
-
-/**
- * The operations the program-library **capability** buys, all together or not at all.
- *
- * No tool name stands for this family, which is why the host passes a flag rather than a name in the
- * enabled set.
- */
-export const LIBRARY_BOUND: readonly string[] = [
   "programs.history",
   "programs.get",
   "programs.rerun",
+  "session.finish",
+  "session.approve",
+  "session.request_changes",
 ];
 
 /**
- * Which group of ending functions a program is given, mirroring the WIT's `ending-kind`.
+ * Which group of ending functions the host will **accept** from this program, mirroring the WIT's
+ * `ending-kind`.
+ *
+ * It no longer decides what is bound — every ending function is in every program's scope — and the
+ * guest does nothing with it at all. It survives as a parameter of `run` because it is a fact about
+ * the agent that gg states on the wire, and because removing a parameter from a WIT world means
+ * rebuilding eleven committed guests for a value four of them never read.
  *
  * `"none"` is the arm an **on-use script** runs under — the code a skill or a memory runs when the
- * agent first reads it. That script is not the agent's turn, so it must not be able to declare the
- * session over, and the way that is made true is the way every withheld call is: the name is not in
- * its scope.
+ * agent first reads it. That script is not the agent's turn, so it may not declare the session over,
+ * and the host is what tells it so.
  */
 export type EndingKind = "standard" | "review" | "none";
-
-/**
- * The operations a **role's ending** buys, by the role whose programs get them.
- *
- * Exactly one role's group is bound per program, because an ending is a result and a role's result
- * has a shape: work reports what was done, a review returns a verdict.
- */
-export const ENDING_BOUND: Readonly<Record<string, EndingKind>> = {
-  "session.finish": "standard",
-  "session.approve": "review",
-  "session.request_changes": "review",
-};
 
 /**
  * The scope object a program reaches its loaded **code modules** through: the code of a skill or a

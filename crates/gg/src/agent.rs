@@ -3022,6 +3022,7 @@ async fn run_agent(
             &registry.definitions(),
             ending_role,
             program_library,
+            profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
             code.enabled.then_some(code.language),
             profile
                 .capability(CAPABILITY_SKILLS)
@@ -3064,7 +3065,13 @@ async fn run_agent(
                 .chain(ending_role.tools().iter().map(|name| name.to_string()))
                 .collect(),
             apis: if code.enabled {
-                api_surface(&registry, ending_role, program_library, code.language)
+                api_surface(
+                    &registry,
+                    ending_role,
+                    program_library,
+                    profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
+                    code.language,
+                )
             } else {
                 Vec::new()
             },
@@ -5304,14 +5311,15 @@ impl Agent {
         // program's scope, the functions a doc lookup will describe, and the section the system
         // prompt renders) all read this one value.
         let mut programs = crate::programs::resolve_program_library(profile).library;
+        // Whether this agent may take a documentation view back OUT of its window, resolved once
+        // here and handed to both readers of it: the runtime below, and the per-turn code scope the
+        // membrane builds its own grant from. Two resolutions of one capability is one too many —
+        // see `surface_capabilities`.
+        let docview_close = profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE);
         let mut docs = crate::docs::DocsRuntime::new(
             scope_tools(registry),
             ending_role,
-            if programs.is_enabled() {
-                &[CAPABILITY_PROGRAM_LIBRARY]
-            } else {
-                &[]
-            },
+            &crate::sandbox::surface_capabilities(programs.is_enabled(), docview_close),
             code.language,
         );
         // The code this agent has loaded by reading a code skill or memory, and the on-use scripts a
@@ -6168,7 +6176,7 @@ impl Agent {
                     pending_compaction,
                     ending_role,
                     doc_view_types: code.doc_view_types,
-                    docview_close: profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
+                    docview_close,
                     exec_roster: &profile.subagents,
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
@@ -8524,14 +8532,20 @@ struct PromptInputs<'a> {
 /// The API objects a code program has this run, in the catalogue's own order, each with the one-line
 /// description the prompt names it by, and the functions it actually binds.
 ///
-/// An object appears exactly when the agent binds at least one of its functions — grouped by the
-/// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest builds a
-/// program's scope from, and decided by
+/// An object appears exactly when the agent may call at least one of its functions — grouped by the
+/// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest binds a
+/// program's scope under, and decided by
 /// [`DocsRuntime::bound`](crate::docs::DocsRuntime::bound), which is the *one* implementation of
 /// "may this agent call X" and used to have a verbatim copy here. So a withheld capability drops its
 /// whole object rather than leaving a named-but-empty one, a reviewer is shown a `review` object
 /// where an implementer is not, and this readout cannot report a call the model's own documentation
 /// would refuse to describe.
+///
+/// **It is not what the guest binds**, and since every SDK became static the two are deliberately
+/// different: a program's scope carries every function its language has, and this reports what the
+/// agent may *call*. That is the question an ablation asks — "was this agent offered that call at
+/// all?" — and answering it with the language's compiled surface would report every agent as having
+/// everything.
 /// `view` always appears, because it carries the one thing nothing gates: the channel a program puts
 /// material into its own window with — including documentation, which is why the object that used to
 /// exist purely to hold the doc lookup no longer has to. A run that offers no tools at all must
@@ -8562,19 +8576,23 @@ fn api_surface(
     registry: &ToolRegistry,
     role: EndingRole,
     library: bool,
+    docview_close: bool,
     program_language: GgProgramLanguage,
 ) -> Vec<GgAgentApi> {
     // The agent's own documentation runtime, built from exactly what its program's scope is built
     // from — and asked the same question the model's own lookups are answered by. This readout used
     // to carry a verbatim copy of that predicate; a second copy of "may this agent call X" is a
     // drift hazard the moment either side grows a gate, and it is the same question either way.
-    let capabilities: &[&'static str] = if library {
-        &[CAPABILITY_PROGRAM_LIBRARY]
-    } else {
-        &[]
-    };
-    let docs =
-        crate::docs::DocsRuntime::new(scope_tools(registry), role, capabilities, program_language);
+    //
+    // The capability half of the grant comes from `surface_capabilities` rather than being listed
+    // here, for the same reason: a list written out per call site is a second answer to "which
+    // capabilities buy surface", and this one used to be missing `docview-close`.
+    let docs = crate::docs::DocsRuntime::new(
+        scope_tools(registry),
+        role,
+        &crate::sandbox::surface_capabilities(library, docview_close),
+        program_language,
+    );
     let language = docs.language();
     // In the catalogue's order, which is the order the SDK declares them in — read through the
     // normalized reading of the two schemas, so that an arm whose surface is API objects and an arm
@@ -8615,9 +8633,10 @@ fn api_views(
     registry: &ToolRegistry,
     role: EndingRole,
     library: bool,
+    docview_close: bool,
     program_language: GgProgramLanguage,
 ) -> Vec<ApiView> {
-    api_surface(registry, role, library, program_language)
+    api_surface(registry, role, library, docview_close, program_language)
         .into_iter()
         .map(|api| ApiView {
             object: api.object,
@@ -8870,7 +8889,13 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // The API objects the model can inspect — only under responses-as-code, where a program
             // reaches them by name; the tool-calling path puts the tools in the request instead.
             apis: match program_language {
-                Some(language) => api_views(registry, ending_role, program_library, language),
+                Some(language) => api_views(
+                    registry,
+                    ending_role,
+                    program_library,
+                    profile.is_enabled(CAPABILITY_DOCVIEW_CLOSE),
+                    language,
+                ),
                 None => Vec::new(),
             },
             // On → the section that teaches a model to fetch a program it already ran and hand back

@@ -873,7 +873,9 @@ class Reflector:
             # `gg::files::read_file` are the same path written short and long.
             "call": None,
             "brief": brief,
-            "detail": with_tail(detail, comment_of(described)),
+            # The tail is read off the SAME declaration the prose came from — `documented`, the
+            # fullest overload — because `\returns` and `\throws` describe that shape's arguments.
+            "detail": with_tail(detail, comment_of(documented)),
             "signatures": shapes,
             # The closure runs first, because it is what records the declarations both lists then
             # name; `returns` itself is the DIRECT return position and nothing beyond it, since

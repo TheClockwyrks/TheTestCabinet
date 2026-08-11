@@ -507,6 +507,17 @@ fn a_catalogue_that_does_not_cover_gg_s_capabilities_is_caught() {
             "`workspace.read_file` has no signature",
         ),
         (
+            // The condition every arm holds so that the static SDKs' one accepted consequence is
+            // safe: a program may compile a call search would never show it, and what stops that
+            // being a trap is that such a call cannot look like a local helper. An arm offering a
+            // bare `read_file` would put the two in the same shape.
+            "a function offered under a bare name, reachable through nothing",
+            Box::new(|document: &mut Value| {
+                entry(document, "files.read_file")["fqn"] = json!("read_file");
+            }),
+            "is offered under a bare name",
+        ),
+        (
             "a signature that does not start with the name a program calls",
             Box::new(|document: &mut Value| {
                 entry(document, "files.read_file")["signatures"][0]["signature"] =

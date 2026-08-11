@@ -102,11 +102,11 @@ itself can render is not a counter-example — it illustrates a message the mode
 - **An [ending call](/gg/ending-a-session/#ending-calls) ends the session** — and nothing else
   does. Which one an agent has depends on the role it was dispatched in:
   `harness.finish(summary)` for an agent doing work, `review.approve()` /
-  `review.requestChanges(items)` for a reviewer. Only that role's group is bound, so a
-  call another role would make is an
-  undefined identifier here, exactly as a withheld tool is — and the membrane
-  [refuses it as well](#capability-gating), so an agent that has the name anyway still
-  cannot use it. Each is a real membrane
+  `review.requestChanges(items)` for a reviewer. Both groups are bound, on every arm, because
+  every SDK is [static](/gg/static-sdks/) — and the membrane
+  [refuses the other role's](#capability-gating) with a sentence saying which ending this
+  agent *does* have, which is what an agent that reached for the wrong one needs. Each is a
+  real membrane
   function, not a rule about text: it **sets a flag** in the agent's host-side context and
   returns, the program runs on, and the loop reads the flag once the program has ended.
 - **Every reply is compiled, and gg judges none of them.** After
@@ -361,7 +361,7 @@ closest *kind* of near-miss — an exact name under another spelling is never pa
 typos beside it — and, when nothing is close, nothing at all, since a wrong suggestion sends the
 model to read documentation for a function it did not want. The candidates are the names **this
 agent binds**, never the whole catalogue: offering `editFile` to a run that withheld `edit_file`
-would trade a `not-found` for a `ReferenceError` a turn later. Searching is how a model finds a
+would trade a `not-found` for a refused call a turn later. Searching is how a model finds a
 name it does not have; this is a nudge, not a substitute for that.
 
 That is a reversal, and the thing it replaced is worth stating because the replacement is a
@@ -517,14 +517,15 @@ rather than as a refusal from the host. See
   prompt says so.
 - **No `DOM`.** `document`, `fetch` and the timers are undeclared, because a program has
   none of them; naming one is a compile error rather than a surprise at run time.
-- **The whole surface, not the run's.** The declarations carry every object and every
+- **The whole surface, not the run's.** The declarations carry every module and every
   function the catalogue has, including the ones this run's toolset withholds — which is
-  the *opposite* of what the prompt does. Two reasons: a withheld name has to stay
-  reachable **as a withheld name**, so that "the model reached for something it was not
-  given" keeps being recorded as `program_unknown_name` in a checked arm and an unchecked
-  one alike (see [toolset ablation](/gg/toolset-ablation/)); and a verdict has to depend on
-  the program alone, since the same text is checked as a turn's program, as a skill's
-  on-use script and as the code half of a memory being written.
+  the *opposite* of what the prompt does, and which matches what the guest binds: the SDK is
+  [static](/gg/static-sdks/), so the checker refusing those programs would refuse programs
+  that run. Two reasons beyond that: "the model reached for something it was not given" has
+  to keep being recorded as `program_unknown_name` in a checked arm and an unchecked one
+  alike (see [toolset ablation](/gg/toolset-ablation/)); and a verdict has to depend on the
+  program alone, since the same text is checked as a turn's program, as a skill's on-use
+  script and as the code half of a memory being written.
 
 A code [skill](/gg/skills/) or [memory](/gg/memories/) is checked too, as what it is — a
 module with exports, in its own coordinates. A module that does not type-check would
@@ -868,22 +869,22 @@ than one that says it late. `view.openFile` **is** refused, because it reads.
 
 ## Capability gating
 
-A withheld tool is **not in scope**. The guest builds the program's scope from the run's
-enabled tool names and evaluates the program as the body of a function whose *parameters*
-are exactly those names, so a tool this run does not offer is an undefined identifier —
-not a call that travels to the host and is refused there.
+**Every SDK is static, and the host is the gate.** Every function every arm's SDK declares
+is compiled, linked and callable in every program, whatever the run enabled — so a
+withheld call is not a missing name, it is a call that travels to the membrane and is
+**refused** there. The refusal is a typed `ToolError` with code `unavailable`, carrying a
+sentence that names the missing capability and, for an ending call, which ending this agent
+does have. A program can catch it and carry on. See [static SDKs](/gg/static-sdks/) for the
+whole design, including what a model reads on each arm.
 
-**The host checks the same facts.** Scope injection is a capability model only for a guest
-that builds a scope, and that is a property of the language's SDK rather than of gg: a
-language whose SDK is linked as an ordinary library has every name, and there is no scope
-to leave anything out of. So the membrane holds the whole of what a run offers — the
-enabled tool names, the [ending group](/gg/ending-a-session/) this agent's role declares,
-and whether it keeps a [program library](/gg/program-library/) — and refuses anything
-outside it as `unavailable`, which is the same failure class, and the same recovery, a
-missing name produces. For today's TypeScript arm that check is unreachable; for the next
-arm it is the whole of the gate.
+The membrane holds the whole of what a run offers — the enabled tool names, the
+[ending group](/gg/ending-a-session/) this agent's role declares, and the capabilities it
+holds, the [program library](/gg/program-library/) among them — and answers "may this agent
+call *X*?" with one predicate over gg's own operations table. **The documentation runtime
+asks the identical question of the identical value**, which is what keeps what a model can
+*find* and what gg will *service* one set.
 
-`unavailable` is therefore recorded as the same turn error a missing name is
+`unavailable` is recorded as the same turn error a missing name is
 (`program_unknown_name`), and the host decides that from the failure **code** rather than
 from what the guest made of the throw. Otherwise one event — the model reaching for
 something it was not given — would be counted one way in a language that can withhold a
@@ -901,31 +902,28 @@ It extends to the section's **prose**, not just its listing. The line teaching
 `system.shell` only for one that offers `shell`, and the documentation lookup the prompt
 demonstrates is spelled `view.openDocsView(view.openText)` — against the one view function
 nothing gates. A call named in a prompt is the part of it a model copies verbatim, so
-naming an ungated one would hand a reduced-toolset run a `ReferenceError` on its first
-turn. The gate is drawn at the finest grain the fact has: the `openFile` line's *second
+naming an ungated one would hand a reduced-toolset run a refusal on its first turn. The gate is drawn at the finest grain the fact has: the `openFile` line's *second
 half*, the `{ offset, limit }` window, renders only under a
 [capped read mode](/gg/filesystem/#read-modes), because `unlimited`'s `read_file` takes no
 such arguments and teaching a knob that does nothing is its own kind of lie.
 
 The [filesystem capabilities](/gg/filesystem/) compose the same way: a run with
-`read-file` off has no `fs.readFile`, no `fs.readTextFile` and no `view.openFile`, and a
-capped read mode windows a program's reads exactly as it windows a tool call's.
+`read-file` off is told so by `fs.readFile`, by `fs.readTextFile` and by `view.openFile`
+alike, and a capped read mode windows a program's reads exactly as it windows a tool call's.
 
 :::note
 **The `view` object is the one family no capability gates at all.** A run that enables no
 tools must still be able to show its model something, so `view.openText`,
-`view.openDocsView`, `view.close` and `view.current` are bound whatever the capability set
-says, and nothing on the host refuses them. (`view.openFile` is the exception inside the
-exception: it is a read, so it is bound only when `read_file` is, and it is refused like
-any other read.)
+`view.openDocsView`, `view.close` and `view.current` are serviced whatever the capability
+set says. (`view.openFile` is the exception inside the exception: it is a read, so it is
+refused exactly when `read_file` is withheld, like any other read.)
 
-**An ending call is bound to every run too, but which one depends on the role.** A run that
-enables no tools must still be able to *end*, so the group its role declares is bound
-whatever the capability set says, and no toolset gate and no spent budget withholds it — a
-program can end the run even while the loop is waiting for a compaction, which is
-deliberate, since a run that cannot end is worse than one that ends early. What the host
-does check is the role: an agent doing work calling `review.approve` is refused
-`unavailable`, because a verdict is the one declaration nothing downstream re-examines.
+**An ending call is likewise never withheld by a toolset or by a spent budget.** A run that
+enables no tools must still be able to *end*, and a program can end the run even while the
+loop is waiting for a compaction, which is deliberate: a run that cannot end is worse than
+one that ends early. What the host does check is the **role** — an agent doing work calling
+`review.approve` is refused `unavailable`, because a verdict is the one declaration nothing
+downstream re-examines — and the refusal names the ending that agent does have.
 :::
 
 ### Every tool is bound
@@ -1324,8 +1322,8 @@ stack trace whose frames are its own internals — but never **adds** to one.
 There is one carve-out, and it is narrower than it looks: the layer that *raises* a fault may
 compose into it the answer to the question that fault provokes, because at that point the
 answer is part of the diagnostic rather than commentary on it. A `ReferenceError` provokes
-*what do I have?*, so the guest names the API objects this run bound — the model would
-otherwise have to spend a turn asking. That is composed **in the guest, at the call site**,
+*what do I have?*, so the guest names gg's modules — the model would otherwise have to spend
+a turn asking. That is composed **in the guest, at the call site**,
 by the code that knows what went wrong; it is not gg reading a finished error and deciding to
 be helpful about it a turn later, which is the thing this rule forbids.
 
@@ -1525,7 +1523,8 @@ record.
 | The language's compiler read the whole program and **rejected** it — a type error, a name that does not resolve, an argument of the wrong shape. TypeScript's `tsc` pass is what raises it | preparation, before any engine work | a `Compiler error` carrying the compiler's own diagnostics and nothing else. It is the model's to fix and the turn is recorded as `transpile_compile`; it must never be confused with the committed **component** failing to compile, which is an artifact defect that ends the session |
 | The language's compiler **could not finish** — it crashed, its timeout killed it, or it is not installed in the run's image | preparation, which reports the compiler rather than the program | a `Notice`: that the program was not run, that this is the environment rather than anything it wrote, and that nothing about it was rejected. **Not** a `Compiler error`, because nothing read the program. The turn is an error, under its own `toolchain` base kind rather than `transpile` |
 | A TypeScript program nests brackets past 200 deep | that language's nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
-| An unknown identifier (usually a withheld tool) | the guest | a `Runtime error`: the name, the program line — **and the API objects this run binds**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
+| A call the agent was not granted | the membrane, which refuses it | a catchable `unavailable` `ToolError` thrown at the call site, naming the capability that is missing and what the agent does have instead; uncaught, a `Runtime error` recorded as `program_unknown_name` on nine of the eleven arms (the C# and Swift guests classify an uncaught throw differently — see [static SDKs](/gg/static-sdks/#what-it-is-recorded-as), and count refusals from the refusal roster instead). Every SDK is [static](/gg/static-sdks/), so the *refusal itself* is one failure on all eleven arms rather than a missing name on some and a refusal on others |
+| An unknown identifier — a typo, or a name from another arm's vocabulary | the guest | a `Runtime error`: the name, the program line — **and gg's modules**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
 | An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, and the line of the program that made the call. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
 | A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |

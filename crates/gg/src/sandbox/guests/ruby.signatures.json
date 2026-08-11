@@ -2706,81 +2706,6 @@
   ],
   "types": [
     {
-      "fqn": "GG::Files::ImageFile",
-      "module": "files",
-      "name": "ImageFile",
-      "declaration": "class ImageFile\n  attr_reader media_type: String\n  attr_reader label: String\n  attr_reader bytes: Integer\n  attr_reader not_shown_reason: String or nil\n  def shown?: () -> Boolean\nend",
-      "brief": "A picture's description, as `GG::Files.read_file` returns it.",
-      "detail": "The pixels never enter the program. `GG::Views.open_file` is what attaches the picture to the turn for it to be looked at, which is worth far more than base64 in a variable.",
-      "members": [
-        {
-          "name": "media_type",
-          "type": "String",
-          "kind": "field",
-          "brief": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`).",
-          "detail": null
-        },
-        {
-          "name": "label",
-          "type": "String",
-          "kind": "field",
-          "brief": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`).",
-          "detail": null
-        },
-        {
-          "name": "bytes",
-          "type": "Integer",
-          "kind": "field",
-          "brief": "The file's size in bytes.",
-          "detail": null
-        },
-        {
-          "name": "not_shown_reason",
-          "type": "String or nil",
-          "kind": "field",
-          "brief": "Why the picture is not being shown; `nil` when it is.",
-          "detail": null
-        },
-        {
-          "name": "shown?",
-          "type": "Boolean",
-          "kind": "field",
-          "brief": "Whether the picture is being attached to this turn to be looked at.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
-      "fqn": "GG::Files::DirEntry",
-      "module": "files",
-      "name": "DirEntry",
-      "declaration": "class DirEntry\n  attr_reader name: String\n  attr_reader kind: GG::Files::EntryKind\nend",
-      "brief": "One entry `GG::Files.list_dir` found: a bare name, and its kind.",
-      "detail": null,
-      "members": [
-        {
-          "name": "name",
-          "type": "String",
-          "kind": "field",
-          "brief": "The entry's bare name, with no directory part. Join it with the directory that was listed.",
-          "detail": null
-        },
-        {
-          "name": "kind",
-          "type": "GG::Files::EntryKind",
-          "kind": "field",
-          "brief": "What the entry is.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
       "fqn": "GG::Files::TextFile",
       "module": "files",
       "name": "TextFile",
@@ -2829,6 +2754,54 @@
       ]
     },
     {
+      "fqn": "GG::Files::ImageFile",
+      "module": "files",
+      "name": "ImageFile",
+      "declaration": "class ImageFile\n  attr_reader media_type: String\n  attr_reader label: String\n  attr_reader bytes: Integer\n  attr_reader not_shown_reason: String or nil\n  def shown?: () -> Boolean\nend",
+      "brief": "A picture's description, as `GG::Files.read_file` returns it.",
+      "detail": "The pixels never enter the program. `GG::Views.open_file` is what attaches the picture to the turn for it to be looked at, which is worth far more than base64 in a variable.",
+      "members": [
+        {
+          "name": "media_type",
+          "type": "String",
+          "kind": "field",
+          "brief": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`).",
+          "detail": null
+        },
+        {
+          "name": "label",
+          "type": "String",
+          "kind": "field",
+          "brief": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`).",
+          "detail": null
+        },
+        {
+          "name": "bytes",
+          "type": "Integer",
+          "kind": "field",
+          "brief": "The file's size in bytes.",
+          "detail": null
+        },
+        {
+          "name": "not_shown_reason",
+          "type": "String or nil",
+          "kind": "field",
+          "brief": "Why the picture is not being shown; `nil` when it is.",
+          "detail": null
+        },
+        {
+          "name": "shown?",
+          "type": "Boolean",
+          "kind": "field",
+          "brief": "Whether the picture is being attached to this turn to be looked at.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
       "fqn": "GG::Files::EntryKind",
       "module": "files",
       "name": "EntryKind",
@@ -2855,6 +2828,33 @@
           "type": ":other",
           "kind": "variant",
           "brief": "Everything that is neither, a symlink among them.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
+      "fqn": "GG::Files::DirEntry",
+      "module": "files",
+      "name": "DirEntry",
+      "declaration": "class DirEntry\n  attr_reader name: String\n  attr_reader kind: GG::Files::EntryKind\nend",
+      "brief": "One entry `GG::Files.list_dir` found: a bare name, and its kind.",
+      "detail": null,
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "kind": "field",
+          "brief": "The entry's bare name, with no directory part. Join it with the directory that was listed.",
+          "detail": null
+        },
+        {
+          "name": "kind",
+          "type": "GG::Files::EntryKind",
+          "kind": "field",
+          "brief": "What the entry is.",
           "detail": null
         }
       ],
@@ -2897,25 +2897,39 @@
       ]
     },
     {
-      "fqn": "GG::Board::EpicCreated",
+      "fqn": "GG::Board::IssueStatus",
       "module": "board",
-      "name": "EpicCreated",
-      "declaration": "class EpicCreated\n  attr_reader id: String\n  attr_reader board: GG::Board::BoardUsage\nend",
-      "brief": "An epic that was just created: the id its prefix resolved to, and the board budget.",
-      "detail": null,
+      "name": "IssueStatus",
+      "declaration": "module IssueStatus\n  OPEN: :open\n  IN_PROGRESS: :in_progress\n  DONE: :done\n  ALL: [OPEN, IN_PROGRESS, DONE].freeze\nend",
+      "brief": "Where an issue stands.",
+      "detail": "Every arm is a Symbol, so a call may name the constant or write the literal: `GG::Board::IssueStatus::DONE` and `:done` are the same value.",
       "members": [
         {
-          "name": "id",
-          "type": "String",
-          "kind": "field",
-          "brief": "The epic's id: the prefix given, upper-cased, so `auth` becomes `AUTH`.",
-          "detail": "It is what groups issues under the epic, and the stem those issues are numbered from (`AUTH-1`)."
+          "name": "OPEN",
+          "type": ":open",
+          "kind": "variant",
+          "brief": "Not started, and dispatchable once its blockers are done.",
+          "detail": null
         },
         {
-          "name": "board",
-          "type": "GG::Board::BoardUsage",
-          "kind": "field",
-          "brief": "How much of the board budget is used.",
+          "name": "IN_PROGRESS",
+          "type": ":in_progress",
+          "kind": "variant",
+          "brief": "Dispatched, with its assigned agent working on it.",
+          "detail": null
+        },
+        {
+          "name": "DONE",
+          "type": ":done",
+          "kind": "variant",
+          "brief": "Finished and, where this run requires reviewers, approved.",
+          "detail": null
+        },
+        {
+          "name": "ALL",
+          "type": "[OPEN, IN_PROGRESS, DONE].freeze",
+          "kind": "variant",
+          "brief": "Every status an issue may be moved to.",
           "detail": null
         }
       ],
@@ -2965,6 +2979,33 @@
       ]
     },
     {
+      "fqn": "GG::Board::EpicCreated",
+      "module": "board",
+      "name": "EpicCreated",
+      "declaration": "class EpicCreated\n  attr_reader id: String\n  attr_reader board: GG::Board::BoardUsage\nend",
+      "brief": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+      "detail": null,
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "kind": "field",
+          "brief": "The epic's id: the prefix given, upper-cased, so `auth` becomes `AUTH`.",
+          "detail": "It is what groups issues under the epic, and the stem those issues are numbered from (`AUTH-1`)."
+        },
+        {
+          "name": "board",
+          "type": "GG::Board::BoardUsage",
+          "kind": "field",
+          "brief": "How much of the board budget is used.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
       "fqn": "GG::Board::IssueCreated",
       "module": "board",
       "name": "IssueCreated",
@@ -2994,47 +3035,6 @@
           "fqn": "GG::Board::IssueCreated#wait",
           "brief": "Register a wait on this issue, which suspends the agent between turns until it is terminal."
         }
-      ]
-    },
-    {
-      "fqn": "GG::Board::IssueStatus",
-      "module": "board",
-      "name": "IssueStatus",
-      "declaration": "module IssueStatus\n  OPEN: :open\n  IN_PROGRESS: :in_progress\n  DONE: :done\n  ALL: [OPEN, IN_PROGRESS, DONE].freeze\nend",
-      "brief": "Where an issue stands.",
-      "detail": "Every arm is a Symbol, so a call may name the constant or write the literal: `GG::Board::IssueStatus::DONE` and `:done` are the same value.",
-      "members": [
-        {
-          "name": "OPEN",
-          "type": ":open",
-          "kind": "variant",
-          "brief": "Not started, and dispatchable once its blockers are done.",
-          "detail": null
-        },
-        {
-          "name": "IN_PROGRESS",
-          "type": ":in_progress",
-          "kind": "variant",
-          "brief": "Dispatched, with its assigned agent working on it.",
-          "detail": null
-        },
-        {
-          "name": "DONE",
-          "type": ":done",
-          "kind": "variant",
-          "brief": "Finished and, where this run requires reviewers, approved.",
-          "detail": null
-        },
-        {
-          "name": "ALL",
-          "type": "[OPEN, IN_PROGRESS, DONE].freeze",
-          "kind": "variant",
-          "brief": "Every status an issue may be moved to.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
       ]
     },
     {
@@ -3106,59 +3106,6 @@
       ]
     },
     {
-      "fqn": "GG::Memories::MemoryHit",
-      "module": "memories",
-      "name": "MemoryHit",
-      "declaration": "class MemoryHit\n  attr_reader name: String\n  attr_reader description: String\n  attr_reader matched: Integer\n  attr_reader occurrences: Integer\n  attr_reader excerpt: String\nend",
-      "brief": "One memory `GG::Memories.search_memories` matched, and the numbers it was ranked by.",
-      "detail": null,
-      "members": [
-        {
-          "name": "name",
-          "type": "String",
-          "kind": "field",
-          "brief": "The memory's slug — what `GG::Memories.read_memory` takes.",
-          "detail": null
-        },
-        {
-          "name": "description",
-          "type": "String",
-          "kind": "field",
-          "brief": "Its description, or the empty string when it was created without one.",
-          "detail": null
-        },
-        {
-          "name": "matched",
-          "type": "Integer",
-          "kind": "field",
-          "brief": "How many distinct keywords it matched — the primary ranking.",
-          "detail": null
-        },
-        {
-          "name": "occurrences",
-          "type": "Integer",
-          "kind": "field",
-          "brief": "How many times those keywords occur in it — the tiebreak.",
-          "detail": null
-        },
-        {
-          "name": "excerpt",
-          "type": "String",
-          "kind": "field",
-          "brief": "A short window of the memory around its first match.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-        {
-          "operation": "memories.read_memory",
-          "name": "read",
-          "fqn": "GG::Memories::MemoryHit#read",
-          "brief": "Read this memory's full contents, which a search hit does not carry."
-        }
-      ]
-    },
-    {
       "fqn": "GG::Memories::MemoryUsage",
       "module": "memories",
       "name": "MemoryUsage",
@@ -3214,6 +3161,120 @@
       ]
     },
     {
+      "fqn": "GG::Memories::MemoryHit",
+      "module": "memories",
+      "name": "MemoryHit",
+      "declaration": "class MemoryHit\n  attr_reader name: String\n  attr_reader description: String\n  attr_reader matched: Integer\n  attr_reader occurrences: Integer\n  attr_reader excerpt: String\nend",
+      "brief": "One memory `GG::Memories.search_memories` matched, and the numbers it was ranked by.",
+      "detail": null,
+      "members": [
+        {
+          "name": "name",
+          "type": "String",
+          "kind": "field",
+          "brief": "The memory's slug — what `GG::Memories.read_memory` takes.",
+          "detail": null
+        },
+        {
+          "name": "description",
+          "type": "String",
+          "kind": "field",
+          "brief": "Its description, or the empty string when it was created without one.",
+          "detail": null
+        },
+        {
+          "name": "matched",
+          "type": "Integer",
+          "kind": "field",
+          "brief": "How many distinct keywords it matched — the primary ranking.",
+          "detail": null
+        },
+        {
+          "name": "occurrences",
+          "type": "Integer",
+          "kind": "field",
+          "brief": "How many times those keywords occur in it — the tiebreak.",
+          "detail": null
+        },
+        {
+          "name": "excerpt",
+          "type": "String",
+          "kind": "field",
+          "brief": "A short window of the memory around its first match.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+        {
+          "operation": "memories.read_memory",
+          "name": "read",
+          "fqn": "GG::Memories::MemoryHit#read",
+          "brief": "Read this memory's full contents, which a search hit does not carry."
+        }
+      ]
+    },
+    {
+      "fqn": "GG::Views::ViewKind",
+      "module": "views",
+      "name": "ViewKind",
+      "declaration": "module ViewKind\n  FILE: :file\n  TEXT: :text\n  DOCS: :docs\nend",
+      "brief": "Which of the three kinds a view is.",
+      "detail": "The taxonomy is closed at three deliberately: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
+      "members": [
+        {
+          "name": "FILE",
+          "type": ":file",
+          "kind": "variant",
+          "brief": "A file that was opened; its selector is the path.",
+          "detail": null
+        },
+        {
+          "name": "TEXT",
+          "type": ":text",
+          "kind": "variant",
+          "brief": "A computed value; its selector is the label it was given.",
+          "detail": null
+        },
+        {
+          "name": "DOCS",
+          "type": ":docs",
+          "kind": "variant",
+          "brief": "A function's documentation; its selector is the function's name.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
+      "fqn": "GG::Views::ViewRegion",
+      "module": "views",
+      "name": "ViewRegion",
+      "declaration": "class ViewRegion\n  attr_reader offset: Integer\n  attr_reader limit: Integer\nend",
+      "brief": "The window of lines a paged file view covers; absent for a whole-file view.",
+      "detail": null,
+      "members": [
+        {
+          "name": "offset",
+          "type": "Integer",
+          "kind": "field",
+          "brief": "The 1-based first line the view shows.",
+          "detail": null
+        },
+        {
+          "name": "limit",
+          "type": "Integer",
+          "kind": "field",
+          "brief": "How many lines it shows.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
       "fqn": "GG::Views::OpenView",
       "module": "views",
       "name": "OpenView",
@@ -3257,94 +3318,6 @@
           "fqn": "GG::Views::OpenView#close",
           "brief": "Close this view, freeing the tokens it occupied."
         }
-      ]
-    },
-    {
-      "fqn": "GG::Views::ViewRegion",
-      "module": "views",
-      "name": "ViewRegion",
-      "declaration": "class ViewRegion\n  attr_reader offset: Integer\n  attr_reader limit: Integer\nend",
-      "brief": "The window of lines a paged file view covers; absent for a whole-file view.",
-      "detail": null,
-      "members": [
-        {
-          "name": "offset",
-          "type": "Integer",
-          "kind": "field",
-          "brief": "The 1-based first line the view shows.",
-          "detail": null
-        },
-        {
-          "name": "limit",
-          "type": "Integer",
-          "kind": "field",
-          "brief": "How many lines it shows.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
-      "fqn": "GG::Views::ViewKind",
-      "module": "views",
-      "name": "ViewKind",
-      "declaration": "module ViewKind\n  FILE: :file\n  TEXT: :text\n  DOCS: :docs\nend",
-      "brief": "Which of the three kinds a view is.",
-      "detail": "The taxonomy is closed at three deliberately: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it.",
-      "members": [
-        {
-          "name": "FILE",
-          "type": ":file",
-          "kind": "variant",
-          "brief": "A file that was opened; its selector is the path.",
-          "detail": null
-        },
-        {
-          "name": "TEXT",
-          "type": ":text",
-          "kind": "variant",
-          "brief": "A computed value; its selector is the label it was given.",
-          "detail": null
-        },
-        {
-          "name": "DOCS",
-          "type": ":docs",
-          "kind": "variant",
-          "brief": "A function's documentation; its selector is the function's name.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
-      "fqn": "GG::Context::ArchiveSearch",
-      "module": "context",
-      "name": "ArchiveSearch",
-      "declaration": "class ArchiveSearch\n  attr_reader hits: Array<GG::Context::ArchiveHit>\n  def archive_empty?: () -> Boolean\nend",
-      "brief": "What `GG::Context.search_archive` found.",
-      "detail": null,
-      "members": [
-        {
-          "name": "hits",
-          "type": "Array<GG::Context::ArchiveHit>",
-          "kind": "field",
-          "brief": "The matches, most recent first, at most 8.",
-          "detail": null
-        },
-        {
-          "name": "archive_empty?",
-          "type": "Boolean",
-          "kind": "field",
-          "brief": "Nothing has been archived yet, so there was nothing to search.",
-          "detail": "Deliberately distinct from a search that ran and matched nothing, so a program does not archive again believing the first archive failed."
-        }
-      ],
-      "memberFunctions": [
-
       ]
     },
     {
@@ -3478,6 +3451,72 @@
       ]
     },
     {
+      "fqn": "GG::Context::ArchiveSearch",
+      "module": "context",
+      "name": "ArchiveSearch",
+      "declaration": "class ArchiveSearch\n  attr_reader hits: Array<GG::Context::ArchiveHit>\n  def archive_empty?: () -> Boolean\nend",
+      "brief": "What `GG::Context.search_archive` found.",
+      "detail": null,
+      "members": [
+        {
+          "name": "hits",
+          "type": "Array<GG::Context::ArchiveHit>",
+          "kind": "field",
+          "brief": "The matches, most recent first, at most 8.",
+          "detail": null
+        },
+        {
+          "name": "archive_empty?",
+          "type": "Boolean",
+          "kind": "field",
+          "brief": "Nothing has been archived yet, so there was nothing to search.",
+          "detail": "Deliberately distinct from a search that ran and matched nothing, so a program does not archive again believing the first archive failed."
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
+      "fqn": "GG::Delegation::SubagentHandle",
+      "module": "delegation",
+      "name": "SubagentHandle",
+      "declaration": "class SubagentHandle\n  attr_reader id: String\n  attr_reader slot: String\n  attr_reader model_id: String\nend",
+      "brief": "A child agent that was spawned and is now running in parallel.",
+      "detail": null,
+      "members": [
+        {
+          "name": "id",
+          "type": "String",
+          "kind": "field",
+          "brief": "The child's id — what `GG::Delegation.wait_for_subagents` and `GG::Delegation.send_message` take.",
+          "detail": null
+        },
+        {
+          "name": "slot",
+          "type": "String",
+          "kind": "field",
+          "brief": "The agent profile it runs as.",
+          "detail": null
+        },
+        {
+          "name": "model_id",
+          "type": "String",
+          "kind": "field",
+          "brief": "The model actually bound to that agent.",
+          "detail": null
+        }
+      ],
+      "memberFunctions": [
+        {
+          "operation": "delegation.send_message",
+          "name": "send_message",
+          "fqn": "GG::Delegation::SubagentHandle#send_message",
+          "brief": "Deliver a message to this child's inbox, which it reads at its next turn."
+        }
+      ]
+    },
+    {
       "fqn": "GG::Delegation::AgentEnding",
       "module": "delegation",
       "name": "AgentEnding",
@@ -3567,45 +3606,6 @@
       ]
     },
     {
-      "fqn": "GG::Delegation::SubagentHandle",
-      "module": "delegation",
-      "name": "SubagentHandle",
-      "declaration": "class SubagentHandle\n  attr_reader id: String\n  attr_reader slot: String\n  attr_reader model_id: String\nend",
-      "brief": "A child agent that was spawned and is now running in parallel.",
-      "detail": null,
-      "members": [
-        {
-          "name": "id",
-          "type": "String",
-          "kind": "field",
-          "brief": "The child's id — what `GG::Delegation.wait_for_subagents` and `GG::Delegation.send_message` take.",
-          "detail": null
-        },
-        {
-          "name": "slot",
-          "type": "String",
-          "kind": "field",
-          "brief": "The agent profile it runs as.",
-          "detail": null
-        },
-        {
-          "name": "model_id",
-          "type": "String",
-          "kind": "field",
-          "brief": "The model actually bound to that agent.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-        {
-          "operation": "delegation.send_message",
-          "name": "send_message",
-          "fqn": "GG::Delegation::SubagentHandle#send_message",
-          "brief": "Deliver a message to this child's inbox, which it reads at its next turn."
-        }
-      ]
-    },
-    {
       "fqn": "GG::Programs::ProgramSummary",
       "module": "programs",
       "name": "ProgramSummary",
@@ -3686,26 +3686,6 @@
       ]
     },
     {
-      "fqn": "GG::Core::Unchanged",
-      "module": "core",
-      "name": "Unchanged",
-      "declaration": "module Unchanged\n  UNCHANGED: :unchanged\nend",
-      "brief": "The \"leave this field exactly as it is\" value a three-way patch argument defaults to.",
-      "detail": "A field a patch may also *clear* has three states rather than two, and Ruby already spells absent as `nil` — which here is the request to clear it. So the third state gets a name: leave the argument out, or pass `GG::Core::UNCHANGED`, to keep what is there. A field with no clear state is an ordinary `nil` default, where `nil` simply means it is not being changed.",
-      "members": [
-        {
-          "name": "UNCHANGED",
-          "type": ":unchanged",
-          "kind": "variant",
-          "brief": "Leave the field exactly as it is.",
-          "detail": null
-        }
-      ],
-      "memberFunctions": [
-
-      ]
-    },
-    {
       "fqn": "GG::Core::ToolErrorCode",
       "module": "core",
       "name": "ToolErrorCode",
@@ -3768,6 +3748,26 @@
           "kind": "variant",
           "brief": "The failure was not classified.",
           "detail": "Reserved for outcomes raised outside a tool implementation; no call in this SDK produces it."
+        }
+      ],
+      "memberFunctions": [
+
+      ]
+    },
+    {
+      "fqn": "GG::Core::Unchanged",
+      "module": "core",
+      "name": "Unchanged",
+      "declaration": "module Unchanged\n  UNCHANGED: :unchanged\nend",
+      "brief": "The \"leave this field exactly as it is\" value a three-way patch argument defaults to.",
+      "detail": "A field a patch may also *clear* has three states rather than two, and Ruby already spells absent as `nil` — which here is the request to clear it. So the third state gets a name: leave the argument out, or pass `GG::Core::UNCHANGED`, to keep what is there. A field with no clear state is an ordinary `nil` default, where `nil` simply means it is not being changed.",
+      "members": [
+        {
+          "name": "UNCHANGED",
+          "type": ":unchanged",
+          "kind": "variant",
+          "brief": "Leave the field exactly as it is.",
+          "detail": null
         }
       ],
       "memberFunctions": [

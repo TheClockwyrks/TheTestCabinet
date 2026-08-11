@@ -141,6 +141,12 @@ pub(crate) use language::fixture;
 // resolved through, and the successor of the bare `(object, key)` enumeration that preceded it.
 pub use operations::{Binding, operation_of};
 
+// **What one agent was granted, and the one predicate that reads it.** The membrane holds one to
+// decide whether a call is serviced or refused; the documentation runtime holds one to decide what
+// a search may return. Two readers, one implementation — see [`Grants`](operations::Grants) — and
+// one construction of the capability half of it, so the two cannot be built from different lists.
+pub use operations::{Grants, operation_by_call, surface_capabilities};
+
 // The whole table, for the gates that resolve every operation against every registered language and
 // against what the membrane records. A production reader resolves one entry at a time through
 // [`operation_of`], and never walks the set.
@@ -212,45 +218,54 @@ pub use invoker::{SandboxRefusal, SandboxToolCall};
 use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};
 
-/// Run one program end to end: prepare it for its guest, instantiate that guest's interpreter
-/// component, evaluate it against exactly `enabled`'s tools, and report everything that happened.
+/// **Everything one program was granted**, as one value: what its run enabled, what its agent's role
+/// declares, and which capabilities it holds — plus the code modules bound beside its scope.
 ///
-/// Everything a program's scope is built from, as one value.
+/// They travel together because they *are* one thing, the answer to "may this agent call X" — and
+/// because that answer is now enforced in exactly one place. No guest builds a program's scope out
+/// of them: every arm's SDK is **static**, every function is bound into every program, and a call
+/// this agent was not granted reaches the [membrane](membrane::MembraneState) and is refused there
+/// with a sentence naming the capability that is missing. This value is what that membrane is built
+/// from, and the [documentation runtime](crate::docs::DocsRuntime) is built from the same three
+/// facts, so what a search may show and what the host will service are one set.
 ///
-/// The four travel together because they *are* one thing — the set of names the evaluated function
-/// receives as parameters — and because that is most of the capability model: a withheld tool is an
-/// undefined identifier rather than a call that reaches the host and is refused.
-///
-/// It is most of it and not all of it, because scope construction is a capability model only for a
-/// guest that constructs a scope. So this same value is also what the
-/// [membrane](membrane::MembraneState) is built from, and every part of it is checked there too — a
-/// withheld tool, an ending outside this agent's role, a program-library call from an agent that
-/// keeps no library. For a guest that links its SDK as an ordinary library, that check is the gate
-/// rather than a backstop behind one.
+/// The guest is still *told* them — the WIT `run` takes all three — and on the four arms that used
+/// to build a scope from them, nothing reads them. See the WIT's own note for why the parameters
+/// stay.
 #[derive(Clone, Copy)]
 pub struct ProgramScope<'a> {
-    /// The run's scope-bound gg tool names ([`scope_tools`]). Only these are bound.
+    /// The run's scope-bound gg tool names ([`scope_tools`]) — every operation bound by one of them
+    /// is available to this program, and every operation bound by a tool outside this set is
+    /// refused when it is called.
     pub enabled: &'a [String],
     /// The already-prepared code the agent has loaded by reading a code [skill](crate::skills) or
     /// [memory](crate::memories). The guest evaluates each one before the program and binds its
     /// exports at `lib.<name>`; an empty list binds no `lib` at all.
+    ///
+    /// The one field here that really is about *scope*: a code module's binding key is a name the
+    /// program would not otherwise have, and a run with no modules has no `lib` identifier at all.
     pub modules: &'a [CodeModule],
-    /// Which group of ending calls is bound: an agent's own [role](crate::ending::EndingRole), or
-    /// [none at all](RunEnding::None) for an on-use script.
+    /// Which group of ending calls this agent may **declare**: its own
+    /// [role](crate::ending::EndingRole), or [none at all](RunEnding::None) for an on-use script.
+    /// Every ending call is bound in every program; this decides which the host accepts.
     pub ending: RunEnding,
-    /// Whether this agent keeps a [program library](crate::programs), which binds the `programs`
-    /// object. A flag rather than a tool name because the library is one of the two model-facing
-    /// families a *capability* gates rather than the toolset.
+    /// Whether this agent keeps a [program library](crate::programs), which is what buys the three
+    /// `programs` calls. A flag rather than a tool name because the library is one of the two
+    /// model-facing families a *capability* gates rather than the toolset.
     pub library: bool,
     /// Whether this agent holds [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE),
     /// which is what decides whether it may take a documentation view back out of its window.
     ///
-    /// The other capability-gated family, and unlike [`library`](Self::library) it is **not** handed
-    /// to the guest: the membrane refuses the call. See
-    /// [`MembraneState::docview_close`](membrane) for why the two differ.
+    /// The other capability-gated family. Unlike [`library`](Self::library) it is not on the WIT's
+    /// `run` at all — there was never a guest that needed to hear it, because no arm's SDK spells
+    /// the close calls and because, since the surfaces went static, no guest acts on any of these
+    /// three anyway.
     pub docview_close: bool,
 }
 
+/// Run one program end to end: prepare it for its guest, instantiate that guest's interpreter
+/// component, evaluate it, and report everything that happened.
+///
 /// `language` is the [program language](ProgramLanguage) this agent writes in — which decides how
 /// `program` is prepared and which committed component evaluates it — `program` is the source the
 /// model emitted, `scope` is everything the evaluated function's parameters are built from, and

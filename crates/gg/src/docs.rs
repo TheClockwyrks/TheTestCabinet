@@ -71,14 +71,12 @@
 //! names it is nearly. See [`suggest`] for what "nearly" means and why the candidates are the bound
 //! ones alone.
 
-use std::collections::BTreeSet;
-
 use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    Binding, CatalogueFunction, FunctionSummary, Parameter, ParameterKind, ProgramLanguage,
+    CatalogueFunction, FunctionSummary, Grants, Parameter, ParameterKind, ProgramLanguage,
     TypeDeclaration, TypeReference, catalogue_functions, language, operation_of, type_declaration,
 };
 
@@ -205,25 +203,17 @@ pub struct ResolvedDocViewTypes {
     pub unknown_params: Vec<String>,
 }
 
-/// The per-agent state behind `search` and `view.openDocsView()`: the run's enabled tools and this
-/// agent's ending role, which together decide which functions exist to be documented.
+/// The per-agent state behind `search` and `view.openDocsView()`: what this agent was
+/// [granted](Grants), which is what decides which functions exist to be documented.
 pub struct DocsRuntime {
-    /// The run's enabled gg tool names — the gate on which catalogue functions are bound, and so on
-    /// which functions a search can find and a lookup will document.
-    enabled: BTreeSet<String>,
-    /// This agent's [ending role](EndingRole), the second gate: an ending call belonging to another
-    /// role is not in this agent's scope, so documenting it would describe a function the model
-    /// cannot call.
-    role: EndingRole,
-    /// The gg capability ids this agent holds that buy it part of the surface — the third gate, and
-    /// the one neither of the others can express, because nothing dispatches a capability and no
-    /// role decides one.
+    /// What this agent was granted — the run's enabled gg tools, its [ending role](EndingRole) and
+    /// the capability ids it holds — held as the one value the membrane also holds.
     ///
-    /// A set rather than the single `library` flag it grew out of: the
-    /// [program library](crate::programs) is the only family bought this way today, and it is
-    /// already not the last, so what the runtime holds is *which* capabilities rather than *whether*
-    /// one particular capability.
-    capabilities: BTreeSet<&'static str>,
+    /// It is deliberately not three fields read by a predicate written here. Every arm's SDK is
+    /// static, so the membrane refuses a call this agent was not granted, and a membrane that
+    /// permitted what this runtime would not describe (or the reverse) would be lying to the model
+    /// in one direction or the other. One type, one reading, both readers.
+    grants: Grants,
     /// The [program language](test_cabinet_core::gg::GgProgramLanguage) this agent writes in.
     ///
     /// It is not a gate — every language offers the same functions under the same gates — but it
@@ -246,9 +236,7 @@ impl DocsRuntime {
         program_language: GgProgramLanguage,
     ) -> Self {
         Self {
-            enabled: enabled.into_iter().collect(),
-            role,
-            capabilities: capabilities.iter().copied().collect(),
+            grants: Grants::new(enabled, Some(role), capabilities.iter().copied()),
             language: language(program_language),
         }
     }
@@ -541,8 +529,15 @@ impl DocsRuntime {
     /// module header describes are all still here — a tool this run enabled, this agent's ending
     /// role, a capability it holds — but which of them applies to a given function is now gg's
     /// answer, stated once, instead of a claim eleven committed catalogues each make about
-    /// themselves. An arm has nothing left to be wrong about, and the three gates read as the three
-    /// arms of one [`Binding`] instead of a boolean, a pair and a fall-through.
+    /// themselves. An arm has nothing left to be wrong about, and asking is one call to
+    /// [`Grants::permits`] rather than a boolean, a pair and a fall-through read here.
+    ///
+    /// **The membrane asks the identical question of the identical value.** Every arm's SDK is
+    /// static, so a program can *write* a call this predicate answers `false` for, and what happens
+    /// when it does is the host's refusal — decided by [`Grants::permits`], from an agent's own
+    /// grant, in exactly one implementation. That asymmetry (the compile-time surface is the
+    /// language's, the discovery surface is the grant's) is intended; the two surfaces disagreeing
+    /// about *what the grant is* would not be.
     ///
     /// A function gg has **no** operation for is not bound. That is drift rather than a run-time
     /// condition — an arm binding something gg has no identity for — and refusing to document it is
@@ -554,15 +549,7 @@ impl DocsRuntime {
     /// reports the very same set and used to answer it with a verbatim copy of this predicate. Two
     /// copies of "may this agent call X" is one copy too many the moment either grows a gate.
     pub fn bound(&self, function: &CatalogueFunction) -> bool {
-        match operation_of(function) {
-            Some(operation) => match operation.binding {
-                Binding::Tool(tool) => self.enabled.contains(tool),
-                Binding::Ending(role) => role == self.role,
-                Binding::Capability(id) => self.capabilities.contains(id),
-                Binding::Always => true,
-            },
-            None => false,
-        }
+        operation_of(function).is_some_and(|operation| self.grants.permits(operation.binding))
     }
 }
 

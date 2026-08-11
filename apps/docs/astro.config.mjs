@@ -580,6 +580,11 @@ export default defineConfig({
                 // responses as code because it is the design of that capability's
                 // one pluggable seam, not a capability of its own.
                 "gg/program-languages",
+                // The capability model that seam settled on: every arm's SDK carries
+                // every function, and a call the agent was not granted is refused at
+                // the host rather than missing from the language. Directly after
+                // program languages because it is the one rule all eleven now share.
+                "gg/static-sdks",
                 // Also a property of responses as code — the counted, disclosed
                 // repairs gg makes to a reply before running it as a program — so it
                 // sits inside this group, unlike the run-level limits.

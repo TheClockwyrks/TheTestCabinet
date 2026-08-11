@@ -606,6 +606,10 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // rather than a missing name. It carries the code the HOST refuses an out-of-set call with,
     // because gg classifies a turn's error from the code: a capability nobody granted must not be
     // recorded as a name the model got wrong.
+    //
+    // The refusal is now the **host's** rather than this SDK's own null-target fallback: the
+    // ECMAScript guest this arm shares binds every module whatever the run enables, so the call
+    // reaches the membrane and comes back named the way this arm's catalogue names it.
     let (outcome, log) = run_with(
         "Files.readTextFile(\"src/Main.java\");\n",
         &[],
@@ -616,8 +620,15 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     // one fact and one recovery — this run does not offer that call.
     assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
     assert!(
-        error.message.contains("fs.readTextFile"),
-        "the refusal names the call the model wrote: {}",
+        error
+            .message
+            .contains("`gg.files.Files.readTextFile` is not available to you"),
+        "the refusal names the call the way this arm's catalogue spells it: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("the gg tool `read_file`"),
+        "and names what is missing, not merely that something is: {}",
         error.message
     );
     assert!(log.names().is_empty(), "and nothing reached gg's dispatch");

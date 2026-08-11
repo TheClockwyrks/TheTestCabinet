@@ -42,8 +42,9 @@
 //! neither the api nor a tool and could therefore have skipped the bracket and still compiled.
 
 use super::test_cabinet::gg::types::ToolError;
-use super::{MembraneState, ToolApi, wire_failure};
+use super::{MembraneState, RefusableCall, ToolApi, wire_failure};
 use crate::sandbox::language::SurfaceCall;
+use crate::sandbox::{Binding, operation_by_call};
 
 /// Proof that a model-facing API call is being recorded around whatever is done with it.
 ///
@@ -90,37 +91,83 @@ impl<A: ToolApi> MembraneState<A> {
     /// [key](SurfaceCall::key), never the SDK spelling the model actually typed, so a count means
     /// the same thing in every arm of a cross-language study.
     ///
-    /// A membrane **refusal** — a spent wall-clock budget, a tool this run does not offer — closes
-    /// the bracket as a failed call rather than skipping it. The model made the call; that nothing
-    /// ran is the tool layer's fact, which is exactly why
+    /// A membrane **refusal** — a spent wall-clock budget, a capability this agent was not granted
+    /// — closes the bracket as a failed call rather than skipping it. The model made the call; that
+    /// nothing ran is the tool layer's fact, which is exactly why
     /// [`SandboxRefusal`](crate::sandbox::invoker::SandboxRefusal) is kept out of the tool roster
     /// and why an API call is not.
+    ///
+    /// # The bracket is also the capability gate
+    ///
+    /// Because every arm's SDK is **static**. No guest leaves a name out of a program's scope any
+    /// more, so every call a program can write arrives here, and the one thing that decides whether
+    /// it happens is [`granted`](MembraneState::granted) — asked here, once, from the operation gg
+    /// files the call under. Putting it in the bracket rather than in each host function is what
+    /// makes "no model-facing call escapes the gate" a property of the mechanism instead of a rule
+    /// forty-eight functions have to remember, and it is why the refusal is *inside* the record: a
+    /// call the model made and gg refused is a failed API call, not an absence.
     pub(super) fn recorded<R>(
         &mut self,
         call: SurfaceCall,
         body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
     ) -> Result<R, ToolError> {
-        self.recorded_on(call.object, call.key, body)
+        // A call gg has no operation for is drift rather than a run-time condition, and it is
+        // treated as ungated for the reason `operation_of` hands back an `Option` at all: taking a
+        // run down over a table that has fallen behind is the larger failure.
+        // `every_host_function_records_its_own_api_call` holds the recorded set equal to the
+        // table's, so the `unwrap_or` is unreachable in a correct build.
+        let binding =
+            operation_by_call(call).map_or(Binding::Always, |operation| operation.binding);
+        self.bracketed(
+            call.object,
+            call.key,
+            RefusableCall::Surface(call),
+            binding,
+            body,
+        )
     }
 
     /// As [`recorded`](Self::recorded), for a call named by two strings rather than by a
-    /// [`SurfaceCall`].
+    /// [`SurfaceCall`], and gated by a [`Binding`] the caller states.
     ///
     /// The callers are the [documentation carve-out](crate::docs)'s own three calls, which no arm's
     /// committed catalogue spells yet — so there is nothing to resolve a
     /// [`SurfaceCall`] from and no fixed pair in
     /// [`OPERATIONS`](crate::sandbox::operations::OPERATIONS) to name. They record under gg's own
     /// words for them instead, which is a name in the record that joins to gg's own vocabulary
-    /// rather than to a spelling nobody wrote.
+    /// rather than to a spelling nobody wrote — and, for the same reason, they hand over their gate
+    /// rather than having one looked up for them.
     pub(super) fn recorded_on<R>(
+        &mut self,
+        object: &'static str,
+        function: &'static str,
+        binding: Binding,
+        body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
+    ) -> Result<R, ToolError> {
+        self.bracketed(
+            object,
+            function,
+            RefusableCall::Carveout { object, function },
+            binding,
+            body,
+        )
+    }
+
+    /// The bracket itself: open the record, check the gate, run the body, close the record with
+    /// whatever verdict came out of it.
+    fn bracketed<R>(
         &mut self,
         object: &str,
         function: &str,
+        refusable: RefusableCall<'_>,
+        binding: Binding,
         body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
     ) -> Result<R, ToolError> {
         self.api.api.begin_api_call(object, function);
         self.api_calls = self.api_calls.saturating_add(1);
-        let result = body(self, Recording(()));
+        let result = self
+            .granted(refusable, binding)
+            .and_then(|()| body(self, Recording(())));
         // The class the program is about to be thrown with, taken from the error itself. It is the
         // API layer's own reason, not the tool's: a membrane refusal and a carve-out have no tool
         // record at all, and a typed conversion that failed over a tool that answered `ok` is a
@@ -143,6 +190,12 @@ impl<A: ToolApi> MembraneState<A> {
     /// them. `object.list()` used to be a third, and its object was the reason this ever took one at
     /// run time rather than from the call — it was the one carve-out whose object was an argument.
     /// With the directory gone every recorded call names a fixed pair again.
+    ///
+    /// It carries **no capability gate**, and it is the only bracket that does not. Its one caller
+    /// is bound by [`Binding::Always`] — nothing gates showing a
+    /// program its own open views — so a gate here could only ever answer yes, and giving it one
+    /// would mean inventing a `Result` for a call that cannot fail.
+    /// `the_one_ungated_bracket_serves_an_operation_nothing_gates` is what holds that true.
     pub(super) fn recorded_ok<R>(
         &mut self,
         call: SurfaceCall,

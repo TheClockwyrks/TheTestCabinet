@@ -90,56 +90,62 @@ public final class Wire {
     // The API objects
     // -------------------------------------------------------------------------------------------
 
-    // Each object is reached through `typeof` rather than by name, because a capability this run
-    // withheld is not a binding at all in the guest's scope and reading an undeclared identifier
-    // throws. A switch on a string could not work here: these names are the enclosing function's
-    // parameters, so nothing can reach them by string.
+    // Each object is reached through `typeof` rather than by name, because reading an undeclared
+    // identifier throws and these names are the enclosing function's parameters, so nothing can
+    // reach them by string and no `switch` could stand in.
+    //
+    // THE GUEST BINDS EVERY MODULE, WHATEVER THE RUN ENABLED, so none of these answers `null` in a
+    // run whose artifacts agree. It did not always: the guest's scope used to be built from the
+    // run's enabled tools, and a capability the run withheld was simply not a binding — which is
+    // the case these `typeof` guards were written for and the case that no longer exists. What a
+    // `null` means now is that this SDK and the guest component disagree about what is exported,
+    // which is drift between two artifacts rather than anything a run decided.
 
-    /** The guest's {@code fs} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code fs} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof fs === 'undefined' ? null : fs;")
     public static native JSObject fs();
 
-    /** The guest's {@code system} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code system} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof system === 'undefined' ? null : system;")
     public static native JSObject system();
 
-    /** The guest's {@code project} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code project} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof project === 'undefined' ? null : project;")
     public static native JSObject project();
 
-    /** The guest's {@code tasks} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code tasks} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof tasks === 'undefined' ? null : tasks;")
     public static native JSObject tasks();
 
-    /** The guest's {@code memory} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code memory} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof memory === 'undefined' ? null : memory;")
     public static native JSObject memory();
 
-    /** The guest's {@code view} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code view} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof view === 'undefined' ? null : view;")
     public static native JSObject view();
 
-    /** The guest's {@code context} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code context} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof context === 'undefined' ? null : context;")
     public static native JSObject context();
 
-    /** The guest's {@code agents} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code agents} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof agents === 'undefined' ? null : agents;")
     public static native JSObject agents();
 
-    /** The guest's {@code skills} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code skills} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof skills === 'undefined' ? null : skills;")
     public static native JSObject skills();
 
-    /** The guest's {@code programs} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code programs} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof programs === 'undefined' ? null : programs;")
     public static native JSObject programs();
 
-    /** The guest's {@code harness} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code harness} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof harness === 'undefined' ? null : harness;")
     public static native JSObject harness();
 
-    /** The guest's {@code review} object, or {@code null} when this run did not bind it. */
+    /** The guest's {@code review} object, or {@code null} when the guest does not export it. */
     @JSBody(script = "return typeof review === 'undefined' ? null : review;")
     public static native JSObject review();
 
@@ -177,9 +183,15 @@ public final class Wire {
     /**
      * One call on one API object: the value it returned, or a raised {@link ToolError}.
      *
-     * @param tool the gg name a refusal is reported under when this run bound nothing here
+     * <p>The {@code null} branch is <b>not</b> a withheld capability and does not say it is. Every
+     * module is bound in every program and every call on one is the host's to permit or refuse, so
+     * the only way {@link #apply} finds nothing is that this SDK names a function the run's guest
+     * component does not export — the two artifacts disagreeing, which a model can do nothing
+     * about and must not be told to look for a capability over.
+     *
+     * @param tool the gg name the failure is reported under
      * @param target the API object, as one of this class's accessors answered
-     * @param object the object's own name, for the refusal's sentence
+     * @param object the object's own name, for the failure's sentence
      * @param name the function to call on it
      * @param args the arguments, already lowered
      */
@@ -187,9 +199,10 @@ public final class Wire {
             JSArray<JSObject> args) {
         Outcome outcome = apply(target, name, args);
         if (outcome == null) {
-            throw new ToolError(tool, ToolErrorCode.UNAVAILABLE,
-                    "`" + object + "." + name + "` is not available in this run: this program's "
-                    + "capability set does not offer it");
+            throw new ToolError(tool, ToolErrorCode.OTHER,
+                    "`" + object + "." + name + "` did not reach the guest: gg's SDK declares it "
+                    + "and this run's guest does not export it, which is a mismatch between the "
+                    + "two rather than anything this program did");
         }
         if (outcome.isOk()) {
             return outcome.getValue();

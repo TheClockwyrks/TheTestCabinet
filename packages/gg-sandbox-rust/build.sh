@@ -201,6 +201,49 @@ tar --sort=name \
 	-C "$STAGE" -cf "$BUILD/rust.libraries.tar" .
 gzip -9 -n -c "$BUILD/rust.libraries.tar" >"$CHECKERS/rust.libraries.tar.gz"
 
+# --- The source manifest ----------------------------------------------------
+# What the set was built FROM, beside what it was built BY. `rust.toolchain.json` above answers the
+# second question and `rust.compile.test.rs` holds it to this checkout's `rustc`; nothing answered
+# the first, and this arm is the one where a stale artifact is least visible. Every other compiled
+# arm carries some of its SDK into its archive as source — the C++ headers, the Swift shell — and is
+# compared file for file. An `.rlib` carries none: `libgg.rlib` is a compiled artifact through and
+# through, so an SDK edit committed without this rebuild would leave every program linked against
+# the old surface with the catalogue describing the new one, and every gate green.
+#
+# `Cargo.toml` and `Cargo.lock` are in the manifest beside `src/` because they are what the curated
+# set IS — the crates a model may name and the exact versions of them that were compiled in.
+#
+# `src/bindings.rs` is deliberately IGNORED, and `bindings.sh` recorded in its place. The bindings
+# are generated and `.gitignore`d, so a fresh checkout — which is every CI checkout, on both CI
+# systems — does not have the file at all; hashing it would fail the gate unconditionally on green
+# trees and teach whoever hit it to delete the mechanism. What generates it goes in instead, and it
+# has to, because unlike the C++ and Swift arms' bindings steps (`wit-bindgen c --world sandbox`,
+# and nothing else, whose output the wire digest and the `witBindgen` pin already pin between them)
+# this one passes `--pub-export-macro --export-macro-name export --default-bindings-module
+# gg::bindings --format` — flags that change `bindings.rs`, and therefore `libgg.rlib`, without the
+# WIT or the pin moving.
+#
+# `build.sh` records ITSELF for the same reason it records the tool that generates the bindings: the
+# recipe is an input. The `rustc` flags, the staged library set and the archive's own construction
+# all live here, so an edit to this file changes what the artifact is with no source under `src/`
+# moving. That an edit to it fails the gate until it is run is the intended reading — editing the
+# recipe and not cooking is exactly the state the gate exists to name.
+echo "==> rust.sources.manifest.json"
+node "$ROOT/scripts/gg-artifact-manifest.mjs" \
+	--arm rust \
+	--rebuild packages/gg-sandbox-rust/build.sh \
+	--artifact "$CHECKERS/rust.libraries.tar.gz" \
+	--source-root "$HERE/src" \
+	--ignore "$HERE/src/bindings.rs" \
+	--source-file "$HERE/Cargo.toml" \
+	--source-file "$HERE/Cargo.lock" \
+	--source-file "$HERE/bindings.sh" \
+	--source-file "$HERE/build.sh" \
+	--wit "$ROOT/crates/gg/wit" \
+	--pin "target=$GG_RUST_TARGET" \
+	--pin "witBindgen=$GG_WIT_BINDGEN_VERSION" \
+	--out "$CHECKERS/rust.sources.manifest.json"
+
 echo "==> wrote"
 ls -la "$CHECKERS/rust.libraries.tar.gz" "$CHECKERS/rust.toolchain.json"
 cat "$CHECKERS/rust.toolchain.json"

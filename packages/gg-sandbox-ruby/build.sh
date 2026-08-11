@@ -126,5 +126,33 @@ npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 	--disable stdio http fetch-event \
 	-o "$ROOT/$COMPONENT"
 
+# 6. Record what went into the component, beside it. `contract-drift.sh` deliberately never rebuilds
+#    this artifact, so this manifest — and the Rust test that recomputes it from the checkout — is
+#    the only thing standing between an SDK edit committed without a rebuild and every Ruby program
+#    in the run being evaluated by last month's guest.
+#    `tools/guest.mjs` is in it beside the SDK tree because it is what step 3 lowers the SDK and the
+#    library set with — a change there changes the JavaScript baked into the component without any
+#    Ruby source moving. The gem pin is recorded for the same reason: the standard library's Ruby
+#    sources come from it, and it is bumped in a different variable from the compiler's.
+#
+#    `build.sh` records ITSELF, because the recipe is an input as much as any file it reads: the
+#    flags below decide what the artifact is, and editing one without re-running this script leaves
+#    the checkout describing something the committed bytes are not. That an edit to it fails the
+#    gate until it is run is the intended reading — editing the recipe and not cooking is exactly
+#    the state the gate exists to name.
+echo "Recording the component manifest ..."
+node "$ROOT/scripts/gg-artifact-manifest.mjs" \
+	--arm ruby \
+	--rebuild "$PACKAGE/build.sh" \
+	--artifact "$COMPONENT" \
+	--source-root "$PACKAGE/src" \
+	--source-file "$PACKAGE/tools/guest.mjs" \
+	--source-file "$PACKAGE/build.sh" \
+	--wit crates/gg/wit \
+	--pin "componentizeJs=$COMPONENTIZE_VERSION" \
+	--pin "opalCompiler=$OPAL_COMPILER_VERSION" \
+	--pin "opalGem=$OPAL_VERSION" \
+	--out "$DEST_DIR/ruby.component.manifest.json"
+
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
 echo "Remember to commit the refreshed artifact together with the source change."

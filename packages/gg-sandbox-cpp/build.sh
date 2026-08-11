@@ -186,5 +186,32 @@ echo "==> cpp.toolchain.json"
 	printf '\n  ]\n}\n'
 } >"$CHECKERS/cpp.toolchain.json"
 
+echo "==> cpp.sources.manifest.json"
+# What the artifacts were built FROM, beside what they were built BY. This arm is the best covered
+# of the three compiled ones already — the archive carries the prelude, the shell and every SDK
+# HEADER as source, and `cpp.compile.test.rs` compares all of them against this checkout file for
+# file. What it carries none of is the SDK's BODIES: `Sources/sdk/*.cpp` becomes `sdk.o`, so a
+# change to what a function does, with its declaration left alone, was invisible to every gate.
+#
+# `build.sh` records ITSELF, because the recipe is an input as much as the sources are. The
+# exception-handling and hardening flags are set here and this file says at length that they must
+# agree with `cpp.compile.rs`'s; the `--disable`d capabilities and the archive's construction are
+# here too. An edit to any of them changes what the artifact is with no source under `Sources/`
+# moving, so an edit that fails the gate until the script is re-run is the intended reading.
+node "$ROOT/scripts/gg-artifact-manifest.mjs" \
+	--arm cpp \
+	--rebuild packages/gg-sandbox-cpp/build.sh \
+	--artifact "$CHECKERS/cpp.guest.tar.gz" \
+	--artifact "$CHECKERS/cpp.adapter.wasm" \
+	--source-root "$HERE/Sources" \
+	--source-file "$HERE/build.sh" \
+	--wit "$ROOT/crates/gg/wit" \
+	--pin "wasiSdk=$GG_WASI_SDK_VERSION" \
+	--pin "target=$GG_CPP_TARGET" \
+	--pin "std=$GG_CPP_STD" \
+	--pin "witBindgen=$GG_WIT_BINDGEN_VERSION" \
+	--pin "adapter=$GG_WASMTIME_ADAPTER_VERSION" \
+	--out "$CHECKERS/cpp.sources.manifest.json"
+
 echo "==> done"
 ls -la "$CHECKERS"/cpp.*

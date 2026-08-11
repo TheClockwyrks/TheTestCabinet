@@ -127,9 +127,10 @@ fn program_faults_are_reported_not_trapped() {
         "and it must survive nested inside a logged structure"
     );
 
-    // A capability this run WITHHELD is a missing object, not a call that travels to the host to be
-    // refused — and the message answers the question the model is about to ask by listing the objects
-    // it does have. `ToolError` is deliberately not among them: it is catchable, not callable.
+    // A capability this run WITHHELD is bound like every other — the SDK is static — so the call
+    // travels to the host and is refused there, with a sentence naming the gg capability that buys
+    // it. It is `UnknownName` all the same, because that is what the host makes of an `unavailable`
+    // code: reaching for something the run does not offer is one event on all eleven arms.
     let (outcome, log) = run_with(
         "return fs.listDir(\"src\");",
         &["shell".to_string()],
@@ -140,24 +141,42 @@ fn program_faults_are_reported_not_trapped() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("fs is not defined"),
+        error
+            .message
+            .contains("`gg.files.listDir` is not available to you"),
         "{}",
         error.message
     );
     assert!(
-        error.message.contains("gg.shell") && error.message.contains("gg.session"),
-        "the model must be told which modules it does have: {}",
-        error.message
-    );
-    assert!(
-        !error.message.contains("ToolError"),
-        "`ToolError` is catchable, not callable, and listing it invites a call: {}",
+        error.message.contains("the gg tool `list_dir`"),
+        "the refusal names what is missing: {}",
         error.message
     );
     assert!(
         log.calls().is_empty(),
         "a withheld capability must never reach the loop"
     );
+
+    // A name gg does not have at all is the other failure, and on **this** arm it can no longer be a
+    // run-time one: the checker declares the whole surface plus every global a program may reach, so
+    // an identifier neither of those covers is a located compile error before anything runs. That is
+    // the better of the two answers and it is the direct consequence of the surface going static —
+    // there is nothing left for a `ReferenceError` to be about except a name gg never had. The
+    // guest's own unknown-name branch is exercised where it is still reachable: on the unchecked
+    // JavaScript arm, and on Python and Ruby.
+    let (outcome, log) = run_with(
+        "return whatever.listDir(\"src\");",
+        &["shell".to_string()],
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert!(
+        matches!(&outcome.result, Err(SandboxError::Prepare(PrepareError::Compile(diagnostics)))
+            if diagnostics.contains("Cannot find name 'whatever'")),
+        "an identifier the checker does not know is rejected before the program runs: {:?}",
+        outcome.result
+    );
+    assert!(log.calls().is_empty(), "and nothing ran");
 
     // The three mistakes a model makes because its TypeScript was stripped, not CHECKED. Each is
     // rejected by the SDK with a sentence naming the function and the argument.

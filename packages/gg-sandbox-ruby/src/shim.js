@@ -415,14 +415,19 @@ function report(thrown, program, modules, lib) {
     };
   }
   if (klass === "NoMethodError" || klass === "NameError") {
-    // The most common cause is a program reaching for a name it was not given, so answer the
-    // question it is about to ask: which modules does it have? Each module's `list` then names
-    // that module's own functions.
+    // The most common cause is a program reaching for a name gg does not have, so answer the
+    // question it is about to ask: what are the constants? Searching the documentation is how it
+    // finds a function inside one.
+    //
+    // "GG's modules" rather than "modules this run", which is what this said while the SDK's scope
+    // was built from the run. Every module is defined in every program now, so the list is the same
+    // one every time and says nothing about what this run enabled — and a model told that *this
+    // run* offers it the board and the task list writes a call into one and is refused for it.
     const lend = lib ? ", plus `lib` for loaded skill and memory code" : "";
     return {
       kind: "unknown-name",
       code: undefined,
-      message: `${message}; modules this run: ${modules.join(", ")}${lend}`,
+      message: `${message}; GG's modules: ${modules.join(", ")}${lend}`,
       location,
     };
   }
@@ -450,12 +455,17 @@ export function boundTools() {
 }
 
 /**
- * Evaluate one program against exactly the tools this run enables.
+ * Evaluate one program against the whole SDK.
  *
  * `program` is the JavaScript Opal compiled on the host — the model's Ruby never reaches here —
  * with the source map that maps it back appended. `modules` is the code the agent loaded by reading
  * a code skill or a code memory, each already compiled and each wrapped by the host in the
  * `GG::Lib.define` call that makes its body a namespace.
+ *
+ * `enabled`, `ending` and `library` are **read by nothing here**. They used to build the surface;
+ * the surface is now the whole SDK, bound at load into the baked heap, and every capability question
+ * is answered at the membrane — the one place that can answer it the same way for all eleven
+ * language arms. gg still sends them, because the WIT world is shared with ten sibling guests.
  *
  * Nothing comes back: a raise is reported over `feedback.report-error` rather than being allowed to
  * escape as an opaque wasm trap, everything a program wanted to show itself it opened a view of,
@@ -464,13 +474,14 @@ export function boundTools() {
  * there is nothing here to note: a Ruby program cannot help returning something, and telling a
  * model its last expression was ignored would be a sentence on every single turn.
  */
-export function run(program, modules, enabled, ending, library) {
+export function run(program, modules, _enabled, _ending, _library) {
   installEnvironment();
   const flush = attachStreams();
   try {
-    const bound = Array.from(
-      Opal.send(gg("Scope"), "install", [Array.from(enabled), ending, library]),
-    );
+    // The module paths a program may reach, for the unknown-name hint alone. It is a constant: the
+    // SDK is static, so every capability module carries every function it declares on every turn,
+    // and which of them this agent may actually CALL is the host's answer rather than this guest's.
+    const bound = Array.from(Opal.const_get_qualified(gg("Scope"), "MODULE_PATHS"));
 
     // Code modules are evaluated after the scope and before the program, so one may call
     // `GG::Files.read_file` like anything else, and each is given the same surface the program

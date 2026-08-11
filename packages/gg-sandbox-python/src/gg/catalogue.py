@@ -1,22 +1,21 @@
 """What this guest needs in order to build a program's surface — and nothing a model ever reads.
 
-It is deliberately much smaller than it was. Every fact about what a function is *called*, what it
-*does*, which module it lives in and which gg operation it binds is now written on the declaration
-itself — the module it is declared in, its `__all__`, its docstring, its `@operation` — so none of
-that is here. What is left is the one thing a declaration cannot state, because it is not a fact
-about this SDK at all: **what buys a call at run time**.
+It is deliberately much smaller than it was, and it lost its whole reason for existing in the
+process. Every fact about what a function is *called*, what it *does*, which module it lives in and
+which gg operation it binds is written on the declaration itself — the module it is declared in, its
+`__all__`, its docstring, its `@operation`. And the one thing a declaration could not state — **what
+buys a call at run time** — is no longer this guest's business at all.
 
-gg owns that. Its operations table says whether an operation is bought by a gg tool, by a capability,
-by a role's ending, or by nothing. The guest is told only the three run facts the host passes to
-`run` — the enabled tool names, the ending role, and whether this agent keeps a program library — so
-it needs its own reading of the same question to decide which functions a program is given. That
-reading is below.
+gg owns that, and gg enforces it. Its operations table says whether an operation is bought by a gg
+tool, by a capability, by a role's ending, or by nothing, and the **membrane** checks it when the
+call arrives. This guest binds every function it has into every program's surface,
+unconditionally: the SDK is static, a withheld call is a call that reaches the host and is refused
+there with a sentence naming what is missing, and there is no reading of a run's enabled set anywhere
+in this package any more.
 
-It is **not** the enforcement, and it is not asserted in the signature catalogue either. The host
-refuses a withheld call whichever name a program used to reach it, and the committed catalogue
-carries no gate at all, because a gate an arm asserted would be an arm asserting something only gg
-can be held to. What is here decides the *surface* a model is shown, which is a different and much
-weaker claim.
+What is left here is the module vocabulary a surface is assembled from, and the one table that is a
+claim about *this package* rather than about a run: which gg tool each operation this SDK implements
+would dispatch, read by `gg.scope.bound_tools` and by nothing else.
 """
 
 from __future__ import annotations
@@ -140,49 +139,16 @@ TOOL_BOUND: dict[str, str] = {
     "delegation.fork": "fork",
     "views.open_file": "read_file",
 }
-"""Every operation a gg **tool** buys, and which tool buys it.
+"""Every operation a gg **tool** would dispatch, and which tool it is.
+
+It no longer decides anything a program can see: the surface is static, so this table is read by
+`gg.scope.bound_tools` alone — the export gg compares against its own tool vocabulary on the
+committed artifact. What buys a call at *run time* is gg's own operations table, checked at the
+membrane; what is here is only "which gg tool does this SDK implement a function for", which is a
+claim about this package rather than about a run.
 
 Three of these are not one-to-one, and each says something real. `files.read_text_file` is a helper
 rather than a tool of its own, so it is bought by the read it is built on; `views.open_file` performs
 that same read on the way to showing the file, so a run with reading withheld must not get one
 through a side door. Everything else names the tool that shares its key.
-"""
-
-ALWAYS_BOUND: frozenset[str] = frozenset(
-    {
-        "views.open_text",
-        "views.open_docs_view",
-        "views.close",
-        "views.current",
-    }
-)
-"""The operations nothing gates, bound into every program whatever a run enables.
-
-The same carve-out the endings have, and for the same reason: a run that offers no tools at all must
-still be able to show its model something, and must always be able to read what the functions it does
-have do.
-"""
-
-LIBRARY_BOUND: frozenset[str] = frozenset(
-    {
-        "programs.history",
-        "programs.get",
-        "programs.rerun",
-    }
-)
-"""The operations the program-library **capability** buys, all together or not at all.
-
-No tool name stands for this family, which is why the host passes a flag rather than a name in the
-enabled set.
-"""
-
-ENDING_BOUND: dict[str, str] = {
-    "session.finish": "standard",
-    "session.approve": "review",
-    "session.request_changes": "review",
-}
-"""The operations a **role's ending** buys, by the role whose programs get them.
-
-Exactly one role's group is bound per program, because an ending is a result and a role's result has
-a shape: work reports what was done, a review returns a verdict.
 """

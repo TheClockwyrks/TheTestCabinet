@@ -20,6 +20,16 @@
 //! and the [documentation runtime](crate::docs::DocsRuntime::bound) — the single predicate deciding
 //! what a model may be shown — reads this rather than the arm's own claim about itself.
 //!
+//! # Every SDK is static, so this table is the enforcement
+//!
+//! No arm withholds a name. Every function of every arm's SDK is compiled, linked and callable
+//! whatever the run enabled, and what a program gets for calling one it was not granted is a
+//! **refusal from the host** rather than an unknown identifier from the language. That is what makes
+//! this table load-bearing rather than descriptive: [`Grants::permits`] is the whole gate, asked
+//! once by the [membrane](super::membrane) when a call arrives and once by the
+//! [documentation runtime](crate::docs::DocsRuntime::bound) when a search decides what to show, and
+//! the two cannot disagree because there is one implementation of the question.
+//!
 //! # No arm, and no committed catalogue, ever learns a capability id
 //!
 //! [`Binding::Capability`] names a gg capability id (`program-library`), and that name appears
@@ -37,9 +47,12 @@
 //! refusal names a call, and [`spell`](super::language::spell) turns one into the arm's spelling by
 //! way of this field. It goes when those constants are replaced by operation ids.
 
+use std::collections::BTreeSet;
 use std::fmt;
 
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
+use test_cabinet_core::gg::{
+    CAPABILITY_DOCVIEW_CLOSE, CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage,
+};
 
 use crate::ending::EndingRole;
 use crate::tools::ALL_TOOL_NAMES;
@@ -687,6 +700,120 @@ pub fn operation_by_id(id: &str) -> Option<&'static Operation> {
     OPERATIONS
         .iter()
         .find(|operation| operation.id.namespace == namespace && operation.id.key == key)
+}
+
+/// The operation gg files under `call` — the `(object, key)` pair a refusal or a prompt names a call
+/// by — or `None` for a pair no row carries.
+///
+/// The membrane is the caller. Every host function on it opens its bracket with one of the
+/// [`SurfaceCall`] constants, and `every_host_function_records_its_own_api_call` asserts that the
+/// set of pairs so recorded is exactly this table's, so the `None` arm is unreachable from there.
+/// It is still an `Option` rather than a panic for the reason [`operation_of`] is: a call gg has no
+/// identity for is drift, and taking a run down over drift is the larger failure.
+pub fn operation_by_call(call: SurfaceCall) -> Option<&'static Operation> {
+    OPERATIONS
+        .iter()
+        .find(|operation| operation.call.object == call.object && operation.call.key == call.key)
+}
+
+/// **What one agent was granted**, and therefore the one answer to "may this agent call X".
+///
+/// It is the counterpart of [`Binding`]: a binding says what buys an operation, and this says what
+/// this agent holds — the run's enabled gg tools, the [ending role](EndingRole) it was dispatched
+/// in (or none at all, for the on-use script of a skill or a memory), and the gg capability ids it
+/// was given. [`permits`](Self::permits) is where the two meet, and it is the **only** place in gg
+/// where they meet.
+///
+/// # Why there is exactly one of these
+///
+/// Because the question is asked by two things that must never disagree. The
+/// [documentation runtime](crate::docs::DocsRuntime) asks it to decide what a
+/// [search](crate::docs::DocsRuntime::search) may return and what a documentation view may describe;
+/// the [membrane](super::membrane) asks it to decide whether a call the program actually made is
+/// serviced or refused. Every arm's SDK is **static** — every function is compiled, linked and
+/// callable whatever the run enabled — so the membrane's answer is the whole enforcement, and a
+/// membrane that said yes where search said no would be offering a capability the model was told it
+/// did not have. The reverse is worse: search would advertise a call the host then refuses.
+///
+/// So both hold one of these, both call [`permits`](Self::permits), and neither carries a reading of
+/// its own.
+#[derive(Debug, Clone, Default)]
+pub struct Grants {
+    /// The run's enabled gg tool names — every one a member of [`ALL_TOOL_NAMES`].
+    tools: BTreeSet<String>,
+    /// The [ending role](EndingRole) this agent was dispatched in, or `None` for code that is not
+    /// the agent's own turn at all and may therefore not declare the session over.
+    ending: Option<EndingRole>,
+    /// The gg capability ids this agent holds that buy part of the surface — the gate neither of
+    /// the two above can express, because nothing dispatches a capability and no role decides one.
+    capabilities: BTreeSet<&'static str>,
+}
+
+impl Grants {
+    /// What an agent holding `tools`, dispatched in `ending`, and given `capabilities` was granted.
+    pub fn new(
+        tools: impl IntoIterator<Item = String>,
+        ending: Option<EndingRole>,
+        capabilities: impl IntoIterator<Item = &'static str>,
+    ) -> Self {
+        Self {
+            tools: tools.into_iter().collect(),
+            ending,
+            capabilities: capabilities.into_iter().collect(),
+        }
+    }
+
+    /// **Whether this agent may exercise an operation bound by `binding`.**
+    ///
+    /// The four arms are four different kinds of thing deciding, and each is checked against the
+    /// half of the grant that can answer it. Nothing here falls back: an operation whose tool is
+    /// not enabled is not reachable by holding a capability, and an ending belonging to another role
+    /// is not reachable by having been given every tool gg has.
+    pub fn permits(&self, binding: Binding) -> bool {
+        match binding {
+            Binding::Tool(tool) => self.tools.contains(tool),
+            Binding::Ending(role) => self.ending == Some(role),
+            Binding::Capability(id) => self.capabilities.contains(id),
+            Binding::Always => true,
+        }
+    }
+
+    /// The [ending role](EndingRole) this agent was dispatched in, for a refusal that has to name
+    /// the ending calls the agent **does** have rather than only the one it does not.
+    pub fn ending(&self) -> Option<EndingRole> {
+        self.ending
+    }
+}
+
+/// **The gg capability ids that buy part of the model-facing surface**, from the flags a caller has
+/// already resolved.
+///
+/// There are two, and both are read by [`Grants`]: [`program-library`](CAPABILITY_PROGRAM_LIBRARY)
+/// buys the `programs` family, and [`docview-close`](CAPABILITY_DOCVIEW_CLOSE) buys taking a
+/// documentation view back out of the window. Every other gate on a model-facing call is a gg tool
+/// or an ending role, which the other two halves of a grant carry.
+///
+/// It exists so that the two readers of a grant cannot be built from different lists. The membrane
+/// derives its grant from a [`ProgramScope`](super::ProgramScope)'s flags and the
+/// [documentation runtime](crate::docs::DocsRuntime) is constructed at three separate call sites;
+/// while each of them wrote the list out for itself, the docs runtime's grant could never carry
+/// `docview-close` and the membrane's could, so the "one predicate over one value" the whole design
+/// rests on held for the predicate and not for the value. It caused nothing only because
+/// `docview-close` has no row in [`OPERATIONS`] yet — the two calls it buys are gated inline — so
+/// the first arm to catalogue them would have made it a real defect: an agent granted the capability
+/// could call them and could never find them.
+///
+/// The flags come in resolved rather than as a profile, because *resolved* is what the caller knows:
+/// an agent whose profile asks for a program library it was not given keeps neither the object nor
+/// its documentation.
+pub fn surface_capabilities(library: bool, docview_close: bool) -> Vec<&'static str> {
+    [
+        library.then_some(CAPABILITY_PROGRAM_LIBRARY),
+        docview_close.then_some(CAPABILITY_DOCVIEW_CLOSE),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// `&str` equality, in a `const` context, where `==` is not available.

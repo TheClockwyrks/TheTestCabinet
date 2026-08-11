@@ -441,20 +441,23 @@ end
 
 #[test]
 fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
-    // A tool this run does not offer is not a name in the program's surface, so reaching for it
-    // raises `NoMethodError` — Ruby's own answer — and the guest classifies that as the unknown name
-    // it is, listing the modules the run *did* give.
+    // A tool this run does not offer is bound onto its module like every other — this arm's SDK is
+    // static — so reaching for it is an ordinary Ruby call that reaches the HOST, and what comes
+    // back is gg's own sentence naming the capability that buys it.
     let outcome = run("GG::Shell.run(\"ls\")\n");
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("GG::Views"),
-        "the refusal names the modules this run does offer: {}",
+        error
+            .message
+            .contains("`GG::Shell.run` is not available to you")
+            && error.message.contains("the gg tool `shell`"),
+        "the refusal names the call and what is missing: {}",
         error.message
     );
 
-    // A module that exists with the function withheld says something better than Ruby would, and
-    // names what it does offer.
+    // The same for a module the run does buy something else from: the gate is per operation, so a
+    // run with reading is still refused a write, on the same terms and in the same words.
     let (outcome, _log) = run_with(
         "GG::Files.write_file(\"a\", \"b\")\n",
         &["read_file".into()],
@@ -464,22 +467,36 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
     let error = program_error(&outcome);
     assert_eq!(error.kind, ProgramErrorKind::UnknownName);
     assert!(
-        error.message.contains("GG::Files.write_file") && error.message.contains("read_file"),
-        "the refusal names the call and what the module does offer: {}",
+        error
+            .message
+            .contains("`GG::Files.write_file` is not available to you")
+            && error.message.contains("the gg tool `write_file`"),
+        "the refusal names the call and what is missing: {}",
         error.message
     );
 
-    // AND A WITHHELD CALL NEVER REACHES THE INVOKER. With the API object abolished, the module a
-    // program calls through IS the surface: `GG::Scope` lifts every declaration off its module at
-    // load and puts back only what this run offers, so there is no second name in Ruby through
-    // which the implementation could be reached. What the model gets is Ruby's own `NoMethodError`
-    // at the line it wrote, rather than a tool result three steps later.
-    //
-    // The host refusal is still the enforcement and still the *last* word — a program that reaches
-    // the membrane for a withheld tool is refused there, whichever guest it came from — but on this
-    // arm a Ruby program can no longer produce that case, which is the honest consequence of the
-    // surface and the library becoming one namespace. It comes back when this arm's SDK becomes
-    // static.
+    // A name gg does not have AT ALL is the other failure, and it is the one Ruby still answers for
+    // itself: the module's `method_missing` says what that module declares, which is now the whole
+    // of what gg declares there.
+    let (outcome, _log) = run_with(
+        "GG::Files.read_fil(\"notes.md\")\n",
+        &["read_file".into()],
+        &[],
+        canned_outcome,
+    );
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        error
+            .message
+            .contains("is not one of the names gg declares there"),
+        "{}",
+        error.message
+    );
+
+    // AND A WITHHELD CALL NEVER REACHES THE INVOKER. The refusal is raised at the membrane, before
+    // anything is dispatched, so the effect a program was refused is an effect that did not happen
+    // — which is the property the whole gate exists for.
     let (outcome, log) = run_with(
         "GG::Files.read_file(\"notes.md\")\n",
         &["write_file".to_string()],
@@ -497,6 +514,16 @@ fn a_ruby_program_is_gated_by_the_host_and_told_what_it_does_have() {
         log.calls().is_empty(),
         "a withheld tool never reaches the invoker"
     );
+
+    // And it is a VALUE: a `rescue` clause catches it, reads the code off it, and the program runs
+    // on. That is what a `NoMethodError` could never be.
+    let (outcome, _log) = run_with(
+        "begin\n  GG::Files.read_file(\"notes.md\")\nrescue GG::Core::ToolError => failure\n           puts \"#{failure.tool} #{failure.code}\"\nend\n",
+        &["write_file".to_string()],
+        &[],
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["read_file unavailable"]);
 }
 
 #[test]

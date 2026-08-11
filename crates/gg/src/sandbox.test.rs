@@ -847,39 +847,63 @@ fn a_role_gets_only_its_own_ending_calls() {
             items: vec!["`step()` is off by one".to_string()],
         }
     );
-    // A reviewer's scope has no `harness` object at all. It exists only to carry `finish`, and a
-    // reviewer does not get one — documentation reading, which used to keep the object alive for
-    // every role, is `view.openDocsView` now. So the call is an unknown *name* rather than a missing
-    // method, and either way it is a fault on the turn it is made rather than a verdict gg has to
-    // interpret.
+    // A reviewer's scope carries `harness` like every other name — the SDK is static — and calling
+    // `finish` on it reaches the host, which refuses it and says which endings a reviewer *does*
+    // have. That sentence is the whole of what the inversion bought here: an agent that reached for
+    // the wrong ending is told the right one on the same turn, where a missing name told it only
+    // that something was absent.
     let outcome = run_as(
         "harness.finish(\"the work is complete\");",
         EndingRole::Review,
     );
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+    let message = &program_error(&outcome).message;
     assert!(
-        program_error(&outcome).message.contains("harness"),
-        "a reviewer has no `harness`: {:?}",
-        program_error(&outcome).message
+        message.contains("you were dispatched to review work"),
+        "a reviewer is told why: {message:?}"
+    );
+    assert!(
+        message.contains("gg.session.approve") && message.contains("gg.session.requestChanges"),
+        "and which calls it does have, spelled as this program would write them: {message:?}"
     );
     assert!(outcome.completion.is_none());
 
-    // This guest's half of the gate is scope construction, which is why every case above is an
-    // unknown *name*. The host holds the same role and refuses the same calls — see
-    // `membrane/session.test.rs` — because a guest that links its SDK as an ordinary library has no
-    // scope to withhold a name from, and there is nothing else between a standard agent and a
-    // verdict it was never asked for.
+    // The role is the host's to hold and nowhere else's: no guest withholds an ending name, so this
+    // refusal is the only thing between a standard agent and a verdict it was never asked for. See
+    // `membrane/session.test.rs` for the same gate exercised without a guest at all.
 }
 
 /// **A call refused as `unavailable` is the same turn error as a name that was never in scope.**
 ///
-/// The two are one fact — the model reached for something this run does not offer it — and which of
-/// them a program hits depends on nothing but whether its language's SDK could withhold the name.
-/// This guest can, so it raises a `ReferenceError`; a guest that links its SDK as a library cannot,
-/// and is refused at the membrane instead. If the guest's own reading decided the class, the same
-/// event would be counted as `program_unknown_name` in one arm and `program_tool_error` in the next,
-/// which is exactly the confound a cross-language study cannot carry. The host reads the failure
-/// **code** instead, and this proves it end to end through the real component.
+/// The two are one fact — the model reached for something this run does not offer it — and no arm's
+/// SDK withholds a name any more, so on every arm the first is what actually happens: the call is
+/// bound, it is made, and the membrane refuses it. If each guest's own reading of its throw decided
+/// the class, the identical event would be counted as `program_unknown_name` in one arm and
+/// `program_tool_error` in the next, which is exactly the confound a cross-language study cannot
+/// carry. The host reads the failure **code** instead, and this proves it end to end through the
+/// real component.
+///
+/// # Two arms this invariant does NOT hold on, measured
+///
+/// It is proved here on the shared ECMAScript guest and it generalises to nine of the eleven arms.
+/// It does **not** generalise to two, and the divergence is recorded here rather than only in prose
+/// because this is the test a reader of the invariant finds:
+///
+/// * **C#** reports every uncaught managed exception with `error-kind.other` and **no code at all**
+///   (`packages/gg-sandbox-csharp/Sources/shell.c`'s `report`, which is the only path from
+///   `mono_runtime_run_main`'s `thrown` to the membrane). An uncaught refusal is therefore
+///   `program_throw`, and so is an uncaught `not-found`; that guest never classifies a
+///   `Gg.ToolException` by its code.
+/// * **Swift** has no top-level `throws` context its shell can wrap, so an uncaught error is not a
+///   `program-error` at all: the runtime prints to stderr and executes `unreachable`, which arrives
+///   as a trapped store (see `packages/gg-sandbox-swift/Sources/shell.swift`'s `ggRun`).
+///
+/// Both would need a guest rebuild to change — a Mono shell and a Swift toolchain respectively — and
+/// neither is a hole in the *measurement*, because the refusal itself is uniform on all eleven arms:
+/// it is opened and closed as an API call and lands on the turn's refusal roster
+/// (a `SandboxRefusal`) under gg's own key. **That roster is what a
+/// cross-arm count of withheld reaches must join on**, not the turn's error type. `/gg/static-sdks/`
+/// says the same thing to an operator.
 #[test]
 fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
     let (outcome, _) = run_with(
@@ -961,14 +985,16 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         "closing a selector that is not open is an answer, not a failure"
     );
 
-    // …but not `openFile`, which is a read. The object is there; the function is not, so the model
-    // is told exactly which call it does not have rather than losing the whole namespace.
+    // …but `openFile` is a read, and a run without `read_file` is refused it. The function is bound
+    // like every other — the SDK is static — so what the model gets is gg's own sentence naming the
+    // capability that buys it, rather than a `TypeError` about a property that is not a function.
     let outcome = run_as("view.openFile(\"src/a.ts\");", EndingRole::Standard);
-    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
+    let message = &program_error(&outcome).message;
     assert!(
-        program_error(&outcome).message.contains("not a function"),
-        "a run without `read_file` has no `view.openFile`: {:?}",
-        program_error(&outcome).message
+        message.contains("`gg.views.openFile` is not available to you")
+            && message.contains("the gg tool `read_file`"),
+        "a run without `read_file` is refused `view.openFile`: {message:?}"
     );
 
     // With `read_file` enabled it IS bound, and it dispatches a real `read_file` carrying the same

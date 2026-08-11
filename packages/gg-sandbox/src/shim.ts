@@ -18,12 +18,12 @@
  * 2. **The globals this sandbox cannot honour are shadowed with throwers** ({@link installDenials}).
  *    This is the difference between a model getting a sentence it can act on and gg reporting an
  *    opaque trap — see that function's own comment, which is the most important one in the file.
- * 3. **The scope is built from the run's enabled tools** ({@link buildScope}), and the program is
- *    evaluated as the body of a function whose *parameters* are those names. Scope injection is the
- *    capability model: a withheld tool is an undefined identifier, not a call that reaches the host
- *    and is refused there. The session-ending calls are bound alongside them by the same rule, from
- *    the agent's `ending` role rather than from a capability: exactly one group is in scope, so a
- *    reviewer has no `finish` to call and an ordinary agent has no `approve`.
+ * 3. **The scope is built from the SDK, not from the run** ({@link buildScope}), and the program is
+ *    evaluated as the body of a function whose *parameters* are those names. Every function this SDK
+ *    declares is bound on every turn, including the ones this run withholds and both roles' ending
+ *    calls. Scope injection is no longer the capability model: a call the agent was not granted
+ *    reaches the host and is refused there, as a catchable `ToolError` naming the missing capability,
+ *    exactly as it is on the seven arms that link their SDK as an ordinary library.
  * 4. **Everything the program has to say is said through `feedback`**, never through a trap and
  *    never through a return value. A throw is caught once, described with a line number remapped
  *    into the program's own coordinates, and reported; a returned Promise and work deferred past the
@@ -44,14 +44,9 @@ import * as feedback from "test-cabinet:gg/feedback";
 import type { ProgramError } from "test-cabinet:gg/feedback";
 import type { EndingKind, ModuleId } from "./catalogue.js";
 import {
-  ALWAYS_BOUND,
   DOCS_NAME,
-  ENDING_BOUND,
   GG_TOOLS,
-  LEGACY_GROUPING,
-  LEGACY_REVIEW_ENDING,
-  LEGACY_STANDARD_ENDING,
-  LIBRARY_BOUND,
+  LEGACY_GROUPINGS,
   LIB_OBJECT,
   MODULE_ORDER,
   SURFACE,
@@ -394,108 +389,78 @@ function documented(fn: ToolFn, name: string): ToolFn {
 }
 
 /**
- * The names a program is given: the capability modules, under every spelling that reaches them.
+ * The names a program is given: **every** capability module, carrying **every** function it declares.
  *
- * A program does not receive flat identifiers. It receives `gg`, carrying one object per module that
- * this run offers at least one function of, so `gg.files.readFile` — the fully-qualified name the
- * documentation is keyed by — is a path a program can write.
+ * A program does not receive flat identifiers. It receives `gg`, carrying one object per module, so
+ * `gg.files.readFile` — the fully-qualified name the documentation is keyed by — is a path a program
+ * can write. These names become the evaluated function's *parameters*, which shadow any global of
+ * the same name.
  *
- * These names become the evaluated function's *parameters*, which shadow any global of the same
- * name, so this map is both the capability set and its enforcement: a withheld operation is a missing
- * property, and a module with nothing enabled is absent from `gg` entirely.
+ * # The scope is STATIC, and takes no argument at all
  *
- * **A module is deliberately not bound under its bare id.** `files`, `shell` and `memories` are
- * among the most ordinary variable names a program writes, and a parameter of that name makes
- * `const files = …` a `SyntaxError` about a redeclared formal parameter — a failure whose message
- * says nothing about what the program did wrong. One qualified path costs nothing to write and
- * collides with nothing.
+ * It used to be built from the run: `buildScope(enabled, ending, library)` bound only what the run
+ * had enabled, so a withheld function was a missing property and calling it was a `ReferenceError`
+ * out of the JavaScript engine. That is gone. Every function is bound on every turn, and what
+ * happens when a program calls one this agent was not granted is a **refusal from the host** — a
+ * `ToolError` with code `unavailable` whose message names the capability that is missing and why —
+ * which is a value the program can catch, branch on, and recover from on the same turn.
  *
- * Two further bindings are not modules and are here anyway:
+ * Three things follow, and each is deliberate:
+ *
+ * - **The compile-time surface and the discovery surface differ.** `tsc` already checked this
+ *   program against the whole catalogue (see gg's `typescript.check.rs`), so a call to a withheld
+ *   function type-checks; `docs.search` still returns only what this agent may call. A program can
+ *   therefore compile a call search would never have shown it. That is accepted, on one condition,
+ *   which the paragraph below holds.
+ * - **Every gg function is reached through a qualified name**, never as a bare identifier — so a
+ *   call the agent cannot make never *looks* like an ordinary local function. `gg.files.readFile`
+ *   and `fs.readFile` are both qualified; nothing here binds `readFile`.
+ * - **Both ending groups are bound**, not the one this agent's role owns. The role decides which
+ *   the host will *accept*, and a reviewer that calls `harness.finish` is told, in one sentence,
+ *   that it ends its session with a verdict and which two calls do that — where before it got a
+ *   bare `ReferenceError` naming an identifier and nothing else.
+ *
+ * # What is bound, besides the modules
  *
  * - **`ToolError`**, bound bare, because `catch (error) { if (error instanceof ToolError) … }` is the
  *   shape the prompt teaches and a qualified name in a `catch` reads as ceremony;
- * - the **legacy grouping names** ({@link LEGACY_GROUPING}) — `fs`, `view`, `harness` — which the
- *   PureScript, Java and Kotlin arms' compiled bundles resolve as free identifiers against this same
- *   scope. They are in no catalogue, so nothing puts them in front of a model.
+ * - the **legacy grouping names** ({@link LEGACY_GROUPINGS}) — `fs`, `view`, `harness`, `review` —
+ *   which the PureScript, Java and Kotlin arms' compiled bundles resolve as free identifiers against
+ *   this same scope. They are in no catalogue, so nothing puts them in front of a model.
  *
- * The last of those two **qualifies the paragraph above it**, and the prompt says so rather than
- * leaving a model to find out: four modules' grouping names are their own ids (`tasks`, `context`,
- * `skills`, `programs`), so those four *are* seeded bare after all, and `const context = …` is the
- * very `SyntaxError` this design was meant to avoid. They cannot simply be dropped — the three
- * sibling arms above resolve them by name out of compiled bundles gg does not rewrite — so the
- * honest fix is the one taken: each arm's prompt names the reserved set outright, and a model that
- * reads it wants for nothing.
+ * The last of those two **qualifies the rule above it**: four modules' grouping names are their own
+ * ids (`tasks`, `context`, `skills`, `programs`), so those four *are* seeded bare after all, and
+ * `const context = …` is a `SyntaxError` about a redeclared formal parameter. They cannot simply be
+ * dropped — the three sibling arms above resolve them by name out of compiled bundles gg does not
+ * rewrite — so each arm's prompt names the reserved set outright.
  *
  * Everything goes through {@link guard}, so a call made from deferred work — which lands after the
  * turn is over — is reported.
  */
-function buildScope(
-  enabled: readonly string[],
-  ending: EndingKind,
-  library: boolean,
-): Record<string, unknown> {
-  const on = new Set(enabled);
-  const modules = new Map<ModuleId, Record<string, unknown>>();
-  // Fetch (creating on first use) the object for a module. A module starts EMPTY, and every property
-  // it ends up with is one operation this run bound — so a module a program can see is a module it
-  // can call something on, and there is nothing on it that is not a capability.
-  const moduleFor = (id: ModuleId): Record<string, unknown> => {
-    let module = modules.get(id);
-    if (!module) {
-      module = {};
-      modules.set(id, module);
-    }
-    return module;
-  };
-  // The second name a module is reached by: the one the PureScript, Java and Kotlin arms' compiled
-  // bundles resolve as a free identifier. The ending group is the one module whose name depends on
-  // the role.
-  const groupingFor = (id: ModuleId): string =>
-    id === "session"
-      ? ending === "review"
-        ? LEGACY_REVIEW_ENDING
-        : LEGACY_STANDARD_ENDING
-      : (LEGACY_GROUPING[id] ?? id);
-
-  const bind = (operation: string): void => {
-    const fn = implementation(operation);
-    if (!fn) return;
-    const id = moduleOf(operation);
-    const name = exportedName(keyOf(operation));
-    moduleFor(id)[name] = documented(guard(name, fn), name);
-  };
-
-  for (const [operation, tool] of Object.entries(TOOL_BOUND)) {
-    if (on.has(tool)) bind(operation);
-  }
-  // Bound whatever a run enables, on the same carve-out the endings have: a run that offers no tools
-  // at all must still be able to show its model something, and a view is the only channel that
-  // reaches it.
-  for (const operation of ALWAYS_BOUND) bind(operation);
-  // The program library is the one family a *capability* gates rather than a tool or a role, so the
-  // host says so with a flag instead of a name in `enabled` — but the enforcement is identical to
-  // every other family's: a run without it has no `programs` in scope, not a `programs` whose calls
-  // are refused.
-  if (library) {
-    for (const operation of LIBRARY_BOUND) bind(operation);
-  }
-  // The one ending group this role produces. Bound by the same rule the tools are: what is not this
-  // role's ending is not a name in the program's scope.
-  for (const [operation, role] of Object.entries(ENDING_BOUND)) {
-    if (role === ending) bind(operation);
-  }
-
+function buildScope(): Record<string, unknown> {
   const surface: Record<string, unknown> = {};
   const scope: Record<string, unknown> = { [SURFACE]: surface };
-  // `core` carries no function and is therefore never created by `bind`; it is a module all the same,
-  // because `gg.core.ToolError` is the name a documentation view of the error type is opened by.
+  // `core` declares types and no function, so it is not in {@link MODULES}; it is a module all the
+  // same, because `gg.core.ToolError` is the name a documentation view of the error type is opened
+  // by.
   surface["core"] = { [TOOL_ERROR]: ToolError };
   scope[TOOL_ERROR] = ToolError;
   for (const id of MODULE_ORDER) {
-    const module = modules.get(id);
-    if (!module) continue;
+    const exports = MODULES[id];
+    if (!exports) continue;
+    const module: Record<string, unknown> = {};
+    // Every exported function, under the name it is exported by — which is the name gg keys
+    // documentation on and the name the catalogue reflects. Nothing is filtered: a module's exports
+    // ARE its surface, and an SDK whose scope was a subset of its own exports is the thing this
+    // inversion removed. The type-only exports (`DirEntry`, `TaskStatus`) are erased by `tsc` and
+    // are not here to skip.
+    for (const [name, value] of Object.entries(exports)) {
+      if (typeof value === "function") {
+        module[name] = documented(guard(name, value as ToolFn), name);
+      }
+    }
     surface[id] = module;
-    scope[groupingFor(id)] = module;
+    for (const grouping of LEGACY_GROUPINGS[id] ?? []) scope[grouping] = module;
   }
   return scope;
 }
@@ -546,15 +511,20 @@ function buildLib(
 }
 
 /**
- * Evaluate one program against exactly the tools this run enables.
+ * Evaluate one program against the whole SDK.
  *
- * `program` is JavaScript: gg type-stripped the model's TypeScript before it got here. `enabled` is
- * the run's gg tool names, `ending` the agent's role and `library` whether the run keeps a program
- * library — together the whole scope. `modules` is the code the agent loaded by reading a code skill
- * or a code memory, bound at `lib.<name>` ({@link buildLib}). Nothing comes back: a throw is
- * reported over `feedback.report-error` rather than being allowed to escape as an opaque wasm trap,
- * everything a program wanted to show itself it opened a view of, and an ending is a flag the host
- * already holds.
+ * `program` is JavaScript: gg type-stripped the model's TypeScript before it got here. `modules` is
+ * the code the agent loaded by reading a code skill or a code memory, bound at `lib.<name>`
+ * ({@link buildLib}). Nothing comes back: a throw is reported over `feedback.report-error` rather
+ * than being allowed to escape as an opaque wasm trap, everything a program wanted to show itself it
+ * opened a view of, and an ending is a flag the host already holds.
+ *
+ * `enabled`, `ending` and `library` are **read by nothing here**, and the names are kept rather than
+ * underscored because they are what the WIT calls them. They used to build the scope; the scope is
+ * now static and every capability question is answered at the membrane, which is the one place that
+ * can answer it the same way for all eleven language arms. gg still sends them — the world is shared
+ * with ten sibling guests and the `bound-tools` bijection is checked against this artifact — so they
+ * arrive and are ignored.
  *
  * A **returned value is discarded**, and {@link feedback.noteReturn} is how the model learns that
  * rather than by noticing an absence. Discarding it is what makes the rule one sentence — open a
@@ -564,20 +534,26 @@ function buildLib(
 export function run(
   program: string,
   modules: CodeModule[],
-  enabled: string[],
-  ending: EndingKind,
-  library: boolean,
+  _enabled: string[],
+  _ending: EndingKind,
+  _library: boolean,
 ): void {
   installConsole();
   installDenials();
   ended = false;
   deferredNoted = false;
 
-  const scope: Record<string, unknown> = buildScope(enabled, ending, library);
-  // The unknown-name hint names the MODULES a program may reach, qualified as the documentation
-  // qualifies them (`gg.files`, `gg.views`): one spelling in the message, and the one every other
-  // thing the model reads uses. `lib` is not a module — it holds no gg function — so it is named
-  // separately rather than folded into a list that would be false about it.
+  const scope: Record<string, unknown> = buildScope();
+  // The unknown-name hint names gg's MODULES, qualified as the documentation qualifies them
+  // (`gg.files`, `gg.views`): one spelling in the message, and the one every other thing the model
+  // reads uses. `lib` is not a module — it holds no gg function — so it is named separately rather
+  // than folded into a list that would be false about it.
+  //
+  // It is the same list in every run, and the sentence {@link describe} builds from it says so.
+  // Under the old run-built scope the list *was* this run's, so "modules this run" was true and
+  // useful; the scope is static now, so a message that still said "this run" would be telling a
+  // model its run had bought the board, the task list and delegation — which is a call it writes,
+  // and a turn it spends being refused.
   const surface = scope[SURFACE] as Record<string, unknown>;
   const offered = MODULE_ORDER.filter((id) => id in surface).map((id) => `${SURFACE}.${id}`);
   // Built against the module scope alone, then added to it: a module sees the same names the program
@@ -648,13 +624,18 @@ function describe(
     const message = errorMessage(err);
     if (name === "ReferenceError") {
       // The most common cause is a program reaching for a flat name (`readFile`) instead of the
-      // qualified one (`gg.files.readFile`), so answer the question it is about to ask: which
-      // modules does it have? Finding a function inside one is what searching is for.
+      // qualified one (`gg.files.readFile`), so answer the question it is about to ask: what are
+      // the qualifiers? Finding a function inside one is what searching the documentation is for.
+      //
+      // "gg's modules" rather than "modules this run", which is what this said while the scope was
+      // built from the run. Every module is bound in every program now, so the list no longer
+      // discriminates between runs, and a sentence claiming it did would read as gg telling the
+      // model that *this* run bought every one of them.
       return {
         kind: "unknown-name",
         code: undefined,
         message:
-          `${message}; modules this run: ${names.join(", ")}` +
+          `${message}; gg's modules: ${names.join(", ")}` +
           (lib ? `, plus \`${LIB_OBJECT}\` for loaded skill and memory code` : ""),
         location,
       };

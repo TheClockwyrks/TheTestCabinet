@@ -47,12 +47,18 @@ fn javascript() -> &'static dyn ProgramLanguage {
 
 /// Run `program` on this arm with every tool bound, the canned invoker and the default ceilings.
 fn run(program: &str) -> (SandboxOutcome, CallLog) {
+    run_with(program, &all_tools())
+}
+
+/// Run `program` on this arm against exactly `enabled` — what a reduced toolset really looks like
+/// from inside a program.
+fn run_with(program: &str, enabled: &[String]) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         javascript(),
         program,
         ProgramScope {
-            enabled: &all_tools(),
+            enabled,
             modules: &[],
             ending: RunEnding::Role(EndingRole::Standard),
             library: false,
@@ -260,5 +266,97 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         ),
         "the ending group is reached by its documented spelling too: {:?}",
         outcome.completion
+    );
+}
+
+/// **A name gg does not have is an unknown name, and the guest answers the question it provokes.**
+///
+/// This lives on *this* arm rather than on TypeScript's, and the reason is the whole of what the
+/// static surface changed. On the checked arm the SDK's every module and function is declared to
+/// `tsc`, so an identifier neither the surface nor the globals covers is a located **compile error**
+/// before anything runs — there is no `ReferenceError` left to observe there. Here nothing reads a
+/// program before the engine does, so the guest's own branch is reachable, and what it composes into
+/// the error is the answer to *what do I have?*: gg's modules, qualified exactly as the
+/// documentation qualifies them.
+///
+/// A **withheld capability** is deliberately not this case any more, on any arm. Every function is
+/// bound whatever the run enables, so reaching for one this agent was not granted is a refusal from
+/// the host — see `sandbox.faults.test.rs` and each arm's surface test.
+#[test]
+fn a_name_gg_does_not_have_is_an_unknown_name_that_names_the_modules_it_does() {
+    let (outcome, log) = run("whatever.listDir(\"src\");");
+    let result = outcome
+        .result
+        .as_ref()
+        .expect("nothing reads the program before the engine on this arm");
+    let error = result
+        .error
+        .as_ref()
+        .expect("an identifier nothing bound is a run-time failure here");
+    assert_eq!(error.kind, crate::sandbox::ProgramErrorKind::UnknownName);
+    assert!(
+        error.message.contains("whatever is not defined"),
+        "the engine's own sentence is kept: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("gg.files") && error.message.contains("gg.session"),
+        "and gg's modules are named beside it: {}",
+        error.message
+    );
+    assert!(
+        !error.message.contains("ToolError"),
+        "`ToolError` is catchable, not callable, and listing it invites a call: {}",
+        error.message
+    );
+    assert!(log.calls().is_empty(), "and nothing ran");
+}
+
+/// **A capability this run withheld is bound, called, and refused by the host** — the inversion,
+/// observed on this arm rather than inferred from TypeScript's.
+///
+/// The two arms share one component, so what is asserted here is not a second implementation; it is
+/// that the *unchecked* arm reaches the same refusal, which is the arm where a model can actually
+/// write the call without a compiler stopping it first. Three things are checked, and each is one of
+/// the three reasons the inversion happened: the name is **there** (a property access, not a
+/// `ReferenceError`), the refusal is a **value** a `catch` narrows and reads a code off, and the
+/// sentence **names the capability** rather than merely saying no.
+#[test]
+fn a_withheld_capability_is_still_bound_and_refused_with_a_sentence() {
+    let (outcome, log) = run_with(
+        concat!(
+            "console.log(String(typeof gg.files.listDir));\n",
+            "try {\n",
+            "  gg.files.listDir(\"src\");\n",
+            "} catch (error) {\n",
+            "  console.log(`${error instanceof ToolError} ${error.code} ${error.tool}`);\n",
+            "  console.log(error.message);\n",
+            "}\n",
+        ),
+        &["shell".to_string()],
+    );
+    let lines = logs(&outcome);
+    assert_eq!(
+        lines[0], "function",
+        "the withheld function is bound like every other: {lines:?}"
+    );
+    assert_eq!(
+        lines[1], "true unavailable list_dir",
+        "the refusal is a typed value the program narrowed and read: {lines:?}"
+    );
+    assert!(
+        lines[2].contains("`gg.files.listDir` is not available to you")
+            && lines[2].contains("the gg tool `list_dir`"),
+        "and it names the call as this program would write it, and what is missing: {lines:?}"
+    );
+    assert!(
+        log.calls().is_empty(),
+        "nothing reached the host's dispatch"
+    );
+    assert_eq!(
+        outcome.refusals.len(),
+        1,
+        "and the reach is recorded, which is what an ablation counts: {:?}",
+        outcome.refusals
     );
 }

@@ -15,9 +15,8 @@
 //! # One of the five dispatches a tool, and is still recorded as itself
 //!
 //! [`open_file_view`](ViewsHost::open_file_view) **runs** a `read_file`. It goes through
-//! [`dispatch`](MembraneState) against that tool name, so it keeps the wall-clock deadline guard,
-//! the enabled-set backstop (a run with reading withheld does not get a read through a side door),
-//! and the ordered roster entry — and, on the far side of the
+//! [`dispatch`](MembraneState) against that tool name, so it keeps the wall-clock deadline guard and
+//! the ordered roster entry — and, on the far side of the
 //! [api](ToolApi), the loop's own servicing: the compaction gate, the `ToolCall`/`ToolResult`
 //! telemetry pair and the session capture. What it adds is the view itself: the read's result also
 //! becomes a context item, keyed by the path it came from.
@@ -27,8 +26,7 @@
 //! The two records are independent on purpose: the tool one says what ran, this one says what was
 //! written.
 //!
-//! The other four bypass `dispatch`, and both of its guards are wrong for them. The enabled-set
-//! guard would refuse a call that is not a tool at all. And the deadline guard would withhold them
+//! The other four bypass `dispatch`, whose deadline guard is wrong for them: it would withhold them
 //! at exactly the moment they matter most — the same carve-out
 //! [`finish`](super::MembraneState::declare) has, for the same reason: they perform no work, and a
 //! turn that cannot report what it found is worse than one that reports late. They are recorded as

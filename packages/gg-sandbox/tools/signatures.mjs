@@ -570,28 +570,13 @@ function signaturesOf(nodes, sourceFile, name, where) {
 /** Build the whole catalogue, for the language whose id is `language`. */
 async function build(language) {
   const catalogue = await loadCatalogue();
-  const {
-    ALWAYS_BOUND,
-    ENDING_BOUND,
-    LIBRARY_BOUND,
-    MODULE_ORDER,
-    SURFACE,
-    TOOL_BOUND,
-    exportedName,
-    keyOf,
-    moduleOf,
-  } = catalogue;
+  const { MODULE_ORDER, OPERATIONS, SURFACE, exportedName, keyOf, moduleOf } = catalogue;
 
-  // Every operation gg's binding tables say this arm offers. It is the *other* direction of the
-  // `@ggop` check: a declaration that names no operation is caught below, and an operation nothing
-  // declares is caught against this set, which is the failure that would otherwise cost a whole
-  // capability with nothing to see in a diff.
-  const expected = new Set([
-    ...Object.keys(TOOL_BOUND),
-    ...ALWAYS_BOUND,
-    ...LIBRARY_BOUND,
-    ...Object.keys(ENDING_BOUND),
-  ]);
+  // Every operation this SDK says it implements. It is the *other* direction of the `@ggop` check: a
+  // declaration that names no operation is caught below, and an operation nothing declares is caught
+  // against this set, which is the failure that would otherwise cost a whole capability with nothing
+  // to see in a diff.
+  const expected = new Set(OPERATIONS);
 
   const modules = [];
   const declared = [];
@@ -729,7 +714,7 @@ async function build(language) {
   const missing = [...expected].filter((operation) => !claimed.has(operation));
   if (missing.length > 0) {
     throw new Error(
-      `${JSON.stringify(missing)} are operations this arm's binding tables say it offers and no ` +
+      `${JSON.stringify(missing)} are operations \`OPERATIONS\` says this arm implements and no ` +
         `declaration binds. Write \`@${OPERATION_TAG} <id>\` on the function that implements each, ` +
         "or take the row out of src/catalogue.ts.",
     );

@@ -119,7 +119,11 @@ fn a_refusal_is_recorded_apart_from_the_serviced_calls() {
     let parts = state.into_parts();
     assert_eq!(parts.calls.len(), 1, "one call was serviced");
     assert_eq!(parts.refusals.len(), 1, "one call was refused");
-    assert_eq!(parts.refusals[0].name, "list_dir");
+    // Filed under gg's whole `(object, key)` identity rather than under the tool the call would
+    // have dispatched. Three operations share the `read_file` tool, so a roster keyed on tools
+    // could not say which of them the model reached for — and the ending and capability refusals
+    // beside it have no tool at all.
+    assert_eq!(parts.refusals[0].name, "fs.list_dir");
     assert!(parts.refusals[0].message.contains("list_dir"));
 }
 

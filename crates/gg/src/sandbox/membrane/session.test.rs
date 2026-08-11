@@ -251,7 +251,8 @@ fn a_tool_call_after_a_completion_is_ordinary_work() {
 }
 
 /// A tool withheld by the run's capability set is refused as *unavailable*, whether or not the run
-/// has been declared finished — the capability backstop is the only gate on this path now.
+/// has been declared finished — and the sentence names the capability that is missing, spelled the
+/// way this program would have written the call.
 #[test]
 fn a_withheld_tool_is_refused_as_unavailable() {
     let log = CallLog::default();
@@ -261,8 +262,15 @@ fn a_withheld_tool_is_refused_as_unavailable() {
 
     assert_eq!(refused.code, ErrorCode::Unavailable);
     assert!(
-        refused.message.contains("unknown tool"),
-        "{}",
+        refused
+            .message
+            .contains("`gg.files.listDir` is not available to you"),
+        "the call is named as the model wrote it: {}",
+        refused.message
+    );
+    assert!(
+        refused.message.contains("the gg tool `list_dir`"),
+        "and what is missing is named, not merely that something is: {}",
         refused.message
     );
 }

@@ -267,4 +267,36 @@ with open(out, "w") as handle:
     handle.write("\n")
 PY
 
+echo "==> writing $CHECKERS/swift.sources.manifest.json"
+# What the four artifacts were built FROM, beside what they were built BY. `swift.toolchain.json`
+# above answers the second question; the first was answered only for the two files the archive
+# happens to carry verbatim, `shell.swift` and `gg-shell.h`, which `swift.compile.test.rs` compares
+# against this checkout. The SDK itself does NOT ride in as source — it is `gg.o` and
+# `gg.swiftmodule`, and it is the whole model-facing surface — so before this manifest an edit to
+# `Sources/SDK/**` committed without a rebuild left every program compiled against the old module
+# while the catalogue reflected the new source, with nothing to say so.
+#
+# `build.sh` records ITSELF, because the recipe is an input as much as the sources are: the compile
+# arguments and the `library` module list that decides what the library archive contains both live
+# here, so an edit to either changes what the artifacts are with no source under `Sources/` moving.
+# An edit that fails the gate until the script is re-run is the intended reading.
+node "$ROOT/scripts/gg-artifact-manifest.mjs" \
+	--arm swift \
+	--rebuild packages/gg-sandbox-swift/build.sh \
+	--artifact "$CHECKERS/swift.guest.tar.gz" \
+	--artifact "$CHECKERS/swift.libraries.tar.gz" \
+	--artifact "$CHECKERS/swift.adapter.wasm" \
+	--source-root "$HERE/Sources" \
+	--source-file "$HERE/libraries.txt" \
+	--source-file "$HERE/build.sh" \
+	--wit "$ROOT/crates/gg/wit" \
+	--pin "swift=$GG_SWIFT_VERSION" \
+	--pin "target=$GG_SWIFT_TARGET" \
+	--pin "witBindgen=$GG_WIT_BINDGEN_VERSION" \
+	--pin "adapter=$GG_WASMTIME_ADAPTER_VERSION" \
+	--pin "swiftCollections=$GG_SWIFT_COLLECTIONS_VERSION" \
+	--pin "swiftAlgorithms=$GG_SWIFT_ALGORITHMS_VERSION" \
+	--pin "swiftNumerics=$GG_SWIFT_NUMERICS_VERSION" \
+	--out "$CHECKERS/swift.sources.manifest.json"
+
 ls -la "$CHECKERS"/swift.*

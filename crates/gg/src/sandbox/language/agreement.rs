@@ -76,8 +76,16 @@
 //!
 //! **That every spelling is one a program could write** ([`usable_spellings`]). A name, a signature
 //! that begins with it, one spelling per `(module, receiver)`, and a description on every argument
-//! and every field of a structured one. These were always the majority of this gate's real value and
-//! they are unchanged.
+//! and every field of a structured one. Those four were always the majority of this gate's real
+//! value and they are unchanged.
+//!
+//! The fifth is not old, and it is the one that carries the most weight. **Every function is
+//! reached through a qualified name** — a module, a type, or an import — and never as a bare
+//! identifier. Every arm's SDK is *static*, so a program can compile a call to a function a
+//! [search](crate::docs::DocsRuntime::search) would never have shown it; the whole reason that
+//! asymmetry is safe is that such a call never *looks* like an ordinary local one, and a model has
+//! to write a qualifier naming gg to reach it. That is a property of eleven hand-written SDKs, so it
+//! is held by a gate with a negative control rather than by convention.
 //!
 //! # What it explicitly does not check
 //!
@@ -821,6 +829,13 @@ fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagr
         if function.name.trim().is_empty() {
             complain(format!("`{where_}` has no name a program could call"));
         }
+        if !qualified(function.fqn, function.name) {
+            complain(format!(
+                "`{where_}` is offered under a bare name: a call this agent may not make must \
+                 never look like an ordinary local one, so every gg function is reached through a \
+                 module, a type or an import"
+            ));
+        }
         if !seen.insert((function.object, function.receiver, function.name)) {
             complain(format!(
                 "two functions on `{}` are both spelled `{}`",
@@ -860,6 +875,39 @@ fn usable_spellings(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagr
             }
         }
     }
+}
+
+/// **Whether `fqn` reaches `name` through something** — a module, a namespace, a package or a type
+/// — rather than offering it as a bare identifier.
+///
+/// This is the condition the whole [static SDK](crate::sandbox::Grants) design rests on, and it is
+/// the reason one accepted consequence of that design is safe. Every arm's SDK carries every
+/// function whatever the run enabled, so a program can *compile* a call that a
+/// [search](crate::docs::DocsRuntime::search) would never have shown it. What keeps that from being
+/// a trap is that such a call cannot look like an ordinary one: the model has to write a qualifier
+/// that names gg. A surface offering `readFile` as a free identifier would put a call the agent
+/// cannot make in the same shape as a call to its own helper.
+///
+/// Checked on the **fully-qualified name**, because that is the one field every arm's reflector
+/// resolves to what a program would have to write — `gg.files.readFile`, `gg::files::read_file`,
+/// `Gg.Files.ReadFile`, `GG::Views::OpenView#close`. A separator is enough: what the qualifier *is*
+/// differs per language and none of them is gg's to choose.
+fn qualified(fqn: Option<&'static str>, name: &'static str) -> bool {
+    let Some(fqn) = fqn else {
+        // No fully-qualified name at all is the strongest form of the failure: the arm is saying
+        // the bare name is the whole of what a program writes.
+        return false;
+    };
+    let Some(prefix) = fqn.strip_suffix(name) else {
+        // An arm whose fqn does not end in the name it calls the function by is answering a
+        // different question from the one asked; treated as unqualified rather than excused, since
+        // nothing here can tell what a program would write.
+        return false;
+    };
+    prefix
+        .chars()
+        .next_back()
+        .is_some_and(|last| !last.is_alphanumeric() && last != '_')
 }
 
 /// Every parameter is named, documented, and named *in the signature it belongs to*.

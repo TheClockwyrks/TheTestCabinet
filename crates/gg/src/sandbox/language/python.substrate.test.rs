@@ -295,9 +295,11 @@ print(text.splitlines()[0])
         json!({ "path": "notes.md", "offset": null, "limit": null })
     );
 
-    // The same program with the tool withheld. Nothing in the guest hides the binding — a guest
-    // that links its SDK as a library cannot — so the refusal is the HOST's, and it arrives in
-    // Python as the wire's own typed error rather than as prose.
+    // The same program with the tool withheld. Nothing in the guest hides the binding — every SDK
+    // is static — so the refusal is the HOST's, and it arrives in Python as the wire's own typed
+    // error rather than as prose. The identity it carries is the CALL's key (`read_text_file`), not
+    // the tool that call would have dispatched: three operations share the `read_file` tool, and a
+    // refusal has to say which of the three the model reached for.
     let caught = r#"
 from wit_world.imports import helpers
 from componentize_py_types import Err
@@ -308,7 +310,7 @@ except Err as err:
     print(f"{err.value.code.name} {err.value.tool}")
 "#;
     let (outcome, log) = run_with(caught, &[], &[], SandboxLimits::default(), canned_outcome);
-    assert_eq!(logs(&outcome), ["UNAVAILABLE read_file"]);
+    assert_eq!(logs(&outcome), ["UNAVAILABLE read_text_file"]);
     assert!(
         log.calls().is_empty(),
         "a withheld tool never reaches the invoker: {:?}",
@@ -323,7 +325,7 @@ except Err as err:
 
     // An uncaught failed call is classified by the HOST, from the failure code the guest handed up
     // with the throw: `unavailable` is the same fact — and the same recovery — as a name that was
-    // never in scope, so it lands as `UnknownName` in a guest that cannot withhold the name.
+    // never in scope, so it lands as `UnknownName` on every arm whatever raised it.
     let (outcome, _log) = run_with(
         "from wit_world.imports import helpers\nhelpers.read_text_file('notes.md', None, None)",
         &[],
@@ -1286,13 +1288,45 @@ except ToolError as failure:
 }
 
 #[test]
-fn what_a_run_withholds_is_not_on_the_module_it_would_hang_off() {
-    // The surface follows the run. A withheld tool is not an attribute of its module, a module with
-    // nothing on it does not exist at all, and both failures are classified as the SAME thing a
-    // guest that could withhold a *name* reports — because they are the same fact, and counting them
-    // differently per language would put the arm's error rate in the study.
+fn what_a_run_withholds_is_still_on_its_module_and_refused_when_it_is_called() {
+    // **The surface does not follow the run.** This SDK is static: every function is on its module
+    // whatever the run enabled, and every module is on `gg`, so what a program gets for calling one
+    // it was not granted is a refusal from the HOST naming the capability that is missing — not an
+    // `AttributeError` from Python naming an absence. The two were never the same information, and
+    // the second is what the model reads on the ten sibling arms.
     let (outcome, log) = run_with(
         "files.read_file(\"notes.md\")",
+        &["write_file".to_string()],
+        &[],
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    let error = program_error(&outcome);
+    // `UnknownName` still, because that is what the host makes of an `unavailable` code, whichever
+    // side raised it: reaching for something this run does not offer is one event and one metric on
+    // every arm.
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    assert!(
+        error
+            .message
+            .contains("`gg.files.read_file` is not available to you"),
+        "the call is named as this program would write it: {}",
+        error.message
+    );
+    assert!(
+        error.message.contains("the gg tool `read_file`"),
+        "and the refusal names what is missing, not merely that something is: {}",
+        error.message
+    );
+    assert!(
+        log.calls().is_empty(),
+        "nothing reached the host's dispatch"
+    );
+
+    // A module none of whose functions this run buys is still a module, and reaching for one of them
+    // is refused on exactly the same terms rather than failing one level up.
+    let (outcome, _log) = run_with(
+        "board.create_epic(\"epc\", \"E\", \"D\")",
         &["write_file".to_string()],
         &[],
         SandboxLimits::default(),
@@ -1303,23 +1337,28 @@ fn what_a_run_withholds_is_not_on_the_module_it_would_hang_off() {
     assert!(
         error
             .message
-            .contains("`gg.files.read_file` is not one of the functions this run offers"),
-        "the module is named — by the fully-qualified name the documentation is keyed by: {}",
+            .contains("`gg.board.create_epic` is not available to you"),
+        "{}",
         error.message
     );
-    assert!(log.calls().is_empty(), "nothing reached the host");
 
+    // A name gg does not have AT ALL is the other failure, and it is still this arm's spelling of an
+    // unknown name: the module says what it declares, which is now the whole of what gg declares.
     let (outcome, _log) = run_with(
-        "board.create_epic(\"epc\", \"E\", \"D\")",
-        &["write_file".to_string()],
+        "files.read_fil(\"notes.md\")",
+        &all_tools(),
         &[],
         SandboxLimits::default(),
         canned_outcome,
     );
-    assert_eq!(
-        program_error(&outcome).kind,
-        ProgramErrorKind::UnknownName,
-        "a module with no enabled function is not a name"
+    let error = program_error(&outcome);
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName, "{error:?}");
+    assert!(
+        error
+            .message
+            .contains("is not one of the functions gg declares there"),
+        "{}",
+        error.message
     );
 
     // And the same mistake against anything else is the ordinary program bug it looks like.
@@ -1332,10 +1371,10 @@ fn what_a_run_withholds_is_not_on_the_module_it_would_hang_off() {
     );
     assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
 
-    // The SDK is a library, not the capability model: a program that reaches past the surface it
-    // was given still reaches the call, and the HOST is what refuses it. That is the whole reason
-    // gating moved to the host, and it is what a language whose SDK is an ordinary import cannot do
-    // for itself.
+    // The refusal is a VALUE, which is the whole point of moving the gate to the host: a program can
+    // catch it, read the code off it, and carry on. Reaching the function through an ordinary
+    // `import` rather than through the injected scope changes nothing, because neither was ever the
+    // gate.
     let (outcome, log) = run_with(
         r#"
 from gg import files

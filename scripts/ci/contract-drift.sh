@@ -61,6 +61,19 @@
 #     false positive, and if one ever does diff then something rewrote a binary CI must
 #     not touch and failing is right.
 #
+#     WHAT SAYS ONE OF THEM IS STALE, since this script never rebuilds one to find out.
+#     `crates/gg/src/sandbox/language/artifacts.test.rs` runs in the ordinary suite and
+#     compares each hand-built artifact against a manifest its build.sh wrote beside it:
+#     the SHA-256 of every SDK source and every other file the build consumes, the
+#     artifact's own digest, the toolchain pins, and a digest of crates/gg/wit's
+#     DECLARATIONS (blind to its prose, so a reworded comment is not a 25 MB rebuild).
+#     A source edited without a rebuild fails there by arm name, which is the failure
+#     this script structurally cannot produce — it would have to run `componentize-js`,
+#     `componentize-py`, a ~200 MB wasi-sdk or an ~835 MB Swift toolchain to know, and
+#     two of the six artifacts are not byte-reproducible even then. That test proves an
+#     artifact matches its recorded sources; the per-arm substrate and compile tests are
+#     what prove the artifact WORKS.
+#
 #     A guest need not be an npm package, and Python's is not — only the emitted JSON
 #     is contractual. That is why each language owns its own regeneration command and
 #     why this script installs uv: the devcontainer's base image ships no usable pip
@@ -285,7 +298,10 @@ recut="typescript ruby java kotlin"
 # tarball beside a fresh catalogue would otherwise be; and — the check no diff could make — a
 # real Rust program, compiled against the set by the production prepare step and run through the
 # real membrane, that calls every one of them. A stale set does not merely differ; it stops
-# linking.
+# linking. What none of those four could see is this arm's own SDK: an `.rlib` carries no source to
+# compare, so `libgg.rlib` built from a `src/` that has since moved on was invisible until
+# `rust.sources.manifest.json` and `artifacts.test.rs` — a fifth comparison, and the only one that
+# fails on an SDK edit committed without a rebuild.
 #
 # `swift` is exempted on the same terms and answered the same way. Its four committed artifacts are
 # not a compiler either. `swift.guest.tar.gz` is 182 KB of compile INPUTS — the C bindings generated
@@ -310,6 +326,10 @@ recut="typescript ruby java kotlin"
 # may import, which is the drift a stale archive beside a fresh catalogue would otherwise be; and —
 # the check no diff could make — a real Swift program, compiled against both archives by the
 # production prepare step and run through the real membrane, that imports every one of them.
+# A fifth was added with `swift.sources.manifest.json`, and it covers what the second cannot: the SDK
+# rides in as `gg.o` and `gg.swiftmodule` rather than as source, so an edit to `Sources/SDK/**` —
+# which is the whole model-facing surface — matched nothing to compare until `artifacts.test.rs`
+# began recomputing the digest of every file the build read.
 #
 # `cpp` is exempted on the same terms and is the cheapest of the three to argue. Its three committed
 # artifacts are not a compiler either. `cpp.guest.tar.gz` is ~100 KB of compile INPUTS — the C
@@ -334,7 +354,10 @@ recut="typescript ruby java kotlin"
 # the CATALOGUE regenerated above tells a model it may include against those same ones, which is the
 # drift a stale archive beside a fresh catalogue would otherwise be; and — the check no diff could
 # make — real C++ programs, compiled against the archive by the production prepare step and run
-# through the real membrane, that call every function the SDK offers.
+# through the real membrane, that call every function the SDK offers. `cpp.sources.manifest.json`
+# adds the sixth, and it is narrow because this arm was already the best covered: the archive carries
+# the SDK's HEADERS but not its BODIES, so a change to what a function DOES, with its declaration
+# left alone, was the one edit no comparison here could see.
 # `csharp` is exempted on the same terms and is the easiest of the four to argue, because its one
 # committed artifact here is a MANIFEST — `csharp.toolchain.json` is what says which .NET SDK, which
 # Mono runtime pack, which wasi-sdk and which `wit-bindgen` built the guest, and it is a description

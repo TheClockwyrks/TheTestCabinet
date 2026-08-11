@@ -35,7 +35,7 @@ module GG
         )
       end
     end
-    operation :history, "programs.history", library: true
+    operation :history, "programs.history"
 
     # Fetch the exact source of one program that ran, as a string; no argument fetches the most
     # recent.
@@ -54,7 +54,7 @@ module GG
     def self.get(turn = nil)
       Wire.call("get", "programs", "get", [Wire.js(Check.uint("get", "turn", turn))])
     end
-    operation :get, "programs.get", library: true
+    operation :get, "programs.get"
 
     # Hand gg a program to run in place of this one.
     #
@@ -76,7 +76,7 @@ module GG
       Wire.call("rerun", "programs", "rerun", [source])
       nil
     end
-    operation :rerun, "programs.rerun", library: true
+    operation :rerun, "programs.rerun"
 
     # One program that already ran, as `GG::Programs.history` lists it.
     #
@@ -126,7 +126,7 @@ module GG
       def source
         Programs.get(@turn)
       end
-      member_operation :source, "programs.get", library: true
+      member_operation :source, "programs.get"
     end
   end
 end

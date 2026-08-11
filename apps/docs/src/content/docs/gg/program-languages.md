@@ -385,11 +385,13 @@ them:
   type of the same name. Nothing is mixed into `Object`: `system`, `exec` and `fork` are `Kernel`
   methods, and a flat surface would have a program reaching for the builtin and silently getting
   gg's tool.
-- **The surface is built from the run.** `GG::Scope` lifts every declaration off its module at load
-  and puts back only the subset this run offers, so what a module answers to is what a program
-  really has, and a withheld name raises `NoMethodError` on the line that wrote it, naming the
-  module and what it does offer. That is the one place this arm still differs from the compiled
-  ones, where every name exists and the host refuses the call instead.
+- **The surface is the whole SDK, bound at load.** `GG::Scope` lifts every declaration off its
+  module and puts it straight back behind a forwarder — not to gate anything, but because Opal
+  lowers keyword arguments to a trailing hash and ignores keys the target does not declare, so
+  `create_issue(reviewer: [...])` would otherwise file an issue with no reviewer and say nothing.
+  A capability this agent was not granted is refused at the host, as on every other arm; see
+  [static SDKs](/gg/static-sdks/). A `NoMethodError` here means a name gg does not have at all,
+  and it still names the module and what that module declares.
 - **`lib.<key>` is a `Module`.** A Ruby file has no exports, so the host wraps a code skill's or
   memory's source in the call that evaluates it against a fresh anonymous module, which extends
   itself. What the body defines is what the namespace offers, and there is no export protocol for
@@ -723,12 +725,13 @@ them:
 
 Underneath all of it is **one foreign module**, `Gg.Internal.Wire`. It is the one file in this arm
 that still names the shared ECMAScript guest's own objects — `fs`, `system`, `view` — because this
-arm has no component of its own and that guest builds a program's scope out of them; the typed
-`Gg.*` modules above are what a model reads, and the bridge is what turns `Gg.Files.readFile` into
-the call that guest binds. They are free identifiers in the bundle, resolved at call time against
-the scope the guest built — which is what makes a capability this run withheld a `ToolError`
-carrying `unavailable` rather than a `ReferenceError`, and what makes every call land in the *same*
-lowering a TypeScript program's does. That last part is worth stating plainly, because it is what
+arm has no component of its own and that guest binds those names into every program's scope; the
+typed `Gg.*` modules above are what a model reads, and the bridge is what turns `Gg.Files.readFile`
+into the call that guest binds. They are free identifiers in the bundle, resolved at call time
+against that scope — which the guest builds from its own SDK rather than from the run, so every one
+of them resolves on every turn and a capability this agent was not granted is a `ToolError`
+carrying `unavailable` from the host rather than a `ReferenceError` from the engine. It is also
+what makes every call land in the *same* lowering a TypeScript program's does. That last part is worth stating plainly, because it is what
 a cross-language study rests on: the two arms produce **byte-identical** arguments for the same
 capability by construction, and a test drives all thirty-five tools through the real membrane to
 say so.
@@ -919,7 +922,7 @@ failure this gate has been shown to catch.
 
 - `setJsModuleType(NONE)`, so the emitted code names its entry point as a **bare identifier** in
   the enclosing scope. The guest evaluates a program as the body of a function whose parameters are
-  the API objects, and a module wrapper would put those names out of the program's reach.
+  gg's modules, and a module wrapper would put those names out of the program's reach.
 - `setStrict(true)`, without which TeaVM omits the null and bounds checks that make a
   `NullPointerException` an exception at all — and `catch (NullPointerException)` **silently fails
   to catch**. A program that failed would be recorded as one that succeeded, which is the one class

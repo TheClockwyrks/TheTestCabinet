@@ -583,6 +583,24 @@ catch (ToolException failure)
         log.names().is_empty(),
         "a withheld tool must not reach gg's dispatch at all"
     );
+
+    // AND IT LANDS ON THE TURN'S REFUSAL ROSTER, under gg's own key rather than this arm's spelling.
+    // That matters more here than on most arms: this guest reports every UNCAUGHT managed exception
+    // as `error-kind.other` with no code (`Sources/shell.c`'s `report`), so an uncaught refusal is
+    // recorded as `program_throw` and the turn error type a cross-arm study would otherwise count
+    // withheld reaches by says nothing about this arm. The roster is the source that is uniform
+    // across all eleven, and it is asserted here so that stays true. See `sandbox.test.rs`'s
+    // `a_refused_call_is_the_same_turn_error_as_an_unbound_name`.
+    assert_eq!(
+        outcome
+            .refusals
+            .iter()
+            .map(|refusal| refusal.name.as_str())
+            .collect::<Vec<_>>(),
+        ["system.shell"],
+        "the refusal is recorded under gg's own identity for the call: {:?}",
+        outcome.refusals
+    );
 }
 
 #[test]

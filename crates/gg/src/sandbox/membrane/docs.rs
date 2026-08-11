@@ -6,16 +6,17 @@
 //! correspondence the tool interfaces hold with [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES) is
 //! not perturbed.
 //!
-//! It bypasses [`dispatch`](super::MembraneState) — its deadline and enabled-set guards are wrong
-//! for a call that is not a tool — and goes straight to the [api](super::ToolApi), whose loop-side
-//! implementation answers it against the agent's [`DocsRuntime`](crate::docs).
+//! It bypasses [`dispatch`](super::MembraneState) — its deadline guard is wrong for a call that is
+//! not a tool — and goes straight to the [api](super::ToolApi), whose loop-side implementation
+//! answers it against the agent's [`DocsRuntime`](crate::docs).
 //!
 //! # Two of the three are unconditional, and one is bought
 //!
 //! Searching is bound into every program's scope whatever a run enables, because a model must
 //! always be able to discover the functions it *does* have. **Closing** a documentation view is not:
-//! it is gated on [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE), refused here
-//! rather than withheld from the guest's scope, and the asymmetry is the point. Opening a
+//! it is gated on [`docview-close`](test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE) — refused at
+//! this boundary, like every other capability now that no guest withholds a name — and the
+//! asymmetry between opening and closing is the point. Opening a
 //! documentation view only ever appends to the prompt, so a provider's cached prefix survives every
 //! open an agent makes for the life of a session; closing one removes an item from the middle and
 //! costs the run every cached token after it. Whether that trade pays is a measurement, so it is a
@@ -24,9 +25,12 @@
 //! Reading what a function *does* is [`view.openDocsView`](super::views), because documentation is
 //! material the model reads and every channel into the model is a view.
 
+use test_cabinet_core::gg::CAPABILITY_DOCVIEW_CLOSE;
+
 use super::test_cabinet::gg::docs::{DocHit, DocSearch, Host as DocsHost};
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
+use crate::sandbox::Binding;
 use crate::sandbox::invoker::{DocSearchQuery, ViewRefusal};
 
 /// The object a documentation call is recorded under.
@@ -34,7 +38,7 @@ use crate::sandbox::invoker::{DocSearchQuery, ViewRefusal};
 /// gg's own name for the family rather than any SDK's spelling of it, because no arm's committed
 /// catalogue spells these two calls yet — so there is nothing to resolve a spelling *from*, and a
 /// guessed one would be a name in the record that joins to nothing. See
-/// [`MembraneState::docview_close_bound`](super::MembraneState).
+/// [`MembraneState::granted`](super::MembraneState).
 pub(super) const DOCS_OBJECT: &str = "docs";
 
 /// The function a documentation search is recorded under.
@@ -68,51 +72,59 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<DocSearch, ToolError> {
-        self.recorded_on(DOCS_OBJECT, SEARCH_FUNCTION, |state, rec| {
-            let request = DocSearchQuery {
-                query,
-                module,
-                declared_type: r#type,
-                kind,
-                offset,
-                limit,
-            };
-            match state.api(rec).search_docs(request) {
-                Ok(found) => {
-                    state.record_view_opened(found.opened);
-                    Ok(DocSearch {
-                        total: found.page.total,
-                        offset: found.page.offset,
-                        hits: found
-                            .page
-                            .hits
-                            .into_iter()
-                            .map(|hit| DocHit {
-                                key: hit.key,
-                                kind: hit.kind.id().to_string(),
-                                module: hit.module,
-                                name: hit.name,
-                                summary: hit.summary,
-                            })
-                            .collect(),
-                    })
+        self.recorded_on(
+            DOCS_OBJECT,
+            SEARCH_FUNCTION,
+            Binding::Always,
+            |state, rec| {
+                let request = DocSearchQuery {
+                    query,
+                    module,
+                    declared_type: r#type,
+                    kind,
+                    offset,
+                    limit,
+                };
+                match state.api(rec).search_docs(request) {
+                    Ok(found) => {
+                        state.record_view_opened(found.opened);
+                        Ok(DocSearch {
+                            total: found.page.total,
+                            offset: found.page.offset,
+                            hits: found
+                                .page
+                                .hits
+                                .into_iter()
+                                .map(|hit| DocHit {
+                                    key: hit.key,
+                                    kind: hit.kind.id().to_string(),
+                                    module: hit.module,
+                                    name: hit.name,
+                                    summary: hit.summary,
+                                })
+                                .collect(),
+                        })
+                    }
+                    Err(refusal) => Err(state.refuse_docs(SEARCH_FUNCTION, refusal)),
                 }
-                Err(refusal) => Err(state.refuse_docs(SEARCH_FUNCTION, refusal)),
-            }
-        })
+            },
+        )
     }
 
     /// Close the documentation view keyed by `key`, and report how many went.
     ///
-    /// The capability check is the **first** statement inside the bracket rather than before it, on
-    /// exactly the terms a program-library call's is: the API call is still opened and still counted
-    /// as a failure, because "the model reached for something this run does not offer it" is the
-    /// fact a capability ablation exists to measure, and a refusal that closed no bracket would be
-    /// invisible to it.
+    /// The capability is handed to the [bracket](super::recording) rather than checked in this
+    /// body, on exactly the terms every other gated call obeys: the API call is still opened and
+    /// still counted as a failure, because "the model reached for something this run does not offer
+    /// it" is the fact a capability ablation exists to measure, and a refusal that closed no bracket
+    /// would be invisible to it. It is stated here rather than looked up because this call is a
+    /// carve-out that no arm's catalogue spells, so gg has no operation row to read a gate off.
     fn close_doc_view(&mut self, key: String) -> Result<u32, ToolError> {
-        self.recorded_on(DOCS_OBJECT, CLOSE_DOC_VIEW_FUNCTION, |state, rec| {
-            state.docview_close_bound(CLOSE_DOC_VIEW_FUNCTION)?;
-            match state.api(rec).close_docviews(Some(key.clone())) {
+        self.recorded_on(
+            DOCS_OBJECT,
+            CLOSE_DOC_VIEW_FUNCTION,
+            Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
+            |state, rec| match state.api(rec).close_docviews(Some(key.clone())) {
                 Ok(closed) => {
                     if closed > 0 {
                         state.record_view_closed(&key);
@@ -120,16 +132,18 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
                     Ok(closed)
                 }
                 Err(refusal) => Err(state.refuse_docs(CLOSE_DOC_VIEW_FUNCTION, refusal)),
-            }
-        })
+            },
+        )
     }
 
     /// Close every documentation view, and report how many went. The blanket form, on the same
     /// terms and behind the same capability.
     fn close_doc_views(&mut self) -> Result<u32, ToolError> {
-        self.recorded_on(DOCS_OBJECT, CLOSE_DOC_VIEWS_FUNCTION, |state, rec| {
-            state.docview_close_bound(CLOSE_DOC_VIEWS_FUNCTION)?;
-            match state.api(rec).close_docviews(None) {
+        self.recorded_on(
+            DOCS_OBJECT,
+            CLOSE_DOC_VIEWS_FUNCTION,
+            Binding::Capability(CAPABILITY_DOCVIEW_CLOSE),
+            |state, rec| match state.api(rec).close_docviews(None) {
                 Ok(closed) => {
                     if closed > 0 {
                         // Recorded under gg's own word for *all of them*, because the view report is
@@ -140,8 +154,8 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
                     Ok(closed)
                 }
                 Err(refusal) => Err(state.refuse_docs(CLOSE_DOC_VIEWS_FUNCTION, refusal)),
-            }
-        })
+            },
+        )
     }
 }
 

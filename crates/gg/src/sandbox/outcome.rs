@@ -290,10 +290,14 @@ pub struct ProgramError {
 pub enum ProgramErrorKind {
     /// A tool call failed and the throw was not caught.
     ToolFailure,
-    /// The program reached for something this run does not offer it: a name that is not in scope,
-    /// or — where the language's SDK has no way to withhold a name — a call the membrane refused as
-    /// `unavailable`. The two are the same fact and the same recovery, so they are one class; the
-    /// membrane's `capture::classify` says why the host decides that rather than the guest.
+    /// The program reached for something it does not have: a call the membrane refused as
+    /// `unavailable`, or a name nothing bound at all. The two are the same fact and the same
+    /// recovery, so they are one class; the membrane's `capture::classify` says why the host
+    /// decides that rather than the guest.
+    ///
+    /// Since every arm's SDK became static, a *withheld capability* is always the first of the two
+    /// and never the second — which is what makes this one class one measurement rather than a
+    /// count that meant different things on different arms.
     UnknownName,
     /// Anything else the program threw.
     Other,

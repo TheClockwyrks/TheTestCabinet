@@ -36,7 +36,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
-use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgProgramLanguage};
+use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::{CodeFiles, Skill, parse_skill};
 use crate::ending::EndingRole;
@@ -228,25 +228,23 @@ pub fn builtin_skills(
     definitions: &[ToolDefinition],
     role: EndingRole,
     library: bool,
+    docview_close: bool,
     program_language: Option<GgProgramLanguage>,
     params: &Value,
 ) -> Vec<Skill> {
     let off = switched_off(params);
     let offered: BTreeSet<&str> = offered.iter().map(String::as_str).collect();
-    // The one capability that buys part of the model-facing surface, as the documentation runtime
-    // takes it: a set of ids rather than the boolean this function is handed, because gg's gating
-    // vocabulary is capability ids and the boolean is this caller's resolved answer about one of
-    // them.
-    let capabilities: &[&'static str] = if library {
-        &[CAPABILITY_PROGRAM_LIBRARY]
-    } else {
-        &[]
-    };
+    // The capabilities that buy part of the model-facing surface, as the documentation runtime takes
+    // them: ids rather than the booleans this function is handed, because gg's gating vocabulary is
+    // capability ids and the booleans are this caller's resolved answers about them. Turned into ids
+    // by the one function that does that, so this catalogue and the membrane cannot come to hold
+    // different grants — which they did, this side never carrying `docview-close` at all.
+    let capabilities = crate::sandbox::surface_capabilities(library, docview_close);
     let docs = program_language.map(|language| {
         crate::docs::DocsRuntime::new(
             offered.iter().map(|name| (*name).to_string()).collect(),
             role,
-            capabilities,
+            &capabilities,
             language,
         )
     });

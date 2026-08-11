@@ -27,10 +27,12 @@ What this shim does, and what each part is load-bearing for
    unwinding the traceback of a ``RecursionError`` it already caught — so ``except`` gives no
    protection and the turn dies as an opaque trap. The limit is clamped instead, and the program
    gets an ordinary catchable ``RecursionError``.
-3. **The scope is built from the run** (:func:`gg.scope.build_scope`): the capability modules this
-   run offers, and the types they speak in. It is the *surface* rather than the enforcement — the
-   host refuses a withheld call however a program reached it — but a name a model can see is a name
-   it will use, so a module carries exactly the functions the run enables.
+3. **The scope is the whole SDK** (:func:`gg.scope.build_scope`): every capability module, every
+   function each declares, and the types they speak in — whatever this run enabled and whatever role
+   this agent holds. It never was the enforcement (an ordinary ``import gg.files`` reached past it),
+   and it is no longer even a hint: the **host** refuses a call this agent was not granted, with a
+   ``ToolError`` naming the missing capability, which is a value the program can catch and act on
+   where an ``AttributeError`` from Python was not.
 4. **The agent's code modules are evaluated first** (:func:`_load_modules`), each into its own
    namespace bound at ``lib.<name>``. A module that throws is reported and left empty rather than
    taking the program down with it: a broken skill belongs to whoever authored it.
@@ -254,7 +256,7 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
         )
     kind = (
         feedback.ErrorKind.UNKNOWN_NAME
-        if isinstance(exc, NameError) or _missing_capability(exc)
+        if isinstance(exc, NameError) or _unknown_gg_name(exc)
         else feedback.ErrorKind.OTHER
     )
     return feedback.ProgramError(
@@ -265,16 +267,18 @@ def _classify(exc: BaseException, filenames: frozenset) -> feedback.ProgramError
     )
 
 
-def _missing_capability(exc: BaseException) -> bool:
-    """Whether ``exc`` is a program reaching for a capability this run does not offer.
+def _unknown_gg_name(exc: BaseException) -> bool:
+    """Whether ``exc`` is a program reaching for a gg name that does not exist.
 
-    This arm's spelling of the mistake a guest that could withhold a *name* reports as a
-    ``NameError``. A module this run offers is a real namespace carrying the run's functions, so
-    ``files.read_file`` under a run with reading withheld is an ``AttributeError`` rather than an
-    unknown name — the same fact, and it has to be classified the same way or gg would count a
-    withheld capability as an ordinary program bug on one arm and not on the other. A module the run
-    offers *nothing* from is absent from the ``gg`` surface for the same reason, and reaching for one
-    of those is the same mistake one level up.
+    This arm's spelling of the mistake other guests report as a ``NameError``. gg's modules are
+    namespaces this guest assembled, so ``files.read_fil`` is an ``AttributeError`` rather than an
+    unknown name — the same fact, and it has to be classified the same way or gg would count one
+    typo as an unknown name on one arm and as an ordinary program bug on another.
+
+    It is **not** how a withheld capability arrives, and has not been since the surface went static:
+    every function gg declares is on its module whatever the run enabled, so reaching for one that
+    this agent was not granted is a refusal from the host carrying the wire's own ``unavailable``
+    code, classified from that code rather than from anything read here.
 
     The check is on the namespace the failure happened on, not on the exception's type: an
     ``AttributeError`` against anything else is exactly the ordinary program bug it looks like.
@@ -338,7 +342,15 @@ class WitWorld(wit_world.WitWorld):
 
         The code modules are evaluated against the **same** scope the program gets, so a skill's
         module may call ``files.read_file`` exactly as a program does.
+
+        ``tools``, ``ending`` and ``library`` are **read by nothing here**, and the names are the
+        WIT's rather than underscored because that is what gg calls them. They used to build the
+        scope; the scope is now the whole SDK and every capability question is answered at the
+        membrane, which is the one place that can answer it the same way for all eleven language
+        arms. gg still sends them — the world is shared with ten sibling guests — so they arrive and
+        are ignored.
         """
+        del tools, ending, library
         stream = _FeedbackStream()
         sys.stdout = stream
         sys.stderr = stream
@@ -349,7 +361,7 @@ class WitWorld(wit_world.WitWorld):
         # guards its entry point with `if __name__ == "__main__":` has written correct Python and
         # must not be silently skipped.
         scope: Dict[str, Any] = {"__name__": "__main__"}
-        scope.update(gg_scope.build_scope(tools, ending, library))
+        scope.update(gg_scope.build_scope())
         lib = _load_modules(modules, scope, filenames)
         if modules:
             scope["lib"] = lib

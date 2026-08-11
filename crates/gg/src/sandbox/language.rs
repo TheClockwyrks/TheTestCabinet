@@ -137,6 +137,18 @@ mod register;
 #[path = "language/isolation.rs"]
 mod isolation;
 
+/// The **hand-built artifact gate**: the assertion that every committed binary gg carries — three
+/// guest components and three compiled-arm archives — was built from the sources this checkout
+/// holds.
+///
+/// `#[cfg(test)]`, and a gate rather than a runtime need for the same reason [`agreement`] is. Its
+/// module documentation says why the drift check next door cannot cover these six, what each arm's
+/// existing gates do and do not reach, and — in as many words — that matching one's recorded
+/// sources is not the same claim as having been built correctly from them.
+#[cfg(test)]
+#[path = "language/artifacts.test.rs"]
+mod artifacts;
+
 /// A **second implementation of this trait, for tests only** — the thing that makes the seam an
 /// abstraction rather than one implementation wearing a trait.
 ///

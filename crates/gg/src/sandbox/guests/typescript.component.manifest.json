@@ -1,0 +1,40 @@
+{
+  "arm": "typescript",
+  "rebuild": "packages/gg-sandbox/build.sh",
+  "artifacts": {
+    "crates/gg/src/sandbox/guests/typescript.component.wasm": {
+      "bytes": 14096959,
+      "sha256": "9d32a050cabec3958d2747de4a4701a60d7c7db37169b4de71238708746d6e32"
+    }
+  },
+  "wit": {
+    "root": "crates/gg/wit",
+    "declarationsSha256": "3851483d2fdb5fb7e9dadc36c2724562b2f1ccbe193d982dd5548eb4c20163e5"
+  },
+  "pins": {
+    "componentizeJs": "0.21.0"
+  },
+  "sources": {
+    "packages/gg-sandbox/src/catalogue.ts": "fd4ede15e07198071be449c62e1663e1525fdb502b854e00ef306e49595c58d4",
+    "packages/gg-sandbox/src/gg/board.ts": "9e0deae55b7645731b48127208eb4ec600c6deb515b6a3a1cf4f3623df1ddbac",
+    "packages/gg-sandbox/src/gg/context.ts": "9f003ac9ec72d95afe1450b6f4355523f4a2b3faeafb5d4a48a2dc4e22a517a3",
+    "packages/gg-sandbox/src/gg/core.ts": "a0105da80f2b69e263216abaf8cb2167e4dc13129f7293177ea2aaa2fa94e727",
+    "packages/gg-sandbox/src/gg/delegation.ts": "97638f235c0c771598ee4227f54a61b7f6e19a0a5363386abc2e7fb4b36af4f8",
+    "packages/gg-sandbox/src/gg/files.ts": "330e9105f29a036e040c7ff20f8a78e7f53ed9be707005c36916e3da8e45b60c",
+    "packages/gg-sandbox/src/gg/memories.ts": "b45d32953d4cd00b784da2f419f125f0d92c45bc530b76ea6172b5f8653dfe37",
+    "packages/gg-sandbox/src/gg/programs.ts": "9e019ba85cb42ab3a35cef1f0efe2f4c9c58cf9463fc50aca32c45710f9669ad",
+    "packages/gg-sandbox/src/gg/session.ts": "23ff997a1df42d35d7ab54e6e71cdfabf205b6b3e75a3756ae18441cf019788f",
+    "packages/gg-sandbox/src/gg/shell.ts": "eacd6e8664118f34420fd1cd1d0e45c2bcefb82a578e92e6e1da217ff3aa9445",
+    "packages/gg-sandbox/src/gg/skills.ts": "7716327373a93984e5ebc44fc59208c65284d57219f2d6a67e00634343ad7b94",
+    "packages/gg-sandbox/src/gg/tasks.ts": "56382f99537ba762bb42256c0238fe162551ee318c2e70e2bda1bd3c83f2d523",
+    "packages/gg-sandbox/src/gg/views.ts": "bbe1297952a613274cc3fab9477554e814f71568370b8941564c4721b5d1ac7b",
+    "packages/gg-sandbox/src/internal/errors.ts": "7000762ed495b0e6258eba544c8dfa35794bfc08939fe1de2542d33e8d7fdff9",
+    "packages/gg-sandbox/src/internal/lower.ts": "1dfac05024ae8d138df0a0b85d8bdc0bdc8d3606224300e4fd449521d39bd7a6",
+    "packages/gg-sandbox/src/membrane.d.ts": "97bd28a4f6be8e8b7539fd9dbd6c247d1182534760475c8a127d059694cbd821",
+    "packages/gg-sandbox/src/shim.ts": "b35841645df333aa1c2bee9ed46b97830c807dc0779b6b3ce8b53bbd9f621710",
+    "packages/gg-sandbox/build.sh": "7233cd95c28ba3d5f7431d06048b1a7fb882fa261e88ef8524b2b0d957b38572",
+    "packages/gg-sandbox/package.json": "6ffb8bfb73431dd91309d2d5ceb470cea0d3cf9af74f26290783dc36798f2c94",
+    "packages/gg-sandbox/tsconfig.json": "ddb3f01154adc5a1cb2694b7277eef5f1fb3362b32ffdf422a8030eb7475ddbf",
+    "tsconfig.base.json": "95adc027b809345f6c4cf2c0c7a92e6e0e54b8423ae731016e5c503c75c5df86"
+  }
+}

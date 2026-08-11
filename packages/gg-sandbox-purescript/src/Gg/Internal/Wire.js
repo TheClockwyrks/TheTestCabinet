@@ -1,16 +1,22 @@
 // The JavaScript half of the bridge: the only file in this SDK that names the guest's own objects.
 //
 // A compiled PureScript program is evaluated by the shared ECMAScript guest as the body of a
-// function whose PARAMETERS are the API objects this run enabled. So `fs`, `system`, `view` and the
-// rest are free identifiers here, resolved at call time against the scope the guest built — which
-// is exactly why every reference below is inside a function body rather than at the top level:
-// evaluating this bundle must not touch a name a run may not have bound.
+// function whose PARAMETERS are gg's modules. So `fs`, `system`, `view` and the rest are free
+// identifiers here, resolved at call time against the scope the guest built — which is exactly why
+// every reference below is inside a function body rather than at the top level: evaluating this
+// bundle must not touch a name before the scope carrying it exists.
+//
+// THE GUEST BINDS EVERY MODULE, WHATEVER THE RUN ENABLED. It did not always: the scope used to be
+// built from the run's enabled tools, so a withheld capability arrived here as an absent object and
+// this file synthesized the refusal for it. The host is the gate now, on every arm, so what is
+// absent below is drift between this SDK and the guest artifact rather than a capability the run
+// withheld — which is why the fallback says so in those words.
 
-// The API object `name`, or `undefined` when this run did not bind it.
+// The API object `name`, or `undefined` when the guest does not export it under that name.
 //
 // A switch rather than a lookup on `globalThis`, and that is forced rather than chosen: these names
 // are the enclosing function's parameters, so nothing can reach them by string. `typeof` is what
-// makes an unbound one answerable at all — reading an undeclared identifier throws, and `typeof` on
+// makes an absent one answerable at all — reading an undeclared identifier throws, and `typeof` on
 // one does not.
 const objectFor = (name) => {
   switch (name) {
@@ -43,23 +49,30 @@ const objectFor = (name) => {
   }
 };
 
-// The code every language's host refuses an out-of-set call with, so a capability this run withheld
-// reads the same way in every arm.
-const UNAVAILABLE = "unavailable";
+// The code gg reports a call that could not be made under. Not `unavailable`, which is the host's
+// word for a capability this agent was not granted: this file cannot produce that case any more,
+// and reusing its code would put a second, differently-worded refusal into the one class a study
+// counts withheld capabilities in.
+const NOT_EXPORTED = "other";
 
-// What a call on a capability this run did not offer throws.
+// What a call the guest does not export throws — an SDK and a guest artifact that disagree.
 //
-// The alternative is a bare `ReferenceError: fs is not defined`, which says nothing about which
-// call was refused and is classified as a name the model got wrong rather than as a capability it
-// was never given. `ToolError` is bound into every program's scope by the guest, so this is the
-// same class a program's `attempt` catches; the fallback is for a scope that somehow has not got
-// it, where a plain error beats no error at all.
-const unavailable = (tool, written) => {
+// It is NOT a withheld capability, and the message must not say it is. Every module is bound in
+// every program and every function on it is the host's to permit or refuse, so the only way the
+// lookup below fails is that this SDK names something `packages/gg-sandbox`'s guest does not
+// export: one of the two was rebuilt without the other. A model told its *capability set* was the
+// problem would go looking for a tool to enable, which is a turn spent on the wrong thing.
+//
+// The alternative is a bare `TypeError: fn is not a function`, which says nothing about which call
+// failed. `ToolError` is bound into every program's scope by the guest, so this is the same class a
+// program's `attempt` catches; the fallback is for a scope that somehow has not got it, where a
+// plain error beats no error at all.
+const notExported = (tool, written) => {
   const message =
-    `\`${written}\` is not available in this run: this program's capability set does not ` +
-    "offer it";
+    `\`${written}\` did not reach the guest: gg's SDK declares it and this run's guest does ` +
+    "not export it, which is a mismatch between the two rather than anything this program did";
   return typeof ToolError === "function"
-    ? new ToolError(tool, UNAVAILABLE, message)
+    ? new ToolError(tool, NOT_EXPORTED, message)
     : new Error(message);
 };
 
@@ -71,7 +84,7 @@ export const callImpl = (tool) => (namespace) => (written) => (args) => () => {
   const target = objectFor(namespace);
   const name = written.slice(written.lastIndexOf(".") + 1);
   const fn = target === undefined ? undefined : target[name];
-  if (typeof fn !== "function") throw unavailable(tool, written);
+  if (typeof fn !== "function") throw notExported(tool, written);
   return fn.apply(target, args);
 };
 

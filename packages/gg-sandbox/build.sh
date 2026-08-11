@@ -104,5 +104,38 @@ npm run --workspace @test-cabinet/gg-sandbox signatures
 echo "Cutting the TypeScript checker ..."
 npm run --workspace @test-cabinet/gg-sandbox checker
 
+# 5. Record what went into the component, beside it. `contract-drift.sh` deliberately never rebuilds
+#    this artifact, so this manifest — and the Rust test that recomputes it from the checkout — is
+#    the only thing standing between an SDK edit committed without a rebuild and every TypeScript
+#    and JavaScript program in the run being evaluated by last month's guest.
+#
+#    The files beside the SDK tree are inputs as much as the tree is. `tsconfig.json` and the
+#    repository-wide `tsconfig.base.json` it extends decide together what step 1 emits — and the
+#    base file is where the emit-affecting options actually live: `target`, `module`, `lib` and
+#    `useDefineForClassFields` are all inherited, none of them is restated in the leaf, and changing
+#    `target` alone was measured to change the JavaScript in eight emitted files, `shim.js` among
+#    them. It is a file edited for the web app and the docs site by people with no reason to know
+#    this component hangs off it, which is exactly why it is recorded here. `package.json` pins the
+#    `typescript` release that does the emitting, so a program is judged by a compiler this
+#    component was not built with the moment it moves alone.
+#
+#    `build.sh` records ITSELF, because the recipe is an input: the `--disable stdio http
+#    fetch-event` flags above decide whether this guest has a `fetch` at all, and dropping one and
+#    committing without rebuilding would leave the checkout claiming a capability the artifact does
+#    not have. That an edit to this file fails the gate until it is run is the intended reading.
+echo "Recording the component manifest ..."
+node "$ROOT/scripts/gg-artifact-manifest.mjs" \
+	--arm typescript \
+	--rebuild "$PACKAGE/build.sh" \
+	--artifact "$COMPONENT" \
+	--source-root "$PACKAGE/src" \
+	--source-file "$PACKAGE/tsconfig.json" \
+	--source-file tsconfig.base.json \
+	--source-file "$PACKAGE/package.json" \
+	--source-file "$PACKAGE/build.sh" \
+	--wit crates/gg/wit \
+	--pin "componentizeJs=$COMPONENTIZE_VERSION" \
+	--out "$DEST_DIR/typescript.component.manifest.json"
+
 echo "Wrote $COMPONENT ($(wc -c <"$COMPONENT") bytes)."
 echo "Remember to commit the refreshed artifacts together with the source change."

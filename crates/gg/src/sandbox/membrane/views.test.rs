@@ -256,9 +256,12 @@ fn a_spent_budget_refuses_the_read_but_not_the_report() {
 
 /// **A run that withholds `read_file` does not get one through `view.openFile`.**
 ///
-/// The enabled-set backstop is why this one call goes through `dispatch` at all. The guest does not
-/// bind `openFile` in such a run, so a program cannot normally reach this — which makes it exactly
-/// the defensive check that must not be skipped.
+/// Three operations share the `read_file` tool — `fs.readFile`, `fs.readTextFile` and this one —
+/// and this is the one a side door could be opened through: it is filed under `views`, where the
+/// rest of the family is bound to every program whatever a run enables. The gate reads the
+/// **operation's** binding rather than its family, so a run with reading withheld refuses all
+/// three. Every guest binds `openFile` in such a run, since every SDK is static, so this is a path
+/// a program really does reach.
 #[test]
 fn a_run_without_read_file_cannot_open_a_file_view() {
     let log = CallLog::default();

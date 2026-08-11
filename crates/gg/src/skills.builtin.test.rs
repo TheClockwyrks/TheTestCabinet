@@ -29,6 +29,7 @@ fn native(offered: &[&str], params: serde_json::Value) -> Vec<Skill> {
         &[read_file()],
         EndingRole::Standard,
         /* library */ false,
+        /* docview_close */ false,
         /* program_language */ None,
         &params,
     )
@@ -79,6 +80,7 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
         &[read_file()],
         EndingRole::Standard,
         /* library */ false,
+        /* docview_close */ false,
         /* program_language */ Some(GgProgramLanguage::TypeScript),
         &json!({}),
     );
@@ -117,6 +119,7 @@ fn every_arm_generates_the_built_in_family_skills_whatever_schema_it_is_written_
             &[read_file()],
             EndingRole::Standard,
             /* library */ true,
+            /* docview_close */ false,
             Some(language.id()),
             &json!({}),
         );
@@ -179,6 +182,7 @@ fn the_code_arm_offers_the_carve_out_families_a_native_run_has_no_tools_for() {
         &[],
         EndingRole::Standard,
         /* library */ true,
+        /* docview_close */ false,
         /* program_language */ Some(GgProgramLanguage::TypeScript),
         &json!({}),
     );
@@ -197,6 +201,7 @@ fn the_program_library_family_follows_the_library_flag() {
         &[],
         EndingRole::Standard,
         /* library */ false,
+        /* docview_close */ false,
         /* program_language */ Some(GgProgramLanguage::TypeScript),
         &json!({}),
     );
@@ -209,6 +214,7 @@ fn a_reviewers_session_skill_documents_the_reviewers_ending() {
         &[],
         &[],
         EndingRole::Review,
+        false,
         false,
         Some(GgProgramLanguage::TypeScript),
         &json!({}),

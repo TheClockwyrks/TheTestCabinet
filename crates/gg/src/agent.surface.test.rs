@@ -113,8 +113,8 @@ async fn a_tool_calling_instance_reports_its_offered_tools_and_no_apis() {
 }
 
 /// A tool withheld by the per-tool [ablation](GgAgentConfig::disabled_tools) is **absent** from the
-/// surface, even though the capability contributing it is on — and its code-mode function goes with
-/// it, so the two execution modes agree about what was withheld.
+/// surface, even though the capability contributing it is on — and its code-mode function is absent
+/// from the reported surface with it, so the two execution modes agree about what was withheld.
 ///
 /// This is the finest-grained thing the surface has to get right: the capability set alone cannot
 /// tell a reader that `write_file` was withheld from a run whose write-file capability is enabled.
@@ -143,12 +143,16 @@ async fn a_withheld_tool_is_absent_from_the_surface_and_from_its_api_object() {
         "the rest of the toolset is untouched: {tools:?}"
     );
 
-    // The same registry drives a program's scope, so the withheld tool's function is unbound too —
-    // `fs` survives on its other three calls rather than disappearing.
+    // The same registry decides what a program may *call*, so the withheld tool's function is
+    // reported as not offered here too — `gg.files` survives on its other three calls rather than
+    // disappearing. The function is still **bound** in the program's scope, because every SDK is
+    // static; what this readout answers is the question an ablation asks, which is what the agent
+    // was offered rather than what its language compiled.
     let registry = ToolRegistry::from_capabilities(set.root());
     let apis = api_surface(
         &registry,
         EndingRole::Standard,
+        false,
         false,
         GgProgramLanguage::TypeScript,
     );
@@ -230,6 +234,7 @@ fn each_objects_description_and_its_place_come_from_the_catalogue() {
         &registry,
         EndingRole::Standard,
         false,
+        false,
         GgProgramLanguage::TypeScript,
     );
 
@@ -274,6 +279,7 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
     let apis = api_surface(
         &registry,
         EndingRole::Standard,
+        false,
         false,
         GgProgramLanguage::TypeScript,
     );
@@ -338,6 +344,7 @@ fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
         &registry,
         EndingRole::Review,
         false,
+        false,
         GgProgramLanguage::TypeScript,
     );
     let verdicts = functions_on(&reviewer, "gg.session");
@@ -368,12 +375,14 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
         &registry,
         EndingRole::Standard,
         true,
+        false,
         GgProgramLanguage::TypeScript,
     );
     let views = api_views(
         &registry,
         EndingRole::Standard,
         true,
+        false,
         GgProgramLanguage::TypeScript,
     );
     assert_eq!(
@@ -396,6 +405,7 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
         api_surface(
             &registry,
             EndingRole::Standard,
+            false,
             false,
             GgProgramLanguage::TypeScript
         )
@@ -462,6 +472,7 @@ fn the_surface_reports_the_bound_catalogue_and_nothing_else() {
         &registry,
         EndingRole::Review,
         true,
+        false,
         GgProgramLanguage::TypeScript,
     );
     let docs = crate::docs::DocsRuntime::new(
