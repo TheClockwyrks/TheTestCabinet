@@ -6,15 +6,16 @@
 // audience that will read it, so the two cannot drift; a hand-written list would drift silently, and
 // a model shown a signature the sandbox does not have wastes a whole turn discovering it.
 //
-// The pipeline, all of which `packages/gg-sandbox/build.sh` runs in order:
+// The pipeline, both halves of which `packages/gg-sandbox/signatures.sh` runs in order:
 //
 //   src/gg/*.ts  --tsc-->  dist/headers/gg/*.d.ts
-//                --this script-->  crates/gg/src/sandbox/guests/<language-id>.signatures.json
+//                --this script-->  $GG_SIGNATURES_OUT_DIR/<language-id>.signatures.json
 //
 // and `crates/gg/src/sandbox/language/{typescript,javascript}.rs` embed that JSON with
-// `include_str!`. Because the same `build.sh` invocation also rebuilds the component, the
-// documentation can never be more current than the component that implements it — the correct
-// failure direction.
+// `include_str!` out of their own build's `OUT_DIR`. `crates/gg/build.rs` is what runs the script,
+// through `scripts/gg-signatures.sh`, so the catalogue is reflected on the same build that compiles
+// the host reading it: the documentation cannot describe a declaration this checkout does not have,
+// because there is no copy of it old enough to.
 //
 // It emits TWO catalogues from one set of declarations, because gg's TypeScript and JavaScript arms
 // ARE one set of declarations: the same guest, the same SDK, the same signatures, and one difference
@@ -76,11 +77,18 @@
 // overload group is still read, not assumed away.
 //
 // Usage:
-//   node tools/signatures.mjs --out-dir <dir>          # write one catalogue per language
-//   node tools/signatures.mjs --out-dir <dir> --check  # verify the committed catalogues are current
+//   GG_SIGNATURES_OUT_DIR=<dir> node tools/signatures.mjs   # write one catalogue per language
 //
-// `--check` is the local rehearsal of the CI drift gate, which regenerates the file and fails on any
-// `git diff`.
+// The destination comes from the environment and has no default, because there is no longer one
+// obvious place: the catalogues are generated into a build directory by `crates/gg/build.rs` and
+// into whatever a developer names when they want to read one. There is likewise no "check whether
+// the committed copies are current" mode, because there are no committed copies — a JSDoc edited
+// without a regeneration is not a state this repository can be in, since the next build of gg
+// reflects it.
+//
+// Run `packages/gg-sandbox/signatures.sh` rather than this file directly: it emits the declarations
+// this reads, and it is the entry `scripts/gg-signatures.sh` and the npm `signatures` script both go
+// through.
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -100,11 +108,13 @@ const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers", "gg");
 
 /**
  * The gg program languages this guest implements: each one's `GgProgramLanguage` id, which is also
- * the stem its committed artifacts are filed at.
+ * the stem each emitted catalogue is filed under.
  *
- * The id is written into the catalogue so a committed artifact says whose spellings it carries, and
- * is asserted by the host against the language that embedded it — a catalogue filed under the wrong
- * stem is then a load-time failure rather than documentation describing a sandbox nobody has.
+ * The id is written into the catalogue so the emitted file says whose spellings it carries, and is
+ * asserted by the host against the language that embedded it — a catalogue filed under the wrong
+ * stem is then a load-time failure rather than documentation describing a sandbox nobody has. That
+ * assertion earns more now than it did, not less: a build that generates eleven catalogues into one
+ * directory is exactly the arrangement in which the wrong one could be wired to an arm.
  *
  * There are TWO of them for one set of declarations, and that is the whole shape of gg's JavaScript
  * arm. `javascript` is `typescript` with the type check removed: the same component, the same SDK,
@@ -466,8 +476,9 @@ function armDoc(union, index, sourceFile) {
  * The tables that decide a program's surface, read from `src/catalogue.ts`.
  *
  * The source file is transpiled in memory and imported as a data URL rather than read out of `dist/`,
- * so this script depends only on what `tsconfig.headers.json` emits — which is what lets CI run the
- * drift gate without ever building the JavaScript the component is made from.
+ * so this script depends only on what `tsconfig.headers.json` emits — which is what lets a build of
+ * gg reflect this arm's catalogues without ever building the JavaScript the component is made from,
+ * and therefore without `componentize-js` on the machine doing the building.
  */
 async function loadCatalogue() {
   const file = path.join(SRC_DIR, "catalogue.ts");
@@ -977,40 +988,31 @@ async function build(language) {
   )}\n`;
 }
 
-/** Parse the command line, rejecting anything it does not understand rather than guessing. */
-function parseArguments(argv) {
-  let outDir;
-  let check = false;
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === "--out-dir") {
-      outDir = argv[i + 1];
-      i += 1;
-    } else if (argv[i] === "--check") {
-      check = true;
-    } else {
-      throw new Error(`unknown argument \`${argv[i]}\`; usage: --out-dir <dir> [--check]`);
-    }
+/**
+ * Where the catalogues are written, read from the environment and required.
+ *
+ * It takes no arguments at all rather than an optional flag with a default, so that the one place
+ * that decides where a catalogue lands is the one place that knows the eleven arms —
+ * `scripts/gg-signatures.sh`, which `crates/gg/build.rs` calls. A default here would be a second
+ * answer, and this file's old default was the directory the catalogues stopped being committed in.
+ */
+function outputDirectory() {
+  const outDir = process.env.GG_SIGNATURES_OUT_DIR;
+  if (!outDir) {
+    throw new Error(
+      "GG_SIGNATURES_OUT_DIR is not set. It names the directory these catalogues are written " +
+        "into, and there is no default — they are generated by the build rather than committed. " +
+        "Run scripts/gg-signatures.sh, or set it yourself to a directory you want the JSON in.",
+    );
   }
-  if (!outDir) throw new Error("--out-dir <dir> is required; usage: --out-dir <dir> [--check]");
-  return { outDir: path.resolve(outDir), check };
+  return path.resolve(outDir);
 }
 
 async function main() {
-  const { outDir, check } = parseArguments(process.argv.slice(2));
+  const outDir = outputDirectory();
   for (const language of LANGUAGES) {
     const out = path.join(outDir, `${language}.signatures.json`);
     const catalogue = await build(language);
-    if (check) {
-      const committed = await readFile(out, "utf8").catch(() => "");
-      if (committed !== catalogue) {
-        throw new Error(
-          `${path.relative(process.cwd(), out)} is stale. Regenerate it with ` +
-            "`npm run -w @test-cabinet/gg-sandbox signatures` and commit the result.",
-        );
-      }
-      process.stdout.write(`${path.relative(process.cwd(), out)} is up to date.\n`);
-      continue;
-    }
     await mkdir(outDir, { recursive: true });
     await writeFile(out, catalogue, "utf8");
     const parsed = JSON.parse(catalogue);

@@ -134,8 +134,15 @@ enum Command {
     /// depend on this crate (`wasmtime`, `oxc` and `tiktoken-rs` do not go where a static musl
     /// backend goes). `scripts/gen-contract.mjs` runs this and commits the output as
     /// `crates/backend/src/gg_reference.json`, and CI's contract-drift gate regenerates and diffs
-    /// it — the same generate-and-commit shape each program language's committed
-    /// `crates/gg/src/sandbox/guests/<language>.signatures.json` already uses.
+    /// it — the same generate-and-commit shape the run-record contract already uses.
+    ///
+    /// The signature catalogues this projects from take the *opposite* shape, and the difference is
+    /// worth stating because it is the thing that decides between the two. A catalogue's producer is
+    /// a documentation tool the devcontainer installs, so `build.rs` simply runs it and nothing is
+    /// committed at all. This artifact's producer is `gg` itself — the very crate the backend
+    /// cannot compile — so there is no build of the backend that could generate it, and the only
+    /// way to get it there is to run one part of the repository and commit the result for another
+    /// part to embed.
     Reference,
 }
 
@@ -201,9 +208,10 @@ async fn run_session(config: &std::path::Path) -> ExitCode {
 
 /// Print the [reference](reference::reference) to stdout as pretty JSON.
 ///
-/// It needs no invocation file, no runtime and no network — everything it prints is either
-/// compiled into the binary or a committed artifact beside it — which is what lets the contract
-/// generator run a freshly built `gg` in a clean checkout and get the same bytes every time.
+/// It needs no invocation file, no runtime and no network — everything it prints is compiled into
+/// the binary, the tool definitions directly and the signature catalogues through this crate's build
+/// script — which is what lets the contract generator run a freshly built `gg` in a clean checkout
+/// and get the same bytes every time.
 ///
 /// Pretty-printed rather than compact because the output is **committed**: a one-line JSON blob
 /// would make every regeneration a single unreadable diff line, and the file is later normalized by

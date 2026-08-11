@@ -8,12 +8,14 @@
 # WHY IT IS ITS OWN SCRIPT. Two callers need the bindings and only one of them may write anything
 # else. `build.sh` compiles the library set and REWRITES two committed artifacts under
 # `crates/gg/src/sandbox/checkers/`. `signatures.sh` reflects the catalogue with `rustdoc` and must
-# write exactly one file, because it runs inside `scripts/ci/contract-drift.sh` — whose final step
-# is `git diff --exit-code` over that same checkers directory. A signature step that reached
-# `build.sh` for its bindings would therefore re-cut the library set on every CI run and fail the
-# gate on bytes nobody edited: an `.rlib` embeds the absolute directory it was compiled in, so a
-# checkout at any other path produces a different tarball. Splitting the one step both callers need
-# out of the one that has side effects is what keeps the drift gate honest.
+# write exactly one file, because `crates/gg/build.rs` runs it on EVERY build of `test-cabinet-gg`.
+# A signature step that reached `build.sh` for its bindings would therefore re-cut the library set
+# every time anybody typed `cargo build` — rewriting a committed artifact under the working tree of
+# someone who was only compiling, and rewriting it into bytes that match nothing but their own
+# machine, since an `.rlib` embeds the absolute directory it was compiled in. It would also make the
+# build dirty its own declared inputs, which is how a build script comes to re-run forever.
+# Splitting the one step both callers need out of the one that has side effects is what keeps a
+# build from being a rebuild.
 #
 # WHY THE CLI RATHER THAN `wit_bindgen::generate!`. See `rust-version.sh`: the macro leaves a
 # proc-macro dependency in the rlib's metadata, and a proc macro is a host `.so` no other

@@ -36,7 +36,7 @@ fn prose_written_in_the_register_passes() {
 /// For a converted arm it means the gate **passed** — every brief one line, every detail in the
 /// register, every parameter description short and closed, and every operation id resolving to a
 /// row of gg's table. That is the whole of what this file exists to assert, and it is asserted here
-/// over the real committed catalogue rather than over the fixture, because a fixture that passes
+/// over each arm's real catalogue rather than over the fixture, because a fixture that passes
 /// says nothing about the arm a model actually runs on.
 ///
 /// One test for the two because the list of converted arms belongs in one place
@@ -79,7 +79,7 @@ fn a_brief_of_more_than_one_line_is_caught() {
 ///
 /// The value being defended is not brevity for its own sake: it is that the field is a *brief*, and
 /// a paragraph pasted into it reaches the model where one line was promised. Measured over today's
-/// committed catalogues, the longest derived first line is 249 characters on seven of the eleven
+/// catalogues, the longest derived first line is 249 characters on seven of the eleven
 /// arms and 1,239 on Python — which is why this rule waits for an arm to be converted rather than
 /// applying now.
 #[test]

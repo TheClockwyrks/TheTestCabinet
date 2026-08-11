@@ -18,7 +18,9 @@
 //! * `packages/gg-sandbox-cpp/signatures.sh` — the reflection, out of clang's own comment AST;
 //! * `checkers/cpp.guest.tar.gz`, `checkers/cpp.adapter.wasm` and `checkers/cpp.toolchain.json` —
 //!   the compile inputs, the adapter, and what built them;
-//! * `guests/cpp.signatures.json` — the committed catalogue.
+//! * the **signature catalogue** that reflection emits, which is the whole of what a model is told
+//!   about this surface — generated into this build's `OUT_DIR` rather than committed anywhere (see
+//!   `crates/gg/build.rs`).
 //!
 //! # What the surface looks like, and the one thing a model has to know about it
 //!
@@ -151,10 +153,15 @@ pub(super) mod source;
 #[path = "cpp.healing.rs"]
 pub(super) mod healing;
 
-/// The committed catalogue, reflected out of the SDK's own documentation comments by
+/// This arm's catalogue, reflected out of the SDK's own documentation comments by
 /// `packages/gg-sandbox-cpp/signatures.sh` — `clang++ -ast-dump=json`, which is clang's own comment
 /// parser and the machinery `-Wdocumentation` and `clang-doc` are built on.
-const SIGNATURES: &str = include_str!("../guests/cpp.signatures.json");
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/cpp.signatures.json"));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -163,7 +170,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's committed catalogue when the template
+/// signature they quote is resolved from this language's catalogue when the template
 /// renders.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.cpp.hbs"),
@@ -281,20 +288,20 @@ impl ProgramLanguage for Cpp {
         None
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem, and each carries the
-    /// language it was generated for; checking it here is what stops a catalogue filed — or
-    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
-    /// sandbox nobody has.
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, and each carries the language it was generated for; checking it here is what stops
+    /// a catalogue written — or embedded — under the wrong stem from reaching a model as a system
+    /// prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::Cpp,
-                "`guests/cpp.signatures.json` was generated for another program language",
+                "`signatures/cpp.signatures.json` was generated for another program language",
             );
             catalogue
         })

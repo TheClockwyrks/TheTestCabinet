@@ -4,13 +4,14 @@ The **C#** arm of gg's [responses-as-code](../../apps/docs/src/content/docs/gg/r
 capability: the guest that evaluates a model's C# program, the hand-written SDK that program calls,
 and the builds that produce both.
 
-Not an npm package. This directory is a set of builds, and what they commit lives elsewhere:
+Not an npm package. This directory is a set of builds, and what they produce lives elsewhere —
+two artifacts committed into the Rust crate, and one the crate's build reflects on every compile:
 
 | Artifact | What it is |
 | --- | --- |
-| `crates/gg/src/sandbox/guests/csharp.component.wasm` | The guest — Mono's IL interpreter, the .NET class libraries, ICU and gg's bridge, as one self-contained wasm component exporting gg's `sandbox` world (35.3 MB) |
-| `crates/gg/src/sandbox/guests/csharp.signatures.json` | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments |
-| `crates/gg/src/sandbox/checkers/csharp.toolchain.json` | What built the guest, and what is in it |
+| `crates/gg/src/sandbox/guests/csharp.component.wasm` | The guest — Mono's IL interpreter, the .NET class libraries, ICU and gg's bridge, as one self-contained wasm component exporting gg's `sandbox` world (35.3 MB). Committed. |
+| `crates/gg/src/sandbox/checkers/csharp.toolchain.json` | What built the guest, and what is in it. Committed. |
+| `csharp.signatures.json`, in the build's `OUT_DIR` | The **catalogue** — every module, signature, argument, type and type member a model is told about, in the normalized schema, reflected out of the SDK's own XML documentation comments by `signatures.sh`, which `crates/gg/build.rs` runs. Not committed. |
 
 | | |
 | --- | --- |
@@ -19,7 +20,7 @@ Not an npm package. This directory is a set of builds, and what they commit live
 | [`Sources/`](Sources/) | the guest's C: the shell, the bridge, and the interpreter trampolines |
 | [`libraries.txt`](libraries.txt) | the namespaces this arm says a program may reach, grouped as the prompt shows them |
 | [`build.sh`](build.sh) | builds and commits the guest |
-| [`signatures.sh`](signatures.sh) | reflects the catalogue out of the SDK, with Roslyn |
+| [`signatures.sh`](signatures.sh) | reflects the catalogue out of the SDK, with Roslyn, into `$GG_SIGNATURES_OUT_DIR` |
 | [`tools/`](tools/) | the reflector `signatures.sh` runs and the identity table it reads, plus [`Parse.cs`](tools/Parse.cs) — the parse-only Roslyn driver gg builds and runs on a rejected program, to tell a typo from a program written against the wrong surface |
 
 ## The strategy, in one paragraph
@@ -88,13 +89,20 @@ rebuilt without the other.
 ```sh
 scripts/ci/install-dotnet.sh                 # once: the toolchain a program compiles with
 packages/gg-sandbox-csharp/build.sh          # the guest (developer-only; ~1 GB of downloads once)
-packages/gg-sandbox-csharp/signatures.sh     # the catalogue a model reads
 cargo nextest run -p test-cabinet-gg sandbox::language::csharp
+
+GG_SIGNATURES_OUT_DIR=/tmp/sigs \
+  packages/gg-sandbox-csharp/signatures.sh   # the catalogue a model reads, to READ
+scripts/gg-signatures.sh                     # all eleven, into target/gg-signatures/
 ```
 
 `signatures.sh` needs only the first of those: `Microsoft.CodeAnalysis.CSharp.dll` ships beside
 `csc.dll` in the toolchain a program compiles with, so the catalogue is reflected by the same
-compiler, reading the same sources, as the compile itself.
+compiler, reading the same sources, as the compile itself. You never have to run it for
+correctness — `crates/gg/build.rs` runs it on every build of `test-cabinet-gg`, so an XML doc
+comment edited in `src/Gg/` reaches the model's prompt on the next `cargo build`. Run it by hand
+to *read* what it emitted; a `<returns>` dropped or a `<param>` truncated is invisible in the C#
+and plain in the JSON.
 
 ## What a *run* needs
 

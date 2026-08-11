@@ -306,7 +306,7 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
     assert!(source::namespaced(&module, "module").is_ok());
 }
 
-/// **The committed catalogue is this language's**, and every operation gg names is spelled as a
+/// **The generated catalogue is this language's**, and every operation gg names is spelled as a
 /// real C++ path a program could write.
 ///
 /// The spelling is the module's own namespace and the function's own name — `gg::files::read_file`
@@ -316,7 +316,7 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
 /// not the catalogue's own name is gg assembling a path, and a path that is not module-qualified is
 /// a name a second module could collide with.
 #[test]
-fn the_committed_catalogue_is_this_languages() {
+fn the_generated_catalogue_is_this_languages() {
     let catalogue = cpp().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Cpp);
     let functions = crate::sandbox::catalogue_functions(cpp());

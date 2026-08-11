@@ -706,8 +706,8 @@ fn no_language_serves_another_languages_artifacts() {
 /// spellings.
 ///
 /// The registry's own version of this is next door; running it over a second surface is what proves
-/// the resolution reads the language it was handed rather than the one committed catalogue that
-/// exists. The fixture re-spells every function in `snake_case`, so a resolution that had quietly
+/// the resolution reads the language it was handed rather than whichever catalogue is nearest to
+/// hand. The fixture re-spells every function in `snake_case`, so a resolution that had quietly
 /// fallen back to the arm the fixture is cut from would produce `requestChanges` here and fail.
 #[test]
 fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {

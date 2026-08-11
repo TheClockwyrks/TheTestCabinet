@@ -24,16 +24,37 @@
 	// created root-owned (e.g. before the Dockerfile pre-created its mountpoint),
 	// reclaim it for the container user so CARGO_TARGET_DIR stays writable.
 	//
-	// The PureScript, Java and Kotlin toolchains are installed here rather than in the
-	// image because they are pinned by the repository
-	// (packages/gg-sandbox-purescript/purescript-version.sh,
-	// packages/gg-sandbox-java/java-version.sh,
-	// packages/gg-sandbox-kotlin/kotlin-version.sh) rather than by the container, and the
-	// repository is only mounted from this point on. Together they are ~570 MB of
-	// `purs`, `esbuild`, a JDK, TeaVM's jars and the Kotlin compiler, and gg's tests for
-	// those arms run all of them. Only the Kotlin installer is named: it runs the Java one
-	// itself, because the two arms share the JDK and the TeaVM the second half needs.
-	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-purescript.sh || echo 'install-purescript failed; gg\u2019s PureScript tests need it \u2014 run scripts/ci/install-purescript.sh manually') && (bash scripts/ci/install-kotlin.sh || echo 'install-kotlin failed; gg\u2019s Java and Kotlin tests need it \u2014 run scripts/ci/install-kotlin.sh manually')",
+	// gg's eleven program-language toolchains are installed here rather than in the image
+	// because they are pinned by the REPOSITORY — each arm's own
+	// packages/gg-sandbox-*/<lang>-version.sh — rather than by the container, and the
+	// repository is only mounted from this point on. That reasoning has not changed; what
+	// has changed is how much rides on it. These are no longer only what gg's TESTS for
+	// those arms need: `crates/gg/build.rs` reflects each arm's signature catalogue out of
+	// its own SDK with that arm's own documentation tool on every build, because the
+	// catalogues are generated rather than committed. So a container without them cannot
+	// `cargo build --workspace`, cannot `cargo clippy`, and fails the pre-commit hooks that
+	// run both — this is a prerequisite for working in the repository at all, not a
+	// prerequisite for one crate's test suite.
+	//
+	// One script installs the lot (scripts/ci/install-gg-toolchains.sh) rather than a line
+	// per arm, so that this file, CI, the release workflow and the driver image's gg build
+	// stage all provision from one pinned list. It is ~1.9 GB installed — a Swift toolchain
+	// and its wasm SDK, a JDK and TeaVM's jars, wasi-sdk, .NET and Roslyn, `purs` and
+	// `esbuild`, the Kotlin compiler, the wasm32 standard library, uv and YARD — and it
+	// downloads a good deal more than that on a first create, because several of those
+	// installers keep a pruned fraction of a much larger published archive. It is
+	// idempotent, so re-running it after a failure costs nothing for the parts that landed.
+	//
+	// `npm ci` is the eleventh toolchain, and it is here for the same reason the other ten
+	// are: TWO of the arms — TypeScript and JavaScript — are reflected through the pinned
+	// `typescript` that lives in the npm workspaces, so a container whose workspaces were
+	// never installed cannot `cargo build` the Rust workspace at all. The installer above
+	// deliberately will not run it (`npm ci` deletes and re-creates node_modules, which is a
+	// thing to do to a checkout on purpose rather than as a side effect of installing
+	// compilers), and every other surface that builds gg — the Azure rust job, ci.yml, the
+	// release workflow, the driver image's gg stage — pairs the two calls exactly like this.
+	// On a first create there is no node_modules to lose, which is what makes it safe here.
+	"postCreateCommand": "sudo chown \"$(id -u):$(id -g)\" /cargo-target && (bash scripts/setup-hooks.sh || echo 'setup-hooks failed; run scripts/setup-hooks.sh manually') && (bash scripts/ci/install-gg-toolchains.sh || echo 'install-gg-toolchains failed; building test-cabinet-gg needs them \u2014 run scripts/ci/install-gg-toolchains.sh manually') && (npm ci || echo 'npm ci failed; the workspaces hold the typescript that reflects two of gg\u2019s eleven arms \u2014 run npm ci manually')",
 	"postStartCommand": "bash .devcontainer/tools/docker-socket-access.sh || true; if [ -S /tmp/ssh-agent.sock ]; then rm -f /tmp/devcontainer-ssh-agent.sock && (sudo socat UNIX-LISTEN:/tmp/devcontainer-ssh-agent.sock,fork,mode=0666 UNIX-CONNECT:/tmp/ssh-agent.sock >/tmp/ssh-agent-socat.log 2>&1 &); fi",
 	"updateRemoteUserUID": false
 }

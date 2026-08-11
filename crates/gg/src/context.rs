@@ -1520,7 +1520,7 @@ impl ContextModel {
 
         // How a call this block points at is written for the agent reading it: the method a program
         // calls when it writes programs, and gg's own tool name when it requests tools. Resolved
-        // from the language's committed catalogue in the first case, so the block quotes what the
+        // from the language's own catalogue in the first case, so the block quotes what the
         // SDK really binds.
         let spelled = |call, tool: &str| match options.program_language {
             Some(language) => crate::sandbox::spell(crate::sandbox::language(language), call),

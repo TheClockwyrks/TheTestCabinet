@@ -11,8 +11,9 @@
 # PureScript's library tarball is committed rather than shipped in the image: the image is built
 # separately from the binary that runs in it, so an SDK living there could be a different vintage
 # from the gg describing it — and a model shown one surface in its prompt and compiled against
-# another is the failure this whole seam is built to prevent. Committed, the SDK and the
-# catalogue reflected from it move in one diff.
+# another is the failure this whole seam is built to prevent. Committed, the jar travels with the
+# gg that describes it — and it is the half of the pair that can be committed stale, because the
+# catalogue is reflected out of the same `src/gg/` by `crates/gg/build.rs` on every build.
 #
 # REPRODUCIBLE. `jar --date` fixes every entry's timestamp and the file list is sorted, so two
 # builds of identical sources produce identical bytes and `scripts/ci/contract-drift.sh` can

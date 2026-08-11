@@ -278,7 +278,7 @@ fn everything_on() -> SystemContext {
 
 /// **Every Rust example a model is shown compiles.**
 ///
-/// The prompt, the "nothing shown" notice and the committed catalogue, gathered into one program and
+/// The prompt, the "nothing shown" notice and the generated catalogue, gathered into one program and
 /// put through this arm's production prepare step — the same `rustc`, the same wrapper and the same
 /// library set a model's own reply gets.
 #[test]
@@ -286,7 +286,7 @@ fn every_rust_example_a_model_is_shown_compiles() {
     let prompt = render_system_for(rust(), &everything_on());
     let notice = render_code_nothing_shown_for(rust());
     let catalogue: serde_json::Value =
-        serde_json::from_str(super::SIGNATURES).expect("the committed catalogue is JSON");
+        serde_json::from_str(super::SIGNATURES).expect("the generated catalogue is JSON");
 
     let mut snippets: Vec<(String, String)> = Vec::new();
 

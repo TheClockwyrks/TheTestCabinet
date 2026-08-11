@@ -236,7 +236,7 @@ impl MemoryStrategy {
     ///
     /// `language` is the agent's [program language](test_cabinet_core::gg::GgProgramLanguage), or
     /// `None` for a tool-calling agent. It is a language rather than a `bool` because the *method*
-    /// spelling is not gg's to decide: it is resolved from that language's own committed catalogue
+    /// spelling is not gg's to decide: it is resolved from that language's own catalogue
     /// by [`spell`], so an SDK that renamed `editMemory` renames it in these sentences too, and a
     /// second language spells them its own way without this function learning about it.
     pub fn calls(self, language: Option<&dyn ProgramLanguage>) -> MemoryCalls {

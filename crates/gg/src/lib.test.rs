@@ -149,7 +149,7 @@ const SPELLING_EXEMPT: &[(&str, &str)] = &[
 /// **No sentence gg puts in front of a model spells an SDK call by hand.**
 ///
 /// Every function name, signature and description a model reads is reflected out of the declaration
-/// it describes and arrives in that language's committed catalogue; gg reaches for one by
+/// it describes and arrives in that language's catalogue; gg reaches for one by
 /// [identity](crate::sandbox::SurfaceCall) and resolves it with
 /// [`spell`](crate::sandbox::spell). A `&'static str` or a `format!` in this crate that writes
 /// `view.openFile` instead is the defect that rule exists to remove, and it is invisible in review:

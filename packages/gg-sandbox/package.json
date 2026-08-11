@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "description": "The TypeScript guest for gg's responses-as-code sandbox — one of gg's registered program languages: the typed tool surface, the interpreter shim, and the build that emits the committed component and signature catalogue.",
+  "description": "The TypeScript guest for gg's responses-as-code sandbox — one of gg's registered program languages: the typed tool surface, the interpreter shim, the build that emits the committed component, and the reflection that gg's build generates its signature catalogues from.",
   "scripts": {
     "typecheck": "tsc -b",
-    "signatures": "tsc -p tsconfig.headers.json && node tools/signatures.mjs --out-dir ../../crates/gg/src/sandbox/guests",
+    "signatures": "./signatures.sh",
     "checker": "node tools/checker.mjs"
   },
   "devDependencies": {

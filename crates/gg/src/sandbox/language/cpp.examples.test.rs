@@ -3,7 +3,7 @@
 //! # Why this gate exists, and why it exists *here*
 //!
 //! Two things gg renders contain C++ a model is invited to copy: this arm's responses-as-code system
-//! prompt (with the "your program showed you nothing" notice beside it) and its committed signature
+//! prompt (with the "your program showed you nothing" notice beside it) and its generated signature
 //! catalogue, whose prose is reflected out of the SDK's own documentation comments and rendered into
 //! documentation views. Everything about those two that can be checked without a compiler already is
 //! — [`prompts::spellings`](crate::prompts) resolves every call *name* they quote against the
@@ -147,7 +147,7 @@ fn everything_on() -> SystemContext {
 
 /// **Every C++ example a model is shown compiles.**
 ///
-/// The prompt, the "nothing shown" notice and the committed catalogue, gathered into one program and
+/// The prompt, the "nothing shown" notice and the generated catalogue, gathered into one program and
 /// put through this arm's production prepare step — the same `clang++`, the same precompiled prelude
 /// and the same flags a model's own reply gets.
 #[test]
@@ -155,7 +155,7 @@ fn every_cpp_example_a_model_is_shown_compiles() {
     let prompt = render_system_for(cpp(), &everything_on());
     let notice = render_code_nothing_shown_for(cpp());
     let catalogue: serde_json::Value =
-        serde_json::from_str(super::SIGNATURES).expect("the committed catalogue is JSON");
+        serde_json::from_str(super::SIGNATURES).expect("the generated catalogue is JSON");
 
     let mut snippets: Vec<(String, String)> = Vec::new();
 

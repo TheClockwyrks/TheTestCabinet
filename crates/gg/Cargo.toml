@@ -11,6 +11,14 @@ edition.workspace = true
 version = "0.7.0"
 license.workspace = true
 publish.workspace = true
+# Named explicitly rather than left to cargo's auto-detection of a `build.rs`, because building this
+# crate is not the ordinary thing a reader of a manifest assumes: `build.rs` reflects each of gg's
+# eleven program languages' signature catalogues out of that language's own SDK, with that language's
+# own documentation tool, and the arm modules `include_str!` the results out of `OUT_DIR`. So a build
+# of `test-cabinet-gg` wants every one of those toolchains present — which is what the devcontainer
+# and `scripts/ci/install-gg-toolchains.sh` are for — and that is worth learning here rather than from
+# a failure. See the header of `build.rs` for why the catalogues are generated instead of committed.
+build = "build.rs"
 
 [[bin]]
 name = "gg"

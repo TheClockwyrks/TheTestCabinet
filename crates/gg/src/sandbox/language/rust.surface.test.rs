@@ -26,18 +26,18 @@ use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::tools::{ToolFailure, ToolOutcome};
 
-/// The catalogue this arm commits, read as a **document** rather than through
+/// The catalogue this arm's build reflects, read as a **document** rather than through
 /// [`SignatureCatalogue`](crate::sandbox::signatures) — deliberately, and now that this arm is
 /// registered, for a reason of its own: the parsed reading is a *projection*, and a field the parser
 /// does not model is one these tests could not notice was missing. The parsed reading is asserted
 /// next door, in [`rust.test.rs`](super::tests), where what is being checked is that the catalogue
 /// gg loads is this language's. Here the JSON is read as JSON, which is what lets a test say the
 /// file carries a section at all.
-const SIGNATURES: &str = include_str!("../guests/rust.signatures.json");
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/rust.signatures.json"));
 
-/// The committed catalogue, parsed as JSON.
+/// This arm's generated catalogue, parsed as JSON.
 fn catalogue() -> Value {
-    serde_json::from_str(SIGNATURES).expect("the committed catalogue is JSON")
+    serde_json::from_str(SIGNATURES).expect("the generated catalogue is JSON")
 }
 
 /// Every entry of one of the catalogue's function-carrying sections.
@@ -830,7 +830,7 @@ fn the_component_binds_exactly_the_tools_gg_offers() {
 }
 
 #[test]
-fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
+fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     let catalogue = catalogue();
     assert_eq!(
         text(&catalogue, "language"),

@@ -21,7 +21,12 @@
 # The YAML's only responsibilities are provisioning toolchains (Rust ships with
 # the Microsoft-hosted Ubuntu and Windows images; Node is installed via UseNode),
 # reclaiming disk on the near-full hosted Ubuntu agents before the cargo jobs
-# (scripts/ci/free-disk-linux.sh), and caching.
+# (scripts/ci/free-disk-linux.sh), and caching. One toolchain set is provisioned by
+# a script rather than by a task because it is pinned by this repository: the eleven
+# gg program-language toolchains, which scripts/ci/install-gg-toolchains.sh installs
+# for every job that compiles test-cabinet-gg — gg's build script reflects a
+# signature catalogue out of each language's SDK, so the toolchains are as much a
+# build dependency as rustc is. See the `rust` job.
 
 trigger:
   branches:
@@ -84,10 +89,62 @@ jobs:
           restoreKeys: |
             cargo-target | "$(Agent.OS)" | "$(CARGO_PROFILE_DEV_DEBUG)"
           path: target
+      # Node, in the Rust job, because compiling test-cabinet-gg needs it — see the
+      # toolchain step below. The npm cache is the same one the `web` job uses.
+      - task: UseNode@1
+        displayName: Use Node 22
+        inputs:
+          version: 22.23.1
+      - task: Cache@2
+        displayName: Cache npm
+        inputs:
+          key: 'npm | "$(Agent.OS)" | package-lock.json'
+          restoreKeys: |
+            npm | "$(Agent.OS)"
+          path: $(HOME)/.npm
       # Installs the channel + components pinned by rust-toolchain.toml on first
       # cargo use; print what resolved for easier debugging.
       - script: rustup show
         displayName: Show Rust toolchain
+      # EVERY gg PROGRAM-LANGUAGE TOOLCHAIN, AND IT HAS TO BE BEFORE THE LINT.
+      #
+      # gg tells a model what each of its eleven program languages offers by embedding a
+      # signature catalogue reflected out of that language's own SDK by that language's
+      # own documentation tool. Those catalogues are no longer committed: crates/gg's
+      # build script generates all eleven on every build, so a gg binary cannot describe
+      # a surface the guest in its own checkout does not export. A machine that compiles
+      # test-cabinet-gg is therefore a machine that has `tsc`, griffe, YARD, `purs`, a
+      # JDK, the Kotlin compiler, the wasm32 std, Swift, wasi-sdk and .NET.
+      #
+      # This job compiles it TWICE, and the first time is the lint: rust-lint.sh runs
+      # clippy and rustdoc over `--workspace --exclude test-cabinet-desktop`, which
+      # includes test-cabinet-gg, and both fully compile it (build scripts run under
+      # clippy like any other build). rust-test.sh installs the same toolchains itself,
+      # idempotently, but it runs after — so without this step the job would die in its
+      # first minute, before a single lint had been reported.
+      #
+      # `npm ci` is part of the same prerequisite rather than a separate concern: the
+      # pinned `typescript` that reflects the TypeScript and JavaScript arms is a
+      # workspace devDependency, and the reflector says so by name if node_modules is
+      # absent.
+      #
+      # DISK. This installs ~1.9 GB under $HOME (835 MB of it Swift, after its installer
+      # prunes a 3.3 GB toolchain), on an agent whose image ships ~95% full — which is
+      # why the reclaim step above stays first and stays load-bearing. It leaves ~40 GB,
+      # so the toolchains are affordable; what would not be is caching them. Neither
+      # Cache@2 path covers $HOME/.local, deliberately: a 1.9 GB cache entry has to be
+      # tarred into a file beside itself on the same disk, which is exactly the failure
+      # ("Wrote only N of M bytes") that free-disk-linux.sh and the line-tables debug cap
+      # exist to prevent. Re-downloading them each run is the cheaper half of that trade.
+      - script: |
+          set -euo pipefail
+          ./scripts/ci/install-gg-toolchains.sh
+          npm ci
+          # Later steps are separate processes, so the installers' bin directory has to
+          # be prepended for the job rather than exported for this script: `purs` and
+          # `uv` are resolved from PATH.
+          echo "##vso[task.prependpath]$HOME/.local/bin"
+        displayName: Install gg's program-language toolchains
       - script: ./scripts/ci/rust-lint.sh
         displayName: Lint (rustfmt + clippy)
       - script: ./scripts/ci/install-nextest.sh

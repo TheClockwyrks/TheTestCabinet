@@ -8,13 +8,17 @@
 # guest's artifacts are: gg's responses-as-code capability registers a language per guest, and each
 # one commits its artifacts under `crates/gg/src/sandbox/guests/<language-id>.*`.
 #
-# The signature catalogue is the package's OTHER committed artifact and is emitted by
-# `signatures.sh`, not by this script. The split is deliberate and is what lets CI cover the
-# catalogue: reflecting it reads the sources and needs only a pinned `griffe`, where this needs
-# `componentize-py`, a network and 25 MB of output — and, being unreproducible (see below), would
-# fail a drift check every time it ran. `crates/gg/src/sandbox/language/python.substrate.test.rs` is
-# what proves the artifact this script writes really runs, and really binds what that catalogue
-# describes, against gg's own linker and membrane.
+# The signature catalogue — what a model is TOLD this arm offers — is emitted by `signatures.sh`,
+# not by this script, and it is not an artifact at all in the sense this one is: `crates/gg/build.rs`
+# reflects it out of `src/gg/**` on every build of the host and `include_str!`s the result, so
+# nothing about it is committed and nothing about it can be stale. The split is what makes that
+# possible. Reflecting reads the sources statically and needs only a pinned `griffe`, which is
+# affordable on every machine that types `cargo build`; this needs `componentize-py`, a network and
+# 25 MB of output, and is not byte-reproducible (see below), so it stays a deliberate hand-run whose
+# result is reviewed and committed. `crates/gg/src/sandbox/language/python.substrate.test.rs` is what
+# proves the artifact this script writes really runs, and really binds what that catalogue
+# describes, against gg's own linker and membrane — which is the check that matters once the two
+# halves are refreshed on different schedules.
 #
 # The artifact is checked in, exactly as the TypeScript guest's is, so no build or CI step ever
 # needs `componentize-py`: the Rust host reads it with `include_bytes!`. That is also why this

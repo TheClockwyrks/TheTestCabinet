@@ -15,8 +15,9 @@
 //! * `guests/ruby.component.wasm` — the committed guest, built by
 //!   `packages/gg-sandbox-ruby/build.sh`, carrying Opal's runtime, gg's hand-written Ruby SDK and
 //!   the declared library set pre-initialised into it;
-//! * `guests/ruby.signatures.json` — the catalogue reflected out of that SDK's own YARD
-//!   documentation;
+//! * the **signature catalogue** — reflected out of that SDK's own YARD documentation, and
+//!   generated into this build's `OUT_DIR` rather than committed anywhere (see
+//!   `crates/gg/build.rs`);
 //! * `checkers/ruby.opal.*` — the pinned Opal a program is compiled with, riding inside gg's binary.
 //!
 //! # The strategy, in one sentence
@@ -115,9 +116,14 @@ pub(super) mod healing;
 /// ephemeral run container and must carry everything it needs with it.
 pub(super) const COMPONENT: &[u8] = include_bytes!("../guests/ruby.component.wasm");
 
-/// The committed catalogue, reflected out of the SDK's own YARD documentation by
+/// This arm's catalogue, reflected out of the SDK's own YARD documentation by
 /// `packages/gg-sandbox-ruby/tools/signatures.rb`.
-const SIGNATURES: &str = include_str!("../guests/ruby.signatures.json");
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/ruby.signatures.json"));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -126,7 +132,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's committed catalogue when the template
+/// signature they quote is resolved from this language's catalogue when the template
 /// renders.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.ruby.hbs"),
@@ -221,20 +227,20 @@ impl ProgramLanguage for Ruby {
         Some(COMPONENT)
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem, and each carries the
-    /// language it was generated for; checking it here is what stops a catalogue filed — or
-    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
-    /// sandbox nobody has.
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, and each carries the language it was generated for; checking it here is what stops
+    /// a catalogue written — or embedded — under the wrong stem from reaching a model as a system
+    /// prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::Ruby,
-                "`guests/ruby.signatures.json` was generated for another program language",
+                "`signatures/ruby.signatures.json` was generated for another program language",
             );
             catalogue
         })

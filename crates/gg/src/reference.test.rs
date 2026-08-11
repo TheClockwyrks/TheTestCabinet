@@ -167,7 +167,7 @@ fn the_gate_table_covers_exactly_the_tool_vocabulary() {
     }
 }
 
-/// Every function the committed signature catalogue documents reaches the reference, with its
+/// Every function the generated signature catalogue documents reaches the reference, with its
 /// signature and documentation intact.
 ///
 /// The count is the catalogued functions' exactly. Nothing is folded in per grouping: a directory

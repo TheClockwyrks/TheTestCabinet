@@ -229,7 +229,7 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         // query, a module filter and a page, and a value the program reads fields off. The double
         // holds no catalogue, so what is being observed here is the envelope crossing the membrane
         // and the SDK's own lowering of an options object into six positional arguments — the
-        // ranking is `DocsRuntime`'s and is tested against the real committed catalogue.
+        // ranking is `DocsRuntime`'s and is tested against the arm's real catalogue.
         "const found = gg.docs.search(\"view\", { module: \"gg.views\", kind: \"function\", limit: 5 });\n",
         "console.log(JSON.stringify({\n",
         "  total: found.total, offset: found.offset, hits: found.hits.length,\n",

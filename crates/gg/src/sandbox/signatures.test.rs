@@ -1,9 +1,13 @@
-//! Tests for the committed signature catalogue the [docs carve-out](crate::docs) reads.
+//! Tests for the signature catalogue the [docs carve-out](crate::docs) reads.
 //!
 //! What these guard is subtle but expensive to get wrong: the catalogue is the *only* description of
-//! this API a model ever sees, served on demand through `fn.docs()`. A catalogue that has drifted
-//! from the guest does not fail loudly — it hands a model a signature that does not exist, and every
-//! program it writes against it is wrong in a way it cannot diagnose.
+//! this API a model ever sees, served on demand through `fn.docs()`. A catalogue that describes
+//! something the guest does not offer does not fail loudly — it hands a model a signature that does
+//! not exist, and every program it writes against it is wrong in a way it cannot diagnose.
+//!
+//! It is reflected out of the SDK by `crates/gg/build.rs` on the build that compiles this crate, so
+//! it cannot be *stale* — but it can be *mis-reflected*, and these read the emitted document rather
+//! than the SDK for exactly that reason. There is no committed copy anybody reviewed on the way in.
 
 use test_cabinet_core::gg::GgProgramLanguage;
 
@@ -12,7 +16,7 @@ use crate::sandbox::FINISH_FUNCTION;
 use crate::sandbox::language;
 use crate::tools::ALL_TOOL_NAMES;
 
-/// The language whose committed catalogue these cases read: **TypeScript's**, named explicitly.
+/// The language whose catalogue these cases read: **TypeScript's**, named explicitly.
 ///
 /// Every expectation below is a spelling — `readFile`, `requestChanges`, `interface DirEntry` — and
 /// a spelling is exactly what the [seam](crate::sandbox::ProgramLanguage) declares free to differ
@@ -27,7 +31,7 @@ fn typescript() -> &'static dyn ProgramLanguage {
     language(GgProgramLanguage::TypeScript)
 }
 
-/// TypeScript's committed catalogue.
+/// TypeScript's catalogue, as its build reflected it.
 fn catalogue() -> &'static SignatureCatalogue {
     typescript().catalogue()
 }
@@ -85,9 +89,9 @@ fn sole(signatures: &[SignatureEntry]) -> &str {
     entry.signature.as_str()
 }
 
-/// The committed catalogue parses, is not empty, and says whose it is.
+/// The generated catalogue parses, is not empty, and says whose it is.
 #[test]
-fn the_committed_catalogue_parses() {
+fn the_generated_catalogue_parses() {
     let catalogue = catalogue();
     assert!(!functions().is_empty());
     assert!(!catalogue.types.is_empty());
@@ -445,9 +449,9 @@ fn the_catalogue_tells_the_truth_about_pictures() {
 
     // THE IMAGE-VIEW CAP IS GONE, AND NO ARM MAY STILL PROMISE IT.
     // `SandboxLimits::image_view_cap` and its per-agent `imageViewCap` param were deleted — nothing
-    // refuses an image view for being the n-th one — but a catalogue cannot be hand-edited
-    // (contract-drift regenerates it from SDK source), so retiring the promise was a change to each
-    // SDK source tree in turn. Swift was the last one carrying it and made the change with its
+    // refuses an image view for being the n-th one — but a catalogue cannot be hand-edited to say
+    // so, because every build reflects it back out of the SDK sources and a hand edit does not
+    // survive one. So retiring the promise was a change to each SDK source tree in turn. Swift was the last one carrying it and made the change with its
     // conversion, so there is no arm left to exempt and none may reintroduce it: a sentence
     // promising a refusal that cannot happen teaches a model to guard against nothing.
     for language in crate::sandbox::all_languages() {
@@ -722,7 +726,7 @@ fn modules_are_read_the_same_way_in_either_schema() {
 /// derivation wrong in any language.
 ///
 /// A period followed by a newline is not a sentence end, so a first-sentence rule ran on past the
-/// paragraph break and swallowed the paragraph after it. Measured on today's committed catalogues,
+/// paragraph break and swallowed the paragraph after it. Measured on today's catalogues,
 /// that is every one of the eight arms whose docs have paragraph breaks.
 #[test]
 fn a_brief_is_the_first_line_and_never_the_first_sentence() {

@@ -38,7 +38,7 @@
     "packages/gg-sandbox-ruby/src/gg/wire.rb": "e4869f92af33212e76f860c897203dafb20429e6facf3f2d48d59cfd45b1e555",
     "packages/gg-sandbox-ruby/src/library.rb": "a9689d4dc9499496cf7569f130ed28f49dfe1c967cf9244e17a076065e67cf9d",
     "packages/gg-sandbox-ruby/src/shim.js": "b7539ad632aeb2b78727d6b285c6154b66ff666763f970cdc9f38a47e2750d11",
-    "packages/gg-sandbox-ruby/build.sh": "9f80cad60b89845f3ff836f0a0b306f177e30ca44ead206b4162ed6d578c78c6",
+    "packages/gg-sandbox-ruby/build.sh": "6fe1d791f21df0fc6f62e7efe019d370937be83bb8e4f1979596d347165fb65e",
     "packages/gg-sandbox-ruby/tools/guest.mjs": "f8eeed127625bf2e2eb945a02876e16bf8794a1aab67e9fc02fe90bd9efc97fc"
   }
 }

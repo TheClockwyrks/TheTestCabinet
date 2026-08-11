@@ -130,14 +130,21 @@ is the case worth finding.
 gg reference           # the whole reference, as JSON, on stdout
 ```
 
-The subcommand needs no invocation file, no runtime and no network: everything it prints
-is either compiled into the binary or a committed artifact beside it.
+The subcommand needs no invocation file, no runtime and no network: everything it prints is
+compiled into the binary. Half of it is gg's own tool definitions; the other half is the
+[signature catalogues](/gg/program-languages/#the-catalogue), which the crate's build script
+reflects out of each arm's SDK and the arm modules `include_str!`, so a `gg` binary carries a
+projection of the SDK sources it was built from and cannot be asked about anything else.
 
 It exists as a subcommand rather than as something the backend computes because the
 backend **cannot depend on the gg crate** — that crate pulls `wasmtime`, `oxc` and
 `tiktoken-rs`, and the backend is built portable and static under musl. So the reference
-takes the generate-and-commit path `crates/gg/src/sandbox/guests/typescript.signatures.json`
-and the run-record contract already take:
+takes the generate-and-commit path the run-record contract already takes: an artifact
+produced by running one part of the repository and committed for another part to embed.
+That the catalogues themselves are *not* committed is not a contradiction of it but the
+distinction that decides between the two shapes — a catalogue's producer is a documentation
+tool the devcontainer installs, so the build can simply run it, while this artifact's
+producer is `gg` itself, which the backend's build has no business compiling:
 
 ```text
 gg reference                    → the contract, as JSON
@@ -148,7 +155,11 @@ gg reference                    → the contract, as JSON
 
 `npm run gen:contract` regenerates it, and CI's contract-drift gate regenerates and diffs
 it — so a tool whose description changed without the artifact being regenerated fails the
-build rather than shipping a page that describes the previous release.
+build rather than shipping a page that describes the previous release. Note what that
+command now implies: its first step builds `gg`, and building `gg` reflects eleven
+catalogues, so refreshing the contract wants the same toolchains any other build of that
+crate does. `scripts/ci/install-gg-toolchains.sh` is what puts them there; see
+[reading a catalogue](/gg/program-languages/#reading-a-catalogue).
 
 The wire shape is `GgReference` in
 [`crates/core/src/gg_reference.rs`](https://github.com/TheClockwyrks/the-test-cabinet/tree/master/crates/core/src/gg_reference.rs),

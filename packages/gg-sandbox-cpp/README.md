@@ -48,16 +48,16 @@ three-element vector reads whatever is there. gg compiles every translation unit
 
 | | |
 | --- | --- |
-| `Sources/sdk/gg/` | **gg's surface, hand-written and idiomatic**: one header per capability module, each a nested `namespace` under `gg` holding that module's functions and the types they hand back. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the committed catalogue out of them — and its `//` comments are not. |
+| `Sources/sdk/gg/` | **gg's surface, hand-written and idiomatic**: one header per capability module, each a nested `namespace` under `gg` holding that module's functions and the types they hand back. Its `///` comments are the model-facing documentation — `tools/signatures.py` reflects the catalogue out of them on every build — and its `//` comments are not. |
 | `Sources/sdk/*.cpp` | One translation unit per module: the lowering, the call and the lift. Nothing in them is model-facing. `sdk/wire.*` is the bridge onto the canonical ABI, which a model never reads, and `sdk/runtime.hpp` holds the three declarations that belong to no module. |
 | `Sources/prelude.hpp` | **What every program is compiled against**, and the header this arm precompiles once per machine: the generated WIT surface as C, the declaration of the model's own entry point, and the standard-library set. One declaration, two readers — the compile, and the `headers` list in the committed manifest. |
 | `Sources/shell.cpp` | gg's shell — the two exports the sandbox world declares, the call into the model's own `main`, and the `catch` that turns an uncaught exception from `thrown Wasm exception` into the exception's own class and `what()`. Compiled **once**, at build time. |
 | `cpp-version.sh` | Every pin — the wasi-sdk release, the target triple, the C++ standard, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-wasi-sdk.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
 | `build.sh` | Compiles those bindings, the SDK and the shell for wasm, cuts the committed archive, fetches the adapter, and writes the manifest. |
-| `signatures.sh` | Dumps the SDK's comment AST with `clang++ -ast-dump=json` and writes `crates/gg/src/sandbox/guests/cpp.signatures.json`. Run by `scripts/ci/contract-drift.sh` on every CI run; writes exactly one file. |
+| `signatures.sh` | Dumps the SDK's comment AST with `clang++ -ast-dump=json` and writes `cpp.signatures.json` into `$GG_SIGNATURES_OUT_DIR`. Run by `crates/gg/build.rs` on every build of that crate; writes exactly one file, which is why the bindings are their own script. |
 | `tools/catalogue.py` | The thirteen module identities, and the order a reader meets them in. Nothing else: a function's gg operation id is written on its own declaration. |
-| `tools/signatures.py` | The reflector: clang's comment AST in, the committed catalogue out. |
+| `tools/signatures.py` | The reflector: clang's comment AST in, the catalogue out. |
 
 ## What a C++ program looks like
 
@@ -115,8 +115,8 @@ try {
 
 ## The catalogue, and why clang is the documentation tool
 
-`crates/gg/src/sandbox/guests/cpp.signatures.json` is reflected out of the SDK's own `///` comments
-by **clang's comment AST**, dumped as JSON. clang carries a real documentation parser — the one
+`cpp.signatures.json` — generated into the build's `OUT_DIR`, never committed — is reflected out of
+the SDK's own `///` comments by **clang's comment AST**, dumped as JSON. clang carries a real documentation parser — the one
 `-Wdocumentation` diagnoses against and the one `libclang`'s comment API and `clang-doc` are built
 on — and it does the three things that matter: it decides which comment belongs to which declaration,
 it parses the Doxygen commands inside one into structure, and it keeps the **lines** the author

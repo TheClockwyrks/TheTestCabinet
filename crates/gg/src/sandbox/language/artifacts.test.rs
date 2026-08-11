@@ -11,9 +11,12 @@
 //!
 //! What that leaves is one silent, expensive way for the checkout and an artifact to disagree: a
 //! source edited without a rebuild, which leaves every program of that arm evaluated by — or
-//! compiled against — what was committed, while the source in front of a reader, and the catalogue
-//! the model is shown, describe something else. The checks that do inspect these artifacts today
-//! cover part of that at most:
+//! compiled against — what was committed, while the source in front of a reader describes something
+//! else. The signature catalogues used to be a second casualty of that and are no longer: they are
+//! reflected out of the SDK by `crates/gg/build.rs` on every build, so an edit lands in what the model
+//! is *told* immediately. Which sharpens this gate rather than softening it — the prompt now moves
+//! the moment the source does, and the committed guest is the one thing left that can stay behind.
+//! The checks that do inspect these artifacts today cover part of that at most:
 //!
 //! * `bound-tools` against [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES) compares **tool names**,
 //!   and stays green against a guest whose scope construction, refusals or argument handling changed
@@ -652,8 +655,8 @@ fn each_committed_artifact_was_built_at_the_versions_this_checkout_pins() {
     }
 }
 
-/// The committed files under those two directories that `scripts/ci/contract-drift.sh` re-cuts from
-/// their sources on every CI run and diffs, each beside the step that does it.
+/// The committed files under `crates/gg/src/sandbox/checkers/` that `scripts/ci/contract-drift.sh`
+/// re-cuts from their sources on every CI run and diffs, each beside the step that does it.
 ///
 /// A diff is a *stronger* check than a digest — it shows what changed rather than only that
 /// something did — so nothing here wants a manifest. What each entry is doing is **making the claim
@@ -661,53 +664,6 @@ fn each_committed_artifact_was_built_at_the_versions_this_checkout_pins() {
 /// thing standing between it and the same silent staleness [`ARMS`] exists for is one step in a
 /// shell script. That was true before this list and written down nowhere.
 const RECUT_BY_CONTRACT_DRIFT: &[(&str, &str)] = &[
-    // The eleven catalogues, re-reflected from each arm's own SDK by the loop over
-    // `guests/*.signatures.json` in contract-drift.sh and diffed. A catalogue that no longer
-    // matches its SDK fails there by language id.
-    (
-        "crates/gg/src/sandbox/guests/cpp.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/csharp.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/java.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/javascript.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/kotlin.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/purescript.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/python.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/ruby.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/rust.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/swift.signatures.json",
-        CATALOGUE,
-    ),
-    (
-        "crates/gg/src/sandbox/guests/typescript.signatures.json",
-        CATALOGUE,
-    ),
     // The Ruby arm's compiled Opal runtime: 2.8 MB of generated JavaScript, re-cut by
     // contract-drift.sh through packages/gg-sandbox-ruby/compiler.sh and diffed. It is the one
     // TEXT artifact here that no reviewer could read, and it is safe for that step alone.
@@ -776,10 +732,6 @@ const RECUT_BY_CONTRACT_DRIFT: &[(&str, &str)] = &[
         DECLARED,
     ),
 ];
-
-/// Why a signature catalogue needs nothing from this file.
-const CATALOGUE: &str = "contract-drift.sh re-reflects every guests/*.signatures.json out of its own SDK on every run \
-     and diffs it, which is stronger than a digest: it shows what changed.";
 
 /// Why gg's own hand-written compiler drivers need nothing from this file.
 const DRIVER: &str = "gg's own hand-written compiler driver. Nothing cuts it from anything, it is \

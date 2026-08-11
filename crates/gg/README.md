@@ -115,5 +115,24 @@ page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table
 | `prompts.rs` | Everything gg *says* to a model, rendered from the `templates/*.hbs` files. |
 | `tools/` | Tool dispatch, the offered toolset, and the typed `ToolData`/`ToolFailure` outcomes every tool emits. |
 | `sandbox.rs` + `sandbox/` | [Responses as code](../../apps/docs/src/content/docs/gg/responses-as-code.md): the wasmtime host and the WIT membrane. |
-| `sandbox/language.rs` + `sandbox/language/` | [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md): the seam a program's language is registered behind — preparing a reply for its guest, that guest's committed component and signature catalogue, what it needs from the host linker, and its healing/prompt dialects. `language/typescript.rs` is the one registered language, and `language/typescript.check.rs` is the `tsc` pass that type-checks a model's program against the SDK's own declarations. |
+| `sandbox/language.rs` + `sandbox/language/` | [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md): the seam a program's language is registered behind — preparing a reply for its guest, that guest's committed component and the signature catalogue `build.rs` reflects out of its SDK, what it needs from the host linker, and its healing/prompt dialects. Eleven languages are registered, one module each; `language/typescript.check.rs` is the `tsc` pass that type-checks a model's program against the SDK's own declarations. |
 | `replay.rs` / `replay_driver.rs` | Capturing a run's non-deterministic inputs, and reconstructing the run from that record. |
+
+## Building it
+
+This crate has a **build script**, and it is not the ordinary kind. `build.rs`
+reflects each of the eleven program languages' signature catalogues out of that
+language's own SDK, with that language's own documentation tool — `tsc`, griffe,
+YARD, `purs`, javadoc, the Kotlin front end, rustdoc,
+`swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn — into the build's
+`OUT_DIR`, and the arm modules `include_str!` them from there. Nothing is
+committed, so what a model is told this sandbox offers is reflected out of the
+SDK sources of this checkout on the build that compiles the code telling it.
+
+So compiling `test-cabinet-gg` wants every one of those toolchains present.
+Install them with `scripts/ci/install-gg-toolchains.sh` (idempotent; the
+devcontainer runs it on create) plus a repo-root `npm ci` for the pinned `tsc`.
+To read a catalogue — which is how a reflector bug is found, since a dropped
+`@return` paragraph is invisible in the SDK and obvious in the emitted JSON —
+run `scripts/gg-signatures.sh`, the same script the build runs and the only list
+of the arms in the repository. `build.rs`'s own header states the rest.

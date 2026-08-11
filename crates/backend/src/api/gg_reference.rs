@@ -17,7 +17,14 @@
 //! [`include_str!`]. `scripts/ci/contract-drift.sh` regenerates and diffs it, so a
 //! reworded tool description that was not regenerated turns CI red instead of leaving
 //! the console showing prose no model was ever sent — the same regenerate-commit-gate
-//! shape gg's own committed `sandbox/guests/` catalogues already use.
+//! shape the run-record contract already uses.
+//!
+//! It is worth saying why gg's own signature catalogues, which this document is half a
+//! projection of, are *not* kept this way: they are reflected out of each arm's SDK by
+//! `crates/gg/build.rs` on every build of that crate and committed nowhere. The
+//! difference is who can produce the artifact. A catalogue's producer is a documentation
+//! tool the devcontainer installs, so a build can just run it; this document's producer
+//! is `gg` itself, the one crate this binary is built not to compile.
 //!
 //! # Why it is ungated
 //!

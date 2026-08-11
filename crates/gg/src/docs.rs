@@ -34,8 +34,8 @@
 //! search must never do.
 //!
 //! Which of those three decides a given function is not a fact the guest holds either, and — since
-//! the [operations table](crate::sandbox::operation_of) — it is no longer a fact each arm's
-//! committed catalogue asserts about itself. gg states it once, and
+//! the [operations table](crate::sandbox::operation_of) — it is no longer a fact each arm's own
+//! catalogue asserts about itself. gg states it once, and
 //! [`bound`](DocsRuntime::bound) is where it is read.
 //!
 //! # Whose spellings it answers in
@@ -624,8 +624,7 @@ impl DocsRuntime {
     /// catalogue entry's own gate fields, and that is a deliberate reversal. The three gates the
     /// module header describes are all still here — a tool this run enabled, this agent's ending
     /// role, a capability it holds — but which of them applies to a given function is now gg's
-    /// answer, stated once, instead of a claim eleven committed catalogues each make about
-    /// themselves. An arm has nothing left to be wrong about, and asking is one call to
+    /// answer, stated once, instead of a claim eleven catalogues each make about themselves. An arm has nothing left to be wrong about, and asking is one call to
     /// [`Grants::permits`] rather than a boolean, a pair and a fall-through read here.
     ///
     /// **The membrane asks the identical question of the identical value.** Every arm's SDK is

@@ -566,7 +566,7 @@ fn the_committed_guest_carries_every_library_the_prompt_names() {
     // What makes it checkable is that nothing hand-writes the set twice: `src/library.py` imports
     // what the arm offers, the catalogue is reflected out of those imports, and the system prompt
     // renders the catalogue. So the list driven in here is **the list a model is told about**, read
-    // out of the committed catalogue rather than typed out again — and a curated import quietly
+    // out of the generated catalogue rather than typed out again — and a curated import quietly
     // dropped in a rebuild fails here rather than months later inside a run, on the turn a model
     // spends discovering that a module the prompt promised is not there.
     let named: Vec<&str> = python()
@@ -577,7 +577,7 @@ fn the_committed_guest_carries_every_library_the_prompt_names() {
         .collect();
     assert!(
         named.len() > 50,
-        "the committed catalogue names {} libraries, which is too few to be the curated set — the \
+        "the generated catalogue names {} libraries, which is too few to be the curated set — the \
          prompt is describing a sandbox nobody has",
         named.len()
     );
@@ -1397,23 +1397,26 @@ except ToolError as failure:
     assert_eq!(outcome.refusals.len(), 1, "the refusal is recorded");
 }
 
-/// The catalogue this arm commits, read as JSON so a check can walk it section by section.
+/// The catalogue this arm's build reflects, read as JSON so a check can walk it section by section.
 ///
 /// Whether this arm covers gg's capabilities is not asked here: the
 /// [capability gate](super::super::agreement) runs over every registered language, so this one is
 /// inside it now that it is registered, and a second copy of that assertion would be a second thing
 /// to keep in step. What is here is the half that gate cannot make — whether the surface this
 /// catalogue describes is the surface the committed `.wasm` really binds.
-const SIGNATURES: &str = include_str!("../guests/python.signatures.json");
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/python.signatures.json"
+));
 
 #[test]
-fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
+fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     // The other half of the catalogue's honesty, and the one no cross-language comparison can see:
     // that the surface it *describes* is the surface the committed `.wasm` really binds. A signature
     // reflected out of a source file that was never baked in would read perfectly and name a call
     // that is not there.
     let catalogue: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Python catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Python catalogue is valid JSON");
     // One flat array of functions, each naming the gg operation it binds and the module it lives in.
     // The ending group is the only thing a role changes, and an operation id is what names one, so
     // the split below is read off `session.` rather than off a section this schema no longer has.

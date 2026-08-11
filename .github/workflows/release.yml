@@ -137,9 +137,52 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       # musl-gcc: `ring` (via rustls/reqwest) and `wasmtime` each compile a little C
-      # that has to be built for the musl target.
-      - name: Install musl toolchain
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # that has to be built for the musl target. `ruby` rides along because gg's Ruby
+      # arm reflects its signature catalogue with YARD (see the next step), and the
+      # interpreter is the one prerequisite install-gg-toolchains.sh cannot install for
+      # itself — it needs root. The x86_64 runner image ships one; rather than find out
+      # the hard way whether the arm64 image does, on the job that publishes a release,
+      # ask for it on both legs. apt makes an already-installed package a no-op.
+      - name: Install musl toolchain and Ruby
+        run: sudo apt-get update && sudo apt-get install -y musl-tools ruby
+      # WHY A RELEASE BUILD OF ONE STATIC BINARY NOW PULLS IN ~2 GB OF COMPILERS.
+      #
+      # gg drives a model in one of eleven program languages, and what a model is told
+      # each language offers is a signature catalogue reflected out of that language's
+      # own SDK by that language's own documentation tool — `tsc`, griffe, YARD, `purs`,
+      # javadoc, the Kotlin front end, rustdoc, `swiftc -emit-symbol-graph`,
+      # `clang++ -ast-dump=json`, Roslyn. Nothing about that is new; what changed is
+      # that the eleven catalogues are no longer committed. crates/gg's build script
+      # reflects them on every build, so the binary this job publishes cannot describe a
+      # surface the guest SDKs in the same tag do not export — which matters most
+      # exactly here, since this is the artifact a run container downloads and the only
+      # gg most people ever execute.
+      #
+      # So a machine that builds gg is a machine that has all eleven toolchains, and
+      # install-gg-toolchains.sh is the one pinned list of them: the same script the
+      # devcontainer, the CI jobs and the driver image's gg stage run. It installs
+      # ~1.9 GB under $HOME (835 MB of that Swift, after its installer prunes a 3.3 GB
+      # toolchain down to what a wasm cross-compile actually runs), and it must succeed
+      # on BOTH legs of this matrix — the aarch64 leg included, which is the one where a
+      # toolchain that publishes no arm64 build would be found.
+      #
+      # `npm ci` is part of the same prerequisite: the pinned `typescript` that reflects
+      # the TypeScript and JavaScript arms is a workspace devDependency, so a checkout
+      # nobody installed has no reflector for two of the eleven.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: npm
+      - name: Install gg's program-language toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/ci/install-gg-toolchains.sh
+          npm ci
+          # The build step below is a separate process, so the installers' bin directory
+          # is prepended for the job rather than exported here: `purs` and `uv` are
+          # resolved from PATH.
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       # gg is shipped as a fully STATIC musl binary — not a portability nicety but the
       # thing that makes it work at all: it executes INSIDE the run container, whose
       # images span glibc Debian bookworm and the Ubuntu blender image, so one static

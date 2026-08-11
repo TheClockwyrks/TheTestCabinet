@@ -13,8 +13,9 @@
 //! difference in *capability*, and the study would quietly be measuring something nobody asked
 //! about.
 //!
-//! Nothing else in gg would notice. Each language's own drift gates compare it to its own committed
-//! component — never to gg's vocabulary, and never to another language — so eleven internally
+//! Nothing else in gg would notice. Each language's own gates compare it to its own committed
+//! component and to its own SDK — never to gg's vocabulary, and never to another language — so
+//! eleven internally
 //! consistent surfaces that offer eleven different sets of capabilities are eleven green test
 //! suites.
 //!
@@ -661,7 +662,7 @@ fn coverage(
 
     if language.catalogue().schema < SchemaVersion::V2 {
         complain(
-            "commits a catalogue in schema 1, which named no operation and asserted its own gates \
+            "emits a catalogue in schema 1, which named no operation and asserted its own gates \
              — this gate reads the normalized model and has nothing to hold such a catalogue to"
                 .to_string(),
         );
@@ -679,10 +680,10 @@ fn coverage(
         // **Unreachable while every readable catalogue is in the normalized schema**, and kept
         // rather than unwrapped because that is a property of the schema refusal above rather than
         // of this loop. A V2 entry's operation is a required, non-optional field, so the projection
-        // fills it in unconditionally; a V1 catalogue never reaches here at all. A committed
-        // catalogue with the key deleted therefore does not produce this sentence — it fails
-        // earlier and harder, where the arm parses its committed document (`SignatureCatalogue::parse`
-        // in each arm's `catalogue`), with `missing field `operation``. That is an acceptable place to fail,
+        // fills it in unconditionally; a V1 catalogue never reaches here at all. A catalogue whose
+        // reflector dropped the key therefore does not produce this sentence — it fails earlier and
+        // harder, where the arm parses the document its build wrote (`SignatureCatalogue::parse` in
+        // each arm's `catalogue`), with `missing field `operation``. That is an acceptable place to fail,
         // and this arm exists so that the field going optional again is a complaint rather than a
         // panic.
         let Some(id) = function.operation else {

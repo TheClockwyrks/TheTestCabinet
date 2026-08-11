@@ -283,7 +283,7 @@ fn the_libraries_the_manifest_declares_are_really_in_the_committed_guest() {
     // the catalogue names into the committed component and requires it — a curated library dropped
     // in a rebuild fails here rather than in a run.
     let catalogue: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Ruby catalogue is valid JSON");
     let declared: Vec<String> = catalogue["libraries"]
         .as_array()
         .expect("the catalogue declares its libraries")
@@ -1445,11 +1445,11 @@ fn the_committed_guest_imports_the_membrane_and_the_wasi_it_was_baked_with() {
     assert_eq!(answered, expected);
 }
 
-/// The catalogue this arm commits, read a step before the language that owns it is registered.
-const SIGNATURES: &str = include_str!("../guests/ruby.signatures.json");
+/// The catalogue this arm's build reflects, read a step before the language that owns it is registered.
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/ruby.signatures.json"));
 
 #[test]
-fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
+fn the_generated_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
     // The **real** capability gate, over the real Ruby catalogue. It is what stands between a
     // configured `language` param and an invalidated study: an arm that quietly offers a model
     // fewer capabilities than the arm it is measured against is a green test suite, and this is the
@@ -1457,7 +1457,7 @@ fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
     // fixture so it could be handed a catalogue whose id the wire enum did not carry yet; now that
     // `ruby` is a language an operator configures, it runs against the registry itself.
     let document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Ruby catalogue is valid JSON");
     assert_eq!(
         document["language"],
         json!("ruby"),
@@ -1488,13 +1488,13 @@ fn the_committed_catalogue_agrees_with_the_arms_it_will_be_compared_against() {
 }
 
 #[test]
-fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
+fn the_generated_catalogue_describes_the_functions_the_guest_really_binds() {
     // The other half of the catalogue's honesty, and the one no cross-language comparison can see:
     // that the surface it *describes* is the surface the committed `.wasm` really binds. A signature
     // reflected out of a source file that was never baked in would read perfectly and name a call
     // that is not there.
     let catalogue: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Ruby catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Ruby catalogue is valid JSON");
     let functions = catalogue["functions"]
         .as_array()
         .expect("the catalogue's `functions` is an array");

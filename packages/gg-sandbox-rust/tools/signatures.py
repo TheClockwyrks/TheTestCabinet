@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Reflect the **Rust** program language's signature catalogue out of the SDK's own rustdoc, and
-write it to ``crates/gg/src/sandbox/guests/rust.signatures.json``.
+write it to the ``rust.signatures.json`` the caller names.
+
+WHERE IT GOES. The destination is an argument, given by ``signatures.sh`` out of
+``GG_SIGNATURES_OUT_DIR``, and nothing here has a default: the catalogue is a build artifact that
+``crates/gg/build.rs`` generates into the build's own ``OUT_DIR``, and it is committed nowhere.
 
 WHY RUSTDOC JSON. Everything a model reads about this surface is written on the declaration it
 describes — a function's brief and detail in its ``///`` comment, an argument's in that comment's

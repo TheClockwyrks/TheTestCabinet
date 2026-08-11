@@ -49,15 +49,23 @@ use super::{
     ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// The committed catalogue for this language: the same SDK declarations TypeScript's is reflected
-/// from, emitted a second time under this language's own id by the guest package's `signatures`
-/// script.
+/// This language's catalogue: the same SDK declarations TypeScript's is reflected from, emitted a
+/// second time under this language's own id by the guest package's `signatures.sh`.
 ///
 /// Two files rather than one shared file, because the catalogue carries the language it was
 /// generated for and the host [asserts](JavaScript::catalogue) that each is its own. A hand-copied
 /// second file would be the drift this whole artifact exists to prevent; a second *reflection* of
 /// one source cannot drift from it.
-const SIGNATURES: &str = include_str!("../guests/javascript.signatures.json");
+///
+/// Neither file is committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so the pair is emitted
+/// together, from one set of declarations, on the build that embeds them — which is what makes "the
+/// same signatures, annotations included" a property of the arrangement rather than a claim about
+/// two files someone regenerated at the same time.
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/javascript.signatures.json"
+));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -155,7 +163,7 @@ impl ProgramLanguage for JavaScript {
         Some(typescript::COMPONENT)
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
     /// The check earns its keep here more than anywhere: this catalogue and TypeScript's are
     /// generated from one source and differ in exactly one field, so a mis-filed pair would be
@@ -163,11 +171,11 @@ impl ProgramLanguage for JavaScript {
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::JavaScript,
-                "`guests/javascript.signatures.json` was generated for another program language",
+                "`signatures/javascript.signatures.json` was generated for another program language",
             );
             catalogue
         })

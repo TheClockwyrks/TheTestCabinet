@@ -13,10 +13,12 @@
 # `packages/gg-sandbox-swift/bindings.sh` are. The bindings are a pure function of the WIT
 # directory and the pinned generator, and they are an input to two different steps that must not
 # share side effects: `build.sh`, which REWRITES committed artifacts under
-# `crates/gg/src/sandbox/checkers/`, and — when this arm's SDK lands — a signature step that runs
-# inside `scripts/ci/contract-drift.sh`, whose final act is a `git diff --exit-code` over that same
-# directory. A signature step that reached the build script for its bindings would re-cut the
-# committed artifacts on every CI run and fail the gate on bytes nobody edited.
+# `crates/gg/src/sandbox/checkers/`, and `signatures.sh`, which reflects this arm's catalogue and
+# is run by `crates/gg/build.rs` on EVERY build of `test-cabinet-gg`. A signature step that reached
+# the build script for its bindings would therefore re-cut those committed artifacts every time
+# anybody typed `cargo build`, rewriting them under the working tree of someone who was only
+# compiling — and would make the build dirty its own declared inputs, which is how a build script
+# comes to re-run forever.
 #
 # Usage:
 #   packages/gg-sandbox-cpp/bindings.sh          # -> .build/bindings/

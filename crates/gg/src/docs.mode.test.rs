@@ -3,7 +3,7 @@
 //!
 //! The mode is the thing the whole transitive rule exists to be *measurable* about, so both halves
 //! are asserted: a typo must not silently pick an arm the study did not ask for, and the three arms
-//! must actually differ in what they open on a real committed catalogue.
+//! must actually differ in what they open on a real arm's catalogue.
 
 use serde_json::json;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgProgramLanguage};
@@ -148,7 +148,7 @@ fn a_returned_type_is_opened_by_both_type_modes() {
 ///
 /// `updateIssue` takes a patch whose `status` field is an `IssueStatus`, and hands back nothing that
 /// mentions it — so `ReturnOnly` leaves it closed and `ReturnAndParameters` opens it. This is the
-/// distinction the knob exists to measure, asserted against a real committed catalogue rather than
+/// distinction the knob exists to measure, asserted against a real arm's catalogue rather than
 /// against a fixture that could be made to say anything.
 #[test]
 fn only_the_wider_arm_opens_a_type_an_argument_names() {

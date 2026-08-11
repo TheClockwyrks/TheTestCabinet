@@ -1,7 +1,7 @@
 /**
- * Emit the COMMITTED signature catalogue for the PureScript arm:
+ * Emit the signature catalogue for the PureScript arm:
  *
- *   packages/gg-sandbox-purescript/src/Gg/**  --this script-->  crates/gg/src/sandbox/guests/purescript.signatures.json
+ *   packages/gg-sandbox-purescript/src/Gg/**  --this script-->  $GG_SIGNATURES_OUT_DIR/purescript.signatures.json
  *   packages/gg-sandbox-purescript/spago.yaml                -->  its `libraries` section
  *
  * gg renders the responses-as-code system prompt and every documentation view from that file, so it
@@ -15,7 +15,7 @@
  * `purs compile --codegen docs` emits a `docs.json` per module carrying every exported declaration's
  * doc comment and its full type, with the types already resolved to the module that declares them.
  * So a signature here is the compiler's own reading of the SDK, not a second copy of it, and a
- * renamed argument or a changed type shows up as a diff in the committed catalogue rather than as a
+ * renamed argument or a changed type reaches the model's prompt as the rename rather than as a
  * sentence that quietly stopped being true.
  *
  * # The surface is capability modules, and a name is what a program writes
@@ -63,30 +63,40 @@
  *
  * # Usage
  *
- *   packages/gg-sandbox-purescript/signatures.sh
+ *   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox-purescript/signatures.sh
  *
- * which unpacks the committed library tree, stages this package's `src/` into it, and compiles the
- * lot with `--codegen docs` first. `scripts/ci/contract-drift.sh` runs that script and fails on any
- * diff, so an edit to a doc comment without a regeneration is an error rather than a surprise.
+ * which unpacks the committed library tree, stages this package's `src/` into it, compiles the lot
+ * with `--codegen docs` first, and is what turns the environment variable into the destination
+ * below. The catalogue is not committed anywhere: `crates/gg/build.rs` generates it through
+ * `scripts/gg-signatures.sh` on every build of gg that needs it, so an edit to a doc comment IS the
+ * regeneration — there is no second copy of it to leave behind.
  */
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { CORE, MODULES } from "./catalogue.mjs";
 
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
-const ROOT = join(PACKAGE, "..", "..");
-const OUT = join(
-  ROOT,
-  "crates",
-  "gg",
-  "src",
-  "sandbox",
-  "guests",
-  "purescript.signatures.json",
-);
+
+/**
+ * Where the catalogue is written, taken from the environment and required.
+ *
+ * There is no default, in the same style as the `argv` guard below and for a stronger reason: the
+ * one place that decides where a catalogue lands is `scripts/gg-signatures.sh`, which
+ * `crates/gg/build.rs` calls, and a default here would be a second answer to that question. The
+ * answer this file used to give — the Rust crate's own `sandbox/guests/` directory — is precisely
+ * the one that stopped being right, because nothing is committed there any more.
+ */
+const OUT_DIR = process.env.GG_SIGNATURES_OUT_DIR;
+if (!OUT_DIR) {
+  throw new Error(
+    "GG_SIGNATURES_OUT_DIR is not set; run packages/gg-sandbox-purescript/signatures.sh or " +
+      "scripts/gg-signatures.sh",
+  );
+}
+const OUT = join(OUT_DIR, "purescript.signatures.json");
 
 /** The schema this catalogue is written in: modules, operations, fully-qualified names, authored
  * briefs and resolved type references. */
@@ -337,7 +347,7 @@ function renderApplied(node, optional) {
  * constrained head and marking the fields the row stands for. Rendered flat and unmarked, the
  * signature reads as a CLOSED record — "every field is required" — which is the one place a model
  * would be told something stricter than what it is compiled against. `?` is the marker
- * [TypeScript's](../../../crates/gg/src/sandbox/guests/typescript.signatures.json) own catalogue
+ * TypeScript's own catalogue
  * carries for the same fact (`{ offset?: number }`), so the two arms read alike here — while Python
  * and Ruby say it with a default, which is what those languages write.
  */
@@ -1306,5 +1316,8 @@ function catalogue() {
   };
 }
 
+// The destination is a build directory rather than a checked-out one, so it may not exist yet —
+// and failing on a missing parent after twenty seconds of `purs` would be a poor way to say so.
+mkdirSync(OUT_DIR, { recursive: true });
 writeFileSync(OUT, `${JSON.stringify(catalogue(), null, "\t")}\n`);
 console.log(`wrote ${basename(OUT)}`);

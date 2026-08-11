@@ -31,6 +31,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+      # Node in a Rust job, and a repo-root install, because compiling
+      # test-cabinet-gg needs both. gg's build script reflects a signature catalogue
+      # out of each of its eleven program languages' SDKs — nothing is committed any
+      # more — and the TypeScript and JavaScript arms are reflected through the pinned
+      # `typescript` that lives in the npm workspace. rust-test.sh installs the other
+      # ten toolchains itself (scripts/ci/install-gg-toolchains.sh, which is
+      # idempotent), but no script can install a workspace this job never checked out
+      # the node_modules for, so it is done here.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.23.1
+          cache: npm
+      - run: npm ci
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - run: ./scripts/ci/install-nextest.sh
       - run: ./scripts/ci/rust-test.sh

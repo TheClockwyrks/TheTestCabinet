@@ -3,30 +3,34 @@
 # Refresh the COMMITTED artifacts this package produces:
 #
 #   crates/gg/src/sandbox/guests/typescript.component.wasm    the baked interpreter component
-#   crates/gg/src/sandbox/guests/typescript.signatures.json   the catalogue the prompt is built from
-#   crates/gg/src/sandbox/guests/javascript.signatures.json   the same catalogue, for the arm that
-#                                                             runs the program without checking it
 #   crates/gg/src/sandbox/checkers/typescript.tsc.js          the compiler that type-checks a program
 #   crates/gg/src/sandbox/checkers/typescript.lib.d.ts        the standard library it checks against
 #   crates/gg/src/sandbox/checkers/typescript.globals.d.ts    the globals no SDK declaration covers
 #   crates/gg/src/sandbox/checkers/typescript.checker.json    which compiler, at which level
 #
 # They are named for the PROGRAM LANGUAGE they serve, not for this package. gg's responses-as-code
-# capability registers a language per guest, and each one commits its pair under
-# `crates/gg/src/sandbox/guests/<language-id>.*` — so a second guest, for a second language, is a
-# sibling directory with its own build script writing its own pair, and touches nothing here.
+# capability registers a language per guest, and each one files its artifacts under
+# `crates/gg/src/sandbox/{guests,checkers}/<language-id>.*` — so a second guest, for a second
+# language, is a sibling directory with its own build script writing its own set, and touches
+# nothing here.
 #
-# This guest serves TWO registered languages, which is why there are two catalogues and one
-# component: `javascript` is `typescript` with gg's type check removed, so the two arms differ in
-# what gg does to a program before handing it over and in nothing else. Committing a second,
-# byte-identical component would be a second copy of one artifact.
+# This guest serves TWO registered languages and bakes ONE component: `javascript` is `typescript`
+# with gg's type check removed, so the two arms differ in what gg does to a program before handing it
+# over and in nothing else. Committing a second, byte-identical component would be a second copy of
+# one artifact.
 #
-# Both are checked in, exactly as the `foray-ref-*` guests are, so no build or CI step ever needs
-# `componentize-js`: the Rust host `include_bytes!`s the component and `include_str!`s the catalogue.
-# (The only Node CI touches for this package is the `signatures` regeneration in
-# `scripts/ci/contract-drift.sh`, which needs TypeScript alone.) That is also why this script is
-# never wired into a build — it is run by hand, deliberately, and its outputs are committed alongside
-# the source change that motivated them.
+# WHAT IS *NOT* HERE ANY MORE: the two signature catalogues. They are reflected out of the SDK's own
+# emitted declarations by `signatures.sh` beside this script, which `scripts/gg-signatures.sh` runs
+# and `crates/gg/build.rs` calls — so the catalogue a model is described by is generated on the build
+# that compiles the host embedding it, and cannot be older than the declarations it quotes. This
+# script therefore has nothing to refresh about them, and running it is not a prerequisite for
+# building gg.
+#
+# The component IS checked in, exactly as the `foray-ref-*` guests are, so no build or CI step ever
+# needs `componentize-js`: the Rust host `include_bytes!`s it. That is why this script is run by
+# hand, deliberately, and its outputs are committed alongside the source change that motivated them —
+# and it is the reason `gg-artifact-manifest.mjs` records what went into the component below, since a
+# committed binary is the one thing in this package that a build cannot re-derive for you.
 #
 # Run it after changing anything the component is made of:
 #
@@ -91,20 +95,13 @@ npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 	--disable stdio http fetch-event \
 	-o "$ROOT/$COMPONENT"
 
-# 3. Reflect the signature catalogue out of the SDK's own emitted declarations, so the system prompt
-#    quotes the signatures the component actually exports. It writes one per language this guest
-#    serves, into `$DEST_DIR`; the directory lives in this package's `signatures` npm script, because
-#    CI runs that script on its own as the catalogues' drift gate.
-echo "Reflecting the signature catalogue ..."
-npm run --workspace @test-cabinet/gg-sandbox signatures
-
-# 4. Cut the checker gg type-checks a model's program with out of the same pinned `typescript` this
+# 3. Cut the checker gg type-checks a model's program with out of the same pinned `typescript` this
 #    package installs, so what the SDK's declarations were emitted by and what a program is judged
 #    against are one release. It needs neither the component nor `componentize-js`.
 echo "Cutting the TypeScript checker ..."
 npm run --workspace @test-cabinet/gg-sandbox checker
 
-# 5. Record what went into the component, beside it. `contract-drift.sh` deliberately never rebuilds
+# 4. Record what went into the component, beside it. `contract-drift.sh` deliberately never rebuilds
 #    this artifact, so this manifest — and the Rust test that recomputes it from the checkout — is
 #    the only thing standing between an SDK edit committed without a rebuild and every TypeScript
 #    and JavaScript program in the run being evaluated by last month's guest.

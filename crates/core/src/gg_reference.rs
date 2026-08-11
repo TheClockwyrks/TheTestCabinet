@@ -7,16 +7,19 @@
 //! docs site paraphrases a capability, and a paraphrase of prose written *for a model* is a
 //! second copy that drifts. So the reference is not written at all. It is **projected from
 //! gg's own definitions**: the tool descriptions are the [`ToolDefinition`]s a live
-//! [`ToolRegistry`] hands the provider, and the function entries are the committed signature
-//! catalogue reflected out of the sandbox SDK's own `.d.ts`.
+//! [`ToolRegistry`] hands the provider, and the function entries are the signature catalogue
+//! gg's own build script reflects out of the sandbox SDK's declarations.
 //!
 //! # Why this lives in `core`, and why it is a committed artifact
 //!
 //! The projection is built by `test-cabinet-gg`, which the **backend cannot depend on**: that
 //! crate pulls `wasmtime`, `oxc` and `tiktoken-rs`, and the backend is built portable and
-//! static under musl. So the flow is the one `crates/gg/src/sandbox/guests/` and
-//! `packages/run-record/src/gg-system-prompt.ts` already use — generate, commit, serve, and
-//! gate the diff in CI:
+//! static under musl. Nothing in the backend's build could run this projection, because running
+//! it means compiling the crate the backend is built to avoid — so the flow is the one
+//! `packages/run-record/src/gg-system-prompt.ts` already uses: generate, commit, serve, and
+//! gate the diff in CI. (The signature catalogues underneath it take the opposite shape and are
+//! committed nowhere, for the reason that decides between the two: *their* producer is a
+//! documentation tool the devcontainer installs, so gg's own build simply runs it.)
 //!
 //! ```text
 //! gg reference                       → this contract, as JSON on stdout

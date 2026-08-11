@@ -293,7 +293,7 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
     assert_eq!(source::exports(&module), vec!["marker".to_string()]);
 }
 
-/// **The committed catalogue is this language's**, and it carries the whole surface in Rust's own
+/// **The generated catalogue is this language's**, and it carries the whole surface in Rust's own
 /// spelling.
 ///
 /// Every operation resolves to a call written under the module that documents it, and — with one
@@ -302,7 +302,7 @@ fn the_isolation_subject_is_a_module_rather_than_a_program() {
 /// which is the one thing Rust naming is most consistent about not doing, so this arm spells it
 /// `run`. It is named here rather than derived, so a second divergence is a failing test.
 #[test]
-fn the_committed_catalogue_is_this_languages() {
+fn the_generated_catalogue_is_this_languages() {
     let catalogue = rust().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::Rust);
     for operation in crate::sandbox::OPERATIONS {

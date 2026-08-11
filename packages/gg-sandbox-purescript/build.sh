@@ -41,8 +41,9 @@
 # `the_shipped_sdk_is_the_sdk_in_the_working_tree` unpacks the tarball and compares its
 # `libs/gg-sdk/src` with this package's `src/` file for file — the `.js` foreign modules included,
 # since that is where a call's lowering lives — and names the file that drifted. Without it, an SDK
-# edit committed with a regenerated catalogue and a stale tarball would tell a model about a surface
-# it is not compiled against, and every gate would stay green.
+# edit committed without re-cutting the tarball would leave a freshly reflected catalogue — the
+# build reflects one out of `src/` every time — describing a surface the compile does not offer, and
+# every other gate would stay green.
 #
 # Requires Node and network access: the pinned `purescript`, `spago` and `esbuild` come from npm,
 # and Spago fetches the package set's sources from the registry. It takes about a minute and emits

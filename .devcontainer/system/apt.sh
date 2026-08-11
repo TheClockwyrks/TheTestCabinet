@@ -26,6 +26,19 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 #     base image and iproute2 did NOT, which is exactly why all three are declared
 #     here: an undeclared tool disappears silently on a base-image change, and a
 #     `command -v`-guarded use of it degrades to doing nothing rather than failing.
+#   - ruby: gg's Ruby program-language arm reflects its signature catalogue with
+#     YARD, and `crates/gg/build.rs` reflects all eleven catalogues as a step of
+#     building the crate — so without a Ruby this image cannot `cargo build
+#     --workspace` at all. It is the ONE gg toolchain that comes from a
+#     distribution package rather than from a pinned download, which is why it is
+#     here and the other ten are in `scripts/ci/install-gg-toolchains.sh` (run from
+#     `postCreateCommand`, because those are pinned by the repository and the
+#     repository is not mounted yet at image-build time). That script installs the
+#     pinned YARD on top of this Ruby; the interpreter itself is deliberately
+#     unpinned, because what has to agree between a devcontainer, a CI agent and an
+#     image build is the reflector rather than the thing it runs on. Declared here
+#     for the reason iproute2 is: it was present by accident for a while, and an
+#     undeclared tool disappears silently on a base-image change.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	build-essential \
 	cmake \
@@ -37,6 +50,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	musl-tools \
 	procps \
 	ripgrep \
+	ruby \
 	shellcheck \
 	ssh \
 	sudo \

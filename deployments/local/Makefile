@@ -313,6 +313,17 @@ kubeconfig:
 # name resolves under a `localhost/` prefix). Saving with $(CONTAINER_TOOL)
 # ourselves and importing the tar sidesteps that entirely and works on both docker
 # and podman.
+#
+# THE DRIVER LINE IS THE SLOW ONE, AND THE FIRST RUN IS MUCH THE SLOWEST. It is the
+# only target that bakes in `gg`, and gg's build reflects a signature catalogue out of
+# each of its eleven program languages' SDKs — nothing is committed under
+# crates/gg/src/sandbox/guests any more — so its stage installs every one of those
+# toolchains (scripts/ci/install-gg-toolchains.sh, ~1.9 GB) and runs eleven
+# documentation tools. They live in BuildKit cache mounts rather than in image layers,
+# so a second `make images` on the same machine re-downloads nothing and re-reflects
+# only the arms whose SDK changed; a pruned builder pays for all of it again. This is
+# the fastest way to find out that the gg stage is broken, which is why it is worth
+# knowing it is normal for it to take minutes rather than seconds.
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'

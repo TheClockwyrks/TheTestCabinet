@@ -1,25 +1,35 @@
 #!/usr/bin/env bash
-# Regenerate the COMMITTED signature catalogue for the Rust arm:
-#
-#   crates/gg/src/sandbox/guests/rust.signatures.json
+# Reflect the Rust arm's signature catalogue out of its SDK, and write
+# `$GG_SIGNATURES_OUT_DIR/rust.signatures.json`.
 #
 # gg embeds that file and renders the responses-as-code system prompt and every documentation view
 # from it, so it is the whole of what a model is told about this arm's surface. Every word of it is
 # reflected out of the SDK's own declarations by `tools/signatures.py`, which reads the JSON
-# `rustdoc` itself emits — so a doc comment edited without a regeneration is a diff CI fails on
-# rather than a sentence that quietly stopped being true.
+# `rustdoc` itself emits — so a sentence a model reads is rustdoc's own reading of the declaration it
+# describes rather than prose typed into a table beside it.
+#
+# WHERE IT WRITES, AND WHY THERE IS NO DEFAULT. The catalogue is a BUILD ARTIFACT.
+# `crates/gg/build.rs` runs `scripts/gg-signatures.sh` and embeds what lands in the build's own
+# `OUT_DIR`, so a doc comment edited without a regeneration is not a state this checkout can be in:
+# the next build of gg reflects it. A default here would be a second answer to a question the build
+# already answers, and the old one — `crates/gg/src/sandbox/guests/` — is the answer that stopped
+# being right. Run it by hand, into a directory of your choosing, to READ a catalogue; that is what
+# `scripts/gg-signatures.sh` is for, and it is how a reflector bug gets found.
 #
 # WHAT IT NEEDS. This checkout's own `cargo` and `rustdoc`, the `wasm32-unknown-unknown` standard
-# library (`scripts/ci/install-rust-wasm.sh`), and `src/bindings.rs` — which is generated rather than
-# committed, so it runs `bindings.sh` first when that file is missing, fetching the pinned
+# library (`scripts/ci/install-gg-toolchains.sh`), and `src/bindings.rs` — which is generated rather
+# than committed, so it runs `bindings.sh` first when that file is missing, fetching the pinned
 # `wit-bindgen` once.
 #
 # WHAT IT MUST NOT DO IS REBUILD THE LIBRARY SET, and that is why the bindings live in their own
-# script rather than inside `build.sh`. This runs inside `scripts/ci/contract-drift.sh`, whose last
-# step is `git diff --exit-code` over `crates/gg/src/sandbox/checkers/` — the directory `build.sh`
-# rewrites. A fresh checkout never has `src/bindings.rs`, so reaching `build.sh` for it would re-cut
-# `rust.libraries.tar.gz` and `rust.toolchain.json` on every CI run, and the gate would then fail on
-# an artifact nobody edited. It writes exactly one file: the catalogue named above.
+# script rather than inside `build.sh`. `crates/gg/src/sandbox/checkers/` holds this arm's committed
+# compile inputs — `rust.libraries.tar.gz` and `rust.toolchain.json` — and `build.sh` is what re-cuts
+# them, by hand, deliberately, because they are a compiler-version-locked rlib set that costs minutes
+# and megabytes. A fresh checkout never has `src/bindings.rs`, so a signature step that reached
+# `build.sh` for it would re-cut those two on every build of gg that regenerates a catalogue: a
+# multi-megabyte binary rewritten under a developer who typed `cargo build`, and a checkout whose
+# committed artifacts no longer say what produced them. It writes exactly one file: the catalogue
+# named above.
 #
 # WHY `RUSTC_BOOTSTRAP=1`. `rustdoc`'s JSON output is unstable, and this repository pins a STABLE
 # toolchain — deliberately, because an rlib is compiler-version-private and the arm must be built by
@@ -29,12 +39,33 @@
 # than producing a catalogue with a field missing.
 #
 # Usage:
-#   packages/gg-sandbox-rust/signatures.sh
+#   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox-rust/signatures.sh
+#   scripts/gg-signatures.sh                 # all eleven arms, into one directory
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT="$(cd "$HERE/../.." && pwd)"
-OUT="$ROOT/crates/gg/src/sandbox/guests/rust.signatures.json"
+
+# NO BYTECODE CACHE. `tools/signatures.py` imports its sibling `tools/catalogue.py`, and an ordinary
+# CPython drops a `__pycache__/` beside a module it imports. That directory is gitignored and
+# harmless to a person, but `crates/gg/build.rs` names this package's `tools` subtree as an input
+# whose change should re-reflect the catalogue — so a run that writes into it leaves the next
+# `cargo build` convinced its inputs moved and re-runs all eleven arms. The export lives here rather
+# than only in `scripts/gg-signatures.sh` because running this script BY HAND is the documented way
+# to read a catalogue, and a developer who does that should not pay for it on their next build.
+export PYTHONDONTWRITEBYTECODE=1
+
+if [ -z "${GG_SIGNATURES_OUT_DIR:-}" ]; then
+	echo "error: GG_SIGNATURES_OUT_DIR is not set. It names the directory this catalogue is" >&2
+	echo "       written into, and there is no default — the catalogue is generated by the build" >&2
+	echo "       rather than committed anywhere." >&2
+	echo "       Run scripts/gg-signatures.sh (which sets it and regenerates every arm), or set" >&2
+	echo "       it yourself to a directory you want the JSON in." >&2
+	exit 1
+fi
+# Created, then made absolute: `cargo rustdoc` below runs from this package's own directory, so a
+# relative destination would mean two different places depending on who called this.
+mkdir -p "$GG_SIGNATURES_OUT_DIR"
+OUT="$(cd "$GG_SIGNATURES_OUT_DIR" && pwd)/rust.signatures.json"
 
 # shellcheck source=packages/gg-sandbox-rust/rust-version.sh
 source "$HERE/rust-version.sh"
@@ -46,14 +77,26 @@ EXPECTED_FORMAT_VERSION=57
 
 if ! rustc --print target-libdir --target "$GG_RUST_TARGET" >/dev/null 2>&1; then
 	echo "error: the $GG_RUST_TARGET standard library is not installed." >&2
-	echo "       Run scripts/ci/install-rust-wasm.sh." >&2
+	echo "       Run scripts/ci/install-gg-toolchains.sh." >&2
 	exit 1
 fi
 
-if [ ! -f "$HERE/src/bindings.rs" ]; then
-	echo "==> generating the WIT bindings (they are not committed)"
-	"$HERE/bindings.sh"
-fi
+# UNCONDITIONALLY, not "when the file is missing", and the difference is a real defect rather than a
+# style choice. `src/bindings.rs` is a pure function of `crates/gg/wit` and the pinned `wit-bindgen`,
+# and it is generated rather than committed — so a checkout that has reflected this arm once already
+# has one, from whatever the wire said at the time. Regenerating only when it is absent means that an
+# edit to `crates/gg/wit` re-runs this reflection (build.rs names the wire as an input, correctly)
+# and the reflection then documents the SDK against bindings from the OLD wire. The Swift and C++
+# arms call their own `bindings.sh` on every run for exactly this reason; this arm was the odd one
+# out, and `.dockerignore` already keeps a developer's `src/bindings.rs` out of an image build to
+# stop the same thing happening there. It costs one `wit-bindgen` invocation — a fraction of a second
+# against the rustdoc build below — and the pinned binary is fetched only on a cold `.build/`.
+#
+# Rewriting it on every run is safe for the build's own inputs: `crates/gg/build.rs` enumerates this
+# package's `src` a file at a time precisely so that this one generated file is NOT among the paths
+# whose mtime would re-trigger the next build.
+echo "==> generating the WIT bindings (they are not committed)"
+"$HERE/bindings.sh"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

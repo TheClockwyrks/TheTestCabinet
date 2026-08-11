@@ -78,16 +78,25 @@ use super::{
     PreparedProgram, ProgramLanguage, PromptDialect, VIEW_OPEN_DOCS_VIEW, VIEW_OPEN_FILE, spell,
 };
 
-/// **The surface the fixture's own is reshaped out of** — a registered arm's committed catalogue,
-/// read as a *file* rather than reached for through [`TypeScript`](super::typescript), which keeps
-/// this module from needing anything of another language's module to be public.
+/// **The surface the fixture's own is reshaped out of** — a registered arm's catalogue, embedded
+/// straight from the build's `OUT_DIR` rather than reached for through
+/// [`TypeScript`](super::typescript), which keeps this module from needing anything of another
+/// language's module to be public.
+///
+/// It is the same generated file that arm embeds, and it exists at compile time for the same reason:
+/// `crates/gg/build.rs` reflects every arm's catalogue out of its SDK on the build that compiles
+/// this. So the fixture is cut from a *live* surface, not from a snapshot of one — which is the
+/// point of cutting it from a real arm at all.
 ///
 /// Which arm it is does not matter and is not asserted, with one exception that is about the
 /// reshape rather than about the arm: its functions are free functions, so [`reshape`] has somewhere
 /// to start when it turns two of them into methods. Its `language` field says `typescript` and the
 /// fixture is not TypeScript — the field is the wire enum, the fixture has no value in it, and that
 /// is why catalogue provenance is asserted over *registered* languages only.
-const SOURCE_SIGNATURES: &str = include_str!("../guests/typescript.signatures.json");
+const SOURCE_SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/typescript.signatures.json"
+));
 
 /// The stub that stands where a real language's component would be.
 ///
@@ -471,8 +480,9 @@ fn reshaped_catalogue(edit: impl FnOnce(&mut Value)) -> String {
 ///
 /// # Why it minds what the source arm already did
 ///
-/// It is derived from a *committed* catalogue, so the surface it is cut from changes under it — and
-/// the changes that matter are the ones in the same direction as the reshape. The source arm has
+/// It is derived from a *real arm's* catalogue, reflected out of that arm's SDK on every build, so
+/// the surface it is cut from changes under it — and the changes that matter are the ones in the
+/// same direction as the reshape. The source arm has
 /// since grown exactly the shapes this reshape produces: an `OpenView.close` method and a
 /// `SubagentHandle.send` one, spelled the way the promotions below spell them. Conditioning each
 /// promotion on the entry being the arm's **canonical** binding was not enough on its own, because

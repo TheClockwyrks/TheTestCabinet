@@ -15,8 +15,9 @@
 //!   curated library set, and the builds that commit them;
 //! * `checkers/rust.libraries.tar.gz` and `checkers/rust.toolchain.json` — the compiled library set
 //!   and what built it;
-//! * `guests/rust.signatures.json` — the catalogue, which is the whole of what a model is told about
-//!   this surface.
+//! * the **signature catalogue**, which is the whole of what a model is told about this surface —
+//!   reflected out of the SDK's own rustdoc and generated into this build's `OUT_DIR` rather than
+//!   committed anywhere (see `crates/gg/build.rs`).
 //!
 //! # Why this arm has no component to commit
 //!
@@ -114,9 +115,14 @@ pub(super) mod source;
 #[path = "rust.healing.rs"]
 pub(super) mod healing;
 
-/// The committed catalogue, reflected out of the SDK's own rustdoc by
+/// This arm's catalogue, reflected out of the SDK's own rustdoc by
 /// `packages/gg-sandbox-rust/signatures.sh` — `rustdoc`'s own JSON, read by `tools/signatures.py`.
-const SIGNATURES: &str = include_str!("../guests/rust.signatures.json");
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/rust.signatures.json"));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -125,7 +131,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's committed catalogue when the template
+/// signature they quote is resolved from this language's catalogue when the template
 /// renders.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.rust.hbs"),
@@ -228,20 +234,20 @@ impl ProgramLanguage for Rust {
         None
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem, and each carries the
-    /// language it was generated for; checking it here is what stops a catalogue filed — or
-    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
-    /// sandbox nobody has.
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, and each carries the language it was generated for; checking it here is what stops
+    /// a catalogue written — or embedded — under the wrong stem from reaching a model as a system
+    /// prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::Rust,
-                "`guests/rust.signatures.json` was generated for another program language",
+                "`signatures/rust.signatures.json` was generated for another program language",
             );
             catalogue
         })

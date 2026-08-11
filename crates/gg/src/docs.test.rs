@@ -196,7 +196,7 @@ fn a_lookup_spelled_either_way_resolves_to_one_key() {
 /// it has to infer are exactly the two it cannot: what to put in an argument it has never passed,
 /// and what a field of a returned record means. Both are the SDK's own words — reflected out of the
 /// `@param` written on the argument and the comment written above the member — so this is also the
-/// assertion that the reflection reaches the model rather than stopping at the committed JSON.
+/// assertion that the reflection reaches the model rather than stopping at the emitted JSON.
 #[test]
 fn a_lookup_explains_every_argument_and_every_field() {
     let docs = DocsRuntime::new(

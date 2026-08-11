@@ -14,8 +14,9 @@
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Kotlin's syntax;
 //! * `packages/gg-sandbox-kotlin/src/` — the SDK, and every word of prose a model reads about it;
-//! * `guests/kotlin.signatures.json` — the catalogue reflected out of that SDK's own KDoc by the
-//!   compiler's own front end;
+//! * the **signature catalogue** — reflected out of that SDK's own KDoc by the compiler's own front
+//!   end, and generated into this build's `OUT_DIR` rather than committed anywhere (see
+//!   `crates/gg/build.rs`);
 //! * `checkers/kotlin.sdk.jar` — that SDK compiled, which is what a classpath entry is;
 //! * `checkers/kotlin.compiler.java` — this arm's half of gg's compiler driver;
 //! * `checkers/kotlin.toolchain.json` — the Kotlin release this arm is pinned to.
@@ -85,10 +86,18 @@ pub(super) mod source;
 #[path = "kotlin.healing.rs"]
 pub(super) mod healing;
 
-/// The committed catalogue, reflected out of the SDK's own KDoc by
+/// This arm's catalogue, reflected out of the SDK's own KDoc by
 /// `packages/gg-sandbox-kotlin/signatures.sh` — the compiler's own front end reading the same
 /// `KtFile` the compiler compiles.
-const SIGNATURES: &str = include_str!("../guests/kotlin.signatures.json");
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/kotlin.signatures.json"
+));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -97,7 +106,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's committed catalogue when the template
+/// signature they quote is resolved from this language's catalogue when the template
 /// renders.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.kotlin.hbs"),
@@ -202,20 +211,20 @@ impl ProgramLanguage for Kotlin {
         Some(super::typescript::COMPONENT)
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem, and each carries the
-    /// language it was generated for; checking it here is what stops a catalogue filed — or
-    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
-    /// sandbox nobody has.
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, and each carries the language it was generated for; checking it here is what stops
+    /// a catalogue written — or embedded — under the wrong stem from reaching a model as a system
+    /// prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::Kotlin,
-                "`guests/kotlin.signatures.json` was generated for another program language",
+                "`signatures/kotlin.signatures.json` was generated for another program language",
             );
             catalogue
         })

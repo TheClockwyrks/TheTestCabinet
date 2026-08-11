@@ -273,6 +273,30 @@ test-cases/**/reference/.rendered/
 /target/
 **/*.rs.bk
 
+# gg's eleven program-language signature catalogues, which are BUILD ARTIFACTS.
+# `crates/gg/build.rs` reflects each one out of that arm's own SDK, with that
+# arm's own documentation tool, into the build's `OUT_DIR` — so a catalogue never
+# lands in the source tree on the path that matters, and `/target/` above already
+# covers it.
+#
+# Both rules below are therefore about the paths a PERSON produces, and they are
+# deliberately unlike each other:
+#
+#   * `scripts/gg-signatures.sh` writes into `target/gg-signatures/` by default,
+#     because reading a catalogue is how a reflector bug is found (a dropped
+#     `@return` paragraph, a truncated parameter description, only the first
+#     overload's prose) and a person has to be able to open one. Covered by
+#     `/target/` already; named here so the directory is not mistaken for
+#     something that escaped the rule.
+#   * `crates/gg/src/sandbox/guests/` is where they USED to be committed. Nothing
+#     writes there any more. The rule is defensive: if some old command or an
+#     old branch's script puts one back, it must not be committable, because a
+#     committed catalogue is exactly the artifact that can silently disagree with
+#     the SDK it claims to describe. The directory's `.wasm` guests and their
+#     manifests stay committed and are untouched by this.
+/target/gg-signatures/
+crates/gg/src/sandbox/guests/*.signatures.json
+
 # Ignore the output of test runs. Anchored to the repository root: `tcab` writes
 # runs to ./runs (see `--out-dir`), but an unanchored `runs/` also matches source
 # directories such as apps/site/src/pages/runs/, silently excluding real code.

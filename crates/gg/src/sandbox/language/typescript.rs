@@ -18,7 +18,9 @@
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in this language's syntax;
 //! * `guests/typescript.component.wasm` — the committed `componentize-js` guest;
-//! * `guests/typescript.signatures.json` — the catalogue reflected out of that guest's SDK;
+//! * the **signature catalogue** — every signature the prompt renders and a documentation view
+//!   answers with, reflected out of that guest's SDK by `packages/gg-sandbox/signatures.sh` and
+//!   generated into this build's `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
 //! * `checkers/typescript.*` — the committed `tsc` the check runs, its standard library, and the
 //!   two globals no SDK declaration covers.
 //!
@@ -99,9 +101,17 @@ pub(super) mod healing;
 /// 13.4 MB in every released binary, for an artifact that is the same artifact.
 pub(super) const COMPONENT: &[u8] = include_bytes!("../guests/typescript.component.wasm");
 
-/// The committed catalogue, emitted by the guest package's `signatures` script alongside the
-/// component itself.
-const SIGNATURES: &str = include_str!("../guests/typescript.signatures.json");
+/// This arm's catalogue, reflected out of the same SDK declarations the component is built from by
+/// the guest package's `signatures.sh`.
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/typescript.signatures.json"
+));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -111,7 +121,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is,
 /// and are named for the language they belong to so a second one is a second file rather than a
 /// branch inside this one. Individual function spellings are **not** here, and not in the templates
-/// either: every name and signature they quote is resolved from this language's committed catalogue
+/// either: every name and signature they quote is resolved from this language's catalogue
 /// when the template renders, so there is one copy of each rather than two that have to agree.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.typescript.hbs"),
@@ -209,22 +219,22 @@ impl ProgramLanguage for TypeScript {
         Some(COMPONENT)
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem in `sandbox/guests/`, in
-    /// the same shape, and each carries the language it was generated for. Checking it here is what
-    /// stops a catalogue filed — or regenerated — under the wrong stem from reaching a model as a
-    /// system prompt describing a sandbox nobody has. A committed generated artifact that disagrees
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, in the same shape, and each carries the language it was generated for. Checking it
+    /// here is what stops a catalogue written — or embedded — under the wrong stem from reaching a
+    /// model as a system prompt describing a sandbox nobody has. A generated artifact that disagrees
     /// with the module embedding it is a build mistake, not a runtime condition, so it panics rather
     /// than degrading the prompt into silence.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::TypeScript,
-                "`guests/typescript.signatures.json` was generated for another program language",
+                "`signatures/typescript.signatures.json` was generated for another program language",
             );
             catalogue
         })

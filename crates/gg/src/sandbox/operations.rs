@@ -13,8 +13,8 @@
 //! bare `(object, key)` pairs and stopped there. Everything *about* a call that gg then had to act
 //! on — the tool whose being enabled binds it, the [ending role](EndingRole) whose programs get it,
 //! the fact that the [program library](crate::programs)'s three are bought by a capability — lived
-//! in eleven committed catalogues, one per arm, as the `requires` and `ending` fields a reflector
-//! wrote. Eleven copies of one fact, kept equal by comparing them to each other.
+//! in eleven catalogues, one per arm, as the `requires` and `ending` fields a reflector wrote.
+//! Eleven copies of one fact, kept equal by comparing them to each other.
 //!
 //! Here it is stated once, by gg, as a [`Binding`]. An arm no longer has a field it can be wrong in,
 //! and the [documentation runtime](crate::docs::DocsRuntime::bound) — the single predicate deciding
@@ -30,7 +30,7 @@
 //! [documentation runtime](crate::docs::DocsRuntime::bound) when a search decides what to show, and
 //! the two cannot disagree because there is one implementation of the question.
 //!
-//! # No arm, and no committed catalogue, ever learns a capability id
+//! # No arm, and no reflected catalogue, ever learns a capability id
 //!
 //! [`Binding::Capability`] names a gg capability id (`program-library`, `docview-close`), and that
 //! name appears
@@ -199,7 +199,7 @@ pub struct Operation {
     /// The `(object, key)` pair today's catalogues file this operation under.
     ///
     /// Transitional, and the only field here that is about *spelling*: it exists because an arm's
-    /// committed catalogue still says which API object a function hangs off, and that pair is the
+    /// reflected catalogue still says which API object a function hangs off, and that pair is the
     /// only join gg has to it until each arm writes the operation id on the declaration itself. It
     /// is also what gg [spells](super::language::spell) the operation with when it names the call
     /// back at a model.

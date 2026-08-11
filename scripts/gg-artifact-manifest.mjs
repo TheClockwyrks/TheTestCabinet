@@ -13,8 +13,11 @@
  *
  * That leaves one silent and expensive way for the checkout and the artifact to disagree: a source
  * edited without a rebuild, which leaves every program of that arm evaluated by — or compiled
- * against — the artifact that was committed, while the source in front of a reader, and the
- * catalogue the model is shown, say something else. The checks that do inspect these artifacts
+ * against — the artifact that was committed, while the source in front of a reader says something
+ * else. The catalogue is emphatically on the reader's side of that gap rather than the artifact's:
+ * `crates/gg/build.rs` reflects it out of the SDK on every build, so what a model is *told* moves
+ * the moment the source does, and the hand-built binary is the one thing left that can stay
+ * behind — which sharpens the need for this manifest rather than softening it. The checks that do inspect these artifacts
  * today either compare **tool names** (`bound-tools`, which a change to a guest's scope, refusals or
  * argument handling leaves untouched) or compare the few sources an archive happens to carry
  * verbatim (the C++ headers, the Swift shell), which is most of an arm's SDK on one arm and none of

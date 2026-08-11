@@ -5,13 +5,14 @@ sandbox: the hand-written Ruby SDK a model is given, the libraries a program may
 and the **Opal compiler** gg turns a model's Ruby into JavaScript with.
 
 It is not an npm workspace package and it exports nothing. It is three build scripts, one
-entry module and a directory of Ruby, and everything it produces is committed in the Rust
-crate that embeds it:
+entry module and a directory of Ruby. Three of what it produces are committed in the Rust
+crate that embeds them; the fourth, the catalogue, is reflected by every build of that
+crate and committed nowhere:
 
 | Artifact | Written by | What it is |
 | --- | --- | --- |
 | `crates/gg/src/sandbox/guests/ruby.component.wasm` | `build.sh` | the JavaScript engine with Opal's runtime, this SDK and the curated libraries pre-initialised into it |
-| `crates/gg/src/sandbox/guests/ruby.signatures.json` | `signatures.sh` | the signature catalogue, reflected out of this SDK's own YARD documentation |
+| `ruby.signatures.json`, in the build's `OUT_DIR` | `signatures.sh`, run by `crates/gg/build.rs` | the signature catalogue, reflected out of this SDK's own YARD documentation |
 | `crates/gg/src/sandbox/checkers/ruby.opal.cjs` | `compiler.sh` | Opal — runtime, self-hosted compiler and gg's driver — as one CommonJS bundle |
 | `crates/gg/src/sandbox/checkers/ruby.compiler.json` | `compiler.sh` | which Opal that is, and which Ruby it emulates |
 
@@ -110,13 +111,22 @@ symbol from a typo.
 ## Building
 
 ```sh
-packages/gg-sandbox-ruby/compiler.sh     # the host-side compiler (Node only; CI runs this)
-packages/gg-sandbox-ruby/signatures.sh   # the signature catalogue (Ruby + YARD; CI runs this)
+packages/gg-sandbox-ruby/compiler.sh     # the host-side compiler (Node only; CI re-cuts and diffs this)
 packages/gg-sandbox-ruby/build.sh        # the guest component (needs componentize-js)
+
+GG_SIGNATURES_OUT_DIR=/tmp/sigs \
+  packages/gg-sandbox-ruby/signatures.sh # the catalogue, to READ (Ruby + the pinned YARD)
+scripts/gg-signatures.sh                 # all eleven, into target/gg-signatures/
 ```
 
-`build.sh` is not wired into a build. It is run by hand, deliberately, and its output is
-committed alongside the source change that motivated it. Run it after changing
-`crates/gg/wit/gg-sandbox.wit`, anything under this package's `src/`, or the pins in
-`opal-version.sh` — and run `signatures.sh` alongside it whenever `src/gg/` or
-`src/library.rb` changed, because the catalogue is reflected out of exactly those.
+`build.sh` and `compiler.sh` are not wired into a build. They are run by hand, deliberately,
+and their output is committed alongside the source change that motivated it. Run `build.sh`
+after changing `crates/gg/wit/gg-sandbox.wit`, anything under this package's `src/`, or the
+pins in `opal-version.sh`.
+
+`signatures.sh` is the opposite: `crates/gg/build.rs` runs it on **every** build of
+`test-cabinet-gg`, so an edit under `src/gg/` or to `src/library.rb` reaches the model's
+prompt on the next `cargo build` with nothing to regenerate and nothing to commit. Running
+it by hand is for *reading* what it emitted — YARD's `@return` and `@param` prose arriving
+whole is the kind of thing only the JSON shows — and it takes its destination from
+`GG_SIGNATURES_OUT_DIR` rather than defaulting to one.

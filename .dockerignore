@@ -146,11 +146,65 @@
 # extra file that build needs beyond the console's slice, so re-include it.
 !/scripts/stage-tcab-packages.mjs
 # The driver service image (services.Dockerfile, `--target driver`) bakes in a
-# static-musl `gg` harness, building it in a stage that runs this script (which
-# `cargo build`s test-cabinet-gg for the musl target). It lives outside the
-# allowlisted paths above, so re-include it or the gg-build stage dies with
-# "scripts/build-gg-static.sh: not found".
+# static-musl `gg` harness, building it in a stage that runs
+# scripts/build-gg-static.sh (which `cargo build`s test-cabinet-gg for the musl
+# target). That build reaches much further into this repository than a `cargo build`
+# normally does, and the next three blocks are why.
+#
+# COMPILING gg NOW MEANS REFLECTING ELEVEN SDKs. gg's responses-as-code capability
+# drives a model in one of eleven program languages, and what the model is *told* each
+# language offers — every module, signature, argument, type and type member — is a
+# signature catalogue reflected out of that language's own SDK by that language's own
+# documentation tool. Those catalogues used to be committed under
+# crates/gg/src/sandbox/guests/, which is what let this stage compile gg from crates/
+# alone. They are not committed any more: crates/gg/build.rs runs
+# scripts/gg-signatures.sh on every build, so the catalogue embedded in a gg binary is
+# reflected from the SDK sources of the same checkout and cannot describe a surface the
+# guest does not export. The price is paid right here — the ten guest packages and the
+# scripts that reflect them are build inputs of the driver image now, exactly as
+# crates/ is.
+#
+# So the whole of every guest package rides along. Each is a few hundred kB of sources,
+# tools and pins (the big directories inside them — .build/, .spago/, output/ — are
+# re-excluded at the end of this file), and each is named as a directory rather than as
+# a file list on purpose: a reflection reads an arm's whole `src`/`Sources` tree, and
+# the failure mode of missing one file is not a warning but "no such file" partway
+# through an image build, minutes in.
+!/packages/gg-sandbox
+!/packages/gg-sandbox-python
+!/packages/gg-sandbox-ruby
+!/packages/gg-sandbox-purescript
+!/packages/gg-sandbox-java
+!/packages/gg-sandbox-kotlin
+!/packages/gg-sandbox-rust
+!/packages/gg-sandbox-swift
+!/packages/gg-sandbox-cpp
+!/packages/gg-sandbox-csharp
+# And the scripts that drive all of that, which is a CLOSURE rather than a file: the
+# gg-build stage runs scripts/build-gg-static.sh, whose cargo build runs
+# scripts/gg-signatures.sh, which runs the ten per-arm reflectors; the stage separately
+# runs scripts/ci/install-gg-toolchains.sh, which runs eight per-arm installers and
+# sources scripts/ci/lib.sh beside them. The two entry points are named. The installer
+# family is admitted as a DIRECTORY, because enumerating that half is precisely the trap
+# this file's own history records twice — the Blender helpers and the Java arm's
+# installer — and because it is the half that grows every time an arm is added. (The
+# per-arm installer entries enumerated further up are now redundant with this, and stay:
+# they exist for containers/gg-toolchains/Dockerfile, which COPYs each one BY NAME, and
+# scripts/ci/build-context.sh reads this file path by path to check those named COPYs. A
+# reader deleting one of them should have to think about that first.)
+#
+# What is deliberately NOT admitted is scripts/ as a whole, and the reason is this file's
+# opening paragraph. Seven Dockerfiles built from this context do `COPY . .` — the shared
+# asset-tooling builder that compiles ~20 Rust binaries, the adversarial and performance
+# run images, the web console image and all three service targets — so anything admitted
+# here busts the layer cache of every one of them. The ten guest packages above are worth
+# that: the driver image genuinely compiles their reflections into the binary it bakes.
+# The ~30 unrelated top-level scripts (media backfills, cluster re-ingests, sample-pack
+# tooling, the desktop build helpers) are not, and admitting them would mean editing any
+# one of them recompiled the asset tooling from scratch.
 !/scripts/build-gg-static.sh
+!/scripts/gg-signatures.sh
+!/scripts/ci
 # This image is also the one service Dockerfile that COPYs sibling files from its
 # own deployments/images/ directory (the nginx server block, the config.js
 # envsubst template, and the entrypoint that renders it) — the Rust images embed
@@ -165,3 +219,22 @@
 **/node_modules/
 **/dist/
 **/.astro/
+# The guest packages' own scratch, which the block above would otherwise admit and
+# which dwarfs everything else in this context: measured on a developer machine that
+# has built every arm by hand, the ten packages are ~6 MB of sources and ~420 MB of
+# these — 179 MB of PureScript `.build`, 123 MB of Rust, 75 MB of C#, 54 MB of Swift,
+# 34 MB of `purs` output. Every one of them is regenerated inside the image by the
+# reflection that needs it, so admitting them would cost a `make images` several
+# hundred megabytes of context transfer to ship files the build immediately
+# overwrites.
+**/.build/
+**/.spago/
+**/__pycache__/
+/packages/gg-sandbox-purescript/output/
+# The Rust arm's WIT bindings are GENERATED into its source tree (bindings.sh writes
+# src/bindings.rs, which is gitignored), and its reflector regenerates them only when
+# the file is absent. A copy carried in from a developer's machine would therefore be
+# USED rather than refreshed — so an image could reflect the Rust arm against a wire
+# older than the crates/gg/wit riding beside it in the same context. Keep it out and
+# the stage generates it from that wire, every time.
+/packages/gg-sandbox-rust/src/bindings.rs

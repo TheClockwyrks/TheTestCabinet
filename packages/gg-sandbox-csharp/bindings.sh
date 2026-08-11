@@ -12,9 +12,12 @@
 #
 # WHY IT IS ITS OWN SCRIPT, as `packages/gg-sandbox-cpp/bindings.sh` is. The bindings are a pure
 # function of the WIT directory and the pinned generator, and they are an input to two steps that
-# must not share side effects: `build.sh`, which rewrites a committed artifact, and — when this
-# arm's SDK lands — a signature step run inside `scripts/ci/contract-drift.sh`, whose final act is
-# a `git diff --exit-code`.
+# must not share side effects: `build.sh`, which rewrites a committed artifact, and this arm's
+# signature step, which `crates/gg/build.rs` runs on every build of `test-cabinet-gg`. A signature
+# step that reached the build script would rewrite that committed artifact on every `cargo build`.
+# (This arm's `signatures.sh` in fact needs no bindings at all — Roslyn compiles the SDK against
+# the installed reference assemblies — but the split is kept, because the rule is about which
+# script is allowed side effects rather than about who happens to need what today.)
 #
 # Usage:
 #   packages/gg-sandbox-csharp/bindings.sh          # -> .build/bindings/

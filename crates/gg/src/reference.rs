@@ -7,8 +7,8 @@
 //! This is the same rule the [built-in skills](crate::skills::builtin) obey, for the same reason.
 //! Not a word of the model-facing prose here is authored: the tool entries are the live
 //! [`ToolDefinition`]s a real [`ToolRegistry`] hands the provider, and the function entries are the
-//! committed [signature catalogue](crate::sandbox::catalogue_functions) reflected out of the guest
-//! SDK's own declarations — one language's, [named on the page](GgReference::language) so a reader
+//! [signature catalogue](crate::sandbox::catalogue_functions) this crate's build reflected out of
+//! the guest SDK's own declarations — one language's, [named on the page](GgReference::language) so a reader
 //! knows whose spellings they are looking at. A second copy of a tool's description — however faithful the day it
 //! was written — is a copy that drifts, and documentation that describes a tool gg does not have is
 //! worse than none, because a reader has no way to discover the lie.
@@ -107,9 +107,12 @@ const PLACEHOLDER_PROCESS: (&str, &str, &str) = ("<process>", "<state>", "<next-
 /// The tools and API functions gg offers a model, as the console's Reference section serves them.
 ///
 /// Pure: it reads no file, opens no socket, and needs no configuration — everything it projects is
-/// either compiled in (the tool implementations) or a committed artifact (the signature catalogue).
-/// That is what lets `gg reference` print it from a bare binary, and what lets
-/// `scripts/gen-contract.mjs` commit the result as `crates/backend/src/gg_reference.json`.
+/// compiled in, the tool implementations directly and the signature catalogues through the build
+/// script that reflects them out of each arm's SDK. That is what lets `gg reference` print it from a
+/// bare binary, and what lets `scripts/gen-contract.mjs` commit the result as
+/// `crates/backend/src/gg_reference.json`. It also means the page the console serves is a
+/// projection of the SDK sources the binary was built from, and cannot be a projection of anything
+/// else.
 pub fn reference() -> GgReference {
     GgReference {
         // `core`'s version and gg's are the same number by construction — the two crates are
@@ -557,7 +560,7 @@ fn placeholder_position() -> FsmPosition {
     spec.entry_position()
 }
 
-/// Every responses-as-code function the committed catalogue documents, in catalogue order, each
+/// Every responses-as-code function the arm's catalogue documents, in catalogue order, each
 /// resolved to its family and its referenced type declarations.
 ///
 /// The catalogue is already ungated and complete — it is the whole SDK, not one run's bound subset
@@ -619,8 +622,8 @@ fn signatures(entries: &'static [SignatureEntry]) -> Vec<GgApiSignature> {
 
 /// The declarations of the types one entry's signatures refer to.
 ///
-/// A name the catalogue's own `types` section does not declare is a corrupt committed artifact
-/// rather than a documented type gg happens not to know; it is dropped instead of rendered as an
+/// A name the catalogue's own `types` section does not declare is a reflector that emitted a
+/// broken document rather than a documented type gg happens not to know; it is dropped instead of rendered as an
 /// empty block, and a test asserts nothing is ever dropped.
 fn types(
     language: &'static dyn ProgramLanguage,

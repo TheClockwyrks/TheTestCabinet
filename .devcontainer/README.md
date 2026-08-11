@@ -2,11 +2,45 @@
 
 A VS Code devcontainer for developing The Test Cabinet. It provides the Rust
 toolchain (with `rustfmt`, `clippy`, and the `x86_64-unknown-linux-musl` target
-for the portable `tcab` build), Node.js, the Tauri v2 system libraries for the
-desktop shell, `markdownlint-cli2` for the docs, the Cloudflare `wrangler`
-CLI that `tcab publish` uses to deploy run builds to Cloudflare Pages, and the
-`k3d`, `kubectl`, and `docker` (client-only) tooling the
-[local service stack](#host-docker-access-the-local-service-stack) runs on.
+for the portable `tcab` build), Node.js, Ruby, `uv`, the Tauri v2 system
+libraries for the desktop shell, `markdownlint-cli2` for the docs, the
+Cloudflare `wrangler` CLI that `tcab publish` uses to deploy run builds to
+Cloudflare Pages, and the `k3d`, `kubectl`, and `docker` (client-only) tooling
+the [local service stack](#host-docker-access-the-local-service-stack) runs on.
+
+On top of that, the `postCreateCommand` runs
+[`scripts/ci/install-gg-toolchains.sh`](../scripts/ci/install-gg-toolchains.sh),
+which installs the toolchains of gg's eleven program-language arms: `purs` and
+`esbuild`, a JDK and TeaVM's jars, the Kotlin compiler, the
+`wasm32-unknown-unknown` standard library, the Swift toolchain and its
+WebAssembly SDK, wasi-sdk, .NET with Roslyn, and the pinned YARD. That is
+roughly **1.9 GB installed** and a good deal more downloaded on a first create,
+so expect the first container to take a while.
+
+They are not optional and they are not only for gg's tests. Each arm's
+**signature catalogue** — the whole of what a model is told that arm's sandbox
+offers — is reflected out of that arm's own SDK by that arm's own documentation
+tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc,
+`swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn), and
+`crates/gg/build.rs` does that reflection **as a step of building the crate**
+rather than reading a committed copy. So a container missing them cannot build
+the workspace, cannot lint it, and fails the pre-commit hooks that run both.
+They are installed at `postCreate` rather than baked into the image because the
+repository pins them (each arm's `packages/gg-sandbox-*/<lang>-version.sh`) and
+the repository is only mounted from that point on. The one exception is Ruby
+itself, which is a distribution package and so is installed into the image by
+`system/apt.sh`.
+
+If a first create is interrupted, or you rebuild an image from before those
+toolchains were added, run the installer again by hand — it is idempotent and a
+no-op in about a second when everything is already there — followed by the npm
+install it deliberately leaves alone (see
+[Building inside the container](#building-inside-the-container)):
+
+```sh
+scripts/ci/install-gg-toolchains.sh
+npm ci
+```
 
 ## First-time setup
 
@@ -64,6 +98,13 @@ This works out of the box on a standard setup. Two knobs cover the rest:
   inside the container.
 
 ## Building inside the container
+
+Two of the eleven signature catalogues `crates/gg`'s build script reflects come
+out of the pinned `typescript` in the npm workspaces, so a checkout that has
+never been installed cannot build the Cargo workspace either. The
+`postCreateCommand` runs `npm ci` for that reason, right after the toolchains —
+but if it was interrupted, or you deleted `node_modules` at some point, run it
+again by hand. The build script says so by name if you forget.
 
 ```sh
 cargo build --workspace        # CLI, core, and the Tauri desktop shell

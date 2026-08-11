@@ -110,8 +110,8 @@ mod csharp;
 /// The **cross-arm capability gate**: the assertion that every registered language lets a model do
 /// the same things, under the same conditions, whatever shape its SDK gives them.
 ///
-/// `#[cfg(test)]` because it is a gate rather than a runtime need — it reads committed artifacts and
-/// compiles components, which is a test's budget and not a turn's. Its own module documentation says
+/// `#[cfg(test)]` because it is a gate rather than a runtime need — it reads every arm's catalogue
+/// and compiles components, which is a test's budget and not a turn's. Its own module documentation says
 /// why an A/B study is worthless without it.
 #[cfg(test)]
 #[path = "language/agreement.rs"]
@@ -120,8 +120,8 @@ mod agreement;
 /// The **documentation register gate**: the assertion that the prose an arm's SDK puts in front of a
 /// model is written in the register gg chose — one line of brief, closed code spans, no narrative.
 ///
-/// `#[cfg(test)]` for the reason [`agreement`] is: it reads committed artifacts and answers a
-/// question about them, which is a test's budget rather than a turn's. Its module documentation says
+/// `#[cfg(test)]` for the reason [`agreement`] is: it reads every arm's catalogue and answers a
+/// question about the prose in it, which is a test's budget rather than a turn's. Its module documentation says
 /// why a policy about *text* is one implementation here instead of eleven in eleven reflectors.
 #[cfg(test)]
 #[path = "language/register.rs"]
@@ -411,7 +411,14 @@ pub trait ProgramLanguage: Send + Sync + 'static {
         self.guest_component().is_none()
     }
 
-    /// The committed signature catalogue for this language's SDK, parsed once per process.
+    /// This language's signature catalogue, parsed once per process.
+    ///
+    /// Every implementation answers with a `&'static str` embedded from the build's own `OUT_DIR`:
+    /// `crates/gg/build.rs` reflects all eleven out of their SDKs as a step of compiling this crate,
+    /// so the surface a model is told about is the surface the SDK in this checkout declares, and
+    /// there is no committed copy that could disagree with it. What each arm still asserts here is
+    /// that it got *its own* — eleven reflectors write eleven stems into one directory, and a
+    /// catalogue read under the wrong stem would be a prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue;
 
     /// The dialect [response healing](crate::healing) asks its language-shaped questions of.
@@ -594,7 +601,7 @@ pub struct PromptDialect {
 /// The **object** half is identity rather than spelling — `harness`, `review`, `judge` and `view`
 /// are on the wire, the console groups by them, and no language may rename them. The function half
 /// is a spelling, so it is not written down here at all: [`spell`] resolves it against the
-/// language's own committed catalogue. That is the difference between "a test checks the two agree"
+/// language's own catalogue. That is the difference between "a test checks the two agree"
 /// and "there is only one of them".
 ///
 /// It is used for two things, and the second is why the constants below cover the *whole* surface
@@ -784,13 +791,13 @@ pub const REVIEW_REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "requ
 // The constants above are the *spellings* half of the surface — what gg quotes and what the
 // membrane records under. The half that used to sit here beside them, a bare enumeration of all 47
 // pairs, is now `super::operations::OPERATIONS`: the same surface, with the gate that decides who
-// gets each call written down beside it, where eleven committed catalogues used to each carry their
-// own copy of that fact.
+// gets each call written down beside it, where eleven catalogues used to each carry their own copy
+// of that fact.
 
 /// How `language` spells `call`, qualified exactly as a program writes it —
 /// `review.requestChanges`, or `Gg.Session.RequestChanges` on an arm whose surface is modules.
 ///
-/// **Both halves are the arm's**, resolved together from its own committed catalogue by the call's
+/// **Both halves are the arm's**, resolved together from its own catalogue by the call's
 /// language-independent identity, so a language that renamed a function — or regrouped it — renames
 /// it in gg's sentences too, with nothing to keep in step. Taking the qualifier from
 /// [`SurfaceCall::object`] instead would have gg quoting its own vocabulary at a program that has

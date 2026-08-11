@@ -556,7 +556,7 @@ fn the_named_calls_follow_the_strategy_and_the_mode() {
     assert_eq!(markdown.create, "`create_memory`");
     assert_eq!(markdown.revise, "`edit_memory`");
 
-    // The code-mode spellings come from TypeScript's own committed catalogue rather than from a
+    // The code-mode spellings come from TypeScript's own catalogue rather than from a
     // table here, which is why a second language spells them its own way with nothing to edit.
     let typescript = crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript);
     let code = MemoryStrategy::KeywordSearch.calls(Some(typescript));

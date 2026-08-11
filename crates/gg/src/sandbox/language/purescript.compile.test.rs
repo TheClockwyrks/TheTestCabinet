@@ -459,8 +459,8 @@ fn a_purs_that_did_not_compile_the_tree_is_refused_by_name() {
 /// The catalogue is reflected from `packages/gg-sandbox-purescript/src` by `signatures.sh`, which
 /// stages the **working tree** over a scratch copy of the tarball; a real compile resolves `Gg`
 /// against the **tarball's** `libs/gg-sdk` sources and externs. Nothing held the two together. An SDK
-/// edit committed with a regenerated catalogue and a stale tarball would have told a model about a
-/// surface it was not compiled against, and every other gate would have stayed green: the manifest
+/// edit committed without re-cutting the tarball leaves a freshly reflected catalogue describing a
+/// surface the compile does not offer, and every other gate would have stayed green: the manifest
 /// gate above compares directory *names* and counts module directories, neither of which moves when
 /// a function's body, its lowering, or an added export inside an existing module changes.
 ///

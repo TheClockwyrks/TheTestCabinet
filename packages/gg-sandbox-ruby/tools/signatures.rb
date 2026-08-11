@@ -1,7 +1,7 @@
-# Emit the COMMITTED signature catalogue for the Ruby guest:
+# Emit the signature catalogue for the Ruby guest:
 #
 # packages/gg-sandbox-ruby/src/gg/**  --this script-->
-# crates/gg/src/sandbox/guests/ruby.signatures.json
+# $GG_SIGNATURES_OUT_DIR/ruby.signatures.json
 #   packages/gg-sandbox-ruby/src/library.rb           -->  its `libraries` section
 #
 # gg renders the responses-as-code system prompt and every documentation view from that file, so it
@@ -35,11 +35,14 @@
 #
 # # Usage
 #
-#   packages/gg-sandbox-ruby/signatures.sh
+#   GG_SIGNATURES_OUT_DIR=<dir> packages/gg-sandbox-ruby/signatures.sh
 #
-# which installs the pinned YARD first. `scripts/ci/contract-drift.sh` runs that script and fails on
-# any diff, so an edit to a doc comment without a regeneration is an error rather than a surprise.
+# which installs the pinned YARD first and is what turns the environment variable into the path
+# below. The catalogue is not committed anywhere: `crates/gg/build.rs` generates it on every build of
+# gg that needs it, through `scripts/gg-signatures.sh`, so an edit to a doc comment IS the
+# regeneration — there is no second copy to leave behind.
 
+require "fileutils"
 require "json"
 require "set"
 
@@ -54,14 +57,25 @@ Encoding.default_external = Encoding::UTF_8
 Encoding.default_internal = Encoding::UTF_8
 
 PACKAGE = File.expand_path("..", __dir__)
-ROOT = File.expand_path("../..", PACKAGE)
-OUT = File.join(ROOT, "crates", "gg", "src", "sandbox", "guests", "ruby.signatures.json")
+
+# Where the catalogue is written, taken from the environment and required. `signatures.sh` is what
+# sets it, and it has no default here for the same reason it has none there: the one place that
+# decides where a catalogue lands is `scripts/gg-signatures.sh`, which `crates/gg/build.rs` calls. A
+# default in this file would be a second answer, and the answer it used to give — the crate's own
+# `sandbox/guests/` directory — is the one that stopped being right.
+OUT = File.join(
+  ENV.fetch("GG_SIGNATURES_OUT_DIR") do
+    abort "error: GG_SIGNATURES_OUT_DIR is not set; run packages/gg-sandbox-ruby/signatures.sh " \
+          "or scripts/gg-signatures.sh"
+  end,
+  "ruby.signatures.json"
+)
 
 # The schema this catalogue is written in — the normalized doc model, which `crates/gg/src/sandbox/
 # signatures.rs` dispatches on.
 SCHEMA = 2
 
-# What a reader of the committed artifact regenerates it from.
+# What a reader of the emitted artifact would regenerate it from.
 GENERATED_FROM = "packages/gg-sandbox-ruby/src/gg/ + src/library.rb (YARD)"
 
 # The types every call can name whether or not its own signature does, because every call can fail.
@@ -286,8 +300,11 @@ end
 #
 # **Ordered by where each is written, not by what `Module#constants` hands back.** CRuby's constant
 # table is a hash keyed on symbol ids, so `constants(false)` answers in an order that shifts when
-# unrelated symbols are interned elsewhere in the SDK — which showed up as a hundred and sixty lines
-# of pure reordering in the committed catalogue after an edit that touched no type at all. The line
+# unrelated symbols are interned elsewhere in the SDK — which showed up, back when the catalogue was
+# committed, as a hundred and sixty lines of pure reordering after an edit that touched no type at
+# all. Determinism is still worth having now that nothing diffs this file: a catalogue is read by a
+# person hunting a reflector bug, and two runs that disagree about order for no reason waste that
+# person's afternoon. It is also what makes the same checkout produce the same bytes twice. The line
 # YARD recorded is the order a reader of the source sees, it is what the sentence above claims, and
 # it does not move unless the source does.
 def declared_types(mod)
@@ -688,6 +705,10 @@ catalogue = {
   "types" => types
 }
 
+# The destination is a build directory rather than a checked-out one, so it may not exist yet — and
+# a reflector that ran for twenty seconds and then failed on a missing parent would be a bad way to
+# learn that.
+FileUtils.mkdir_p(File.dirname(OUT))
 File.write(OUT, "#{JSON.pretty_generate(catalogue)}\n")
 counted = libraries.sum { |group| group["modules"].size }
 warn "Wrote #{OUT} (#{functions.size} functions, #{types.size} types, #{counted} libraries)."

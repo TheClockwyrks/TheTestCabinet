@@ -1,5 +1,5 @@
-//! The committed signature catalogue: what the model is *told* it may call, reflected out of what
-//! the guest actually exports.
+//! The signature catalogue: what the model is *told* it may call, reflected out of what the guest
+//! actually exports.
 //!
 //! When a model asks for a function's documentation — `view.openDocsView(fs.readFile)`, serviced by the
 //! [docs carve-out](crate::docs) — gg answers in the run's own program language with every shape the
@@ -9,12 +9,22 @@
 //! positional, a tool whose behaviour changed — and documentation that describes a signature the
 //! sandbox does not have is worse than none, because the model has no way to discover the lie.
 //!
-//! So the catalogue is generated from the guest SDK's own emitted `.d.ts` and its JSDoc, committed
-//! beside the component **by the same build**, and read from here through
-//! [`catalogue_functions`], [`catalogue_objects`] and [`type_declaration`]. The documentation
-//! therefore cannot be more current than the component that implements it, which is the correct
-//! failure direction: a stale catalogue describes a sandbox that once existed, while a hand-written
-//! one describes a sandbox that never did.
+//! So the catalogue is generated from the guest SDK's own declarations and its doc comments — the
+//! emitted `.d.ts` and its JSDoc, for the arm this module was written for — and read from here
+//! through [`catalogue_functions`], [`catalogue_objects`] and [`type_declaration`].
+//!
+//! It is generated **by the build that compiles this crate**, not committed and embedded later.
+//! `crates/gg/build.rs` runs every arm's reflector into the build's `OUT_DIR`, and each arm module
+//! `include_str!`s the result; nothing under `sandbox/guests/` holds a catalogue any more. That
+//! removes the one failure mode the arrangement could not otherwise see. A committed catalogue is a
+//! claim about SDK source that is checked at the moment it is generated and never again, and
+//! nothing about a `.json` file *looks* out of date — so between one regeneration and the next it
+//! can describe a function the guest stopped exporting, and the model has no way to discover the
+//! lie. Generated here, it is the SDK sources of this checkout read on this build, so the
+//! documentation cannot be more current *or* less current than the code it describes. What is left
+//! to go wrong is a reflector bug rather than a staleness window, which is why the checks in this
+//! module and in the agreement and register gates (`language/agreement.rs`, `language/register.rs`)
+//! read the emitted JSON rather than trusting that somebody reviewed it.
 //!
 //! # Every word of it is written on a declaration
 //!
@@ -37,21 +47,22 @@
 //! under two spellings, and the key is what says so.
 //!
 //! What does *not* live here is the data: each registered [language](mod@super::language) owns its
-//! own committed JSON and its own parsed copy, reached through [`ProgramLanguage::catalogue`]. A
+//! own generated JSON and its own parsed copy, reached through [`ProgramLanguage::catalogue`]. A
 //! reader that wants "the catalogue" therefore has to say whose, which is exactly the question a
 //! cross-language study makes unavoidable.
 //!
 //! # Two schemas at once, and why the second reader is still here
 //!
 //! A catalogue declares its [`schema`](SignatureCatalogue::schema), and gg parses both the shape
-//! every arm committed before the conversion ([`V1`](SchemaVersion::V1)) and the one they all
-//! commit now ([`V2`](SchemaVersion::V2)) — see [`SchemaVersion`] for what each carries and why the
-//! second exists.
+//! every arm emitted before the conversion ([`V1`](SchemaVersion::V1)) and the one they all emit
+//! now ([`V2`](SchemaVersion::V2)) — see [`SchemaVersion`] for what each carries and why the second
+//! exists.
 //!
 //! Version dispatch is what made the move possible at all. Eleven arms are reflected by eleven
 //! different documentation tools out of ten source trees, and converting them in one commit would
-//! have meant eleven toolchains, eleven regenerated artifacts and eleven prose rewrites landing
-//! together, with nothing green in between. Dispatch made each arm's conversion **its own commit**:
+//! have meant eleven reflectors rewritten, eleven emitted shapes changed and eleven prose rewrites
+//! landing together, with nothing green in between. Dispatch made each arm's conversion **its own
+//! commit**:
 //! an arm that had not moved kept parsing and rendering exactly as before, and one that had was read
 //! through the same normalized projection ([`catalogue_functions`], [`catalogue_modules`]) as the
 //! rest, so no consumer ever had to ask which schema it was looking at.
@@ -76,12 +87,12 @@ use super::operations::{Binding, operation_by_id};
 #[cfg(test)]
 use crate::tools::ALL_TOOL_NAMES;
 
-/// Which shape a committed catalogue is written in — the discriminator every reader dispatches on,
+/// Which shape a catalogue is written in — the discriminator every reader dispatches on,
 /// and the thing that lets one arm move to the new model without moving the other ten.
 ///
 /// # What each version is
 ///
-/// **[`V1`](Self::V1)** is the shape every arm committed before the conversion: functions filed into five sections
+/// **[`V1`](Self::V1)** is the shape every arm emitted before the conversion: functions filed into five sections
 /// (`session`, `views`, `programs`, `tools`, `helpers`), each entry hanging off an **API
 /// object** (`fs`, `view`) and carrying the gate that binds it (`requires`, `ending`) as a field the
 /// reflector wrote. Documentation is one `doc` paragraph per entry, out of which a one-line summary
@@ -104,8 +115,8 @@ use crate::tools::ALL_TOOL_NAMES;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Deserialize)]
 #[serde(try_from = "u32")]
 pub enum SchemaVersion {
-    /// Sections, API objects, arm-declared gates, one `doc` paragraph. What every arm committed
-    /// before the conversion, and what no registered arm commits now.
+    /// Sections, API objects, arm-declared gates, one `doc` paragraph. What every arm emitted
+    /// before the conversion, and what no registered arm emits now.
     ///
     /// The default, and deliberately: a catalogue written before the field existed carries no
     /// `schema` key, and the only honest reading of its absence is the shape that predates it.
@@ -148,16 +159,24 @@ pub(crate) struct SignatureCatalogue {
     pub schema: SchemaVersion,
     /// The [program language](GgProgramLanguage) whose spellings this catalogue carries.
     ///
-    /// Every language's guest emits one of these, in this shape, under its own stem in
-    /// `crates/gg/src/sandbox/guests/`. The field is what lets the language that embedded a
-    /// catalogue check it got its own: a file committed under the wrong stem would otherwise reach a
-    /// model as a system prompt describing a sandbox nobody has.
+    /// Every language's guest emits one of these, in this shape, under its own stem in the
+    /// directory `crates/gg/build.rs` hands the reflection. The field is what lets the language that
+    /// embedded a catalogue check it got its own: eleven reflectors writing eleven stems into one
+    /// directory is exactly the arrangement in which a file can land under the wrong name, and a
+    /// catalogue read under the wrong stem reaches a model as a system prompt describing a sandbox
+    /// nobody has.
     pub language: GgProgramLanguage,
-    /// Where the catalogue was reflected from, recorded so a reader of the committed JSON knows
-    /// which sources to regenerate it from.
+    /// Where the catalogue was reflected from, recorded so a person reading the emitted JSON knows
+    /// which sources produced it.
+    ///
+    /// That reader is the point of the field. The catalogues are written to a directory
+    /// (`scripts/gg-signatures.sh`) precisely so a human can open one and look for the reflector
+    /// bugs nothing else can see — a dropped `@return` paragraph, a truncated argument description,
+    /// an overload group that kept only the first entry's prose — and the first question such a
+    /// reader has is which tree the file came out of.
     #[allow(
         dead_code,
-        reason = "provenance for a human reading the committed artifact, not something gg renders"
+        reason = "provenance for a human reading the emitted JSON, not something gg renders"
     )]
     pub generated_from: String,
     /// The **libraries** a program of this language may reach for, grouped as the artifact that
@@ -171,7 +190,7 @@ pub(crate) struct SignatureCatalogue {
     /// `componentize-py` had baked a curated subset of it.
     ///
     /// Empty for a language whose programs get their runtime's own standard library and nothing
-    /// else: `#[serde(default)]`, so an arm with nothing to declare commits a catalogue without the
+    /// else: `#[serde(default)]`, so an arm with nothing to declare emits a catalogue without the
     /// key and its templates simply render no such section.
     #[serde(default)]
     pub libraries: Vec<LibraryGroup>,
@@ -869,12 +888,13 @@ pub enum ParameterKind {
 }
 
 impl SignatureCatalogue {
-    /// Parse one language's committed catalogue.
+    /// Parse one language's catalogue.
     ///
     /// Each language caches its own result behind its own `OnceLock` and panics on failure: the file
-    /// is generated, committed, and asserted parseable by that language's own gate, so a parse
-    /// failure is a corrupt committed artifact rather than a runtime condition — and degrading a
-    /// prompt into silence over one would describe a sandbox nobody has.
+    /// was written by that arm's reflector during this binary's own build and is asserted parseable
+    /// by that language's own gate, so a parse failure is a corrupt build artifact rather than a
+    /// runtime condition — and degrading a prompt into silence over one would describe a sandbox
+    /// nobody has.
     pub(crate) fn parse(json: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json)
     }
@@ -937,8 +957,8 @@ pub struct CatalogueFunction {
     /// It is [synthesized here](catalogue_functions) from the **section** the entry arrived in, and
     /// that is the point rather than an implementation detail: a capability id is a fact about gg's
     /// own configuration surface, and an arm that wrote one into its catalogue would be asserting
-    /// something about gg that gg alone can be held to. So no reflector and no committed JSON ever
-    /// learns one. The section an entry sits in is the most an arm has to get right, and the mapping
+    /// something about gg that gg alone can be held to. So no reflector and no emitted catalogue
+    /// ever learns one. The section an entry sits in is the most an arm has to get right, and the mapping
     /// from section to capability lives on this side of the seam, next to the
     /// [operations table](super::operations) that names the same ids.
     ///
@@ -1122,7 +1142,7 @@ impl<'a> Prose<'a> {
     }
 }
 
-/// Every function `language`'s committed catalogue documents — the ending calls, the view calls, the
+/// Every function `language`'s catalogue documents — the ending calls, the view calls, the
 /// program-library calls, the tools, and the one helper — each projected as a
 /// [`CatalogueFunction`].
 ///
@@ -1137,7 +1157,7 @@ impl<'a> Prose<'a> {
 ///
 /// A [`V1`](SchemaVersion::V1) catalogue's five sections and a [`V2`](SchemaVersion::V2) catalogue's
 /// one array arrive here as the same [`CatalogueFunction`], so **no consumer downstream has to know
-/// which schema an arm committed** — which is the whole of what makes converting one arm per commit
+/// which schema an arm emits** — which is the whole of what makes converting one arm per commit
 /// possible. Where the two schemas genuinely disagree, the projection says so in the field rather
 /// than papering over it: a v1 entry carries no [operation](CatalogueFunction::operation), no
 /// [fqn](CatalogueFunction::fqn) and no [return position](CatalogueFunction::returns), and a v2
@@ -1442,7 +1462,7 @@ pub(crate) fn declaration_of(
 /// (spelling, resolution) pair some signature on this arm carries.
 ///
 /// It walks every section rather than only [`functions`](SignatureCatalogue::functions), because the
-/// spelling a model reads is the spelling of whichever schema its arm committed, and the lookup this
+/// spelling a model reads is the spelling of whichever schema its arm emits, and the lookup this
 /// feeds is asked the same question on all eleven.
 fn spellings_of(catalogue: &'static SignatureCatalogue) -> Vec<&'static TypeReference> {
     let mut out: Vec<&'static TypeReference> = Vec::new();
@@ -1516,7 +1536,7 @@ pub(crate) fn modules_of(catalogue: &'static SignatureCatalogue) -> Vec<ModuleVi
     }
 }
 
-/// One module as every consumer reads it, whichever [schema](SchemaVersion) the arm committed — the
+/// One module as every consumer reads it, whichever [schema](SchemaVersion) the arm emits — the
 /// [module](ModuleDoc) half of what [`catalogue_functions`] is for the calls.
 pub struct ModuleView {
     /// gg's cross-arm id for the module, or — on a [`V1`](SchemaVersion::V1) arm — the API object's

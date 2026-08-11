@@ -146,14 +146,14 @@ fn the_generated_documentation_program_is_a_purescript_module() {
     );
 }
 
-/// **The committed catalogue is this language's**, and it carries the whole surface.
+/// **The generated catalogue is this language's**, and it carries the whole surface.
 ///
 /// The provenance assertion is inside [`catalogue`](super::PureScript::catalogue) and panics, so
 /// reaching for it at all is what exercises it: a catalogue filed — or regenerated — under the wrong
 /// stem would take this test down rather than reach a model as a system prompt describing a sandbox
 /// nobody has.
 #[test]
-fn the_committed_catalogue_is_this_languages() {
+fn the_generated_catalogue_is_this_languages() {
     let catalogue = purescript().catalogue();
     assert_eq!(catalogue.language, GgProgramLanguage::PureScript);
     assert!(!catalogue.functions.is_empty());

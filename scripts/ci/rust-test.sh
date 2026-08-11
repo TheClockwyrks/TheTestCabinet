@@ -20,69 +20,29 @@ set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-# gg's PureScript program-language arm compiles a model's program with a real `purs` and
-# bundles it with a real `esbuild`, and its tests drive both. Neither can ride inside gg's
-# binary the way the Ruby arm's compiler does — `purs` is a ~100 MB statically linked
-# Haskell executable with a build per platform — so they are installed, here as in the run
-# image (containers/gg-toolchains/Dockerfile). Pinned in
-# packages/gg-sandbox-purescript/purescript-version.sh; idempotent, so an agent that
-# already has them pays nothing.
-log "install the PureScript toolchain (gg's purescript arm compiles with it)"
-./scripts/ci/install-purescript.sh
+# gg's eleven program-language arms want eleven toolchains on this agent, and — since the signature
+# catalogues stopped being committed — they are a BUILD requirement rather than a test requirement.
+# `crates/gg/build.rs` reflects each arm's catalogue out of that arm's own SDK with that arm's own
+# documentation tool on every build of the crate, so the `cargo build` below does not start without
+# them. They earn their place twice over, because the arms' tests then drive the same compilers on
+# the way through: a model's program is compiled by a real `purs`, a real `javac` and TeaVM, a real
+# Kotlin compiler onto the same TeaVM, a real `rustc` targeting `wasm32-unknown-unknown`, a real
+# `swiftc` against the Swift SDK for WebAssembly, a real `clang++` from wasi-sdk, and a real Roslyn.
+# None of them can ride inside gg's binary the way the Ruby arm's Opal compiler does — each is
+# hundreds of megabytes with a separate build per platform — so every machine that builds gg
+# installs them, this agent exactly as a gg run image does
+# (containers/gg-toolchains/Dockerfile).
+#
+# One script rather than the eight calls that used to be here, so this agent, a developer's
+# devcontainer, the release workflow and the driver image's gg build stage all provision from one
+# pinned list: each arm's pin lives in its own packages/gg-sandbox-*/<lang>-version.sh, and the
+# installers are idempotent, so an agent that already has them pays nothing.
+log "install gg's program-language toolchains (crates/gg does not build without them)"
+./scripts/ci/install-gg-toolchains.sh
+# `purs` and `esbuild` land in $HOME/.local/bin and are found on PATH; everything else installs under
+# a prefix `crates/gg` looks for by name, so this is the only export needed. A child process cannot
+# set its parent's PATH, which is why the line is here rather than in the installer.
 export PATH="$HOME/.local/bin:$PATH"
-
-# gg's Java program-language arm compiles a model's program with a real `javac` and a real TeaVM,
-# and its tests drive both. Neither can ride inside gg's binary — a JDK is ~190 MB with a build per
-# platform, and TeaVM is ~29 MB of jars named on a classpath rather than a binary on PATH — so they
-# are installed, here as in the run image (containers/gg-toolchains/Dockerfile). Pinned in
-# packages/gg-sandbox-java/java-version.sh; idempotent, so an agent that already has them pays
-# nothing. `crates/gg` looks under $HOME for them by name, so nothing has to be exported.
-log "install the Java toolchain (gg's java arm compiles with it)"
-./scripts/ci/install-java.sh
-
-# gg's Kotlin arm compiles with a real Kotlin compiler and hands the bytecode to the same TeaVM,
-# so this installs ~67 MB of compiler jars on top of what the line above put there — and it runs
-# that script itself, which is idempotent. Pinned in packages/gg-sandbox-kotlin/kotlin-version.sh.
-log "install the Kotlin toolchain (gg's kotlin arm compiles with it)"
-./scripts/ci/install-kotlin.sh
-
-# gg's Rust arm compiles a model's program to `wasm32-unknown-unknown` with a real `rustc` — the
-# same one that builds this repository, because an .rlib is a compiler-version-private format and
-# the committed library set must be read by the release that built it. What is not automatic is
-# that target's STANDARD LIBRARY, which is a separate rustup component; this installs it. Not
-# `targets` in rust-toolchain.toml, which would fetch it inside every builder image that
-# cross-compiles nothing — see the script's own header. Idempotent.
-log "install the wasm32 target (gg's rust arm compiles a model's program to it)"
-./scripts/ci/install-rust-wasm.sh
-
-# gg's Swift arm compiles a model's program with a real `swiftc` against the Swift SDK for
-# WebAssembly, and its tests drive the whole thing. It is the heaviest install here — ~835 MB kept
-# out of a 3.3 GB toolchain and a 286 MB SDK, pruned by the script itself, which also vendors the
-# shared libraries the published toolchain expects at Debian sonames, so the same tree works on
-# every image it is copied to.
-# Pinned in packages/gg-sandbox-swift/swift-version.sh; idempotent, so an agent that already has it
-# pays nothing. `crates/gg` looks under $HOME for it by name, so nothing has to be exported.
-log "install the Swift toolchain (gg's swift arm compiles with it)"
-./scripts/ci/install-swift.sh
-
-# gg's C++ arm compiles a model's program with a real `clang++` from wasi-sdk against a real libc++,
-# and its tests drive the whole thing. It is the lightest of the four compiled arms' installs — ~200
-# MB kept out of a ~650 MB tarball, pruned by the script itself, which needs no vendoring because
-# wasi-sdk is built relocatable and self-contained.
-# Pinned in packages/gg-sandbox-cpp/cpp-version.sh; idempotent, so an agent that already has it pays
-# nothing. `crates/gg` looks under $HOME for it by name, so nothing has to be exported.
-log "install wasi-sdk (gg's c++ arm compiles with it)"
-./scripts/ci/install-wasi-sdk.sh
-
-# gg's C# arm compiles a model's program with a real Roslyn, and its tests drive it against the
-# committed Mono IL interpreter. It is the LIGHTEST install here — ~122 MB kept out of a ~770 MB SDK
-# — and the only one that installs no wasm toolchain at all, because nothing about a C# program is
-# compiled to wasm: that half was compiled once by packages/gg-sandbox-csharp/build.sh and
-# committed.
-# Pinned in packages/gg-sandbox-csharp/csharp-version.sh; idempotent, so an agent that already has
-# it pays nothing. `crates/gg` looks under $HOME for it by name, so nothing has to be exported.
-log "install .NET (gg's csharp arm compiles with it)"
-./scripts/ci/install-dotnet.sh
 
 log "cargo build"
 cargo build --locked --workspace --exclude test-cabinet-desktop

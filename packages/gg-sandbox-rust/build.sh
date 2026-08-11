@@ -22,8 +22,11 @@
 # NOTHING IN CI RUNS THIS. It is a developer's command, run deliberately and committed with its
 # output, and `scripts/ci/contract-drift.sh` names this arm's artifacts in its `$declared` exemption
 # for that reason. The bindings step both this script and `signatures.sh` need is `bindings.sh`, so
-# the catalogue can be regenerated — which CI does do, on every run — without re-cutting a library
-# set on the way past.
+# the catalogue can be reflected — which now happens inside every `cargo build` of `test-cabinet-gg`,
+# because `crates/gg/build.rs` runs it — without re-cutting a library set on the way past. That split
+# stopped being a convenience when the catalogue stopped being committed: a reflection that reached
+# this script would re-cut 9.4 MB of rlibs under anybody who typed `cargo build`, into bytes that
+# match nothing but their own machine.
 #
 # Re-run it when: `crates/gg/wit/gg-sandbox.wit` changes, this package's `src/` changes, or
 # `rust-toolchain.toml` bumps the compiler. The third is not optional and not a judgement call —

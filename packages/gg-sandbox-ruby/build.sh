@@ -15,8 +15,12 @@
 # compiler needs only Node and is therefore something CI can run and diff, where this needs
 # `componentize-js` and emits 20 MB.
 #
-# The signature catalogue is the THIRD committed artifact and is emitted by `signatures.sh`, which
-# needs Ruby and YARD rather than either of the above. CI runs that one too.
+# The signature catalogue — what a model is TOLD this arm offers — is emitted by `signatures.sh`,
+# which needs Ruby and YARD rather than either of the above, and it is not committed anywhere:
+# `crates/gg/build.rs` reflects it out of `src/gg/**` on every build of the host and `include_str!`s
+# the result. That is the third thing this package produces and the only one of the three that no
+# hand-run can leave stale, because the build that compiles the code rendering the prompt is the
+# build that reads the SDK the prompt describes.
 #
 # The component is checked in, exactly as the other guests' are, so no build or CI step ever needs
 # `componentize-js`: the Rust host reads it with `include_bytes!`. That is also why this script is

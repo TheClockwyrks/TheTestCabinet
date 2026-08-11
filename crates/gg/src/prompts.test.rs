@@ -368,7 +368,7 @@ fn code_mode_teaches_views_rather_than_logging() {
 }
 
 // The four helpers that resolved one function's name, qualified name and signature out of a
-// language's committed catalogue are **gone with the thing they served**. They existed so a test
+// language's own catalogue are **gone with the thing they served**. They existed so a test
 // could assert that a template quoted the SDK's own declaration rather than a copy of it; no
 // template quotes a declaration any more, and a helper kept for a rule nobody enforces is a helper
 // that will be used to write the rule back. What resolves per language here now is the ending call

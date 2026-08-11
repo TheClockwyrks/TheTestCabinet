@@ -11,7 +11,7 @@
 //!
 //! Two kinds of subject, because the gate has two halves:
 //!
-//! * **A damaged catalogue**, built by reshaping a committed one and then breaking a row of it —
+//! * **A damaged catalogue**, built by reshaping a real arm's and then breaking a row of it —
 //!   that is [`a_language_whose_catalogue`], and it exercises coverage, aliases, takes-input and
 //!   spellings.
 //! * **A damaged operations table**, built by copying [`OPERATIONS`] and editing a row — that is
@@ -124,8 +124,9 @@ fn every_registered_language_binds_exactly_the_tools_gg_offers() {
 ///
 /// Provenance, and the one check that cannot be stated for an unregistered surface: the field is the
 /// wire enum, and a language with no wire id has no value to put in it. It is what stops a catalogue
-/// committed — or regenerated — under the wrong stem from reaching a model as a system prompt
-/// describing a sandbox nobody has.
+/// written — or embedded — under the wrong stem from reaching a model as a system prompt describing
+/// a sandbox nobody has, which is a live possibility rather than a hypothetical: eleven reflectors
+/// write eleven stems into the one directory the build hands them.
 #[test]
 fn every_registered_language_names_itself_in_its_catalogue() {
     for language in registered() {
@@ -199,8 +200,9 @@ fn a_surface_that_offers_the_same_capabilities_in_another_shape_agrees() {
         "and gg says the operation takes input, which is what makes the shape worth exercising"
     );
 
-    // The reshape does not collide with itself. It is cut from a committed catalogue that changes
-    // under it, and the change it is most likely to meet is the source arm growing exactly one of
+    // The reshape does not collide with itself. It is cut from a real arm's catalogue, reflected
+    // afresh on every build and therefore changing under it, and the change it is most likely to
+    // meet is the source arm growing exactly one of
     // the shapes this produces — a member alias on `OpenView`. Asserted here so that such a change
     // fails with a sentence about the reshape rather than four gate failures naming the fixture.
     let mut shapes: Vec<(&str, Option<&str>, &str)> = functions
@@ -562,7 +564,7 @@ fn a_catalogue_that_does_not_cover_gg_s_capabilities_is_caught() {
                 *document = serde_json::from_str(crate::sandbox::signatures::fixture::V1)
                     .expect("the doc model's v1 fixture is valid JSON");
             }),
-            "commits a catalogue in schema 1",
+            "emits a catalogue in schema 1",
         ),
     ];
 

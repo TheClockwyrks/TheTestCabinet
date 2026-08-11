@@ -1314,9 +1314,12 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
     assert_eq!(logs(&outcome), ["NotFound on read_file"]);
 }
 
-/// The catalogue this arm commits, read as a document rather than through the language, because what
+/// The catalogue this arm's build reflects, read as a document rather than through the language, because what
 /// is asserted below is a property of the emitted JSON's *shape*.
-const SIGNATURES: &str = include_str!("../guests/purescript.signatures.json");
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/purescript.signatures.json"
+));
 
 /// **Every optional argument this arm has is a record FIELD**, which is the shape it brought to the
 /// catalogue schema and which nothing had produced at this scale.
@@ -1329,7 +1332,7 @@ const SIGNATURES: &str = include_str!("../guests/purescript.signatures.json");
 #[test]
 fn every_optional_argument_is_a_field_of_a_record() {
     let document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed PureScript catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated PureScript catalogue is valid JSON");
     assert_eq!(
         document["language"],
         json!("purescript"),
@@ -1379,7 +1382,7 @@ fn every_type_and_function_the_catalogue_declares_is_a_name_a_program_can_write(
     // the module a fully-qualified name claims is the module that really declares it — because an
     // import names both.
     let catalogue: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed PureScript catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated PureScript catalogue is valid JSON");
 
     let mut wanted: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut capability_modules: BTreeSet<String> = BTreeSet::new();

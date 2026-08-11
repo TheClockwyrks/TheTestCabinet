@@ -23,15 +23,16 @@ that is the module's own dotted name, and an *open* import does not make such a
 reference resolve. Each module's explicit export list is what decides its public
 surface, which is a compiler-enforced protocol rather than a convention.
 
-It is not an npm workspace member and has no runtime dependents. Its output is two
-**committed artifacts** in the Rust crate, named for the language rather than for
-this package:
+It is not an npm workspace member and has no runtime dependents. Its output is three
+artifacts in the Rust crate, named for the language rather than for this package. Two are
+**committed** and rebuilt by hand; the catalogue is **reflected by every build** of
+`test-cabinet-gg` and committed nowhere:
 
 | Artifact | What it is |
 | --- | --- |
 | [`crates/gg/src/sandbox/checkers/purescript.libraries.tar.gz`](../../crates/gg/src/sandbox/checkers/) | Every package's PureScript sources beside the externs and JavaScript `purs` emitted for them, plus this package's own `src/` under `libs/gg-sdk/`. **~1.3 MB** gzipped, ~15 MB unpacked, `include_bytes!`d by the host and unpacked once per machine. |
 | [`crates/gg/src/sandbox/checkers/purescript.compiler.json`](../../crates/gg/src/sandbox/checkers/) | What that tree was built from — `purs`, `esbuild` and registry versions — and what is in it, package by package. |
-| [`crates/gg/src/sandbox/guests/purescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The **signature catalogue**: every module, function, argument, field and type a model is told about, reflected out of the SDK's own doc comments by [`signatures.sh`](signatures.sh). |
+| `purescript.signatures.json`, in the build's `OUT_DIR` | The **signature catalogue**: every module, function, argument, field and type a model is told about, reflected out of the SDK's own doc comments by [`signatures.sh`](signatures.sh), which `crates/gg/build.rs` runs. |
 
 ## Why the tree is committed, and why the compiler is not
 
@@ -62,32 +63,43 @@ and read by another does not compile at all.
 | `spago.lock` | What that resolved to, package by package, against the pinned registry set. |
 | `src/` | The hand-written, idiomatic SDK. `Gg/<Module>.purs` is one **capability module** each — `Gg.Files`, `Gg.Shell`, `Gg.Board`, … — owning the functions it binds and the types they produce; `Gg/Core.purs` binds no capability and holds the failure types every signature names; `Gg/Internal/` is the bridge, which no model ever sees. |
 | `build.sh` | Vendors the toolchain, resolves the set, stages the sources **and the SDK**, compiles, packs and writes the manifest. |
-| `signatures.sh` | Regenerates the committed catalogue: unpacks the tree, stages the working `src/` over it, compiles with `--codegen docs`, and runs `tools/signatures.mjs`. |
+| `signatures.sh` | Reflects the catalogue: unpacks the tree, stages the working `src/` over it, compiles with `--codegen docs`, and runs `tools/signatures.mjs`. Writes wherever `GG_SIGNATURES_OUT_DIR` says. |
 | `tools/catalogue.mjs` | The one thing the sources cannot say: which thirteen modules the surface is divided into, and in what order a reader meets them. Nothing else — a function's gg operation id is written in its own doc comment, and every word a model reads is a doc comment in `src/`. |
 | `tools/signatures.mjs` | The reflector: `purs`' own `docs.json` plus that module table, emitted as the catalogue. |
 
 ## Rebuilding
 
-Two artifacts, two commands, and they are **both** needed after a change to `src/`:
+One artifact has to be rebuilt by hand after a change to `src/`, and it is the tarball —
+not the catalogue:
 
 ```sh
 packages/gg-sandbox-purescript/build.sh        # the library tree, with the SDK compiled into it
-packages/gg-sandbox-purescript/signatures.sh   # the catalogue, reflected out of the SDK's doc comments
+
+GG_SIGNATURES_OUT_DIR=/tmp/sigs \
+  packages/gg-sandbox-purescript/signatures.sh # the catalogue, to READ
+scripts/gg-signatures.sh                       # all eleven, into target/gg-signatures/
 ```
 
 Run `build.sh` after changing `spago.yaml`, `purescript-version.sh` or `src/**`. It needs
 Node and network access — the pinned `purescript`, `spago` and `esbuild` come from
 npm and Spago fetches the package set's sources from the registry — takes about a
-minute, and emits ~1.2 MB. Commit both artifacts.
+minute, and emits ~1.2 MB. Commit it.
 
-Nothing in CI runs `build.sh`. `signatures.sh` **is** run there — it needs only the
-pinned `purs` and Node, both of which CI installs — so a doc comment edited without a
-regeneration is a diff CI fails on. The tarball is verified by its **declared
-contents** instead: a test in `purescript.compile.rs` unpacks the
-committed tree and compares every package and module against the manifest, so a tree
-rebuilt with a different set and committed without its manifest fails. `spago.yaml`
-and `spago.lock` are committed so that what went in is reviewable even though what
-came out is a binary.
+`signatures.sh` needs only the pinned `purs` and Node, and `crates/gg/build.rs` runs it on
+every build of `test-cabinet-gg` — so a doc comment edit reaches the model's prompt on the
+next `cargo build`, with nothing to regenerate, nothing to commit and nothing to gate.
+Running it by hand is for reading the emitted JSON, which is where a reflector bug shows.
+
+**That leaves one direction this arm can still go wrong in, and it is the reason
+`build.sh` matters.** The catalogue is reflected from the working tree's `src/`; a compile
+resolves `Gg` against the *tarball's* `libs/gg-sdk`. So an SDK edit committed without
+re-cutting the tarball leaves a fresh catalogue describing a surface the compile does not
+offer. `the_shipped_sdk_is_the_sdk_in_the_working_tree` in `purescript.compile.rs` is what
+catches exactly that, file for file. The tarball's *contents* are verified separately, by
+its **declared manifest**: a test unpacks the committed tree and compares every package and
+module against it, so a tree rebuilt with a different set and committed without its
+manifest fails. `spago.yaml` and `spago.lock` are committed so that what went in is
+reviewable even though what came out is a binary.
 
 ## Where the rest of the arm lives
 

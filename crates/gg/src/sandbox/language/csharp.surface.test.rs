@@ -39,15 +39,18 @@ use crate::sandbox::outcome::SandboxOutcome;
 use crate::sandbox::{ProgramScope, SandboxLimits, bounded_store, engine, linker};
 use crate::tools::{ToolFailure, ToolOutcome};
 
-/// The catalogue this arm commits, read as a **document** rather than through
+/// The catalogue this arm's build reflects, read as a **document** rather than through
 /// [`SignatureCatalogue`](crate::sandbox::signatures) — deliberately, because the parsed reading is
 /// a *projection* and a field the parser does not model is one these tests could not notice was
 /// missing.
-const SIGNATURES: &str = include_str!("../guests/csharp.signatures.json");
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/csharp.signatures.json"
+));
 
-/// The committed catalogue, parsed as JSON.
+/// This arm's generated catalogue, parsed as JSON.
 fn catalogue() -> Value {
-    serde_json::from_str(SIGNATURES).expect("the committed catalogue is JSON")
+    serde_json::from_str(SIGNATURES).expect("the generated catalogue is JSON")
 }
 
 /// Every entry of one of the catalogue's function-carrying sections.
@@ -955,7 +958,7 @@ fn the_artifact_binds_exactly_the_tools_gg_offers() {
 }
 
 #[test]
-fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
+fn the_generated_catalogue_describes_the_surface_the_sdk_offers() {
     let catalogue = catalogue();
     assert_eq!(
         text(&catalogue, "language"),

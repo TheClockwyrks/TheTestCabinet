@@ -551,9 +551,10 @@ the developer/CI install script both read, because externs are a compiler-versio
 a tree built by one `purs` and read by another does not compile at all.
 
 "One artifact" is a gate rather than a slogan. The catalogue is reflected from the working tree's
-`packages/gg-sandbox-purescript/src`, and a compile resolves `Gg` against the **tarball's**
-`libs/gg-sdk` — so an SDK edit committed with a regenerated catalogue and a stale tarball would
-tell a model about a surface it is not compiled against, and the manifest gate would not notice,
+`packages/gg-sandbox-purescript/src` on every build, and a compile resolves `Gg` against the
+**tarball's** `libs/gg-sdk` — so an SDK edit committed without re-cutting the tarball would leave a
+fresh catalogue describing a surface the program is not compiled against, and the manifest gate
+would not notice,
 because it compares directory names and counts modules. `the_shipped_sdk_is_the_sdk_in_the_working_tree`
 unpacks the tarball and compares the two SDK trees file for file — the `.js` foreign modules
 included, since that is where a call's lowering lives — and names the file that drifted.
@@ -748,7 +749,7 @@ capability buys — the call's own key stands in.
 ### The catalogue, and the two things PureScript does not have
 
 `purs compile --codegen docs` emits a `docs.json` per module carrying every exported declaration's
-doc comment and its full type, so a signature in the committed catalogue is the compiler's own
+doc comment and its full type, so a signature in this arm's catalogue is the compiler's own
 reading of the SDK. Two things it cannot carry, and one convention that replaces both:
 
 | What is missing | What is done instead |
@@ -1177,11 +1178,15 @@ The **SDK** goes inside gg's binary too, as a committed jar, and that is the sam
 [PureScript's library set](#the-toolchain-and-the-library-set-travel-in-opposite-directions) is on
 and for the same reason: the image is built separately from the binary that runs in it, so an SDK
 living beside TeaVM could be a different vintage from the gg whose catalogue describes it — which
-would mean a model shown one surface in its prompt and compiled against another. Committed, the SDK
-and the catalogue reflected from it move in one diff, and unlike PureScript's tarball it is cheap
-enough to rebuild that `scripts/ci/contract-drift.sh` re-cuts and diffs it rather than verifying it
-by a manifest: 52 classes, a fixed entry timestamp and a sorted entry list, so two builds of
-identical sources are identical bytes. gg places it beside the driver in a shared directory whose
+would mean a model shown one surface in its prompt and compiled against another. Committed, the jar
+travels with the gg that describes it. What keeps the jar itself honest is that it is the one half
+of the pair a person can commit stale: the catalogue is reflected out of
+`packages/gg-sandbox-java/src` on every build, so it is always this checkout's, and a jar built
+before the last SDK edit would compile a model's program against a surface its prompt no longer
+matches. Unlike PureScript's tarball it is cheap enough to rebuild that
+`scripts/ci/contract-drift.sh` re-cuts and diffs it rather than verifying it by a manifest: 52
+classes, a fixed entry timestamp and a sorted entry list, so two builds of identical sources are
+identical bytes. gg places it beside the driver in a shared directory whose
 key folds in a digest of both, so a gg carrying a different SDK never reads another build's jar.
 
 On a developer's or CI machine the same script installs under `~/.local/share/gg-java`, which
@@ -2548,27 +2553,47 @@ and read, and it is the whole of what the model sees.
 ## What a language supplies
 
 A registered language is one implementation of gg's `ProgramLanguage` trait
-(`crates/gg/src/sandbox/language.rs`) plus a pair of committed artifacts. The trait is
+(`crates/gg/src/sandbox/language.rs`) plus two artifacts that live outside it: a guest
+component, which is committed, and a signature catalogue, which the build reflects. The trait is
 object-safe and the registry is an exhaustive `match` **derived from the core enum**, so a
 language added to the enum does not compile until it is registered, and once it is, it is
 instantly in every gate that iterates languages.
 
 | What it supplies | Why it belongs to the language |
 | --- | --- |
-| An **id** and a **display name** | The id is the config value, the telemetry value and the stem of its committed artifacts; the display name is what the model reads in its prompt and its diagnostics. |
+| An **id** and a **display name** | The id is the config value, the telemetry value and the stem both of its artifacts are filed under; the display name is what the model reads in its prompt and its diagnostics. |
 | **Preparing a program** | Turning a model's reply into source its guest can evaluate, given the [code modules](#a-module-a-program-has-to-be-linked-against) already in that agent's scope. TypeScript's is the `oxc` type-strip, the early-error check, the refusals for module syntax and top-level `await`, the stack sizing an unguarded recursive-descent parser forces on untrusted text, and then a `tsc` pass over the unstripped source. A language that runs a compiler here must also say **which of two failures** it hit — see [below](#a-compiler-has-two-ways-to-fail). |
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something that yields a namespace, bound at `lib.<key>` — for an interpreted arm, source its guest evaluates; for a [compiled](#a-module-a-program-has-to-be-linked-against) one, source the *next program's* compile is built against. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary — or **nothing at all**, for an arm whose prepare step [compiles the component itself](#an-arm-whose-artifact-is-the-program). |
-| Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reaches by searching and reads through `view.openDocsView()`. See [the catalogue](#the-catalogue). |
+| Its **signature catalogue** | The JSON reflected out of its own SDK by its own documentation tool — every object, signature, argument, type and type member the model reaches by searching and reads through `view.openDocsView()`. Generated by the build rather than checked in. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and nothing else. Not one function name: every call a template quotes is resolved from that language's catalogue when the template renders — see [nothing quotes a call by hand](#nothing-quotes-a-call-by-hand). |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
 
-Its two committed artifacts follow one convention:
-`crates/gg/src/sandbox/guests/<language-id>.component.wasm` and
-`<language-id>.signatures.json`. Both are checked in and embedded, which is what means no
-build or CI step ever needs a componentizing toolchain. A catalogue is always the
+Its two artifacts follow one convention — the language id is the stem of both — and they are
+kept in **opposite** ways, for reasons that are worth stating rather than inferring.
+
+The **component** is committed, at `crates/gg/src/sandbox/guests/<language-id>.component.wasm`,
+which is what means no build or CI step ever needs a componentizing toolchain: baking one wants
+`componentize-js` or `componentize-py`, takes minutes, and in Python's case is not even
+byte-reproducible, so a build that re-cut it would be slower and would still not prove anything.
+A component is a whole language runtime and it changes when someone deliberately rebuilds it.
+
+The **catalogue** is not committed. `crates/gg/build.rs` reflects all eleven out of their SDKs
+as a step of building the crate, into the build's own `OUT_DIR`, and each arm module
+`include_str!`s the one with its stem. That is a fidelity argument, not a convenience one: a
+committed catalogue is a claim about source that is true when it is generated and never checked
+again, and nothing about a stale `.json` file *looks* stale — what it costs is a model told about
+a function the guest does not export, or told nothing about one it does. Generated, the catalogue
+is reflected out of the SDK sources of the same checkout on the same build that compiles the host
+embedding it, so the prompt cannot describe a surface the guest does not have. There is no drift
+left to gate, which is why nothing gates it. What it costs is that building gg wants every arm's
+documentation tool present — see [reading a catalogue](#reading-a-catalogue), and note that this
+repository is developed in a devcontainer precisely so that a required toolchain is an installed
+one.
+
+A catalogue is always the
 language's own — it carries the id it was generated for and the host asserts it — while a
 **component** may be shared with another language whose programs it evaluates identically:
 [JavaScript](#javascript-the-same-arm-unchecked) has no `.wasm` of its own and serves
@@ -2590,7 +2615,7 @@ there is nothing to check in and nothing a per-process cache could hold.
 The seam carries both shapes, and the difference is two fields:
 
 - a language answers **nothing** for its guest component, which is a real answer rather
-  than an omission — the seam's "every registered language carries its committed artifacts"
+  than an omission — the seam's "every registered language carries its committed component"
   gate requires such a language to say so, so "the artifact went missing" and "this arm has
   no artifact" stay different failures;
 - and its prepare step hands back the **bytes it compiled**, on the prepared program,
@@ -2840,7 +2865,7 @@ another arm — and every one of them is a difference the design leaves each lan
   Rust naming is most consistent about not doing, so this arm spells it `shell::run`.
 
 Its catalogue is reflected from **rustdoc's own JSON** (`packages/gg-sandbox-rust/signatures.sh`,
-regenerated by the [drift gate](#the-catalogue)), which carries the doc comment on every function,
+run by [the build](#the-catalogue)), which carries the doc comment on every function,
 struct field and enum variant *and* the types, already resolved — so a signature is the compiler's
 reading of the declaration rather than a string anybody typed. Two things about that are worth
 stating, because both are decisions:
@@ -2883,16 +2908,19 @@ reaches an artifact the program did not use it in, because the link dead-strips.
 Two things about **how that set is built** are decisions rather than mechanics, and both were paid
 for by a defect.
 
-- **Nothing in CI re-cuts it.** `scripts/ci/contract-drift.sh` regenerates every language's
-  catalogue on every run and then diffs both committed directories, so a step that writes into
-  `crates/gg/src/sandbox/checkers/` on the way past fails the gate on bytes nobody edited. This
-  arm's catalogue needs the generated WIT bindings, which are not committed — so the bindings are
-  their own script, `packages/gg-sandbox-rust/bindings.sh`, called by `signatures.sh` and by
-  `build.sh` alike. Before that split, a fresh checkout with no `src/bindings.rs` sent the signature
-  step through `build.sh`, which re-cut the library set, and the gate could not pass anywhere but on
-  the machine the committed tarball was built on. The rule is now asserted rather than remembered:
-  the drift gate checks that the checkers directory is untouched *after* the signature steps and
-  before the re-cut ones, and says which kind of failure it is.
+- **Nothing but a deliberate rebuild re-cuts it.** A signature step runs on every build of gg —
+  that is what [the catalogue](#the-catalogue) being generated means — so a signature step that
+  reached `build.sh` for something it needed would re-cut this committed library set every time
+  anybody typed `cargo build`, silently rewriting an artifact under the working tree of a developer
+  who was compiling, not rebuilding. This arm's catalogue needs the generated WIT bindings, which
+  are not committed — so the bindings are their own script,
+  `packages/gg-sandbox-rust/bindings.sh`, called by `signatures.sh` and by `build.sh` alike, and
+  that split is what keeps the two apart. It was paid for: before it, a fresh checkout with no
+  `src/bindings.rs` sent the signature step through `build.sh`, which re-cut the library set, and
+  the result could not be reproduced anywhere but on the machine the committed tarball was built
+  on. The same discipline is why `crates/gg/build.rs` names each package's `src` and `tools`
+  subtrees as its rerun inputs and never a directory a reflection writes into: a build step that
+  dirties its own inputs invalidates the next build forever.
 - **The same inputs produce the same archive on any machine.** An `.rlib` records the absolute
   paths of the sources it was compiled from and the directory `rustc` ran in, so before this the
   set was a function of where the checkout happened to live — measured, `libgg.rlib` came out
@@ -2978,7 +3006,7 @@ Every difference below is a spelling rather than an identity, and the
   the name that says where the line goes, and `views.openText` is what reaches the model.
 
 Its catalogue is reflected from a **DocC symbol graph** (`swiftc -emit-symbol-graph`, driven by
-`packages/gg-sandbox-swift/signatures.sh` and regenerated by the [drift gate](#the-catalogue)),
+`packages/gg-sandbox-swift/signatures.sh` and run by [the build](#the-catalogue)),
 which is the machinery DocC itself is built on. It carries every doc comment verbatim, every
 parameter's label and internal name, and every type the compiler resolved — with a mangled
 identifier saying which module each came from, which is how the reflector tells a `TextEdit` from a
@@ -3455,7 +3483,7 @@ convention is the language's) written on that argument, and a type member's from
 above the member. A description kept anywhere else is a description that drifts, and nothing
 would catch it.
 
-Every arm commits **schema 2**. Three lines of it are provenance — the `schema` it is written
+Every arm emits **schema 2**. Three lines of it are provenance — the `schema` it is written
 in, the `language` it was generated for, and the `generatedFrom` naming what it was reflected
 out of — and the rest is four sections:
 
@@ -3508,6 +3536,45 @@ inline at the call site — the same again for each of its fields. An argument t
 carries no fields: that type is catalogued in its own right and its members carry its
 documentation, so filling both would be two copies of one sentence with nothing keeping
 them equal.
+
+#### Reading a catalogue
+
+No catalogue is committed. `crates/gg/build.rs` reflects all eleven as a step of building the
+crate — it runs `scripts/gg-signatures.sh` with `GG_SIGNATURES_OUT_DIR` pointed at the build's own
+`$OUT_DIR/signatures`, and each arm module `include_str!`s the file with its stem out of there. So
+what a model is told about an arm is reflected out of the SDK sources of the checkout that compiled
+the host telling it, and a prompt describing a surface the guest does not export is not a state a
+build can be in. `crates/gg/src/sandbox/guests/*.signatures.json` — where they used to be committed
+— is gitignored, so a stray one cannot be added back by accident.
+
+That still leaves a reason to *read* one, and it is the reason the files are written to disk at all
+rather than piped through a build. A reflector is a program, reflectors have bugs, and every bug
+found in these has been of a shape that is invisible in the SDK and obvious in the emitted JSON: a
+`@return` paragraph dropped on the floor, a parameter description truncated at the first newline,
+only the first overload's prose surviving a group. Nothing about the Rust that embeds the file can
+tell you the third overload lost its documentation. Opening the file can.
+
+So the same script the build runs is the one a person runs by hand:
+
+```bash
+scripts/gg-signatures.sh                # -> target/gg-signatures/<language>.signatures.json
+scripts/gg-signatures.sh /tmp/sigs      # -> anywhere else you like
+```
+
+It regenerates all eleven, prints each arm as it starts it — the compiled ones take tens of seconds
+each — and finishes with a byte count per catalogue, which is itself the cheapest reflector-bug
+detector there is: an arm that suddenly emits half of what it emitted last week lost something.
+`scripts/gg-signatures.sh` is also the **only** list of the arms in the repository, which is why the
+build calls it rather than repeating it; a twelfth arm is one line there and no line anywhere else.
+
+What it needs is every arm's documentation tool — `tsc` from a repo-root `npm ci`, uv for griffe,
+Ruby for YARD, `purs`, a JDK, the Kotlin compiler, the `wasm32-unknown-unknown` standard library,
+the Swift toolchain, wasi-sdk and .NET. That is the trade this arrangement makes, and it is made
+deliberately: this repository is developed in a devcontainer so that every developer has one
+environment, which means a toolchain that is required is a toolchain that is installed.
+`scripts/ci/install-gg-toolchains.sh` installs the lot, is idempotent, and is run by the
+devcontainer and by every CI surface that builds or lints gg. See
+[building](/development/building/#gg-and-its-eleven-toolchains).
 
 ### Nothing quotes a call by hand
 
@@ -3566,7 +3633,7 @@ example that does not build costs a model a runtime error it can read and work a
 compiled arm the program is refused before it runs, and the diagnostic that comes back is about
 gg's own prose, so the whole turn is spent on it. So on the Rust arm every Rust example a model is
 shown — each ` ```rust ` block in the prompt and the "nothing shown" notice, each inline span that
-reads as a call, and each fenced block in the committed catalogue, which came off a `///` comment
+reads as a call, and each fenced block in the arm's own catalogue, which came off a `///` comment
 on the SDK — is gathered into one program and put through the arm's production prepare step: the
 same `rustc`, the same wrapper and the same library set a model's own reply gets. It was written
 because exactly that defect shipped: the prompt taught `files::list()?` back when a directory call
@@ -3824,7 +3891,7 @@ every gate that iterates the registered set demands two templates and a healing 
 moment the enum has a variant.
 
 The surface was not taken on trust in the meantime, which is the part worth copying. The
-[capability gate](#the-capability-gate) was run against the committed Python catalogue a step
+[capability gate](#the-capability-gate) was run against the reflected Python catalogue a step
 *before* it was registered, wearing the [fixture language](#the-capability-gate) so it could be
 handed a catalogue whose id the wire enum did not carry yet; and every one of the thirty-five
 tools was driven through the real membrane from its Python spelling, against the same expected
@@ -4000,7 +4067,9 @@ model reaches by accident rather than by writing a sleep.
    same thing as the capability model: the objects follow the run, so a withheld tool is not an
    attribute and an object with nothing enabled is not a name, while the **host** is what
    refuses a call a program made by importing the package directly.
-4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in
+4. **Emit a catalogue** as `python.signatures.json` in whatever directory
+   `GG_SIGNATURES_OUT_DIR` names — that variable is the whole of the output contract, it is
+   required, and a reflector with it unset must fail saying so rather than guessing a path. In
    [the same shape](#the-catalogue), with `language: "python"` and the same `key`s: the
    `objects` section in presentation order, one entry per function with its `signatures` and
    each signature's arguments, every type with its own description and its members', and — if
@@ -4018,7 +4087,8 @@ model reaches by accident rather than by writing a sleep.
    and documents none fails, as does an entry documenting no argument where gg says the
    operation takes one. The reflector refuses to emit either, so the failure lands on the author
    rather than on a model.
-5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`. If the language
+5. **Commit the component** under `crates/gg/src/sandbox/guests/`, and commit no catalogue: the
+   catalogue is the build's, and step 9 is where the build learns to make it. If the language
    type-checks the model's program, its compiler has to reach the run container, and there
    are two places for it. A compiler small enough to *be* an artifact goes under
    `crates/gg/src/sandbox/checkers/`, pinned at one release, and rides inside gg's own
@@ -4062,20 +4132,29 @@ model reaches by accident rather than by writing a sleep.
    *other* language with it, because `containers/build.sh` builds this one builder before all of
    them. `scripts/ci/build-context.sh` is the gate that catches it, and the only one that can —
    the Rust suite, the drift gate and the lints all pass on a tree whose images cannot be built.
-9. **Add a line to `scripts/ci/contract-drift.sh`** regenerating the new guest's catalogue —
-   and re-cutting its checker, if it has one — so the drift gate covers them rather than only
-   diffing them. The script lists the stems it knows how to regenerate and **fails on one it
-   does not**, so a catalogue whose guest is never re-run is an error rather than a silent
-   pass. What it must not regenerate is a component: Python's is not byte-reproducible, so a
-   rebuild would fail the diff every time. A **signature step may write its catalogue and
-   nothing else** — the gate asserts that the checkers directory is untouched after them — so
-   whatever a catalogue needs that a build script happens to also produce gets its own script,
-   as [Rust](#what-rusts-sdk-looks-like)'s WIT bindings did. Python's step also installs `uv`
-   (`scripts/ci/install-uv.sh`), which is how all three machines that run this — a
-   devcontainer with no usable `pip`, an Azure agent and a GitHub runner — reach the same
-   pinned `griffe`. [Ruby](#ruby-compiled-to-javascript-before-it-crosses)'s needs no installer
-   of its own: all three ship a Ruby, and its `signatures.sh` puts the pinned `yard` in that
-   one with a `gem install --user-install`.
+9. **Add a line to `scripts/gg-signatures.sh`**, which is the only list of the arms in the
+   repository: it is what `crates/gg/build.rs` runs to produce the eleven catalogues and what a
+   person runs to [read one](#reading-a-catalogue), so the roster exists once rather than in a
+   build and a gate that have to agree. The script checks afterwards that every stem it promised
+   produced a non-empty file, so an arm that exits 0 having written nothing — or having written
+   under the wrong stem — fails there, named, rather than several layers away as an
+   `include_str!` of a file that is not there. Then add the arm's inputs to `build.rs`'s rerun
+   set: its `src`/`Sources` and `tools` subtrees, its `signatures.sh`, its library set and its
+   `<lang>-version.sh` pin, and **nothing a reflection writes into** — a `.build/`, a `dist/` or
+   a generated-bindings directory in that set makes every build invalidate the next one. Two
+   rules the reflector itself has to obey: it takes its destination from
+   `GG_SIGNATURES_OUT_DIR` and fails when that is unset, and it **writes its catalogue and
+   nothing else**, so whatever it needs that a build script happens to also produce gets its own
+   script, as [Rust](#what-rusts-sdk-looks-like)'s WIT bindings did — a signature step runs on
+   every `cargo build`, and one that re-cut a committed library set on the way past would rewrite
+   the working tree of everyone who merely compiled. Finally, if the arm's documentation tool is
+   not already installed, add it to `scripts/ci/install-gg-toolchains.sh`: that is the one
+   idempotent installer the devcontainer and every CI surface that builds gg run, and a toolchain
+   this repository requires is a toolchain this repository installs. If the new arm's checker is
+   a committed artifact, that half still belongs in `scripts/ci/contract-drift.sh`, which
+   re-cuts and diffs `crates/gg/src/sandbox/checkers/`; what must never go in there is a
+   component, since Python's is not byte-reproducible and a rebuild would fail the diff every
+   time.
 10. **Add the console's row**: a label in `PROGRAM_LANGUAGE_LABELS`
    (`packages/ui/src/app/pages/runs/gg/ggCatalog.ts`), which is what the capability editor's
    picker is built from, and a name in `PROGRAM_LANGUAGE_NAMES` on the Reference page. Both are

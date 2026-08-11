@@ -31,12 +31,13 @@ and can be run from anywhere, including locally:
 | -------------------- | --------------------------------------------------- | -------- |
 | `rust-lint.sh`       | `cargo fmt --check`, `cargo clippy -D warnings`, `cargo doc --document-private-items` | no |
 | `install-nextest.sh` | Install cargo-nextest pinned to `NEXTEST_VERSION`   | —        |
+| `install-gg-toolchains.sh` | Install every toolchain `crates/gg` needs to build | — |
 | `rust-test.sh`       | `cargo build` + `cargo nextest run` + doctests (headless crates) | yes |
 | `binary-smoke.sh`    | release-build, `cargo nextest run --release` + doctests, run binary | yes |
 | `smoke-binary.sh`  | run a built binary (`--version`/`--help`/commands) | yes      |
 | `web-build.sh`     | `npm ci`, type-check + `vite build` of the front ends | yes   |
 | `specs-lint.sh`    | markdownlint + cspell over `test-cases/**`         | no       |
-| `contract-drift.sh`| regenerate TS bindings, JSON Schemas + gg's sandbox signature catalogue, fail on diff | yes |
+| `contract-drift.sh`| regenerate TS bindings, JSON Schemas, gg's reference + gg's program checkers, fail on diff | yes |
 | `frozen-check.sh`  | `.frozen` test-case versions match their recorded digests | yes |
 | `build-context.sh` | every Dockerfile `COPY` source survives the `.dockerignore` allowlist | yes |
 
@@ -64,6 +65,24 @@ do not, so every job that runs tests installs it first — pinned to
 `NEXTEST_VERSION` so CI matches the devcontainer. It is cross-platform (Linux,
 Windows, macOS) because `binary-smoke.sh` runs on all three. nextest does not
 execute doctests, so the test scripts additionally run `cargo test --doc`.
+
+`install-gg-toolchains.sh` is the other provisioning helper, and it is a
+prerequisite rather than a convenience. gg drives a model in one of eleven
+program languages, and what a model is *told* each one's sandbox offers is a
+**signature catalogue** reflected out of that arm's own SDK by that arm's own
+documentation tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end,
+rustdoc, `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn).
+`crates/gg/build.rs` does that reflection **as a step of building the crate** —
+nothing is committed — so a machine without those toolchains cannot compile
+`test-cabinet-gg`, which means it cannot run `rust-test.sh`, `rust-lint.sh`, or
+anything else scoped `--workspace`. This script composes the per-arm installers
+into one pinned list that every such surface calls: the devcontainer's
+`postCreateCommand`, the CI scripts here, the release workflow's `gg` job, and
+the driver image's gg build stage. It is idempotent (a second call is a no-op in
+about a second) and costs ~1.9 GB installed. The two prerequisites it will not
+install itself are the Ruby interpreter (a distribution package, and so part of
+the machine) and the npm workspaces (`npm ci`, which two of the eleven arms
+reflect through the pinned `typescript`); it checks for both and says so.
 
 `binary-smoke.sh` is the release gate that keeps a flat-out-broken binary from
 ever being published: it builds `tcab` in the shipped release profile, runs the

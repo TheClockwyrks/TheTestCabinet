@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Reflect the **C++** program language's signature catalogue out of the SDK's own documentation,
-and write it to ``crates/gg/src/sandbox/guests/cpp.signatures.json``.
+and write it to the ``cpp.signatures.json`` the caller names.
+
+WHERE IT GOES. The destination is an argument, given by ``signatures.sh`` out of
+``GG_SIGNATURES_OUT_DIR``, and nothing here has a default: the catalogue is a build artifact that
+``crates/gg/build.rs`` generates into the build's own ``OUT_DIR``, and it is committed nowhere.
 
 WHAT READS THE DOCUMENTATION. ``clang++``'s own **comment AST**, dumped as JSON. clang has a real
 documentation parser built into it — the one ``-Wdocumentation`` diagnoses against and the one

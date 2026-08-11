@@ -34,7 +34,7 @@
     "packages/gg-sandbox-python/src/gg/views.py": "be3c561d75269201c396f71e9491c9b5cc6d266851c47c686f5a682dd0091a88",
     "packages/gg-sandbox-python/src/library.py": "09e757f5fa1aa7cfc3df426a63c531b641497be69bb4a5700b2d31e7875f6eb3",
     "packages/gg-sandbox-python/src/shim.py": "f3b46668512c76c067d92b88e5c06b14a5e4f00329b25aa1d829dd4e7801f2a7",
-    "packages/gg-sandbox-python/build.sh": "11e157536e677f3cca8b07656e32c1342fcb2348442c69ccd121923232cdd4b4",
+    "packages/gg-sandbox-python/build.sh": "ccb610d2e6732bfd511fb842b3d225598ae8c3809d0f6c59715196c0e3d5afbf",
     "packages/gg-sandbox-python/requirements.txt": "8215bcca778b15ad4b5a101e6237ea0c8860b03426bb67c534a0549164d6c6f3"
   }
 }

@@ -11,8 +11,9 @@
 # PureScript's library tarball and the Java arm's SDK are: the image is built separately from the
 # binary that runs in it, so an SDK living there could be a different vintage from the gg describing
 # it — and a model shown one surface in its prompt and compiled against another is the failure this
-# whole seam is built to prevent. Committed, the SDK and the catalogue reflected from it move in one
-# diff.
+# whole seam is built to prevent. Committed, the jar travels with the gg that describes it — and it
+# is the half of the pair that can be committed stale, because the catalogue is reflected out of the
+# same `src/` by `crates/gg/build.rs` on every build.
 #
 # TWO FLAGS THAT ARE GATES RATHER THAN SETTINGS.
 #

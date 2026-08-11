@@ -46,7 +46,7 @@
     "packages/gg-sandbox-swift/Sources/SDK/Modules/Views.swift": "4ab3778f12a7fc4c98979b4e5b878f08c0aeb6e855f15f6e769eda98a3304eb2",
     "packages/gg-sandbox-swift/Sources/gg-shell.h": "f39e7e021159caab032d74a3fcd816e16acb883fb94999f035ac9b5449def6ba",
     "packages/gg-sandbox-swift/Sources/shell.swift": "290f537855fc6a866984071530d74cd8655bf1056ad39fd61dc134950f6fa88c",
-    "packages/gg-sandbox-swift/build.sh": "e26335b097ad14da66fe82e4bde83882d17d4fc115bec66ec6904f008d2ab338",
+    "packages/gg-sandbox-swift/build.sh": "88740d7a6ef3f00222d67f85ed08c7ca2b0ea8d4a8d1af9ddd2d4fc7e588a530",
     "packages/gg-sandbox-swift/libraries.txt": "9fca08e89e30058ac2f934cc3a9df2282072d6929e11fb02c8f40a4172f3d685"
   }
 }

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Reflect the **Swift** program language's signature catalogue out of the SDK's own documentation,
-and write it to ``crates/gg/src/sandbox/guests/swift.signatures.json``.
+and write it to the ``swift.signatures.json`` the caller names.
+
+WHERE IT GOES. The destination is an argument, given by ``signatures.sh`` out of
+``GG_SIGNATURES_OUT_DIR``, and nothing here has a default: the catalogue is a build artifact that
+``crates/gg/build.rs`` generates into the build's own ``OUT_DIR``, and it is committed nowhere.
 
 WHY A SYMBOL GRAPH. ``swiftc -emit-symbol-graph`` is the machinery DocC itself is built on, and it is
 what reads all of this SDK at once: for every public declaration it emits the doc comment verbatim,

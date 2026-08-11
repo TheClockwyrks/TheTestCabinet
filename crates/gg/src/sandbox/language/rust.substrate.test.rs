@@ -34,7 +34,7 @@
 //!
 //! The **SDK** is deliberately not here: a program in this file calls the raw generated bindings,
 //! which no model will ever be shown, so that what these tests prove is the substrate rather than
-//! the surface built on it. What a model actually writes — and what the committed catalogue says it
+//! the surface built on it. What a model actually writes — and what the arm's catalogue says it
 //! may — is [`surface`](super::surface), including the check that this component binds exactly gg's
 //! tool vocabulary.
 //!

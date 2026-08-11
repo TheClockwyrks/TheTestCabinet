@@ -118,7 +118,8 @@ const FRONT: &str = include_str!("../checkers/java.compiler.java");
 /// reason: the image is built separately from the binary that runs in it, so an SDK living there
 /// could be a different vintage from the gg whose catalogue describes it — and a model shown one
 /// surface in its prompt and compiled against another is the failure this seam exists to prevent.
-/// Committed, the SDK and the catalogue reflected from it move in one diff.
+/// Committed, the jar travels with the gg that describes it — and it is the half of the pair that
+/// can be committed stale, since the catalogue is reflected out of the same `src/` on every build.
 const SDK: &[u8] = include_bytes!("../checkers/java.sdk.jar");
 
 /// What the toolchain the driver is run against is pinned to.

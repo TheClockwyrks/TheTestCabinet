@@ -34,7 +34,7 @@
     "packages/gg-sandbox-rust/src/wire.rs": "0a41ec3a07cf7c955a3f08198bd92e49ff2db47df4ecc9901062acb747706b04",
     "packages/gg-sandbox-rust/Cargo.lock": "11f27e175ff7f4947829a5099275d9294daf395c1257f1baeecf1a376d555291",
     "packages/gg-sandbox-rust/Cargo.toml": "e07cefab72ff5b62f64080f5b7d36d9adc69c3ef4fbbce3b3cc2fba8f2315f09",
-    "packages/gg-sandbox-rust/bindings.sh": "8e984eae8dfc2d8a77b60b011c187f282751a4557bbac82ca1e9a0b2db90b0e9",
-    "packages/gg-sandbox-rust/build.sh": "8218da3b64b8776bf36b8bf530872c608fb3d8dee5898b1ba163060c8d6ea005"
+    "packages/gg-sandbox-rust/bindings.sh": "4cda0e50432b8c5dd1764c3d696017e5123acbc46c063add8dd010ec9ed62cf9",
+    "packages/gg-sandbox-rust/build.sh": "101841214759d509533e2c53101959c6d975bfb904bdb5b8cd4b869f85715be4"
   }
 }

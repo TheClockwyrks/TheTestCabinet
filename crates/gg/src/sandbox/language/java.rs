@@ -13,8 +13,9 @@
 //! * [`PROMPT`] — the responses-as-code system prompt and the "nothing shown" notice, both written
 //!   in Java's syntax;
 //! * `packages/gg-sandbox-java/src/gg/` — the SDK, and every word of prose a model reads about it;
-//! * `guests/java.signatures.json` — the catalogue reflected out of that SDK's own Javadoc by
-//!   `javadoc` and a doclet of gg's own;
+//! * the **signature catalogue** — reflected out of that SDK's own Javadoc by `javadoc` and a
+//!   doclet of gg's own, and generated into this build's `OUT_DIR` rather than committed anywhere
+//!   (see `crates/gg/build.rs`);
 //! * `checkers/java.sdk.jar` — that SDK compiled, which is what a classpath entry is;
 //! * `checkers/java.compiler.java` — gg's own compiler driver, a single file run by the JDK's
 //!   single-file source-code launcher;
@@ -94,9 +95,14 @@ pub(super) mod source;
 #[path = "java.healing.rs"]
 pub(super) mod healing;
 
-/// The committed catalogue, reflected out of the SDK's own Javadoc by
+/// This arm's catalogue, reflected out of the SDK's own Javadoc by
 /// `packages/gg-sandbox-java/signatures.sh` with `javadoc` and a doclet of gg's own.
-const SIGNATURES: &str = include_str!("../guests/java.signatures.json");
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/java.signatures.json"));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -105,7 +111,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's committed catalogue when the template
+/// signature they quote is resolved from this language's catalogue when the template
 /// renders.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.java.hbs"),
@@ -211,20 +217,20 @@ impl ProgramLanguage for Java {
         Some(super::typescript::COMPONENT)
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem, and each carries the
-    /// language it was generated for; checking it here is what stops a catalogue filed — or
-    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
-    /// sandbox nobody has.
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, and each carries the language it was generated for; checking it here is what stops
+    /// a catalogue written — or embedded — under the wrong stem from reaching a model as a system
+    /// prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::Java,
-                "`guests/java.signatures.json` was generated for another program language",
+                "`signatures/java.signatures.json` was generated for another program language",
             );
             catalogue
         })

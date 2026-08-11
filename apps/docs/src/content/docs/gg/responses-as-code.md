@@ -1571,44 +1571,56 @@ making progress.
 
 The TypeScript guest lives at `packages/gg-sandbox/` — the typed SDK, the interpreter
 shim, and the build that bakes them into a component with a pinned `componentize-js`. Two
-of its outputs are **committed** into the Rust crate, named for the **language** rather
-than for the package, because every registered language commits a pair:
+of its outputs reach the Rust crate, named for the **language** rather than for the
+package, because both belong to a registered language rather than to a directory of
+JavaScript — and they get there in **opposite** ways:
 
-| Artifact | What it is |
-| --- | --- |
-| `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (14,004,036 bytes as committed). |
-| `crates/gg/src/sandbox/guests/typescript.signatures.json` | The signature catalogue the model searches and reads through `view.openDocsView()`. |
+| Artifact | What it is | How it gets there |
+| --- | --- | --- |
+| `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (14,004,036 bytes as committed). | Committed. `packages/gg-sandbox/build.sh` bakes it by hand. |
+| `typescript.signatures.json` (and `javascript.signatures.json`) | The signature catalogue the model searches and reads through `view.openDocsView()`. | Generated. `crates/gg/build.rs` reflects it out of the SDK on every build, into `OUT_DIR`. |
 
-Committing them follows the precedent the `foray-ref-*` guests already set, and it is
-what means **no build or CI step ever needs `componentize-js`**: the host
-`include_bytes!`s the component and `include_str!`s the catalogue. (The only Node CI runs
-for this package is the `signatures` regeneration in `scripts/ci/contract-drift.sh`, which
-needs TypeScript alone and exists to prove the committed catalogue is current.) Refreshing
-them is a
-deliberate act — run `packages/gg-sandbox/build.sh` after changing the membrane or the
-guest, and commit both outputs with the source change. Committing the component
-zstd-compressed (~4 MB) was considered and rejected: it would drag a C toolchain onto a
-musl-static release binary to shrink an artifact nobody downloads on a budget.
+Committing the **component** follows the precedent the `foray-ref-*` guests already set,
+and it is what means **no build or CI step ever needs `componentize-js`**: the host
+`include_bytes!`s it. Refreshing it is a deliberate act — run
+`packages/gg-sandbox/build.sh` after changing the membrane or the guest, and commit the
+output with the source change. Committing it zstd-compressed (~4 MB) was considered and
+rejected: it would drag a C toolchain onto a musl-static release binary to shrink an
+artifact nobody downloads on a budget.
+
+The **catalogue** is committed nowhere, and that is the opposite decision for the opposite
+reason. Baking a component takes minutes and a componentizing toolchain; reflecting a
+catalogue takes seconds and the `tsc` the workspace already pins. What a catalogue costs
+when it is *wrong*, meanwhile, is much worse than what a stale component costs: it is the
+whole of what a model is told this sandbox offers, so a copy that quietly stopped matching
+the SDK is a prompt describing functions the guest does not export. So the host
+`include_str!`s it out of the build's own `OUT_DIR`, reflected from the declarations in the
+same checkout by that language's own documentation tool — see
+[reading a catalogue](/gg/program-languages/#reading-a-catalogue) for how to open one and
+what the build needs in order to make it.
 
 The component is embedded rather than read from disk because gg is copied as a single
 file into an ephemeral run container and has to carry everything it needs with it.
 
-Five gates stop the committed artifacts drifting from the code around them: the
+Four gates stop the committed component drifting from the code around it, and there is no
+fifth for the catalogue because the catalogue has nothing left to drift from: the
 `componentize-js` link fails if the guest and the membrane disagree; gg's instantiation
 test fails if the committed component's imports no longer match the host's linker; gg's
 `bound-tools` test asks the **artifact** which tools it can bind and compares that against
-gg's own tool vocabulary, which is the one drift no source-level test can catch; CI
-regenerates the signature catalogue and fails on a diff; and the
+gg's own tool vocabulary, which is the one drift no source-level test can catch; and the
 [capability gate](#the-capability-gate) checks the catalogue against every other registered
-language's, which is the one drift the first four cannot see because each of them only ever
-compares a language to itself.
+language's, which is the one drift the first three cannot see because each of them only ever
+compares a language to itself. That last gate is now run over prose reflected minutes
+earlier rather than over a file somebody reviewed once, which is when it is worth the most:
+with nothing committed for a reviewer to have eyeballed, a gate reading the freshly emitted
+JSON is the thing standing between a reflector bug and a model's context window.
 
 ## The program language
 
 The language a program is written in is not baked into the sandbox. It is a **registered
 axis**: gg holds a set of program languages, each of which answers the same questions —
 how to prepare a model's reply into something its guest evaluates, which committed guest
-and signature catalogue are its own, what its guest needs from the host linker, which
+and which reflected signature catalogue are its own, what its guest needs from the host linker, which
 [healing](/gg/response-healing/) questions have language-shaped answers, and which system
 prompt teaches it. Eleven are registered. TypeScript is the default;
 [JavaScript](/gg/program-languages/#javascript-the-same-arm-unchecked) is the same surface,
@@ -1705,9 +1717,9 @@ Beside that, the gate asserts that every spelling is one a program could write: 
 signature beginning with it, one spelling per module and receiver, and every argument
 named by the signature that takes it.
 
-It is load-bearing because its absence is silent. Each language's own drift gates compare
-it to its own committed component — never to gg's vocabulary, and never to another
-language — so eleven internally consistent surfaces offering eleven different sets of
+It is load-bearing because its absence is silent. Each language's own gates compare it to
+its own committed component and to its own SDK — never to gg's vocabulary, and never to
+another language — so eleven internally consistent surfaces offering eleven different sets of
 capabilities are eleven green test suites, and an A/B across them measures the difference
 in the surface while reporting it as a difference in the language.
 
@@ -1736,8 +1748,9 @@ serves another's artifacts.
 
 Adding one is additive: a sibling guest directory — not necessarily an npm package —
 that binds the same `crates/gg/wit/gg-sandbox.wit`, commits
-`crates/gg/src/sandbox/guests/<language>.{component.wasm,signatures.json}`, and
-hand-writes an SDK that is **idiomatic for that language** while obeying the same rules
+`crates/gg/src/sandbox/guests/<language>.component.wasm`, reflects
+`<language>.signatures.json` out of its own SDK into whatever `GG_SIGNATURES_OUT_DIR`
+names, and hand-writes an SDK that is **idiomatic for that language** while obeying the same rules
 this one does: namespaced typed bindings rather than a generic dispatcher, every call
 synchronous, no strings-as-enums, no model-authored JSON in or out, required arguments
 positional. [Program languages](/gg/program-languages/#adding-a-language-worked-python)

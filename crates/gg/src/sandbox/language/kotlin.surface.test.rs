@@ -28,13 +28,16 @@ use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::sandbox::{CodeModule, PrepareContext};
 use crate::tools::ToolOutcome;
 
-/// The catalogue this arm commits, read as a **document** rather than through the language.
+/// The catalogue this arm's build reflects, read as a **document** rather than through the language.
 ///
 /// What every assertion below makes is a claim about the emitted JSON's own shape — which key a
 /// parameter's prose hangs off, whether a default is recorded beside it — so reading it as a document
 /// is the reading that can fail. Resolving it through the registry would only prove that the registry
 /// hands back the bytes this file already has.
-const SIGNATURES: &str = include_str!("../guests/kotlin.signatures.json");
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/kotlin.signatures.json"
+));
 
 /// Compile and run one Kotlin program, with the ending group and the library flag said out loud.
 fn run_as(
@@ -752,7 +755,7 @@ fn the_catalogue_carries_the_defaults_this_arm_expresses_an_optional_argument_as
     // entry here carries an overload group at all, every optional argument is a **keyword** parameter
     // with a stated default, and the catalogue says so.
     let document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Kotlin catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Kotlin catalogue is valid JSON");
 
     let mut defaults = 0usize;
     let mut varargs = 0usize;

@@ -363,7 +363,7 @@ struct Spelled<'a, T> {
     spellings: Spellings,
 }
 
-/// What `language`'s committed catalogue contributes to a render, in the shape a template addresses
+/// What `language`'s catalogue contributes to a render, in the shape a template addresses
 /// it.
 ///
 /// Built per render rather than cached: it is a walk of one short list against a prompt that is
@@ -1469,7 +1469,7 @@ pub struct ContextPressureContext {
     /// level up.
     pub can_close_views: bool,
     /// How that call is spelled in this run's [program language](GgProgramLanguage) — resolved from
-    /// the language's own committed catalogue rather than written into the template, which is what
+    /// the language's own catalogue rather than written into the template, which is what
     /// keeps this one shared block shared: everything left in it is a number.
     ///
     /// Meaningless, and unreferenced by the template, when

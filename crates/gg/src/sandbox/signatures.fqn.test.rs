@@ -7,7 +7,7 @@
 //! it does not is a redesign rather than a fix.
 //!
 //! **That prediction phase is over**: all eleven arms are converted, and what each of them really
-//! emits is held against the committed artifacts by
+//! emits is held against each arm's own generated catalogue by
 //! [`every_registered_arms_names_are_whole`]. So the table is no longer a claim about what any arm
 //! spells — several rows predate the module vocabulary settling on `files`, `delegation` and the
 //! rest, and one row is a shape no arm ships at all. It is kept, and re-titled, because the shapes
@@ -105,9 +105,8 @@ fn the_rule_accepts_every_arms_own_spelling() {
             receiver: Some("subagent_handle"),
             shape: Shape::Member,
         },
-        // Swift — the arm's real committed names, measured from
-        // `guests/swift.signatures.json`: a caseless enum per module, and no argument labels in a
-        // name anywhere.
+        // Swift — the arm's real names, measured from the `swift.signatures.json` its reflector
+        // emits: a caseless enum per module, and no argument labels in a name anywhere.
         Row {
             arm: "Swift",
             fqn: "gg.files.readFile",

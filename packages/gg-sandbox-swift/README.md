@@ -51,7 +51,7 @@ which is what gets both the message and the model's own line and column out.
 | `swift-version.sh` | Every pin — the Swift release, the wasm SDK, the target triple, the `wasi_snapshot_preview1` adapter, the `wit-bindgen` release, the three vendored packages — and where gg looks for the toolchain. Sourced by everything below, by `containers/gg-toolchains/Dockerfile` and by `scripts/ci/install-swift.sh`. |
 | `bindings.sh` | Generates the C bindings from `crates/gg/wit` with the pinned `wit-bindgen`. Its own script so no step that must write exactly one file has to reach the build. |
 | `build.sh` | Compiles those bindings and the SDK for wasm, vendors and compiles the library set, cuts the two committed archives, fetches the adapter, and writes the manifest. |
-| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out. `tools/catalogue.py` is the module table — gg's thirteen ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
+| `signatures.sh`, `tools/` | The catalogue: a symbol graph in, `swift.signatures.json` out, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build. `tools/catalogue.py` is the module table — gg's thirteen ids, the order a reader meets them in, and the Swift path each answers under — and `tools/signatures.py` is everything else. A function's gg operation id is not in either: it is a `- ggop:` line in the declaration's own doc comment. |
 
 ## What a Swift program looks like
 
@@ -136,8 +136,13 @@ crates/gg/src/sandbox/checkers/swift.guest.tar.gz     182 KB — the compile inp
 crates/gg/src/sandbox/checkers/swift.libraries.tar.gz 3.4 MB — the curated library set
 crates/gg/src/sandbox/checkers/swift.adapter.wasm      52 KB — the preview1 reactor adapter
 crates/gg/src/sandbox/checkers/swift.toolchain.json           — what built them, and what is in them
-crates/gg/src/sandbox/guests/swift.signatures.json            — the catalogue a model is described by
 ```
+
+The catalogue a model is described by is deliberately **not** in that list: `signatures.sh`
+emits it into whatever directory `crates/gg/build.rs` hands it, on every build of that crate,
+and it is committed nowhere. Reflecting it costs a `swiftc -emit-symbol-graph` over the SDK;
+cutting the archives above costs the whole toolchain and is not byte-reproducible. That
+difference is the whole of why one is generated and the others are committed.
 
 The split every compiled arm here has. The toolchain is ~835 MB even pruned, so it lives in the
 gg run image (`containers/gg-toolchains/Dockerfile`). These go the other way because they are a
@@ -195,19 +200,23 @@ cannot be silently absent from a model's surface.
 ```sh
 scripts/ci/install-swift.sh              # once; ~835 MB, pruned from 3.3 GB, and it verifies itself
 packages/gg-sandbox-swift/build.sh       # after editing Sources/, or after crates/gg/wit changes
-packages/gg-sandbox-swift/signatures.sh  # after any doc comment or signature in Sources/SDK/ changes
+
+GG_SIGNATURES_OUT_DIR=/tmp/sigs \
+  packages/gg-sandbox-swift/signatures.sh  # the catalogue, to READ
+scripts/gg-signatures.sh                   # all eleven, into target/gg-signatures/
 ```
 
-Commit the artifacts with the change that needed them. `swift.compile.test.rs` fails by name if the
+Commit the archives with the change that needed them. `swift.compile.test.rs` fails by name if the
 archive's copy of the shell or the header is not this checkout's, so an edit here without a rebuild
-does not reach a model as a program compiled against the old one — and `scripts/ci/contract-drift.sh`
-runs `signatures.sh` on every CI run and fails on a stale committed catalogue.
+does not reach a model as a program compiled against the old one. The catalogue needs no such gate:
+`crates/gg/build.rs` reflects it out of `Sources/SDK/` on every build, so a doc comment edit reaches
+the prompt on the next `cargo build`. Running `signatures.sh` by hand is for reading what it emitted.
 
 **`signatures.sh` writes the catalogue and nothing else, and that is why the bindings are their own
-script.** The drift gate finishes by diffing everything committed under
-`crates/gg/src/sandbox/checkers/` — which is what `build.sh` writes — so a signature step that
-reached `build.sh` for its bindings would re-cut the library set on every CI run and fail on bytes
-nobody edited.
+script.** `build.sh` writes the committed archives under `crates/gg/src/sandbox/checkers/`, so a
+signature step that reached `build.sh` for its bindings would re-cut the library set on every
+`cargo build` — rewriting committed artifacts under the working tree of someone who was only
+compiling, into bytes that are not even reproducible.
 
 ## What is not built
 

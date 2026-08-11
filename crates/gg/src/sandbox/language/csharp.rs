@@ -17,8 +17,9 @@
 //! * `packages/gg-sandbox-csharp/Sources/` — the guest's C: the shell, the bridge, the trampolines;
 //! * `guests/csharp.component.wasm` — the committed guest: Mono's IL interpreter, the .NET class
 //!   libraries and ICU, as one self-contained component;
-//! * `guests/csharp.signatures.json` — the catalogue, which is the whole of what a model is told
-//!   about the surface;
+//! * the **signature catalogue**, which is the whole of what a model is told about the surface —
+//!   reflected out of the SDK's own XML documentation comments and generated into this build's
+//!   `OUT_DIR` rather than committed anywhere (see `crates/gg/build.rs`);
 //! * `checkers/csharp.toolchain.json` — what built the guest.
 //!
 //! # The strategy, in one paragraph
@@ -185,10 +186,18 @@ pub(super) mod healing;
 /// toolchain reaches a run container on this arm at all.
 const GUEST_COMPONENT: &[u8] = include_bytes!("../guests/csharp.component.wasm");
 
-/// The committed catalogue, reflected out of the SDK's own XML documentation comments by
+/// This arm's catalogue, reflected out of the SDK's own XML documentation comments by
 /// `packages/gg-sandbox-csharp/signatures.sh` — a hosted Roslyn driver, which is the compiler's own
 /// documentation parser and the machinery every C# documentation tool is built on.
-const SIGNATURES: &str = include_str!("../guests/csharp.signatures.json");
+///
+/// It is not committed. `crates/gg/build.rs` runs that reflection as a step of building this
+/// crate and this line embeds what it wrote into the build's own `OUT_DIR`, so what a model is
+/// told about this arm is reflected out of the SDK sources in this checkout, on the build that
+/// compiles the module telling it.
+const SIGNATURES: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/signatures/csharp.signatures.json"
+));
 
 /// The parsed catalogue, parsed once per process.
 static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
@@ -197,7 +206,7 @@ static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
 ///
 /// The two templates are embedded from `crates/gg/templates/`, exactly as every other gg prompt is.
 /// Individual function spellings are **not** here and not in the templates either: every name and
-/// signature they quote is resolved from this language's committed catalogue when the template
+/// signature they quote is resolved from this language's catalogue when the template
 /// renders.
 static PROMPT: PromptDialect = PromptDialect {
     system_template: include_str!("../../../templates/system-code.csharp.hbs"),
@@ -292,20 +301,20 @@ impl ProgramLanguage for CSharp {
         Some(GUEST_COMPONENT)
     }
 
-    /// The committed catalogue, parsed once and checked to be **this** language's.
+    /// This language's catalogue, parsed once and checked to be **this** language's.
     ///
-    /// Every registered language commits one of these under its own stem, and each carries the
-    /// language it was generated for; checking it here is what stops a catalogue filed — or
-    /// regenerated — under the wrong stem from reaching a model as a system prompt describing a
-    /// sandbox nobody has.
+    /// Every registered language's build reflects one of these under its own stem into the one
+    /// `OUT_DIR`, and each carries the language it was generated for; checking it here is what stops
+    /// a catalogue written — or embedded — under the wrong stem from reaching a model as a system
+    /// prompt describing a sandbox nobody has.
     fn catalogue(&self) -> &'static SignatureCatalogue {
         CATALOGUE.get_or_init(|| {
             let catalogue = SignatureCatalogue::parse(SIGNATURES)
-                .expect("the committed signature catalogue is valid JSON of the expected shape");
+                .expect("the generated signature catalogue is valid JSON of the expected shape");
             assert_eq!(
                 catalogue.language,
                 GgProgramLanguage::CSharp,
-                "`guests/csharp.signatures.json` was generated for another program language",
+                "`signatures/csharp.signatures.json` was generated for another program language",
             );
             catalogue
         })
@@ -465,8 +474,8 @@ pub(super) fn open_docs_views_statement(open_docs_view: &str, names: &[&str]) ->
 #[path = "csharp.test.rs"]
 mod tests;
 
-/// **The committed guest against what says it built it** — the gate `scripts/ci/contract-drift.sh`
-/// names when it exempts this arm's artifacts from being re-cut on every CI run.
+/// **The committed guest against what says it built it** — the gate that covers this arm's
+/// hand-built artifacts, which `scripts/ci/contract-drift.sh` deliberately never re-cuts.
 #[cfg(test)]
 #[path = "csharp.manifest.test.rs"]
 mod manifest;

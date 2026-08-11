@@ -5,7 +5,7 @@
 //! # What changed, and why the rule got stronger rather than looser
 //!
 //! This file used to enforce that a template never *hand-typed* a call: it had to quote one through
-//! `{{api.<object>.<key>.call}}`, so the spelling came from the run's own committed catalogue. That
+//! `{{api.<object>.<key>.call}}`, so the spelling came from the run's own catalogue. That
 //! was the right rule while the prompt's job was to name calls. It no longer is. The prompt names
 //! **no function at all** — a model finds one by searching the documentation and opening a view of
 //! it — so a resolved spelling is no longer a safer way to write something the prompt should not be

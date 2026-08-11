@@ -184,14 +184,15 @@ pub struct DocIndex {
 /// The [index](DocIndex) for `language`, built on first use and kept for the process.
 ///
 /// One slot per registered language rather than one shared table, because an index is a projection
-/// of one arm's committed catalogue and building it forces that catalogue's parse — so a table
+/// of one arm's catalogue and building it forces that catalogue's parse — so a table
 /// covering every arm would make the first search on any arm parse all eleven. Indexed by
 /// [`ordinal`](GgProgramLanguage::ordinal), which is exactly what that method exists for.
 ///
-/// It is **not** a committed artifact, and deliberately: the catalogue it is derived from is already
-/// compiled into the binary, so a precomputed index would be a second copy of it — one that would
-/// have to be regenerated, diffed and kept in step, for a build that takes microseconds over
-/// forty-odd functions.
+/// It is built here rather than emitted by a reflector, and deliberately. The catalogue it is
+/// derived from is already compiled into the binary — `crates/gg/build.rs` reflects it and this
+/// crate embeds it — so a precomputed index would be a second projection of the same text, produced
+/// by a twelfth tool nobody has, for a build that takes microseconds over forty-odd functions.
+/// Deriving it at first use also means it can never describe a surface the catalogue does not.
 fn index(language: &'static dyn ProgramLanguage) -> &'static DocIndex {
     static INDEXES: [OnceLock<DocIndex>; GgProgramLanguage::COUNT] =
         [const { OnceLock::new() }; GgProgramLanguage::COUNT];
@@ -199,7 +200,7 @@ fn index(language: &'static dyn ProgramLanguage) -> &'static DocIndex {
 }
 
 impl DocIndex {
-    /// Build the index for one language from its committed catalogue.
+    /// Build the index for one language from its catalogue.
     ///
     /// Functions first, then types, and the order matters: a type records the **positions** of the
     /// functions referencing it, which is how both its visibility and its modules are derived, and

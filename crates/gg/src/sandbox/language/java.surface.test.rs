@@ -28,9 +28,9 @@ use crate::sandbox::membrane::RunEnding;
 use crate::sandbox::outcome::{ProgramErrorKind, SandboxOutcome};
 use crate::tools::ToolOutcome;
 
-/// The catalogue this arm commits, read as a document rather than through the language, because what
+/// The catalogue this arm's build reflects, read as a document rather than through the language, because what
 /// is asserted below is a property of the emitted JSON.
-const SIGNATURES: &str = include_str!("../guests/java.signatures.json");
+const SIGNATURES: &str = include_str!(concat!(env!("OUT_DIR"), "/signatures/java.signatures.json"));
 
 /// This arm, resolved from the registry — the same trait object a run resolves.
 fn java_language() -> &'static dyn crate::sandbox::ProgramLanguage {
@@ -725,14 +725,14 @@ fn a_capability_this_run_withheld_is_refused_as_unavailable() {
 // ---------------------------------------------------------------------------------------------
 
 #[test]
-fn the_committed_catalogue_says_whose_spellings_it_carries() {
+fn the_generated_catalogue_says_whose_spellings_it_carries() {
     // The capability gate itself now runs over this arm for free, because the arm is registered:
     // `agreement.test.rs` holds every registered language to gg's operations table, and this
     // catalogue is in it. What is left here is the one claim that gate cannot make — that the
     // committed file was generated **for Java** — asserted against the document rather than through
     // the language, so it holds even if the registration's own provenance check were removed.
     let document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Java catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Java catalogue is valid JSON");
     assert_eq!(
         document["language"],
         json!("java"),
@@ -755,7 +755,7 @@ fn the_catalogue_carries_the_overload_groups_this_arm_exists_to_produce() {
     // there and really carries different argument lists, because an overload group whose signatures
     // were identical would be a reflector bug that reads as a feature.
     let document: Value =
-        serde_json::from_str(SIGNATURES).expect("the committed Java catalogue is valid JSON");
+        serde_json::from_str(SIGNATURES).expect("the generated Java catalogue is valid JSON");
 
     let mut groups = 0usize;
     for entry in document["functions"].as_array().expect("an array") {
@@ -960,7 +960,7 @@ fn java_reaches_every_library_this_arm_says_it_may() {
     // classlib does not carry would be a sentence in a system prompt sending a model down a path
     // that ends in a compile error it did not cause.
     let mut declared: Vec<String> = serde_json::from_str::<Value>(SIGNATURES)
-        .expect("the committed Java catalogue is valid JSON")["libraries"]
+        .expect("the generated Java catalogue is valid JSON")["libraries"]
         .as_array()
         .expect("an array")
         .iter()

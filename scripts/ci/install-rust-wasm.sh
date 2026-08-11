@@ -30,7 +30,20 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=packages/gg-sandbox-rust/rust-version.sh
 source "$ROOT/packages/gg-sandbox-rust/rust-version.sh"
 
-if rustc --print target-libdir --target "$GG_RUST_TARGET" >/dev/null 2>&1; then
+# WHETHER THE STANDARD LIBRARY IS THERE IS A QUESTION ABOUT THE DISK, NOT ABOUT rustc. `rustc
+# --print target-libdir --target <triple>` COMPUTES a path from the target's name; it does not look
+# for it. Measured in `docker.io/library/rust:1-bookworm`, an image that has exactly one target
+# installed, it printed
+# `/usr/local/rustup/toolchains/1.96.0-…/lib/rustlib/wasm32-unknown-unknown/lib` and exited 0 while
+# that directory did not exist. Asking it as a yes/no question therefore answered "yes" everywhere,
+# which made this script a no-op on precisely the machines that needed it — and the cost of that was
+# paid several minutes later and one layer down, as `cargo rustdoc --target wasm32-unknown-unknown`
+# failing to find `core` inside gg's build script. So look at the directory rustc names: rustup
+# creates it when the component is installed and removes it when the component is removed, so its
+# presence is the fact, and a rustc that is not managed by rustup answers this correctly too.
+target_libdir() { rustc --print target-libdir --target "$GG_RUST_TARGET" 2>/dev/null; }
+
+if [ -d "$(target_libdir)" ]; then
 	echo "rustc already has the $GG_RUST_TARGET standard library"
 	exit 0
 fi
@@ -43,4 +56,14 @@ fi
 
 echo "installing the $GG_RUST_TARGET standard library for rustc $GG_RUST_VERSION"
 rustup target add --toolchain "$GG_RUST_VERSION" "$GG_RUST_TARGET"
-rustc --print target-libdir --target "$GG_RUST_TARGET" >/dev/null
+# And confirm it landed where this checkout's rustc will look for it, which is not the same
+# statement as "rustup exited 0": `--toolchain "$GG_RUST_VERSION"` names the release
+# rust-toolchain.toml pins, and a machine whose active toolchain is some other one would have
+# installed the component somewhere this repository never compiles against.
+if [ ! -d "$(target_libdir)" ]; then
+	echo "error: rustup installed $GG_RUST_TARGET for $GG_RUST_VERSION, but this checkout's rustc" >&2
+	echo "       still finds no standard library at $(target_libdir)." >&2
+	echo "       That means the active toolchain is not $GG_RUST_VERSION — check rust-toolchain.toml" >&2
+	echo "       against \`rustup show\`." >&2
+	exit 1
+fi

@@ -12,6 +12,12 @@
 //! mid-code-span with an unbalanced backtick — and all three of those are things a model reads
 //! today.
 //!
+//! Nothing else is going to catch them either. The catalogues are reflected out of eleven SDKs by
+//! `crates/gg/build.rs` on the build that embeds them and are committed nowhere, so there is no
+//! artifact a reviewer eyeballed on the way in and no diff in which a paragraph that grew by 800
+//! characters shows up. This gate reads the text a model will actually be handed, minutes after the
+//! reflector produced it, which is the only place left that a badly shaped sentence can be stopped.
+//!
 //! So the register is checked here: **once, in Rust, over the normalized catalogue**, rather than
 //! eleven times in eleven reflectors written in eleven languages. That is the entire reason the
 //! catalogue is normalized. A policy about *text* can have one implementation, and the twelfth arm
@@ -34,7 +40,7 @@
 //! decided a brief existed, and holding a derived line to a rule about authored lines would fail
 //! eleven arms for a property none of them has claimed. The gate therefore reports nothing below
 //! `V2`, and an arm's conversion commit is the moment its prose becomes gg's problem. Measured over
-//! today's committed catalogues, the longest derived first line is 249 characters on seven arms,
+//! today's catalogues, the longest derived first line is 249 characters on seven arms,
 //! 130 on C#, 1,160 on the two ECMAScript arms and 1,239 on Python — which is not eleven failures
 //! to fix, it is eleven arms that have not authored briefs yet.
 //!

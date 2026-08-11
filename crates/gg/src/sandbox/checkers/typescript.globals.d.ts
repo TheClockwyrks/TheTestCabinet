@@ -1,7 +1,7 @@
 // The globals a program has that are NOT part of the tool surface, declared for the type checker.
 //
 // gg type-checks a model's program before the guest evaluates it, against declarations assembled
-// from this language's committed signature catalogue plus this file. Everything the catalogue
+// from this language's generated signature catalogue plus this file. Everything the catalogue
 // describes is reflected out of the SDK; what is left over are the names a program can reach that no
 // SDK declaration covers, and they are written here — beside the shim that installs or shadows them
 // — rather than in the Rust that assembles the rest, so that changing one is visibly changing the

@@ -388,7 +388,7 @@ impl PendingCompaction {
             memory_writes: matches!(self, Self::MemoryWrites),
             code_mode: language.is_some(),
             // Named as the reader writes it: a program calls a method on an API object — spelled
-            // from that language's own committed catalogue, never written out here — and a
+            // from that language's own catalogue, never written out here — and a
             // tool-calling model requests a tool.
             compact_tool: match language {
                 Some(language) => spell(language, CONTEXT_COMPACT),

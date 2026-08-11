@@ -12,7 +12,7 @@
 //! at all.
 //!
 //! So this is where that guarantee moved to, and it is strictly the better test: it verifies the
-//! discovery end to end — through the real committed catalogue, the real ranking and the real
+//! discovery end to end — through each arm's real catalogue, the real ranking and the real
 //! permission filter — instead of asserting that a string appears in a template. It needs no
 //! per-language call spellings, so it runs identically on all eleven arms and needs no maintenance
 //! when an SDK is reshaped.

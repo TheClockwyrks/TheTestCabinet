@@ -8,10 +8,13 @@
 # They are named for the PROGRAM LANGUAGE they serve, not for this package, exactly as the
 # TypeScript checker's artifacts are.
 #
-# Split from `build.sh` for the reason the Python guest's `signatures.sh` is split from its own
-# build: this needs only Node and 3 MB of output and is therefore something CI can run and diff,
-# where baking the component needs `componentize-js` and emits 18 MB. `scripts/ci/contract-drift.sh`
-# runs THIS one.
+# Split from `build.sh` on the cost of running it: this needs only Node and emits 3 MB, and is
+# therefore something CI can re-cut and diff on every run, where baking the component needs
+# `componentize-js` and emits 18 MB. `scripts/ci/contract-drift.sh` runs THIS one, and its output
+# stays committed for that reason. (The same cost argument, taken one step further, is why this
+# package's `signatures.sh` is not committed at all: reflecting the catalogue costs a second and the
+# pinned YARD, so `crates/gg/build.rs` simply runs it on every build and there is nothing left to
+# diff.)
 #
 # Requires Node and network access the first time, to fetch the pinned Opal packages.
 #

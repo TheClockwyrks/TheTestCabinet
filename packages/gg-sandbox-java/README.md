@@ -8,7 +8,7 @@ The **Java** program language's toolchain pin and its hand-written SDK.
 | [`src/gg/`](src/gg/) | the **SDK** a model's program is compiled against, and the doc comments every word a model reads is reflected out of |
 | [`libraries.txt`](libraries.txt) | the packages this arm says a program may reach, grouped as the prompt shows them |
 | [`build.sh`](build.sh) | compiles the SDK to `crates/gg/src/sandbox/checkers/java.sdk.jar` |
-| [`signatures.sh`](signatures.sh) | reflects `crates/gg/src/sandbox/guests/java.signatures.json` out of the SDK's Javadoc |
+| [`signatures.sh`](signatures.sh) | reflects `java.signatures.json` out of the SDK's Javadoc, into `$GG_SIGNATURES_OUT_DIR`; `crates/gg/build.rs` runs it on every build |
 | [`tools/`](tools/) | the doclet `signatures.sh` runs, and the module table it reads |
 
 ## What the surface is shaped like
@@ -64,10 +64,12 @@ Each of them can only go one way, and where each goes is the argument:
   **committed** rather than installed beside TeaVM. The image is built separately from the
   binary that runs in it, so an SDK living there could be a different vintage from the gg
   whose catalogue describes it — and a model shown one surface in its prompt and compiled
-  against another is the failure this whole seam is built to prevent. Committed, the SDK and
-  the catalogue reflected from it move in one diff, and
-  [`scripts/ci/contract-drift.sh`](../../scripts/ci/contract-drift.sh) rebuilds both and
-  diffs them. `build.sh` fixes every jar entry's timestamp and sorts the entry list, so two
+  against another is the failure this whole seam is built to prevent. Committed, the jar
+  travels with the gg that describes it. It is also the half of the pair that can be
+  committed stale, since the catalogue is reflected out of the same `src/gg/` on every
+  build — which is why
+  [`scripts/ci/contract-drift.sh`](../../scripts/ci/contract-drift.sh) re-cuts and diffs
+  the jar. `build.sh` fixes every jar entry's timestamp and sorts the entry list, so two
   builds of identical sources are identical bytes.
 
 ## What the pins mean
@@ -120,7 +122,7 @@ opposite ways, and each is the way its own documentation tool accepts.
 - `crates/gg/src/sandbox/language/java.substrate.test.rs` — real Java through gg's real
   linker, membrane and store.
 - `crates/gg/src/sandbox/language/java.surface.test.rs` — every gg tool driven through that
-  membrane from its Java spelling, the agreement gate over the committed catalogue, and
+  membrane from its Java spelling, the agreement gate over the generated catalogue, and
   every declared library driven into the real compiler.
 - [`gg/program-languages.md`](../../apps/docs/src/content/docs/gg/program-languages.md) —
   the prose, including what TeaVM is not.

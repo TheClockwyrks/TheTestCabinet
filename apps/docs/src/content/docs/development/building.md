@@ -88,6 +88,60 @@ cargo fmt --all
 cargo clippy --workspace
 ```
 
+### `gg` and its eleven toolchains
+
+One crate in the workspace is not built by the Rust toolchain alone.
+[`test-cabinet-gg`](/gg/overview/) drives a model in one of **eleven program languages**, and
+what a model is told about each language's surface — every module, signature, argument, type
+and type member — is a *signature catalogue* reflected out of that language's own SDK by that
+language's own documentation tool. Those catalogues are **not committed**. `crates/gg/build.rs`
+generates all eleven as a step of building the crate, into the build's `OUT_DIR`, and the arm
+modules `include_str!` them from there. See
+[the catalogue](/gg/program-languages/#the-catalogue) for why that is worth the cost: a
+committed copy is a claim about source that is checked once and never again, and when it is
+wrong what it costs is a model told about a function the guest does not export.
+
+The cost is that **anything which compiles `crates/gg` wants eleven documentation toolchains
+present** — which is `cargo build --workspace`, `cargo clippy --workspace`,
+`cargo doc --workspace`, the two pre-commit hooks that run those, `npm run gen:contract`, and
+`scripts/build-gg-static.sh`. Nothing else in the workspace depends on `test-cabinet-gg`, so a
+package-scoped build (`-p test-cabinet-cli`, the release binaries, the desktop app) needs none
+of this.
+
+Install them once, before the first build:
+
+```sh
+scripts/ci/install-gg-toolchains.sh   # every arm's documentation tool, idempotent
+npm ci                                # the pinned `tsc` two of the arms are reflected with
+```
+
+The devcontainer runs that installer for you on create, and every CI surface that builds or
+lints gg runs it too. That is the whole argument for generating rather than committing: this
+repository is developed in one environment on purpose, so a toolchain it requires is a
+toolchain it installs, and committing an artifact so a developer can skip an install defeats
+the point of the devcontainer and of the artifact at once. The installer covers `uv` (for
+griffe), the `wasm32-unknown-unknown` standard library (for rustdoc), `purs`, a JDK, the Kotlin
+compiler, the Swift toolchain, wasi-sdk, .NET, and YARD in the system Ruby.
+
+The build fails **loudly** when one is missing, naming the arm and the fix, rather than
+emitting an empty catalogue — a build that quietly hands a model no surface at all is the worst
+outcome available here. If a build stops with a sentence about `node_modules`, run `npm ci`; if
+it stops naming a toolchain, run the installer above.
+
+To **read** a catalogue — which is how reflector bugs are found, since a dropped `@return`
+paragraph or a truncated parameter description is invisible in the SDK and obvious in the
+emitted JSON — run the same script the build runs:
+
+```sh
+scripts/gg-signatures.sh              # -> target/gg-signatures/<language>.signatures.json
+scripts/gg-signatures.sh /tmp/sigs    # -> anywhere else you like
+```
+
+That script is the single list of gg's arms in the repository; `build.rs` calls it rather than
+repeating it. Both destinations are gitignored, as is
+`crates/gg/src/sandbox/guests/*.signatures.json`, where the catalogues used to be committed —
+nothing writes there any more and nothing may commit one again.
+
 ### Portable (static) builds
 
 The default build dynamically links against glibc and the generic FHS dynamic
@@ -221,6 +275,14 @@ This runs the generator (`cargo run -p contract-codegen`) and formats the output
 with Prettier. CI (`scripts/ci/contract-drift.sh`) regenerates and fails on any
 diff, so a contract change that is not regenerated and committed turns the build
 red — the Rust, TypeScript, and JSON Schema representations can never drift apart.
+
+The same command also refreshes `crates/backend/src/gg_reference.json`, the
+projection of gg's model-facing surface the console's Reference page is served
+from, by running `gg reference`. That step **builds `test-cabinet-gg`**, so it
+wants the toolchains described under
+[`gg` and its eleven toolchains](#gg-and-its-eleven-toolchains) above; on a
+machine without them this command fails in the build rather than in the
+generator.
 
 ## Desktop app (Tauri)
 
