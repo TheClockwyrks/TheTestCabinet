@@ -116,7 +116,12 @@ gg_swift_numerics_url() {
 # the point this file is sourced.
 gg_swift_platform() {
 	case "$(uname -s)-$(uname -m)" in
-	Linux-x86_64) echo "debian12-x86_64" ;;
+	# swift.org names the x86_64 Linux build with a BARE distro slug and suffixes only the
+	# aarch64 one — `debian12` and `debian12-aarch64`. There is no `debian12-x86_64` asset;
+	# the URL this slug is interpolated into twice 302s to swift.org/404.html. It was written
+	# symmetrically, and the asymmetry went unnoticed because every machine that has run this
+	# so far was aarch64.
+	Linux-x86_64) echo "debian12" ;;
 	Linux-aarch64 | Linux-arm64) echo "debian12-aarch64" ;;
 	*)
 		echo "error: no pinned Swift build for $(uname -s)-$(uname -m)." >&2
