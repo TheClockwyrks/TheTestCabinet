@@ -38,6 +38,11 @@ pub(crate) const TOOLS: &[&str] = &[
 /// * `title` — A short line naming the body of work.
 /// * `description` — What the epic covers, for a reader who has not seen its issues.
 ///
+/// # Returns
+///
+/// The id the prefix resolved to, and how much of the board's epic and issue budget is left once the
+/// epic is on it.
+///
 /// # Errors
 ///
 /// `InvalidArgument` when the prefix is not 3-6 letters or a required field is blank, `Conflict`
@@ -69,6 +74,11 @@ pub fn create_epic(prefix: &str, title: &str, description: &str) -> Result<EpicC
 ///   the work against.
 /// * `agent` — The agent the issue is dispatched to. It must be one this agent may spawn.
 /// * `options` — The parts that may be left out: a description, blockers, an epic, reviewers.
+///
+/// # Returns
+///
+/// The id the board assigned, and how much of the board's epic and issue budget is left once the
+/// issue is on it.
 ///
 /// # Errors
 ///
@@ -139,6 +149,11 @@ pub fn set_issue_blocked_by(id: &str, blocked_by: &[&str]) -> Result<(), ToolErr
 ///
 /// * `id` — The epic to remove.
 ///
+/// # Returns
+///
+/// How much of the board's epic and issue budget is still in use once the epic is gone. Its issues
+/// are not, so the issue count does not move.
+///
 /// # Errors
 ///
 /// `NotFound` for an unknown id.
@@ -152,6 +167,10 @@ pub fn remove_epic(id: &str) -> Result<BoardUsage, ToolError> {
 /// # Arguments
 ///
 /// * `id` — The issue to remove.
+///
+/// # Returns
+///
+/// How much of the board's epic and issue budget is still in use once the issue is gone.
 ///
 /// # Errors
 ///
@@ -172,6 +191,11 @@ pub fn remove_issue(id: &str) -> Result<BoardUsage, ToolError> {
 /// # Arguments
 ///
 /// * `id` — The issue to wait on. It may not be the issue this agent was assigned.
+///
+/// # Returns
+///
+/// gg's acknowledgement that the wait is registered — not the issue's outcome, which is what the
+/// resumed turn opens with.
 ///
 /// # Errors
 ///
@@ -215,6 +239,25 @@ pub struct IssueCreated {
     pub id: String,
     /// How much of the board budget is used.
     pub board: BoardUsage,
+}
+
+impl IssueCreated {
+    /// Register a wait on this issue, which suspends the agent between turns until it is terminal.
+    ///
+    /// [`wait_for_issue`] with the id already supplied, for the common case where the issue that was
+    /// just created is the one to wait on.
+    ///
+    /// # Returns
+    ///
+    /// gg's acknowledgement that the wait is registered.
+    ///
+    /// # Errors
+    ///
+    /// `NotFound` when the issue has since been removed.
+    #[doc(alias = "ggop-alias:board.wait_for_issue")]
+    pub fn wait(&self) -> Result<String, ToolError> {
+        wait_for_issue(&self.id)
+    }
 }
 
 /// Where an issue stands.

@@ -142,18 +142,25 @@ def _span(span: TurnRange, edge: str) -> int:
 def evict_file_view(path: str | None = None) -> ReclaimReport:
     """Drop the contents of files that were read out of the context window.
 
-    The tokens they occupy are freed and what that reclaimed is reported. The files on disk are
-    untouched: this forgets what was read, not what exists.
+    The files on disk are untouched: this forgets what was read, not what exists.
 
     Args:
         path: The file whose views to drop. The default drops every file view held.
+
+    Returns:
+        How many context items went and roughly how many tokens that reclaimed, with `paths` naming
+            the files whose views were dropped.
+
+    Raises:
+        ToolError: `invalid-argument` for a path that is given but empty; the default is how every
+            file view is dropped.
     """
     return _report(_call(wire.evict_file_view, path))
 
 
 @operation("context.archive_thread")
 def archive_thread(ranges: list[TurnRange]) -> ReclaimReport:
-    """Move whole turns out of the context window and report what that reclaimed.
+    """Move whole turns out of the context window.
 
     Every result carries a header with its turn number and roughly what holding it costs, which is
     what names the turns worth dropping: `context.archive_thread([TurnRange(4, 19)])` archives turns
@@ -162,6 +169,10 @@ def archive_thread(ranges: list[TurnRange]) -> ReclaimReport:
 
     Args:
         ranges: The inclusive spans of turn numbers to move out of the window. They may overlap.
+
+    Returns:
+        How many context items went and roughly how many tokens that reclaimed. `paths` is empty,
+            since an archive drops turns rather than files.
 
     Raises:
         ToolError: `invalid-argument` for an empty list, too many spans at once, or a span that ends
@@ -181,6 +192,12 @@ def search_archive(query: str) -> ArchiveSearch:
 
     Args:
         query: The substring to look for. Matching is case-insensitive.
+
+    Returns:
+        The matches, most recent first and at most 8, beside the `archive_empty` flag.
+
+    Raises:
+        ToolError: `invalid-argument` for an empty query.
     """
     found = _call(wire.search_archive, query)
     return ArchiveSearch(
@@ -208,5 +225,9 @@ def compact(summary: str, files: list[str] | None = None) -> None:
         summary: What the restarted window opens with. Everything not in it and not re-read from
             `files` is gone.
         files: The paths to read afresh into the restarted window. The default reads nothing back.
+
+    Raises:
+        ToolError: `invalid-argument` for a blank summary. This is the one call gg does not refuse
+            while a compaction is in flight, since nothing else can clear the window.
     """
     _call(wire.compact, summary, _strings("compact", "files", files))

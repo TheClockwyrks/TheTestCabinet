@@ -152,6 +152,8 @@ std::string read_text_file(std::string_view path, files::read_window window = {}
 ///   created.
 /// \param contents The UTF-8 text to write. It replaces the file entirely.
 /// \returns how many bytes were written.
+/// \throws core::tool_error `invalid_argument` for an empty path, and `io_error` when creating the
+///   parent directories or the write itself failed.
 std::uint64_t write_file(std::string_view path, std::string_view contents);
 
 /// Replace the one exact occurrence of `old_string` in a file with `new_string`.
@@ -178,6 +180,8 @@ void edit_file(std::string_view path, std::string_view old_string, std::string_v
 /// \param path The directory to list, relative to the workspace or absolute; empty lists the
 ///   workspace root.
 /// \returns the directory's entries, sorted by name.
+/// \throws core::tool_error `not_found` for a directory that is not there, and `invalid_argument`
+///   for a path that is given but empty.
 std::vector<files::dir_entry> list_dir(std::optional<std::string_view> path = std::nullopt);
 
 }  // namespace files

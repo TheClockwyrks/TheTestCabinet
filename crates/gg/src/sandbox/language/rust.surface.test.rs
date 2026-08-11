@@ -17,7 +17,9 @@
 
 use serde_json::{Value, json};
 
-use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare, program_error};
+use super::substrate::{
+    evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
+};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome};
 use crate::sandbox::membrane::RunEnding;
@@ -494,8 +496,8 @@ gg::log(format!("{} {}", docs::close("gg::views::open_text")?, docs::close_all()
 #[test]
 fn the_program_library_and_a_reviewers_verdict_are_reached_in_rust_too() {
     // The program library is bound from the CAPABILITY rather than from a tool name, and a reviewer
-    // gets the other ending group. Between this and the two functions above, every function this
-    // arm's catalogue describes has been driven through the real membrane.
+    // gets the other ending group. Between this, the two functions above and the alias case below,
+    // every function this arm's catalogue describes has been driven through the real membrane.
     let (outcome, _log) = evaluate(
         &prepare(
             r####"
@@ -549,6 +551,103 @@ session::request_changes(&["widen the test", "name the file"])?;
         "{:?}",
         outcome.completion
     );
+}
+
+/// **Every inherent method reaches the operation it says it is an alias of, carrying the field its
+/// own receiver holds.**
+///
+/// The five methods this SDK declares — `IssueCreated::wait`, `MemoryHit::read`, `OpenView::close`,
+/// `SubagentHandle::send` and `ProgramSummary::source` — are one line of body each: they take a
+/// field off the value they hang off and call the free function beside them with it. That one line
+/// is the thing no other gate can see. The catalogue records which operation each is an alias of and
+/// the [coverage gate](super::agreement) reads that record rather than the body; the [register
+/// gate](super::register) reads only the prose. So a method passing `self.slot` where the call wants
+/// `self.id` would document perfectly, catalogue perfectly, and message a child that does not exist.
+///
+/// Each is therefore driven against the real membrane from the value the producing operation really
+/// handed back, rather than from a literal built here — which proves both halves at once: that the
+/// method is on the value a program actually gets, and that the field it reads is the one gg filled
+/// in.
+#[test]
+fn an_inherent_method_reaches_the_operation_it_is_an_alias_of() {
+    // Four of the five hang off a value a gg TOOL produced, so the alias's own crossing lands in the
+    // log beside the crossing that made its receiver. `views::close` is the exception — a view is
+    // not a tool — and it is checked by what it answers instead.
+    let (outcome, log) = evaluate(
+        &prepare(
+            r####"
+let issue = board::create_issue("Parse the manifest", "the parser", "the writer", "tests pass",
+                                "Builder", board::IssueOptions::default())?;
+gg::log(format!("{} {}", issue.id, issue.wait()?));
+
+let hits = memories::search_memories(&["build"])?;
+gg::log(format!("{} {}", hits[0].name, hits[0].read()?));
+
+let child = delegation::spawn_subagent("Builder", delegation::Brief::Prompt("take the writer"))?;
+child.send("prefer the simpler parser")?;
+gg::log(child.id.clone());
+
+views::open_text("summary", "eight files, two failing")?;
+let open = views::current();
+gg::log(format!("{} {}", open[0].close()?, views::current().len()));
+"####,
+        ),
+        &all_tools(),
+        &[],
+        RunEnding::Role(EndingRole::Standard),
+        false,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "EPIC-1 wait registered",
+            "build-commands the memory contents",
+            "agent-1",
+            // The view the method closed was the one it hung off, and nothing is left behind it.
+            "1 0",
+        ]
+    );
+    assert_eq!(
+        log.names(),
+        [
+            "create_issue",
+            "wait_for_issue",
+            "search_memories",
+            "read_memory",
+            "spawn_subagent",
+            "send_message",
+        ],
+        "each method reached gg's dispatch under the operation it is an alias of"
+    );
+    // And carrying the receiver's own key, which is the half a wrong field would fail.
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" }))
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+
+    // The fifth hangs off the program library, which is bought by a capability rather than by a
+    // tool, and answers out of a history a fresh double has none of — so it needs one seeded.
+    let (outcome, _log) = evaluate_with_program(
+        &prepare(
+            r####"
+let history = programs::history()?;
+gg::log(format!("{} {}", history[0].turn, history[0].source()?));
+"####,
+        ),
+        3,
+        "gg::log(\"the program that ran\");",
+        canned_outcome,
+    );
+    assert_eq!(logs(&outcome), ["3 gg::log(\"the program that ran\");"]);
 }
 
 #[test]
@@ -815,18 +914,53 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         );
     }
 
-    // One member function, built deliberately: the handle a spawn hands back can deliver a message
-    // without the id being spelled out again. It is an ALIAS — the operation is bound canonically by
-    // the free function beside it — so it counts toward no coverage and is documented like anything
-    // else.
-    let alias = functions
+    // Five member functions, each built deliberately: a value gg hands back already carries the one
+    // argument the follow-up call takes, so an inherent method on it is the whole of that call. Each
+    // is an ALIAS — the operation is bound canonically by the free function beside it — so it counts
+    // toward no coverage and is documented like anything else. Rust returns owned structs from every
+    // one of these five producers, so an `impl` block is the idiomatic form and no free-function
+    // fallback is needed.
+    let aliases: Vec<(&str, &str)> = functions
         .iter()
-        .find(|entry| !entry["aliasOf"].is_null())
-        .expect("the one alias this arm binds");
-    assert_eq!(text(alias, "fqn"), "gg::delegation::SubagentHandle::send");
-    assert_eq!(text(alias, "aliasOf"), "delegation.send_message");
-    assert_eq!(text(alias, "receiver"), "SubagentHandle");
-    assert_eq!(text(alias, "kind"), "method");
+        .filter(|entry| !entry["aliasOf"].is_null())
+        .map(|entry| (text(entry, "fqn"), text(entry, "aliasOf")))
+        .collect();
+    assert_eq!(
+        aliases,
+        [
+            ("gg::board::IssueCreated::wait", "board.wait_for_issue"),
+            ("gg::memories::MemoryHit::read", "memories.read_memory"),
+            ("gg::views::OpenView::close", "views.close"),
+            (
+                "gg::delegation::SubagentHandle::send",
+                "delegation.send_message"
+            ),
+            ("gg::programs::ProgramSummary::source", "programs.get"),
+        ]
+    );
+    for entry in functions.iter().filter(|entry| !entry["aliasOf"].is_null()) {
+        assert_eq!(
+            text(entry, "kind"),
+            "method",
+            "`{}` is an inherent method on the value that produced it",
+            text(entry, "fqn")
+        );
+        assert!(
+            !text(entry, "receiver").is_empty(),
+            "`{}` names the type it hangs off",
+            text(entry, "fqn")
+        );
+    }
+    // And each is listed on its receiver's own declaration, which is the menu a model reads when it
+    // opens the type a call handed it.
+    let handle = section(&catalogue, "types")
+        .iter()
+        .find(|declaration| text(declaration, "fqn") == "gg::delegation::SubagentHandle")
+        .expect("SubagentHandle is catalogued");
+    assert_eq!(
+        text(&handle["memberFunctions"][0], "fqn"),
+        "gg::delegation::SubagentHandle::send"
+    );
 
     // The idiom this arm exists to produce, asserted where a model reads it: required arguments
     // positional, an options struct for the optional ones, an `Option<T>` where there is exactly

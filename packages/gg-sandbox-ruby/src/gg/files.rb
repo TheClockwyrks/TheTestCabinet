@@ -89,7 +89,8 @@ module GG
     #     entirely.
     # @return [Integer] how many bytes were written
     # @raise [GG::Core::ToolError] `:invalid_argument` when neither a `contents` argument nor a
-    #   block was given.
+    #   block was given, and for an empty path; `:io_error` when creating the parent directories or
+    #   the write itself failed.
     def self.write_file(path, contents = nil, &block)
       text = block ? block.call : contents
       if text.nil?
@@ -111,7 +112,7 @@ module GG
     # @param old_string [String] The exact text to find, whitespace included. It must appear exactly
     #   once.
     # @param new_string [String] The text to put in its place. An empty string deletes the match.
-    # @return [nil] nothing; the edit either happened or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` when the text does not appear, and `:conflict` —
     #   with the number of matches — when it appears more than once.
     def self.edit_file(path, old_string, new_string)
@@ -128,7 +129,8 @@ module GG
     # @param path [String, nil] The directory to list, relative to the workspace or absolute. Leave
     #   it out for the workspace root.
     # @return [Array<GG::Files::DirEntry>] what the directory holds, sorted by name
-    # @raise [GG::Core::ToolError] `:not_found` for a missing directory.
+    # @raise [GG::Core::ToolError] `:not_found` for a missing directory, and `:invalid_argument` for
+    #   a path that is given but empty — leaving it out is what lists the workspace root.
     def self.list_dir(path = nil)
       Wire.call("list_dir", "files", "listDir", [Wire.js(path)]).map do |entry|
         DirEntry.new(

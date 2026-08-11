@@ -114,6 +114,8 @@ public final class Files {
      *     created as needed.
      * @param contents The UTF-8 text to write. It replaces the file entirely.
      * @return how many bytes were written
+     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty path, and {@link
+     *     ToolErrorCode#IO_ERROR} when creating the parent directories or the write itself failed.
      * @ggop files.write_file
      */
     public static int writeFile(String path, String contents) {
@@ -159,7 +161,9 @@ public final class Files {
      *
      * @param path The directory to list, relative to the workspace or absolute.
      * @return every entry in that directory
-     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a directory that is not there.
+     * @throws ToolError {@link ToolErrorCode#NOT_FOUND} for a directory that is not there, and
+     *     {@link ToolErrorCode#INVALID_ARGUMENT} for a path that is empty — the overload that takes
+     *     none is what lists the workspace root.
      * @ggop files.list_dir
      */
     public static List<DirEntry> listDir(String path) {

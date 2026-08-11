@@ -19,7 +19,7 @@ from typing import Callable
 
 from wit_world.imports import views as wire
 
-from ._registry import operation
+from ._registry import alias, operation
 from .core import ToolError, ToolErrorCode, _call, _uint
 from .files import FileRead, _as_file_read
 
@@ -83,22 +83,44 @@ class OpenView:
     region: ViewRegion | None
     """The line window a paged file view covers; `None` for a whole-file view and for text views."""
 
+    @alias("views.close")
+    def close(self) -> int:
+        """Close this view, freeing the tokens it occupied.
+
+        `views.close` with the selector already supplied, which is what lets a window be tidied by
+        iterating over what is in it rather than by writing a selector out per view.
+
+        A documentation view is the one this does not take away, for the reason `views.close` does
+        not: `docs.close` is the call for one of those, and it is bought by a capability this one is
+        not.
+
+        Returns:
+            How many views were closed, which for one page of a paged file is every page of that
+                path.
+        """
+        # The module-level `close`, not this method: a name in a method body resolves against the
+        # module rather than against the class it is declared in, so there is no recursion here.
+        return close(self.selector)
+
 
 @operation("views.open_file")
 def open_file(path: str, *, offset: int | None = None, limit: int | None = None) -> FileRead:
     """Read a file and place it in the context window, attributed to its path and closable by it.
 
-    What comes back is exactly what `files.read_file` returns; the difference is the view. That split
-    is the point: reading gets bytes for the program, opening shows the file to the agent, so a
-    program that reads forty files to grep them puts nothing in the window. `offset` and `limit`
-    select a window of lines, and two pages of one file are two views that coexist; re-opening the
-    same page replaces what it showed rather than piling up a duplicate. An image is shown as a
-    picture, and this is the only call that shows one.
+    The split from `files.read_file` is the point: reading gets bytes for the program, opening shows
+    the file to the agent, so a program that reads forty files to grep them puts nothing in the
+    window. `offset` and `limit` select a window of lines, and two pages of one file are two views
+    that coexist; re-opening the same page replaces what it showed rather than piling up a
+    duplicate. An image is shown as a picture, and this is the only call that shows one.
 
     Args:
         path: The file to open, relative to the workspace or absolute.
         offset: The 1-based line to start at.
         limit: How many lines to show from `offset`.
+
+    Returns:
+        Exactly what `files.read_file` hands back for the same file, so the program holds the
+            contents as well as the model holding the view.
 
     Raises:
         ToolError: `not-found` for a missing path, and `invalid-argument` for an offset past the end
@@ -189,12 +211,8 @@ def _docs_name(target: object) -> str:
 def close(selector: str) -> int:
     """Close every view carrying `selector`, freeing the tokens they occupied.
 
-    For a file that is every page of that path, for a text view the one with that label, for the
-    results of a search the label `search results`. The number closed comes back. Closing a selector
-    that is not open hands back `0` rather than failing, so a program that tidies up unconditionally
-    need not guard every call. Closing a file view forgets what was read, not what exists; closing a
-    text view discards the only copy of what it held, so anything needed later belongs in a file or
-    a memory first.
+    Closing a file view forgets what was read, not what exists; closing a text view discards the
+    only copy of what it held, so anything needed later belongs in a file or a memory first.
 
     Documentation views are not reached from here. `docs.close` is what takes one away, and it is
     bought by a capability this call is not — so a sweep that included them would answer `0` for an
@@ -203,6 +221,16 @@ def close(selector: str) -> int:
     Args:
         selector: What the view is filed under: a file's path, a text view's label, or
             `search results`.
+
+    Returns:
+        How many views were closed: for a file that is every page of that path, for a text view the
+            one with that label, for the results of a search the label `search results`. A selector
+            that is not open hands back `0` rather than failing, so a program that tidies up
+            unconditionally need not guard every call.
+
+    Raises:
+        ToolError: `invalid-argument` for an empty selector, which names nothing rather than
+            everything — no call here closes the window wholesale.
     """
     return _call(wire.close_view, selector)
 
@@ -211,11 +239,13 @@ def close(selector: str) -> int:
 def current() -> list[OpenView]:
     """List what is open in the context window right now.
 
-    Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a
-    paged file view — the `region` it covers. Reading it is what decides what to close when the
-    window is filling up.
+    Reading it is what decides what to close when the window is filling up.
 
     What it enumerates is the context window's contents, not any module's functions.
+
+    Returns:
+        Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and —
+            for a paged file view — the `region` it covers.
     """
     return [
         OpenView(

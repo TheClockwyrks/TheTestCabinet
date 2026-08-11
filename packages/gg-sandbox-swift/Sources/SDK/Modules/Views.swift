@@ -116,6 +116,8 @@ public enum views {
     /// - Parameter selector: What the view is filed under: a file's path, a text view's label, or
     ///   `search results`.
     /// - Returns: how many views were closed.
+    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty selector, which names nothing
+    ///   rather than everything — no call here closes the window wholesale.
     /// - ggop: views.close
     @discardableResult
     public static func close(_ selector: String) throws -> Int {
@@ -210,6 +212,8 @@ extension views.OpenView {
     /// that band: `docs.close(selector)` is the call for one of those.
     ///
     /// - Returns: how many views were closed.
+    /// - Throws: `core.ToolError` with `.invalidArgument` when this view's `selector` is empty,
+    ///   which no view gg reports ever is.
     /// - ggop-alias: views.close
     @discardableResult
     public func close() throws -> Int {

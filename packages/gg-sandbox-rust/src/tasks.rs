@@ -31,6 +31,10 @@ pub(crate) const TOOLS: &[&str] = &[
 /// * `title` — A short line naming the work.
 /// * `options` — The parts that may be left out: a description, and the tasks this one waits on.
 ///
+/// # Returns
+///
+/// How much of the task budget is used once the task is on the list.
+///
 /// # Errors
 ///
 /// `InvalidArgument` for a blank id or title, `Conflict` on a duplicate id or an edge that would
@@ -103,6 +107,10 @@ pub fn complete_task(id: &str) -> Result<(), ToolError> {
 /// # Arguments
 ///
 /// * `id` — The task to remove.
+///
+/// # Returns
+///
+/// How much of the task budget is still in use once the task is gone.
 ///
 /// # Errors
 ///

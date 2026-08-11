@@ -145,7 +145,12 @@ instance Show FileRead where
 -- | - `options.limit` — How many lines to return from `offset`. Honoured only under a capped read
 -- |   policy.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The `TextFile` arm for a text file's window, or the `ImageFile` arm describing a picture whose
+-- | bytes never entered the program.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` for a missing path.
 readFile
@@ -175,7 +180,11 @@ readFile path options =
 -- | - `options.limit` — How many lines to return from `offset`. Honoured only under a capped read
 -- |   policy.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The file's text, or the window of it a capped read policy allowed.
+-- |
+-- | # Throws
 -- |
 -- | `InvalidArgument` when the path names a picture, which `Gg.Files.readFile` inspects instead and
 -- | `Gg.Views.openFile` displays.
@@ -190,9 +199,8 @@ readTextFile path options =
 
 -- | Write UTF-8 text to a file, creating parent directories and replacing what is there.
 -- |
--- | The number of bytes written comes back. Writing is the expensive direction of this sandbox:
--- | rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large
--- | rewrite is best split across several turns.
+-- | Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files
+-- | in one program exhausts its fuel budget, so a large rewrite is best split across several turns.
 -- |
 -- | # Operation
 -- |
@@ -202,6 +210,15 @@ readTextFile path options =
 -- |
 -- | - `path` — Where to write, relative to the workspace or absolute. Parent directories are created.
 -- | - `contents` — The UTF-8 text to write. It replaces the file entirely.
+-- |
+-- | # Returns
+-- |
+-- | How many bytes were written, which is the UTF-8 length rather than the number of characters.
+-- |
+-- | # Throws
+-- |
+-- | `InvalidArgument` for an empty path, and `IoError` when creating the parent directories or the
+-- | write itself failed.
 writeFile :: String -> String -> Effect Int
 writeFile path contents =
   Wire.call "write_file" "fs" "Gg.Files.writeFile" [ Wire.wire path, Wire.wire contents ]
@@ -221,7 +238,7 @@ writeFile path contents =
 -- | - `oldString` — The exact text to find, whitespace included. It must appear exactly once.
 -- | - `newString` — The text to put in its place. An empty string deletes the match.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it
 -- | appears more than once.
@@ -232,9 +249,6 @@ editFile path oldString newString =
 
 -- | List a directory, sorted by name; `{}` lists the workspace root.
 -- |
--- | Each entry carries a bare `name` — join it with the directory that was listed — and its `kind`.
--- | An empty directory is an empty array, not a failure.
--- |
 -- | # Operation
 -- |
 -- | files.list_dir
@@ -243,6 +257,17 @@ editFile path oldString newString =
 -- |
 -- | - `options` — Which directory to list; `{}` lists the workspace root.
 -- | - `options.path` — The directory to list, relative to the workspace or absolute.
+-- |
+-- | # Returns
+-- |
+-- | One entry per name, sorted by name, and an empty array for an empty directory rather than a
+-- | failure. Each `name` is bare, so joining it with the directory that was listed is what makes a
+-- | path.
+-- |
+-- | # Throws
+-- |
+-- | `NotFound` for a directory that is not there, and `InvalidArgument` for a `path` that is given
+-- | but empty — leaving it out altogether is what lists the workspace root.
 listDir
   :: forall given rest
    . Union given rest ListDirOptions

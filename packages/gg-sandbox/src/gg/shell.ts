@@ -46,6 +46,9 @@ export interface ShellOutput {
  * @param options How to run it.
  * @param options.timeoutSecs How long to let it run before killing it. The default is 120, clamped to
  * whatever is left of the run's wall-clock budget.
+ * @returns the command's exit status and its merged output, whether or not it succeeded.
+ * @throws `ToolError` with `limit-exceeded` when the timeout killed the process, and `io-error`
+ * when it could not be launched at all.
  */
 export function shell(command: string, options?: { timeoutSecs?: number }): ShellOutput {
   const o = opts<{ timeoutSecs?: number }>("shell", options);

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from wit_world.imports import programs as wire
 
-from ._registry import operation
+from ._registry import alias, operation
 from .core import _call, _uint
 
 __all__ = ["ProgramSummary", "get", "history", "rerun"]
@@ -46,15 +46,32 @@ class ProgramSummary:
     error: str | None
     """The error it ended with, when it did not run to its end; `None` when it did."""
 
+    @alias("programs.get")
+    def source(self) -> str:
+        """Fetch this program's source, which a summary does not carry.
+
+        `get` with the turn already supplied, for the common case where the directory entry that
+        named the program is the thing in hand.
+
+        Returns:
+            The source of the program that ran on that turn, as a string.
+
+        Raises:
+            ToolError: `not-found` when the library has since dropped that turn.
+        """
+        return get(turn=self.turn)
+
 
 @operation("programs.history")
 def history() -> list[ProgramSummary]:
     """List the programs this session has already run, oldest first.
 
-    Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes,
-    not sources: `get` is what fetches one. The list survives a compaction, so it is also how a
-    program whose text has left the context window is found again. A session that has run nothing yet
-    gets an empty list rather than an error.
+    It lists shapes, not sources: `get` is what fetches one. The list survives a compaction, so it
+    is also how a program whose text has left the context window is found again.
+
+    Returns:
+        One summary per program already run, oldest first: the turn it ran on, how big it was, and
+            whether it ran to its end. A session that has run nothing yet gets an empty list.
 
     Raises:
         ToolError: `unavailable` when this agent keeps no program library, which is a different fact
@@ -85,6 +102,9 @@ def get(turn: int | None = None) -> str:
     Args:
         turn: The turn whose program to fetch, as `history` reports it. The default fetches the most
             recent one.
+
+    Returns:
+        The source of the program that ran on that turn, as a string.
 
     Raises:
         ToolError: `not-found`, naming the turns that are held, for a turn that ran no program or one

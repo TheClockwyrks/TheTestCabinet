@@ -95,6 +95,7 @@ public static partial class Memories
 
     /// <summary>Read one memory's contents back, by name.</summary>
     /// <param name="name">The memory's slug, as the index lists it.</param>
+    /// <returns>the memory's body alone; the description that indexes it is not part of it.</returns>
     /// <exception cref="ToolException"><see cref="ToolErrorCode.NotFound"/> for a memory not held.</exception>
     /// <ggop>memories.read_memory</ggop>
     public static string ReadMemory(string name)

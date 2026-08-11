@@ -319,6 +319,12 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
     );
     // The view channel is the case the old tool-keyed join could not express: `openFile` runs a
     // `read_file` and the other four run nothing at all, and all five are counted as themselves.
+    //
+    // The sixth entry is the second `views.close`, and it is here because the surface reports what
+    // the instance was **offered** rather than what gg can do: `OpenView.close` is the method on the
+    // value `current` lists, an alias that supplies its own selector, and a model holding one really
+    // can call it. Counting it once because its operation was already counted would report a
+    // narrower surface than the agent has.
     assert_eq!(
         functions_on(&apis, "gg.views"),
         vec![
@@ -330,6 +336,7 @@ fn the_api_surface_carries_each_modules_functions_and_their_own_operations() {
             ),
             ("close".to_string(), "views.close".to_string()),
             ("current".to_string(), "views.current".to_string()),
+            ("close".to_string(), "views.close".to_string()),
         ],
         "the view channel is counted per function, tool or no tool"
     );

@@ -1,4 +1,5 @@
-// What the board hands back, and the two enumerations an issue is revised with.
+// What the board hands back, the two enumerations an issue is revised with, and the wait a freshly
+// filed issue can be put under.
 
 namespace Gg;
 
@@ -65,5 +66,21 @@ public static partial class Board
     /// <summary>An issue the board just created.</summary>
     /// <param name="Id">The id the board assigned it, which every later reference uses.</param>
     /// <param name="Board">How full the board now is.</param>
-    public sealed record IssueCreated(string Id, BoardUsage Board);
+    public sealed record IssueCreated(string Id, BoardUsage Board)
+    {
+        /// <summary>Register a wait on this issue, to be resumed once it goes terminal.</summary>
+        /// <remarks>
+        /// <see cref="WaitForIssue"/> with the id already supplied, for the common case where the
+        /// issue that was just filed is the one to wait on. It records the wait and returns at once,
+        /// so the rest of the program still runs and the suspension happens after it ends.
+        /// </remarks>
+        /// <returns>an acknowledgement that the wait is registered.</returns>
+        /// <exception cref="ToolException">
+        /// <see cref="ToolErrorCode.NotFound"/> when the board no longer holds the issue, which is
+        /// the one way this can fail: the other refusals <see cref="WaitForIssue"/> documents cannot
+        /// be reached from an issue that was just filed here.
+        /// </exception>
+        /// <ggop alias="true">board.wait_for_issue</ggop>
+        public string Wait() => WaitForIssue(Id);
+    }
 }

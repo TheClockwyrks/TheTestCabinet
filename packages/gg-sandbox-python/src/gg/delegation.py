@@ -17,7 +17,7 @@ from enum import Enum
 
 from wit_world.imports import delegation as wire
 
-from ._registry import operation
+from ._registry import alias, operation
 from .core import ToolError, ToolErrorCode, _call, _strings
 
 __all__ = [
@@ -45,6 +45,21 @@ class SubagentHandle:
 
     model_id: str
     """The model actually bound to that agent."""
+
+    @alias("delegation.send_message")
+    def send(self, message: str) -> None:
+        """Deliver a message to this child's inbox, which it reads at its next turn.
+
+        `send_message` with the id already supplied, for the common case where the handle the spawn
+        returned is still in hand.
+
+        Args:
+            message: What to put in its inbox.
+
+        Raises:
+            ToolError: `conflict` when this child has already returned.
+        """
+        send_message(self.id, message)
 
 
 class AgentEnding(Enum):
@@ -112,12 +127,11 @@ def _handle(handle: wire.SubagentHandle) -> SubagentHandle:
 def spawn_subagent(
     agent: str, *, prompt: str | None = None, issue_id: str | None = None
 ) -> SubagentHandle:
-    """Delegate scoped work to a child agent and hand back its handle immediately.
+    """Delegate scoped work to a child agent, which runs in parallel while the program continues.
 
-    The child runs in parallel while the program continues. `agent` names one of the agent profiles
-    this agent may spawn — the system prompt lists them, and the profile selects the child's model,
-    tools and instructions. The brief is exactly one of `prompt` and `issue_id`. The child shares the
-    workspace.
+    `agent` names one of the agent profiles this agent may spawn — the system prompt lists them,
+    and the profile selects the child's model, tools and instructions. The brief is exactly one of
+    `prompt` and `issue_id`. The child shares the workspace.
 
     Args:
         agent: The agent profile to run the child as, from the ones this agent may spawn. It selects
@@ -126,6 +140,10 @@ def spawn_subagent(
             never neither.
         issue_id: The board issue to brief the child from. Give this or `prompt`, never both and
             never neither.
+
+    Returns:
+        The child's handle: the id `wait_for_subagents` and `send_message` take, the agent profile
+            it runs as, and the model bound to that profile.
 
     Raises:
         ToolError: `limit-exceeded` at the delegation depth cap, and `invalid-argument` when `agent`
@@ -149,6 +167,10 @@ def wait_for_subagents(ids: list[str] | None = None) -> list[SubagentResult]:
     Args:
         ids: The children to wait for, as `spawn_subagent` returned them. The default waits for every
             one still outstanding.
+
+    Returns:
+        One result per child, in dispatch order, each carrying its final message and how it ended. A
+            child that produced no return value at all has no `status`.
 
     Raises:
         ToolError: `not-found` for an id this agent did not spawn.
@@ -233,14 +255,16 @@ def fork(prompt: str) -> SubagentHandle:
     `prompt` is the *difference* rather than a briefing — everything already worked out is already
     there.
 
-    Its handle comes back immediately, but the copy itself starts once this turn's tool results are
-    recorded, because the conversation it inherits has to be a complete one. So `wait_for_subagents`
-    can only collect it on a later turn, and waiting on it in the program that made it never returns
-    it.
+    The copy itself starts once this turn's tool results are recorded, because the conversation it
+    inherits has to be a complete one. So `wait_for_subagents` can only collect it on a later turn,
+    and waiting on it in the program that made it never returns it.
 
     Args:
         prompt: What the copy is to do instead. It has the whole conversation already, so this is the
             difference rather than a briefing.
+
+    Returns:
+        The copy's handle, carrying the id a later wait collects it by.
 
     Raises:
         ToolError: `invalid-argument` for a blank prompt, `limit-exceeded` at the delegation depth

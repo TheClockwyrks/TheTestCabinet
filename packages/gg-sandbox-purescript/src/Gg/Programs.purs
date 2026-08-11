@@ -11,6 +11,7 @@
 module Gg.Programs
   ( history
   , get
+  , sourceOf
   , rerun
   , ProgramSummary
   , GetOptions
@@ -49,10 +50,9 @@ type ProgramSummary =
 
 -- | The programs already run this session, oldest first.
 -- |
--- | Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes
--- | rather than sources, so the one worth having is then fetched. The list survives a compaction,
--- | which makes it the way to find a program whose text has left the context window. A session that
--- | has run nothing yet gets an empty array rather than an error.
+-- | It lists shapes rather than sources, so the one worth having is then fetched. The list survives
+-- | a compaction, which makes it the way to find a program whose text has left the context
+-- | window.
 -- |
 -- | # Operation
 -- |
@@ -61,10 +61,15 @@ type ProgramSummary =
 -- | # Arguments
 -- |
 -- | (none)
+-- |
+-- | # Returns
+-- |
+-- | One summary per program already run, oldest first: the turn it ran on, how big it was, and
+-- | whether it ran to its end. A session that has run nothing yet gets an empty array.
 history :: Effect (Array ProgramSummary)
 history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.history" []
 
--- | The exact source of one program that ran, as a string. With `{}`, the most recent one.
+-- | The source of one program that ran; with `{}`, the most recent one.
 -- |
 -- | This is the first half of fixing a program without rewriting it: get what ran, patch it with
 -- | ordinary string work, and hand the result back to be run. What comes back is the program that
@@ -81,7 +86,11 @@ history = map programSummary <$> Wire.call "history" "programs" "Gg.Programs.his
 -- | - `options` — Which program to fetch; `{}` fetches the most recent one.
 -- | - `options.turn` — The turn whose program to fetch, as the history reports it.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The program's source, exactly as it executed.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that
 -- | the library has dropped it.
@@ -91,6 +100,30 @@ get
   => Record given
   -> Effect String
 get options = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.pick "turn" options ]
+
+-- | Fetch the source of one program the history listed.
+-- |
+-- | `Gg.Programs.get` with the turn already taken out of the summary, for the common case where the
+-- | directory entry that named the program is the thing in hand. A summary describes a program's
+-- | shape and never its text, so this is how the one worth patching is read.
+-- |
+-- | # Alias
+-- |
+-- | programs.get
+-- |
+-- | # Arguments
+-- |
+-- | - `program` — The program to fetch, as `Gg.Programs.history` listed it.
+-- |
+-- | # Returns
+-- |
+-- | The program's source, exactly as it executed.
+-- |
+-- | # Throws
+-- |
+-- | `NotFound` when the library has since dropped that turn.
+sourceOf :: ProgramSummary -> Effect String
+sourceOf program = get { turn: program.turn }
 
 -- | Hand gg a program to run in place of this one.
 -- |
@@ -112,7 +145,7 @@ get options = Wire.call "get" "programs" "Gg.Programs.get" [ Wire.pick "turn" op
 -- |
 -- | - `source` — The program to run in place of this one, as PureScript. It may not be blank.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.
 rerun :: String -> Effect Unit

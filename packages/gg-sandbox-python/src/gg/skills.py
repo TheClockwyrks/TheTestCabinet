@@ -17,7 +17,7 @@ __all__ = ["read_skill"]
 
 @operation("skills.read_skill")
 def read_skill(name: str) -> str:
-    """Read a skill by name and hand back its body with the front matter stripped.
+    """Read a skill from the run's authored library, by name.
 
     Reading it also pins that body permanently into context, so a skill that has been read stays
     read.
@@ -28,6 +28,10 @@ def read_skill(name: str) -> str:
 
     Args:
         name: The skill's name, as the system prompt lists it.
+
+    Returns:
+        The skill's body with its front matter stripped, and — where the skill is code — the
+            `lib.<key>` its public names are now bound at.
 
     Raises:
         ToolError: `not-found` — listing the skills that do exist — when the name is unknown.

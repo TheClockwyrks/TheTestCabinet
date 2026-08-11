@@ -28,6 +28,7 @@ public static partial class Shell
     /// How long to let it run before killing it. Left out, gg's default of 120 seconds applies, and
     /// either way it is clamped to what is left of the run's wall-clock budget.
     /// </param>
+    /// <returns>what the process reported, including whether the output cap cut what came back.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.LimitExceeded"/> when the timeout killed it, and
     /// <see cref="ToolErrorCode.IOError"/> when the process could not be started at all.

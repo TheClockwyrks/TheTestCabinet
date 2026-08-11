@@ -71,9 +71,7 @@ export interface DocSearch {
  *
  * The filters compose with the query and with each other, and each is an exact lookup rather than
  * another thing to rank: an empty query with `module` is that module's whole directory, which is the
- * first hop worth making. A query that is blank **and** carries no filter is `invalid-argument`,
- * because a search that asked for nothing and a search that found nothing are different answers; so
- * is an unrecognised `kind`, which would otherwise silently widen a search believed to be narrow.
+ * first hop worth making.
  *
  * The page comes back as a value **and** opens as a view labelled `search results`, so the results
  * can be read next turn without being shown deliberately. That view is replaced by the next search
@@ -92,6 +90,11 @@ export interface DocSearch {
  * @param options.offset How many hits to skip, for reading past the first page. Defaults to none.
  * @param options.limit How many hits to return: 20 by default, 100 at most, and zero is refused.
  * Compare it against `total` to see how much of the answer this page is.
+ * @returns one page of hits, best first, beside the `total` that says how much of the answer it is.
+ * @throws `ToolError` with `invalid-argument` for a blank query carrying no filter — a search that
+ * asked for nothing and a search that found nothing are different answers — for an unrecognised
+ * `kind`, which would otherwise silently widen a search believed to be narrow, and for a `limit` of
+ * zero, which is a page that could answer nothing.
  */
 export function search(
   query: string,
@@ -126,20 +129,22 @@ export function search(
 }
 
 /**
- * Close the documentation view opened under `key`, and hand back how many were closed.
+ * Close the documentation view opened under `key`.
  *
- * A key that is not open closes zero rather than failing, so tidying up unconditionally needs no
- * guard. There is no cascade: closing a function's view leaves the views of the types it named
- * exactly where they were, and closing a type's leaves the functions. Nothing remembers why a view
- * was opened, so a type closed here is opened again by the next function that mentions it.
+ * A key that is not open is not a failure, so tidying up unconditionally needs no guard. There is no
+ * cascade: closing a function's view leaves the views of the types it named exactly where they were,
+ * and closing a type's leaves the functions. Nothing remembers why a view was opened, so a type
+ * closed here is opened again by the next function that mentions it.
  *
- * Throws `ToolError` with `unavailable` for an agent this run did not give the closing of
- * documentation views. Opening one only ever appends to the end of the prompt, while closing one
- * rewrites its middle and costs the run every cached token after it — which is why opening is
- * always available and closing is bought.
+ * Opening a view only ever appends to the end of the prompt, while closing one rewrites its middle
+ * and costs the run every cached token after it — which is why opening is always available and
+ * closing is bought.
  *
  * @ggop docs.close
  * @param key The fully-qualified name the view was opened under, as a search hit reports it.
+ * @returns how many views were closed, which is zero when that key was not open.
+ * @throws `ToolError` with `unavailable` for an agent this run did not give the closing of
+ * documentation views.
  */
 export function close(key: string): number {
   // A `u32`, so already a `number` — nothing to widen on the way back.
@@ -147,17 +152,16 @@ export function close(key: string): number {
 }
 
 /**
- * Close every documentation view at once, and hand back how many went.
+ * Close every documentation view at once.
  *
- * The blanket form of `close`, on the same terms and behind the same capability: no cascade to
- * worry about because nothing is left, and zero rather than a failure when none was open. It is the
- * call for reclaiming the window between one piece of work and the next, where naming each key would
- * be a list to keep.
- *
- * Throws `ToolError` with `unavailable` for an agent this run did not give the closing of
- * documentation views.
+ * The blanket form of `close`, on the same terms and behind the same capability, with no cascade to
+ * worry about because nothing is left. It is the call for reclaiming the window between one piece of
+ * work and the next, where naming each key would be a list to keep.
  *
  * @ggop docs.close_all
+ * @returns how many views went, which is zero when none was open.
+ * @throws `ToolError` with `unavailable` for an agent this run did not give the closing of
+ * documentation views.
  */
 export function closeAll(): number {
   return call(() => raw.closeDocViews());

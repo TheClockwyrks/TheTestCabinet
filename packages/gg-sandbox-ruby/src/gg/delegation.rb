@@ -106,7 +106,7 @@ module GG
     # @param agent_id [String] The child to deliver to, as `GG::Delegation.spawn_subagent` returned
     #   it.
     # @param message [String] What to put in its inbox. It reads it at its next turn.
-    # @return [nil] nothing; the message either landed or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown agent id, and `:conflict` when that
     #   child has already returned.
     def self.send_message(agent_id, message)
@@ -127,7 +127,7 @@ module GG
     # @param state [String] The state to move on to, named the way an agent to spawn is named.
     # @param note [String, nil] The opening message the next state's agent sees. Leave it out to
     #   tell it nothing.
-    # @return [nil] nothing; the declaration is recorded and the program runs on
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:invalid_argument` for a state this session may not move to, and
     #   `:refused` for a second declaration in one turn.
     def self.transition_state(state, note = nil)
@@ -147,7 +147,7 @@ module GG
     # @param agent [String] The agent to become, from the ones this agent may become.
     # @param prompt [String, nil] Its opening message. It already has the whole conversation, so
     #   this is the instruction rather than a briefing.
-    # @return [nil] nothing; the succession is recorded and the program runs on
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:refused` for a second succession in one turn or one after a
     #   state transition, and `:invalid_argument` for an agent this session may not become.
     def self.exec(agent, prompt = nil)
@@ -207,7 +207,7 @@ module GG
       # already answers to as the dynamic-dispatch method.
       #
       # @param message [String] What to put in its inbox.
-      # @return [nil] nothing; the message either landed or raised
+      # @return [nil]
       # @raise [GG::Core::ToolError] `:conflict` when this child has already returned.
       def send_message(message)
         Delegation.send_message(@id, message)

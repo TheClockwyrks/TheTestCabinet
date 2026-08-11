@@ -81,7 +81,7 @@ def add_task(
     description: str | None = None,
     blocked_by: list[str] | None = None,
 ) -> TaskUsage:
-    """Add a task to the task graph and hand back the task budget.
+    """Add a task to the task graph.
 
     `blocked_by` names the tasks that must finish before this one, and defaults to none.
 
@@ -90,6 +90,9 @@ def add_task(
         title: A short line naming the work.
         description: What the work is, at whatever length is useful.
         blocked_by: The ids of the tasks that must be done before this one. The default is none.
+
+    Returns:
+        The task budget the addition left behind.
 
     Raises:
         ToolError: `invalid-argument` for a blank id or title, `conflict` on a duplicate id or an
@@ -178,10 +181,13 @@ def complete_task(id: str) -> None:
 
 @operation("tasks.remove_task")
 def remove_task(id: str) -> TaskUsage:
-    """Remove a task and every blocker edge pointing at it, and hand back the task budget.
+    """Remove a task and every blocker edge pointing at it.
 
     Args:
         id: The task to remove.
+
+    Returns:
+        The task budget the removal left behind.
 
     Raises:
         ToolError: `not-found` for an unknown id.

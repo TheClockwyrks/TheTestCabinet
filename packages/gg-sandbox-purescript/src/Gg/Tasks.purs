@@ -60,7 +60,7 @@ type TaskUsage =
   , maxTasks :: Int
   }
 
--- | Add a task to the task graph and hand back the task budget.
+-- | Add a task to the task graph.
 -- |
 -- | `blockedBy` names the tasks that must finish before this one and defaults to none.
 -- |
@@ -77,7 +77,11 @@ type TaskUsage =
 -- | - `task.description` — What the work is, at whatever length is useful.
 -- | - `task.blockedBy` — The ids of the tasks that must be done before this one. Defaults to none.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The task budget the addition left behind.
+-- |
+-- | # Throws
 -- |
 -- | `Conflict` on a duplicate id or on an edge that would close a cycle.
 addTask
@@ -104,7 +108,7 @@ addTask task = Wire.call "add_task" "tasks" "Gg.Tasks.addTask" [ Wire.lower {} t
 -- |   it.
 -- | - `patch.status` — Where the task now stands.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 updateTask
@@ -131,7 +135,7 @@ updateTask id patch =
 -- | - `blockedBy` — The ids of every task that must now be done before it. An empty array clears them
 -- |   all.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.
 setBlockedBy :: String -> Array String -> Effect Unit
@@ -150,7 +154,7 @@ setBlockedBy id blockedBy =
 -- |
 -- | - `id` — The task to mark done.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 completeTask :: String -> Effect Unit
@@ -166,7 +170,11 @@ completeTask id = Wire.call_ "complete_task" "tasks" "Gg.Tasks.completeTask" [ W
 -- |
 -- | - `id` — The task to remove.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The task budget the removal left behind.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 removeTask :: String -> Effect TaskUsage

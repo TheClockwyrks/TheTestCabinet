@@ -34,6 +34,7 @@ public static partial class Views
     /// <param name="path">The file to read and show, relative to the workspace or absolute.</param>
     /// <param name="offset">The 1-based first line. Left out, the whole file is shown.</param>
     /// <param name="limit">How many lines. Left out, the view runs to the end.</param>
+    /// <returns>the read itself, so the program can work with what the model is now being shown.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.NotFound"/> for a missing path, and
     /// <see cref="ToolErrorCode.InvalidArgument"/> for an offset past the end of the file.
@@ -115,6 +116,11 @@ public static partial class Views
     /// rather than failing.
     /// </remarks>
     /// <param name="selector">A file view's workspace path, or a text view's label.</param>
+    /// <returns>how many views went, counting each page of a paged file separately.</returns>
+    /// <exception cref="ToolException">
+    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty selector, which names nothing rather
+    /// than everything — no call here closes the window wholesale.
+    /// </exception>
     /// <ggop>views.close</ggop>
     public static uint Close(string selector)
     {

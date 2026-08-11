@@ -127,7 +127,7 @@ module GG
     #   the status it has.
     # @param epic_id [String, nil, GG::Core::Unchanged] The epic to regroup it under; `nil` detaches
     #   it from the one it has, and leaving it out keeps the grouping.
-    # @return [nil] nothing; the revision either happened or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
     def self.update_issue(id, title: nil, description: Core::UNCHANGED, in_scope: nil,
                           out_of_scope: nil, completion_criteria: nil, status: nil,
@@ -154,7 +154,7 @@ module GG
     # @param id [String] The issue whose blockers to replace.
     # @param blocked_by [Array<String>] The ids of every issue that must now be done before it,
     #   splatted. Passing none clears them all.
-    # @return [nil] nothing; the replacement either happened or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown id, and `:conflict` when an edge
     #   would close a cycle.
     def self.set_issue_blocked_by(id, *blocked_by)

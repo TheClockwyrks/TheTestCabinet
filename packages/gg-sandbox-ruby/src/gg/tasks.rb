@@ -59,7 +59,7 @@ module GG
     #   with; `nil` clears it, and leaving it out keeps the one it has.
     # @param status [GG::Tasks::TaskStatus, nil] Where the task now stands. Leave it out to keep the
     #   status it has.
-    # @return [nil] nothing; the revision either happened or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
     def self.update_task(id, title: nil, description: Core::UNCHANGED, status: nil)
       Wire.call("update_task", "tasks", "updateTask", [
@@ -80,7 +80,7 @@ module GG
     # @param id [String] The task whose blockers to replace.
     # @param blocked_by [Array<String>] The ids of every task that must now be done before it,
     #   splatted. Passing none clears them all.
-    # @return [nil] nothing; the replacement either happened or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown id, and `:conflict` when an edge
     #   would close a cycle.
     def self.set_blocked_by(id, *blocked_by)
@@ -95,7 +95,7 @@ module GG
     # Tasks it was blocking become actionable once every one of their blockers is done.
     #
     # @param id [String] The task to mark done.
-    # @return [nil] nothing; the task either moved or raised
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown id.
     def self.complete_task(id)
       Wire.call("complete_task", "tasks", "completeTask", [id])

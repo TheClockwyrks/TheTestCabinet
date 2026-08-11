@@ -56,9 +56,7 @@ function witStatus(status: TaskStatus | undefined): TaskStatusRaw | undefined {
 }
 
 /**
- * Add a task to the graph and hand back the task budget.
- *
- * Throws `ToolError` with `conflict` on a duplicate id, or on an edge that would close a cycle.
+ * Add a task to the graph.
  *
  * @ggop tasks.add_task
  * @param task The task to add.
@@ -67,6 +65,8 @@ function witStatus(status: TaskStatus | undefined): TaskStatusRaw | undefined {
  * @param task.title A short line naming the work.
  * @param task.description What the work is, at whatever length is useful.
  * @param task.blockedBy The ids of the tasks that must be done before this one. The default is none.
+ * @returns how much of the task budget is used now that the task is on the list.
+ * @throws `ToolError` with `conflict` on a duplicate id, or on an edge that would close a cycle.
  */
 export function addTask(task: {
   id: string;
@@ -89,14 +89,13 @@ export function addTask(task: {
  *
  * An omitted `description` leaves it alone, `null` clears it, and a string replaces it.
  *
- * Throws `ToolError` with `not-found` for an unknown id.
- *
  * @ggop tasks.update_task
  * @param id The task to revise.
  * @param patch The fields to change. At least one is required; an omitted field is left alone.
  * @param patch.title The title to replace the old one with.
  * @param patch.description The description to replace the old one with, or `null` to clear it.
  * @param patch.status Where the task now stands.
+ * @throws `ToolError` with `not-found` for an unknown id.
  */
 export function updateTask(
   id: string,
@@ -114,13 +113,12 @@ export function updateTask(
 /**
  * Replace a task's whole blocker set; an empty array clears every blocker.
  *
- * Throws `ToolError` with `not-found` for an unknown id, and `conflict` when an edge would close a
- * cycle.
- *
  * @ggop tasks.set_blocked_by
  * @param id The task whose blockers to replace.
  * @param blockedBy The ids of every task that must now be done before it. An empty array clears them
  * all.
+ * @throws `ToolError` with `not-found` for an unknown id, and `conflict` when an edge would close a
+ * cycle.
  */
 export function setBlockedBy(id: string, blockedBy: string[]): void {
   call(() => raw.setBlockedBy(id, arrayArg("setBlockedBy", "blockedBy", blockedBy)));
@@ -131,22 +129,21 @@ export function setBlockedBy(id: string, blockedBy: string[]): void {
  *
  * A blocked task becomes actionable only once every one of its blockers is done.
  *
- * Throws `ToolError` with `not-found` for an unknown id.
- *
  * @ggop tasks.complete_task
  * @param id The task to mark done.
+ * @throws `ToolError` with `not-found` for an unknown id.
  */
 export function completeTask(id: string): void {
   call(() => raw.completeTask(id));
 }
 
 /**
- * Remove a task and every blocker edge pointing at it, and hand back the task budget.
- *
- * Throws `ToolError` with `not-found` for an unknown id.
+ * Remove a task and every blocker edge pointing at it.
  *
  * @ggop tasks.remove_task
  * @param id The task to remove.
+ * @returns how much of the task budget is used now that the task has gone.
+ * @throws `ToolError` with `not-found` for an unknown id.
  */
 export function removeTask(id: string): TaskUsage {
   return call(() => raw.removeTask(id));

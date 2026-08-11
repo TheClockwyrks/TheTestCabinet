@@ -44,6 +44,8 @@ public final class Context {
      *
      * @param path The file whose views to drop.
      * @return what the eviction reclaimed
+     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a path that is empty; the
+     *     overload that takes none is how every file view is dropped.
      * @ggop context.evict_file_view
      */
     public static ReclaimReport evictFileView(String path) {
@@ -86,6 +88,7 @@ public final class Context {
      *
      * @param query The substring to look for. Matching is case-insensitive.
      * @return what the search found, and whether there was anything to search
+     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty query.
      * @ggop context.search_archive
      */
     public static ArchiveSearch searchArchive(String query) {
@@ -108,8 +111,9 @@ public final class Context {
      *     {@code files} is gone.
      * @param files The paths to read afresh into the restarted window. Naming none reads nothing
      *     back.
-     * @throws ToolError {@link ToolErrorCode#REFUSED} when a compaction is already in flight and
-     *     this call is not the one it asked for.
+     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for a blank summary. This is the one
+     *     call gg does not refuse while a compaction is in flight, since nothing else can clear the
+     *     window.
      * @ggop context.compact
      */
     public static void compact(String summary, String... files) {

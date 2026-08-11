@@ -28,6 +28,8 @@ import { ToolError } from "./core.js";
  *
  * @ggop session.finish
  * @param summary What was done, in a sentence or two.
+ * @throws `ToolError` with `invalid-argument` for a blank summary, and `unavailable` when this
+ * agent's role ends its session some other way.
  */
 export function finish(summary: string): void {
   requireString("finish", "a summary string", summary);
@@ -41,6 +43,7 @@ export function finish(summary: string): void {
  * actually been read.
  *
  * @ggop session.approve
+ * @throws `ToolError` with `unavailable` when this agent's role ends its session some other way.
  */
 export function approve(): void {
   call(() => raw.approve());
@@ -55,6 +58,8 @@ export function approve(): void {
  * @ggop session.request_changes
  * @param items Every change that must be made before the work can be accepted, one per entry: what is
  * wrong, and what to change. It may not be empty.
+ * @throws `ToolError` with `invalid-argument` when the list is empty, and `unavailable` when this
+ * agent's role ends its session some other way.
  */
 export function requestChanges(items: string[]): void {
   if (!Array.isArray(items)) {

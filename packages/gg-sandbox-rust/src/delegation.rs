@@ -37,6 +37,11 @@ pub(crate) const TOOLS: &[&str] = &[
 /// * `brief` — What the child is to do: `Brief::Prompt` with self-contained instructions, or
 ///   `Brief::Issue` with the id of a board issue to brief it from.
 ///
+/// # Returns
+///
+/// The child's handle — its id, the profile it runs as and the model actually bound to it — which is
+/// what waits on it and what messages it.
+///
 /// # Errors
 ///
 /// `LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this
@@ -59,6 +64,10 @@ pub fn spawn_subagent(agent: &str, brief: Brief<'_>) -> Result<SubagentHandle, T
 ///
 /// * `ids` — The children to wait for, as [`spawn_subagent`] returned them; `None` waits for every
 ///   one still outstanding.
+///
+/// # Returns
+///
+/// One result per child waited on, in dispatch order rather than in the order they finished.
 ///
 /// # Errors
 ///
@@ -151,6 +160,11 @@ pub fn exec(agent: &str, prompt: Option<&str>) -> Result<(), ToolError> {
 ///
 /// * `prompt` — What the copy is to do instead. It has the whole conversation already, so this is the
 ///   difference rather than a briefing.
+///
+/// # Returns
+///
+/// The copy's handle, immediately — before the copy itself has started, which is why
+/// [`wait_for_subagents`] collects it only on a later turn.
 ///
 /// # Errors
 ///

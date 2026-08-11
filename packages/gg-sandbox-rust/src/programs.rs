@@ -21,6 +21,10 @@ use crate::wire;
 /// program whose text has left the context window is found again. A session that has run nothing yet
 /// gets an empty `Vec` rather than an error.
 ///
+/// # Returns
+///
+/// One summary per program this session has run, oldest first, each carrying the turn [`get`] takes.
+///
 /// # Errors
 ///
 /// `Unavailable` when this agent keeps no program library — which is a different fact from an empty
@@ -43,6 +47,11 @@ pub fn history() -> Result<Vec<ProgramSummary>, ToolError> {
 ///
 /// * `turn` — The turn whose program to fetch, as [`history`] reports it; `None` fetches the most
 ///   recent one.
+///
+/// # Returns
+///
+/// That program's source, exactly as it executed — so a program that was itself handed over by
+/// [`rerun`] comes back as what ran, not as the lines that asked for it.
 ///
 /// # Errors
 ///
@@ -95,4 +104,23 @@ pub struct ProgramSummary {
     pub ok: bool,
     /// The error it ended with, when it did not run to its end.
     pub error: Option<String>,
+}
+
+impl ProgramSummary {
+    /// Fetch the exact source of this program.
+    ///
+    /// [`get`] with the turn already supplied, for the common case where the summary worth fetching
+    /// is in hand.
+    ///
+    /// # Returns
+    ///
+    /// That program's source, exactly as it executed.
+    ///
+    /// # Errors
+    ///
+    /// `NotFound` when the library's retention has since dropped that turn.
+    #[doc(alias = "ggop-alias:programs.get")]
+    pub fn source(&self) -> Result<String, ToolError> {
+        get(Some(self.turn))
+    }
 }

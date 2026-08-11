@@ -39,18 +39,24 @@
  *   * a `# Fields` list must name every field of the type it is on, and only those;
  *   * an argument's description is one paragraph, because a parameter carries a brief and nothing
  *     else; a field's first paragraph is its brief and any that follow are its detail;
+ *   * a call that hands something back documents it under `# Returns`, and one that hands back
+ *     `Effect Unit` documents no such section;
+ *   * a heading outside the closed set this convention reads is refused, so a mistyped one is a
+ *     build failure rather than a paragraph nobody is ever shown;
  *   * nothing may be blank.
  *
  * **An attribute a declaration can carry.** gg's identity for a call — that `Gg.Files.readFile` is
  * gg's `files.read_file` operation, the same capability C# spells `Gg.Files.ReadTextFile` — is the
  * one thing PureScript's syntax cannot say. It is written on the declaration all the same, in a
- * `# Operation` section of that declaration's own doc comment. On the declaration rather than in
- * `catalogue.mjs`, because a side table naming every function twice is the second copy that drifts.
+ * `# Operation` section of that declaration's own doc comment, or in an `# Alias` section where the
+ * declaration is a second, shorter way to reach an operation another one already binds. On the
+ * declaration rather than in `catalogue.mjs`, because a side table naming every function twice is
+ * the second copy that drifts.
  *
- * **A macro.** Every capability module carries a `list`, and PureScript has no way to declare one
- * function eleven times from one source. So the eleven are real declarations and this script refuses
- * a catalogue whose directories are not word for word identical — the guarantee a macro gives, held
- * by the reflector instead of by the language.
+ * **A member on a value.** A record has fields and no behaviour, so the convenience another arm
+ * hangs off a value — `view.close()` — is a free function over that value here: `Gg.Views.closeView`
+ * takes the `OpenView` that `Gg.Views.current` listed. That is the equivalent shape rather than a
+ * shortfall, and it is why `memberFunctions` is empty on every type this SDK declares.
  *
  * Each of those is a `throw` here rather than a `null` in the JSON, because the failure would
  * otherwise land on a model reading a signature it cannot act on.
@@ -510,6 +516,18 @@ function references(names) {
 // ---------------------------------------------------------------------------------------------
 
 /**
+ * Every `#` heading this convention knows, and therefore every heading a declaration may write.
+ *
+ * The set is closed, and closing it is not tidiness. A heading this script does not read is a
+ * section that vanishes: `# Retruns` parses perfectly, lands in the map, and is never asked for
+ * again, so an author who mistyped one would have written a paragraph no model will ever be shown
+ * and no gate would have said so. That failure has already been shipped twice on this project by
+ * reflectors that read a subset of what their authors wrote, and both times the only thing that
+ * caught it was somebody counting tags against catalogue lines by hand.
+ */
+const HEADINGS = ["Operation", "Alias", "Arguments", "Fields", "Returns", "Throws"];
+
+/**
  * One doc comment, split into the prose a model reads and the `#` sections this convention carries.
  *
  * A declaration with no comment at all is a failure rather than an empty description: everything in
@@ -527,6 +545,12 @@ function comment(declaration, what) {
   for (const line of text.split("\n")) {
     const heading = /^# (.+?)\s*$/.exec(line);
     if (heading !== null) {
+      if (!HEADINGS.includes(heading[1])) {
+        throw new Error(
+          `${what} writes a \`# ${heading[1]}\` section, which this convention has no reader for; ` +
+            `the headings it carries are ${HEADINGS.join(", ")}`,
+        );
+      }
       current = [];
       sections.set(heading[1], current);
       continue;
@@ -665,19 +689,37 @@ function brieflyDocumented(parsed, entry) {
   return entry.paragraphs[0];
 }
 
-/** The gg operation a declaration binds, read out of its own `# Operation` section. */
+/**
+ * The gg operation a declaration binds, and whether it is that operation's binding or a second way
+ * to reach it.
+ *
+ * Both are written the same way and in one place — `# Operation` for the binding, `# Alias` for a
+ * second way to reach one — so the id is never written twice on one declaration and there is no
+ * separate flag for the two to disagree with. An alias is what this arm's convenience helpers are:
+ * `Gg.Board.waitFor` over an `IssueCreated` reaches the same `board.wait_for_issue` that
+ * `Gg.Board.waitForIssue` does, under the same gate, and it adds nothing to what this arm covers.
+ */
 function operationOf(parsed, module_) {
-  const lines = parsed.sections.get("Operation");
+  const operation = parsed.sections.get("Operation");
+  const alias = parsed.sections.get("Alias");
+  if (operation !== undefined && alias !== undefined) {
+    throw new Error(
+      `${parsed.what} writes both an \`# Operation\` and an \`# Alias\` section; a declaration is ` +
+        "either an operation's binding or a second way to reach one, and never both",
+    );
+  }
+  const lines = operation ?? alias;
   if (lines === undefined) {
     throw new Error(
       `${parsed.what} is exported and names no gg operation, so a model would never be told it ` +
         "exists — give it a `# Operation` section naming one, as `<namespace>.<key>`",
     );
   }
+  const heading = operation === undefined ? "Alias" : "Operation";
   const text = lines.join("\n").trim();
   if (!/^[a-z_]+\.[a-z_]+$/u.test(text)) {
     throw new Error(
-      `${parsed.what}'s \`# Operation\` section is not one \`<namespace>.<key>\` id: ${text}`,
+      `${parsed.what}'s \`# ${heading}\` section is not one \`<namespace>.<key>\` id: ${text}`,
     );
   }
   const [namespace] = text.split(".");
@@ -687,24 +729,45 @@ function operationOf(parsed, module_) {
         `\`${module_.id}\` — a module and the operations it binds are one vocabulary`,
     );
   }
-  return text;
+  return { operation: text, aliasOf: operation === undefined ? text : null };
 }
 
-/** The section that says what a call raises, folded into the detail as its own heading. */
-function raises(parsed) {
-  const lines = parsed.sections.get("Raises");
+/** One folded section's body, refusing a heading written with nothing under it. */
+function section(parsed, heading) {
+  const lines = parsed.sections.get(heading);
   if (lines === undefined) return undefined;
   const text = unwrap(lines);
   if (text === "")
-    throw new Error(`${parsed.what} has an empty \`# Raises\` section`);
+    throw new Error(`${parsed.what} has an empty \`# ${heading}\` section`);
   return text;
 }
 
-/** A declaration's brief and detail, with the `# Raises` section folded onto the end of the detail. */
+/**
+ * A declaration's brief and detail, with what it hands back and what it throws folded onto the end
+ * of the detail under their own headings.
+ *
+ * **`Throws`, not `Raises`.** The word is the one PureScript's own vocabulary uses: the exception
+ * effect is `Effect.Exception.throw`, `throwException` and `catchException`, and there is no `raise`
+ * anywhere in it. `# Raises` was gg's invention rather than the language's — this arm has no
+ * doc-tag machinery for a reflector to have read a word out of, so the heading was chosen rather
+ * than reflected, and it was chosen wrong. The rule the correction is made under is that the failure
+ * section's word is whatever the arm's own convention uses, and no reflector may rename or invent
+ * one.
+ *
+ * `# Returns` is folded first because that is the order a reader wants them in: what the call hands
+ * back on the ordinary path, and then how the path can fail. Both are markdown headings rather than
+ * inline lead-in lines, matching `# Arguments` and `# Fields`, because pursuit renders a doc comment
+ * as markdown and a heading is what this arm already writes.
+ */
 function documented(parsed) {
   const { brief, detail } = split(parsed.prose, parsed.what);
-  const raised = raises(parsed);
-  const parts = [detail, raised === undefined ? null : `# Raises\n\n${raised}`];
+  const returned = section(parsed, "Returns");
+  const thrown = section(parsed, "Throws");
+  const parts = [
+    detail,
+    returned === undefined ? null : `# Returns\n\n${returned}`,
+    thrown === undefined ? null : `# Throws\n\n${thrown}`,
+  ];
   const whole = parts
     .filter((part) => part !== null && part !== "")
     .join("\n\n");
@@ -883,6 +946,10 @@ function shapeOf(modulePath, declaration, name, parsed) {
       parameters,
     },
     returned: rest,
+    // The return position as a model reads it, which is what decides whether the declaration owes a
+    // `# Returns` section: everything here is in `Effect`, so `Effect Unit` is the whole of "hands
+    // nothing back" and anything else hands something back.
+    returnedText: renderType(rest, optional),
   };
 }
 
@@ -898,12 +965,48 @@ function fieldDoc(parsed, parameter, field, documented_) {
   return brieflyDocumented(parsed, found);
 }
 
+/**
+ * A call that hands something back says what, and a call that hands nothing back says nothing.
+ *
+ * Both halves matter. The first is the completeness rule the `# Returns` section exists for: a
+ * signature ending in a type is a value the program is about to work with, and `Effect
+ * Gg.Context.ReclaimReport` names the type without saying which of its numbers answers the question
+ * that was asked. The second stops the section from becoming a ritual — `Effect Unit` is already the
+ * whole answer, and a line saying so would be the unnecessary words the register forbids.
+ *
+ * It is checked here, at the declaration, rather than left to a count somebody takes later: the
+ * defect this catches is an authored sentence with no destination, and a reflector that silently
+ * drops one is the exact failure mode two other arms on this project shipped.
+ */
+function requireReturnDoc(parsed, returnedText) {
+  const documented_ = parsed.sections.has("Returns");
+  const hands = returnedText !== "Effect Unit";
+  if (hands && !documented_) {
+    throw new Error(
+      `${parsed.what} hands back \`${returnedText}\` and has no \`# Returns\` section; a model ` +
+        "reading the type still has to be told which part of the value answers the question",
+    );
+  }
+  if (!hands && documented_) {
+    throw new Error(
+      `${parsed.what} hands nothing back and writes a \`# Returns\` section; \`Effect Unit\` is ` +
+        "the whole answer, and a line restating it is words a reader pays for and learns nothing from",
+    );
+  }
+}
+
 /** One catalogued call: what it binds, how it is written, what it says, and the types it reaches. */
 function describe(module_, name) {
   const declaration = value(module_.path, name);
   const fqn = `${module_.path}.${name}`;
   const parsed = comment(declaration, `\`${fqn}\``);
-  const { shape, returned } = shapeOf(module_.path, declaration, name, parsed);
+  const { shape, returned, returnedText } = shapeOf(
+    module_.path,
+    declaration,
+    name,
+    parsed,
+  );
+  requireReturnDoc(parsed, returnedText);
   const { brief, detail } = documented(parsed);
 
   // The WHOLE declared type, constraints included, rather than the arguments the shape peeled out of
@@ -914,11 +1017,11 @@ function describe(module_, name) {
   const returnMentions = mentions(returned);
 
   return {
-    operation: operationOf(parsed, module_),
-    // No entry on this arm is a second way to reach an operation: a value is reached by a free
-    // function over it rather than by a member on it, so there is no member form beside the free one.
-    aliasOf: null,
+    ...operationOf(parsed, module_),
     module: module_.id,
+    // `function` on every entry, alias or not. A value on this arm carries no behaviour — a record
+    // has fields and nothing else — so the second way to reach an operation is a free function over
+    // the value rather than a member on it, which is the equivalent shape rather than a shortfall.
     kind: "function",
     receiver: null,
     name,
@@ -1141,6 +1244,7 @@ function modulesSection() {
 function functionsSection() {
   const functions = [];
   const bound = new Map();
+  const aliases = [];
   for (const module_ of MODULES) {
     const capabilities = [...moduleDocs(module_.path).values.keys()];
     if (module_.id === CORE) continue;
@@ -1151,6 +1255,15 @@ function functionsSection() {
     }
     for (const name of capabilities) {
       const entry = describe(module_, name);
+      // Only a CANONICAL binding claims an operation. An alias is by definition a second way to
+      // reach one that is already bound, so it is the one entry allowed to name an operation
+      // somebody else named — and the check below is that it names one that really is bound, which
+      // is what stops `# Alias` from being a way to smuggle in an operation this arm covers nowhere.
+      if (entry.aliasOf !== null) {
+        aliases.push(entry);
+        functions.push(entry);
+        continue;
+      }
       const claimed = bound.get(entry.operation);
       if (claimed !== undefined) {
         throw new Error(
@@ -1159,6 +1272,15 @@ function functionsSection() {
       }
       bound.set(entry.operation, entry.fqn);
       functions.push(entry);
+    }
+  }
+  for (const alias of aliases) {
+    if (!bound.has(alias.aliasOf)) {
+      throw new Error(
+        `\`${alias.fqn}\` is an alias of \`${alias.aliasOf}\`, which this arm binds nowhere; an ` +
+          "alias is a second way to reach an operation, so one standing alone leaves the operation " +
+          "uncovered and itself gated by something the arm does not offer",
+      );
     }
   }
   return functions;

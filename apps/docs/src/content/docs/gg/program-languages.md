@@ -683,11 +683,14 @@ them:
   than a field read off a value that appeared in scope by magic. It is the only arm that writes a
   real `import` line for it, and the name in the documentation is therefore the expression:
   `import Gg.Files as Gg.Files` makes `Gg.Files.readFile` write exactly as it reads.
-- **Nothing is a method, because a record has none.** Where [C++](#what-cs-sdk-looks-like) and
-  [Ruby](#what-native-means-in-ruby) let a result reach its own follow-up call —
-  `created.wait()`, `hit.read` — this arm has only the module function, and a free function taking
-  the record would be a second name to learn for a saving of `.id`. So `Gg.Board.waitForIssue
-  created.id` is the whole of it, and the capability is the same one.
+- **A second way in is a free function over the value, because a record has no methods.** Where
+  [C++](#what-cs-sdk-looks-like) and [Ruby](#what-native-means-in-ruby) let a result reach its own
+  follow-up call as `created.wait()` or `hit.read`, a PureScript record carries fields and no
+  behaviour — so the equivalent shape is a function that takes the whole record and reads the field
+  itself: `Gg.Board.waitFor created` beside `Gg.Board.waitForIssue created.id`, and the same for
+  `readHit`, `closeView`, `send` and `sourceOf`. Five of them, one per call whose only argument is
+  something the value it follows already carries. Each is catalogued as an **alias** of the
+  operation it reaches, so the capability is the same one and is counted once.
 - **Optional arguments are a record whose row is checked.**
   `Union given rest ReadOptions => String -> Record given -> Effect FileRead` is PureScript's own
   idiom for "any subset of these fields": `Gg.Files.readFile "a" {}` and
@@ -2818,11 +2821,15 @@ another arm — and every one of them is a difference the design leaves each lan
 - **A read is a real sum type**, narrowed with an ordinary `match` that needs no catch-all;
   a child's brief is `delegation::Brief::Prompt(…)` or `delegation::Brief::Issue(…)`, so "both" and
   "neither" are programs that do not compile.
-- **One capability is bound twice, and it says so.** `delegation::send_message(id, text)` is the
-  canonical binding, and `handle.send(text)` on the `SubagentHandle` a spawn returns is an
-  **alias** of the same operation — catalogued as one, documented like one, and counting toward no
-  coverage, because an arm that idiomatically offers a capability twice is not thereby ahead of an
-  arm that offers it once.
+- **Five capabilities are bound twice, and each says so.** `board::wait_for_issue`,
+  `memories::read_memory`, `views::close`, `delegation::send_message` and `programs::get` are the
+  canonical bindings, and `created.wait()`, `hit.read()`, `view.close()`, `handle.send(text)` and
+  `summary.source()` are the same five operations reached from the value that already carries the
+  one argument each of them takes. Every one of those five producers hands back an **owned struct**,
+  so an inherent method in an `impl` block is where a Rust author puts that and no free function has
+  to stand in for one. Each is catalogued as an **alias** of the operation it reaches — documented
+  like any other call, counting toward no coverage — because an arm that idiomatically offers a
+  capability twice is not thereby ahead of an arm that offers it once.
 - **`println!` is not the log.** This arm's target has no standard output — a `print!` on
   `wasm32-unknown-unknown` is accepted and discarded — so the SDK carries `gg::log`, which is this
   arm's `console.log`: the run's **operator** reads it, and `views::open_text` is what reaches the
@@ -3409,10 +3416,13 @@ for itself. What the SDK does *not* do is write that `using` on the program's be
 qualification is the discovery backbone, because a call written `Files.ReadFile` says which module
 documents it and a bare `ReadFile` says nothing.
 
-One capability is bound twice, deliberately: `Gg.Delegation.SubagentHandle.Send` is a **member
-function**, a second and more idiomatic way to reach `delegation.send_message` spelled on the value
-that already carries the id the free function would be passed. It is catalogued as an **alias**, so
-it counts toward no coverage and does not make this arm look wider than any other.
+Five capabilities are bound twice, deliberately: `IssueCreated.Wait`, `MemoryHit.Read`,
+`OpenView.Close`, `SubagentHandle.Send` and `ProgramSummary.Source` are **member functions**, each a
+second and more idiomatic way to reach a module function whose only argument is something the value
+already carries — an issue's id, a memory's name, a view's selector, a child's id, a program's turn.
+An instance method on a `sealed record` is what a C# author writes for that, so the SDK writes it.
+Each is catalogued as an **alias** of the operation it reaches, so it counts toward no coverage and
+does not make this arm look wider than any other.
 
 #### What the bridge under it costs, which is an interpreter's shape rather than a design
 
@@ -4140,7 +4150,8 @@ point, and every one of them is a spelling rather than an identity:
 
 What must not differ: which capabilities exist, what gates each one, and the
 [five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language). What may differ is
-everything about the shape, including how many functions there are: this arm ships no convenience
-method on a result where [C++](#what-cs-sdk-looks-like) and [Ruby](#what-native-means-in-ruby) ship
-five, which is a gap rather than a decision and is recorded as one. A Python SDK that offered
-`call("read_file", {...})` would be a smaller diff and a different experiment.
+everything about the shape, including how many names a capability answers to: `hit.read()` and
+`gg.memories.read_memory(hit.name)` are one operation reached two ways, and this arm binds both
+where [PureScript](#what-native-means-in-purescript), whose records have no methods, spells the
+short way as a free function instead. A Python SDK that offered `call("read_file", {...})` would be
+a smaller diff and a different experiment.

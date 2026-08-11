@@ -88,7 +88,8 @@ public fun readTextFile(path: String, offset: Int? = null, limit: Int? = null): 
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.
  * @param contents The text to write. It replaces the file entirely.
  * @return how many bytes were written
- * @throws ToolError `IO_ERROR` when the write itself failed.
+ * @throws ToolError `INVALID_ARGUMENT` for an empty path, and `IO_ERROR` when creating the parent
+ *   directories or the write itself failed.
  */
 public fun writeFile(path: String, contents: String): Int =
     ggAsInteger(
@@ -134,7 +135,8 @@ public fun editFile(path: String, oldString: String, newString: String) {
  * @param path The directory to list, relative to the workspace or absolute. Left out, the workspace
  *   root is listed.
  * @return every entry in that directory
- * @throws ToolError `NOT_FOUND` for a directory that is not there.
+ * @throws ToolError `NOT_FOUND` for a directory that is not there, and `INVALID_ARGUMENT` for a
+ *   path that is given but empty — leaving it out is what lists the workspace root.
  */
 public fun listDir(path: String? = null): List<DirEntry> =
     Read.dirEntries(

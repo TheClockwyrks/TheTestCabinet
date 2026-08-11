@@ -31,6 +31,11 @@ pub(crate) const TOOLS: &[&str] = &["shell"];
 /// * `timeout_secs` — How long to let it run, in seconds, before killing it. `None` takes gg's
 ///   default of 120, clamped to whatever is left of the run's wall-clock budget.
 ///
+/// # Returns
+///
+/// What the process reported when it finished — its exit status, and however much of its merged
+/// output this run's offload mode leaves in the program's hands.
+///
 /// # Errors
 ///
 /// `LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.

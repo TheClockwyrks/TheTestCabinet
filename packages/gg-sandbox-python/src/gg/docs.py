@@ -136,6 +136,10 @@ def search(
             above it, so comparing `len(hits)` against `total` is the only way to see a capped page.
             Zero is refused rather than read as "no cap".
 
+    Returns:
+        The page that matched, best first. `total` counts every entry that matched before paging, so
+            a page shorter than `total` is a page there is more of.
+
     Raises:
         ToolError: `invalid-argument` for an empty query with no filter at all — nothing matched and
             nothing was asked for are different answers — and for a `limit` of zero, which would ask
@@ -171,13 +175,15 @@ def search(
 def close(key: str) -> int:
     """Take one documentation view out of the context window, by the key it was opened under.
 
-    How many were closed comes back; a key that is not open closes `0` rather than failing. The
-    removal has no cascade: closing a type's view leaves every function view beside it, and closing a
-    function's leaves its types. Nothing records why a view was opened, so a type that is closed is
-    opened again by the next function that mentions it.
+    The removal has no cascade: closing a type's view leaves every function view beside it, and
+    closing a function's leaves its types. Nothing records why a view was opened, so a type that is
+    closed is opened again by the next function that mentions it.
 
     Args:
         key: The fully-qualified name the view was opened under.
+
+    Returns:
+        How many views were taken away; a key that is not open closes `0` rather than failing.
 
     Raises:
         ToolError: `unavailable` under a run that did not enable closing documentation views.
@@ -187,9 +193,12 @@ def close(key: str) -> int:
 
 @operation("docs.close_all")
 def close_all() -> int:
-    """Take every documentation view out of the context window and report how many went.
+    """Take every documentation view out of the context window.
 
     The blanket form of `close`, on exactly the same terms and behind the same capability.
+
+    Returns:
+        How many documentation views went, and `0` rather than a failure when none was open.
 
     Raises:
         ToolError: `unavailable` under a run that did not enable closing documentation views.

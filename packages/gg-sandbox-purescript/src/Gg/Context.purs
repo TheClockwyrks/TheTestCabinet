@@ -106,8 +106,7 @@ type ArchiveSearch =
 -- | Drop the contents of files already read out of the context window, freeing the tokens they
 -- | occupy.
 -- |
--- | What that reclaimed comes back. The files on disk are untouched: this forgets what was read, not
--- | what exists.
+-- | The files on disk are untouched: this forgets what was read, not what exists.
 -- |
 -- | # Operation
 -- |
@@ -117,6 +116,16 @@ type ArchiveSearch =
 -- |
 -- | - `options` — Which file's views to drop; `{}` drops every file view held.
 -- | - `options.path` — The file whose views to drop.
+-- |
+-- | # Returns
+-- |
+-- | How many context items went and roughly how many tokens that reclaimed, with `paths` naming the
+-- | files whose views were dropped.
+-- |
+-- | # Throws
+-- |
+-- | `InvalidArgument` for a `path` that is given but empty; leaving it out altogether is how every
+-- | file view is dropped.
 evictFileView
   :: forall given rest
    . Union given rest EvictOptions
@@ -125,7 +134,7 @@ evictFileView
 evictFileView options =
   Wire.call "evict_file_view" "context" "Gg.Context.evictFileView" [ Wire.pick "path" options ]
 
--- | Move whole turns out of the context window and report what that reclaimed.
+-- | Move whole turns out of the context window.
 -- |
 -- | Every result carries a header with its turn number and roughly what holding it costs, so the
 -- | turns worth dropping can be named: a span is inclusive at both ends, so `[ { from: 4, to: 19 } ]`
@@ -140,7 +149,12 @@ evictFileView options =
 -- |
 -- | - `ranges` — The inclusive spans of turn numbers to move out of the window.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | How many context items went and roughly how many tokens that reclaimed. `paths` is empty, since
+-- | an archive drops turns rather than files.
+-- |
+-- | # Throws
 -- |
 -- | `InvalidArgument` for a span whose ends are not turn numbers.
 archiveThread :: Array TurnRange -> Effect ReclaimReport
@@ -160,6 +174,14 @@ archiveThread ranges =
 -- | # Arguments
 -- |
 -- | - `query` — The substring to look for. Matching is case-insensitive.
+-- |
+-- | # Returns
+-- |
+-- | The matches, most recent first and at most 8, beside the `archiveEmpty` flag.
+-- |
+-- | # Throws
+-- |
+-- | `InvalidArgument` for an empty query.
 searchArchive :: String -> Effect ArchiveSearch
 searchArchive query =
   archiveSearch <$> Wire.call "search_archive" "context" "Gg.Context.searchArchive" [ Wire.wire query ]
@@ -185,9 +207,10 @@ searchArchive query =
 -- | - `options` — What to read back into the restarted window; `{}` reads nothing back.
 -- | - `options.files` — The paths to read afresh into the restarted window. Defaults to none.
 -- |
--- | # Raises
+-- | # Throws
 -- |
--- | `Refused` when a compaction is already in flight and this call is not the one it asked for.
+-- | `InvalidArgument` for a blank summary. This is the one call gg does not refuse while a
+-- | compaction is in flight, since nothing else can clear the window.
 compact
   :: forall given rest
    . Union given rest CompactOptions

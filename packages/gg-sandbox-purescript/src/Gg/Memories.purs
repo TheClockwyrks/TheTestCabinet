@@ -15,6 +15,7 @@ module Gg.Memories
   , readMemory
   , editMemory
   , searchMemories
+  , readHit
   , deleteMemory
   , MemoryUsage
   , MemoryHit
@@ -97,7 +98,12 @@ type MemoryHit =
 -- | - `memory.onUse` — A script gg runs the first time the memory comes into use, whose views arrive
 -- |   on the next turn. Left out for a memory that runs nothing.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memory budget the write left behind. A maximum this run does not bound is `Nothing`, which
+-- | is worth checking before subtracting.
+-- |
+-- | # Throws
 -- |
 -- | `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps —
 -- | revising or deleting a memory beats accruing more.
@@ -129,7 +135,11 @@ writeMemory written =
 -- | - `memory.onUse` — A script gg runs the first time the memory comes into use. Leaving it out
 -- |   clears the one the memory had.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memory budget the replacement left behind.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` when no memory has that name.
 updateMemory
@@ -162,7 +172,11 @@ updateMemory written =
 -- |   read. Left out for a memory that is only prose.
 -- | - `memory.onUse` — A script gg runs on that first read. Left out for a memory that runs nothing.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memory budget the new memory left behind.
+-- |
+-- | # Throws
 -- |
 -- | `Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would
 -- | breach a limit.
@@ -187,7 +201,11 @@ createMemory written =
 -- |
 -- | - `name` — The memory's slug.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memory's body, and — where it carried code — the `lib.<key>` its exports are now bound at.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` when no memory has that slug.
 readMemory :: String -> Effect String
@@ -208,7 +226,11 @@ readMemory name = Wire.call "read_memory" "memory" "Gg.Memories.readMemory" [ Wi
 -- | - `edit.search` — The exact text to find in its contents. It must appear exactly once.
 -- | - `edit.replace` — The text to put in its place.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memory budget the revision left behind.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` when the text does not appear, `Conflict` when it appears more than once,
 -- | `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would
@@ -221,8 +243,7 @@ editMemory edit =
 -- |
 -- | Plain case-insensitive substring matching over each memory's slug, description and contents,
 -- | ranked by how many of the keywords a memory mentions and then by how often. Several specific
--- | words rank better than one sentence, and the hits worth having in full are then read. A search
--- | that matches nothing is an empty array.
+-- | words rank better than one sentence, and the hits worth having in full are then read.
 -- |
 -- | # Operation
 -- |
@@ -233,12 +254,41 @@ editMemory edit =
 -- | - `keywords` — The words to look for. Several specific words rank better than one sentence,
 -- |   because a memory is ranked by how many of them it mentions.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memories that matched, best first, each with an excerpt and the two counts it was ranked
+-- | by. A search that matches nothing is an empty array.
+-- |
+-- | # Throws
 -- |
 -- | `InvalidArgument` when every keyword is empty.
 searchMemories :: Array String -> Effect (Array MemoryHit)
 searchMemories keywords =
   Wire.call "search_memories" "memory" "Gg.Memories.searchMemories" [ Wire.wire keywords ]
+
+-- | Read the full contents of a memory a search matched.
+-- |
+-- | `Gg.Memories.readMemory` with the slug already taken out of the hit, for the common case where
+-- | the search that found it is the thing in hand. A hit carries an excerpt and nothing more, so
+-- | this is how the rest of a promising one is read.
+-- |
+-- | # Alias
+-- |
+-- | memories.read_memory
+-- |
+-- | # Arguments
+-- |
+-- | - `hit` — The memory to read, as `Gg.Memories.searchMemories` matched it.
+-- |
+-- | # Returns
+-- |
+-- | The memory's body, and — where it carried code — the `lib.<key>` its exports are now bound at.
+-- |
+-- | # Throws
+-- |
+-- | `NotFound` when the memory has since been deleted.
+readHit :: MemoryHit -> Effect String
+readHit hit = readMemory hit.name
 
 -- | Evict a memory by name, freeing room in the budget.
 -- |
@@ -250,7 +300,11 @@ searchMemories keywords =
 -- |
 -- | - `name` — The memory's slug.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The memory budget the eviction left behind.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` when no memory has that name.
 deleteMemory :: String -> Effect MemoryUsage

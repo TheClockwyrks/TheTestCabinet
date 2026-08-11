@@ -27,6 +27,16 @@ pub(crate) const TOOLS: &[&str] = &[
 /// # Arguments
 ///
 /// * `path` — The file whose views to drop; `None` drops every file view held.
+///
+/// # Returns
+///
+/// What the reclaim actually freed: the paths that went, and roughly the tokens they held. A path
+/// with no view open frees nothing and is not a failure.
+///
+/// # Errors
+///
+/// `InvalidArgument` for a path that is given but empty; leaving it out altogether is how every file
+/// view is dropped.
 #[doc(alias = "ggop:context.evict_file_view")]
 pub fn evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ToolError> {
     wire::lift(context::evict_file_view(path)).map(wire::reclaim_report)
@@ -42,6 +52,11 @@ pub fn evict_file_view(path: Option<&str>) -> Result<ReclaimReport, ToolError> {
 /// # Arguments
 ///
 /// * `ranges` — The inclusive spans of turn numbers to move out of the window. They may overlap.
+///
+/// # Returns
+///
+/// What the archive actually freed. The `paths` are empty, because an archive moves turns rather
+/// than files.
 ///
 /// # Errors
 ///
@@ -62,6 +77,15 @@ pub fn archive_thread(ranges: &[RangeInclusive<u32>]) -> Result<ReclaimReport, T
 /// # Arguments
 ///
 /// * `query` — The substring to look for. Matching is case-insensitive.
+///
+/// # Returns
+///
+/// Whether anything is archived at all, and the matches — the two questions this call answers, and
+/// the reason a hit list is not the whole of its result.
+///
+/// # Errors
+///
+/// `InvalidArgument` for an empty query.
 #[doc(alias = "ggop:context.search_archive")]
 pub fn search_archive(query: &str) -> Result<ArchiveSearch, ToolError> {
     wire::lift(context::search_archive(query)).map(wire::archive_search)
@@ -82,6 +106,11 @@ pub fn search_archive(query: &str) -> Result<ArchiveSearch, ToolError> {
 /// * `summary` — What the restarted window opens with. Everything not in it and not re-read from
 ///   `files` is gone.
 /// * `files` — The paths to read afresh into the restarted window. An empty slice reads nothing back.
+///
+/// # Errors
+///
+/// `InvalidArgument` for a blank summary. This is the one call gg does not refuse while a compaction
+/// is in flight, since nothing else can clear the window.
 #[doc(alias = "ggop:context.compact")]
 pub fn compact(summary: &str, files: &[&str]) -> Result<(), ToolError> {
     wire::lift(context::compact(summary, &wire::strings(files)))

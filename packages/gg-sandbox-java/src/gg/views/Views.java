@@ -131,6 +131,8 @@ public final class Views {
      * @param selector What the view is filed under: a file's path, a text view's label, or
      *     {@code search results}.
      * @return how many views were closed
+     * @throws ToolError {@link ToolErrorCode#INVALID_ARGUMENT} for an empty selector, which names
+     *     nothing rather than everything — no call here closes the window wholesale.
      * @ggop views.close
      */
     public static int close(String selector) {

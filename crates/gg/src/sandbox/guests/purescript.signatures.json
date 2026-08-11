@@ -375,7 +375,7 @@
 			"fqn": "Gg.Docs.search",
 			"call": null,
 			"brief": "Search every function and type the agent can call, by keyword and by filter.",
-			"detail": "This is how a name is found. Matching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `openDocsView`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned, so nothing a search finds is something the run withheld. The filters compose with each other and with the query.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`, so it can be read on the next turn without a program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n# Raises\n\n`InvalidArgument` for an empty query with no filter at all — nothing matched and nothing was asked for are different answers — and for a `limit` of zero, which asks for a page that answers nothing. A module or type name gg does not hold is not among them: it matches nothing.",
+			"detail": "This is how a name is found. Matching is a case-insensitive substring over names, signatures, briefs and detailed descriptions, so `docs` finds `openDocsView`. Ranking is by the kind of evidence that matched — an entry whose own name matched outranks one that merely mentions the word in a paragraph — and a weaker kind never overtakes a stronger one however often it occurs.\n\nOnly entries this run bound are returned, so nothing a search finds is something the run withheld. The filters compose with each other and with the query.\n\nThe page comes back as a value and is also opened as a view, under the selector `search results`, so it can be read on the next turn without a program showing it to itself. The next search replaces that view: it names what is being worked from rather than keeping a record.\n\n# Returns\n\nThe page that matched, best first. `total` counts every entry that matched before paging, so a page shorter than `total` is a page there is more of.\n\n# Throws\n\n`InvalidArgument` for an empty query with no filter at all — nothing matched and nothing was asked for are different answers — and for a `limit` of zero, which asks for a page that answers nothing. A module or type name gg does not hold is not among them: it matches nothing.",
 			"signatures": [
 				{
 					"signature": "search :: String -> { module? :: String, type? :: String, kind? :: Gg.Docs.DocKind, offset? :: Int, limit? :: Int } -> Effect Gg.Docs.DocSearch",
@@ -486,7 +486,7 @@
 			"fqn": "Gg.Docs.close",
 			"call": null,
 			"brief": "Take one documentation view out of the context window, by the key it was opened under.",
-			"detail": "How many were closed comes back; a key that is not open closes `0` rather than failing. The removal has no cascade: closing a type's view leaves every function view beside it, and closing a function's leaves its types. Nothing records why a view was opened, so a type that is closed is opened again by the next function that mentions it.\n\n# Raises\n\n`Unavailable` under a run that did not enable closing documentation views.",
+			"detail": "The removal has no cascade: closing a type's view leaves every function view beside it, and closing a function's leaves its types. Nothing records why a view was opened, so a type that is closed is opened again by the next function that mentions it.\n\n# Returns\n\nHow many views were taken away; a key that is not open closes `0` rather than failing.\n\n# Throws\n\n`Unavailable` under a run that did not enable closing documentation views.",
 			"signatures": [
 				{
 					"signature": "close :: String -> Effect Int",
@@ -524,8 +524,8 @@
 			"name": "closeAll",
 			"fqn": "Gg.Docs.closeAll",
 			"call": null,
-			"brief": "Take every documentation view out of the context window and report how many went.",
-			"detail": "The blanket form of `close`, on exactly the same terms and behind the same capability: no cascade to consider because nothing is left, and `0` rather than a failure when none was open.\n\n# Raises\n\n`Unavailable` under a run that did not enable closing documentation views.",
+			"brief": "Take every documentation view out of the context window.",
+			"detail": "The blanket form of `close`, on exactly the same terms and behind the same capability: no cascade to consider, because nothing is left.\n\n# Returns\n\nHow many documentation views went, and `0` rather than a failure when none was open.\n\n# Throws\n\n`Unavailable` under a run that did not enable closing documentation views.",
 			"signatures": [
 				{
 					"signature": "closeAll :: Effect Int",
@@ -554,7 +554,7 @@
 			"fqn": "Gg.Files.readFile",
 			"call": null,
 			"brief": "Read a file, as either the `TextFile` or the `ImageFile` arm of a `Gg.Files.FileRead`.",
-			"detail": "Which of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. The sum is closed, so an ordinary `case` needs no catch-all:\n\n```\nread <- Gg.Files.readFile \"logo.png\" {}\ncase read of\n  Gg.Files.TextFile text -> Gg.Views.openText \"logo\" text.contents\n  Gg.Files.ImageFile picture -> Gg.Views.openText \"logo\" picture.label\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window, and reading a picture describes it without showing it, so a file only read here is a file nobody has looked at.\n\n# Raises\n\n`NotFound` for a missing path.",
+			"detail": "Which of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. The sum is closed, so an ordinary `case` needs no catch-all:\n\n```\nread <- Gg.Files.readFile \"logo.png\" {}\ncase read of\n  Gg.Files.TextFile text -> Gg.Views.openText \"logo\" text.contents\n  Gg.Files.ImageFile picture -> Gg.Views.openText \"logo\" picture.label\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window, and reading a picture describes it without showing it, so a file only read here is a file nobody has looked at.\n\n# Returns\n\nThe `TextFile` arm for a text file's window, or the `ImageFile` arm describing a picture whose bytes never entered the program.\n\n# Throws\n\n`NotFound` for a missing path.",
 			"signatures": [
 				{
 					"signature": "readFile :: String -> { offset? :: Int, limit? :: Int } -> Effect Gg.Files.FileRead",
@@ -638,7 +638,7 @@
 			"fqn": "Gg.Files.readTextFile",
 			"call": null,
 			"brief": "Read a text file and hand back its contents directly.",
-			"detail": "`Gg.Files.readFile` without the narrowing, for the common case: the same read, the same window, the same cost.\n\n# Raises\n\n`InvalidArgument` when the path names a picture, which `Gg.Files.readFile` inspects instead and `Gg.Views.openFile` displays.",
+			"detail": "`Gg.Files.readFile` without the narrowing, for the common case: the same read, the same window, the same cost.\n\n# Returns\n\nThe file's text, or the window of it a capped read policy allowed.\n\n# Throws\n\n`InvalidArgument` when the path names a picture, which `Gg.Files.readFile` inspects instead and `Gg.Views.openFile` displays.",
 			"signatures": [
 				{
 					"signature": "readTextFile :: String -> { offset? :: Int, limit? :: Int } -> Effect String",
@@ -705,7 +705,7 @@
 			"fqn": "Gg.Files.writeFile",
 			"call": null,
 			"brief": "Write UTF-8 text to a file, creating parent directories and replacing what is there.",
-			"detail": "The number of bytes written comes back. Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.",
+			"detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\n# Returns\n\nHow many bytes were written, which is the UTF-8 length rather than the number of characters.\n\n# Throws\n\n`InvalidArgument` for an empty path, and `IoError` when creating the parent directories or the write itself failed.",
 			"signatures": [
 				{
 					"signature": "writeFile :: String -> String -> Effect Int",
@@ -753,7 +753,7 @@
 			"fqn": "Gg.Files.editFile",
 			"call": null,
 			"brief": "Replace the one exact occurrence of some text in a file with something else.",
-			"detail": "Widening the surrounding context until the match is unique is the way to disambiguate; counting occurrences is not.\n\n# Raises\n\n`NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it appears more than once.",
+			"detail": "Widening the surrounding context until the match is unique is the way to disambiguate; counting occurrences is not.\n\n# Throws\n\n`NotFound` when the text does not appear, and `Conflict` — with the number of matches — when it appears more than once.",
 			"signatures": [
 				{
 					"signature": "editFile :: String -> String -> String -> Effect Unit",
@@ -810,7 +810,7 @@
 			"fqn": "Gg.Files.listDir",
 			"call": null,
 			"brief": "List a directory, sorted by name; `{}` lists the workspace root.",
-			"detail": "Each entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty array, not a failure.",
+			"detail": "# Returns\n\nOne entry per name, sorted by name, and an empty array for an empty directory rather than a failure. Each `name` is bare, so joining it with the directory that was listed is what makes a path.\n\n# Throws\n\n`NotFound` for a directory that is not there, and `InvalidArgument` for a `path` that is given but empty — leaving it out altogether is what lists the workspace root.",
 			"signatures": [
 				{
 					"signature": "listDir :: { path? :: String } -> Effect (Array Gg.Files.DirEntry)",
@@ -872,7 +872,7 @@
 			"fqn": "Gg.Shell.shell",
 			"call": null,
 			"brief": "Run a command with `sh -c` in the workspace directory and collect its merged output.",
-			"detail": "A non-zero exit is not a failure: it arrives as `exitCode` on the result, and only a process that could not be launched, or one the timeout killed, raises.\n\nThis run may **offload** shell output, and the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all beyond that note, and one that failed returns the tail. Grepping the named files beats re-running the command.\n\n# Raises\n\n`LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.",
+			"detail": "A non-zero exit is not a failure: it arrives as `exitCode` on the result, and only a process that could not be launched, or one the timeout killed, throws.\n\nThis run may **offload** shell output, and the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all beyond that note, and one that failed returns the tail. Grepping the named files beats re-running the command.\n\n# Returns\n\nThe command's merged stdout and stderr, its `exitCode` — `Nothing` when a signal killed it — and whether gg's cap `truncated` the output.\n\n# Throws\n\n`LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.",
 			"signatures": [
 				{
 					"signature": "shell :: String -> { timeoutSecs? :: Int } -> Effect Gg.Shell.ShellOutput",
@@ -939,7 +939,7 @@
 			"fqn": "Gg.Board.createEpic",
 			"call": null,
 			"brief": "Create an epic to group related issues.",
-			"detail": "The id the prefix resolved to comes back with the board budget. A prefix is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\n# Raises\n\n`InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already holds it.",
+			"detail": "A prefix is 3-6 letters naming the epic. It is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.\n\n# Returns\n\nThe id the prefix resolved to, and the board budget the epic left behind.\n\n# Throws\n\n`InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already holds it.",
 			"signatures": [
 				{
 					"signature": "createEpic :: { prefix :: String, title :: String, description :: String } -> Effect Gg.Board.EpicCreated",
@@ -1019,7 +1019,7 @@
 			"fqn": "Gg.Board.createIssue",
 			"call": null,
 			"brief": "Create a self-contained, dispatchable issue.",
-			"detail": "The id the board **assigned** comes back with the board budget: it is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller does not choose it — so keeping the returned id is what blocks a later issue on this one or waits for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they are written for a reader with no other context.\n\n# Raises\n\n`InvalidArgument` when `agent` or a reviewer is not one this agent may assign, and `Conflict` on a blocker edge that would close a cycle.",
+			"detail": "`inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they are written for a reader with no other context.\n\n# Returns\n\nThe id the board **assigned**, and the board budget the issue left behind. It is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller does not choose it — so keeping it is what blocks a later issue on this one or waits for it.\n\n# Throws\n\n`InvalidArgument` when `agent` or a reviewer is not one this agent may assign, and `Conflict` on a blocker edge that would close a cycle.",
 			"signatures": [
 				{
 					"signature": "createIssue :: { title :: String, inScope :: String, outOfScope :: String, completionCriteria :: String, agent :: String, description? :: String, blockedBy? :: Array String, epicId? :: String, reviewers? :: Array String } -> Effect Gg.Board.IssueCreated",
@@ -1153,7 +1153,7 @@
 			"fqn": "Gg.Board.updateIssue",
 			"call": null,
 			"brief": "Revise an issue, changing at least one of its fields.",
-			"detail": "An omitted field is left alone, `description: Nothing` clears the description, and `epicId: Nothing` detaches the issue from its epic.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "An omitted field is left alone, `description: Nothing` clears the description, and `epicId: Nothing` detaches the issue from its epic.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "updateIssue :: String -> { title? :: String, description? :: Maybe String, inScope? :: String, outOfScope? :: String, completionCriteria? :: String, status? :: Gg.Board.IssueStatus, epicId? :: Maybe String } -> Effect Unit",
@@ -1269,7 +1269,7 @@
 			"fqn": "Gg.Board.setIssueBlockedBy",
 			"call": null,
 			"brief": "Replace an issue's whole blocker set; an empty array clears every blocker.",
-			"detail": "# Raises\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+			"detail": "# Throws\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
 			"signatures": [
 				{
 					"signature": "setIssueBlockedBy :: String -> Array String -> Effect Unit",
@@ -1317,7 +1317,7 @@
 			"fqn": "Gg.Board.removeEpic",
 			"call": null,
 			"brief": "Remove an epic, keeping its issues and ungrouping them.",
-			"detail": "# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "# Returns\n\nThe board budget the removal left behind.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "removeEpic :: String -> Effect Gg.Board.BoardUsage",
@@ -1365,7 +1365,7 @@
 			"fqn": "Gg.Board.removeIssue",
 			"call": null,
 			"brief": "Remove an issue and every blocker edge pointing at it.",
-			"detail": "# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "# Returns\n\nThe board budget the removal left behind.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "removeIssue :: String -> Effect Gg.Board.BoardUsage",
@@ -1413,7 +1413,7 @@
 			"fqn": "Gg.Board.waitForIssue",
 			"call": null,
 			"brief": "Register a wait on an issue and hand back an acknowledgement.",
-			"detail": "Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest of the program still runs. Once it ends the run suspends, freeing this agent's slot for others, until the issue is terminal — done, or failed if its assigned agent could not complete it — and then resumes on the next turn. It is how the next turn's work is sequenced behind an issue this one depends on. The issue this agent was assigned to implement is not one it may wait on.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest of the program still runs. Once it ends the run suspends, freeing this agent's slot for others, until the issue is terminal — done, or failed if its assigned agent could not complete it — and then resumes on the next turn. It is how the next turn's work is sequenced behind an issue this one depends on. The issue this agent was assigned to implement is not one it may wait on.\n\n# Returns\n\ngg's acknowledgement that the wait is registered, which says what happens once the program ends.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "waitForIssue :: String -> Effect String",
@@ -1443,6 +1443,53 @@
 			"returns": []
 		},
 		{
+			"operation": "board.wait_for_issue",
+			"aliasOf": "board.wait_for_issue",
+			"module": "board",
+			"kind": "function",
+			"receiver": null,
+			"name": "waitFor",
+			"fqn": "Gg.Board.waitFor",
+			"call": null,
+			"brief": "Register a wait on an issue that was just created.",
+			"detail": "`Gg.Board.waitForIssue` with the id already taken out of what created the issue, for the common case where the two are written one after the other and the board's own id never has to be spelled out.\n\n# Returns\n\ngg's acknowledgement that the wait is registered, which says what happens once the program ends.\n\n# Throws\n\n`NotFound` when the issue has since been removed.",
+			"signatures": [
+				{
+					"signature": "waitFor :: Gg.Board.IssueCreated -> Effect String",
+					"parameters": [
+						{
+							"name": "issue",
+							"type": "Gg.Board.IssueCreated",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The issue to wait on, as `Gg.Board.createIssue` handed it back.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Board.IssueCreated",
+					"fqn": "Gg.Board.IssueCreated"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Board.BoardUsage",
+					"fqn": "Gg.Board.BoardUsage"
+				}
+			],
+			"returns": []
+		},
+		{
 			"operation": "tasks.add_task",
 			"aliasOf": null,
 			"module": "tasks",
@@ -1451,8 +1498,8 @@
 			"name": "addTask",
 			"fqn": "Gg.Tasks.addTask",
 			"call": null,
-			"brief": "Add a task to the task graph and hand back the task budget.",
-			"detail": "`blockedBy` names the tasks that must finish before this one and defaults to none.\n\n# Raises\n\n`Conflict` on a duplicate id or on an edge that would close a cycle.",
+			"brief": "Add a task to the task graph.",
+			"detail": "`blockedBy` names the tasks that must finish before this one and defaults to none.\n\n# Returns\n\nThe task budget the addition left behind.\n\n# Throws\n\n`Conflict` on a duplicate id or on an edge that would close a cycle.",
 			"signatures": [
 				{
 					"signature": "addTask :: { id :: String, title :: String, description? :: String, blockedBy? :: Array String } -> Effect Gg.Tasks.TaskUsage",
@@ -1537,7 +1584,7 @@
 			"fqn": "Gg.Tasks.updateTask",
 			"call": null,
 			"brief": "Revise a task's title, description or status, changing at least one of them.",
-			"detail": "An omitted `description` leaves it alone, `Nothing` clears it, and `Just` replaces it.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "An omitted `description` leaves it alone, `Nothing` clears it, and `Just` replaces it.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "updateTask :: String -> { title? :: String, description? :: Maybe String, status? :: Gg.Tasks.TaskStatus } -> Effect Unit",
@@ -1617,7 +1664,7 @@
 			"fqn": "Gg.Tasks.setBlockedBy",
 			"call": null,
 			"brief": "Replace a task's whole blocker set; an empty array clears every blocker.",
-			"detail": "# Raises\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
+			"detail": "# Throws\n\n`NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.",
 			"signatures": [
 				{
 					"signature": "setBlockedBy :: String -> Array String -> Effect Unit",
@@ -1665,7 +1712,7 @@
 			"fqn": "Gg.Tasks.completeTask",
 			"call": null,
 			"brief": "Mark a task done.",
-			"detail": "Tasks it was blocking become actionable once every one of their blockers is done.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "Tasks it was blocking become actionable once every one of their blockers is done.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "completeTask :: String -> Effect Unit",
@@ -1704,7 +1751,7 @@
 			"fqn": "Gg.Tasks.removeTask",
 			"call": null,
 			"brief": "Remove a task and every blocker edge pointing at it.",
-			"detail": "# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "# Returns\n\nThe task budget the removal left behind.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "removeTask :: String -> Effect Gg.Tasks.TaskUsage",
@@ -1752,7 +1799,7 @@
 			"fqn": "Gg.Memories.writeMemory",
 			"call": null,
 			"brief": "Record a durable memory that survives context compaction.",
-			"detail": "A memory may also carry **code**. `code` is a PureScript module whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never written again; `onUse` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context — they cost no window, are never shown back, and count against no body limit — and both are bounded on their own.\n\n# Raises\n\n`Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps — revising or deleting a memory beats accruing more.",
+			"detail": "A memory may also carry **code**. `code` is a PureScript module whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never written again; `onUse` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context — they cost no window, are never shown back, and count against no body limit — and both are bounded on their own.\n\n# Returns\n\nThe memory budget the write left behind. A maximum this run does not bound is `Nothing`, which is worth checking before subtracting.\n\n# Throws\n\n`Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps — revising or deleting a memory beats accruing more.",
 			"signatures": [
 				{
 					"signature": "writeMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect Gg.Memories.MemoryUsage",
@@ -1846,7 +1893,7 @@
 			"fqn": "Gg.Memories.updateMemory",
 			"call": null,
 			"brief": "Replace an existing memory's description and body, keyed on its name.",
-			"detail": "Its `code` and `onUse` are replaced too, so leaving them out clears them.\n\n# Raises\n\n`NotFound` when no memory has that name.",
+			"detail": "Its `code` and `onUse` are replaced too, so leaving them out clears them.\n\n# Returns\n\nThe memory budget the replacement left behind.\n\n# Throws\n\n`NotFound` when no memory has that name.",
 			"signatures": [
 				{
 					"signature": "updateMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect Gg.Memories.MemoryUsage",
@@ -1940,7 +1987,7 @@
 			"fqn": "Gg.Memories.createMemory",
 			"call": null,
 			"brief": "Record a new memory whose contents stay out of the context window until they are read.",
-			"detail": "It takes a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code`, a module bound at `lib.<name>` once the memory is read, and `onUse`, a script run on that first read.\n\n# Raises\n\n`Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would breach a limit.",
+			"detail": "It takes a slug, a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code`, a module bound at `lib.<name>` once the memory is read, and `onUse`, a script run on that first read.\n\n# Returns\n\nThe memory budget the new memory left behind.\n\n# Throws\n\n`Conflict` on a duplicate slug, and `LimitExceeded` when the contents, or the index entry, would breach a limit.",
 			"signatures": [
 				{
 					"signature": "createMemory :: { name :: String, description :: String, body :: String, code? :: String, onUse? :: String } -> Effect Gg.Memories.MemoryUsage",
@@ -2034,7 +2081,7 @@
 			"fqn": "Gg.Memories.readMemory",
 			"call": null,
 			"brief": "Read one memory's full contents by slug — the only call that brings them into the context window.",
-			"detail": "A memory that carries code loads that code as it is read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\n# Raises\n\n`NotFound` when no memory has that slug.",
+			"detail": "A memory that carries code loads that code as it is read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\n# Returns\n\nThe memory's body, and — where it carried code — the `lib.<key>` its exports are now bound at.\n\n# Throws\n\n`NotFound` when no memory has that slug.",
 			"signatures": [
 				{
 					"signature": "readMemory :: String -> Effect String",
@@ -2073,7 +2120,7 @@
 			"fqn": "Gg.Memories.editMemory",
 			"call": null,
 			"brief": "Revise a memory in place, replacing the one exact occurrence of `search` with `replace`.",
-			"detail": "Appending is quoting the last line and replacing it with itself plus what is being added.\n\n# Raises\n\n`NotFound` when the text does not appear, `Conflict` when it appears more than once, `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave the memory empty — deleting it is the call for that.",
+			"detail": "Appending is quoting the last line and replacing it with itself plus what is being added.\n\n# Returns\n\nThe memory budget the revision left behind.\n\n# Throws\n\n`NotFound` when the text does not appear, `Conflict` when it appears more than once, `LimitExceeded` when the result would be too long, and `InvalidArgument` when the edit would leave the memory empty — deleting it is the call for that.",
 			"signatures": [
 				{
 					"signature": "editMemory :: { name :: String, search :: String, replace :: String } -> Effect Gg.Memories.MemoryUsage",
@@ -2149,7 +2196,7 @@
 			"fqn": "Gg.Memories.searchMemories",
 			"call": null,
 			"brief": "Find the memories mentioning any of the given keywords, best first.",
-			"detail": "Plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of the keywords a memory mentions and then by how often. Several specific words rank better than one sentence, and the hits worth having in full are then read. A search that matches nothing is an empty array.\n\n# Raises\n\n`InvalidArgument` when every keyword is empty.",
+			"detail": "Plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of the keywords a memory mentions and then by how often. Several specific words rank better than one sentence, and the hits worth having in full are then read.\n\n# Returns\n\nThe memories that matched, best first, each with an excerpt and the two counts it was ranked by. A search that matches nothing is an empty array.\n\n# Throws\n\n`InvalidArgument` when every keyword is empty.",
 			"signatures": [
 				{
 					"signature": "searchMemories :: Array String -> Effect (Array Gg.Memories.MemoryHit)",
@@ -2188,6 +2235,49 @@
 			]
 		},
 		{
+			"operation": "memories.read_memory",
+			"aliasOf": "memories.read_memory",
+			"module": "memories",
+			"kind": "function",
+			"receiver": null,
+			"name": "readHit",
+			"fqn": "Gg.Memories.readHit",
+			"call": null,
+			"brief": "Read the full contents of a memory a search matched.",
+			"detail": "`Gg.Memories.readMemory` with the slug already taken out of the hit, for the common case where the search that found it is the thing in hand. A hit carries an excerpt and nothing more, so this is how the rest of a promising one is read.\n\n# Returns\n\nThe memory's body, and — where it carried code — the `lib.<key>` its exports are now bound at.\n\n# Throws\n\n`NotFound` when the memory has since been deleted.",
+			"signatures": [
+				{
+					"signature": "readHit :: Gg.Memories.MemoryHit -> Effect String",
+					"parameters": [
+						{
+							"name": "hit",
+							"type": "Gg.Memories.MemoryHit",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The memory to read, as `Gg.Memories.searchMemories` matched it.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Memories.MemoryHit",
+					"fqn": "Gg.Memories.MemoryHit"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
 			"operation": "memories.delete_memory",
 			"aliasOf": null,
 			"module": "memories",
@@ -2197,7 +2287,7 @@
 			"fqn": "Gg.Memories.deleteMemory",
 			"call": null,
 			"brief": "Evict a memory by name, freeing room in the budget.",
-			"detail": "# Raises\n\n`NotFound` when no memory has that name.",
+			"detail": "# Returns\n\nThe memory budget the eviction left behind.\n\n# Throws\n\n`NotFound` when no memory has that name.",
 			"signatures": [
 				{
 					"signature": "deleteMemory :: String -> Effect Gg.Memories.MemoryUsage",
@@ -2245,7 +2335,7 @@
 			"fqn": "Gg.Views.openFile",
 			"call": null,
 			"brief": "Read a file and place it in the context window, keyed by its path.",
-			"detail": "The value handed back is exactly what `Gg.Files.readFile` returns, and the file also becomes its own context item, attributed to its path and closable by it. The split from `Gg.Files.readFile` is the point: that call gets bytes for the program, this one puts a file in front of the model, so a program that reads forty files to grep them still costs no window.\n\n`offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the same page replaces what it showed rather than piling up a duplicate. An image file is displayed as a picture, and this is the only call that displays one — reading an image describes it without showing it.",
+			"detail": "The file becomes its own context item, attributed to its path and closable by it. The split from `Gg.Files.readFile` is the point: that call gets bytes for the program, this one puts a file in front of the model, so a program that reads forty files to grep them still costs no window.\n\n`offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the same page replaces what it showed rather than piling up a duplicate. An image file is displayed as a picture, and this is the only call that displays one — reading an image describes it without showing it.\n\n# Returns\n\nExactly what `Gg.Files.readFile` hands back for the same file, so the program holds the contents as well as the model holding the view.",
 			"signatures": [
 				{
 					"signature": "openFile :: String -> { offset? :: Int, limit? :: Int } -> Effect Gg.Files.FileRead",
@@ -2329,7 +2419,7 @@
 			"fqn": "Gg.Views.openText",
 			"call": null,
 			"brief": "Place a value the program computed in the context window, under a label.",
-			"detail": "A directory listing, a command's output, a child agent's answer, an assembled table: this is the channel into the window, and a value a program computes reaches the model on no other. Opening the same label again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty body is allowed, since it is how a program says that something it was showing is now empty.\n\n# Raises\n\n`InvalidArgument` for an empty label — a view with no selector could never be closed or attributed — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
+			"detail": "A directory listing, a command's output, a child agent's answer, an assembled table: this is the channel into the window, and a value a program computes reaches the model on no other. Opening the same label again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty body is allowed, since it is how a program says that something it was showing is now empty.\n\n# Throws\n\n`InvalidArgument` for an empty label — a view with no selector could never be closed or attributed — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever silently truncated.",
 			"signatures": [
 				{
 					"signature": "openText :: String -> String -> Effect Unit",
@@ -2377,7 +2467,7 @@
 			"fqn": "Gg.Views.openDocsView",
 			"call": null,
 			"brief": "Place one function's full documentation in the context window.",
-			"detail": "Its signature, its description, and the declarations of any types it refers to that have not already been shown this session. This is a **view** rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives, so it is not available in the turn that asks for it. Asking in one turn and using it in the next is the shape that works. Opening the same function's documentation again replaces the view rather than adding a second copy.\n\n# Raises\n\n`NotFound` for an unknown or unbound name.",
+			"detail": "Its signature, its description, and the declarations of any types it refers to that have not already been shown this session. This is a **view** rather than a return value: the documentation arrives in the next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives, so it is not available in the turn that asks for it. Asking in one turn and using it in the next is the shape that works. Opening the same function's documentation again replaces the view rather than adding a second copy.\n\n# Throws\n\n`NotFound` for an unknown or unbound name.",
 			"signatures": [
 				{
 					"signature": "openDocsView :: String -> Effect Unit",
@@ -2416,7 +2506,7 @@
 			"fqn": "Gg.Views.close",
 			"call": null,
 			"brief": "Close every view carrying a selector, freeing the tokens they occupied.",
-			"detail": "How many were closed comes back. For a file that is every page of that path, for a text view the one with that label, for the results of a search the label `search results`. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard on every call. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.\n\nDocumentation views are not reached from here. `Gg.Docs.close` is what takes one away, and it is bought by a capability this call is not — so a sweep that included them would hand back `0` for an agent that may not close one, which reads as a selector that named nothing.",
+			"detail": "Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.\n\nDocumentation views are not reached from here. `Gg.Docs.close` is what takes one away, and it is bought by a capability this call is not — so a sweep that included them would hand back `0` for an agent that may not close one, which reads as a selector that named nothing.\n\n# Returns\n\nHow many views were closed: for a file that is every page of that path, for a text view the one with that label, for the results of a search the label `search results`. A selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard on every call.\n\n# Throws\n\n`InvalidArgument` for an empty selector, which names nothing rather than everything — no call here closes the window wholesale.",
 			"signatures": [
 				{
 					"signature": "close :: String -> Effect Int",
@@ -2446,6 +2536,57 @@
 			"returns": []
 		},
 		{
+			"operation": "views.close",
+			"aliasOf": "views.close",
+			"module": "views",
+			"kind": "function",
+			"receiver": null,
+			"name": "closeView",
+			"fqn": "Gg.Views.closeView",
+			"call": null,
+			"brief": "Close a view that is open, freeing the tokens it occupied.",
+			"detail": "`Gg.Views.close` with the selector already taken out of the view, which is what lets a window be tidied by folding over what is in it rather than by writing out a selector per view.\n\nA documentation view is the one this does not take away, for the reason `Gg.Views.close` does not: `Gg.Docs.close` is the call for one of those, and it is bought by a capability this one is not.\n\n# Returns\n\nHow many views were closed, which for one page of a paged file is every page of that path.",
+			"signatures": [
+				{
+					"signature": "closeView :: Gg.Views.OpenView -> Effect Int",
+					"parameters": [
+						{
+							"name": "view",
+							"type": "Gg.Views.OpenView",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The view to close, as `Gg.Views.current` listed it.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Views.OpenView",
+					"fqn": "Gg.Views.OpenView"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				},
+				{
+					"spelled": "Gg.Views.ViewKind",
+					"fqn": "Gg.Views.ViewKind"
+				},
+				{
+					"spelled": "Gg.Views.ViewRegion",
+					"fqn": "Gg.Views.ViewRegion"
+				}
+			],
+			"returns": []
+		},
+		{
 			"operation": "views.current",
 			"aliasOf": null,
 			"module": "views",
@@ -2455,7 +2596,7 @@
 			"fqn": "Gg.Views.current",
 			"call": null,
 			"brief": "List what is open in the context window right now.",
-			"detail": "Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. What it enumerates is the context window's contents, not any module's functions. Reading it is what informs a decision about what to close when the window is filling up.",
+			"detail": "What it enumerates is the context window's contents, not any module's functions. Reading it is what informs a decision about what to close when the window is filling up.\n\n# Returns\n\nEach view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers.",
 			"signatures": [
 				{
 					"signature": "current :: Effect (Array Gg.Views.OpenView)",
@@ -2501,7 +2642,7 @@
 			"fqn": "Gg.Context.evictFileView",
 			"call": null,
 			"brief": "Drop the contents of files already read out of the context window, freeing the tokens they occupy.",
-			"detail": "What that reclaimed comes back. The files on disk are untouched: this forgets what was read, not what exists.",
+			"detail": "The files on disk are untouched: this forgets what was read, not what exists.\n\n# Returns\n\nHow many context items went and roughly how many tokens that reclaimed, with `paths` naming the files whose views were dropped.\n\n# Throws\n\n`InvalidArgument` for a `path` that is given but empty; leaving it out altogether is how every file view is dropped.",
 			"signatures": [
 				{
 					"signature": "evictFileView :: { path? :: String } -> Effect Gg.Context.ReclaimReport",
@@ -2558,8 +2699,8 @@
 			"name": "archiveThread",
 			"fqn": "Gg.Context.archiveThread",
 			"call": null,
-			"brief": "Move whole turns out of the context window and report what that reclaimed.",
-			"detail": "Every result carries a header with its turn number and roughly what holding it costs, so the turns worth dropping can be named: a span is inclusive at both ends, so `[ { from: 4, to: 19 } ]` archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable.\n\n# Raises\n\n`InvalidArgument` for a span whose ends are not turn numbers.",
+			"brief": "Move whole turns out of the context window.",
+			"detail": "Every result carries a header with its turn number and roughly what holding it costs, so the turns worth dropping can be named: a span is inclusive at both ends, so `[ { from: 4, to: 19 } ]` archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable.\n\n# Returns\n\nHow many context items went and roughly how many tokens that reclaimed. `paths` is empty, since an archive drops turns rather than files.\n\n# Throws\n\n`InvalidArgument` for a span whose ends are not turn numbers.",
 			"signatures": [
 				{
 					"signature": "archiveThread :: Array Gg.Context.TurnRange -> Effect Gg.Context.ReclaimReport",
@@ -2611,7 +2752,7 @@
 			"fqn": "Gg.Context.searchArchive",
 			"call": null,
 			"brief": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.",
-			"detail": "`archiveEmpty` is worth checking before `hits`: it distinguishes nothing having been archived yet from a search that ran and matched nothing, so a second archive is not made in the belief that the first one failed.",
+			"detail": "`archiveEmpty` is worth checking before `hits`: it distinguishes nothing having been archived yet from a search that ran and matched nothing, so a second archive is not made in the belief that the first one failed.\n\n# Returns\n\nThe matches, most recent first and at most 8, beside the `archiveEmpty` flag.\n\n# Throws\n\n`InvalidArgument` for an empty query.",
 			"signatures": [
 				{
 					"signature": "searchArchive :: String -> Effect Gg.Context.ArchiveSearch",
@@ -2667,7 +2808,7 @@
 			"fqn": "Gg.Context.compact",
 			"call": null,
 			"brief": "Compact the context window: the detailed thread is dropped and restarted from a summary.",
-			"detail": "Each path in `files` is read afresh into the restarted window. Skills, memories and the task list are kept as they are. gg asks for this call when the window is full, and refuses every other call until it is made.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not in `files` is gone, so the summary is written for the agent that resumes, and the files it will need in hand are named.\n\n# Raises\n\n`Refused` when a compaction is already in flight and this call is not the one it asked for.",
+			"detail": "Each path in `files` is read afresh into the restarted window. Skills, memories and the task list are kept as they are. gg asks for this call when the window is full, and refuses every other call until it is made.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not in `files` is gone, so the summary is written for the agent that resumes, and the files it will need in hand are named.\n\n# Throws\n\n`InvalidArgument` for a blank summary. This is the one call gg does not refuse while a compaction is in flight, since nothing else can clear the window.",
 			"signatures": [
 				{
 					"signature": "compact :: String -> { files? :: Array String } -> Effect Unit",
@@ -2725,7 +2866,7 @@
 			"fqn": "Gg.Delegation.spawnSubagent",
 			"call": null,
 			"brief": "Delegate scoped work to a child agent, which runs in parallel while this program continues.",
-			"detail": "Its handle comes back immediately. The `agent` names the profile to run it as — one of the agents this one may spawn, which the system prompt lists — and it selects the child's model, tools and instructions. The brief is either `Gg.Delegation.Prompt \"self-contained instructions\"` or `Gg.Delegation.Issue \"AUTH-1\"`. The child shares this agent's workspace.\n\n# Raises\n\n`LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this agent may spawn.",
+			"detail": "The `agent` names the profile to run it as — one of the agents this one may spawn, which the system prompt lists — and it selects the child's model, tools and instructions. The brief is either `Gg.Delegation.Prompt \"self-contained instructions\"` or `Gg.Delegation.Issue \"AUTH-1\"`. The child shares this agent's workspace.\n\n# Returns\n\nThe child's handle: the id that waits for it or sends it a message, the agent profile it runs as, and the model actually bound to that profile.\n\n# Throws\n\n`LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this agent may spawn.",
 			"signatures": [
 				{
 					"signature": "spawnSubagent :: String -> Gg.Delegation.Brief -> Effect Gg.Delegation.SubagentHandle",
@@ -2786,7 +2927,7 @@
 			"fqn": "Gg.Delegation.waitForSubagents",
 			"call": null,
 			"brief": "Block until the named children have finished, and collect their results in dispatch order.",
-			"detail": "With `{}` it waits for every outstanding child. The run's wall-clock budget keeps running while it waits, so one wait for many children costs far less than one wait per child.\n\n# Raises\n\n`NotFound` for an unknown id.",
+			"detail": "With `{}` it waits for every outstanding child. The run's wall-clock budget keeps running while it waits, so one wait for many children costs far less than one wait per child.\n\n# Returns\n\nOne result per child, in dispatch order, each carrying its final message and how it ended. A child that produced no return value at all has no `status`.\n\n# Throws\n\n`NotFound` for an unknown id.",
 			"signatures": [
 				{
 					"signature": "waitForSubagents :: { ids? :: Array String } -> Effect (Array Gg.Delegation.SubagentResult)",
@@ -2848,7 +2989,7 @@
 			"fqn": "Gg.Delegation.sendMessage",
 			"call": null,
 			"brief": "Deliver a message to a running child agent's inbox, which it reads at its next turn.",
-			"detail": "# Raises\n\n`NotFound` for an unknown agent id, and `Conflict` when that child has already returned.",
+			"detail": "# Throws\n\n`NotFound` for an unknown agent id, and `Conflict` when that child has already returned.",
 			"signatures": [
 				{
 					"signature": "sendMessage :: String -> String -> Effect Unit",
@@ -2887,6 +3028,58 @@
 			"returns": []
 		},
 		{
+			"operation": "delegation.send_message",
+			"aliasOf": "delegation.send_message",
+			"module": "delegation",
+			"kind": "function",
+			"receiver": null,
+			"name": "send",
+			"fqn": "Gg.Delegation.send",
+			"call": null,
+			"brief": "Deliver a message to a running child agent's inbox, which it reads at its next turn.",
+			"detail": "`Gg.Delegation.sendMessage` with the id already taken out of the handle, for the common case where the child was spawned by this program or by a recent one and its handle is still in hand.\n\n# Throws\n\n`Conflict` when that child has already returned.",
+			"signatures": [
+				{
+					"signature": "send :: Gg.Delegation.SubagentHandle -> String -> Effect Unit",
+					"parameters": [
+						{
+							"name": "child",
+							"type": "Gg.Delegation.SubagentHandle",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The child to deliver to, as its handle named it.",
+							"fields": []
+						},
+						{
+							"name": "message",
+							"type": "String",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "What to put in its inbox.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Delegation.SubagentHandle",
+					"fqn": "Gg.Delegation.SubagentHandle"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
 			"operation": "delegation.transition_state",
 			"aliasOf": null,
 			"module": "delegation",
@@ -2896,7 +3089,7 @@
 			"fqn": "Gg.Delegation.transitionState",
 			"call": null,
 			"brief": "Move the process this session runs inside on to another of its states.",
-			"detail": "The state is named the way an agent to spawn is named. It is bound only when a state machine is driving the session and the current state has somewhere to go. Like a compaction it is registered rather than performed: the call validates the target, returns, and the program runs on to its end — the transition happens after that, because replacing the agent and its window mid-program would pull every remaining call out from under it. The first declaration in a turn is the one that stands.\n\n# Raises\n\n`InvalidArgument` for a state this session may not move to, and `Refused` for a second declaration in one turn.",
+			"detail": "The state is named the way an agent to spawn is named. It is bound only when a state machine is driving the session and the current state has somewhere to go. Like a compaction it is registered rather than performed: the call validates the target, returns, and the program runs on to its end — the transition happens after that, because replacing the agent and its window mid-program would pull every remaining call out from under it. The first declaration in a turn is the one that stands.\n\n# Throws\n\n`InvalidArgument` for a state this session may not move to, and `Refused` for a second declaration in one turn.",
 			"signatures": [
 				{
 					"signature": "transitionState :: String -> { note? :: String } -> Effect Unit",
@@ -2954,7 +3147,7 @@
 			"fqn": "Gg.Delegation.exec",
 			"call": null,
 			"brief": "Continue this session as a different agent, from the next turn.",
-			"detail": "The named agent takes over with its own model, tools and instructions, keeping every capability the two of them share — and the whole conversation above all, so it needs no catching up. Registered rather than performed, exactly as a state transition is and for the same reason: the window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. It is bound only when this agent may make agent transitions and has agents it may become, and never while a state machine is driving the session.\n\n# Raises\n\n`InvalidArgument` for an agent this agent may not become, and `Refused` for a second succession in one turn.",
+			"detail": "The named agent takes over with its own model, tools and instructions, keeping every capability the two of them share — and the whole conversation above all, so it needs no catching up. Registered rather than performed, exactly as a state transition is and for the same reason: the window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn. It is bound only when this agent may make agent transitions and has agents it may become, and never while a state machine is driving the session.\n\n# Throws\n\n`InvalidArgument` for an agent this agent may not become, and `Refused` for a second succession in one turn.",
 			"signatures": [
 				{
 					"signature": "exec :: String -> { prompt? :: String } -> Effect Unit",
@@ -3012,7 +3205,7 @@
 			"fqn": "Gg.Delegation.fork",
 			"call": null,
 			"brief": "Run a copy of this agent, in parallel, on something it will not do itself.",
-			"detail": "The copy has the same model, the same tools and a private copy of the whole conversation, so the prompt is the *difference* rather than a briefing — everything already worked out is there.\n\nIts handle comes back immediately, and the copy itself starts once this turn's results are recorded, because the conversation it inherits has to be a complete one. A wait can therefore collect it only on a later turn, never in the program that made it.\n\n# Raises\n\n`LimitExceeded` at the delegation depth cap.",
+			"detail": "The copy has the same model, the same tools and a private copy of the whole conversation, so the prompt is the *difference* rather than a briefing — everything already worked out is there.\n\nThe copy starts once this turn's results are recorded, because the conversation it inherits has to be a complete one. A wait can therefore collect it only on a later turn, never in the program that made it.\n\n# Returns\n\nThe copy's handle, carrying the id a later wait collects it by.\n\n# Throws\n\n`LimitExceeded` at the delegation depth cap.",
 			"signatures": [
 				{
 					"signature": "fork :: String -> Effect Gg.Delegation.SubagentHandle",
@@ -3060,7 +3253,7 @@
 			"fqn": "Gg.Skills.readSkill",
 			"call": null,
 			"brief": "Read a skill by name, handing back its body with the front matter stripped.",
-			"detail": "Reading it also pins that body permanently into the context window, so a skill once read stays read. A skill may be **code** rather than prose, or as well as it: code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it exports, reachable through `Gg.Core.lib`. An on-use script runs once the program has ended, and whatever it shows arrives on the next turn.\n\n# Raises\n\n`NotFound`, listing the skills that do exist, when the name is unknown.",
+			"detail": "Reading it also pins that body permanently into the context window, so a skill once read stays read. A skill may be **code** rather than prose, or as well as it: code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it exports, reachable through `Gg.Core.lib`. An on-use script runs once the program has ended, and whatever it shows arrives on the next turn.\n\n# Returns\n\nThe skill's body with its front matter stripped, and — where the skill is code — the `lib.<key>` its exports are now bound at.\n\n# Throws\n\n`NotFound`, listing the skills that do exist, when the name is unknown.",
 			"signatures": [
 				{
 					"signature": "readSkill :: String -> Effect String",
@@ -3099,7 +3292,7 @@
 			"fqn": "Gg.Programs.history",
 			"call": null,
 			"brief": "The programs already run this session, oldest first.",
-			"detail": "Each carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes rather than sources, so the one worth having is then fetched. The list survives a compaction, which makes it the way to find a program whose text has left the context window. A session that has run nothing yet gets an empty array rather than an error.",
+			"detail": "It lists shapes rather than sources, so the one worth having is then fetched. The list survives a compaction, which makes it the way to find a program whose text has left the context window.\n\n# Returns\n\nOne summary per program already run, oldest first: the turn it ran on, how big it was, and whether it ran to its end. A session that has run nothing yet gets an empty array.",
 			"signatures": [
 				{
 					"signature": "history :: Effect (Array Gg.Programs.ProgramSummary)",
@@ -3136,8 +3329,8 @@
 			"name": "get",
 			"fqn": "Gg.Programs.get",
 			"call": null,
-			"brief": "The exact source of one program that ran, as a string. With `{}`, the most recent one.",
-			"detail": "This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result back to be run. What comes back is the program that **executed**, so when a turn's program was itself handed over, the answer is the program that ran rather than the few lines that asked for it — and fetch, patch and run compose turn after turn.\n\n# Raises\n\n`NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+			"brief": "The source of one program that ran; with `{}`, the most recent one.",
+			"detail": "This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result back to be run. What comes back is the program that **executed**, so when a turn's program was itself handed over, the answer is the program that ran rather than the few lines that asked for it — and fetch, patch and run compose turn after turn.\n\n# Returns\n\nThe program's source, exactly as it executed.\n\n# Throws\n\n`NotFound`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
 			"signatures": [
 				{
 					"signature": "get :: { turn? :: Int } -> Effect String",
@@ -3177,6 +3370,49 @@
 			"returns": []
 		},
 		{
+			"operation": "programs.get",
+			"aliasOf": "programs.get",
+			"module": "programs",
+			"kind": "function",
+			"receiver": null,
+			"name": "sourceOf",
+			"fqn": "Gg.Programs.sourceOf",
+			"call": null,
+			"brief": "Fetch the source of one program the history listed.",
+			"detail": "`Gg.Programs.get` with the turn already taken out of the summary, for the common case where the directory entry that named the program is the thing in hand. A summary describes a program's shape and never its text, so this is how the one worth patching is read.\n\n# Returns\n\nThe program's source, exactly as it executed.\n\n# Throws\n\n`NotFound` when the library has since dropped that turn.",
+			"signatures": [
+				{
+					"signature": "sourceOf :: Gg.Programs.ProgramSummary -> Effect String",
+					"parameters": [
+						{
+							"name": "program",
+							"type": "Gg.Programs.ProgramSummary",
+							"optional": false,
+							"kind": "positional",
+							"default": null,
+							"doc": "The program to fetch, as `Gg.Programs.history` listed it.",
+							"fields": []
+						}
+					]
+				}
+			],
+			"types": [
+				{
+					"spelled": "Gg.Programs.ProgramSummary",
+					"fqn": "Gg.Programs.ProgramSummary"
+				},
+				{
+					"spelled": "Gg.Core.ToolError",
+					"fqn": "Gg.Core.ToolError"
+				},
+				{
+					"spelled": "Gg.Core.ToolErrorCode",
+					"fqn": "Gg.Core.ToolErrorCode"
+				}
+			],
+			"returns": []
+		},
+		{
 			"operation": "programs.rerun",
 			"aliasOf": null,
 			"module": "programs",
@@ -3186,7 +3422,7 @@
 			"fqn": "Gg.Programs.rerun",
 			"call": null,
 			"brief": "Hand gg a program to run in place of this one.",
-			"detail": "This program finishes, then gg compiles and runs the given source as this turn's program. Paired with a fetch it fixes a program without re-emitting it. Nothing is undone: every call this program already made stands, and the program that runs next sees the world this one left behind, so handing over comes before work that should not be done twice.\n\nThe first call stands, because a silently replaced program is a change nobody can see. A program that then fails cancels the hand-over along with everything else it decided, and the turn ends as an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program does the work.\n\n# Raises\n\n`Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.",
+			"detail": "This program finishes, then gg compiles and runs the given source as this turn's program. Paired with a fetch it fixes a program without re-emitting it. Nothing is undone: every call this program already made stands, and the program that runs next sees the world this one left behind, so handing over comes before work that should not be done twice.\n\nThe first call stands, because a silently replaced program is a change nobody can see. A program that then fails cancels the hand-over along with everything else it decided, and the turn ends as an ordinary error. Chains are bounded: one hand-over per turn, and the fixed program does the work.\n\n# Throws\n\n`Refused` for a second hand-over in one turn, and `InvalidArgument` for a blank source.",
 			"signatures": [
 				{
 					"signature": "rerun :: String -> Effect Unit",
@@ -3293,7 +3529,7 @@
 			"fqn": "Gg.Session.requestChanges",
 			"call": null,
 			"brief": "Reject the work under review, listing every change that must be made before it can be accepted.",
-			"detail": "Each item says what is wrong and what to change. The list may not be empty. This ends the session, and does not stop the program.\n\n# Raises\n\n`InvalidArgument` when the list is empty.",
+			"detail": "Each item says what is wrong and what to change. The list may not be empty. This ends the session, and does not stop the program.\n\n# Throws\n\n`InvalidArgument` when the list is empty.",
 			"signatures": [
 				{
 					"signature": "requestChanges :: Array String -> Effect Unit",
@@ -4448,7 +4684,7 @@
 					"type": null,
 					"kind": "variant",
 					"brief": "The failure was not classified.",
-					"detail": "Reserved for outcomes raised outside a tool implementation. The one this SDK can raise itself is a call it declares that the run's guest does not export — a mismatch between the two artifacts rather than anything a program did, and never a capability that was withheld, which is `Unavailable` and comes from the host."
+					"detail": "Reserved for outcomes thrown outside a tool implementation. The one this SDK can throw itself is a call it declares that the run's guest does not export — a mismatch between the two artifacts rather than anything a program did, and never a capability that was withheld, which is `Unavailable` and comes from the host."
 				}
 			],
 			"memberFunctions": []

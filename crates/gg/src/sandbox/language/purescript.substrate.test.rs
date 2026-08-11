@@ -930,13 +930,130 @@ fn every_tool_crosses_the_membrane_from_its_purescript_spelling() {
     );
 }
 
+/// **Every convenience function reaches the operation it says it is an alias of, keyed on the field
+/// its subject really carries.**
+///
+/// This arm's five second ways in — `Gg.Board.waitFor`, `Gg.Memories.readHit`,
+/// `Gg.Views.closeView`, `Gg.Delegation.send` and `Gg.Programs.sourceOf` — are one line of body
+/// each: they take a field off the record they are given and call the module-level function with
+/// it. They are **free functions over a value** rather than methods on it, because a PureScript
+/// record carries fields and no behaviour, and that is the equivalent shape rather than a shortfall.
+///
+/// That one line is what no other gate can see. The catalogue records which operation each is an
+/// alias of, the [coverage gate](super::super::agreement) reads that record rather than the body,
+/// and the type checker only proves the field exists — `child.slot` where the call wants `child.id`
+/// compiles, documents and catalogues perfectly, and delivers every message to a child that does
+/// not exist. So each is driven here from the value the operation that produces it really handed
+/// back, in one program for the reason the crossing table above is one program.
+#[test]
+fn a_convenience_function_reaches_the_operation_it_is_an_alias_of() {
+    let limits = SandboxLimits::default();
+    let log = CallLog::default();
+    // A library with something in it, which is what `Gg.Programs.sourceOf` needs a summary of; the
+    // plain double answers an empty history, and an alias driven over an empty array proves nothing.
+    let api = FakeToolApi::new(&log).with_program(2, "module Main where\nmain = pure unit");
+    // Both of these before the store exists, for the reason [`evaluate`] gives.
+    let component = component();
+    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let enabled = all_tools();
+    let scope = ProgramScope {
+        enabled: &enabled,
+        modules: &[],
+        ending: RunEnding::None,
+        library: true,
+        docview_close: false,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(api, purescript(), scope, limits, None),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    let program = prepare(
+        &program_of(&[
+            "issue <- Gg.Board.createIssue { title: \"Parse the manifest\", \
+             inScope: \"the parser\", outOfScope: \"the writer\", \
+             completionCriteria: \"tests pass\", agent: \"Builder\" }",
+            "ack <- Gg.Board.waitFor issue",
+            "Console.log (issue.id <> \" \" <> ack)",
+            "hits <- Gg.Memories.searchMemories [ \"build\" ]",
+            "bodies <- traverse Gg.Memories.readHit hits",
+            "Console.log (show (map _.name hits) <> \" \" <> show bodies)",
+            "child <- Gg.Delegation.spawnSubagent \"Builder\" \
+             (Gg.Delegation.Prompt \"take the writer\")",
+            "Gg.Delegation.send child \"prefer the simpler parser\"",
+            "Console.log child.id",
+            "Gg.Views.openText \"summary\" \"eight files, two failing\"",
+            "open <- Gg.Views.current",
+            "closed <- traverse Gg.Views.closeView open",
+            "Console.log (show closed)",
+            "history <- Gg.Programs.history",
+            "sources <- traverse Gg.Programs.sourceOf history",
+            "Console.log (show (map _.turn history) <> \" \" <> show sources)",
+        ])
+        .replace(
+            "import Effect (Effect)\n",
+            "import Effect (Effect)\nimport Data.Traversable (traverse)\n\
+             import Effect.Class.Console as Console\n",
+        ),
+    );
+    bound
+        .call_run(
+            &mut store,
+            &program,
+            &[],
+            &enabled,
+            RunEnding::None.into(),
+            true,
+        )
+        .expect("the program runs");
+    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    assert_eq!(
+        logs(&outcome),
+        [
+            "EPIC-1 wait registered",
+            "[\"build-commands\"] [\"the memory contents\"]",
+            "agent-1",
+            // The one view open was the one the function was given, and closing it took that view
+            // alone.
+            "[1]",
+            "[2] [\"module Main where\\nmain = pure unit\"]",
+        ]
+    );
+    // Each of the three that is a gg tool reached dispatch under the operation it aliases, in the
+    // order the program made the calls — and carrying its subject's own key, which is the half a
+    // wrong field would fail.
+    assert_eq!(
+        log.names(),
+        [
+            "create_issue",
+            "wait_for_issue",
+            "search_memories",
+            "read_memory",
+            "spawn_subagent",
+            "send_message",
+        ],
+    );
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" }))
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+}
+
 #[test]
 fn the_views_docs_program_library_helper_and_endings_modules_are_reached_in_purescript_too() {
     // The families that are NOT gg tools, so none of them appears in the crossing table above — two
     // of them are where a program puts something in front of the model and one is how it finds
     // anything at all, which makes them the ones a silent bridging mistake would cost the most.
-    // Between this and the table, every function this arm's catalogue describes has been driven
-    // through the real membrane.
+    // Between this, the crossing table and the alias case above it, every function this arm's
+    // catalogue describes has been driven through the real membrane.
     let (outcome, log) = run_as(
         &program_of(&[
             "text <- Gg.Files.readTextFile \"notes.md\" { limit: 2 }",

@@ -259,7 +259,7 @@
       "fqn": "Gg.Files.ReadTextFile",
       "call": null,
       "brief": "Read a text file and hand back its contents directly.",
-      "detail": "\u0060Files.ReadFile\u0060 without the narrowing, for the common case: the same read, the same window, the same cost.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 when the path names a picture, which \u0060Files.ReadFile\u0060 inspects instead.",
+      "detail": "\u0060Files.ReadFile\u0060 without the narrowing, for the common case: the same read, the same window, the same cost.\n\nReturns: the text alone, without the line counts \u0060Files.TextFile\u0060 reports beside it.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 when the path names a picture, which \u0060Files.ReadFile\u0060 inspects instead.",
       "signatures": [
         {
           "signature": "ReadTextFile(string path, uint? offset = null, uint? limit = null) -\u003E string",
@@ -316,7 +316,7 @@
       "fqn": "Gg.Files.WriteFile",
       "call": null,
       "brief": "Write UTF-8 text to a file, creating parent directories and replacing what is there.",
-      "detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nReturns: how many bytes were written.",
+      "detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nReturns: how many bytes were written.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 for an empty path, and \u0060ToolErrorCode.IOError\u0060 when creating the parent directories or the write itself failed.",
       "signatures": [
         {
           "signature": "WriteFile(string path, string contents) -\u003E ulong",
@@ -421,7 +421,7 @@
       "fqn": "Gg.Files.ListDir",
       "call": null,
       "brief": "List a directory, sorted by name.",
-      "detail": "Each entry carries a bare \u0060Files.DirEntry.Name\u0060, which has to be joined with the directory that was listed. An empty directory is an empty list rather than a failure.",
+      "detail": "Each entry carries a bare \u0060Files.DirEntry.Name\u0060, which has to be joined with the directory that was listed. An empty directory is an empty list rather than a failure.\n\nReturns: the directory\u0027s immediate entries only \u2014 nothing here descends into a subdirectory.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a directory that is not there, and \u0060ToolErrorCode.InvalidArgument\u0060 for a path that is given but empty \u2014 leaving it out altogether is what lists the workspace root.",
       "signatures": [
         {
           "signature": "ListDir(string? path = null) -\u003E IReadOnlyList\u003CFiles.DirEntry\u003E",
@@ -473,7 +473,7 @@
       "fqn": "Gg.Shell.Run",
       "call": null,
       "brief": "Run a command with \u0060sh -c\u0060 and hand back its merged output and exit status.",
-      "detail": "A non-zero exit is an ordinary result rather than a failure of the call: the output and the code both come back, so a program branches on them. Only a failure to launch the process, or the timeout killing it, throws.\n\n\u0060\u0060\u0060csharp\nvar built = Shell.Run(\u0022cargo build --release\u0022);\nif (built.ExitCode != 0)\n{\n    Views.OpenText(\u0022build\u0022, built.Output);\n}\n\u0060\u0060\u0060\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.LimitExceeded\u0060 when the timeout killed it, and \u0060ToolErrorCode.IOError\u0060 when the process could not be started at all.",
+      "detail": "A non-zero exit is an ordinary result rather than a failure of the call: the output and the code both come back, so a program branches on them. Only a failure to launch the process, or the timeout killing it, throws.\n\n\u0060\u0060\u0060csharp\nvar built = Shell.Run(\u0022cargo build --release\u0022);\nif (built.ExitCode != 0)\n{\n    Views.OpenText(\u0022build\u0022, built.Output);\n}\n\u0060\u0060\u0060\n\nReturns: what the process reported, including whether the output cap cut what came back.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.LimitExceeded\u0060 when the timeout killed it, and \u0060ToolErrorCode.IOError\u0060 when the process could not be started at all.",
       "signatures": [
         {
           "signature": "Run(string command, double? timeoutSeconds = null) -\u003E Shell.ShellOutput",
@@ -1557,7 +1557,7 @@
       "fqn": "Gg.Memories.ReadMemory",
       "call": null,
       "brief": "Read one memory\u0027s contents back, by name.",
-      "detail": "Throws \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a memory not held.",
+      "detail": "Returns: the memory\u0027s body alone; the description that indexes it is not part of it.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a memory not held.",
       "signatures": [
         {
           "signature": "ReadMemory(string name) -\u003E string",
@@ -1927,7 +1927,7 @@
       "fqn": "Gg.Views.OpenFile",
       "call": null,
       "brief": "Read a file and show it in the context window.",
-      "detail": "The read\u0027s result comes back exactly as \u0060Files.ReadFile\u0060 returns it, and the file is added to the window as its own item. The separation is the point: \u0060Files.ReadFile\u0060 gets bytes for the program, this shows a file to the model, and a program that reads forty files to grep them still adds nothing to the window.\n\nThe key is the path and the region together, so two pages of one file are two views and coexist. Opening the same page again replaces it rather than piling up a duplicate.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a missing path, and \u0060ToolErrorCode.InvalidArgument\u0060 for an offset past the end of the file.",
+      "detail": "The read\u0027s result comes back exactly as \u0060Files.ReadFile\u0060 returns it, and the file is added to the window as its own item. The separation is the point: \u0060Files.ReadFile\u0060 gets bytes for the program, this shows a file to the model, and a program that reads forty files to grep them still adds nothing to the window.\n\nThe key is the path and the region together, so two pages of one file are two views and coexist. Opening the same page again replaces it rather than piling up a duplicate.\n\nReturns: the read itself, so the program can work with what the model is now being shown.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a missing path, and \u0060ToolErrorCode.InvalidArgument\u0060 for an offset past the end of the file.",
       "signatures": [
         {
           "signature": "OpenFile(string path, uint? offset = null, uint? limit = null) -\u003E Files.FileRead",
@@ -2088,7 +2088,7 @@
       "fqn": "Gg.Views.Close",
       "call": null,
       "brief": "Close every view whose selector matches, and hand back how many went.",
-      "detail": "For a file, every page of that path closes. Closing a selector that is not open returns zero rather than failing.",
+      "detail": "For a file, every page of that path closes. Closing a selector that is not open returns zero rather than failing.\n\nReturns: how many views went, counting each page of a paged file separately.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 for an empty selector, which names nothing rather than everything \u2014 no call here closes the window wholesale.",
       "signatures": [
         {
           "signature": "Close(string selector) -\u003E uint",
@@ -2173,7 +2173,7 @@
       "fqn": "Gg.Context.EvictFileView",
       "call": null,
       "brief": "Drop file contents already read out of the context window.",
-      "detail": "The files on disk are untouched; only the views of them go.\n\nReturns: what was actually freed, and from where.",
+      "detail": "The files on disk are untouched; only the views of them go.\n\nReturns: what was actually freed, and from where.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 for a path that is given but empty; leaving it out altogether is how every file view is dropped.",
       "signatures": [
         {
           "signature": "EvictFileView(string? path = null) -\u003E Context.ReclaimReport",
@@ -2273,7 +2273,7 @@
       "fqn": "Gg.Context.SearchArchive",
       "call": null,
       "brief": "Search everything archived so far, case-insensitively, by substring.",
-      "detail": "At most eight hits, most recent first. A search that matched nothing is an empty \u0060Context.ArchiveSearch.Hits\u0060; a search with nothing to look in says so through \u0060Context.ArchiveSearch.ArchiveEmpty\u0060, which is a different fact.\n\nReturns: whether there was an archive at all, and what matched.",
+      "detail": "At most eight hits, most recent first. A search that matched nothing is an empty \u0060Context.ArchiveSearch.Hits\u0060; a search with nothing to look in says so through \u0060Context.ArchiveSearch.ArchiveEmpty\u0060, which is a different fact.\n\nReturns: whether there was an archive at all, and what matched.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 for an empty query.",
       "signatures": [
         {
           "signature": "SearchArchive(string query) -\u003E Context.ArchiveSearch",
@@ -2329,7 +2329,7 @@
       "fqn": "Gg.Context.Compact",
       "call": null,
       "brief": "Compact the window: gg drops the detailed thread and restarts it from a summary.",
-      "detail": "It is registered rather than performed: the call validates and returns, the program carries on, and gg rewrites the window once the program has ended \u2014 a context reset has no shape inside the program whose context it resets. A second call simply replaces the request.\n\nSkills, memories and the task list are kept regardless. gg asks for this call when the window is full and refuses every other call until it is made, so it is available at all times.",
+      "detail": "It is registered rather than performed: the call validates and returns, the program carries on, and gg rewrites the window once the program has ended \u2014 a context reset has no shape inside the program whose context it resets. A second call simply replaces the request.\n\nSkills, memories and the task list are kept regardless. gg asks for this call when the window is full and refuses every other call until it is made, so it is available at all times.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.InvalidArgument\u0060 for a blank summary. This is the one call gg does not refuse while a compaction is in flight, since nothing else can clear the window.",
       "signatures": [
         {
           "signature": "Compact(string summary, params string[] files) -\u003E void",
@@ -2686,7 +2686,7 @@
       "fqn": "Gg.Skills.ReadSkill",
       "call": null,
       "brief": "Read an authored skill by name, front matter stripped.",
-      "detail": "The skill is also pinned permanently into the session\u0027s context, so it survives a compaction and never has to be read twice. A skill that carries code binds that code at \u0060lib.\u003Cname\u003E\u0060 for every later program.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a name this run has no skill under.",
+      "detail": "The skill is also pinned permanently into the session\u0027s context, so it survives a compaction and never has to be read twice. A skill that carries code binds that code at \u0060lib.\u003Cname\u003E\u0060 for every later program.\n\nReturns: the skill\u0027s instructions in full, which the session now holds pinned as well.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a name this run has no skill under.",
       "signatures": [
         {
           "signature": "ReadSkill(string name) -\u003E string",
@@ -2725,7 +2725,7 @@
       "fqn": "Gg.Programs.History",
       "call": null,
       "brief": "List the programs this session has run, oldest first.",
-      "detail": "Each entry carries the shape of a program rather than its source: a directory that inlined sixty lines per entry would put the whole session back into the one place that exists to avoid re-reading it. It is empty before the first program has been recorded.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.Unavailable\u0060 when this agent keeps no program library.",
+      "detail": "Each entry carries the shape of a program rather than its source: a directory that inlined sixty lines per entry would put the whole session back into the one place that exists to avoid re-reading it. It is empty before the first program has been recorded.\n\nReturns: one summary per program the library still holds, the ones that failed included.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.Unavailable\u0060 when this agent keeps no program library.",
       "signatures": [
         {
           "signature": "History() -\u003E IReadOnlyList\u003CPrograms.ProgramSummary\u003E",
@@ -2763,7 +2763,7 @@
       "fqn": "Gg.Programs.Get",
       "call": null,
       "brief": "Fetch the exact source of one program, as it was run.",
-      "detail": "As it was run is the contract that matters: where a turn\u0027s program was itself handed over by an earlier one, what is kept is the program that executed rather than the few lines that asked for it. So fetching, patching and re-running composes.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 \u2014 naming the turns that are held \u2014 for a turn that ran no program, or one the library\u0027s retention has already dropped, and \u0060ToolErrorCode.Unavailable\u0060 when this agent keeps no program library.",
+      "detail": "As it was run is the contract that matters: where a turn\u0027s program was itself handed over by an earlier one, what is kept is the program that executed rather than the few lines that asked for it. So fetching, patching and re-running composes.\n\nReturns: that program\u0027s source, ready to patch and hand to \u0060Programs.Rerun\u0060.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 \u2014 naming the turns that are held \u2014 for a turn that ran no program, or one the library\u0027s retention has already dropped, and \u0060ToolErrorCode.Unavailable\u0060 when this agent keeps no program library.",
       "signatures": [
         {
           "signature": "Get(uint? turn = null) -\u003E string",
@@ -2939,6 +2939,93 @@
       ]
     },
     {
+      "operation": "board.wait_for_issue",
+      "aliasOf": "board.wait_for_issue",
+      "module": "board",
+      "kind": "method",
+      "receiver": "IssueCreated",
+      "name": "Wait",
+      "fqn": "Gg.Board.IssueCreated.Wait",
+      "call": null,
+      "brief": "Register a wait on this issue, to be resumed once it goes terminal.",
+      "detail": "\u0060Board.WaitForIssue\u0060 with the id already supplied, for the common case where the issue that was just filed is the one to wait on. It records the wait and returns at once, so the rest of the program still runs and the suspension happens after it ends.\n\nReturns: an acknowledgement that the wait is registered.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 when the board no longer holds the issue, which is the one way this can fail: the other refusals \u0060Board.WaitForIssue\u0060 documents cannot be reached from an issue that was just filed here.",
+      "signatures": [
+        {
+          "signature": "Wait() -\u003E string",
+          "parameters": []
+        }
+      ],
+      "returns": [],
+      "types": [
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
+      "operation": "memories.read_memory",
+      "aliasOf": "memories.read_memory",
+      "module": "memories",
+      "kind": "method",
+      "receiver": "MemoryHit",
+      "name": "Read",
+      "fqn": "Gg.Memories.MemoryHit.Read",
+      "call": null,
+      "brief": "Read the memory this hit found, in full.",
+      "detail": "\u0060Memories.ReadMemory\u0060 with the name already supplied. The excerpt is a window around the first match and is there to rank on rather than to read from, so this is the call that follows a search worth following up.\n\nReturns: the memory\u0027s body alone; the description that indexes it is not part of it.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 for a memory deleted since the search ran.",
+      "signatures": [
+        {
+          "signature": "Read() -\u003E string",
+          "parameters": []
+        }
+      ],
+      "returns": [],
+      "types": [
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
+      "operation": "views.close",
+      "aliasOf": "views.close",
+      "module": "views",
+      "kind": "method",
+      "receiver": "OpenView",
+      "name": "Close",
+      "fqn": "Gg.Views.OpenView.Close",
+      "call": null,
+      "brief": "Close this view, and any other view sharing its selector.",
+      "detail": "\u0060Views.Close\u0060 with the selector already supplied, which is the call this listing exists to feed. A \u0060Views.ViewKind.Docs\u0060 view is the one it does not reach \u2014 \u0060Docs.Close\u0060 takes documentation away \u2014 so closing one here returns zero.\n\nReturns: how many views went, counting each page of a paged file separately.",
+      "signatures": [
+        {
+          "signature": "Close() -\u003E uint",
+          "parameters": []
+        }
+      ],
+      "returns": [],
+      "types": [
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
       "operation": "delegation.send_message",
       "aliasOf": "delegation.send_message",
       "module": "delegation",
@@ -2963,6 +3050,35 @@
               "fields": []
             }
           ]
+        }
+      ],
+      "returns": [],
+      "types": [
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "Gg.ToolErrorCode"
+        },
+        {
+          "spelled": "ToolException",
+          "fqn": "Gg.ToolException"
+        }
+      ]
+    },
+    {
+      "operation": "programs.get",
+      "aliasOf": "programs.get",
+      "module": "programs",
+      "kind": "method",
+      "receiver": "ProgramSummary",
+      "name": "Source",
+      "fqn": "Gg.Programs.ProgramSummary.Source",
+      "call": null,
+      "brief": "Fetch this program\u0027s source, as it was run.",
+      "detail": "\u0060Programs.Get\u0060 with the turn already supplied, which is what a directory entry is for: the listing says which program is worth fetching, and this fetches that one.\n\nReturns: this program\u0027s source, ready to patch and hand to \u0060Programs.Rerun\u0060.\n\nThrows \u0060ToolException\u0060: \u0060ToolErrorCode.NotFound\u0060 when the library has dropped that turn since the history was read.",
+      "signatures": [
+        {
+          "signature": "Source() -\u003E string",
+          "parameters": []
         }
       ],
       "returns": [],
@@ -3098,7 +3214,14 @@
           "detail": null
         }
       ],
-      "memberFunctions": []
+      "memberFunctions": [
+        {
+          "operation": "board.wait_for_issue",
+          "name": "Wait",
+          "fqn": "Gg.Board.IssueCreated.Wait",
+          "brief": "Register a wait on this issue, to be resumed once it goes terminal."
+        }
+      ]
     },
     {
       "fqn": "Gg.Board.IssueStatus",
@@ -3762,7 +3885,14 @@
           "detail": null
         }
       ],
-      "memberFunctions": []
+      "memberFunctions": [
+        {
+          "operation": "memories.read_memory",
+          "name": "Read",
+          "fqn": "Gg.Memories.MemoryHit.Read",
+          "brief": "Read the memory this hit found, in full."
+        }
+      ]
     },
     {
       "fqn": "Gg.Memories.MemoryUsage",
@@ -3861,7 +3991,14 @@
           "detail": null
         }
       ],
-      "memberFunctions": []
+      "memberFunctions": [
+        {
+          "operation": "programs.get",
+          "name": "Source",
+          "fqn": "Gg.Programs.ProgramSummary.Source",
+          "brief": "Fetch this program\u0027s source, as it was run."
+        }
+      ]
     },
     {
       "fqn": "Gg.Shell.ShellOutput",
@@ -4113,7 +4250,14 @@
           "detail": null
         }
       ],
-      "memberFunctions": []
+      "memberFunctions": [
+        {
+          "operation": "views.close",
+          "name": "Close",
+          "fqn": "Gg.Views.OpenView.Close",
+          "brief": "Close this view, and any other view sharing its selector."
+        }
+      ]
     },
     {
       "fqn": "Gg.Views.ViewKind",

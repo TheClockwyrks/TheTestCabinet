@@ -127,9 +127,10 @@ public fun close(selector: String): Int =
  * costs in [OpenView.tokens], and — for a paged file view — the [OpenView.region] it covers. It is
  * what a program reads before deciding what to close when the window is filling up.
  *
+ * Nothing about it can fail: it reads gg's own live view set behind a binding no run withholds.
+ *
  * @ggop views.current
  * @return every view open in the context window
- * @throws ToolError `UNAVAILABLE` when this run bound no view functions at all.
  */
 public fun current(): List<OpenView> =
     Read.openViews(ggCall("current", viewObject(), "gg.views", "current", ggArgs()))

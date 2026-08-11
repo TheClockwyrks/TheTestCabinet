@@ -98,9 +98,9 @@ pub(super) fn evaluate(
     library: bool,
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(
-        component, enabled, modules, ending, library, false, responder,
-    )
+    evaluate_granting(component, enabled, modules, ending, library, false, |log| {
+        FakeToolApi::with(log, responder)
+    })
 }
 
 /// [`evaluate`] for an agent that also holds `docview-close`.
@@ -114,10 +114,33 @@ pub(super) fn evaluate_closing_docviews(
     component: &[u8],
     responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
 ) -> (SandboxOutcome, CallLog) {
-    evaluate_granting(component, &[], &[], RunEnding::None, false, true, responder)
+    evaluate_granting(component, &[], &[], RunEnding::None, false, true, |log| {
+        FakeToolApi::with(log, responder)
+    })
 }
 
-/// What both of the above are: one evaluation, with every flag the scope carries stated.
+/// [`evaluate`] for an agent that keeps a program library with `source` already recorded on `turn`.
+///
+/// The one thing a library-holding agent cannot be driven to without it: `programs.get` and the
+/// `ProgramSummary::source` method that is a second spelling of it both answer out of a history a
+/// fresh double has none of, so a test that seeded nothing can only ever observe a `NotFound`.
+pub(super) fn evaluate_with_program(
+    component: &[u8],
+    turn: u64,
+    source: &str,
+    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+) -> (SandboxOutcome, CallLog) {
+    evaluate_granting(component, &[], &[], RunEnding::None, true, false, |log| {
+        FakeToolApi::with(log, responder).with_program(turn, source)
+    })
+}
+
+/// What all of the above are: one evaluation, with every flag the scope carries stated.
+///
+/// The double is BUILT here rather than passed in, because the log it writes to is created here and
+/// the two must be the same one. `build` takes that log and hands back the api, which is what lets a
+/// caller seed the double — a program library with something in it — without a second parameter for
+/// every thing a caller might seed.
 fn evaluate_granting(
     component: &[u8],
     enabled: &[String],
@@ -125,11 +148,11 @@ fn evaluate_granting(
     ending: RunEnding,
     library: bool,
     docview_close: bool,
-    responder: impl FnMut(&str, &Value) -> ToolOutcome + Send + 'static,
+    build: impl FnOnce(&CallLog) -> FakeToolApi,
 ) -> (SandboxOutcome, CallLog) {
     let limits = SandboxLimits::default();
     let log = CallLog::default();
-    let api = FakeToolApi::with(&log, responder);
+    let api = build(&log);
     let linker = linker::<FakeToolApi>().expect("the production linker builds");
     let compiled =
         engine::compile_bytes(component).expect("a freshly compiled Rust program is a component");

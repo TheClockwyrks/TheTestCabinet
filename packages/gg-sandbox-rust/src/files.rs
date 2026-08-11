@@ -40,6 +40,11 @@ pub(crate) const TOOLS: &[&str] = &["read_file", "write_file", "edit_file", "lis
 /// * `path` — The file to read, relative to the workspace or absolute.
 /// * `options` — The window of lines to read; `files::ReadOptions::default()` reads the whole file.
 ///
+/// # Returns
+///
+/// The window of lines `options` asked for, or — when the bytes turn out to be a picture — the
+/// description gg made of it instead.
+///
 /// # Errors
 ///
 /// `NotFound` for a missing path.
@@ -58,6 +63,10 @@ pub fn read_file(path: &str, options: ReadOptions) -> Result<FileRead, ToolError
 ///
 /// * `path` — The file to read, relative to the workspace or absolute.
 /// * `options` — The window of lines to read; `files::ReadOptions::default()` reads the whole file.
+///
+/// # Returns
+///
+/// The same text [`read_file`] would have put in its [`FileRead::Text`] arm, with nothing to unwrap.
 ///
 /// # Errors
 ///
@@ -78,6 +87,15 @@ pub fn read_text_file(path: &str, options: ReadOptions) -> Result<String, ToolEr
 ///
 /// * `path` — Where to write, relative to the workspace or absolute. Parent directories are created.
 /// * `contents` — The UTF-8 text to write. It replaces the file entirely.
+///
+/// # Returns
+///
+/// How many bytes reached the file, which is `contents` measured in UTF-8 rather than in characters.
+///
+/// # Errors
+///
+/// `InvalidArgument` for an empty path, and `IoError` when creating the parent directories or the
+/// write itself failed.
 #[doc(alias = "ggop:files.write_file")]
 pub fn write_file(path: &str, contents: &str) -> Result<u64, ToolError> {
     wire::lift(files::write_file(path, contents))
@@ -112,6 +130,16 @@ pub fn edit_file(path: &str, old_string: &str, new_string: &str) -> Result<(), T
 ///
 /// * `path` — The directory to list, relative to the workspace or absolute; `None` lists the
 ///   workspace root.
+///
+/// # Returns
+///
+/// One entry per name directly in the directory, files and directories alike. Nothing is recursed
+/// into, so walking a tree is a call per level.
+///
+/// # Errors
+///
+/// `NotFound` for a directory that is not there, and `InvalidArgument` for a path that is given but
+/// empty.
 #[doc(alias = "ggop:files.list_dir")]
 pub fn list_dir(path: Option<&str>) -> Result<Vec<DirEntry>, ToolError> {
     wire::lift(files::list_dir(path))

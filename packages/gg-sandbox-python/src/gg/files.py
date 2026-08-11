@@ -167,6 +167,10 @@ def read_file(path: str, *, offset: int | None = None, limit: int | None = None)
         offset: The 1-based line to start at. Honoured only under a capped read policy.
         limit: How many lines to return from `offset`. Honoured only under a capped read policy.
 
+    Returns:
+        The `TextFile` for a text file's window, or the `ImageFile` describing a picture whose bytes
+            never entered the program.
+
     Raises:
         ToolError: `not-found` for a missing path.
     """
@@ -192,6 +196,9 @@ def read_text_file(path: str, *, offset: int | None = None, limit: int | None = 
         offset: The 1-based line to start at. Honoured only under a capped read policy.
         limit: How many lines to return from `offset`. Honoured only under a capped read policy.
 
+    Returns:
+        The file's text, or the window of it a capped read policy allowed.
+
     Raises:
         ToolError: `invalid-argument` when the path names a picture, which `read_file` inspects
             instead and `views.open_file` displays.
@@ -209,12 +216,19 @@ def write_file(path: str, contents: str) -> int:
     """Write UTF-8 text to a file, creating parent directories and replacing what is there.
 
     Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files
-    in one program exhausts its fuel budget, so a large rewrite is best split across several turns.
-    The number of bytes written comes back.
+    in one program exhausts its fuel budget, so a large rewrite is best split across several
+    turns.
 
     Args:
         path: Where to write, relative to the workspace or absolute. Parent directories are created.
         contents: The UTF-8 text to write. It replaces the file entirely.
+
+    Returns:
+        How many bytes were written, which is the UTF-8 length rather than the number of characters.
+
+    Raises:
+        ToolError: `invalid-argument` for an empty path, and `io-error` when creating the parent
+            directories or the write itself failed.
     """
     return _call(wire.write_file, path, contents)
 
@@ -242,11 +256,17 @@ def edit_file(path: str, old_string: str, new_string: str) -> None:
 def list_dir(path: str | None = None) -> list[DirEntry]:
     """List a directory, sorted by name; the default lists the workspace root.
 
-    Each entry carries a bare `name` — join it with the directory that was listed — and its `kind`.
-    An empty directory is an empty list, not a failure.
-
     Args:
         path: The directory to list, relative to the workspace or absolute. The default lists the
             workspace root.
+
+    Returns:
+        One entry per name, sorted by name, and an empty list for an empty directory rather than a
+            failure. Each `name` is bare, so joining it with the directory that was listed is what
+            makes a path.
+
+    Raises:
+        ToolError: `not-found` for a directory that is not there, and `invalid-argument` for a path
+            that is given but empty — the default is what lists the workspace root.
     """
     return [_as_dir_entry(entry) for entry in _call(wire.list_dir, path)]

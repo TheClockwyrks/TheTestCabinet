@@ -33,6 +33,10 @@
 //     table is a second place to be wrong;
 //   * a type is an exported interface, type alias or class of one of those files, and it belongs to
 //     the module that declares it, so two modules are free to declare a type of one name;
+//   * a HELPER is a method signature on one of those interfaces, naming the operation it is a
+//     shorter way to reach: `handle.send(text)` for `gg.delegation.sendMessage(handle.id, text)`.
+//     It is catalogued as an ALIAS of that operation — gated identically, counting toward no
+//     capability of its own — and both as an entry of its own and as a line on its type;
 //   * the fully-qualified name is `gg.<module>.<name>`, which is a path a program can really write:
 //     the shim binds `gg` with one object per module this run offers.
 //
@@ -53,6 +57,12 @@
 //   * every PARAMETER carries an `@param`, every field of an inline object argument carries an
 //     `@param a.b`, and an `@param` naming something the signature does not declare is an error too,
 //     so a renamed parameter cannot leave its description behind under the old name;
+//   * every call that RETURNS something carries an `@returns` saying what that something is, and one
+//     that returns `void` carries none — the type in the signature says what shape a value has and
+//     nothing about what it holds, while "returns nothing" is a line that displaces the brief
+//     without replacing it;
+//   * a `@throws` opens by naming `ToolError`, so the one sentence that tells a model what a `catch`
+//     will hold cannot render as a verb with no subject;
 //   * every TYPE and every one of its members is documented, and a type nothing refers to is refused,
 //     because a declaration nothing reaches is a documentation view nothing can open;
 //   * no two types share a name, since the bare name is a key a model may reasonably type.
@@ -121,6 +131,36 @@ const OPERATION_TAG = "ggop";
 /** The JSDoc tag that marks a declaration as this package's business rather than a model's. */
 const INTERNAL_TAG = "internal";
 
+/** The JSDoc tag that says what a call hands back. Rendered under {@link RETURNS_LEAD}. */
+const RETURNS_TAG = "returns";
+
+/** The JSDoc tag that says how a call fails. Rendered under {@link THROWS_LEAD}. */
+const THROWS_TAG = "throws";
+
+/**
+ * The word a `@returns` is rendered under, and the colon that introduces the noun phrase after it.
+ *
+ * JSDoc's own tag supplies the word, exactly as `@param` supplies the parameter list's: the tag is
+ * `@returns`, so the section is `Returns:`. Nothing here invents or renames a word — an arm whose
+ * documentation dialect says one thing and whose catalogue says another is the defect this
+ * arrangement exists to make impossible.
+ */
+const RETURNS_LEAD = "Returns:";
+
+/**
+ * The word a `@throws` is rendered under.
+ *
+ * No colon, because the sentence continues grammatically: the tag carries `` `ToolError` with
+ * `not-found` for a missing path ``, and the rendered line reads *Throws `ToolError` with
+ * `not-found` for a missing path.* That inline lead-in is this arm's own form and JavaScript's own
+ * verb — a program `throw`s, a `catch` catches — and it is what the prose said before it moved onto
+ * a tag.
+ */
+const THROWS_LEAD = "Throws";
+
+/** The return type of a declaration that hands nothing back, and so documents no return. */
+const NO_RETURN = "void";
+
 /**
  * The type every signature reaches whether it names it or not.
  *
@@ -129,6 +169,15 @@ const INTERNAL_TAG = "internal";
  * call carry the type its failure arrives as.
  */
 const ALWAYS_REFERENCED = "ToolError";
+
+/**
+ * What a `@throws` must open with, so that every failure sentence names the type it arrives as.
+ *
+ * TypeScript has no checked exceptions, so the *only* place a model learns what a `catch` will hold
+ * is this sentence. Requiring the opening keeps `Throws` from ever rendering as a bare verb with no
+ * subject.
+ */
+const THROWS_SUBJECT = `\`${ALWAYS_REFERENCED}\``;
 
 /**
  * Print a node without its comments and on one line.
@@ -253,6 +302,105 @@ function ownBlock(node, sourceFile) {
 function documentation(node, sourceFile, where) {
   const own = ownBlock(node, sourceFile);
   return proseOf(own ? (ts.getTextOfJSDocComment(own.comment) ?? "") : "", where);
+}
+
+/**
+ * The text of every JSDoc tag called `name` on `node`'s **own** block, in the order they were
+ * written.
+ *
+ * The own block rather than every block attached, because the block the compiler also hands back is
+ * the file's module header ({@link ownBlock}) — and a `@throws` written on a module header is a
+ * sentence about the module, not about the declaration that happens to follow it.
+ */
+function ownTags(node, sourceFile, name) {
+  const out = [];
+  for (const tag of ownBlock(node, sourceFile)?.tags ?? []) {
+    if (tag.tagName.getText(sourceFile) !== name) continue;
+    out.push(flatten(ts.getTextOfJSDocComment(tag.comment) ?? ""));
+  }
+  return out;
+}
+
+/**
+ * The **structured** half of one call's documentation: what it hands back, and how it fails.
+ *
+ * # Why these are tags and the rest is prose
+ *
+ * Because their *order* is a fact about the page rather than about the sentence. A model reads a
+ * call's description, then what it gets, then what can go wrong — and leaving that sequence to
+ * whoever last edited the paragraph is how an arm ends up telling a model how a call fails before
+ * telling it what the call produces. On a tag, the sequence is decided here, once.
+ *
+ * It is also what makes the two properties **countable**. Failure documentation and return
+ * documentation are the two things a model most needs and the two an author most easily forgets,
+ * and a prose paragraph cannot be counted: nothing distinguishes a sentence that happens to open
+ * with *Throws* from one that does not. A tag can be counted, and a missing one can be refused —
+ * which is what the return rule below does.
+ *
+ * # The return rule, in both directions
+ *
+ * A call that hands something back **must** say what, for the same reason every parameter must
+ * carry an `@param`: the type in the signature says what shape the value has and nothing at all
+ * about what it *is*, and a model that has to guess opens a documentation view for nothing. A call
+ * that hands nothing back must **not** — "returns nothing" is a sentence that displaces the brief
+ * without replacing it, and the brief already said what the call did.
+ *
+ * There is deliberately no matching rule for `@throws`. Most of this surface can fail and says so,
+ * but `gg.views.current` reads gg's own live view set behind a binding no run withholds, so it has
+ * no failure to describe — and a rule that made it invent one would be a rule for producing
+ * sentences rather than for producing documentation.
+ */
+function sections(node, sourceFile, where, returnType) {
+  const out = [];
+  const returns = ownTags(node, sourceFile, RETURNS_TAG);
+  if (returns.length > 1) {
+    throw new Error(
+      `${where} carries ${returns.length} \`@${RETURNS_TAG}\` tags, and it returns once.`,
+    );
+  }
+  const [returned] = returns;
+  if (returnType === NO_RETURN) {
+    if (returned !== undefined) {
+      throw new Error(
+        `${where} returns \`${NO_RETURN}\` and documents a return with \`@${RETURNS_TAG}\`. ` +
+          "Saying that nothing comes back displaces the brief with a line that adds nothing to it.",
+      );
+    }
+  } else if (returned === undefined || returned === "") {
+    throw new Error(
+      `${where} returns \`${returnType}\` and does not say what that is. Write ` +
+        `\`@${RETURNS_TAG} <what comes back>\`: the type says what shape the value has and nothing ` +
+        "about what it holds.",
+    );
+  } else {
+    out.push(`${RETURNS_LEAD} ${returned}`);
+  }
+  for (const thrown of ownTags(node, sourceFile, THROWS_TAG)) {
+    if (!thrown.startsWith(THROWS_SUBJECT)) {
+      throw new Error(
+        `${where}'s \`@${THROWS_TAG}\` does not open with ${THROWS_SUBJECT}, so the rendered ` +
+          `sentence would say what happens without naming what a \`catch\` holds: ` +
+          `${JSON.stringify(thrown)}`,
+      );
+    }
+    out.push(`${THROWS_LEAD} ${thrown}`);
+  }
+  return out;
+}
+
+/**
+ * One call's whole documentation: its authored prose, then its {@link sections}.
+ *
+ * The brief and the detailed description are read exactly as every other declaration's are; the
+ * structured sections are appended to the detail, so a call with nothing more to say than its brief
+ * and its return still has a detail, and one with neither still has none.
+ */
+function callProse(node, sourceFile, where, returnType) {
+  const prose = documentation(node, sourceFile, where);
+  const extra = sections(node, sourceFile, where, returnType);
+  if (extra.length === 0) return prose;
+  const detail = [prose.detail, ...extra].filter((part) => part).join("\n\n");
+  return { brief: prose.brief, detail };
 }
 
 /** The text of one JSDoc tag on `node`, or `undefined` when it carries none. */
@@ -410,6 +558,30 @@ function propertyMembers(members, sourceFile, where) {
         detail: prose.detail,
       };
     });
+}
+
+/**
+ * The **method signatures** of one declared type — the convenience helpers a value carries.
+ *
+ * # Why a value carries a method at all
+ *
+ * Because the id it would otherwise be asked for is already in the caller's hand. `spawnSubagent`
+ * hands back a `SubagentHandle` whose `id` is exactly what `sendMessage` takes, and a program that
+ * writes `gg.delegation.sendMessage(handle.id, text)` has restated a fact it was just given. The
+ * method is the same operation reached the short way — an **alias**, gated identically, counting
+ * toward no capability of its own — and it is written on an `interface` rather than a `class`
+ * because nothing in a program ever constructs one of these: they arrive from a call, and a
+ * declaration carrying a constructor a model may not use would be a declaration inviting it to.
+ *
+ * A method's own `@ggop` names the operation it is a second way to reach. That is what makes it an
+ * alias rather than a rival binding, and it is checked against gg's vocabulary in {@link build}
+ * exactly as a module function's is.
+ */
+function methodMembers(statement, sourceFile) {
+  if (!ts.isInterfaceDeclaration(statement)) return [];
+  return statement.members.filter(
+    (member) => ts.isMethodSignature(member) && member.name && !internal(member, sourceFile),
+  );
 }
 
 /**
@@ -582,6 +754,16 @@ async function build(language) {
   const declared = [];
   /** @type {{ id: string, name: string, fqn: string, operation: string, nodes: any[], sourceFile: any }[]} */
   const found = [];
+  /**
+   * The {@link methodMembers} of every declared type, each carrying the declaration it hangs off.
+   *
+   * Collected beside the module functions rather than inside the type walk, because an alias has to
+   * be checked against the **canonical** binding it is an alias of — and that binding may be
+   * declared further down the same file.
+   *
+   * @type {{ id: string, type: any, node: any, sourceFile: any }[]}
+   */
+  const helpers = [];
 
   for (const id of MODULE_ORDER) {
     const sourceFile = await loadModule(id);
@@ -634,7 +816,7 @@ async function build(language) {
       ) {
         const fqn = `${path}.${name}`;
         const prose = documentation(statement, sourceFile, `the type \`${fqn}\``);
-        declared.push({
+        const type = {
           module: id,
           name,
           fqn,
@@ -643,7 +825,11 @@ async function build(language) {
           detail: prose.detail,
           members: typeMembers(statement, sourceFile, fqn),
           memberFunctions: [],
-        });
+        };
+        declared.push(type);
+        for (const node of methodMembers(statement, sourceFile)) {
+          helpers.push({ id, type, node, sourceFile });
+        }
       }
     }
   }
@@ -683,16 +869,16 @@ async function build(language) {
           "the two have to be one transformation apart.",
       );
     }
-    const prose = documentation(entry.nodes[0], entry.sourceFile, where);
+    const returned = entry.nodes[0].type ? print(entry.nodes[0].type, entry.sourceFile) : NO_RETURN;
+    const prose = callProse(entry.nodes[0], entry.sourceFile, where, returned);
     const signatures = signaturesOf(entry.nodes, entry.sourceFile, entry.name, where);
-    const returned = entry.nodes[0].type ? print(entry.nodes[0].type, entry.sourceFile) : "void";
     const written = signatures.flatMap((shape) => shape.parameters.map((p) => p.type));
     const types = resolver.closure(returned, ...written, ALWAYS_REFERENCED);
     for (const reference of types) reached.add(reference.fqn);
     functions.push({
       operation: entry.operation,
-      // This SDK offers each operation exactly once: an exported module function is the whole of the
-      // idiom, so there is no second way to reach one and nothing is an alias.
+      // The canonical binding: the exported module function is where an operation is offered, and
+      // the aliases appended below are second ways to reach one of these.
       aliasOf: null,
       module: entry.id,
       kind: "function",
@@ -718,6 +904,54 @@ async function build(language) {
         `declaration binds. Write \`@${OPERATION_TAG} <id>\` on the function that implements each, ` +
         "or take the row out of src/catalogue.ts.",
     );
+  }
+
+  // The aliases, after every canonical binding is known, so that a helper naming an operation this
+  // SDK does not otherwise offer fails here rather than reaching a model as the only way to call
+  // something. They are appended in one block rather than interleaved into their modules because
+  // that is the order they are: fifty operations, and then the short ways to reach five of them.
+  for (const helper of helpers) {
+    const name = helper.node.name.getText(helper.sourceFile);
+    const fqn = `${helper.type.fqn}.${name}`;
+    const where = `\`${fqn}\``;
+    const operation = tagText(helper.node, helper.sourceFile, OPERATION_TAG);
+    if (!operation) {
+      throw new Error(
+        `${where} is a method on a catalogued type and names no gg operation. Write ` +
+          `\`@${OPERATION_TAG} <namespace>.<key>\` on it: a helper is a second way to reach one ` +
+          "operation, and gg gates it as that operation.",
+      );
+    }
+    if (!claimed.has(operation)) {
+      throw new Error(
+        `${where} is an alias of \`${operation}\`, which no exported function of this SDK binds. ` +
+          "An alias is a shorter way to reach a call, never the only way to reach one.",
+      );
+    }
+    const returned = helper.node.type ? print(helper.node.type, helper.sourceFile) : NO_RETURN;
+    const prose = callProse(helper.node, helper.sourceFile, where, returned);
+    const signatures = signaturesOf([helper.node], helper.sourceFile, name, where);
+    const written = signatures.flatMap((shape) => shape.parameters.map((p) => p.type));
+    const types = resolver.closure(returned, ...written, ALWAYS_REFERENCED);
+    for (const reference of types) reached.add(reference.fqn);
+    helper.type.memberFunctions.push({ operation, name, fqn, brief: prose.brief });
+    functions.push({
+      operation,
+      aliasOf: operation,
+      module: helper.id,
+      kind: "method",
+      receiver: helper.type.name,
+      name,
+      fqn,
+      // Nothing to spell differently: the receiver is a value the program is holding, so
+      // `handle.send(text)` is both the key this entry is filed under and the text of the call.
+      call: null,
+      brief: prose.brief,
+      detail: prose.detail,
+      signatures,
+      returns: resolver.direct(returned),
+      types,
+    });
   }
 
   const unreached = declared.filter((type) => !reached.has(type.fqn)).map((type) => type.fqn);

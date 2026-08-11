@@ -64,7 +64,7 @@
 //! everything here, and its only production-side consumer is the `#[cfg(test)]` arm of the prompt
 //! engine's template registration.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
 use serde_json::{Value, json};
@@ -472,17 +472,23 @@ fn reshaped_catalogue(edit: impl FnOnce(&mut Value)) -> String {
 /// # Why it minds what the source arm already did
 ///
 /// It is derived from a *committed* catalogue, so the surface it is cut from changes under it — and
-/// the changes that matter are the ones in the same direction as the reshape. A source arm that
-/// grew its own `OpenView.close` method would, under an unconditional rewrite, be reshaped into two
-/// entries both spelled `close` on one receiver, and the four tests that read the fixture would
-/// fail with a sentence about the *gate*. So every promotion here is conditioned on the entry being
-/// the arm's canonical binding, and the alias is synthesized only where the source arm does not
-/// already carry one for that operation. The reshape is then idempotent with respect to an arm
-/// becoming more idiomatic, which is the one kind of drift it is guaranteed to meet.
+/// the changes that matter are the ones in the same direction as the reshape. The source arm has
+/// since grown exactly the shapes this reshape produces: an `OpenView.close` method and a
+/// `SubagentHandle.send` one, spelled the way the promotions below spell them. Conditioning each
+/// promotion on the entry being the arm's **canonical** binding was not enough on its own, because
+/// the arm's own method then survives beside the promoted one under the same fully-qualified name,
+/// and the tests that read the fixture fail with a sentence about the *gate*.
+///
+/// So the reshape is a function of the source arm's **canonical bindings alone**: every second way
+/// the arm offers is [dropped](displaced) before anything is re-spelled, and the one alias the
+/// fixture has is the one cut here. That is what makes it blind to the direction the arm is
+/// actually moving in — an arm may grow as many convenience helpers as its idiom wants, in whatever
+/// spelling it wants, and this surface does not move — which is the one kind of drift it is
+/// guaranteed to meet.
 fn reshape(document: &mut Value) {
+    displaced(document);
     let paths = modules(document);
     let resolved = types(document, &paths);
-    let aliased = already_aliased(document);
 
     let mut alias: Option<Value> = None;
     for function in document["functions"]
@@ -490,23 +496,22 @@ fn reshape(document: &mut Value) {
         .expect("the source catalogue files every call in `functions`")
     {
         let operation = string(&function["operation"]);
-        // Only the arm's canonical binding is reshaped. An entry the source arm already filed as a
-        // second way in is one of the shapes this reshape produces, and rewriting it would be the
-        // reshape colliding with itself.
-        let canonical = function["aliasOf"].is_null();
+        // Every entry still here is one the source arm binds canonically, because [`displaced`]
+        // dropped the rest before this loop began. So no promotion below has to ask, and none of
+        // them can collide with a second way in that the arm happened to spell the same way.
         let mut name = snake_case(&string(&function["name"]));
         let mut module = string(&function["module"]);
         match operation.as_str() {
-            SEND_MESSAGE if canonical => {
+            SEND_MESSAGE => {
                 function["kind"] = json!("method");
                 function["receiver"] = json!("SubagentHandle");
                 name = "send".to_string();
             }
-            CLOSE if canonical => {
+            CLOSE => {
                 function["kind"] = json!("method");
                 function["receiver"] = json!("OpenView");
             }
-            WAIT_FOR_ISSUE if canonical => {
+            WAIT_FOR_ISSUE => {
                 module = WAITING.to_string();
                 function["module"] = json!(WAITING);
             }
@@ -518,7 +523,7 @@ fn reshape(document: &mut Value) {
         for reference in references(function) {
             requalify(reference, &resolved);
         }
-        if operation == CLOSE && canonical && !aliased.contains(CLOSE) {
+        if operation == CLOSE {
             // The free function the method displaced, kept as the second way to reach the one
             // operation — which is what an arm does when both spellings read well and neither is
             // worth withholding. It is cut **before** the method gives its argument up to its
@@ -531,8 +536,6 @@ fn reshape(document: &mut Value) {
             rename(&mut second, "close_view");
             second["fqn"] = json!(qualified(path, None, "close_view"));
             alias = Some(second);
-        }
-        if operation == CLOSE && canonical {
             receive_the_argument(function, &name);
         }
     }
@@ -544,16 +547,30 @@ fn reshape(document: &mut Value) {
     }
 }
 
-/// Every operation the source arm **already** offers a second way into, so the reshape does not add
-/// a second second way.
-fn already_aliased(document: &Value) -> BTreeSet<String> {
+/// Drop every second way into an operation that the source arm offers, and every member function
+/// its types list, leaving the arm's canonical bindings and nothing else.
+///
+/// This is what keeps the fixture still while the arm moves. The source arm offers five convenience
+/// helpers today, two of them (`SubagentHandle.send` and `OpenView.close`) in exactly the shape the
+/// promotions above produce and under exactly the fully-qualified name they produce it under — so
+/// left in place they would be a second entry with one key, and the tests that read the fixture
+/// would fail with a sentence about the *gate* rather than about the collision. Rather than special
+/// -casing those two, the reshape takes its input from what an arm cannot vary: which operations it
+/// binds canonically. Every alias it then has is one this file cut.
+///
+/// The member-function listings go with them, for the same reason a type's `fqn` is re-qualified:
+/// a fixture listing members whose entries it does not carry would be describing a surface nobody
+/// could call.
+fn displaced(document: &mut Value) {
     document["functions"]
-        .as_array()
-        .expect("an array")
-        .iter()
-        .filter_map(|function| function["aliasOf"].as_str())
-        .map(str::to_string)
-        .collect()
+        .as_array_mut()
+        .expect("the source catalogue files every call in `functions`")
+        .retain(|function| function["aliasOf"].is_null());
+    for declaration in document["types"].as_array_mut().expect("an array") {
+        if let Some(members) = declaration["memberFunctions"].as_array_mut() {
+            members.clear();
+        }
+    }
 }
 
 /// Hand one entry's argument list to its **receiver**: no documented parameters, and a signature

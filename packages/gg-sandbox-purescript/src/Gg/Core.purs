@@ -91,7 +91,7 @@ data ToolErrorCode
   | IoError
   -- | The failure was not classified.
   -- |
-  -- | Reserved for outcomes raised outside a tool implementation. The one this SDK can raise itself
+  -- | Reserved for outcomes thrown outside a tool implementation. The one this SDK can throw itself
   -- | is a call it declares that the run's guest does not export — a mismatch between the two
   -- | artifacts rather than anything a program did, and never a capability that was withheld, which
   -- | is `Unavailable` and comes from the host.

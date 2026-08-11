@@ -56,6 +56,10 @@ def shell(command: str, *, timeout_secs: float | None = None) -> ShellOutput:
         timeout_secs: How long to let it run, in seconds, before killing it. The default is gg's own
             120, clamped to whatever is left of the run's wall-clock budget.
 
+    Returns:
+        The command's merged stdout and stderr, its `exit_code` — `None` when a signal killed the
+            process — and whether gg's cap `truncated` the output.
+
     Raises:
         ToolError: `limit-exceeded` when the timeout killed the process, and `io-error` when it could
             not be launched.

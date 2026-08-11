@@ -121,7 +121,7 @@ use serde::Deserialize;
 use crate::sandbox::language::compile::{CompilerReport, NODE_ENV, place, shared_toolchain_dir};
 use crate::sandbox::language::{PrepareContext, PrepareError, PrepareFailure, ProgramLanguage};
 use crate::sandbox::operations::operation_by_id;
-use crate::sandbox::signatures::SignatureCatalogue;
+use crate::sandbox::signatures::{EntryKind, SignatureCatalogue};
 
 /// The compiler behind the `tsc` CLI, at the release
 /// `packages/gg-sandbox/tools/checker.mjs` pins — committed and embedded for the reason the
@@ -658,11 +658,21 @@ fn legacy_groupings(catalogue: &SignatureCatalogue, id: &str) -> Vec<&'static st
 /// appended to every module that bound anything, and it was the one member of a checked module that
 /// no catalogue entry declared; with it deleted, what the checker accepts on a module is precisely
 /// what that module's declarations say, so the checker cannot admit a call the guest does not bind.
+///
+/// # Why the module's *methods* are skipped
+///
+/// A [convenience helper](EntryKind::Method) — `handle.send(text)` for
+/// `gg.delegation.sendMessage(handle.id, text)` — is catalogued under the module its receiver
+/// belongs to, because that is where its documentation belongs. It is **not** a member of that
+/// module: it is a member of the type, and the type's own declaration (emitted above, verbatim from
+/// the catalogue) is what already carries it. Emitting it here as well would declare a free
+/// `gg.delegation.send(…)` that the guest binds nowhere — the checker admitting a call the guest
+/// does not have, which is the one direction this function must never fail in.
 fn members(catalogue: &SignatureCatalogue, id: &str) -> Vec<String> {
     catalogue
         .functions
         .iter()
-        .filter(|function| function.module == id)
+        .filter(|function| function.module == id && function.kind == EntryKind::Function)
         .flat_map(|function| function.signatures.iter())
         .map(|entry| entry.signature.clone())
         .collect()

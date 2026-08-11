@@ -58,6 +58,18 @@ export interface OpenView {
 
   /** The line window a paged file view covers; absent for a whole-file view and for a text view. */
   region?: ViewRegion;
+
+  /**
+   * Close this view, with its selector already supplied.
+   *
+   * `gg.views.close` for the common case where the listed view is in hand. A documentation view is
+   * the one it does not take away, exactly as that call does not: `gg.docs.close` is what puts one
+   * of those away.
+   *
+   * @ggop views.close
+   * @returns how many views were closed, which is zero when this one has already gone.
+   */
+  close(): number;
 }
 
 /**
@@ -76,6 +88,10 @@ export interface OpenView {
  * @param options The window of lines to show; omit it to show the whole file.
  * @param options.offset The 1-based line to start at.
  * @param options.limit How many lines to show from `offset`.
+ * @returns the same value `gg.files.readFile` hands back for that window, so a program can use what
+ * it just put in front of the agent.
+ * @throws `ToolError` with `not-found` for a path that is not there. The read is what fails, so
+ * nothing is opened when it does.
  */
 export function openFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
   const o = opts<{ offset?: number; limit?: number }>("openFile", options);
@@ -91,18 +107,16 @@ export function openFile(path: string, options?: { offset?: number; limit?: numb
  * channel a value takes into the next turn's context. Opening the same label again replaces what it
  * showed, so a program may refine one view in a loop without piling up a copy per iteration.
  *
- * An empty label is `invalid-argument`, since a view with no selector could never be closed or
- * attributed. An empty **body** is allowed, because it is how a program says that something it was
- * showing is now empty.
- *
- * Throws `ToolError` with `limit-exceeded`, naming the cap, when a body or a label is over gg's
- * ceilings. Nothing is ever silently truncated.
+ * An empty **body** is allowed, because it is how a program says that something it was showing is
+ * now empty. An empty label is not: a view with no selector could never be closed or attributed.
  *
  * @ggop views.open_text
  * @param label What to file the view under. It is what `close` takes, and opening the same label
  * again replaces what it showed. It may not be empty.
  * @param body What to show. An empty body is allowed: it says that something previously shown is now
  * empty.
+ * @throws `ToolError` with `invalid-argument` for an empty label, and `limit-exceeded`, naming the
+ * cap, when a body or a label is over gg's ceilings. Nothing is ever silently truncated.
  */
 export function openText(label: string, body: string): void {
   call(() => raw.openTextView(label, body));
@@ -121,11 +135,11 @@ export function openText(label: string, body: string): void {
  * view, and `gg.docs.close` takes the same name to put it away — not the `close` in this module,
  * which does not reach documentation.
  *
- * Throws `ToolError` with `not-found` for an unknown or unbound name; searching the documentation is
- * what says which names exist.
- *
  * @ggop views.open_docs_view
  * @param target The function to document: the function itself, or its name as a string.
+ * @throws `ToolError` with `not-found` for an unknown or unbound name — searching the documentation
+ * is what says which names exist — and `invalid-argument` for an argument that is neither a
+ * function nor a string.
  */
 export function openDocsView(target: Function | string): void {
   call(() => raw.openDocsView(docsName(target)));
@@ -166,11 +180,11 @@ function docsName(target: Function | string): string {
 }
 
 /**
- * Close every view carrying a selector, and hand back how many were closed.
+ * Close every view carrying a selector.
  *
  * For a file that is every page of that path, for a text view the one with that label, and for the
- * results of a search the label `search results`. Closing a selector that is not open returns zero
- * rather than failing, so a program that tidies up unconditionally needs no guard on every call.
+ * results of a search the label `search results`. Closing a selector that is not open is not a
+ * failure, so a program that tidies up unconditionally needs no guard on every call.
  *
  * Documentation views are not among them: `gg.docs.close` is what takes one of those away, and it is
  * bought by a capability this call is not. A sweep that quietly reached them would answer zero for an
@@ -182,6 +196,9 @@ function docsName(target: Function | string): string {
  * @ggop views.close
  * @param selector What the view is filed under: a file's path, a text view's label, or `search
  * results`.
+ * @returns how many views were closed, which is zero when the selector named nothing open.
+ * @throws `ToolError` with `invalid-argument` for an empty selector, which could never have been a
+ * view's name.
  */
 export function close(selector: string): number {
   // A `u32`, so already a `number` — the `bigint` conversion `current` makes is not needed here.
@@ -197,13 +214,22 @@ export function close(selector: string): number {
  *
  * What it enumerates is the context window's contents, not any module's functions.
  *
+ * Nothing about it can fail: it reads gg's own live view set behind a binding no run withholds, so
+ * there is no argument to refuse and no capability to be without.
+ *
  * @ggop views.current
+ * @returns every view open right now, each with what closes it and roughly what it costs.
  */
 export function current(): OpenView[] {
+  // The method is attached here rather than declared on a class: nothing in a program ever
+  // constructs an `OpenView`, and a constructible declaration would be one inviting it to.
   return call(() => raw.currentViews()).map((view) => ({
     kind: view.kind,
     selector: view.selector,
     tokens: Number(view.tokens),
     region: view.region,
+    close(): number {
+      return close(view.selector);
+    },
   }));
 }

@@ -1,8 +1,10 @@
 // What a child agent is asked to do, and what comes back from one.
 //
-// `SubagentHandle.Send` is the one MEMBER function this arm binds: a second, idiomatic way to reach
+// `SubagentHandle.Send` is one of this arm's five member functions: a second, idiomatic way to reach
 // `delegation.send_message`, spelled on the value that already carries the id the free function
-// would otherwise be passed. It is catalogued as an alias, so it counts toward no coverage.
+// would otherwise be passed. It is catalogued as an alias, so it counts toward no coverage. The
+// other four hang off `IssueCreated`, `MemoryHit`, `OpenView` and `ProgramSummary` on the same rule
+// — where a call's only argument is something a value already holds, the value gets a method.
 
 namespace Gg;
 

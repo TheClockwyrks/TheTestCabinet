@@ -96,6 +96,15 @@ anything else on the declaration is left alone. It is the same fact `gg._registr
 read here out of the source instead — the reflector never imports this package.
 """
 
+ALIAS_DECORATOR = "alias"
+"""The decorator that names the gg operation a **method** is a second way to reach.
+
+Read exactly as `OPERATION_DECORATOR` is, off the source text, and kept apart from it for the reason
+`gg._registry` keeps the two attributes apart: an alias claims no operation, so a reflector that read
+one as a binding would report this arm binding `views.close` twice and the coverage gate would say
+so.
+"""
+
 ALWAYS_REFERENCED = ("ToolError",)
 """The types every catalogued function refers to whether or not its signature writes them.
 
@@ -229,24 +238,94 @@ def sections(function: griffe.Function, kind: griffe.DocstringSectionKind) -> li
     return [section for section in docstring.parsed if section.kind is kind]
 
 
-def documentation(function: griffe.Function, where: str) -> Prose:
-    """The model-facing brief and detail for one function: its prose, then what it raises.
+def returned(function: griffe.Function, where: str) -> list[str]:
+    """The `Returns:` section's prose, as the one line it becomes in the detail.
 
-    The `Raises:` section is folded into the detail rather than dropped, because what a call does when
-    it fails is half of what is needed to write a program that survives one — and a Google-style
-    docstring is where a Python author puts it. It is folded in as its own paragraph, so the brief is
-    unaffected whatever a function raises.
+    griffe parses a Google-style `Returns:` into its own section and this reflector used to ask for
+    the `text` and `raises` sections alone, so every sentence an author wrote there was parsed,
+    discarded, and never seen by a model. That is the failure worth naming: nothing was blank,
+    nothing was missing, the build was green, and the only way to find it was to count the sections
+    in the sources against the lines in the catalogue.
+
+    Google's own form has no name before the description on a return, so the entry is one paragraph
+    and the line reads `Returns: …` — the type is already in the signature above it, and repeating
+    it there would be words that carry nothing.
+
+    The one shape refused is a **second entry**, and it is refused because of how it arises. griffe
+    reads every line at the section's own indent as a return of its own, so a description wrapped
+    back to that indent silently becomes two returns and reaches a model as two sentences filed as
+    two answers. Continuation lines are indented one level further, exactly as an `Args:` entry's
+    are, and this says so where the author is standing.
+    """
+    entries = [
+        entry
+        for section in sections(function, griffe.DocstringSectionKind.returns)
+        for entry in section.value
+    ]
+    if len(entries) > 1:
+        raise SystemExit(
+            f"{where} documents {len(entries)} returns, and a function has one. A `Returns:` "
+            "description that wraps back to the section's own indent is read as a second return; "
+            "indent the continuation lines one level further."
+        )
+    return [f"Returns: {flatten(entry.description)}" for entry in entries]
+
+
+def check_return_doc(function: griffe.Function, where: str) -> None:
+    """A call that hands something back says what, and a call that hands nothing back says nothing.
+
+    Both halves are enforced. A function annotated with anything but `None` puts a value in a
+    program's hands, and the annotation alone names its type without saying which part of it answers
+    the question that was asked — `ReclaimReport` is four numbers, and only one of them is the
+    reason to have called. A function annotated `-> None` already says the whole of it in the
+    annotation, so a `Returns:` section there could only restate the brief, which is the unnecessary
+    words the register forbids.
+
+    It is checked at the declaration, where the author is standing, rather than left to a count
+    somebody takes later.
+    """
+    documented = bool(sections(function, griffe.DocstringSectionKind.returns))
+    annotation = annotation_of(function.returns) or "None"
+    hands = annotation != "None"
+    if hands and not documented:
+        raise SystemExit(
+            f"{where} hands back `{annotation}` and its docstring has no `Returns:` section. A "
+            "model reading the annotation still has to be told which part of the value answers the "
+            "question it asked."
+        )
+    if not hands and documented:
+        raise SystemExit(
+            f"{where} hands nothing back and documents a `Returns:` section. `None` is the whole "
+            "answer, and a line restating it is words a reader pays for and learns nothing from."
+        )
+
+
+def documentation(function: griffe.Function, where: str) -> Prose:
+    """The model-facing brief and detail for one function: its prose, what it hands back, what it raises.
+
+    The `Returns:` and `Raises:` sections are folded into the detail rather than dropped, because
+    what a call hands back and what it does when it fails are half of what is needed to write a
+    program that uses one and survives the other — and a Google-style docstring is where a Python
+    author puts both. Each is folded in as its own paragraph, so the brief is unaffected whatever a
+    function returns or raises.
+
+    `Raises` rather than `# Errors` or `Throws`, and that is Python's own word rather than gg's:
+    the statement is `raise`, and Google's docstring convention names the section `Raises:`. Nothing
+    here renames what the author wrote.
     """
     text = sections(function, griffe.DocstringSectionKind.text)
     prose = prose_of(text[0].value if text else None, where)
-    raised = [
-        f"Raises `{entry.annotation}`: {flatten(entry.description)}"
-        for section in sections(function, griffe.DocstringSectionKind.raises)
-        for entry in section.value
+    folded = [
+        *returned(function, where),
+        *(
+            f"Raises `{entry.annotation}`: {flatten(entry.description)}"
+            for section in sections(function, griffe.DocstringSectionKind.raises)
+            for entry in section.value
+        ),
     ]
-    if not raised:
+    if not folded:
         return prose
-    detail = "\n\n".join(part for part in [prose.detail, *raised] if part)
+    detail = "\n\n".join(part for part in [prose.detail, *folded] if part)
     return Prose(brief=prose.brief, detail=detail)
 
 
@@ -264,8 +343,8 @@ def parameter_docs(function: griffe.Function, where: str) -> dict[str, str]:
 # --- Identity ------------------------------------------------------------------------------------
 
 
-def operation_of(function: griffe.Function) -> str | None:
-    """The gg operation `function`'s `@operation` decorator names, or `None` when it carries none.
+def decorated_with(function: griffe.Function, decorator_name: str) -> str | None:
+    """The one string literal `decorator_name` was applied with, or `None` when it is not applied.
 
     Read off the decorator's own source text rather than by importing the module, because griffe never
     imports: the decorator expression arrives as written, and what is wanted from it is the one string
@@ -273,10 +352,26 @@ def operation_of(function: griffe.Function) -> str | None:
     """
     for decorator in function.decorators:
         written = str(decorator.value)
-        match = re.fullmatch(rf"{OPERATION_DECORATOR}\(\s*[\"']([^\"']+)[\"']\s*,?\s*\)", written)
+        match = re.fullmatch(rf"{decorator_name}\(\s*[\"']([^\"']+)[\"']\s*,?\s*\)", written)
         if match is not None:
             return match.group(1)
     return None
+
+
+def operation_of(function: griffe.Function) -> str | None:
+    """The gg operation `function`'s `@operation` decorator names, or `None` when it carries none."""
+    return decorated_with(function, OPERATION_DECORATOR)
+
+
+def alias_of(function: griffe.Function) -> str | None:
+    """The gg operation `function`'s `@alias` decorator names, or `None` when it carries none.
+
+    A method carrying one is a **second way to reach** that operation rather than a second binding of
+    it: it calls the module-level function, inherits its gate, and adds nothing to what this arm
+    covers. The two decorators are read from the same place and are mutually exclusive, which
+    [`member_functions`](#member_functions) enforces.
+    """
+    return decorated_with(function, ALIAS_DECORATOR)
 
 
 # --- Types ---------------------------------------------------------------------------------------
@@ -300,6 +395,14 @@ class Declared:
 
     mentions: set[str] = field(default_factory=set)
     """The bare names its own declaration refers to — the edges the closure walks."""
+
+    methods: list[griffe.Function] = field(default_factory=list)
+    """The public methods declared on it, in declaration order.
+
+    Every one of them is an alias today, and the reflector refuses any other kind: a method that
+    bound an operation of its own would be a capability reachable only from a value, which no other
+    arm's coverage would include.
+    """
 
 
 def base_names(cls: griffe.Class) -> list[str]:
@@ -409,10 +512,47 @@ def declare_type(module: str, path: str, name: str, declared: Any) -> Declared:
             "brief": prose.brief,
             "detail": prose.detail,
             "members": members,
+            # Filled in below, once every method has an entry of its own to be a one-line brief of.
             "memberFunctions": [],
         },
         mentions=mentions,
+        methods=member_functions(fqn, declared),
     )
+
+
+def member_functions(fqn: str, declared: griffe.Class) -> list[griffe.Function]:
+    """The public methods a type declares, refusing one that is not an alias.
+
+    A method here is a **convenience over a value the SDK already handed back** — `hit.read()` for
+    the memory a search matched — and the rule that keeps it that is the one this refuses under:
+    every public method carries `@alias`, and none carries `@operation`. A method binding an
+    operation of its own would be a capability an agent could reach only by first obtaining an
+    instance, which is exactly the shape the whole API-object surface was abolished for.
+
+    A private method is skipped by the leading underscore, which is Python's own way of saying a
+    declaration is not surface.
+    """
+    found: list[griffe.Function] = []
+    for name, member in declared.members.items():
+        if not isinstance(member, griffe.Function) or name.startswith("_"):
+            continue
+        where = f"the method `{fqn}.{name}`"
+        if operation_of(member) is not None:
+            raise SystemExit(
+                f"{where} carries `@{OPERATION_DECORATOR}`. A method is a second way to reach an "
+                "operation a module-level function already binds, so it carries "
+                f"`@{ALIAS_DECORATOR}`; an operation reachable only from a value is one no other "
+                "arm would cover."
+            )
+        if alias_of(member) is None:
+            raise SystemExit(
+                f"{where} is public and names no gg operation. Write "
+                f'`@{ALIAS_DECORATOR}("<namespace>.<key>")` on it, or make it private: a method gg '
+                "cannot resolve is dropped from search, from every directory and from every "
+                "documentation view."
+            )
+        found.append(member)
+    return found
 
 
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -444,6 +584,11 @@ def signature_of(function: griffe.Function, name: str, where: str) -> dict[str, 
     parameters: list[dict[str, Any]] = []
     starred = False
     for parameter in function.parameters:
+        # The receiver is not an argument. `view.close()` documents nothing and takes the view it
+        # closes, because the thing it takes is the thing it hangs off — and a `self` rendered into
+        # the signature would tell a model to write a call it cannot write.
+        if parameter.name == "self":
+            continue
         if parameter.kind is griffe.ParameterKind.keyword_only and not starred:
             rendered.append("*")
             starred = True
@@ -734,6 +879,7 @@ def build() -> str:
                 f"{where} and `{claimed[operation]}` both claim the gg operation `{operation}`."
             )
         claimed[operation] = fqn
+        check_return_doc(function, where)
         prose = documentation(function, where)
         signature = signature_of(function, name, where)
         returned = annotation_of(function.returns)
@@ -743,8 +889,9 @@ def build() -> str:
         emitted.append(
             {
                 "operation": operation,
-                # This SDK offers each operation exactly once: a module-level function is the whole
-                # of the idiom, so there is no second way to reach one and nothing is an alias.
+                # A module-level function is the BINDING of its operation. The second way to reach
+                # one, where this SDK offers a second way, is a method on the value the operation's
+                # result carries, and those are emitted below with `aliasOf` filled in.
                 "aliasOf": None,
                 "module": module_id,
                 "kind": "function",
@@ -762,6 +909,57 @@ def build() -> str:
                 "types": types,
             }
         )
+
+    # The methods, after every module-level function, so that an alias can be held to naming an
+    # operation this arm really binds. A dangling one would leave the operation uncovered and gate
+    # the method on something the arm does not offer, which the coverage gate would report as a
+    # sentence about gg rather than about the SDK.
+    for declaration in declared:
+        for method in declaration.methods:
+            name = method.name
+            fqn = f"{declaration.fqn}.{name}"
+            where = f"`{fqn}`"
+            operation = alias_of(method)
+            if operation not in claimed:
+                raise SystemExit(
+                    f"{where} is an alias of `{operation}`, which no function in this SDK binds. An "
+                    "alias is a second way to reach an operation, so one standing alone leaves the "
+                    "operation uncovered and itself gated by something the arm does not offer."
+                )
+            check_return_doc(method, where)
+            prose = documentation(method, where)
+            signature = signature_of(method, name, where)
+            method_returns = annotation_of(method.returns)
+            written = [parameter["type"] for parameter in signature["parameters"]]
+            types = resolver.references(method_returns, *written, *ALWAYS_REFERENCED)
+            reached.update(reference["fqn"] for reference in types)
+            emitted.append(
+                {
+                    "operation": operation,
+                    "aliasOf": operation,
+                    "module": declaration.module,
+                    "kind": "method",
+                    "receiver": declaration.name,
+                    "name": name,
+                    "fqn": fqn,
+                    "call": None,
+                    "brief": prose.brief,
+                    "detail": prose.detail,
+                    "signatures": [signature],
+                    "returns": resolver.direct(method_returns),
+                    "types": types,
+                }
+            )
+            declaration.entry["memberFunctions"].append(
+                {
+                    "operation": operation,
+                    "name": name,
+                    "fqn": fqn,
+                    # The brief alone. A type's documentation view is a menu of what can be done
+                    # next with the value, and the whole of each entry is one docview away.
+                    "brief": prose.brief,
+                }
+            )
 
     unreached = [declaration.fqn for declaration in declared if declaration.fqn not in reached]
     if unreached:

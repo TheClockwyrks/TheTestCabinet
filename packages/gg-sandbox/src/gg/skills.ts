@@ -18,10 +18,11 @@ import { call } from "../internal/errors.js";
  * rest of the session and the reply names the key and what it exports. An on-use script runs once the
  * program has ended, and whatever it shows arrives on the next turn.
  *
- * Throws `ToolError` with `not-found` — listing the skills that do exist — when the name is unknown.
- *
  * @ggop skills.read_skill
  * @param name The skill's name, as the system prompt lists it.
+ * @returns the skill's body, with its front matter stripped.
+ * @throws `ToolError` with `not-found` — listing the skills that do exist — when the name is
+ * unknown.
  */
 export function readSkill(name: string): string {
   return call(() => raw.readSkill(name));

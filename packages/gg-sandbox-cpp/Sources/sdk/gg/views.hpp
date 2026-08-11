@@ -69,6 +69,8 @@ struct open_view {
   /// <ggop-alias>views.close</ggop-alias>
   ///
   /// \returns how many views were closed, which is `0` when it has been closed already.
+  /// \throws core::tool_error `invalid_argument` when this view's `selector` is empty, which no
+  ///   view gg reports ever is.
   std::uint32_t close() const;
 };
 
@@ -145,6 +147,8 @@ void open_docs_view(std::string_view name);
 /// \param selector What the view is filed under: a file's path, a text view's label, or
 ///   `search results`.
 /// \returns how many views were closed.
+/// \throws core::tool_error `invalid_argument` for an empty selector, which names nothing rather
+///   than everything — there is no call here that closes the window wholesale.
 std::uint32_t close(std::string_view selector);
 
 /// List what is open in the context window right now, with what each one costs.

@@ -451,3 +451,92 @@ fn every_name_a_model_is_shown_opens_on_every_arm() {
         }
     }
 }
+
+/// **A type view lists the member functions a value of it offers, and lists only the bound ones.**
+///
+/// A member function is the second way to reach an operation — `view.close()` on the `OpenView` a
+/// listing handed back — and the view of the type the call produced is the one place a model walking
+/// its own return value would ever meet it. Rendering the members and dropping the member functions
+/// leaves the affordance discoverable only by someone who already knew to search for its name, which
+/// is the reader it least needs to help.
+///
+/// The second half is the gate, and it is not defensive. A type is readable when *some* bound
+/// function reaches it, which is strictly weaker than every operation hanging off it being bound:
+/// `IssueCreated` is what `createIssue` hands back, and `wait` on it binds the separate
+/// `wait_for_issue` tool. An agent granted the first and not the second must not be handed the
+/// second's name by the declaration of the value it is holding.
+#[test]
+fn a_type_view_lists_the_member_functions_this_agent_binds() {
+    let both = DocsRuntime::new(
+        vec!["create_issue".to_string(), "wait_for_issue".to_string()],
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    let listed = both
+        .read_type("IssueCreated")
+        .expect("`createIssue` reaches it");
+    assert!(
+        listed.contains("\n  gg.board.IssueCreated.wait — "),
+        "the helper is listed by the fully-qualified name that opens its own documentation: \
+         {listed}"
+    );
+    assert!(
+        both.read_any("gg.board.IssueCreated.wait").is_some(),
+        "and that name is one a model can then open"
+    );
+
+    let creator = DocsRuntime::new(
+        vec!["create_issue".to_string()],
+        EndingRole::Standard,
+        &[],
+        GgProgramLanguage::TypeScript,
+    );
+    let withheld = creator
+        .read_type("IssueCreated")
+        .expect("`createIssue` still reaches it");
+    assert!(
+        !withheld.contains("IssueCreated.wait"),
+        "`wait_for_issue` is withheld, so its name does not arrive through the declaration of what \
+         `createIssue` handed back: {withheld}"
+    );
+}
+
+/// **Every member function every arm catalogues is rendered for an agent that binds it, on every
+/// arm.**
+///
+/// The per-arm reflectors decide which values carry behaviour, and D11 is explicit that they may
+/// differ: a helper belongs on an arm where it makes sense and nowhere else. What must not differ is
+/// whether a helper an arm *did* reflect reaches a model — the failure this catches is a type whose
+/// menu is catalogued and never printed, which is exactly the state this rendering was added to end.
+#[test]
+fn every_catalogued_member_function_reaches_a_type_view() {
+    for language in crate::sandbox::all_languages() {
+        let arm = language.display_name();
+        let docs = DocsRuntime::new(
+            crate::tools::ALL_TOOL_NAMES
+                .iter()
+                .map(|tool| tool.to_string())
+                .collect(),
+            EndingRole::Standard,
+            test_cabinet_core::gg_query::GG_CAPABILITY_CATALOG,
+            language.id(),
+        );
+        for declaration in &language.catalogue().types {
+            for member in &declaration.member_functions {
+                let Some(body) = docs.read_type(declaration.key()) else {
+                    panic!(
+                        "{arm}: `{}` carries a member function and its own view is unreachable",
+                        declaration.key()
+                    );
+                };
+                assert!(
+                    body.contains(&member.fqn),
+                    "{arm}: `{}` is catalogued on `{}` and its type view never names it:\n{body}",
+                    member.fqn,
+                    declaration.key(),
+                );
+            }
+        }
+    }
+}

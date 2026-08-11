@@ -71,6 +71,7 @@ public static partial class Files
     /// <param name="path">The file to read, relative to the workspace or absolute.</param>
     /// <param name="offset">The 1-based first line, honoured only under a capped read policy.</param>
     /// <param name="limit">How many lines to read. Left out, the read runs to the end.</param>
+    /// <returns>the text alone, without the line counts <see cref="TextFile"/> reports beside it.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.InvalidArgument"/> when the path names a picture, which
     /// <see cref="ReadFile"/> inspects instead.
@@ -91,6 +92,11 @@ public static partial class Files
     /// <param name="path">Where to write, relative to the workspace or absolute.</param>
     /// <param name="contents">The UTF-8 text to write. It replaces the file entirely.</param>
     /// <returns>how many bytes were written.</returns>
+    /// <exception cref="ToolException">
+    /// <see cref="ToolErrorCode.InvalidArgument"/> for an empty path, and
+    /// <see cref="ToolErrorCode.IOError"/> when creating the parent directories or the write itself
+    /// failed.
+    /// </exception>
     /// <ggop>files.write_file</ggop>
     public static ulong WriteFile(string path, string contents)
     {
@@ -121,6 +127,12 @@ public static partial class Files
     /// directory that was listed. An empty directory is an empty list rather than a failure.
     /// </remarks>
     /// <param name="path">The directory to list. Left out, the workspace root is listed.</param>
+    /// <returns>the directory's immediate entries only — nothing here descends into a subdirectory.</returns>
+    /// <exception cref="ToolException">
+    /// <see cref="ToolErrorCode.NotFound"/> for a directory that is not there, and
+    /// <see cref="ToolErrorCode.InvalidArgument"/> for a path that is given but empty — leaving it
+    /// out altogether is what lists the workspace root.
+    /// </exception>
     /// <ggop>files.list_dir</ggop>
     public static IReadOnlyList<DirEntry> ListDir(string? path = null)
     {

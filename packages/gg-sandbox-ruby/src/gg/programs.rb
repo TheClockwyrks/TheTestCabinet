@@ -69,7 +69,7 @@ module GG
     # and the fixed program is the one that does the work.
     #
     # @param source [String] The program to run in place of this one, as Ruby. It may not be blank.
-    # @return [nil] nothing; the hand-over happens once the program has ended
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:refused` for a second hand-over in one turn, and
     #   `:invalid_argument` for a blank source.
     def self.rerun(source)

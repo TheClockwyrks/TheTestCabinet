@@ -11,6 +11,7 @@ module Gg.Delegation
   ( spawnSubagent
   , waitForSubagents
   , sendMessage
+  , send
   , transitionState
   , exec
   , fork
@@ -104,10 +105,10 @@ type SubagentResult =
 
 -- | Delegate scoped work to a child agent, which runs in parallel while this program continues.
 -- |
--- | Its handle comes back immediately. The `agent` names the profile to run it as — one of the agents
--- | this one may spawn, which the system prompt lists — and it selects the child's model, tools and
--- | instructions. The brief is either `Gg.Delegation.Prompt "self-contained instructions"` or
--- | `Gg.Delegation.Issue "AUTH-1"`. The child shares this agent's workspace.
+-- | The `agent` names the profile to run it as — one of the agents this one may spawn, which the
+-- | system prompt lists — and it selects the child's model, tools and instructions. The brief is
+-- | either `Gg.Delegation.Prompt "self-contained instructions"` or `Gg.Delegation.Issue "AUTH-1"`.
+-- | The child shares this agent's workspace.
 -- |
 -- | # Operation
 -- |
@@ -120,7 +121,12 @@ type SubagentResult =
 -- | - `brief` — What the child is to do: `Gg.Delegation.Prompt` with self-contained instructions, or
 -- |   `Gg.Delegation.Issue` with the id of a board issue to brief it from.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The child's handle: the id that waits for it or sends it a message, the agent profile it runs
+-- | as, and the model actually bound to that profile.
+-- |
+-- | # Throws
 -- |
 -- | `LimitExceeded` at the delegation depth cap, and `InvalidArgument` when `agent` is not one this
 -- | agent may spawn.
@@ -146,7 +152,12 @@ spawnSubagent agent brief =
 -- | - `options` — Which children to wait for; `{}` waits for every one still outstanding.
 -- | - `options.ids` — The children to wait for, as their handles named them.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | One result per child, in dispatch order, each carrying its final message and how it ended. A
+-- | child that produced no return value at all has no `status`.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 waitForSubagents
@@ -169,12 +180,32 @@ waitForSubagents options =
 -- | - `agentId` — The child to deliver to, as its handle named it.
 -- | - `message` — What to put in its inbox.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown agent id, and `Conflict` when that child has already returned.
 sendMessage :: String -> String -> Effect Unit
 sendMessage agentId message =
   Wire.call_ "send_message" "agents" "Gg.Delegation.sendMessage" [ Wire.wire agentId, Wire.wire message ]
+
+-- | Deliver a message to a running child agent's inbox, which it reads at its next turn.
+-- |
+-- | `Gg.Delegation.sendMessage` with the id already taken out of the handle, for the common case
+-- | where the child was spawned by this program or by a recent one and its handle is still in hand.
+-- |
+-- | # Alias
+-- |
+-- | delegation.send_message
+-- |
+-- | # Arguments
+-- |
+-- | - `child` — The child to deliver to, as its handle named it.
+-- | - `message` — What to put in its inbox.
+-- |
+-- | # Throws
+-- |
+-- | `Conflict` when that child has already returned.
+send :: SubagentHandle -> String -> Effect Unit
+send child message = sendMessage child.id message
 
 -- | Move the process this session runs inside on to another of its states.
 -- |
@@ -195,7 +226,7 @@ sendMessage agentId message =
 -- | - `options` — What to tell the next state's agent; `{}` tells it nothing.
 -- | - `options.note` — The opening message the next state's agent sees.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `InvalidArgument` for a state this session may not move to, and `Refused` for a second
 -- | declaration in one turn.
@@ -229,7 +260,7 @@ transitionState state options =
 -- | - `options.prompt` — Its opening message. It already has the whole conversation, so this is the
 -- |   instruction rather than a briefing.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `InvalidArgument` for an agent this agent may not become, and `Refused` for a second succession
 -- | in one turn.
@@ -247,9 +278,9 @@ exec agent options =
 -- | The copy has the same model, the same tools and a private copy of the whole conversation, so the
 -- | prompt is the *difference* rather than a briefing — everything already worked out is there.
 -- |
--- | Its handle comes back immediately, and the copy itself starts once this turn's results are
--- | recorded, because the conversation it inherits has to be a complete one. A wait can therefore
--- | collect it only on a later turn, never in the program that made it.
+-- | The copy starts once this turn's results are recorded, because the conversation it inherits has
+-- | to be a complete one. A wait can therefore collect it only on a later turn, never in the
+-- | program that made it.
 -- |
 -- | # Operation
 -- |
@@ -260,7 +291,11 @@ exec agent options =
 -- | - `prompt` — What the copy is to do instead. It has the whole conversation already, so this is
 -- |   the difference rather than a briefing.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The copy's handle, carrying the id a later wait collects it by.
+-- |
+-- | # Throws
 -- |
 -- | `LimitExceeded` at the delegation depth cap.
 fork :: String -> Effect SubagentHandle

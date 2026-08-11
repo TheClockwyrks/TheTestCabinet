@@ -328,7 +328,7 @@
       "fqn": "gg.files.Files.writeFile",
       "call": null,
       "brief": "Write UTF-8 text to a file, creating parent directories and replacing what is there.",
-      "detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nReturns: how many bytes were written",
+      "detail": "Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nReturns: how many bytes were written\n\nThrows `ToolError`: `ToolErrorCode.INVALID_ARGUMENT` for an empty path, and `ToolErrorCode.IO_ERROR` when creating the parent directories or the write itself failed.",
       "signatures": [
         {
           "signature": "writeFile(String path, String contents) -> int",
@@ -355,7 +355,16 @@
         }
       ],
       "returns": [],
-      "types": []
+      "types": [
+        {
+          "spelled": "ToolError",
+          "fqn": "gg.ToolError"
+        },
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "gg.ToolErrorCode"
+        }
+      ]
     },
     {
       "operation": "files.edit_file",
@@ -424,7 +433,7 @@
       "fqn": "gg.files.Files.listDir",
       "call": null,
       "brief": "List a directory, sorted by name; called with nothing, the workspace root.",
-      "detail": "Each entry carries a bare name — joined with the directory that was listed — and its kind. An empty directory is an empty list rather than a failure.\n\nReturns: every entry in the workspace root\n\n`listDir(String path)` — List one directory, sorted by name.\n\nReturns: every entry in that directory\n\nThrows `ToolError`: `ToolErrorCode.NOT_FOUND` for a directory that is not there.",
+      "detail": "Each entry carries a bare name — joined with the directory that was listed — and its kind. An empty directory is an empty list rather than a failure.\n\nReturns: every entry in the workspace root\n\n`listDir(String path)` — List one directory, sorted by name.\n\nReturns: every entry in that directory\n\nThrows `ToolError`: `ToolErrorCode.NOT_FOUND` for a directory that is not there, and `ToolErrorCode.INVALID_ARGUMENT` for a path that is empty — the overload that takes none is what lists the workspace root.",
       "signatures": [
         {
           "signature": "listDir() -> List<Files.DirEntry>",
@@ -2278,7 +2287,7 @@
       "fqn": "gg.views.Views.close",
       "call": null,
       "brief": "Close every view carrying a selector, freeing the tokens they occupied.",
-      "detail": "For a file that is every page of that path, for a text view the one with that label, for the results of a search the label `search results`. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held.\n\nDocumentation views are not reached from here: `gg.docs.Docs.close` is what takes one away, and it is bought by a capability this call is not. A sweep that included them would hand back `0` for an agent that may not close one, which reads as a selector that named nothing.\n\nReturns: how many views were closed",
+      "detail": "For a file that is every page of that path, for a text view the one with that label, for the results of a search the label `search results`. Closing a selector that is not open hands back `0` rather than failing, so a program that tidies up unconditionally needs no guard. Closing a file view forgets what was read rather than what exists; closing a text view discards the only copy of what it held.\n\nDocumentation views are not reached from here: `gg.docs.Docs.close` is what takes one away, and it is bought by a capability this call is not. A sweep that included them would hand back `0` for an agent that may not close one, which reads as a selector that named nothing.\n\nReturns: how many views were closed\n\nThrows `ToolError`: `ToolErrorCode.INVALID_ARGUMENT` for an empty selector, which names nothing rather than everything — no call here closes the window wholesale.",
       "signatures": [
         {
           "signature": "close(String selector) -> int",
@@ -2296,7 +2305,16 @@
         }
       ],
       "returns": [],
-      "types": []
+      "types": [
+        {
+          "spelled": "ToolError",
+          "fqn": "gg.ToolError"
+        },
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "gg.ToolErrorCode"
+        }
+      ]
     },
     {
       "operation": "views.current",
@@ -2374,7 +2392,7 @@
       "fqn": "gg.context.Context.evictFileView",
       "call": null,
       "brief": "Drop what one file, or every file, put in the context window, and report what that freed.",
-      "detail": "Called with nothing it drops every file read into the window. The files on disk are untouched either way: this forgets what was read rather than what exists.\n\nReturns: what the eviction reclaimed\n\n`evictFileView(String path)` — Drop the contents of one file read into the context window.",
+      "detail": "Called with nothing it drops every file read into the window. The files on disk are untouched either way: this forgets what was read rather than what exists.\n\nReturns: what the eviction reclaimed\n\n`evictFileView(String path)` — Drop the contents of one file read into the context window.\n\nThrows `ToolError`: `ToolErrorCode.INVALID_ARGUMENT` for a path that is empty; the overload that takes none is how every file view is dropped.",
       "signatures": [
         {
           "signature": "evictFileView() -> Context.ReclaimReport",
@@ -2402,6 +2420,14 @@
         }
       ],
       "types": [
+        {
+          "spelled": "ToolError",
+          "fqn": "gg.ToolError"
+        },
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "gg.ToolErrorCode"
+        },
         {
           "spelled": "Context.ReclaimReport",
           "fqn": "gg.context.Context.ReclaimReport"
@@ -2470,7 +2496,7 @@
       "fqn": "gg.context.Context.searchArchive",
       "call": null,
       "brief": "Search archived history for a case-insensitive substring, most recent first, up to eight hits.",
-      "detail": "`archiveEmpty` is worth reading before `hits`: it tells \"nothing has been archived yet\" apart from \"the search ran and matched nothing\", so a program does not archive again believing the first archive failed.\n\nReturns: what the search found, and whether there was anything to search",
+      "detail": "`archiveEmpty` is worth reading before `hits`: it tells \"nothing has been archived yet\" apart from \"the search ran and matched nothing\", so a program does not archive again believing the first archive failed.\n\nReturns: what the search found, and whether there was anything to search\n\nThrows `ToolError`: `ToolErrorCode.INVALID_ARGUMENT` for an empty query.",
       "signatures": [
         {
           "signature": "searchArchive(String query) -> Context.ArchiveSearch",
@@ -2503,6 +2529,14 @@
       ],
       "types": [
         {
+          "spelled": "ToolError",
+          "fqn": "gg.ToolError"
+        },
+        {
+          "spelled": "ToolErrorCode",
+          "fqn": "gg.ToolErrorCode"
+        },
+        {
           "spelled": "Context.ArchiveHit",
           "fqn": "gg.context.Context.ArchiveHit"
         },
@@ -2526,7 +2560,7 @@
       "fqn": "gg.context.Context.compact",
       "call": null,
       "brief": "Compact the context window: the detailed thread is dropped and restarted from a summary.",
-      "detail": "Skills, memories and the task list are kept as they are, and each named file is read afresh. gg asks for this call when the window is full, and refuses every other call until it arrives.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not re-read is gone, so the summary is written for the agent that wakes up next.\n\nThrows `ToolError`: `ToolErrorCode.REFUSED` when a compaction is already in flight and this call is not the one it asked for.",
+      "detail": "Skills, memories and the task list are kept as they are, and each named file is read afresh. gg asks for this call when the window is full, and refuses every other call until it arrives.\n\nIt does not stop the program: it registers the request and returns, and the rewrite happens once the program has ended. Everything not in the summary and not re-read is gone, so the summary is written for the agent that wakes up next.\n\nThrows `ToolError`: `ToolErrorCode.INVALID_ARGUMENT` for a blank summary. This is the one call gg does not refuse while a compaction is in flight, since nothing else can clear the window.",
       "signatures": [
         {
           "signature": "compact(String summary, String... files) -> void",

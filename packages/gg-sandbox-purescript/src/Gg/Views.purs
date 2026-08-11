@@ -9,6 +9,7 @@ module Gg.Views
   , openText
   , openDocsView
   , close
+  , closeView
   , current
   , ViewKind(..)
   , ViewRegion
@@ -80,10 +81,9 @@ type OpenView =
 
 -- | Read a file and place it in the context window, keyed by its path.
 -- |
--- | The value handed back is exactly what `Gg.Files.readFile` returns, and the file also becomes its
--- | own context item, attributed to its path and closable by it. The split from `Gg.Files.readFile`
--- | is the point: that call gets bytes for the program, this one puts a file in front of the model,
--- | so a program that reads forty files to grep them still costs no window.
+-- | The file becomes its own context item, attributed to its path and closable by it. The split from
+-- | `Gg.Files.readFile` is the point: that call gets bytes for the program, this one puts a file in
+-- | front of the model, so a program that reads forty files to grep them still costs no window.
 -- |
 -- | `offset` and `limit` select a window of lines, and two pages of one file are two views that
 -- | coexist; re-opening the same page replaces what it showed rather than piling up a duplicate. An
@@ -100,6 +100,11 @@ type OpenView =
 -- | - `options` — The window of lines to show; `{}` shows the whole file.
 -- | - `options.offset` — The 1-based line to start at.
 -- | - `options.limit` — How many lines to show from `offset`.
+-- |
+-- | # Returns
+-- |
+-- | Exactly what `Gg.Files.readFile` hands back for the same file, so the program holds the
+-- | contents as well as the model holding the view.
 openFile
   :: forall given rest
    . Union given rest OpenFileOptions
@@ -131,7 +136,7 @@ openFile path options =
 -- | - `body` — What to show. An empty body is allowed: it is how a program says that something it was
 -- |   showing is now empty.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `InvalidArgument` for an empty label — a view with no selector could never be closed or attributed
 -- | — and `LimitExceeded`, naming the cap, for a body or label over gg's caps; nothing is ever
@@ -158,7 +163,7 @@ openText label body =
 -- | - `name` — The function to document, by its fully-qualified name — `"Gg.Files.readFile"`.
 -- |   Searching the documentation is what names the functions that exist.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown or unbound name.
 openDocsView :: String -> Effect Unit
@@ -166,12 +171,8 @@ openDocsView name = Wire.call_ "open_docs_view" "view" "Gg.Views.openDocsView" [
 
 -- | Close every view carrying a selector, freeing the tokens they occupied.
 -- |
--- | How many were closed comes back. For a file that is every page of that path, for a text view the
--- | one with that label, for the results of a search the label `search results`. Closing a selector
--- | that is not open hands back `0` rather than failing, so a program that tidies up unconditionally
--- | needs no guard on every call. Closing a file view forgets what was read rather than what exists;
--- | closing a text view discards the only copy of what it held, so anything needed later belongs in
--- | a file or a memory first.
+-- | Closing a file view forgets what was read rather than what exists; closing a text view discards
+-- | the only copy of what it held, so anything needed later belongs in a file or a memory first.
 -- |
 -- | Documentation views are not reached from here. `Gg.Docs.close` is what takes one away, and it is
 -- | bought by a capability this call is not — so a sweep that included them would hand back `0` for
@@ -185,15 +186,48 @@ openDocsView name = Wire.call_ "open_docs_view" "view" "Gg.Views.openDocsView" [
 -- |
 -- | - `selector` — What the view is filed under: a file's path, a text view's label, or
 -- |   `search results`.
+-- |
+-- | # Returns
+-- |
+-- | How many views were closed: for a file that is every page of that path, for a text view the one
+-- | with that label, for the results of a search the label `search results`. A selector that is not
+-- | open hands back `0` rather than failing, so a program that tidies up unconditionally needs no
+-- | guard on every call.
+-- |
+-- | # Throws
+-- |
+-- | `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
+-- | here closes the window wholesale.
 close :: String -> Effect Int
 close selector = Wire.call "close" "view" "Gg.Views.close" [ Wire.wire selector ]
 
+-- | Close a view that is open, freeing the tokens it occupied.
+-- |
+-- | `Gg.Views.close` with the selector already taken out of the view, which is what lets a window be
+-- | tidied by folding over what is in it rather than by writing out a selector per view.
+-- |
+-- | A documentation view is the one this does not take away, for the reason `Gg.Views.close` does
+-- | not: `Gg.Docs.close` is the call for one of those, and it is bought by a capability this one is
+-- | not.
+-- |
+-- | # Alias
+-- |
+-- | views.close
+-- |
+-- | # Arguments
+-- |
+-- | - `view` — The view to close, as `Gg.Views.current` listed it.
+-- |
+-- | # Returns
+-- |
+-- | How many views were closed, which for one page of a paged file is every page of that path.
+closeView :: OpenView -> Effect Int
+closeView view = close view.selector
+
 -- | List what is open in the context window right now.
 -- |
--- | Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a
--- | paged file view — the `region` it covers. What it enumerates is the context window's contents,
--- | not any module's functions. Reading it is what informs a decision about what to close when the window is
--- | filling up.
+-- | What it enumerates is the context window's contents, not any module's functions. Reading it is
+-- | what informs a decision about what to close when the window is filling up.
 -- |
 -- | # Operation
 -- |
@@ -202,6 +236,11 @@ close selector = Wire.call "close" "view" "Gg.Views.close" [ Wire.wire selector 
 -- | # Arguments
 -- |
 -- | (none)
+-- |
+-- | # Returns
+-- |
+-- | Each view's `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for
+-- | a paged file view — the `region` it covers.
 current :: Effect (Array OpenView)
 current = map openView <$> Wire.call "current" "view" "Gg.Views.current" []
 

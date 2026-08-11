@@ -926,13 +926,20 @@ private class Catalogue(val index: Index, val libraries: Libraries) {
             }
             detail.append("Returns: ").append(links(said, names))
         }
+        // The word is Kotlin's own, not gg's. KDoc offers exactly one tag for a failure mode and it is
+        // spelled `@throws`; a Kotlin reader has never met any other word for it, and a reflector that
+        // renamed the author's tag on the way out would be showing a model vocabulary the language does
+        // not use. So the rendered lead-in says what the declaration says. (Arms legitimately differ
+        // here — Rust writes `# Errors` because its own API guidelines mandate that heading, Python
+        // writes `Raises` because that is Python's verb and its docstring section — and each is right
+        // for the same reason this one is.)
         for ((thrown, prose) in doc.thrown) {
             val resolved = names.resolve(thrown)
             if (detail.isNotEmpty()) {
                 detail.append("\n\n")
             }
             detail
-                .append("Raises `")
+                .append("Throws `")
                 .append(resolved?.qualified() ?: thrown)
                 .append("`: ")
                 .append(links(prose, names))

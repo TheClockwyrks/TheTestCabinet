@@ -1295,7 +1295,7 @@
           ]
         }
       ],
-      "doc": "Read a file, as either a `TextFile` or an `ImageFile`.\n\nWhich of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. The two are discriminated by `kind`, so an ordinary narrowing separates them:\n\n```\nconst read = gg.files.readFile(\"logo.png\");\nif (read.kind === \"text\") gg.views.openText(\"logo\", read.contents);\nelse gg.views.openText(\"logo\", read.label);\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window; reading a picture describes it and shows nothing, so a file only read here is a file nobody has looked at.\n\nThrows `ToolError` with `not-found` for a missing path.",
+      "doc": "Read a file, as either a `TextFile` or an `ImageFile`.\n\nWhich of the two comes back is detected from the file's bytes, never from the extension, so a mislabelled picture is still a picture. The two are discriminated by `kind`, so an ordinary narrowing separates them:\n\n```\nconst read = gg.files.readFile(\"logo.png\");\nif (read.kind === \"text\") gg.views.openText(\"logo\", read.contents);\nelse gg.views.openText(\"logo\", read.label);\n```\n\nA relative path resolves against the workspace; an absolute one is read as given, so anything else in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. This call hands bytes to the program and places nothing in the context window; reading a picture describes it and shows nothing, so a file only read here is a file nobody has looked at.\n\nReturns: the window of text that was read, or the picture's description where the bytes are an image.\n\nThrows `ToolError` with `invalid-argument` for an empty path, and `not-found` for a path that is not there.",
       "gate": "read_file",
       "library": false,
       "types": [
@@ -1484,7 +1484,7 @@
           ]
         }
       ],
-      "doc": "Read a text file and hand back its contents directly.\n\n`readFile` without the narrowing, for the common case: the same read, the same window, the same cost.\n\nThrows `ToolError` with `invalid-argument` when the path names a picture, which `readFile` inspects instead and `gg.views.openFile` displays.",
+      "doc": "Read a text file and hand back its contents directly.\n\n`readFile` without the narrowing, for the common case: the same read, the same window, the same cost.\n\nReturns: the text that was read: the whole file, or the requested window under a capped read policy.\n\nThrows `ToolError` with `invalid-argument` when the path names a picture, which `readFile` inspects instead and `gg.views.openFile` displays, and `not-found` for a path that is not there.",
       "gate": "read_file",
       "library": false,
       "types": [
@@ -1576,7 +1576,7 @@
           ]
         }
       ],
-      "doc": "Write UTF-8 text to a file, creating parent directories and replacing what is there.\n\nWriting is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns. The number of bytes written comes back.",
+      "doc": "Write UTF-8 text to a file, creating parent directories and replacing what is there.\n\nWriting is the expensive direction of this sandbox: rewriting more than a few dozen large files in one program exhausts its fuel budget, so a large rewrite is best split across several turns.\n\nReturns: how many bytes were written, which is the length of `contents` in UTF-8.\n\nThrows `ToolError` with `invalid-argument` for an empty path, and `io-error` when the write or a parent directory failed.",
       "gate": "write_file",
       "library": false,
       "types": [
@@ -1760,7 +1760,7 @@
           ]
         }
       ],
-      "doc": "List a directory, sorted by name; the default lists the workspace root.\n\nEach entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty array, not a failure.",
+      "doc": "List a directory, sorted by name; the default lists the workspace root.\n\nEach entry carries a bare `name` — join it with the directory that was listed — and its `kind`. An empty directory is an empty array, not a failure.\n\nReturns: the directory's entries, sorted by name.\n\nThrows `ToolError` with `not-found` for a directory that is not there, and `invalid-argument` for an empty path — omitting it entirely is what lists the workspace root.",
       "gate": "list_dir",
       "library": false,
       "types": [
@@ -1897,7 +1897,7 @@
           ]
         }
       ],
-      "doc": "Run a command with `sh -c` in the workspace and hand back its merged output.\n\nA non-zero exit is not a failure: `exitCode` on the result is what says whether the command succeeded, and only a process that could not be launched, or one the timeout killed, throws.\n\nThis run may **offload** shell output, and the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all and only that note, while one that failed returns the tail. Grepping the named files beats running the command again.",
+      "doc": "Run a command with `sh -c` in the workspace and hand back its merged output.\n\nA non-zero exit is not a failure: `exitCode` on the result is what says whether the command succeeded, and only a process that could not be launched, or one the timeout killed, throws.\n\nThis run may **offload** shell output, and the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive`, the default, a command that succeeded returns no output at all and only that note, while one that failed returns the tail. Grepping the named files beats running the command again.\n\nReturns: the command's exit status and its merged output, whether or not it succeeded.\n\nThrows `ToolError` with `limit-exceeded` when the timeout killed the process, and `io-error` when it could not be launched at all.",
       "gate": "shell",
       "library": false,
       "types": [
@@ -2028,7 +2028,7 @@
           ]
         }
       ],
-      "doc": "Create an epic to group related issues under one prefix.\n\nThe prefix is 3 to 6 letters; upper-cased it becomes the epic's id and the stem its issues are numbered from, so a prefix of `auth` gives `AUTH-1`, `AUTH-2` and so on. The id and the board budget come back.\n\nThrows `ToolError` with `invalid-argument` when the prefix is not 3 to 6 letters, and `conflict` when another epic already holds it.",
+      "doc": "Create an epic to group related issues under one prefix.\n\nThe prefix is 3 to 6 letters; upper-cased it becomes the epic's id and the stem its issues are numbered from, so a prefix of `auth` gives `AUTH-1`, `AUTH-2` and so on.\n\nReturns: the id the prefix resolved to, and how much of the board budget is now used.\n\nThrows `ToolError` with `invalid-argument` when the prefix is not 3 to 6 letters, and `conflict` when another epic already holds it.",
       "gate": "create_epic",
       "library": false,
       "types": [
@@ -2229,7 +2229,7 @@
           ]
         }
       ],
-      "doc": "Create a self-contained, dispatchable issue and hand back the id the board assigned it.\n\nThe id is the board's rather than the caller's: it is numbered under its epic's prefix, or under `ISSUE` when it has no epic. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they are worth writing for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one this agent may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required where this run's reviewers feature is on.\n\nThrows `ToolError` with `invalid-argument` when `agent` or a reviewer is not assignable, and `conflict` on a blocker edge that would close a cycle.",
+      "doc": "Create a self-contained, dispatchable issue and hand back the id the board assigned it.\n\nThe id is the board's rather than the caller's: it is numbered under its epic's prefix, or under `ISSUE` when it has no epic. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they are worth writing for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one this agent may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required where this run's reviewers feature is on.\n\nReturns: the id the board assigned, and how much of the board budget is now used.\n\nThrows `ToolError` with `invalid-argument` when `agent` or a reviewer is not assignable, and `conflict` on a blocker edge that would close a cycle.",
       "gate": "create_issue",
       "library": false,
       "types": [
@@ -2262,7 +2262,7 @@
         },
         {
           "name": "IssueCreated",
-          "declaration": "interface IssueCreated { id: string; board: BoardUsage; }",
+          "declaration": "interface IssueCreated { id: string; board: BoardUsage; wait(): string; }",
           "doc": "An issue that was just created: the id the board assigned it, and the board budget.",
           "members": [
             {
@@ -2601,7 +2601,7 @@
       "fqn": "gg.board.removeEpic",
       "operation": "board.remove_epic",
       "category": "gg-project",
-      "summary": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.",
+      "summary": "Remove an epic, keeping its issues and ungrouping them.",
       "signatures": [
         {
           "signature": "removeEpic(id: string): BoardUsage",
@@ -2617,7 +2617,7 @@
           ]
         }
       ],
-      "doc": "Remove an epic, keeping its issues and ungrouping them, and hand back the board budget.\n\nThrows `ToolError` with `not-found` for an unknown id.",
+      "doc": "Remove an epic, keeping its issues and ungrouping them.\n\nReturns: how much of the board budget is used now that the epic has gone.\n\nThrows `ToolError` with `not-found` for an unknown id.",
       "gate": "remove_epic",
       "library": false,
       "types": [
@@ -2712,7 +2712,7 @@
       "fqn": "gg.board.removeIssue",
       "operation": "board.remove_issue",
       "category": "gg-project",
-      "summary": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.",
+      "summary": "Remove an issue and every blocker edge pointing at it.",
       "signatures": [
         {
           "signature": "removeIssue(id: string): BoardUsage",
@@ -2728,7 +2728,7 @@
           ]
         }
       ],
-      "doc": "Remove an issue and every blocker edge pointing at it, and hand back the board budget.\n\nThrows `ToolError` with `not-found` for an unknown id.",
+      "doc": "Remove an issue and every blocker edge pointing at it.\n\nReturns: how much of the board budget is used now that the issue has gone.\n\nThrows `ToolError` with `not-found` for an unknown id.",
       "gate": "remove_issue",
       "library": false,
       "types": [
@@ -2839,7 +2839,7 @@
           ]
         }
       ],
-      "doc": "Register a wait on an issue, to be served after the program ends, and acknowledge it at once.\n\nNothing blocks inside the program: the wait is recorded and the rest of the program still runs. The suspension happens between turns, freeing this agent's slot for others until the issue is terminal — done, or failed if its assigned agent could not complete it — and the session resumes on the next turn. It is how the next turn's work is sequenced behind an issue it depends on. The issue this agent was itself assigned cannot be waited on.\n\nThrows `ToolError` with `not-found` for an unknown id.",
+      "doc": "Register a wait on an issue, to be served after the program ends, and acknowledge it at once.\n\nNothing blocks inside the program: the wait is recorded and the rest of the program still runs. The suspension happens between turns, freeing this agent's slot for others until the issue is terminal — done, or failed if its assigned agent could not complete it — and the session resumes on the next turn. It is how the next turn's work is sequenced behind an issue it depends on.\n\nReturns: gg's acknowledgement that the wait is registered.\n\nThrows `ToolError` with `not-found` for an unknown id, and `invalid-argument` for the issue this agent was itself assigned.",
       "gate": "wait_for_issue",
       "library": false,
       "types": [
@@ -2907,7 +2907,7 @@
       "fqn": "gg.tasks.addTask",
       "operation": "tasks.add_task",
       "category": "gg-tasks",
-      "summary": "Add a task to the graph and hand back the task budget.",
+      "summary": "Add a task to the graph.",
       "signatures": [
         {
           "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
@@ -2956,7 +2956,7 @@
           ]
         }
       ],
-      "doc": "Add a task to the graph and hand back the task budget.\n\nThrows `ToolError` with `conflict` on a duplicate id, or on an edge that would close a cycle.",
+      "doc": "Add a task to the graph.\n\nReturns: how much of the task budget is used now that the task is on the list.\n\nThrows `ToolError` with `conflict` on a duplicate id, or on an edge that would close a cycle.",
       "gate": "add_task",
       "library": false,
       "types": [
@@ -3353,7 +3353,7 @@
       "fqn": "gg.tasks.removeTask",
       "operation": "tasks.remove_task",
       "category": "gg-tasks",
-      "summary": "Remove a task and every blocker edge pointing at it, and hand back the task budget.",
+      "summary": "Remove a task and every blocker edge pointing at it.",
       "signatures": [
         {
           "signature": "removeTask(id: string): TaskUsage",
@@ -3369,7 +3369,7 @@
           ]
         }
       ],
-      "doc": "Remove a task and every blocker edge pointing at it, and hand back the task budget.\n\nThrows `ToolError` with `not-found` for an unknown id.",
+      "doc": "Remove a task and every blocker edge pointing at it.\n\nReturns: how much of the task budget is used now that the task has gone.\n\nThrows `ToolError` with `not-found` for an unknown id.",
       "gate": "remove_task",
       "library": false,
       "types": [
@@ -3454,7 +3454,7 @@
       "fqn": "gg.memories.writeMemory",
       "operation": "memories.write_memory",
       "category": "gg-memory",
-      "summary": "Record a durable memory that survives a compaction, and hand back the budget it now occupies.",
+      "summary": "Record a durable memory that survives a compaction.",
       "signatures": [
         {
           "signature": "writeMemory(memory: MemoryWrite): MemoryUsage",
@@ -3470,7 +3470,7 @@
           ]
         }
       ],
-      "doc": "Record a durable memory that survives a compaction, and hand back the budget it now occupies.\n\nA memory may carry **code** as well as prose. `code` is a module in the same language a program is, whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never written again; `onUse` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context: they occupy no window, are never shown back, and count against no body limit.\n\nThrows `ToolError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would breach the run's caps — revising or deleting a memory beats accruing more.",
+      "doc": "Record a durable memory that survives a compaction.\n\nA memory may carry **code** as well as prose. `code` is a module in the same language a program is, whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never written again; `onUse` is a script gg runs the first time the memory comes into use, whose views arrive on the next turn. Neither is context: they occupy no window, are never shown back, and count against no body limit.\n\nReturns: how much of the run's memory budget is used now that the memory is held.\n\nThrows `ToolError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would breach the run's caps — revising or deleting a memory beats accruing more.",
       "gate": "write_memory",
       "library": false,
       "types": [
@@ -3623,7 +3623,7 @@
           ]
         }
       ],
-      "doc": "Replace an existing memory's description and body, keyed on its name.\n\nIts `code` and `onUse` are replaced too, so omitting them clears them.\n\nThrows `ToolError` with `not-found` when no memory has that name.",
+      "doc": "Replace an existing memory's description and body, keyed on its name.\n\nIts `code` and `onUse` are replaced too, so omitting them clears them.\n\nReturns: how much of the run's memory budget is used after the replacement.\n\nThrows `ToolError` with `not-found` when no memory has that name, and `limit-exceeded` when the replacement would breach the run's caps.",
       "gate": "update_memory",
       "library": false,
       "types": [
@@ -3776,7 +3776,7 @@
           ]
         }
       ],
-      "doc": "Record a memory whose contents stay out of the context window until they are read.\n\nThe description is required where the run keeps an index, since that is the memory's line in it. A memory created here may carry `code` and `onUse` exactly as one written to the scratchpad may.\n\nThrows `ToolError` with `conflict` on a duplicate slug, and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
+      "doc": "Record a memory whose contents stay out of the context window until they are read.\n\nThe description is required where the run keeps an index, since that is the memory's line in it. A memory created here may carry `code` and `onUse` exactly as one written to the scratchpad may.\n\nReturns: how much of the run's memory budget is used now that the memory is held.\n\nThrows `ToolError` with `conflict` on a duplicate slug, and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
       "gate": "create_memory",
       "library": false,
       "types": [
@@ -3929,7 +3929,7 @@
           ]
         }
       ],
-      "doc": "Read one memory's full contents by slug, which is the only thing that brings them into context.\n\nA memory carrying code loads that code as it is read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\nThrows `ToolError` with `not-found` when no memory has that slug.",
+      "doc": "Read one memory's full contents by slug, which is the only thing that brings them into context.\n\nA memory carrying code loads that code as it is read: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of the session.\n\nReturns: the memory's contents.\n\nThrows `ToolError` with `not-found` when no memory has that slug.",
       "gate": "read_memory",
       "library": false,
       "types": [
@@ -4038,7 +4038,7 @@
           ]
         }
       ],
-      "doc": "Revise a memory in place, replacing the one exact occurrence of some text with something else.\n\nAppending is done by quoting the last line and replacing it with itself plus what is being added.\n\nThrows `ToolError` with `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — deleting it is the way to empty it.",
+      "doc": "Revise a memory in place, replacing the one exact occurrence of some text with something else.\n\nAppending is done by quoting the last line and replacing it with itself plus what is being added.\n\nReturns: how much of the run's memory budget is used after the revision.\n\nThrows `ToolError` with `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — deleting it is the way to empty it.",
       "gate": "edit_memory",
       "library": false,
       "types": [
@@ -4159,13 +4159,13 @@
           ]
         }
       ],
-      "doc": "Find the memories mentioning any of some keywords, best first.\n\nMatching is plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many distinct keywords a memory mentions and then by how often. Several specific words rank better than one sentence; `readMemory` then reads the hits worth having whole.\n\nThrows `ToolError` with `invalid-argument` when every keyword is empty. A search that matches nothing is an empty array.",
+      "doc": "Find the memories mentioning any of some keywords, best first.\n\nMatching is plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many distinct keywords a memory mentions and then by how often. Several specific words rank better than one sentence; `readMemory` then reads the hits worth having whole.\n\nReturns: the memories that matched, best first, each with the numbers it was ranked by; empty where nothing matched.\n\nThrows `ToolError` with `invalid-argument` when every keyword is empty.",
       "gate": "search_memories",
       "library": false,
       "types": [
         {
           "name": "MemoryHit",
-          "declaration": "interface MemoryHit { name: string; description: string; matched: number; occurrences: number; excerpt: string; }",
+          "declaration": "interface MemoryHit { name: string; description: string; matched: number; occurrences: number; excerpt: string; read(): string; }",
           "doc": "One memory `searchMemories` matched, and the numbers it was ranked by.",
           "members": [
             {
@@ -4259,7 +4259,7 @@
       "fqn": "gg.memories.deleteMemory",
       "operation": "memories.delete_memory",
       "category": "gg-memory",
-      "summary": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.",
+      "summary": "Evict a memory by name, freeing the room it held in the budget.",
       "signatures": [
         {
           "signature": "deleteMemory(name: string): MemoryUsage",
@@ -4275,7 +4275,7 @@
           ]
         }
       ],
-      "doc": "Evict a memory by name, freeing room in the budget, and hand back what is left in use.\n\nThrows `ToolError` with `not-found` when no memory has that name.",
+      "doc": "Evict a memory by name, freeing the room it held in the budget.\n\nReturns: how much of the run's memory budget is left in use once it has gone.\n\nThrows `ToolError` with `not-found` when no memory has that name.",
       "gate": "delete_memory",
       "library": false,
       "types": [
@@ -4445,7 +4445,7 @@
           ]
         }
       ],
-      "doc": "Search everything this agent can call, and every type their signatures name, best match first.\n\nMatching is case-insensitive substring matching over names, signatures, briefs and detailed descriptions, so `docs` finds `openDocsView`. A hit whose own name matched is ranked above one that merely mentions the word in a paragraph, and the query is split on whitespace, so several specific words work better than a sentence.\n\nThe filters compose with the query and with each other, and each is an exact lookup rather than another thing to rank: an empty query with `module` is that module's whole directory, which is the first hop worth making. A query that is blank **and** carries no filter is `invalid-argument`, because a search that asked for nothing and a search that found nothing are different answers; so is an unrecognised `kind`, which would otherwise silently widen a search believed to be narrow.\n\nThe page comes back as a value **and** opens as a view labelled `search results`, so the results can be read next turn without being shown deliberately. That view is replaced by the next search rather than accumulating, and `gg.views.close(\"search results\")` takes it away.",
+      "doc": "Search everything this agent can call, and every type their signatures name, best match first.\n\nMatching is case-insensitive substring matching over names, signatures, briefs and detailed descriptions, so `docs` finds `openDocsView`. A hit whose own name matched is ranked above one that merely mentions the word in a paragraph, and the query is split on whitespace, so several specific words work better than a sentence.\n\nThe filters compose with the query and with each other, and each is an exact lookup rather than another thing to rank: an empty query with `module` is that module's whole directory, which is the first hop worth making.\n\nThe page comes back as a value **and** opens as a view labelled `search results`, so the results can be read next turn without being shown deliberately. That view is replaced by the next search rather than accumulating, and `gg.views.close(\"search results\")` takes it away.\n\nReturns: one page of hits, best first, beside the `total` that says how much of the answer it is.\n\nThrows `ToolError` with `invalid-argument` for a blank query carrying no filter — a search that asked for nothing and a search that found nothing are different answers — for an unrecognised `kind`, which would otherwise silently widen a search believed to be narrow, and for a `limit` of zero, which is a page that could answer nothing.",
       "library": false,
       "types": [
         {
@@ -4581,7 +4581,7 @@
       "fqn": "gg.docs.close",
       "operation": "docs.close",
       "category": "gg-docs",
-      "summary": "Close the documentation view opened under `key`, and hand back how many were closed.",
+      "summary": "Close the documentation view opened under `key`.",
       "signatures": [
         {
           "signature": "close(key: string): number",
@@ -4597,7 +4597,7 @@
           ]
         }
       ],
-      "doc": "Close the documentation view opened under `key`, and hand back how many were closed.\n\nA key that is not open closes zero rather than failing, so tidying up unconditionally needs no guard. There is no cascade: closing a function's view leaves the views of the types it named exactly where they were, and closing a type's leaves the functions. Nothing remembers why a view was opened, so a type closed here is opened again by the next function that mentions it.\n\nThrows `ToolError` with `unavailable` for an agent this run did not give the closing of documentation views. Opening one only ever appends to the end of the prompt, while closing one rewrites its middle and costs the run every cached token after it — which is why opening is always available and closing is bought.",
+      "doc": "Close the documentation view opened under `key`.\n\nA key that is not open is not a failure, so tidying up unconditionally needs no guard. There is no cascade: closing a function's view leaves the views of the types it named exactly where they were, and closing a type's leaves the functions. Nothing remembers why a view was opened, so a type closed here is opened again by the next function that mentions it.\n\nOpening a view only ever appends to the end of the prompt, while closing one rewrites its middle and costs the run every cached token after it — which is why opening is always available and closing is bought.\n\nReturns: how many views were closed, which is zero when that key was not open.\n\nThrows `ToolError` with `unavailable` for an agent this run did not give the closing of documentation views.",
       "library": false,
       "capability": "docview-close",
       "types": [
@@ -4665,14 +4665,14 @@
       "fqn": "gg.docs.closeAll",
       "operation": "docs.close_all",
       "category": "gg-docs",
-      "summary": "Close every documentation view at once, and hand back how many went.",
+      "summary": "Close every documentation view at once.",
       "signatures": [
         {
           "signature": "closeAll(): number",
           "parameters": []
         }
       ],
-      "doc": "Close every documentation view at once, and hand back how many went.\n\nThe blanket form of `close`, on the same terms and behind the same capability: no cascade to worry about because nothing is left, and zero rather than a failure when none was open. It is the call for reclaiming the window between one piece of work and the next, where naming each key would be a list to keep.\n\nThrows `ToolError` with `unavailable` for an agent this run did not give the closing of documentation views.",
+      "doc": "Close every documentation view at once.\n\nThe blanket form of `close`, on the same terms and behind the same capability, with no cascade to worry about because nothing is left. It is the call for reclaiming the window between one piece of work and the next, where naming each key would be a list to keep.\n\nReturns: how many views went, which is zero when none was open.\n\nThrows `ToolError` with `unavailable` for an agent this run did not give the closing of documentation views.",
       "library": false,
       "capability": "docview-close",
       "types": [
@@ -4781,7 +4781,7 @@
           ]
         }
       ],
-      "doc": "Read a file and show it to the agent, handing the program the same value `gg.files.readFile` does.\n\nThe split from `gg.files.readFile` is the point: that call gets bytes for the program, this one puts the file in front of the agent, so a program that reads forty files to grep them adds nothing to the window. Two pages of one file are two views that coexist, while re-opening the same page replaces what it showed rather than piling up a duplicate.\n\nAn image file is shown as a picture, and this is the only way to look at one: `gg.files.readFile` of an image describes it without showing it.",
+      "doc": "Read a file and show it to the agent, handing the program the same value `gg.files.readFile` does.\n\nThe split from `gg.files.readFile` is the point: that call gets bytes for the program, this one puts the file in front of the agent, so a program that reads forty files to grep them adds nothing to the window. Two pages of one file are two views that coexist, while re-opening the same page replaces what it showed rather than piling up a duplicate.\n\nAn image file is shown as a picture, and this is the only way to look at one: `gg.files.readFile` of an image describes it without showing it.\n\nReturns: the same value `gg.files.readFile` hands back for that window, so a program can use what it just put in front of the agent.\n\nThrows `ToolError` with `not-found` for a path that is not there. The read is what fails, so nothing is opened when it does.",
       "gate": "read_file",
       "library": false,
       "types": [
@@ -4953,7 +4953,7 @@
           ]
         }
       ],
-      "doc": "Show the agent a value the program computed, filed under a label.\n\nA directory listing, a command's output, a child agent's answer, an assembled table: this is the channel a value takes into the next turn's context. Opening the same label again replaces what it showed, so a program may refine one view in a loop without piling up a copy per iteration.\n\nAn empty label is `invalid-argument`, since a view with no selector could never be closed or attributed. An empty **body** is allowed, because it is how a program says that something it was showing is now empty.\n\nThrows `ToolError` with `limit-exceeded`, naming the cap, when a body or a label is over gg's ceilings. Nothing is ever silently truncated.",
+      "doc": "Show the agent a value the program computed, filed under a label.\n\nA directory listing, a command's output, a child agent's answer, an assembled table: this is the channel a value takes into the next turn's context. Opening the same label again replaces what it showed, so a program may refine one view in a loop without piling up a copy per iteration.\n\nAn empty **body** is allowed, because it is how a program says that something it was showing is now empty. An empty label is not: a view with no selector could never be closed or attributed.\n\nThrows `ToolError` with `invalid-argument` for an empty label, and `limit-exceeded`, naming the cap, when a body or a label is over gg's ceilings. Nothing is ever silently truncated.",
       "library": false,
       "types": [
         {
@@ -5036,7 +5036,7 @@
           ]
         }
       ],
-      "doc": "Show the agent one function's full documentation: its signature, its description and its types.\n\nOnly the types it names that have not already been shown this session are appended, so re-reading costs nothing twice. The argument is the function itself, as in `gg.views.openDocsView(gg.files.readFile)`, or its name as a string.\n\nIt is a **view** rather than a return value, so the documentation arrives in the next prompt under a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn and using it in the next is the shape that works. Opening the same function again replaces the view, and `gg.docs.close` takes the same name to put it away — not the `close` in this module, which does not reach documentation.\n\nThrows `ToolError` with `not-found` for an unknown or unbound name; searching the documentation is what says which names exist.",
+      "doc": "Show the agent one function's full documentation: its signature, its description and its types.\n\nOnly the types it names that have not already been shown this session are appended, so re-reading costs nothing twice. The argument is the function itself, as in `gg.views.openDocsView(gg.files.readFile)`, or its name as a string.\n\nIt is a **view** rather than a return value, so the documentation arrives in the next prompt under a `Documentation` heading and is not available in the turn that asked for it. Asking in one turn and using it in the next is the shape that works. Opening the same function again replaces the view, and `gg.docs.close` takes the same name to put it away — not the `close` in this module, which does not reach documentation.\n\nThrows `ToolError` with `not-found` for an unknown or unbound name — searching the documentation is what says which names exist — and `invalid-argument` for an argument that is neither a function nor a string.",
       "library": false,
       "types": [
         {
@@ -5103,7 +5103,7 @@
       "fqn": "gg.views.close",
       "operation": "views.close",
       "category": "gg-views",
-      "summary": "Close every view carrying a selector, and hand back how many were closed.",
+      "summary": "Close every view carrying a selector.",
       "signatures": [
         {
           "signature": "close(selector: string): number",
@@ -5119,7 +5119,7 @@
           ]
         }
       ],
-      "doc": "Close every view carrying a selector, and hand back how many were closed.\n\nFor a file that is every page of that path, for a text view the one with that label, and for the results of a search the label `search results`. Closing a selector that is not open returns zero rather than failing, so a program that tidies up unconditionally needs no guard on every call.\n\nDocumentation views are not among them: `gg.docs.close` is what takes one of those away, and it is bought by a capability this call is not. A sweep that quietly reached them would answer zero for an agent that may not close one, which reads exactly like a selector that named nothing.\n\nClosing a file view forgets what was read, not what exists. Closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.",
+      "doc": "Close every view carrying a selector.\n\nFor a file that is every page of that path, for a text view the one with that label, and for the results of a search the label `search results`. Closing a selector that is not open is not a failure, so a program that tidies up unconditionally needs no guard on every call.\n\nDocumentation views are not among them: `gg.docs.close` is what takes one of those away, and it is bought by a capability this call is not. A sweep that quietly reached them would answer zero for an agent that may not close one, which reads exactly like a selector that named nothing.\n\nClosing a file view forgets what was read, not what exists. Closing a text view discards the only copy of what it held, so anything needed later belongs in a file or a memory first.\n\nReturns: how many views were closed, which is zero when the selector named nothing open.\n\nThrows `ToolError` with `invalid-argument` for an empty selector, which could never have been a view's name.",
       "library": false,
       "types": [
         {
@@ -5193,7 +5193,7 @@
           "parameters": []
         }
       ],
-      "doc": "List what is open in the context window right now.\n\nEach entry carries its `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. It is the thing to read before deciding what to close when the window is filling up.\n\nWhat it enumerates is the context window's contents, not any module's functions.",
+      "doc": "List what is open in the context window right now.\n\nEach entry carries its `kind`, the `selector` that closes it, roughly what it costs in `tokens`, and — for a paged file view — the `region` it covers. It is the thing to read before deciding what to close when the window is filling up.\n\nWhat it enumerates is the context window's contents, not any module's functions.\n\nNothing about it can fail: it reads gg's own live view set behind a binding no run withholds, so there is no argument to refuse and no capability to be without.\n\nReturns: every view open right now, each with what closes it and roughly what it costs.",
       "library": false,
       "types": [
         {
@@ -5234,7 +5234,7 @@
         },
         {
           "name": "OpenView",
-          "declaration": "interface OpenView { kind: ViewKind; selector: string; tokens: number; region?: ViewRegion; }",
+          "declaration": "interface OpenView { kind: ViewKind; selector: string; tokens: number; region?: ViewRegion; close(): number; }",
           "doc": "One view open in the context window, as `current` reports it.",
           "members": [
             {
@@ -5323,7 +5323,7 @@
       "fqn": "gg.context.evictFileView",
       "operation": "context.evict_file_view",
       "category": "gg-context",
-      "summary": "Drop the contents of files already read out of the context window, and report what that freed.",
+      "summary": "Drop the contents of files already read out of the context window.",
       "signatures": [
         {
           "signature": "evictFileView(path?: string): ReclaimReport",
@@ -5339,7 +5339,7 @@
           ]
         }
       ],
-      "doc": "Drop the contents of files already read out of the context window, and report what that freed.\n\nOmitting the path drops every file view. The files on disk are untouched: this forgets what was read, not what exists.",
+      "doc": "Drop the contents of files already read out of the context window.\n\nOmitting the path drops every file view. The files on disk are untouched: this forgets what was read, not what exists.\n\nReturns: what the eviction actually freed: the items dropped, the tokens they held, and the paths they covered.\n\nThrows `ToolError` with `invalid-argument` for an empty path — omitting it entirely is what drops every file view.",
       "gate": "evict_file_view",
       "library": false,
       "types": [
@@ -5434,7 +5434,7 @@
       "fqn": "gg.context.archiveThread",
       "operation": "context.archive_thread",
       "category": "gg-context",
-      "summary": "Move whole turns out of the context window, and report what that freed.",
+      "summary": "Move whole turns out of the context window.",
       "signatures": [
         {
           "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
@@ -5450,7 +5450,7 @@
           ]
         }
       ],
-      "doc": "Move whole turns out of the context window, and report what that freed.\n\nEvery result carries a header with its turn number and roughly what holding it costs, so the turns worth dropping can be named: `ranges` is a list of inclusive spans, and one span of `{ from: 4, to: 19 }` archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.",
+      "doc": "Move whole turns out of the context window.\n\nEvery result carries a header with its turn number and roughly what holding it costs, so the turns worth dropping can be named: `ranges` is a list of inclusive spans, and one span of `{ from: 4, to: 19 }` archives turns 4 through 19. The agent's own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.\n\nReturns: what the archival actually freed: the items moved out and the tokens they held.\n\nThrows `ToolError` with `invalid-argument` for an empty list, for more than 32 spans at once, and for a span that ends before it starts.",
       "gate": "archive_thread",
       "library": false,
       "types": [
@@ -5578,7 +5578,7 @@
           ]
         }
       ],
-      "doc": "Search archived history for a case-insensitive substring, most recent first, up to eight hits.\n\n`archiveEmpty` on the result is worth checking before the hits: it distinguishes nothing having been archived yet from a search that ran and matched nothing, so an empty answer is not read as a failed archive.",
+      "doc": "Search archived history for a case-insensitive substring, most recent first, up to eight hits.\n\n`archiveEmpty` on the result is worth checking before the hits: it distinguishes nothing having been archived yet from a search that ran and matched nothing, so an empty answer is not read as a failed archive.\n\nReturns: the matches, most recent first, beside the flag that says whether anything has been archived at all.\n\nThrows `ToolError` with `invalid-argument` for an empty query.",
       "gate": "search_archive",
       "library": false,
       "types": [
@@ -5709,7 +5709,7 @@
           ]
         }
       ],
-      "doc": "Request a compaction: the detailed thread is dropped and restarted from a summary and some files.\n\nSkills, memories and the task list are kept as they are. gg asks for this when the window is full, and refuses every other call until it happens.\n\nIt does not stop the program. The request is registered, the call returns, and the rewrite happens once the program has ended — so everything not in the summary and not among the named files is gone. The summary is worth writing for the agent that reads it next, which is this one.",
+      "doc": "Request a compaction: the detailed thread is dropped and restarted from a summary and some files.\n\nSkills, memories and the task list are kept as they are. gg asks for this when the window is full, and refuses every other call until it happens.\n\nIt does not stop the program. The request is registered, the call returns, and the rewrite happens once the program has ended — so everything not in the summary and not among the named files is gone. The summary is worth writing for the agent that reads it next, which is this one.\n\nThrows `ToolError` with `invalid-argument` for a blank summary.",
       "gate": "compact",
       "library": false,
       "types": [
@@ -5818,13 +5818,13 @@
           ]
         }
       ],
-      "doc": "Delegate scoped work to a child agent, and hand back its handle at once.\n\nThe child runs in parallel while the program continues. `agent` selects the child's model, tools and instructions, and must be one of the agents this one may spawn — the system prompt lists them. The brief is exactly one of self-contained instructions or a board issue. The child shares this workspace.\n\nThrows `ToolError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument` when `agent` is not one this agent may spawn.",
+      "doc": "Delegate scoped work to a child agent, and hand back its handle at once.\n\nThe child runs in parallel while the program continues. `agent` selects the child's model, tools and instructions, and must be one of the agents this one may spawn — the system prompt lists them. The brief is exactly one of self-contained instructions or a board issue. The child shares this workspace.\n\nReturns: the child's handle: the id to wait on or message, and the agent and model it runs as.\n\nThrows `ToolError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument` when `agent` is not one this agent may spawn or the brief is neither a prompt nor an issue.",
       "gate": "spawn_subagent",
       "library": false,
       "types": [
         {
           "name": "SubagentHandle",
-          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }",
+          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; send(message: string): void; }",
           "doc": "A child agent that was spawned and is now running in parallel.",
           "members": [
             {
@@ -5924,7 +5924,7 @@
           ]
         }
       ],
-      "doc": "Block until the named children have finished, and collect their results in dispatch order.\n\nWith no argument it waits for every child still outstanding. The run's wall-clock budget keeps running throughout, so one wait for many children costs far less than one wait per child.\n\nThrows `ToolError` with `not-found` for an unknown id.",
+      "doc": "Block until the named children have finished, and collect their results in dispatch order.\n\nWith no argument it waits for every child still outstanding. The run's wall-clock budget keeps running throughout, so one wait for many children costs far less than one wait per child.\n\nReturns: one result per child, in dispatch order: how each finished, and the summary it ended with.\n\nThrows `ToolError` with `not-found` for an unknown id.",
       "gate": "wait_for_subagents",
       "library": false,
       "types": [
@@ -6337,13 +6337,13 @@
           ]
         }
       ],
-      "doc": "Run a copy of this agent, in parallel, on something this one will not do itself.\n\nThe copy has the same model, the same tools and a private copy of the whole conversation, so the prompt is the *difference* rather than a briefing: everything already worked out is already there.\n\nIts handle comes back at once, but the copy starts only once this turn's results are recorded, because the conversation it inherits has to be a complete one. So it can be collected only on a later turn, and waiting on it in the program that made it never returns it.\n\nThrows `ToolError` with `limit-exceeded` at the delegation depth cap.",
+      "doc": "Run a copy of this agent, in parallel, on something this one will not do itself.\n\nThe copy has the same model, the same tools and a private copy of the whole conversation, so the prompt is the *difference* rather than a briefing: everything already worked out is already there.\n\nIts handle comes back at once, but the copy starts only once this turn's results are recorded, because the conversation it inherits has to be a complete one. So it can be collected only on a later turn, and waiting on it in the program that made it never returns it.\n\nReturns: the copy's handle, which only a later turn can collect.\n\nThrows `ToolError` with `limit-exceeded` at the delegation depth cap.",
       "gate": "fork",
       "library": false,
       "types": [
         {
           "name": "SubagentHandle",
-          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }",
+          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; send(message: string): void; }",
           "doc": "A child agent that was spawned and is now running in parallel.",
           "members": [
             {
@@ -6443,7 +6443,7 @@
           ]
         }
       ],
-      "doc": "Read a skill by name, returning its body with the front matter stripped.\n\nReading pins that body permanently into the agent's context, so a skill once read stays read.\n\nA skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it exports. An on-use script runs once the program has ended, and whatever it shows arrives on the next turn.\n\nThrows `ToolError` with `not-found` — listing the skills that do exist — when the name is unknown.",
+      "doc": "Read a skill by name, returning its body with the front matter stripped.\n\nReading pins that body permanently into the agent's context, so a skill once read stays read.\n\nA skill may be **code** rather than prose, or as well as it. Code is bound at `lib.<key>` for the rest of the session and the reply names the key and what it exports. An on-use script runs once the program has ended, and whatever it shows arrives on the next turn.\n\nReturns: the skill's body, with its front matter stripped.\n\nThrows `ToolError` with `not-found` — listing the skills that do exist — when the name is unknown.",
       "gate": "read_skill",
       "library": false,
       "types": [
@@ -6518,13 +6518,13 @@
           "parameters": []
         }
       ],
-      "doc": "List the programs this session has already run, oldest first.\n\nEach entry carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes rather than sources, so `get` is what fetches one. The list survives a compaction, which makes it the way to find a program whose text has left the context window.\n\nThrows `ToolError` with `unavailable` for an agent with no program library. It is empty, never an error, for one that has a library and has run nothing yet.",
+      "doc": "List the programs this session has already run, oldest first.\n\nEach entry carries the turn it ran on, how big it was, and whether it ran to its end. It lists shapes rather than sources, so `get` is what fetches one. The list survives a compaction, which makes it the way to find a program whose text has left the context window.\n\nReturns: one entry per program already run, oldest first; empty for an agent that has a library and has run nothing yet.\n\nThrows `ToolError` with `unavailable` for an agent with no program library.",
       "library": true,
       "capability": "program-library",
       "types": [
         {
           "name": "ProgramSummary",
-          "declaration": "interface ProgramSummary { turn: number; lines: number; chars: number; ok: boolean; error?: string; }",
+          "declaration": "interface ProgramSummary { turn: number; lines: number; chars: number; ok: boolean; error?: string; source(): string; }",
           "doc": "One program that already ran, as `history` lists it.\n\nIt describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back into the context window, which is the one thing the library exists to avoid. `get` fetches the source actually wanted.",
           "members": [
             {
@@ -6634,7 +6634,7 @@
           ]
         }
       ],
-      "doc": "Fetch the exact source of one program that ran, as a string; the default is the most recent.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `rerun`. What comes back is the program that **executed**, so a turn whose program was itself handed over by `rerun` yields the program that ran rather than the few lines that asked for it, and fetch, patch and run compose turn after turn.\n\nThrows `ToolError` with `not-found`, naming the turns that are held, for a turn that ran no program or one old enough that the library has dropped it.",
+      "doc": "Fetch the exact source of one program that ran, as a string; the default is the most recent.\n\nThis is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work, and hand the result to `rerun`. What comes back is the program that **executed**, so a turn whose program was itself handed over by `rerun` yields the program that ran rather than the few lines that asked for it, and fetch, patch and run compose turn after turn.\n\nReturns: the exact source of the program that ran on that turn.\n\nThrows `ToolError` with `unavailable` for an agent with no program library, and `not-found` — naming the turns that are held — for a turn that ran no program or one old enough to have been dropped.",
       "library": true,
       "capability": "program-library",
       "types": [
@@ -6718,7 +6718,7 @@
           ]
         }
       ],
-      "doc": "Hand gg a program to run in place of this one, once this one has finished.\n\nNothing is undone: every call the handing-over program already made stands, and the program that runs next sees the world this one left behind — so handing over before doing work that should not happen twice is the shape that works.\n\nThe first call stands and a second is refused, because a silently replaced program is a change nobody can see. A failed handing-over program cancels the hand-over along with everything else it decided, and the turn is reported as an ordinary error instead.\n\nThrows `ToolError` with `invalid-argument` for a blank source, and `refused` for a second hand-over in one turn.",
+      "doc": "Hand gg a program to run in place of this one, once this one has finished.\n\nNothing is undone: every call the handing-over program already made stands, and the program that runs next sees the world this one left behind — so handing over before doing work that should not happen twice is the shape that works.\n\nThe first call stands and a second is refused, because a silently replaced program is a change nobody can see. A failed handing-over program cancels the hand-over along with everything else it decided, and the turn is reported as an ordinary error instead.\n\nThrows `ToolError` with `unavailable` for an agent with no program library, `invalid-argument` for a blank source, and `refused` for a second hand-over in one turn.",
       "library": true,
       "capability": "program-library",
       "types": [
@@ -6802,7 +6802,7 @@
           ]
         }
       ],
-      "doc": "End the session, reporting what was done in a sentence or two.\n\nIt does not stop the program: whatever follows it still runs, so it belongs last, once the calls that do the work have confirmed the work is really done. A program that then fails cancels the ending, and the session gets another turn.",
+      "doc": "End the session, reporting what was done in a sentence or two.\n\nIt does not stop the program: whatever follows it still runs, so it belongs last, once the calls that do the work have confirmed the work is really done. A program that then fails cancels the ending, and the session gets another turn.\n\nThrows `ToolError` with `invalid-argument` for a blank summary, and `unavailable` when this agent's role ends its session some other way.",
       "ending": "standard",
       "library": false,
       "types": [
@@ -6877,7 +6877,7 @@
           "parameters": []
         }
       ],
-      "doc": "Accept the work under review: it meets every completion criterion and stays in scope.\n\nThis ends the session. It does not stop the program, so it belongs last, once the change has actually been read.",
+      "doc": "Accept the work under review: it meets every completion criterion and stays in scope.\n\nThis ends the session. It does not stop the program, so it belongs last, once the change has actually been read.\n\nThrows `ToolError` with `unavailable` when this agent's role ends its session some other way.",
       "ending": "review",
       "library": false,
       "types": [
@@ -6961,9 +6961,392 @@
           ]
         }
       ],
-      "doc": "Reject the work under review, listing every change that must be made before it can be accepted.\n\nEach item says what is wrong and what to change, and the list may not be empty. This ends the session and does not stop the program.",
+      "doc": "Reject the work under review, listing every change that must be made before it can be accepted.\n\nEach item says what is wrong and what to change, and the list may not be empty. This ends the session and does not stop the program.\n\nThrows `ToolError` with `invalid-argument` when the list is empty, and `unavailable` when this agent's role ends its session some other way.",
       "ending": "review",
       "library": false,
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "board",
+      "name": "wait",
+      "fqn": "gg.board.IssueCreated.wait",
+      "operation": "board.wait_for_issue",
+      "category": "gg-project",
+      "summary": "Register a wait on this issue, with its id already supplied.",
+      "signatures": [
+        {
+          "signature": "wait(): string",
+          "parameters": []
+        }
+      ],
+      "doc": "Register a wait on this issue, with its id already supplied.\n\n`gg.board.waitForIssue` for the common case where the issue just created is in hand.\n\nReturns: gg's acknowledgement that the wait is registered.\n\nThrows `ToolError` with `not-found` when the board no longer holds the issue, and `invalid-argument` where it is the issue this agent was itself assigned.",
+      "gate": "wait_for_issue",
+      "library": false,
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "memories",
+      "name": "read",
+      "fqn": "gg.memories.MemoryHit.read",
+      "operation": "memories.read_memory",
+      "category": "gg-memory",
+      "summary": "Read this hit's memory in full, with its slug already supplied.",
+      "signatures": [
+        {
+          "signature": "read(): string",
+          "parameters": []
+        }
+      ],
+      "doc": "Read this hit's memory in full, with its slug already supplied.\n\n`gg.memories.readMemory` for the common case where the search result is in hand.\n\nReturns: the memory's contents.\n\nThrows `ToolError` with `not-found` when the memory has gone since the search ran.",
+      "gate": "read_memory",
+      "library": false,
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "views",
+      "name": "close",
+      "fqn": "gg.views.OpenView.close",
+      "operation": "views.close",
+      "category": "gg-views",
+      "summary": "Close this view, with its selector already supplied.",
+      "signatures": [
+        {
+          "signature": "close(): number",
+          "parameters": []
+        }
+      ],
+      "doc": "Close this view, with its selector already supplied.\n\n`gg.views.close` for the common case where the listed view is in hand. A documentation view is the one it does not take away, exactly as that call does not: `gg.docs.close` is what puts one of those away.\n\nReturns: how many views were closed, which is zero when this one has already gone.",
+      "library": false,
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "delegation",
+      "name": "send",
+      "fqn": "gg.delegation.SubagentHandle.send",
+      "operation": "delegation.send_message",
+      "category": "gg-delegation",
+      "summary": "Deliver a message to this child's inbox, with its id already supplied.",
+      "signatures": [
+        {
+          "signature": "send(message: string): void",
+          "parameters": [
+            {
+              "name": "message",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What to put in its inbox. The child reads it at its next turn.",
+              "fields": []
+            }
+          ]
+        }
+      ],
+      "doc": "Deliver a message to this child's inbox, with its id already supplied.\n\n`gg.delegation.sendMessage` for the common case where the handle is in hand.\n\nThrows `ToolError` with `conflict` when this child has already returned.",
+      "gate": "send_message",
+      "library": false,
+      "types": [
+        {
+          "name": "ToolErrorCode",
+          "declaration": "type ToolErrorCode = \"invalid-argument\" | \"not-found\" | \"conflict\" | \"refused\" | \"unavailable\" | \"limit-exceeded\" | \"io-error\" | \"other\"",
+          "doc": "Why a call failed, as the `code` on a thrown `ToolError`.\n\nA catch site branches on this rather than on the message, which is prose and free to be reworded.",
+          "members": [
+            {
+              "name": "\"invalid-argument\"",
+              "doc": "The arguments were malformed, ill-typed, or out of range.\n\nA path that is absolute or climbs out of the workspace and an agent name the run does not declare both land here."
+            },
+            {
+              "name": "\"not-found\"",
+              "doc": "The named file, skill, memory, task, epic, issue, subagent, program or documentation is absent."
+            },
+            {
+              "name": "\"conflict\"",
+              "doc": "Well formed, and in conflict with the current state.\n\nAn ambiguous edit, a dependency cycle, a duplicate id and a subagent that already returned are the four shapes of it."
+            },
+            {
+              "name": "\"refused\"",
+              "doc": "gg refused the call on a rule about the agent's state rather than about its arguments.\n\nA compaction in flight that this call is not the one it asked for, a memory call while memories are read-only, a second ending in one turn, and a hook that blocked the call are the cases. A ceiling that was reached is `limit-exceeded` instead."
+            },
+            {
+              "name": "\"unavailable\"",
+              "doc": "The call exists and this run's capability set does not offer it.\n\nA withheld function is absent from a program's scope entirely, so this is the host's backstop for a name a program reached anyway."
+            },
+            {
+              "name": "\"limit-exceeded\"",
+              "doc": "A gg-side ceiling was reached.\n\nA shell timeout, a store cap, the delegation depth cap and the run's wall-clock budget all report themselves this way."
+            },
+            {
+              "name": "\"io-error\"",
+              "doc": "The underlying input, output or process failed."
+            },
+            {
+              "name": "\"other\"",
+              "doc": "The failure was not classified.\n\nReserved for outcomes raised outside a tool implementation, which is gg's own bridge and degradation paths; nothing on this surface produces it."
+            }
+          ]
+        },
+        {
+          "name": "ToolError",
+          "declaration": "class ToolError extends Error { readonly tool: string; readonly code: ToolErrorCode; constructor(tool: string, code: ToolErrorCode, message: string); toJSON(): { name: string; tool: string; code: ToolErrorCode; message: string; }; }",
+          "doc": "A gg call that failed, thrown by every function on this surface.\n\n`catch (error) { if (error instanceof ToolError) … }` is the shape that reads `tool` and `code`; an uncaught one ends the program and is reported back with the line it was thrown on.",
+          "members": [
+            {
+              "name": "tool",
+              "type": "string",
+              "doc": "The gg tool that failed, by gg's own name for it: `read_file`, `spawn_subagent`."
+            },
+            {
+              "name": "code",
+              "type": "ToolErrorCode",
+              "doc": "The failure class, so a catch site branches on a value rather than on prose."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "module": "programs",
+      "name": "source",
+      "fqn": "gg.programs.ProgramSummary.source",
+      "operation": "programs.get",
+      "category": "gg-programs",
+      "summary": "Fetch this program's source, with its turn already supplied.",
+      "signatures": [
+        {
+          "signature": "source(): string",
+          "parameters": []
+        }
+      ],
+      "doc": "Fetch this program's source, with its turn already supplied.\n\n`gg.programs.get` for the common case where the summary is in hand.\n\nReturns: the exact source of the program that ran on that turn.\n\nThrows `ToolError` with `not-found` when the library has dropped that turn since the history was read.",
+      "library": true,
+      "capability": "program-library",
       "types": [
         {
           "name": "ToolErrorCode",

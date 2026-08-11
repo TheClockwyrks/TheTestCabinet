@@ -29,7 +29,7 @@ module GG
     # Forget the previous run's modules, so one instantiation serving two programs never leaves a
     # namespace behind that this run was not given.
     #
-    # @return [nil] nothing
+    # @return [nil]
     def self.reset
       @registry = {}
       @pending = nil

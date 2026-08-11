@@ -23,6 +23,11 @@ pub(crate) const TOOLS: &[&str] = &["read_skill"];
 ///
 /// * `name` — The skill's name, as the system prompt lists it.
 ///
+/// # Returns
+///
+/// The skill's body with its front matter stripped, and — for a skill that carries code — the key
+/// the code was bound at and what it offers.
+///
 /// # Errors
 ///
 /// `NotFound` — listing the skills that do exist — when the name is unknown.

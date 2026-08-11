@@ -66,20 +66,24 @@ export interface ArchiveSearch {
 }
 
 /**
- * Drop the contents of files already read out of the context window, and report what that freed.
+ * Drop the contents of files already read out of the context window.
  *
  * Omitting the path drops every file view. The files on disk are untouched: this forgets what was
  * read, not what exists.
  *
  * @ggop context.evict_file_view
  * @param path The file whose views to drop. Omit it to drop every file view held.
+ * @returns what the eviction actually freed: the items dropped, the tokens they held, and the paths
+ * they covered.
+ * @throws `ToolError` with `invalid-argument` for an empty path — omitting it entirely is what
+ * drops every file view.
  */
 export function evictFileView(path?: string): ReclaimReport {
   return call(() => raw.evictFileView(path));
 }
 
 /**
- * Move whole turns out of the context window, and report what that freed.
+ * Move whole turns out of the context window.
  *
  * Every result carries a header with its turn number and roughly what holding it costs, so the turns
  * worth dropping can be named: `ranges` is a list of inclusive spans, and one span of `{ from: 4, to:
@@ -88,6 +92,9 @@ export function evictFileView(path?: string): ReclaimReport {
  *
  * @ggop context.archive_thread
  * @param ranges The inclusive spans of turn numbers to move out of the window.
+ * @returns what the archival actually freed: the items moved out and the tokens they held.
+ * @throws `ToolError` with `invalid-argument` for an empty list, for more than 32 spans at once,
+ * and for a span that ends before it starts.
  */
 export function archiveThread(ranges: TurnRange[]): ReclaimReport {
   const spans = arrayArg<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
@@ -123,6 +130,9 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
  *
  * @ggop context.search_archive
  * @param query The substring to look for. Matching is case-insensitive.
+ * @returns the matches, most recent first, beside the flag that says whether anything has been
+ * archived at all.
+ * @throws `ToolError` with `invalid-argument` for an empty query.
  */
 export function searchArchive(query: string): ArchiveSearch {
   return call(() => raw.searchArchive(query));
@@ -142,6 +152,7 @@ export function searchArchive(query: string): ArchiveSearch {
  * @param summary What the restarted window opens with. Everything not in it, and not re-read from the
  * named files, is gone.
  * @param files The paths to read afresh into the restarted window. The default is none.
+ * @throws `ToolError` with `invalid-argument` for a blank summary.
  */
 export function compact(summary: string, files: string[] = []): void {
   call(() => raw.compact(summary, files));

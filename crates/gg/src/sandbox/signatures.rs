@@ -469,22 +469,24 @@ impl TypeReference {
 /// A type view carries these rather than the member functions' full documentation, and that is what
 /// makes opening a function's return type useful rather than merely long: the model lands on a menu
 /// of everything it can do with the value it is about to hold, and each entry on the menu is one
-/// call away from being read in full.
+/// call away from being read in full. The menu is rendered by
+/// [`read_type`](crate::docs::DocsRuntime::read_type), gated line by line: a helper whose operation
+/// this agent does not bind is left out, since a type is visible when *some* bound function reaches
+/// it and that is weaker than every operation hanging off it being bound.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(
-    dead_code,
-    reason = "the normalized doc model is read by the gates that hold each arm to it — the \
-              register gate and the fully-qualified-name rule — and by the readers that consume it \
-              as each stage of the documentation surface lands. A field whose reader belongs to a \
-              stage that has not landed yet is unread, and is carried here so that the stage which \
-              needs it finds it already reflected by all eleven arms."
-)]
 pub struct MemberFunction {
     /// The gg [operation](super::operations::OperationId) the member binds, rendered
     /// `namespace.key`.
     pub operation: String,
     /// The name a program calls it by.
+    #[allow(
+        dead_code,
+        reason = "read by the gates that hold each arm to the normalized doc model — the register \
+                  gate and the fully-qualified-name rule — which are `#[cfg(test)]`. A type view \
+                  lists the FULLY-QUALIFIED name, since that is the key that opens the member's own \
+                  documentation, so the bare spelling has no production reader."
+    )]
     pub name: String,
     /// The member's own fully-qualified name — what opens its documentation view.
     pub fqn: String,
@@ -692,13 +694,6 @@ pub struct TypeDeclaration {
     /// and empty on every [`V1`](SchemaVersion::V1) catalogue, whose schema has nowhere to put one.
     /// See [`MemberFunction`] for why a type view lists them rather than documenting them.
     #[serde(default)]
-    #[allow(
-        dead_code,
-        reason = "read only by the gates that hold an arm to its own shape (`signatures.fqn.rs`, \
-                  `language/register.rs`, `language/agreement.rs`), which are `#[cfg(test)]`, so it \
-                  is genuinely unread in a build. It is carried on the projection all the same, so \
-                  that a reader moving onto it does not first have to change the projection."
-    )]
     pub member_functions: Vec<MemberFunction>,
 }
 

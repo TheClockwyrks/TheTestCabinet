@@ -331,6 +331,15 @@ source, by the same build that produced the component. A declaration says what f
 value has and nothing about what any of them *means* — `shown: boolean` on a `FileRead` is
 unguessable — which is the half that decides whether a model uses the value correctly.
 
+A type's view ends with **a line per member function** where the arm gave that value any: the
+follow-up calls the value already carries the argument for, such as `close()` on an open view or
+`wait()` on a created issue. Each line is the member's fully-qualified name — the key that opens
+its own documentation — and its one-line brief, so a value's whole menu is one call from being
+read in full. Only the ones this agent binds are listed: a type is visible when *some* bound
+function reaches it, which is weaker than every follow-up hanging off it being bound, and a
+listing that ignored that would hand a model the name of a call its run withheld. Which values
+carry behaviour at all is the arm's own decision, not a shape every arm is held to.
+
 An argument that is *neither* a bound function nor a name is refused in the **guest**, before
 any lookup happens, and that placement is the point. `view.openDocsView(system.run)` — a
 function this run does not bind — evaluates to `undefined` long before the call is made, and

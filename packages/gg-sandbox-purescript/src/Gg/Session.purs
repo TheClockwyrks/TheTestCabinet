@@ -67,7 +67,7 @@ approve = Wire.call_ "approve" "review" "Gg.Session.approve" []
 -- | - `items` — Every change that must be made before the work can be accepted, one per entry: what
 -- |   is wrong, and what to change. It may not be empty.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `InvalidArgument` when the list is empty.
 requestChanges :: Array String -> Effect Unit

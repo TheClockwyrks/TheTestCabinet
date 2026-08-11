@@ -242,6 +242,33 @@ fn the_generated_surface_declares_every_module_the_catalogue_carries() {
     }
     for function in &catalogue.functions {
         for entry in &function.signatures {
+            // A convenience helper is a member of its receiver, not of the module it is documented
+            // under, so it is checked where a program really writes it: inside the type's own
+            // declaration, which the surface emitted verbatim above. Declaring it as a free
+            // `function send(message: string): void;` in `namespace delegation` would admit
+            // `gg.delegation.send(…)`, which the guest binds nowhere.
+            if function.kind == EntryKind::Method {
+                let receiver = function
+                    .receiver
+                    .as_deref()
+                    .expect("a method names the type it hangs off");
+                let declaration = catalogue
+                    .types
+                    .iter()
+                    .find(|declared| declared.name == receiver)
+                    .unwrap_or_else(|| panic!("`{receiver}` is a declared type"));
+                assert!(
+                    declaration.declaration.contains(&entry.signature),
+                    "`{}` is checked as a member of `{receiver}`",
+                    function.fqn
+                );
+                assert!(
+                    !surface.contains(&format!("function {};", entry.signature)),
+                    "`{}` is not also declared as a free function of its module",
+                    function.fqn
+                );
+                continue;
+            }
             assert!(
                 surface.contains(&format!("function {};", entry.signature)),
                 "the catalogue's own signature for `{}` is what a program is checked against",

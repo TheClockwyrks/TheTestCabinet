@@ -29,7 +29,9 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::GUEST_COMPONENT;
-use super::substrate::{evaluate, evaluate_closing_docviews, logs, prepare, program_error};
+use super::substrate::{
+    evaluate, evaluate_closing_docviews, evaluate_with_program, logs, prepare, program_error,
+};
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::sandbox::membrane::{MembraneState, RunEnding, Sandbox};
@@ -504,8 +506,8 @@ Console.WriteLine($"{Docs.Close("Gg.Files.ReadFile")} {Docs.CloseAll()}");
 #[test]
 fn the_program_library_and_a_reviewers_verdict_are_reached_in_csharp_too() {
     // The program library is bound from the CAPABILITY rather than from a tool name, and a reviewer
-    // gets the other ending group. Between this and the two functions above, every function this
-    // arm's catalogue describes has been driven through the real membrane.
+    // gets the other ending group. Between this, the two functions above and the alias case below,
+    // every function this arm's catalogue describes has been driven through the real membrane.
     let (outcome, _log) = evaluate(
         &prepare(
             r####"
@@ -560,6 +562,104 @@ Session.RequestChanges("widen the test", "name the file");
         ),
         "{:?}",
         outcome.completion
+    );
+}
+
+/// **Every member method reaches the operation it says it is an alias of, carrying the field its own
+/// receiver holds.**
+///
+/// The five methods this SDK declares — `IssueCreated.Wait`, `MemoryHit.Read`, `OpenView.Close`,
+/// `SubagentHandle.Send` and `ProgramSummary.Source` — are one expression-bodied line each: they
+/// take a component off the record they hang off and call the static method beside it with it. That
+/// one line is the thing no other gate can see. The catalogue records which operation each is an
+/// alias of and the [coverage gate](super::agreement) reads that record rather than the body; the
+/// [register gate](super::register) reads only the prose. So a method passing the wrong component
+/// would document perfectly, catalogue perfectly, and message a child that does not exist.
+///
+/// Each is therefore driven against the real membrane from the value the producing operation really
+/// handed back, rather than from a record built here — which proves both halves at once: that the
+/// method is on the value a program actually gets, and that the component it reads is the one gg
+/// filled in.
+#[test]
+fn a_member_method_reaches_the_operation_it_is_an_alias_of() {
+    // Four of the five hang off a value a gg TOOL produced, so the alias's own crossing lands in the
+    // log beside the crossing that made its receiver. `Views.Close` is the exception — a view is not
+    // a tool — and it is checked by what it answers instead.
+    let (outcome, log) = evaluate(
+        &prepare(
+            r####"
+var issue = Board.CreateIssue("Parse the manifest", "the parser", "the writer", "tests pass",
+                              "Builder");
+Console.WriteLine($"{issue.Id} {issue.Wait()}");
+
+var hit = Memories.SearchMemories("build")[0];
+Console.WriteLine($"{hit.Name} {hit.Read()}");
+
+var child = Delegation.SpawnSubagent("Builder", Delegation.Brief.Prompt("take the writer"));
+child.Send("prefer the simpler parser");
+Console.WriteLine(child.Id);
+
+Views.OpenText("summary", "eight files, two failing");
+Console.WriteLine($"{Views.Current()[0].Close()} {Views.Current().Count}");
+"####,
+        ),
+        &all_tools(),
+        RunEnding::Role(EndingRole::Standard),
+        false,
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "EPIC-1 wait registered",
+            "build-commands the memory contents",
+            "agent-1",
+            // The view the method closed was the one it hung off, and nothing is left behind it.
+            "1 0",
+        ]
+    );
+    assert_eq!(
+        log.names(),
+        [
+            "create_issue",
+            "wait_for_issue",
+            "search_memories",
+            "read_memory",
+            "spawn_subagent",
+            "send_message",
+        ],
+        "each method reached gg's dispatch under the operation it is an alias of"
+    );
+    // And carrying the receiver's own component, which is the half a wrong one would fail.
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" }))
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+
+    // The fifth hangs off the program library, which is bought by a capability rather than by a
+    // tool, and answers out of a history a fresh double has none of — so it needs one seeded.
+    let (outcome, _log) = evaluate_with_program(
+        &prepare(
+            r####"
+var summary = Programs.History()[0];
+Console.WriteLine($"{summary.Turn} {summary.Source()}");
+"####,
+        ),
+        3,
+        "Console.WriteLine(\"the program that ran\");",
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        ["3 Console.WriteLine(\"the program that ran\");"]
     );
 }
 
@@ -951,32 +1051,61 @@ fn the_committed_catalogue_describes_the_surface_the_sdk_offers() {
         );
     }
 
-    // The one MEMBER function this arm binds, and the type that lists it. It is an alias — a second
-    // way to reach one operation, spelled on the value that already carries the id the free function
-    // would be passed — so it counts toward no coverage and is documented like anything else.
-    let member = section(&catalogue, "functions")
+    // The MEMBER functions this arm binds, each nested in the module that produces its receiver.
+    // Every one is an ALIAS — a second way to reach one operation, spelled on the value that already
+    // carries the argument the static method would be passed — so it counts toward no coverage and
+    // is documented like anything else.
+    let aliases: Vec<(&str, &str)> = section(&catalogue, "functions")
         .iter()
-        .find(|entry| text(entry, "fqn") == "Gg.Delegation.SubagentHandle.Send")
-        .expect("`SubagentHandle.Send` is catalogued");
-    assert_eq!(text(member, "operation"), "delegation.send_message");
-    assert_eq!(text(member, "aliasOf"), "delegation.send_message");
-    assert_eq!(text(member, "kind"), "method");
-    assert_eq!(text(member, "receiver"), "SubagentHandle");
-    let handle = section(&catalogue, "types")
-        .iter()
-        .find(|entry| text(entry, "fqn") == "Gg.Delegation.SubagentHandle")
-        .expect("`SubagentHandle` is declared");
-    let listed: Vec<&str> = handle["memberFunctions"]
-        .as_array()
-        .expect("a type lists its member functions")
-        .iter()
-        .map(|entry| text(entry, "fqn"))
+        .filter(|entry| !entry["aliasOf"].is_null())
+        .map(|entry| (text(entry, "fqn"), text(entry, "aliasOf")))
         .collect();
     assert_eq!(
-        listed,
-        ["Gg.Delegation.SubagentHandle.Send"],
-        "a type view is a menu of what a value can do, and this is the whole of that menu"
+        aliases,
+        [
+            ("Gg.Board.IssueCreated.Wait", "board.wait_for_issue"),
+            ("Gg.Memories.MemoryHit.Read", "memories.read_memory"),
+            ("Gg.Views.OpenView.Close", "views.close"),
+            (
+                "Gg.Delegation.SubagentHandle.Send",
+                "delegation.send_message"
+            ),
+            ("Gg.Programs.ProgramSummary.Source", "programs.get"),
+        ]
     );
+    for entry in section(&catalogue, "functions")
+        .iter()
+        .filter(|entry| !entry["aliasOf"].is_null())
+    {
+        let fqn = text(entry, "fqn");
+        assert_eq!(text(entry, "kind"), "method", "`{fqn}` hangs off a value");
+        assert!(
+            !text(entry, "receiver").is_empty(),
+            "`{fqn}` names the type it hangs off"
+        );
+    }
+    // And each is listed on its receiver's own declaration, which is the menu a model reads when it
+    // opens the type a call handed it.
+    for (fqn, _) in &aliases {
+        let (owner, _) = fqn
+            .rsplit_once('.')
+            .expect("a member is qualified by its type");
+        let declaration = section(&catalogue, "types")
+            .iter()
+            .find(|entry| text(entry, "fqn") == owner)
+            .unwrap_or_else(|| panic!("`{owner}` is declared"));
+        let listed: Vec<&str> = declaration["memberFunctions"]
+            .as_array()
+            .expect("a type lists its member functions")
+            .iter()
+            .map(|entry| text(entry, "fqn"))
+            .collect();
+        assert_eq!(
+            listed,
+            [*fqn],
+            "a type view is a menu of what a value can do, and this is the whole of `{owner}`'s"
+        );
+    }
 
     // The idiom this arm exists to produce, asserted where a model reads it: required arguments
     // positional, optional ones expressed as DEFAULT VALUES a call names rather than as a record, a

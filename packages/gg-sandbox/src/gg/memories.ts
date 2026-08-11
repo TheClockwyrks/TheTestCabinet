@@ -57,6 +57,39 @@ export interface MemoryHit {
 
   /** A short window of the memory around its first match. */
   excerpt: string;
+
+  /**
+   * Read this hit's memory in full, with its slug already supplied.
+   *
+   * `gg.memories.readMemory` for the common case where the search result is in hand.
+   *
+   * @ggop memories.read_memory
+   * @returns the memory's contents.
+   * @throws `ToolError` with `not-found` when the memory has gone since the search ran.
+   */
+  read(): string;
+}
+
+/**
+ * Dress a search hit in the method its own slug makes possible.
+ *
+ * The record crosses the membrane as data, so the method is attached here rather than declared on a
+ * class: nothing in a program ever constructs a hit, and a constructible declaration would be one
+ * inviting it to.
+ *
+ * @internal
+ */
+function hit(matched: raw.MemoryHit): MemoryHit {
+  return {
+    name: matched.name,
+    description: matched.description,
+    matched: matched.matched,
+    occurrences: matched.occurrences,
+    excerpt: matched.excerpt,
+    read(): string {
+      return readMemory(matched.name);
+    },
+  };
 }
 
 /** One memory as a program writes it, with the two optional code halves every write accepts. */
@@ -121,7 +154,7 @@ function written(memory: MemoryWrite): raw.MemoryInput {
 }
 
 /**
- * Record a durable memory that survives a compaction, and hand back the budget it now occupies.
+ * Record a durable memory that survives a compaction.
  *
  * A memory may carry **code** as well as prose. `code` is a module in the same language a program is,
  * whose exports are bound at `lib.<name>` in every later program, so a helper got right once is never
@@ -129,11 +162,11 @@ function written(memory: MemoryWrite): raw.MemoryInput {
  * arrive on the next turn. Neither is context: they occupy no window, are never shown back, and count
  * against no body limit.
  *
- * Throws `ToolError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would
- * breach the run's caps — revising or deleting a memory beats accruing more.
- *
  * @ggop memories.write_memory
  * @param memory The memory to record. Its name must not already be taken.
+ * @returns how much of the run's memory budget is used now that the memory is held.
+ * @throws `ToolError` with `conflict` on a duplicate name, and `limit-exceeded` when the body would
+ * breach the run's caps — revising or deleting a memory beats accruing more.
  */
 export function writeMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.writeMemory(written(memory)));
@@ -144,11 +177,12 @@ export function writeMemory(memory: MemoryWrite): MemoryUsage {
  *
  * Its `code` and `onUse` are replaced too, so omitting them clears them.
  *
- * Throws `ToolError` with `not-found` when no memory has that name.
- *
  * @ggop memories.update_memory
  * @param memory The replacement, keyed on its `name`. Every other field replaces what the existing
  * memory held, and an omitted one clears it.
+ * @returns how much of the run's memory budget is used after the replacement.
+ * @throws `ToolError` with `not-found` when no memory has that name, and `limit-exceeded` when the
+ * replacement would breach the run's caps.
  */
 export function updateMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.updateMemory(written(memory)));
@@ -160,12 +194,12 @@ export function updateMemory(memory: MemoryWrite): MemoryUsage {
  * The description is required where the run keeps an index, since that is the memory's line in it. A
  * memory created here may carry `code` and `onUse` exactly as one written to the scratchpad may.
  *
- * Throws `ToolError` with `conflict` on a duplicate slug, and `limit-exceeded` when the contents, or
- * the index entry, would breach a limit.
- *
  * @ggop memories.create_memory
  * @param memory The memory to record. Its body stays out of the context window until it is read, and
  * its name must not already be taken.
+ * @returns how much of the run's memory budget is used now that the memory is held.
+ * @throws `ToolError` with `conflict` on a duplicate slug, and `limit-exceeded` when the contents,
+ * or the index entry, would breach a limit.
  */
 export function createMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.createMemory(written(memory)));
@@ -177,10 +211,10 @@ export function createMemory(memory: MemoryWrite): MemoryUsage {
  * A memory carrying code loads that code as it is read: the reply names the `lib.<key>` it is bound
  * at, and it stays bound for the rest of the session.
  *
- * Throws `ToolError` with `not-found` when no memory has that slug.
- *
  * @ggop memories.read_memory
  * @param name The memory's slug.
+ * @returns the memory's contents.
+ * @throws `ToolError` with `not-found` when no memory has that slug.
  */
 export function readMemory(name: string): string {
   return call(() => raw.readMemory(name));
@@ -191,15 +225,15 @@ export function readMemory(name: string): string {
  *
  * Appending is done by quoting the last line and replacing it with itself plus what is being added.
  *
- * Throws `ToolError` with `not-found` when the text does not appear, `conflict` when it appears more
- * than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit
- * would leave the memory empty — deleting it is the way to empty it.
- *
  * @ggop memories.edit_memory
  * @param edit The revision to make.
  * @param edit.name The slug of the memory to revise.
  * @param edit.search The exact text to find in its contents. It must appear exactly once.
  * @param edit.replace The text to put in its place.
+ * @returns how much of the run's memory budget is used after the revision.
+ * @throws `ToolError` with `not-found` when the text does not appear, `conflict` when it appears
+ * more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when
+ * the edit would leave the memory empty — deleting it is the way to empty it.
  */
 export function editMemory(edit: { name: string; search: string; replace: string }): MemoryUsage {
   return call(() => raw.editMemory(edit));
@@ -212,24 +246,24 @@ export function editMemory(edit: { name: string; search: string; replace: string
  * contents, ranked by how many distinct keywords a memory mentions and then by how often. Several
  * specific words rank better than one sentence; `readMemory` then reads the hits worth having whole.
  *
- * Throws `ToolError` with `invalid-argument` when every keyword is empty. A search that matches
- * nothing is an empty array.
- *
  * @ggop memories.search_memories
  * @param keywords The words to look for. Several specific words rank better than one sentence,
  * because a memory is ranked by how many of them it mentions.
+ * @returns the memories that matched, best first, each with the numbers it was ranked by; empty
+ * where nothing matched.
+ * @throws `ToolError` with `invalid-argument` when every keyword is empty.
  */
 export function searchMemories(keywords: string[]): MemoryHit[] {
-  return call(() => raw.searchMemories(keywords));
+  return call(() => raw.searchMemories(keywords).map(hit));
 }
 
 /**
- * Evict a memory by name, freeing room in the budget, and hand back what is left in use.
- *
- * Throws `ToolError` with `not-found` when no memory has that name.
+ * Evict a memory by name, freeing the room it held in the budget.
  *
  * @ggop memories.delete_memory
  * @param name The memory's slug.
+ * @returns how much of the run's memory budget is left in use once it has gone.
+ * @throws `ToolError` with `not-found` when no memory has that name.
  */
 export function deleteMemory(name: string): MemoryUsage {
   return call(() => raw.deleteMemory(name));

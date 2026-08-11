@@ -163,8 +163,16 @@ end
 # detail.
 #
 # `@raise` is folded in rather than dropped because what a call fails with is part of what it does,
-# and a program that does not know which failures to expect writes no `rescue` at all. It reads as
-# part of the description under its own heading, which is where every other arm puts it.
+# and a program that does not know which failures to expect writes no `rescue` at all.
+#
+# It is folded in under **Ruby's own word for it**, which is `Raises` — the word `raise` names the
+# statement, `rescue` names the recovery, and YARD renders a `@raise` tag as *Raises*. It used to be
+# wrapped in a synthesized `# Errors` markdown heading, on the reasoning that a heading was where
+# every other arm put it. That reasoning was never sound and is now plainly false: the failure
+# section's word is whatever the arm's own documentation convention uses, and no reflector may rename
+# or invent one. `# Errors` is Rust's word, from the Rust API Guidelines, and Ruby has no such
+# convention to borrow it back from. The class comes with it, because the word a program has to write
+# is `rescue GG::Core::ToolError` and a section that names only the code leaves that to be guessed.
 #
 # `@return`'s prose is folded in for the same reason and was not, which is a defect this arm
 # shipped: the tag was read for its TYPES and its text had no destination, so fifty authored
@@ -177,13 +185,53 @@ def documented(object, what)
   returned = object.tags(:return).map { |tag| markdown(tag.text.to_s) }
                    .reject { |text| text.strip.empty? }
   raised = object.tags(:raise).reject { |tag| tag.text.to_s.strip.empty? }
-                 .map { |tag| markdown(tag.text.to_s) }
+                 .map { |tag| "Raises `#{type_of(tag.types)}`: #{markdown(tag.text.to_s)}" }
   return [brief, detail] if returned.empty? && raised.empty?
 
   parts = [detail]
   parts << "Returns: #{returned.join(' ')}" unless returned.empty?
-  parts << "# Errors\n\n#{raised.join("\n\n")}" unless raised.empty?
+  parts.concat(raised)
   [brief, parts.compact.join("\n\n")]
+end
+
+# The types a `@return` tag names, treated as "this call hands nothing back".
+#
+# Ruby has no return annotation outside the tag, so `nil` and `void` in the tag's type list are the
+# only thing that says a call is called for its effect. They are load-bearing beyond the prose: the
+# rendered signature ends in the type this list gives, and a call with no `@return` at all would be
+# catalogued `-> Object`, which is a shape no reader can act on.
+VOID_RETURNS = %w[nil void].freeze
+
+# A call that hands something back says what, and a call that hands nothing back says nothing.
+#
+# Both halves are refused here, at the declaration the author is standing on, rather than left to a
+# count somebody takes later. The first is the completeness rule the `Returns:` line exists for: a
+# signature ending in `GG::Context::ReclaimReport` names a type without saying which of its four
+# numbers answers the question that was asked, so a model that has to guess opens a documentation
+# view for nothing. The second stops the line becoming a ritual: `nil` is the whole answer, and
+# `Returns: nothing; the edit either happened or raised` restates its own brief, which is the
+# unnecessary words this arm's register forbids on its own terms.
+#
+# The TYPE stays on a void `@return` even though the prose goes, because it is what renders the
+# signature's `-> nil`. It is the text that is refused, not the tag.
+def require_return_doc(object, what)
+  tags = object.tags(:return)
+  if tags.empty?
+    raise "#{what} carries no `@return` tag, so its signature would be catalogued `-> Object`"
+  end
+
+  types = tags.flat_map { |tag| tag.types.to_a }
+  hands = types.any? { |type| !VOID_RETURNS.include?(type.to_s) }
+  documented = tags.any? { |tag| !tag.text.to_s.strip.empty? }
+  if hands && !documented
+    raise "#{what} hands back `#{type_of(types)}` and writes no prose on its `@return`; a model " \
+          "reading the type still has to be told which part of the value answers the question it " \
+          "asked"
+  end
+  return unless !hands && documented
+
+  raise "#{what} hands nothing back and writes prose on its `@return`; `nil` is the whole " \
+        "answer, and a line restating it is words a reader pays for and learns nothing from"
 end
 
 # YARD's type list as one readable type: `[Integer, nil]` reads `Integer or nil`, which is how
@@ -514,6 +562,7 @@ def function_entry(entry)
   method = method_at(entry)
   receiver = entry.module_function? ? nil : entry.owner.name.to_s.split("::").last
   what = "`#{entry.fqn}`"
+  require_return_doc(method, what)
   brief, detail = documented(method, what)
   {
     "operation" => entry.operation,

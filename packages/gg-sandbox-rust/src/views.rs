@@ -19,17 +19,22 @@ use crate::wire;
 
 /// Read a file and place it in the context window, attributed to its path and closable by it.
 ///
-/// What comes back is exactly what [`files::read_file`](crate::files::read_file) returns; the
-/// difference is the view. That split is the point: reading gets bytes for the program, opening shows
-/// the file to the agent, so a program that reads forty files to grep them puts nothing in the
-/// window. `options.offset` and `options.limit` select a window of lines, and two pages of one file
-/// are two views that coexist; re-opening the same page replaces what it showed rather than piling up
-/// a duplicate. An image is shown as a picture, and this is the only call that shows one.
+/// The split from [`files::read_file`](crate::files::read_file) is the point: reading gets bytes for
+/// the program, opening shows the file to the agent, so a program that reads forty files to grep them
+/// puts nothing in the window. `options.offset` and `options.limit` select a window of lines, and two
+/// pages of one file are two views that coexist; re-opening the same page replaces what it showed
+/// rather than piling up a duplicate. An image is shown as a picture, and this is the only call that
+/// shows one.
 ///
 /// # Arguments
 ///
 /// * `path` — The file to open, relative to the workspace or absolute.
 /// * `options` — The window of lines to show; `files::ReadOptions::default()` shows the whole file.
+///
+/// # Returns
+///
+/// Exactly what [`files::read_file`](crate::files::read_file) returns for the same file. It is the
+/// program's copy and the view is the agent's, so closing the view leaves the value untouched.
 ///
 /// # Errors
 ///
@@ -108,6 +113,15 @@ pub fn open_docs_view(name: &str) -> Result<(), ToolError> {
 ///
 /// * `selector` — What the view is filed under: a file's path, a text view's label, or
 ///   `search results`.
+///
+/// # Returns
+///
+/// How many views were closed, counting each page of a paged file as one of them.
+///
+/// # Errors
+///
+/// `InvalidArgument` for an empty selector, which names nothing rather than everything — no call
+/// here closes the window wholesale.
 #[doc(alias = "ggop:views.close")]
 pub fn close(selector: &str) -> Result<u32, ToolError> {
     wire::lift(views::close_view(selector))
@@ -119,6 +133,11 @@ pub fn close(selector: &str) -> Result<u32, ToolError> {
 /// what it costs in [`tokens`](OpenView::tokens), and — for a paged file view — the
 /// [`region`](OpenView::region) it covers. Reading it is what decides what to close when the window
 /// is filling up.
+///
+/// # Returns
+///
+/// Every view open right now, in no particular order. The cost on each is an estimate, so it ranks
+/// the views worth closing rather than saying exactly what closing one frees.
 #[doc(alias = "ggop:views.current")]
 pub fn current() -> Vec<OpenView> {
     views::current_views()
@@ -161,4 +180,27 @@ pub struct OpenView {
     pub tokens: u64,
     /// The line window a paged file view covers; `None` for a whole-file view and for text views.
     pub region: Option<ViewRegion>,
+}
+
+impl OpenView {
+    /// Close this view, with its selector already supplied.
+    ///
+    /// [`close`] for the common case where the open view is in hand — so every view under the same
+    /// selector goes, which for a paged file is every page of that path.
+    ///
+    /// A documentation view is the one this does not take away, for the reason [`close`] gives:
+    /// [`docs::close`](crate::docs::close) is the call for one of those.
+    ///
+    /// # Returns
+    ///
+    /// How many views were closed, which is `0` when this one has been closed already.
+    ///
+    /// # Errors
+    ///
+    /// `InvalidArgument` when this view's [`selector`](Self::selector) is empty, which no view gg
+    /// reports ever is.
+    #[doc(alias = "ggop-alias:views.close")]
+    pub fn close(&self) -> Result<u32, ToolError> {
+        close(&self.selector)
+    }
 }

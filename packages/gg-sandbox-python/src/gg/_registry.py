@@ -62,3 +62,40 @@ def operation(id: str) -> Callable[[F], F]:
         return function
 
     return mark
+
+
+ALIAS_ATTRIBUTE = "__gg_alias_of__"
+"""The attribute the alias decorator leaves on a method, naming the operation it is a second way to
+reach.
+
+Deliberately a *different* attribute from `ATTRIBUTE`, and deliberately absent from `REGISTRY`. An
+alias is not a binding: `gg.board.wait_for_issue` is the one function that binds
+`board.wait_for_issue`, and `IssueCreated.wait` is a shorter way to write a call to it. Registering
+the method too would put a second claim on one operation — which the decorator above refuses
+outright — and would make `gg.scope` bind a bound method as though it were a module-level function.
+
+It is read the way `ATTRIBUTE` is read statically — `tools/signatures.py` takes the id off the
+written decorator rather than off the object, since griffe never imports this package — and it is
+left on the function for the same reason that one is: a fact about a declaration belongs on the
+declaration, where a program that inspects what it was given can see it too.
+"""
+
+
+def alias(id: str) -> Callable[[F], F]:
+    """Declare that the method below is a second way to reach the gg operation `id`.
+
+    A convenience method on the value an operation's result carries — `hit.read()` for the memory a
+    search matched, `view.close()` for a view `current` listed — which calls the module-level
+    function and adds nothing to what this arm can do. It inherits the operation's gate for the same
+    reason: the call it makes is the gated one, so an agent without the capability meets the same
+    refusal by either spelling.
+
+    Args:
+        id: The operation this is a second way to reach, as gg's own table spells it.
+    """
+
+    def mark(function: F) -> F:
+        setattr(function, ALIAS_ATTRIBUTE, id)
+        return function
+
+    return mark

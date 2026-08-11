@@ -17,6 +17,7 @@ public static partial class Programs
     /// sixty lines per entry would put the whole session back into the one place that exists to
     /// avoid re-reading it. It is empty before the first program has been recorded.
     /// </remarks>
+    /// <returns>one summary per program the library still holds, the ones that failed included.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.Unavailable"/> when this agent keeps no program library.
     /// </exception>
@@ -52,6 +53,7 @@ public static partial class Programs
     /// The turn to fetch, as <see cref="ProgramSummary.Turn"/> reports it. Left out, the most recent
     /// one is returned.
     /// </param>
+    /// <returns>that program's source, ready to patch and hand to <see cref="Rerun"/>.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.NotFound"/> — naming the turns that are held — for a turn that ran
     /// no program, or one the library's retention has already dropped, and

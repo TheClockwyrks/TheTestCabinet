@@ -43,6 +43,10 @@ pub(crate) const TOOLS: &[&str] = &[
 /// * `body` — The memory's contents.
 /// * `options` — The code halves, which may be left out.
 ///
+/// # Returns
+///
+/// The budget after the write, so the room left for the next one is read rather than guessed at.
+///
 /// # Errors
 ///
 /// `Conflict` on a duplicate name, and `LimitExceeded` when the body would breach the run's caps —
@@ -73,6 +77,10 @@ pub fn write_memory(
 /// * `description` — The one-line description to replace the old one with.
 /// * `body` — The contents to replace the old ones with.
 /// * `options` — The code halves. Leaving one out clears the one the memory had.
+///
+/// # Returns
+///
+/// The budget after the replacement, which moves when the new body is a different length.
 ///
 /// # Errors
 ///
@@ -106,6 +114,11 @@ pub fn update_memory(
 ///   read.
 /// * `options` — The code halves, which may be left out. They load on that first read.
 ///
+/// # Returns
+///
+/// The budget after the creation, index included, so the room left for the next one is read rather
+/// than guessed at.
+///
 /// # Errors
 ///
 /// `InvalidArgument` for a blank field or a slug with characters a name may not hold, `Conflict` on
@@ -136,6 +149,10 @@ pub fn create_memory(
 ///
 /// * `name` — The memory's slug.
 ///
+/// # Returns
+///
+/// The memory's contents in full — the whole body, never the index line or an excerpt of it.
+///
 /// # Errors
 ///
 /// `NotFound` when no memory has that slug.
@@ -153,6 +170,10 @@ pub fn read_memory(name: &str) -> Result<String, ToolError> {
 /// * `name` — The slug of the memory to revise.
 /// * `search` — The exact text to find in its contents. It must appear exactly once.
 /// * `replace` — The text to put in its place.
+///
+/// # Returns
+///
+/// The budget after the edit, which moves by the difference between `search` and `replace`.
 ///
 /// # Errors
 ///
@@ -181,6 +202,11 @@ pub fn edit_memory(name: &str, search: &str, replace: &str) -> Result<MemoryUsag
 /// * `keywords` — The words to look for. Several specific words rank better than one sentence,
 ///   because a memory is ranked by how many of them it mentions.
 ///
+/// # Returns
+///
+/// The memories that matched, most keywords first, each with the numbers it was ranked by and a
+/// window around its first match.
+///
 /// # Errors
 ///
 /// `InvalidArgument` when every keyword is empty.
@@ -195,6 +221,10 @@ pub fn search_memories(keywords: &[&str]) -> Result<Vec<MemoryHit>, ToolError> {
 /// # Arguments
 ///
 /// * `name` — The memory's slug.
+///
+/// # Returns
+///
+/// The budget after the eviction, which is what says whether there is now room to write.
 ///
 /// # Errors
 ///
@@ -254,6 +284,25 @@ pub struct MemoryHit {
     pub occurrences: u32,
     /// A short window of the memory around its first match.
     pub excerpt: String,
+}
+
+impl MemoryHit {
+    /// Read this memory's full contents, which is what brings them into context.
+    ///
+    /// [`read_memory`] with the slug already supplied, for the common case where the hit worth having
+    /// in full is in hand. The excerpt a hit carries is a window around one match, not the memory.
+    ///
+    /// # Returns
+    ///
+    /// The memory's contents in full.
+    ///
+    /// # Errors
+    ///
+    /// `NotFound` when the memory has since been deleted.
+    #[doc(alias = "ggop-alias:memories.read_memory")]
+    pub fn read(&self) -> Result<String, ToolError> {
+        read_memory(&self.name)
+    }
 }
 
 /// The two code halves every write of a memory accepts, and may leave out.

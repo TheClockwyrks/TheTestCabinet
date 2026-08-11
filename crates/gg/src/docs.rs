@@ -79,8 +79,9 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgr
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, FunctionSummary, Grants, Parameter, ParameterKind, ProgramLanguage,
-    TypeDeclaration, TypeReference, catalogue_functions, language, operation_of, type_declaration,
+    CatalogueFunction, FunctionSummary, Grants, MemberFunction, Parameter, ParameterKind,
+    ProgramLanguage, TypeDeclaration, TypeReference, catalogue_functions, language,
+    operation_by_id, operation_of, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -331,7 +332,67 @@ impl DocsRuntime {
         // name a signature wrote, because those are two different strings on a converted arm and
         // asking under the wrong one refuses every type it declares. See `TypeDeclaration::key`.
         self.type_is_reachable(declaration.key())
-            .then(|| declare(declaration))
+            .then(|| self.declare(declaration))
+    }
+
+    /// One type declaration, with a line per member and then a line per **member function** this
+    /// agent binds — the whole body of a **type** docview.
+    ///
+    /// The declaration alone says what fields a record has and nothing about what any of them
+    /// *means*, and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm
+    /// carries no type of its own — the arm is the value — so it is rendered as the bare literal.
+    ///
+    /// Both the type's paragraph and each member's line are read through
+    /// [`Prose`](crate::sandbox::Prose) rather than off the `doc` field they used to be, because
+    /// that field is the shape a [`V1`](crate::sandbox::SchemaVersion::V1) catalogue writes and a
+    /// [`V2`](crate::sandbox::SchemaVersion::V2) one omits entirely. Reaching for it directly
+    /// renders a converted arm's every type view as a declaration with nothing under it — the one
+    /// half of a type view a model cannot reconstruct for itself.
+    ///
+    /// # Why the member functions are here, and why they are gated
+    ///
+    /// A member function is the *second* way to reach an operation the surface already binds —
+    /// `view.close()` on the open view a listing handed back, rather than
+    /// `views.close(view.selector)` — and it is discoverable nowhere else on the path a model
+    /// actually walks: it opens the declaration of what a call gave it, and the affordance has to be
+    /// *in that view* or it is found only by someone who already knew to search for it. One line
+    /// each, which is what a [`MemberFunction`] carries: its fully-qualified name, which is the key
+    /// that opens its own documentation, and its brief.
+    ///
+    /// It is gated by the same [`bound`](Self::bound) predicate every other name is, and the gate is
+    /// load-bearing rather than defensive: a type is visible when *some* bound function reaches it,
+    /// which is a weaker condition than every operation hanging off it being bound. Listing an
+    /// unbound helper would hand a model the name of a call its permission filter exists to keep out
+    /// of sight — the disclosure [`read_type`](Self::read_type)'s own gate is written to prevent.
+    fn declare(&self, declaration: &'static TypeDeclaration) -> String {
+        let mut text = format!(
+            "{}\n{}",
+            declaration.declaration,
+            declaration.prose().rendered()
+        );
+        for member in &declaration.members {
+            let prose = member.prose();
+            let documented = prose.rendered();
+            match &member.r#type {
+                Some(kind) => text.push_str(&format!("\n  {}: {kind} — {documented}", member.name)),
+                None => text.push_str(&format!("\n  {} — {documented}", member.name)),
+            }
+        }
+        let offered: Vec<&MemberFunction> = declaration
+            .member_functions
+            .iter()
+            .filter(|member| {
+                operation_by_id(&member.operation)
+                    .is_some_and(|operation| self.grants.permits(operation.binding))
+            })
+            .collect();
+        if !offered.is_empty() {
+            text.push_str("\n\nWhat a value of it can do, each openable by the name below:");
+            for member in offered {
+                text.push_str(&format!("\n  {} — {}", member.fqn, member.brief));
+            }
+        }
+        text
     }
 
     /// Whether some function this agent's scope binds refers to the type called `name` — the
@@ -732,36 +793,6 @@ fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
     for field in &parameter.fields {
         describe(text, field, depth + 1);
     }
-}
-
-/// One type declaration, with a line per member — the whole body of a **type** docview.
-///
-/// The declaration alone says what fields a record has and nothing about what any of them *means*,
-/// and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm carries no type
-/// of its own — the arm is the value — so it is rendered as the bare literal.
-///
-/// Both the type's paragraph and each member's line are read through
-/// [`Prose`](crate::sandbox::Prose) rather than off the
-/// `doc` field they used to be, because that field is the shape a
-/// [`V1`](crate::sandbox::SchemaVersion::V1) catalogue writes and a
-/// [`V2`](crate::sandbox::SchemaVersion::V2) one omits entirely. Reaching for it directly renders a
-/// converted arm's every type view as a declaration with nothing under it — the one half of a type
-/// view a model cannot reconstruct for itself.
-fn declare(declaration: &'static TypeDeclaration) -> String {
-    let mut text = format!(
-        "{}\n{}",
-        declaration.declaration,
-        declaration.prose().rendered()
-    );
-    for member in &declaration.members {
-        let prose = member.prose();
-        let documented = prose.rendered();
-        match &member.r#type {
-            Some(kind) => text.push_str(&format!("\n  {}: {kind} — {documented}", member.name)),
-            None => text.push_str(&format!("\n  {} — {documented}", member.name)),
-        }
-    }
-    text
 }
 
 #[cfg(test)]

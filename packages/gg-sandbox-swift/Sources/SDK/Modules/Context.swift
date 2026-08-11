@@ -17,6 +17,8 @@ public enum context {
     ///
     /// - Parameter path: The file whose views to drop. Left out, it drops every file view held.
     /// - Returns: what the reclaim actually freed.
+    /// - Throws: `core.ToolError` with `.invalidArgument` for a path that is given but empty;
+    ///   leaving it out altogether is how every file view is dropped.
     /// - ggop: context.evict_file_view
     @discardableResult
     public static func evictFileView(_ path: String? = nil) throws -> ReclaimReport {
@@ -70,6 +72,7 @@ public enum context {
     ///
     /// - Parameter query: The substring to look for. Matching is case-insensitive.
     /// - Returns: whether anything is archived at all, and the matches.
+    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty query.
     /// - ggop: context.search_archive
     public static func searchArchive(_ query: String) throws -> ArchiveSearch {
         try withScratch { scratch in
@@ -101,8 +104,9 @@ public enum context {
     ///     `files` is gone.
     ///   - files: The paths to read afresh into the restarted window. Empty by default, which reads
     ///     nothing back.
-    /// - Throws: `core.ToolError` with `.refused` when a compaction is already in flight and this
-    ///   call is not the one it asked for.
+    /// - Throws: `core.ToolError` with `.invalidArgument` for a blank summary. This is the one call
+    ///   gg does not refuse while a compaction is in flight, since nothing else can clear the
+    ///   window.
     /// - ggop: context.compact
     public static func compact(summary: String, files: [String] = []) throws {
         try withScratch { scratch in

@@ -18,6 +18,7 @@ public static partial class Skills
     /// The skill's name, exactly as the system prompt lists it. An unknown one comes back with the
     /// full list of the skills this run has.
     /// </param>
+    /// <returns>the skill's instructions in full, which the session now holds pinned as well.</returns>
     /// <exception cref="ToolException">
     /// <see cref="ToolErrorCode.NotFound"/> for a name this run has no skill under.
     /// </exception>

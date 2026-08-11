@@ -98,6 +98,8 @@ public enum files {
     ///     created.
     ///   - contents: The UTF-8 text to write. It replaces the file entirely.
     /// - Returns: how many bytes were written.
+    /// - Throws: `core.ToolError` with `.invalidArgument` for an empty path, and `.ioError` when
+    ///   creating the parent directories or the write itself failed.
     /// - ggop: files.write_file
     @discardableResult
     public static func writeFile(_ path: String, contents: String) throws -> Int {
@@ -147,6 +149,8 @@ public enum files {
     /// - Parameter path: The directory to list, relative to the workspace or absolute. Left out, it
     ///   lists the workspace root.
     /// - Returns: the directory's entries, sorted by name.
+    /// - Throws: `core.ToolError` with `.notFound` for a directory that is not there, and
+    ///   `.invalidArgument` for a path that is given but empty.
     /// - ggop: files.list_dir
     public static func listDir(_ path: String? = nil) throws -> [DirEntry] {
         try withScratch { scratch in

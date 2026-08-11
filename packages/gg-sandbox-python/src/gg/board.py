@@ -17,7 +17,7 @@ from enum import Enum
 from wit_world.imports import board as wire
 from wit_world.imports import types as wire_types
 
-from ._registry import operation
+from ._registry import alias, operation
 from .core import UNCHANGED, Unchanged, _call, _strings
 
 __all__ = [
@@ -92,6 +92,22 @@ class IssueCreated:
     board: BoardUsage
     """How much of the board budget is used."""
 
+    @alias("board.wait_for_issue")
+    def wait(self) -> str:
+        """Register a wait on this issue, which suspends the agent between turns until it is terminal.
+
+        `wait_for_issue` with the id already supplied, for the common case where the issue was just
+        created and the next turn's work is sequenced behind it.
+
+        Returns:
+            gg's acknowledgement that the wait is registered, which says what happens once the
+                program ends.
+
+        Raises:
+            ToolError: `not-found` when the issue has since been removed.
+        """
+        return wait_for_issue(self.id)
+
 
 def _text_edit(value: str | None | Unchanged) -> wire_types.TextEdit:
     """Lower the `UNCHANGED` / `None` / string sentinel onto the membrane's three-way text edit."""
@@ -128,7 +144,7 @@ def _usage(usage: wire.BoardUsage) -> BoardUsage:
 
 @operation("board.create_epic")
 def create_epic(prefix: str, title: str, description: str) -> EpicCreated:
-    """Create an epic to group related issues, and hand back the id its prefix resolved to.
+    """Create an epic to group related issues.
 
     `prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is
     also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and
@@ -139,6 +155,9 @@ def create_epic(prefix: str, title: str, description: str) -> EpicCreated:
             are numbered from.
         title: A short line naming the body of work.
         description: What the epic covers, for a reader who has not seen its issues.
+
+    Returns:
+        The id the prefix resolved to, and the board budget the epic left behind.
 
     Raises:
         ToolError: `invalid-argument` when the prefix is not 3-6 letters or a required field is
@@ -164,12 +183,10 @@ def create_issue(
     epic_id: str | None = None,
     reviewers: list[str] | None = None,
 ) -> IssueCreated:
-    """Create a self-contained, dispatchable issue, and hand back the id the board assigned it.
+    """Create a self-contained, dispatchable issue, which a child agent can be briefed from.
 
-    The id is numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has
-    no epic. It is the board's to choose, so it is worth keeping: blocking a later issue on this one,
-    and waiting for it, both take it. `in_scope`, `out_of_scope` and `completion_criteria` are what a
-    child agent is briefed from, so they are written for a reader with no other context.
+    `in_scope`, `out_of_scope` and `completion_criteria` are what a child agent is briefed from,
+    so they are written for a reader with no other context.
 
     Args:
         title: A short line naming the work.
@@ -185,6 +202,11 @@ def create_issue(
             numbered under `ISSUE`.
         reviewers: The agents that must approve the work, from the set this agent may spawn. Required
             when this run's reviewers feature is on.
+
+    Returns:
+        The id the board **assigned**, and the board budget the issue left behind. It is numbered
+            under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic,
+            and keeping it is what blocks a later issue on this one or waits for it.
 
     Raises:
         ToolError: `invalid-argument` when a required field is blank or `agent` or a reviewer is not
@@ -280,6 +302,9 @@ def remove_epic(id: str) -> BoardUsage:
     Args:
         id: The epic to remove.
 
+    Returns:
+        The board budget the removal left behind.
+
     Raises:
         ToolError: `not-found` for an unknown id.
     """
@@ -293,6 +318,9 @@ def remove_issue(id: str) -> BoardUsage:
     Args:
         id: The issue to remove.
 
+    Returns:
+        The board budget the removal left behind.
+
     Raises:
         ToolError: `not-found` for an unknown id.
     """
@@ -301,7 +329,7 @@ def remove_issue(id: str) -> BoardUsage:
 
 @operation("board.wait_for_issue")
 def wait_for_issue(id: str) -> str:
-    """Register a wait on an issue and hand back an acknowledgement.
+    """Register a wait on an issue, which suspends the agent between turns until it is terminal.
 
     Nothing blocks inside the program: the wait is recorded and the call returns at once, so the rest
     of the program still runs. The suspension happens after the program ends, between turns — the run
@@ -311,6 +339,10 @@ def wait_for_issue(id: str) -> str:
 
     Args:
         id: The issue to wait on. It may not be the issue this agent was assigned.
+
+    Returns:
+        gg's acknowledgement that the wait is registered, which says what happens once the program
+            ends.
 
     Raises:
         ToolError: `invalid-argument` for a blank id, or for this agent's own assigned issue,

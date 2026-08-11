@@ -34,6 +34,18 @@ export interface ProgramSummary {
 
   /** The error it ended with, where it did not run to its end. */
   error?: string;
+
+  /**
+   * Fetch this program's source, with its turn already supplied.
+   *
+   * `gg.programs.get` for the common case where the summary is in hand.
+   *
+   * @ggop programs.get
+   * @returns the exact source of the program that ran on that turn.
+   * @throws `ToolError` with `not-found` when the library has dropped that turn since the history
+   * was read.
+   */
+  source(): string;
 }
 
 /**
@@ -43,12 +55,14 @@ export interface ProgramSummary {
  * shapes rather than sources, so `get` is what fetches one. The list survives a compaction, which
  * makes it the way to find a program whose text has left the context window.
  *
- * Throws `ToolError` with `unavailable` for an agent with no program library. It is empty, never an
- * error, for one that has a library and has run nothing yet.
- *
  * @ggop programs.history
+ * @returns one entry per program already run, oldest first; empty for an agent that has a library
+ * and has run nothing yet.
+ * @throws `ToolError` with `unavailable` for an agent with no program library.
  */
 export function history(): ProgramSummary[] {
+  // The method is attached here rather than declared on a class: nothing in a program ever
+  // constructs a summary, and a constructible declaration would be one inviting it to.
   return call(() =>
     raw.history().map((entry) => ({
       turn: entry.turn,
@@ -56,6 +70,9 @@ export function history(): ProgramSummary[] {
       chars: entry.chars,
       ok: entry.ok,
       ...(entry.error === undefined ? {} : { error: entry.error }),
+      source(): string {
+        return get(entry.turn);
+      },
     })),
   );
 }
@@ -68,11 +85,12 @@ export function history(): ProgramSummary[] {
  * **executed**, so a turn whose program was itself handed over by `rerun` yields the program that
  * ran rather than the few lines that asked for it, and fetch, patch and run compose turn after turn.
  *
- * Throws `ToolError` with `not-found`, naming the turns that are held, for a turn that ran no program
- * or one old enough that the library has dropped it.
- *
  * @ggop programs.get
  * @param turn The turn whose program to fetch, as `history` reports it. Omit it for the most recent.
+ * @returns the exact source of the program that ran on that turn.
+ * @throws `ToolError` with `unavailable` for an agent with no program library, and `not-found` —
+ * naming the turns that are held — for a turn that ran no program or one old enough to have been
+ * dropped.
  */
 export function get(turn?: number): string {
   return call(() => raw.get(uint("get", "turn", turn, U32_MAX)));
@@ -89,11 +107,10 @@ export function get(turn?: number): string {
  * nobody can see. A failed handing-over program cancels the hand-over along with everything else it
  * decided, and the turn is reported as an ordinary error instead.
  *
- * Throws `ToolError` with `invalid-argument` for a blank source, and `refused` for a second
- * hand-over in one turn.
- *
  * @ggop programs.rerun
  * @param source The program to run in place of this one. It may not be blank.
+ * @throws `ToolError` with `unavailable` for an agent with no program library, `invalid-argument`
+ * for a blank source, and `refused` for a second hand-over in one turn.
  */
 export function rerun(source: string): void {
   call(() => raw.rerun(source));

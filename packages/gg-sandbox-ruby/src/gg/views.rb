@@ -86,7 +86,7 @@ module GG
     #   @param label [String] What to file the view under. `GG::Views.close` takes it, and opening
     #     the same label again replaces what it showed. It may not be empty.
     #   @param body [String] A block returning what to show.
-    # @return [nil] nothing; the view arrives in the next prompt
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:invalid_argument` for an empty label — a view with no selector
     #   could never be closed or attributed — and for neither a `body` argument nor a block, and
     #   `:limit_exceeded`, naming the cap, for a body or label over gg's caps. Nothing is ever
@@ -116,7 +116,7 @@ module GG
     # @param target [Symbol, String, Method] The function to document, by its fully-qualified name
     #   (`"GG::Files.read_file"`), by the name it is called by in its module, or as the method
     #   itself.
-    # @return [nil] nothing; the documentation arrives in the next prompt
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:not_found` for an unknown or unbound name.
     def self.open_docs_view(target)
       Wire.call("open_docs_view", "views", "openDocsView", [docs_name(target)])
@@ -139,6 +139,8 @@ module GG
     # @param selector [String] What the view is filed under: a file's path, a text view's label, or
     #   `search results`.
     # @return [Integer] how many views were closed
+    # @raise [GG::Core::ToolError] `:invalid_argument` for an empty selector, which names nothing
+    #   rather than everything — no call here closes the window wholesale.
     def self.close(selector)
       Wire.call("close", "views", "closeView", [selector])
     end

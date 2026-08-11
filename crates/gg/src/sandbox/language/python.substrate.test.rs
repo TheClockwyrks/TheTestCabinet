@@ -1420,30 +1420,40 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     let functions = catalogue["functions"]
         .as_array()
         .expect("the catalogue's `functions` is an array");
-    let entry = |value: &Value| -> (String, String, String) {
+    // What a program *writes* to reach one entry, which is not one shape on this arm. A
+    // module-level function is reached on the module gg files it under; a **method** — the second,
+    // shorter way to reach an operation, hanging off the value that operation's result carries — is
+    // reached on the type it is declared on, and the type is bound in a program's scope under its
+    // bare name. `receiver` is the field that says which of the two an entry is, so the expression
+    // is derived from the entry rather than assumed.
+    let written = |value: &Value| -> String {
+        let name = value["name"].as_str().expect("a name");
+        match value["receiver"].as_str() {
+            Some(receiver) => format!("{receiver}.{name}"),
+            None => {
+                let module = value["module"].as_str().expect("a module");
+                format!("{module}.{name}")
+            }
+        }
+    };
+    let entry = |value: &Value| -> (String, String) {
         (
             value["operation"]
                 .as_str()
                 .expect("an operation")
                 .to_string(),
-            value["module"].as_str().expect("a module").to_string(),
-            value["name"].as_str().expect("a name").to_string(),
+            written(value),
         )
     };
     let review_endings = ["session.approve", "session.request_changes"];
 
     // A standard agent that keeps a library gets every operation except the reviewer's two endings,
     // and nothing beside them: the catalogue is the whole of the surface.
-    let expected: Vec<(String, String)> = functions
+    let calls: Vec<String> = functions
         .iter()
         .map(entry)
-        .filter(|(operation, ..)| !review_endings.contains(&operation.as_str()))
-        .map(|(_, module, name)| (module, name))
-        .collect();
-
-    let calls: Vec<String> = expected
-        .iter()
-        .map(|(module, name)| format!("{module}.{name}"))
+        .filter(|(operation, _)| !review_endings.contains(&operation.as_str()))
+        .map(|(_, call)| call)
         .collect();
     let program = format!(
         "print(\",\".join(\"missing\" if not callable(f) else \"ok\" for f in [{}]))",
@@ -1461,23 +1471,36 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     assert_eq!(
         logs(&outcome),
         [vec!["ok"; calls.len()].join(",")],
-        "every call the catalogue describes is bound as a function on the module it names"
+        "every call the catalogue describes is bound where it says it is"
     );
 
     // And under the FULLY-QUALIFIED name the catalogue keys it by, which is the same object rather
     // than a second binding of it. That name is what a documentation view is opened by, what a
     // search returns and what gg quotes back in a refusal, so a program that read it everywhere and
     // could not type it would be reading a key it has no use for.
-    let qualified: Vec<String> = catalogue["functions"]
-        .as_array()
-        .expect("an array")
+    //
+    // Asked of the module-level functions alone, and the exclusion is about what a member's key IS
+    // rather than about what this guest binds. `gg.views.OpenView.close` is a documentation key
+    // whose middle segment is a TYPE, and the capability namespace a program is handed carries the
+    // module's functions rather than its types — so the key is a name to open a view by and never
+    // an expression to write, which is why the entry's `call` is null. That the key resolves at all
+    // is gated where it belongs, over every arm at once, by `signatures::fqn`.
+    let qualified: Vec<(String, String)> = functions
         .iter()
-        .map(|value| value["fqn"].as_str().expect("a name").to_string())
-        .filter(|fqn| !fqn.ends_with(".approve") && !fqn.ends_with(".request_changes"))
+        .filter(|value| value["receiver"].is_null())
+        .filter(|value| {
+            let operation = value["operation"].as_str().expect("an operation");
+            !review_endings.contains(&operation)
+        })
+        .map(|value| {
+            (
+                value["fqn"].as_str().expect("a name").to_string(),
+                written(value),
+            )
+        })
         .collect();
     let pairs: Vec<String> = qualified
         .iter()
-        .zip(&calls)
         .map(|(fqn, short)| format!("\"ok\" if {fqn} is {short} else \"different\""))
         .collect();
     let (outcome, _log) = run_as(
@@ -1499,8 +1522,8 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
     let review: Vec<String> = functions
         .iter()
         .map(entry)
-        .filter(|(operation, ..)| review_endings.contains(&operation.as_str()))
-        .map(|(_, module, name)| format!("{module}.{name}"))
+        .filter(|(operation, _)| review_endings.contains(&operation.as_str()))
+        .map(|(_, call)| call)
         .collect();
     let (outcome, _log) = run_as(
         &format!(
@@ -1540,6 +1563,122 @@ fn the_committed_catalogue_describes_the_functions_the_guest_really_binds() {
         canned_outcome,
     );
     assert_eq!(logs(&outcome), [vec!["ok"; types.len()].join(",")]);
+}
+
+/// **Every convenience method reaches the operation it says it is an alias of, keyed on the field
+/// its receiver really carries.**
+///
+/// The five methods this SDK declares — `IssueCreated.wait`, `MemoryHit.read`, `OpenView.close`,
+/// `SubagentHandle.send` and `ProgramSummary.source` — are one line of body each: they take a field
+/// off the value they hang off and call the module-level function with it. That one line is
+/// precisely what no other gate can see. The catalogue records which operation each is an alias of,
+/// the [coverage gate](super::super::agreement) reads that record rather than the body, and the
+/// [register gate](super::super::register) reads only the prose — so a method handing `self.slot`
+/// where the call wants `self.id` would document perfectly, catalogue perfectly, and deliver every
+/// message to a child that does not exist.
+///
+/// So each one is driven against the real membrane, from the value the operation that produces it
+/// really handed back rather than from a literal built here. Two things follow from that choice:
+/// the method is proved to be on the value a program actually gets, and the field it reads is
+/// proved to be the one gg filled in.
+#[test]
+fn a_convenience_method_reaches_the_operation_it_is_an_alias_of() {
+    // Four of the five hang off a value a gg TOOL produced, so the alias's crossing is visible in
+    // the log beside the crossing that made the receiver. `views.close` is the exception among
+    // them — it is a view rather than a tool — and it is checked by what it answers instead.
+    let (outcome, log) = run_as(
+        r#"
+issue = board.create_issue("Parse the manifest", "the parser", "the writer", "tests pass", "Builder")
+print(issue.id, issue.wait())
+
+hit = memories.search_memories(["build"])[0]
+print(hit.name, hit.read())
+
+child = delegation.spawn_subagent("Builder", prompt="take the writer")
+child.send("prefer the simpler parser")
+print(child.id)
+
+views.open_text("summary", "eight files, two failing")
+print(views.current()[0].close(), len(views.current()))
+"#,
+        &all_tools(),
+        &[],
+        RunEnding::Role(crate::ending::EndingRole::Standard),
+        true,
+        SandboxLimits::default(),
+        canned_outcome,
+    );
+    assert_eq!(
+        logs(&outcome),
+        [
+            "EPIC-1 wait registered",
+            "build-commands the memory contents",
+            "agent-1",
+            // The view the method closed was the one it hung off, and nothing is left behind it.
+            "1 0",
+        ]
+    );
+    assert_eq!(
+        log.names(),
+        [
+            "create_issue",
+            "wait_for_issue",
+            "search_memories",
+            "read_memory",
+            "spawn_subagent",
+            "send_message",
+        ],
+        "each method reached gg's dispatch under the operation it is an alias of"
+    );
+    // And carrying the receiver's own key, which is the half a wrong field would fail.
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" }))
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" }))
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
+    );
+
+    // The fifth hangs off the program library, which is bound from a capability rather than from a
+    // tool, so it needs a store that grants one and a library with something in it.
+    let log = CallLog::default();
+    let api = FakeToolApi::new(&log).with_program(3, "print('the program that ran')");
+    // The component before the store, as everywhere in this file; see [`run_as`] for why.
+    let component = component();
+    let linker = linker::<FakeToolApi>().expect("the production linker builds");
+    let limits = SandboxLimits::default();
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: true,
+        docview_close: false,
+    };
+    let mut store = bounded_store(
+        MembraneState::new(api, python(), scope, limits, None),
+        limits,
+    );
+    let bound = Sandbox::instantiate(&mut store, component, &linker).expect("instantiates");
+    bound
+        .call_run(
+            &mut store,
+            r#"
+summary = programs.history()[0]
+print(summary.turn, repr(summary.source()))
+"#,
+            &[],
+            &[],
+            RunEnding::None.into(),
+            true,
+        )
+        .expect("the program runs");
+    let (outcome, _api) = reclaim(store, Ok(()), None, None, None);
+    assert_eq!(logs(&outcome), ["3 \"print('the program that ran')\""]);
 }
 
 /// The three module families that are **not** gg tools, driven end to end: views, documentation and

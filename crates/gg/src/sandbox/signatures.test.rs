@@ -252,13 +252,30 @@ fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
         );
     }
 
+    // Five operations, and a sixth entry that is a second way to reach one of them: `OpenView.close`
+    // is the selector-supplying member on the value `current` lists, an alias of `views.close` that
+    // is gated as `views.close` and adds no capability. Counting the two apart is what keeps "how
+    // many things can this module do" separate from "how many ways are there to write them".
+    let catalogued = functions();
+    let views: Vec<_> = catalogued
+        .iter()
+        .filter(|function| function.object == "gg.views")
+        .collect();
     assert_eq!(
-        functions()
+        views
             .iter()
-            .filter(|function| function.object == "gg.views")
+            .filter(|function| function.alias_of.is_none())
             .count(),
         5,
-        "the view surface is the five functions and nothing else"
+        "the view surface is the five operations and nothing else"
+    );
+    assert_eq!(
+        views
+            .iter()
+            .filter_map(|function| function.alias_of.map(|alias| (function.fqn, alias)))
+            .collect::<Vec<_>>(),
+        [(Some("gg.views.OpenView.close"), "views.close")],
+        "and its one alias says which operation it is a second way to reach"
     );
 
     // The projection the docs runtime reads carries the same gates, which is what makes a withheld

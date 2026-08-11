@@ -101,6 +101,12 @@ fn logs(outcome: &crate::sandbox::SandboxOutcome) -> &[String] {
 /// 3. that a program whose types are wrong **runs anyway**, which is this arm's entire reason for
 ///    existing. A sibling gate asserts that the checked arm rejects the same program at prepare
 ///    time; what it cannot assert is what happens next here, because on this arm there is a next.
+///
+/// Two more were added with the surface they observe: the documented `gg.<module>.<call>` spelling
+/// (4), and the **convenience helpers** a returned value carries (5). The helpers are the one part
+/// of this SDK that is not a module export, so they are the one part no catalogue, no type check
+/// and no drift gate can prove: they exist only if the *baked component* attached them to the value
+/// the host handed back.
 #[test]
 fn a_real_javascript_program_runs_through_the_real_membrane() {
     // 1. The floor.
@@ -293,6 +299,72 @@ fn a_real_javascript_program_runs_through_the_real_membrane() {
         ),
         "the ending group is reached by its documented spelling too: {:?}",
         outcome.completion
+    );
+
+    // 5. THE CONVENIENCE HELPERS, which are the one part of this SDK that no static artifact can
+    // vouch for. Every module function is an export the catalogue reflects, the checker declares and
+    // the drift gate compares; a helper is a *closure the guest attaches to a value the host handed
+    // back*, so the catalogue can promise `handle.send` and the committed component can have
+    // forgotten to put one there — a model reading the documentation would then meet a `TypeError`
+    // on a call gg told it to make. That is only observable by running one, which is what this does:
+    // four helpers, each hanging off a value a different call produced, each reaching gg's dispatch
+    // under the operation it is an alias of.
+    let (outcome, log) = run(concat!(
+        "const issue = gg.board.createIssue({\n",
+        "  title: \"T\", inScope: \"a\", outOfScope: \"b\", completionCriteria: \"c\", agent: \"worker\",\n",
+        "});\n",
+        "console.log(issue.wait());\n",
+        "console.log(gg.memories.searchMemories([\"build\"])[0].read());\n",
+        "gg.delegation.spawnSubagent({ agent: \"worker\", prompt: \"go\" }).send(\"more\");\n",
+        "gg.views.openText(\"scratch\", \"shown\");\n",
+        "console.log(String(gg.views.current()[0].close()));\n",
+    ));
+    assert_eq!(
+        logs(&outcome),
+        ["wait registered", "the memory contents", "1"],
+        "each helper returned what the operation it aliases returns"
+    );
+    assert_eq!(
+        log.names(),
+        [
+            "create_issue",
+            "wait_for_issue",
+            "search_memories",
+            "read_memory",
+            "spawn_subagent",
+            "send_message",
+        ],
+        "and each reached gg's dispatch under that operation's own tool, interleaved with the call \
+         that produced the value it hangs off"
+    );
+    // The whole point of a helper is the id it does not have to be told, so what is asserted is that
+    // gg was handed the id the *previous* call minted rather than one the program restated.
+    assert_eq!(
+        log.args("wait_for_issue"),
+        Some(json!({ "issueId": "EPIC-1" })),
+        "`issue.wait()` supplied the id the board assigned"
+    );
+    assert_eq!(
+        log.args("read_memory"),
+        Some(json!({ "name": "build-commands" })),
+        "`hit.read()` supplied the slug the search matched"
+    );
+    assert_eq!(
+        log.args("send_message"),
+        Some(json!({ "agentId": "agent-1", "message": "more" })),
+        "`handle.send(text)` supplied the id the spawn minted"
+    );
+    assert_eq!(
+        (
+            outcome
+                .views_opened
+                .iter()
+                .map(|view| view.selector.as_str())
+                .collect::<Vec<_>>(),
+            outcome.views_closed.clone()
+        ),
+        (vec!["scratch"], vec!["scratch".to_string()]),
+        "`view.close()` closed the view it was listed as, supplying its own selector"
     );
 }
 

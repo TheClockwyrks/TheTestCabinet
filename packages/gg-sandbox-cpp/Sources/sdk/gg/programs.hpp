@@ -66,6 +66,8 @@ struct program_summary {
 /// <ggop>programs.history</ggop>
 ///
 /// \returns one summary per program this session has run, oldest first.
+/// \throws core::tool_error `unavailable` when this agent keeps no program library at all — a
+///   different fact from a library that is empty, and the reason this can fail.
 std::vector<programs::program_summary> history();
 
 /// Fetch the exact source of one program that ran; with no argument, the most recent one.

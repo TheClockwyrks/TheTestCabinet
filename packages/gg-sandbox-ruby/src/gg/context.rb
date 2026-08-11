@@ -31,7 +31,9 @@ module GG
     # @param path [String, nil] The file whose views to drop. Leave it out to drop every file view
     #   held.
     # @return [GG::Context::ReclaimReport] what the eviction freed
-    # @raise [GG::Core::ToolError] `:not_found` when the named path has no view open.
+    # @raise [GG::Core::ToolError] `:invalid_argument` for a path that is given but empty; leaving
+    #   it out altogether is how every file view is dropped. A path with no view open frees nothing
+    #   and is not a failure.
     def self.evict_file_view(path = nil)
       report(Wire.call("evict_file_view", "context", "evictFileView", [Wire.js(path)]))
     end
@@ -97,7 +99,7 @@ module GG
     #   re-read from `files` is gone.
     # @param files [Array<String>] The paths to read afresh into the restarted window. Defaults to
     #   none.
-    # @return [nil] nothing; the request is registered and the program runs on
+    # @return [nil]
     # @raise [GG::Core::ToolError] `:invalid_argument` for a blank summary.
     def self.compact(summary, files: [])
       Wire.call("compact", "context", "compact",

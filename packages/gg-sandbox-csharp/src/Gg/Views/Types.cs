@@ -1,4 +1,4 @@
-// What an open view is, nested in the module that opens one.
+// What an open view is, nested in the module that opens one, and the method that closes it again.
 
 namespace Gg;
 
@@ -24,8 +24,19 @@ public static partial class Views
 
     /// <summary>One view currently open in the context window.</summary>
     /// <param name="Kind">Which of the three kinds it is.</param>
-    /// <param name="Selector">What <see cref="Close"/> takes: a file view's path, or a text view's label.</param>
+    /// <param name="Selector">What <see cref="Views.Close(string)"/> takes: a file view's path, or a text view's label.</param>
     /// <param name="Tokens">Roughly what holding it costs, in tokens.</param>
     /// <param name="Region">The window a paged file view covers; <c>null</c> for every other view.</param>
-    public sealed record OpenView(ViewKind Kind, string Selector, ulong Tokens, ViewRegion? Region);
+    public sealed record OpenView(ViewKind Kind, string Selector, ulong Tokens, ViewRegion? Region)
+    {
+        /// <summary>Close this view, and any other view sharing its selector.</summary>
+        /// <remarks>
+        /// <see cref="Views.Close"/> with the selector already supplied, which is the call this
+        /// listing exists to feed. A <see cref="ViewKind.Docs"/> view is the one it does not reach —
+        /// <see cref="Docs.Close"/> takes documentation away — so closing one here returns zero.
+        /// </remarks>
+        /// <returns>how many views went, counting each page of a paged file separately.</returns>
+        /// <ggop alias="true">views.close</ggop>
+        public uint Close() => Views.Close(Selector);
+    }
 }

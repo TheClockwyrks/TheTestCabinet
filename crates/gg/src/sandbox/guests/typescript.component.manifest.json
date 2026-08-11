@@ -3,8 +3,8 @@
   "rebuild": "packages/gg-sandbox/build.sh",
   "artifacts": {
     "crates/gg/src/sandbox/guests/typescript.component.wasm": {
-      "bytes": 14115305,
-      "sha256": "55f488ef9ce46381febbad2ae616de7a465aa3ed34d00827eb0505bb28da77c1"
+      "bytes": 14121355,
+      "sha256": "d205c26d9da4078b53b5ac70cf200572d8b06ff4bef8e684b293415920b7381b"
     }
   },
   "wit": {
@@ -16,19 +16,19 @@
   },
   "sources": {
     "packages/gg-sandbox/src/catalogue.ts": "f9e1d795641909babfd4f583605378a88e11769d2423b1f1f62647a99bf8b5c1",
-    "packages/gg-sandbox/src/gg/board.ts": "9e0deae55b7645731b48127208eb4ec600c6deb515b6a3a1cf4f3623df1ddbac",
-    "packages/gg-sandbox/src/gg/context.ts": "9f003ac9ec72d95afe1450b6f4355523f4a2b3faeafb5d4a48a2dc4e22a517a3",
+    "packages/gg-sandbox/src/gg/board.ts": "e152665fcf383aea6956209e76633bc5e0e5132628435d74cc967f2a83eae159",
+    "packages/gg-sandbox/src/gg/context.ts": "cbde39252413c5ebe8fcfafc5ac8507952f3caaefae7c7e4b148bb1ab3f933d8",
     "packages/gg-sandbox/src/gg/core.ts": "a0105da80f2b69e263216abaf8cb2167e4dc13129f7293177ea2aaa2fa94e727",
-    "packages/gg-sandbox/src/gg/delegation.ts": "97638f235c0c771598ee4227f54a61b7f6e19a0a5363386abc2e7fb4b36af4f8",
-    "packages/gg-sandbox/src/gg/docs.ts": "68038de16e45dda3d6aebd421bbe2847654537cfb5c2f9200edcd608a6f57165",
-    "packages/gg-sandbox/src/gg/files.ts": "330e9105f29a036e040c7ff20f8a78e7f53ed9be707005c36916e3da8e45b60c",
-    "packages/gg-sandbox/src/gg/memories.ts": "b45d32953d4cd00b784da2f419f125f0d92c45bc530b76ea6172b5f8653dfe37",
-    "packages/gg-sandbox/src/gg/programs.ts": "9e019ba85cb42ab3a35cef1f0efe2f4c9c58cf9463fc50aca32c45710f9669ad",
-    "packages/gg-sandbox/src/gg/session.ts": "23ff997a1df42d35d7ab54e6e71cdfabf205b6b3e75a3756ae18441cf019788f",
-    "packages/gg-sandbox/src/gg/shell.ts": "eacd6e8664118f34420fd1cd1d0e45c2bcefb82a578e92e6e1da217ff3aa9445",
-    "packages/gg-sandbox/src/gg/skills.ts": "7716327373a93984e5ebc44fc59208c65284d57219f2d6a67e00634343ad7b94",
-    "packages/gg-sandbox/src/gg/tasks.ts": "56382f99537ba762bb42256c0238fe162551ee318c2e70e2bda1bd3c83f2d523",
-    "packages/gg-sandbox/src/gg/views.ts": "d624b610d5107890c8ab153680162ae2b671e8b1b747de65ff2eab2da84e63c5",
+    "packages/gg-sandbox/src/gg/delegation.ts": "31691de05153fbbf65ca9911bac1492bcbc268194f151807a91bf907cedf00e7",
+    "packages/gg-sandbox/src/gg/docs.ts": "6be4d865d41c9f921dccceafa6671c30995889fea976c4cde08867330e59783f",
+    "packages/gg-sandbox/src/gg/files.ts": "f44f4243ae4b5e85b3227b392e044153c152f166cc84d7e993f6416e95094859",
+    "packages/gg-sandbox/src/gg/memories.ts": "9fd460c2b682384cee651e741492a4905797dc1d2890091781c379aef2c5b594",
+    "packages/gg-sandbox/src/gg/programs.ts": "cbed056d42b866ee744a4859fe21a6f386165b509f04336e72091657e6840f09",
+    "packages/gg-sandbox/src/gg/session.ts": "093cc83a6af26d2ca56b22654d7c19629c73c92cca95d817ed69ded1b21298ec",
+    "packages/gg-sandbox/src/gg/shell.ts": "a7ae4296d4546c25790145455acb4a01f8801275cd382ef3297fd5d2e7b65b7f",
+    "packages/gg-sandbox/src/gg/skills.ts": "41b42ce2a227fddbc40f9e0fefd1136dd5b7044e330eb894a5429b027d66152c",
+    "packages/gg-sandbox/src/gg/tasks.ts": "5eaa813366a2a078d586bbb60354c54f281283210f2076215cbdcf16ceba24ad",
+    "packages/gg-sandbox/src/gg/views.ts": "41b5542ff5b1e66bb15e2210ba6d043d20146d6e288b20ff34b41b8ff12208d8",
     "packages/gg-sandbox/src/internal/errors.ts": "7000762ed495b0e6258eba544c8dfa35794bfc08939fe1de2542d33e8d7fdff9",
     "packages/gg-sandbox/src/internal/lower.ts": "1dfac05024ae8d138df0a0b85d8bdc0bdc8d3606224300e4fd449521d39bd7a6",
     "packages/gg-sandbox/src/membrane.d.ts": "6ec78d00711175e2cb723264edab2047375b12679ba9f2f3a685f643f7f7eb76",

@@ -41,6 +41,11 @@ use crate::wire;
 /// * `options` — The filters and the page. `docs::SearchOptions::default()` searches the whole bound
 ///   surface and takes the first page.
 ///
+/// # Returns
+///
+/// One page of hits, best first, and how many matched behind it. Each hit carries a brief and the key
+/// that reads it in full, never the entry itself.
+///
 /// # Errors
 ///
 /// `InvalidArgument` when `query` is empty and no filter is set — *nothing to look for* and *nothing
@@ -61,15 +66,18 @@ pub fn search(query: &str, options: SearchOptions<'_>) -> Result<DocSearch, Tool
 
 /// Take one documentation view out of the context window, by the key it was opened under.
 ///
-/// What comes back is how many views closed: a key that is not open closes `0` rather than failing,
-/// so a program that tidies up unconditionally needs no guard. The removal does not cascade —
-/// closing a function's view leaves the views of the types it named, and closing a type's leaves
-/// every function beside it — because nothing records why a view was opened, and a type closed here
-/// is opened again by the next function that mentions it.
+/// The removal does not cascade — closing a function's view leaves the views of the types it named,
+/// and closing a type's leaves every function beside it — because nothing records why a view was
+/// opened, and a type closed here is opened again by the next function that mentions it.
 ///
 /// # Arguments
 ///
 /// * `key` — The fully-qualified name the view was opened under, as [`DocHit::key`] reports it.
+///
+/// # Returns
+///
+/// How many views closed, which is `0` for a key that is not open — not a failure, so a program that
+/// tidies up unconditionally needs no guard.
 ///
 /// # Errors
 ///
@@ -79,10 +87,14 @@ pub fn close(key: &str) -> Result<u32, ToolError> {
     wire::lift(docs::close_doc_view(key))
 }
 
-/// Take every documentation view out of the context window, and report how many went.
+/// Take every documentation view out of the context window.
 ///
 /// The blanket form of [`close`], on the same terms and behind the same capability: what it frees is
 /// every documentation view the session has opened, and none of the file or text views beside them.
+///
+/// # Returns
+///
+/// How many views closed, which is `0` for a session that has opened none.
 ///
 /// # Errors
 ///

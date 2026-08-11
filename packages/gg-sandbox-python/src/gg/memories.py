@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 from wit_world.imports import memories as wire
 
-from ._registry import operation
+from ._registry import alias, operation
 from .core import _call, _strings
 
 __all__ = [
@@ -83,6 +83,22 @@ class MemoryHit:
     excerpt: str
     """A short window of the memory around its first match."""
 
+    @alias("memories.read_memory")
+    def read(self) -> str:
+        """Read this memory's full contents, which a search hit does not carry.
+
+        `read_memory` with the slug already supplied, for the common case where the search that
+        found the memory is the thing in hand.
+
+        Returns:
+            The memory's body, and — where it carried code — the `lib.<key>` its public names are
+                now bound at.
+
+        Raises:
+            ToolError: `not-found` when the memory has since been deleted.
+        """
+        return read_memory(self.name)
+
 
 def _some(value: str | None) -> str | None:
     """A code half, with a blank normalised to absent.
@@ -143,6 +159,10 @@ def write_memory(
             session. The default records a memory that is only prose.
         on_use: A script gg runs the first time the memory comes into use. The default runs nothing.
 
+    Returns:
+        The memory budget the write left behind. A maximum this run does not bound is `None`, which
+            is worth checking before subtracting.
+
     Raises:
         ToolError: `conflict` on a duplicate name, and `limit-exceeded` when the body would breach
             the run's caps — revising or deleting a memory is the way out, rather than accruing more.
@@ -170,6 +190,9 @@ def update_memory(
         code: The Python module to replace the old one with. The default clears it.
         on_use: The script to replace the old one with. The default clears it.
 
+    Returns:
+        The memory budget the replacement left behind.
+
     Raises:
         ToolError: `not-found` when no memory has that name.
     """
@@ -196,6 +219,9 @@ def create_memory(
             memory that is only prose.
         on_use: A script gg runs on that first read. The default runs nothing.
 
+    Returns:
+        The memory budget the new memory left behind.
+
     Raises:
         ToolError: `invalid-argument` for a blank field or a slug with characters a name may not
             hold, `conflict` on a duplicate slug, and `limit-exceeded` when the contents, or the
@@ -214,6 +240,10 @@ def read_memory(name: str) -> str:
     Args:
         name: The memory's slug.
 
+    Returns:
+        The memory's body, and — where it carried code — the `lib.<key>` its public names are now
+            bound at.
+
     Raises:
         ToolError: `not-found` when no memory has that slug.
     """
@@ -231,6 +261,9 @@ def edit_memory(name: str, search: str, replace: str) -> MemoryUsage:
         search: The exact text to find in its contents. It must appear exactly once.
         replace: The text to put in its place.
 
+    Returns:
+        The memory budget the revision left behind.
+
     Raises:
         ToolError: `not-found` when the text does not appear, `conflict` when it appears more than
             once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the
@@ -247,12 +280,15 @@ def search_memories(keywords: list[str]) -> list[MemoryHit]:
 
     Plain case-insensitive substring matching over each memory's slug, description and contents,
     ranked by how many distinct keywords a memory mentions and then by how often. Several specific
-    words rank better than one sentence; `read_memory` is what fetches a hit worth having in full. A
-    search that matches nothing is an empty list.
+    words rank better than one sentence; `read_memory` is what fetches a hit worth having in full.
 
     Args:
         keywords: The words to look for. Several specific words rank better than one sentence,
             because a memory is ranked by how many of them it mentions.
+
+    Returns:
+        The memories that matched, best first, each with an excerpt and the two counts it was ranked
+            by. A search that matches nothing is an empty list.
 
     Raises:
         ToolError: `invalid-argument` when every keyword is empty.
@@ -274,10 +310,11 @@ def search_memories(keywords: list[str]) -> list[MemoryHit]:
 def delete_memory(name: str) -> MemoryUsage:
     """Evict a memory by name, freeing room in the budget.
 
-    What is left in use comes back.
-
     Args:
         name: The memory's slug.
+
+    Returns:
+        The memory budget the eviction left behind.
 
     Raises:
         ToolError: `not-found` when no memory has that name.

@@ -33,7 +33,9 @@ import org.teavm.jso.core.JSArray
  * @ggop context.evict_file_view
  * @param path The file whose views to drop. Left out, every file that was read is dropped.
  * @return what the eviction reclaimed
- * @throws ToolError `NOT_FOUND` when the named path has no view open.
+ * @throws ToolError `INVALID_ARGUMENT` for a path that is given but empty; leaving it out
+ *   altogether is how every file view is dropped. A path with no view open frees nothing and is not
+ *   a failure.
  */
 public fun evictFileView(path: String? = null): ReclaimReport =
     Read.reclaimReport(
@@ -102,8 +104,8 @@ public fun searchArchive(query: String): ArchiveSearch =
  * @ggop context.compact
  * @param summary What the restarted window opens with, written for the agent that resumes.
  * @param files The paths to read afresh into the restarted window. Naming none reads nothing back.
- * @throws ToolError `REFUSED` when a compaction is already in flight and this call is not the one it
- *   asked for.
+ * @throws ToolError `INVALID_ARGUMENT` for a blank summary. This is the one call gg does not refuse
+ *   while a compaction is in flight, since nothing else can clear the window.
  */
 public fun compact(summary: String, vararg files: String) {
     ggRun(

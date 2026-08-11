@@ -106,14 +106,16 @@ export interface DirEntry {
  * call hands bytes to the program and places nothing in the context window; reading a picture
  * describes it and shows nothing, so a file only read here is a file nobody has looked at.
  *
- * Throws `ToolError` with `not-found` for a missing path.
- *
  * @ggop files.read_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param options The window of lines to read; omit it to read the whole file.
  * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
  * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
  * policy.
+ * @returns the window of text that was read, or the picture's description where the bytes are an
+ * image.
+ * @throws `ToolError` with `invalid-argument` for an empty path, and `not-found` for a path that is
+ * not there.
  */
 export function readFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
   const o = opts<{ offset?: number; limit?: number }>("readFile", options);
@@ -128,15 +130,16 @@ export function readFile(path: string, options?: { offset?: number; limit?: numb
  * `readFile` without the narrowing, for the common case: the same read, the same window, the same
  * cost.
  *
- * Throws `ToolError` with `invalid-argument` when the path names a picture, which `readFile`
- * inspects instead and `gg.views.openFile` displays.
- *
  * @ggop files.read_text_file
  * @param path The file to read, relative to the workspace or absolute.
  * @param options The window of lines to read; omit it to read the whole file.
  * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
  * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
  * policy.
+ * @returns the text that was read: the whole file, or the requested window under a capped read
+ * policy.
+ * @throws `ToolError` with `invalid-argument` when the path names a picture, which `readFile`
+ * inspects instead and `gg.views.openFile` displays, and `not-found` for a path that is not there.
  */
 export function readTextFile(path: string, options?: { offset?: number; limit?: number }): string {
   const o = opts<{ offset?: number; limit?: number }>("readTextFile", options);
@@ -149,12 +152,14 @@ export function readTextFile(path: string, options?: { offset?: number; limit?: 
  * Write UTF-8 text to a file, creating parent directories and replacing what is there.
  *
  * Writing is the expensive direction of this sandbox: rewriting more than a few dozen large files in
- * one program exhausts its fuel budget, so a large rewrite is best split across several turns. The
- * number of bytes written comes back.
+ * one program exhausts its fuel budget, so a large rewrite is best split across several turns.
  *
  * @ggop files.write_file
  * @param path Where to write, relative to the workspace or absolute. Parent directories are created.
  * @param contents The UTF-8 text to write. It replaces the file entirely.
+ * @returns how many bytes were written, which is the length of `contents` in UTF-8.
+ * @throws `ToolError` with `invalid-argument` for an empty path, and `io-error` when the write or a
+ * parent directory failed.
  */
 export function writeFile(path: string, contents: string): number {
   return Number(call(() => raw.writeFile(path, contents)));
@@ -166,13 +171,12 @@ export function writeFile(path: string, contents: string): number {
  * Widening the surrounding context until the match is unique is the way to disambiguate; counting
  * occurrences is not.
  *
- * Throws `ToolError` with `not-found` when the text does not appear, and `conflict` — carrying the
- * number of matches — when it appears more than once.
- *
  * @ggop files.edit_file
  * @param path The file to edit.
  * @param oldString The exact text to find, whitespace included. It must appear exactly once.
  * @param newString The text to put in its place. An empty string deletes the match.
+ * @throws `ToolError` with `not-found` when the text does not appear, and `conflict` — carrying the
+ * number of matches — when it appears more than once.
  */
 export function editFile(path: string, oldString: string, newString: string): void {
   call(() => raw.editFile(path, oldString, newString));
@@ -187,6 +191,9 @@ export function editFile(path: string, oldString: string, newString: string): vo
  * @ggop files.list_dir
  * @param path The directory to list, relative to the workspace or absolute. The default lists the
  * workspace root.
+ * @returns the directory's entries, sorted by name.
+ * @throws `ToolError` with `not-found` for a directory that is not there, and `invalid-argument`
+ * for an empty path — omitting it entirely is what lists the workspace root.
  */
 export function listDir(path?: string): DirEntry[] {
   return call(() => raw.listDir(path));

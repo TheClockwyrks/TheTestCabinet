@@ -41,7 +41,7 @@ type ShellOutput =
 -- | Run a command with `sh -c` in the workspace directory and collect its merged output.
 -- |
 -- | A non-zero exit is not a failure: it arrives as `exitCode` on the result, and only a process that
--- | could not be launched, or one the timeout killed, raises.
+-- | could not be launched, or one the timeout killed, throws.
 -- |
 -- | This run may **offload** shell output, and the `shell` tool's own description says which mode is
 -- | in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the
@@ -60,7 +60,12 @@ type ShellOutput =
 -- | - `options.timeoutSecs` — How long to let it run, in seconds, before killing it. Left out, gg's
 -- |   default of 120 applies, clamped to whatever is left of the run's wall-clock budget.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The command's merged stdout and stderr, its `exitCode` — `Nothing` when a signal killed it —
+-- | and whether gg's cap `truncated` the output.
+-- |
+-- | # Throws
 -- |
 -- | `LimitExceeded` when the timeout killed the process, and `IoError` when it could not be launched.
 shell

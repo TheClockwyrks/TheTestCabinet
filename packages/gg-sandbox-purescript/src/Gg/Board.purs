@@ -15,6 +15,7 @@ module Gg.Board
   , removeEpic
   , removeIssue
   , waitForIssue
+  , waitFor
   , BoardUsage
   , EpicCreated
   , IssueCreated
@@ -111,9 +112,9 @@ type IssueCreated =
 
 -- | Create an epic to group related issues.
 -- |
--- | The id the prefix resolved to comes back with the board budget. A prefix is 3-6 letters naming
--- | the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered
--- | from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on.
+-- | A prefix is 3-6 letters naming the epic. It is upper-cased and becomes the epic's id, which is
+-- | also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`,
+-- | and so on.
 -- |
 -- | # Operation
 -- |
@@ -127,7 +128,11 @@ type IssueCreated =
 -- | - `epic.title` — A short line naming the body of work.
 -- | - `epic.description` — What the epic covers, for a reader who has not seen its issues.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The id the prefix resolved to, and the board budget the epic left behind.
+-- |
+-- | # Throws
 -- |
 -- | `InvalidArgument` when the prefix is not 3-6 letters, and `Conflict` when another epic already
 -- | holds it.
@@ -137,9 +142,6 @@ createEpic epic = Wire.call "create_epic" "project" "Gg.Board.createEpic" [ Wire
 
 -- | Create a self-contained, dispatchable issue.
 -- |
--- | The id the board **assigned** comes back with the board budget: it is numbered under its epic's
--- | prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller does not
--- | choose it — so keeping the returned id is what blocks a later issue on this one or waits for it.
 -- | `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so they
 -- | are written for a reader with no other context.
 -- |
@@ -164,7 +166,13 @@ createEpic epic = Wire.call "create_epic" "project" "Gg.Board.createEpic" [ Wire
 -- | - `issue.reviewers` — The agents that must approve the work, from that same set. Required when
 -- |   this run's reviewers feature is on.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The id the board **assigned**, and the board budget the issue left behind. It is numbered under
+-- | its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic, and the caller
+-- | does not choose it — so keeping it is what blocks a later issue on this one or waits for it.
+-- |
+-- | # Throws
 -- |
 -- | `InvalidArgument` when `agent` or a reviewer is not one this agent may assign, and `Conflict` on
 -- | a blocker edge that would close a cycle.
@@ -204,7 +212,7 @@ createIssue issue = Wire.call "create_issue" "project" "Gg.Board.createIssue" [ 
 -- | - `patch.epicId` — `Just` the epic to regroup it under, or `Nothing` to detach it from the one it
 -- |   has.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 updateIssue
@@ -233,7 +241,7 @@ updateIssue id patch =
 -- | - `blockedBy` — The ids of every issue that must now be done before it. An empty array clears
 -- |   them all.
 -- |
--- | # Raises
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id, and `Conflict` when an edge would close a cycle.
 setIssueBlockedBy :: String -> Array String -> Effect Unit
@@ -251,7 +259,11 @@ setIssueBlockedBy id blockedBy =
 -- |
 -- | - `id` — The epic to remove.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The board budget the removal left behind.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 removeEpic :: String -> Effect BoardUsage
@@ -267,7 +279,11 @@ removeEpic id = Wire.call "remove_epic" "project" "Gg.Board.removeEpic" [ Wire.w
 -- |
 -- | - `id` — The issue to remove.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The board budget the removal left behind.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 removeIssue :: String -> Effect BoardUsage
@@ -289,11 +305,41 @@ removeIssue id = Wire.call "remove_issue" "project" "Gg.Board.removeIssue" [ Wir
 -- |
 -- | - `id` — The issue to wait on. It may not be the issue this agent was assigned.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | gg's acknowledgement that the wait is registered, which says what happens once the program
+-- | ends.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound` for an unknown id.
 waitForIssue :: String -> Effect String
 waitForIssue id = Wire.call "wait_for_issue" "project" "Gg.Board.waitForIssue" [ Wire.wire id ]
+
+-- | Register a wait on an issue that was just created.
+-- |
+-- | `Gg.Board.waitForIssue` with the id already taken out of what created the issue, for the common
+-- | case where the two are written one after the other and the board's own id never has to be
+-- | spelled out.
+-- |
+-- | # Alias
+-- |
+-- | board.wait_for_issue
+-- |
+-- | # Arguments
+-- |
+-- | - `issue` — The issue to wait on, as `Gg.Board.createIssue` handed it back.
+-- |
+-- | # Returns
+-- |
+-- | gg's acknowledgement that the wait is registered, which says what happens once the program
+-- | ends.
+-- |
+-- | # Throws
+-- |
+-- | `NotFound` when the issue has since been removed.
+waitFor :: IssueCreated -> Effect String
+waitFor issue = waitForIssue issue.id
 
 
 -- | gg's own word for a status, which is what both execution modes report.

@@ -174,13 +174,19 @@ fn the_gate_table_covers_exactly_the_tool_vocabulary() {
 /// function used to be, because it was bound onto every object the guest created and no catalogue
 /// entry named it, and with it deleted the page and the catalogue are the same set — the same
 /// completeness the run's own agent-surface readout has.
+///
+/// The set is keyed by the **fully-qualified name**, which is the catalogue's own key and the one
+/// thing on an entry that is unique. A `(module, name)` pair is not: a convenience helper is a
+/// method on a value, documented under the module its receiver belongs to and free to be spelled
+/// the way the operation it aliases is — `gg.views.OpenView.close` beside `gg.views.close` — so a
+/// pair-keyed set silently folds the two into one and turns a missing entry into a passing count.
 #[test]
 fn every_catalogued_function_appears() {
     let reference = reference();
-    let emitted: BTreeSet<(String, String)> = reference
+    let emitted: BTreeSet<&str> = reference
         .functions
         .iter()
-        .map(|f| (f.module.clone(), f.name.clone()))
+        .map(|function| function.fqn.as_str())
         .collect();
 
     let catalogued = crate::sandbox::catalogue_functions(projected_language());
@@ -191,10 +197,7 @@ fn every_catalogued_function_appears() {
     );
     for function in &catalogued {
         assert!(
-            emitted.contains(&(
-                function.module.unwrap_or(function.object).to_string(),
-                function.name.to_string()
-            )),
+            emitted.contains(function.fqn.unwrap_or_default()),
             "`{}.{}` is documented by the catalogue but missing from the reference",
             function.object,
             function.name

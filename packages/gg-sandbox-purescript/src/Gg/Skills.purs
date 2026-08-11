@@ -26,7 +26,12 @@ import Gg.Internal.Wire as Wire
 -- |
 -- | - `name` — The skill's name, as the system prompt lists it.
 -- |
--- | # Raises
+-- | # Returns
+-- |
+-- | The skill's body with its front matter stripped, and — where the skill is code — the
+-- | `lib.<key>` its exports are now bound at.
+-- |
+-- | # Throws
 -- |
 -- | `NotFound`, listing the skills that do exist, when the name is unknown.
 readSkill :: String -> Effect String

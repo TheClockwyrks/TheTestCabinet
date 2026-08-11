@@ -25,6 +25,37 @@ export interface SubagentHandle {
 
   /** The model actually bound to that agent. */
   modelId: string;
+
+  /**
+   * Deliver a message to this child's inbox, with its id already supplied.
+   *
+   * `gg.delegation.sendMessage` for the common case where the handle is in hand.
+   *
+   * @ggop delegation.send_message
+   * @param message What to put in its inbox. The child reads it at its next turn.
+   * @throws `ToolError` with `conflict` when this child has already returned.
+   */
+  send(message: string): void;
+}
+
+/**
+ * Dress a membrane handle in the method its own id makes possible.
+ *
+ * The record crosses the membrane as data, so the method is attached here rather than declared on a
+ * class: nothing in a program ever constructs a handle, and a constructible declaration would be one
+ * inviting it to. The closure captures the id, which is the whole of what the shorter call saves.
+ *
+ * @internal
+ */
+function handle(spawned: raw.SubagentHandle): SubagentHandle {
+  return {
+    id: spawned.id,
+    slot: spawned.slot,
+    modelId: spawned.modelId,
+    send(message: string): void {
+      sendMessage(spawned.id, message);
+    },
+  };
 }
 
 /** How a child agent's loop ended, in the six words the native path also reports. */
@@ -116,9 +147,6 @@ function ending(status: AgentStatus | undefined): AgentEnding | undefined {
  * The brief is exactly one of self-contained instructions or a board issue. The child shares this
  * workspace.
  *
- * Throws `ToolError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument` when
- * `agent` is not one this agent may spawn.
- *
  * @ggop delegation.spawn_subagent
  * @param request The agent to run and the brief to run it on.
  * @param request.agent The agent profile to run the child as, from the ones this agent may spawn. It
@@ -127,12 +155,15 @@ function ending(status: AgentStatus | undefined): AgentEnding | undefined {
  * never neither.
  * @param request.issueId The board issue to brief the child from. This or `prompt`, never both and
  * never neither.
+ * @returns the child's handle: the id to wait on or message, and the agent and model it runs as.
+ * @throws `ToolError` with `limit-exceeded` at the delegation depth cap, and `invalid-argument`
+ * when `agent` is not one this agent may spawn or the brief is neither a prompt nor an issue.
  */
 export function spawnSubagent(
   request: { agent: string } & ({ prompt: string } | { issueId: string }),
 ): SubagentHandle {
-  return call(() =>
-    raw.spawnSubagent({ agent: request.agent, task: brief("spawnSubagent", request) }),
+  return handle(
+    call(() => raw.spawnSubagent({ agent: request.agent, task: brief("spawnSubagent", request) })),
   );
 }
 
@@ -142,10 +173,11 @@ export function spawnSubagent(
  * With no argument it waits for every child still outstanding. The run's wall-clock budget keeps
  * running throughout, so one wait for many children costs far less than one wait per child.
  *
- * Throws `ToolError` with `not-found` for an unknown id.
- *
  * @ggop delegation.wait_for_subagents
  * @param ids The children to wait for. Omit it to wait for every one still outstanding.
+ * @returns one result per child, in dispatch order: how each finished, and the summary it ended
+ * with.
+ * @throws `ToolError` with `not-found` for an unknown id.
  */
 export function waitForSubagents(ids?: string[]): SubagentResult[] {
   const results = call(() => raw.waitForSubagents(ids));
@@ -159,12 +191,11 @@ export function waitForSubagents(ids?: string[]): SubagentResult[] {
 /**
  * Deliver a message to a running child agent's inbox, which it reads at its next turn.
  *
- * Throws `ToolError` with `not-found` for an unknown agent id, and `conflict` when that child has
- * already returned.
- *
  * @ggop delegation.send_message
  * @param agentId The child to deliver to, as `spawnSubagent` returned it.
  * @param message What to put in its inbox. The child reads it at its next turn.
+ * @throws `ToolError` with `not-found` for an unknown agent id, and `conflict` when that child has
+ * already returned.
  */
 export function sendMessage(agentId: string, message: string): void {
   call(() => raw.sendMessage(agentId, message));
@@ -181,12 +212,11 @@ export function sendMessage(agentId: string, message: string): void {
  * and the program runs on to its end, because replacing the agent and its window mid-program would
  * pull every remaining call out from under it. The first declaration stands and a second is refused.
  *
- * Throws `ToolError` with `invalid-argument` for a state this agent may not move to, and `refused`
- * for a second declaration in one turn.
- *
  * @ggop delegation.transition_state
  * @param state The state to move on to, named the way an agent to spawn is named.
  * @param note The opening message the next state's agent sees.
+ * @throws `ToolError` with `invalid-argument` for a state this agent may not move to, and `refused`
+ * for a second declaration in one turn.
  */
 export function transitionState(state: string, note?: string): void {
   call(() => raw.transitionState(state, note));
@@ -204,13 +234,12 @@ export function transitionState(state: string, note?: string): void {
  * agent may make agent transitions and has agents it may become, and never while a state machine is
  * driving the session.
  *
- * Throws `ToolError` with `invalid-argument` for an agent this one may not become, and `refused` for
- * a second succession in one turn.
- *
  * @ggop delegation.exec
  * @param agent The agent to become, from the ones this agent may become.
  * @param prompt Its opening message. It already holds the whole conversation, so this is the
  * instruction rather than a briefing.
+ * @throws `ToolError` with `invalid-argument` for an agent this one may not become, and `refused`
+ * for a second succession in one turn.
  */
 export function exec(agent: string, prompt?: string): void {
   call(() => raw.exec(agent, prompt));
@@ -226,12 +255,12 @@ export function exec(agent: string, prompt?: string): void {
  * because the conversation it inherits has to be a complete one. So it can be collected only on a
  * later turn, and waiting on it in the program that made it never returns it.
  *
- * Throws `ToolError` with `limit-exceeded` at the delegation depth cap.
- *
  * @ggop delegation.fork
  * @param prompt What the copy is to do instead. It holds the whole conversation already, so the
  * difference is what to write.
+ * @returns the copy's handle, which only a later turn can collect.
+ * @throws `ToolError` with `limit-exceeded` at the delegation depth cap.
  */
 export function fork(prompt: string): SubagentHandle {
-  return call(() => raw.fork(prompt));
+  return handle(call(() => raw.fork(prompt)));
 }

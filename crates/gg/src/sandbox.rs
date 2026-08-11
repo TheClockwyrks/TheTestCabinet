@@ -139,7 +139,10 @@ pub(crate) use language::fixture;
 
 // gg's own vocabulary of model-facing operations: the gating identity every catalogue entry is
 // resolved through, and the successor of the bare `(object, key)` enumeration that preceded it.
-pub use operations::{Binding, operation_of};
+// `operation_by_id` is the same resolution reached by the id a catalogue *writes* rather than by a
+// whole entry, which is what a member function carries: it is one line naming an operation, not a
+// `CatalogueFunction` of its own.
+pub use operations::{Binding, operation_by_id, operation_of};
 
 // **What one agent was granted, and the one predicate that reads it.** The membrane holds one to
 // decide whether a call is serviced or refused; the documentation runtime holds one to decide what
