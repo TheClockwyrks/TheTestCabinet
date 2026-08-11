@@ -4,7 +4,17 @@
 //
 // A standing Capacitor is kept (its wave cleared), then a Regulator is kept beside it so its
 // aura covers the Capacitor. The Capacitor's effective damage must exceed its base (6) — a
-// T1 Regulator's +10% takes it to 7 — while the Regulator itself deals no damage.
+// T1 Regulator's +10% takes it to 6.6 — while the Regulator itself deals no damage.
+//
+// THE BUFFED FIGURE IS NOT AN INTEGER. This used to assert `damage === 7`, which is 6.6 rounded
+// — what the reference implementation happens to report. The spec does not ask for that: the
+// aura rule is "damage multiplied by `(1 + auraBonus)`" (`specs/towers.md`), and the only figure
+// the specs call "rounded" is the base damage TABLE the 6 comes from. A build reporting 6.6 is
+// reporting the spec's number and was failing over a presentation choice, so the buffed damage
+// is compared with one nearest-integer of slack (`ROUNDING_SLACK` in `_helpers.mjs`, the same
+// slack scaled HP is read with). What separates a buffed tower from an unbuffed one is still
+// the strict `> 6` ahead of it: a build that reports the buff rounded DOWN, to the 6 it started
+// at, has not reported the effective damage the aura produced and fails there.
 //
 // The clip used to show neither piece. Both towers only exist once Wave 1 has been cleared and
 // the Regulator kept on the build phase that reopens, and the old script spent that clear in
@@ -23,8 +33,13 @@ import {
   skipToApproach,
   towerById,
   snap,
+  BASE,
+  ROUNDING_SLACK,
   SECOND,
 } from "../_helpers.mjs";
+
+// A T1 Regulator's aura (specs/towers.md "Regulator — aura": `bonus = 0.10 + 0.03*(tier - 1)`).
+const T1_AURA_BONUS = 0.1;
 
 // A beat on the buffed pair with a unit walking into them, so the aura reads as a live board
 // rather than a still.
@@ -65,9 +80,19 @@ export default function item() {
     },
 
     async assert(api, check) {
+      const base = BASE.capacitor.dmg;
+      // Trimmed of binary-float noise (6 * 1.1 lands on 6.6000000000000005), so the figure the
+      // reviewer is shown is the one the spec computes. Far below the slack it is read with.
+      const buffed = Number((base * (1 + T1_AURA_BONUS)).toFixed(6));
+
       check.expectOk("a Regulator stands beside the firing tower", !!regT);
-      check.expectGt("the aura buffs the covered tower's damage above its base (6)", capT.damage, 6);
-      check.expectEq("...to +10% at T1 (6 -> 7)", capT.damage, 7);
+      check.expectGt(`the aura buffs the covered tower's damage above its base (${base})`, capT.damage, base);
+      check.expectClose(
+        `...to +10% at T1 (${base} -> ${buffed})`,
+        capT.damage,
+        buffed,
+        ROUNDING_SLACK,
+      );
       check.expectOk("the Regulator projects an aura", regT.abilities.includes("aura") && regT.auraRadius > 0);
       check.expectEq("the aura source deals no damage itself (no self-buff to speak of)", regT.damage, 0);
     },
