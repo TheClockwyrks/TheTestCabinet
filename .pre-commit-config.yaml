@@ -98,6 +98,16 @@ repos:
         always_run: true
         pass_filenames: false
 
+      - id: no-nul-bytes
+        name: NUL bytes in text files
+        description: Reject a NUL byte in a file git reads as text, which makes grep and rg report zero matches in it.
+        entry: scripts/hooks/no-nul-bytes.sh
+        language: script
+        # Takes the staged paths and asks git which of them it treats as text, so
+        # the committed wasm components, SDK jars, MIDI and icon are skipped by
+        # git's own judgement rather than by a list here that would rot.
+        types: [file]
+
       - id: build-context
         name: Dockerfile build context
         description: Reject a Dockerfile COPY whose source the .dockerignore allowlist keeps out of the build context.
