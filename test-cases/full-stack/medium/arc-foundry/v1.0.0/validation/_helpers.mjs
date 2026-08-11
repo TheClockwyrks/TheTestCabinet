@@ -1417,6 +1417,21 @@ export function angDiff(a, b) {
 // another instant `step()`. `api.settle` is exactly that: a real pause in both the validate and
 // the record pass. `armAudio` settles after arming; a script settles again after driving its
 // cue's event, before reading the audio log.
+//
+// ONE CUE PER KEY, PER PAGE. An audio item may drive a given cue exactly ONCE. This is not a
+// style preference, it is the environment: the driver's Chromium is headless with no audio
+// device, and there an `AudioContext` reports `state: "running"` while its `currentTime` stays
+// pinned at `0` forever. Both the reference and every run implementation seen so far debounce a
+// flood of identical cues by comparing `currentTime` against the last play of the SAME cue key
+// (the reference at 0.03 s, one build at 28 ms) — and against a clock that never advances, that
+// debounce never expires. So the second `stamp` of a session is dropped by a perfectly
+// conformant build, however much real time has passed in between.
+//
+// Each item as written is safe because the runtime gives it its own page and it drives one cue
+// of one kind. An item that drove the same cue twice — to show a cue repeating, or to compare
+// one against another — would fail EVERY build including the reference, and would look exactly
+// like a missing sound. Reach for a different cue key instead; `audio/cues-survive-stepping`
+// needs three and uses three.
 export const AUDIO_SETTLE_MS = 150;
 
 /** ARRANGE. Arm audio with a genuine browser gesture (a key tap and a corner click), then
