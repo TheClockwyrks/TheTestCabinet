@@ -106,6 +106,14 @@
 #                 performance image is IMAGE_NAME_PREFIXperformance
 #   DOCKER        container build command (default: docker; set to "podman"
 #                 to build with Podman instead)
+#
+# ONE IMAGE UNDER containers/ IS DELIBERATELY NOT BUILT HERE: containers/gg-ci, the image
+# that carries gg's eleven program-language toolchains under a staged $HOME so a CI job
+# that must COMPILE test-cabinet-gg can copy them in. It is not a run image, nothing
+# `COPY --from`s it, and it is ~1.9 GB — so `make run-images` must not start building it.
+# It has its own workflow (.github/workflows/build-gg-ci-image.yml) with its own trigger,
+# and `./build.sh gg-ci` is rejected as an unknown name by the check below, which is the
+# intended answer rather than an oversight.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -140,10 +148,29 @@ readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
 # same compile. It is deliberately absent from image-names.sh, which is the list of
 # PUBLISHED run images.
 readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
-# The gg LANGUAGE-TOOLCHAIN builder image. Like TOOLS_IMAGE it is not a run image and
-# is never pushed: it exists only as a `COPY --from` source, holding the toolchains
-# every `-gg` variant bakes in (see containers/gg-toolchains/Dockerfile). Also
-# deliberately absent from image-names.sh, which lists PUBLISHED run images.
+# The gg LANGUAGE-TOOLCHAIN builder image: the toolchains every `-gg` variant bakes in
+# (see containers/gg-toolchains/Dockerfile, which is where what this image IS is written
+# down). Like TOOLS_IMAGE it is not a RUN image — a run never executes in it; it is only
+# ever a `COPY --from` source — and it is deliberately absent from image-names.sh for
+# that reason, that list being the set of images a run RESOLVES. What keeps it out in
+# practice is this script rather than the Rust suite: `build_one` dispatches on the names
+# in that list, so an entry there would route `./build.sh` and `make run-images` through
+# `build_asset_image` for something that is not an asset image.
+#
+# UNLIKE TOOLS_IMAGE it IS pushed, and the distinction is worth stating because the two
+# sat in the same sentence for a long time. The asset tooling is ~20 Rust binaries
+# compiled from this checkout in a cargo pass whose cache mounts make a no-change
+# rebuild near-instant, so there is nothing a registry copy would save. This one is
+# ~1.9 GB fetched from five upstreams and pruned, and it is IDENTICAL in every `-gg`
+# variant — so publishing it means (a) the exact tree inside those variants is
+# independently pullable and pinned by digest rather than only inspectable by taking a
+# run image apart, and (b) `./build.sh <name>-gg` can be pointed at the published tag
+# through the GG_TOOLCHAINS_IMAGE build arg instead of paying for the fetch again. The
+# registry stores the layers once however many variants carry them, so the push itself
+# costs close to nothing on top of the variants already going up.
+#
+# Because it is not in image-names.sh, the `manifest` job in build-containers.yml — which
+# is driven by that list — fuses this one by name, immediately after its loop. See there.
 readonly GG_TOOLCHAINS_IMAGE="${IMAGE_NAME_PREFIX}gg-toolchains:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
@@ -205,15 +232,16 @@ build_tools() {
 # responses-as-code programs may be compiled with, assembled under one prefix and
 # exported as a `scratch` image the `-gg` variants `COPY --from`.
 #
-# This is NOT a run image. It is never pushed and never appears in image-names.sh —
-# a run never executes in it; it is only ever a source for `COPY --from`.
+# This is NOT a run image and never appears in image-names.sh — a run never executes in
+# it; it is only ever a source for `COPY --from`. It IS published under PUSH, though, for
+# the reasons set out where GG_TOOLCHAINS_IMAGE is defined above.
 #
 # Built once and copied into every variant, for the same reason the asset tooling is:
 # the tree is identical on each of them, so assembling it per variant would be the same
 # work repeated. Its content being identical is also why the registry stores the copied
 # layer once however many variants are published.
 build_gg_toolchains() {
-	echo "==> building ${GG_TOOLCHAINS_IMAGE} (gg language toolchains; not pushed)"
+	echo "==> building ${GG_TOOLCHAINS_IMAGE} (gg language toolchains)"
 	# Every toolchain's version comes from the package that owns it rather than from a
 	# default in the Dockerfile, so a pin is edited in one place. PureScript's matters
 	# more than most: externs are a compiler-version-private format, so the `purs` in
@@ -241,6 +269,12 @@ build_gg_toolchains() {
 		--build-arg "RUST_TARGET=${GG_RUST_TARGET}" \
 		-t "${GG_TOOLCHAINS_IMAGE}" \
 		-f "${SCRIPT_DIR}/gg-toolchains/Dockerfile" "${SCRIPT_DIR}/.."
+
+	if [[ -n "${PUSH}" ]]; then
+		local reference
+		reference="$(push_and_pin "${GG_TOOLCHAINS_IMAGE}" gg-toolchains)"
+		echo "==> gg-toolchains reference: ${reference}"
+	fi
 }
 
 # Build one `<parent>-gg` variant: the parent run image plus the gg toolchain tree

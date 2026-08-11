@@ -1,0 +1,227 @@
+name: Build the gg CI toolchain image
+
+# Builds and publishes `test-cabinet-gg-ci`: a runnable image whose home directory already
+# contains all eleven of gg's program-language toolchains at their pinned versions, so a CI job
+# that has to compile `test-cabinet-gg` can copy them in rather than fetch ~1.9 GB from five
+# upstreams. What it is, where the toolchains go and why they go there is
+# `containers/gg-ci/Dockerfile`'s header; who consumes it and how it degrades when it is missing
+# is `scripts/ci/hydrate-gg-toolchains.sh`'s.
+#
+# WHY THIS IS ITS OWN WORKFLOW RATHER THAN A LEG OF build-containers.yml. Three reasons, and each
+# of them is a property that workflow has and should keep:
+#
+#   1. Its `manifest` job is driven entirely by `while read -r name; … done <
+#      ./containers/image-names.sh`. That loop's whole value is that nothing is special-cased, and
+#      this image does not belong in that list: `image-names.sh` enumerates the images a RUN
+#      resolves, and `containers/build.sh` dispatches on it by name, so an entry there would make
+#      `./build.sh` treat this as an asset image to build. (The Rust suite would not object —
+#      `every_resolvable_image_is_one_the_build_publishes` keeps a `NOT_A_RUN_IMAGE` exception
+#      list for published non-run images — which is worth knowing so nobody re-derives the wrong
+#      reason.)
+#   2. Its build step is `./containers/build.sh` with no arguments, which means "every run image".
+#      `build.sh` must stay ignorant of this image, or `make run-images` starts a 1.9 GB build of
+#      something no run container will ever pull.
+#   3. Its `paths:` describes run-image inputs. This image's inputs are the closure of the pinned
+#      toolchain list, which is a different set — see below.
+#
+# Like the other image workflows this lives on GitHub Actions rather than the primary Azure DevOps
+# pipeline by deliberate exception: publishing in public makes the supply chain visible, and GH
+# Actions authenticates to GHCR for free through the built-in GITHUB_TOKEN. Dormant until the
+# repository is mirrored to GitHub, like its siblings.
+#
+# ONE-TIME SETUP: after the first successful push, set the `test-cabinet-gg-ci` package's
+# visibility to Public in the org's GHCR package settings. Until that is done the consumer's pull
+# 401s — which is not fatal (`hydrate-gg-toolchains.sh` treats every failure as "install from
+# upstream instead"), so the symptom is not a red build but a `rust` job that never gets faster.
+on:
+  push:
+    branches: [master, staging]
+    # The closure of what `scripts/ci/install-gg-toolchains.sh` reads, expressed as GLOBS rather
+    # than as an enumeration. That is the point rather than a shortcut: the failure this file has
+    # to avoid is a pin that moves without the image being rebuilt, which leaves every CI job
+    # hydrating a toolchain one version behind the one its arm's tests then drive. An enumerated
+    # list would go stale the first time an arm is added — which is exactly what happened to
+    # build-containers.yml, whose `paths:` named only the Java arm's two files long after five
+    # arms were installing from this same family.
+    #
+    #   scripts/ci/install-*.sh          the eight per-arm installers and the one that composes them
+    #   scripts/ci/lib.sh                sourced by all of them (it is what resolves REPO_ROOT)
+    #   packages/gg-sandbox-*/…          every arm's pin, including the ones sourced indirectly
+    #                                    (csharp-version.sh sources cpp-version.sh) and the Ruby
+    #                                    arm's yard-version.sh, which has no installer of its own
+    #   rust-toolchain.toml              the Rust arm has no pin of its own by design; the channel
+    #                                    this file names is the one the image materialises
+    #   .dockerignore                    an input like any other. This image builds from the repo
+    #                                    root and its three COPYs survive only because that
+    #                                    allowlist re-includes them; build-containers.yml lists it
+    #                                    for the same reason and argues it in full above its own
+    #                                    `paths:`. The short of it is that the fix for a COPY that
+    #                                    cannot see its source is an edit to that file ALONE, which
+    #                                    without this trigger leaves the broken build unretried.
+    #                                    Here that would not even be red — hydrate-gg-toolchains.sh
+    #                                    treats a missing image as "install from upstream" and
+    #                                    exits 0, so CI would just stay on the slow path.
+    paths:
+      - "scripts/ci/install-*.sh"
+      - "scripts/ci/lib.sh"
+      - "packages/gg-sandbox-*/*-version.sh"
+      - "rust-toolchain.toml"
+      - ".dockerignore"
+      - "containers/gg-ci/**"
+      - ".github/workflows/build-gg-ci-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# One build at a time, and let an in-progress one finish rather than cancelling it: a later push
+# must not race this to the `:latest` tag, and half of this build is a Swift toolchain that took
+# twenty minutes to fetch and prune.
+concurrency:
+  group: build-gg-ci-image
+  cancel-in-progress: false
+
+jobs:
+  # Once per architecture, each on a NATIVE runner, pushing an arch-suffixed tag. Native rather
+  # than cross-built under QEMU is not a preference here: this build unpacks and prunes a 3.3 GB
+  # Swift toolchain, a ~650 MB wasi-sdk and a ~770 MB .NET SDK, and every one of those installers
+  # ends by COMPILING something with the pruned copy to prove the deletions were safe. Emulated,
+  # that is hours.
+  #
+  # BOTH ARCHITECTURES, THOUGH EVERY CONSUMER TODAY IS amd64 — every job in `ci.yml` runs on
+  # `ubuntu-24.04` and Azure is opted out of hydration entirely. The arm64 leg is built anyway for
+  # two reasons that are about the reference rather than about a reader. A `:latest` assembled from
+  # one architecture is a manifest list that an arm64 agent cannot resolve, and while that DEGRADES
+  # correctly here (the pull fails, `hydrate-gg-toolchains.sh` skips, the pinned installer fetches
+  # from upstream), the failure it is one `docker pull --platform` away from is an arm64 machine
+  # hydrating amd64 compilers and then having the reconciling installer believe the stamp files
+  # they carry. And the day a consumer moves — an `ubuntu-24.04-arm` leg in `ci.yml`, or a
+  # developer on an arm workstation running the hydration by hand — that has to be a runner change
+  # and not a supply-chain change. It costs a runner, not a decision.
+  #
+  # `fail-fast: false` so one architecture's flaky Swift fetch does not cancel the other's
+  # twenty-minute build, and the `manifest` job below publishes whichever legs DID succeed rather
+  # than gating `:latest` on both.
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      # The build context, and `containers/gg-ci/image-name.sh` — the one place the published
+      # package's name is written down (see its header for why one string earns a file).
+      - uses: actions/checkout@v6
+
+      # Authenticate to GHCR with the built-in token (packages: write above).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Built from the REPOSITORY ROOT, like every other image here, because the toolchains are
+      # pinned by the repository and the image reads those pins out of a slice of it (see the
+      # Dockerfile's `COPY scripts/ci` / `COPY packages`). The repo-root `.dockerignore` allowlist
+      # already admits both — `!/scripts/ci` and the ten guest packages are re-included there for
+      # the driver service image's gg stage — so this image needs no widening of it and
+      # `scripts/ci/build-context.sh` gates the COPYs the same way it gates everyone else's.
+      #
+      # Only the arch tag is written here. The bare `:latest` manifest list is assembled by the
+      # `manifest` job below, so a half-finished matrix never leaves `:latest` single-arch — which
+      # for this image would mean one architecture's CI silently pulling the other's toolchains.
+      - name: Build and push (${{ matrix.arch }})
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          repo="$registry/$(./containers/gg-ci/image-name.sh)"
+          echo "Building $repo:latest-${{ matrix.arch }}"
+          docker buildx build \
+            --push \
+            --tag "$repo:latest-${{ matrix.arch }}" \
+            --file containers/gg-ci/Dockerfile \
+            .
+
+  # Fuse the per-arch tags into the manifest lists a consumer resolves: `:latest`, which
+  # `ci.yml` pulls, and an immutable `:<git-sha>` so a job can be pinned to one exact build while
+  # a toolchain problem is being bisected. `imagetools create` assembles a list purely from
+  # registry references — no builder, no pulls — so it is fast and runs on any architecture, and it
+  # records the per-arch DIGESTS, which is what makes `:<git-sha>` immutable even though the
+  # `:latest-<arch>` tags it was assembled from are not.
+  #
+  # IT RUNS EVEN WHEN A MATRIX LEG FAILED, which is the opposite of what `needs:` does by default
+  # and is deliberate. Every consumer of this image is amd64; a `needs: build` that waits for
+  # success on both would let one flaky arm64 Swift fetch leave `:latest` unpublished, and because
+  # `hydrate-gg-toolchains.sh` treats a missing image as "install from upstream" and exits 0, the
+  # symptom would be every amd64 job silently paying ten minutes — the exact outcome the arm64 leg
+  # was added to prevent. So it fuses whichever `:latest-<arch>` tags actually resolve, and fails
+  # only when neither does.
+  #
+  # The cost of that is worth naming: a leg that fails leaves its PREVIOUS build's tag in the
+  # registry, so the list can carry one fresh architecture and one stale one. That is safe here for
+  # the reason the whole design is safe — the image only seeds the disk, and
+  # `install-gg-toolchains.sh` runs afterwards and repairs every arm whose pin has moved — and a
+  # stale half is strictly better than no `:latest` at all.
+  manifest:
+    needs: build
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    steps:
+      # For `containers/gg-ci/image-name.sh`, the same way build-containers.yml's manifest job
+      # checks out for `containers/image-names.sh`: the name it fuses must come from the same
+      # place the build job pushed it under.
+      - uses: actions/checkout@v6
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the multi-arch manifest
+        env:
+          OWNER: ${{ github.repository_owner }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          registry="ghcr.io/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          repo="$registry/$(./containers/gg-ci/image-name.sh)"
+
+          # Whichever arch tags resolve — see the note above this job on why a failed leg must not
+          # take `:latest` with it. `imagetools inspect` answers from the registry alone, so this
+          # is two HEAD-shaped requests and not two pulls.
+          sources=()
+          for arch in amd64 arm64; do
+            if docker buildx imagetools inspect "$repo:latest-$arch" >/dev/null 2>&1; then
+              sources+=("$repo:latest-$arch")
+            else
+              echo "note: $repo:latest-$arch does not resolve; it is left out of the list"
+            fi
+          done
+          if ((${#sources[@]} == 0)); then
+            echo "error: neither architecture published a tag, so there is nothing to fuse." >&2
+            echo "       Read the failing build job above; this job found no :latest-<arch> at all." >&2
+            exit 1
+          fi
+
+          echo "==> assembling $repo:latest + $repo:$GIT_SHA from ${sources[*]}"
+          docker buildx imagetools create \
+            -t "$repo:latest" \
+            -t "$repo:$GIT_SHA" \
+            "${sources[@]}"
+          docker buildx imagetools inspect "$repo:$GIT_SHA"

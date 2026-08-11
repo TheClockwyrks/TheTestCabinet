@@ -1,0 +1,116 @@
+# The build context for the DEVCONTAINER image, and only for it.
+#
+# WHY THERE IS A SECOND ALLOWLIST AT ALL. This image used to build from
+# `.devcontainer/` as its context, which was enough while everything it installed
+# was a download pinned by a script sitting in that directory. It is not enough
+# any more: gg's eleven program-language toolchains are pinned by the REPOSITORY —
+# each arm's own `packages/gg-sandbox-*/<lang>-version.sh`, installed by
+# `scripts/ci/install-gg-toolchains.sh` — and `crates/gg/build.rs` reflects all
+# eleven signature catalogues as a step of building the crate, so a container that
+# does not have them cannot `cargo build --workspace` at all. Baking them into the
+# image therefore means the image build has to be able to READ the repository, so
+# the context moved up to the repository root (see `docker-compose.yml`'s
+# `context: ..`).
+#
+# WHY THAT SLICE IS NOT SIMPLY ADDED TO THE ROOT `.dockerignore`. Read that file's
+# opening paragraph: it is an allowlist rather than a list of exclusions precisely
+# so "a change to anything cargo does NOT compile — the frontend, the docs, test
+# cases, k8s manifests, models, this devcontainer — can never invalidate a build
+# layer". Seven Dockerfiles built from that context do `COPY . .` (the shared
+# asset-tooling builder that compiles ~20 Rust binaries, the adversarial and
+# performance run images, the web console image and all three service targets), so
+# re-including `/.devcontainer` there would mean editing this comment recompiled
+# the asset tooling from scratch. The root file already refuses to admit
+# `scripts/` as a whole for exactly that reason. A per-dockerfile ignore gets the
+# devcontainer the slice it needs with zero blast radius: the sibling Dockerfiles
+# keep reading the root allowlist, unchanged and unaffected.
+#
+# HOW DOCKER FINDS THIS FILE. BuildKit looks for `<dockerfile-path>.dockerignore`
+# beside the Dockerfile and uses it INSTEAD OF the context root's when it exists —
+# so this file wins for `.devcontainer/ubuntu.dockerfile` and applies to nothing
+# else. `docker compose build` honours the same rule, which is what matters here
+# because compose is how the Dev Containers extension builds this image; verified by
+# moving this file aside, at which point the compose build dies with
+# `"/.devcontainer/...": not found` on the first COPY it resolves, and putting it
+# back, at which point it builds.
+#
+# THIS REQUIRES BUILDKIT. The classic builder (`DOCKER_BUILDKIT=0`) does not know
+# about per-dockerfile ignore files: it silently falls back to the root allowlist and
+# stops at the first COPY with `COPY failed: file not found in build context or
+# excluded by .dockerignore`. Docker has defaulted to BuildKit since 23 and the
+# devcontainer's own `docker` client ships `buildx`, so this is a statement of a
+# requirement rather than a caveat — if a build of this image ever reports a missing
+# `.devcontainer/...` file, check that first.
+#
+# AND IT IS A REQUIREMENT THIS REPOSITORY DOES NOT MEET ON EVERY SUPPORTED HOST.
+# `docker-compose.nixos.yml` and `.env.podman` are committed, and `README.md` tells a
+# NixOS user to copy them, so ROOTLESS PODMAN is a configuration somebody is expected
+# to build this image with. Podman does not go through BuildKit: Buildah resolves an
+# ignore file from the CONTEXT directory — `$CONTEXT/.containerignore`, then
+# `$CONTEXT/.dockerignore` — with `--ignorefile` as the only override, and implements
+# no sibling-to-the-Dockerfile rule. On such a host the ROOT allowlist is what applies
+# to this build, and it never admits `/.devcontainer`, so the first COPY fails with
+# "no such file or directory". Not verified here, because there is no podman in this
+# container to verify it with; it is stated as the thing to check first rather than as
+# a measurement.
+#
+# There is no mechanism both builders honour, which is why this is documented instead
+# of solved: a root `.containerignore` would be preferred by Buildah for EVERY image
+# built from this context, which is precisely the blast radius the paragraph above
+# refuses. The workaround is one flag, and it has to go on a `podman build` rather than
+# on compose:
+#
+#     podman build --ignorefile .devcontainer/ubuntu.dockerfile.dockerignore \
+#       -f .devcontainer/ubuntu.dockerfile -t <the tag compose expects> .
+#
+# `.devcontainer/README.md`'s Podman section says the same thing where a person looking
+# for it would actually be standing.
+
+# Ignore everything by default…
+*
+
+# …then re-include the four things this image's COPY instructions read.
+
+# The devcontainer's own scripts and shell config — the whole directory, because
+# every file in it exists to be copied into the image and enumerating them here
+# would be a second list to keep in step with the Dockerfile's COPYs.
+!/.devcontainer
+
+# The toolchain installers, and only them, as a GLOB. `install-gg-toolchains.sh`
+# runs eight per-arm installers by that name and sources `scripts/ci/lib.sh` beside
+# them, so those two patterns are the whole closure — and being a glob rather than a
+# list, the half that grows every time an arm is added is covered without an edit.
+#
+# It is deliberately NOT the whole `scripts/ci` directory, though the root allowlist
+# admits it that way for the driver image. The Dockerfile's COPY is written to match
+# these same two patterns, and the reason is the 1.9 GB layer it feeds: Docker hashes
+# everything a COPY matches into that layer's cache key, so admitting the other twelve
+# scripts here would mean an edit to `web-build.sh` or `specs-lint.sh` cost the next
+# image build every toolchain in it.
+!/scripts/ci/install-*.sh
+!/scripts/ci/lib.sh
+
+# The version files those installers source, one per arm, as a GLOB — so adding an
+# arm needs no edit here, exactly as it needs no edit in the Dockerfile. The
+# pattern admits `packages/gg-sandbox-*/*-version.sh` and nothing else under
+# `packages/`: `*` does not cross a `/`, so the arms' sources, their `.build/`
+# scratch and the unrelated npm workspaces beside them all stay out. Measured
+# whole slice: ~230 kB.
+!/packages/gg-sandbox-*/*-version.sh
+
+# `packages/gg-sandbox-rust/rust-version.sh` reads the toolchain channel out of
+# this file rather than pinning a second copy of it, so the Rust arm's installer
+# (`rustup target add wasm32-unknown-unknown`) cannot run without it. It is also
+# what makes that install cheap: `channel` here equals the `RUST_VERSION` build arg
+# in `docker-compose.yml`, so rustup adds a target to the toolchain the image
+# already has rather than downloading a second one.
+!/rust-toolchain.toml
+
+# Finally, re-exclude the two host-specific files that are deliberately not
+# committed (see `.devcontainer/.gitignore`). They would ride in under the
+# `!/.devcontainer` re-inclusion above, which would put one developer's SSH-agent
+# path and timezone into the context of everyone's build. Nothing COPYs them —
+# `docker-compose.local.yml` is read by compose on the HOST, before any of this.
+# These come last so they win.
+/.devcontainer/docker-compose.local.yml
+/.devcontainer/.env

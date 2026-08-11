@@ -117,11 +117,20 @@ repos:
         description: Reject a Dockerfile COPY whose source the .dockerignore allowlist keeps out of the build context.
         entry: scripts/ci/build-context.sh
         language: script
-        # Reads every Dockerfile against the one .dockerignore, so it does not take
-        # file arguments; trigger whenever either side of that pair is staged. This
-        # is the only gate that sees the defect at all — the image builds live on a
-        # GitHub workflow that runs on master/staging, long after the commit.
-        files: '(^|/)[^/]*Dockerfile[^/]*$|^\.dockerignore$'
+        # Reads every Dockerfile against the allowlist that applies to it, so it does
+        # not take file arguments; trigger whenever either side of that pair is
+        # staged. This is the only gate that sees the defect at all — the image builds
+        # live on a GitHub workflow that runs on master/staging, long after the
+        # commit.
+        #
+        # The pattern is case-insensitive in `[Dd]ockerfile` and matches a
+        # `.dockerignore` at any depth rather than only at the root, because both of
+        # those are now real: the devcontainer image is `.devcontainer/ubuntu.dockerfile`
+        # and carries its own `ubuntu.dockerfile.dockerignore` beside it (BuildKit
+        # prefers a per-dockerfile ignore over the context root's). Under the previous
+        # pattern neither file could trigger this hook, which is precisely the shape
+        # of defect it exists to catch.
+        files: '(^|/)[^/]*[Dd]ockerfile[^/]*$|(^|/)\.dockerignore$'
         pass_filenames: false
 
       - id: rust-fmt

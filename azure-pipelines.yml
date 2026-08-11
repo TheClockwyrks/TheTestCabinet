@@ -136,6 +136,19 @@ jobs:
       # tarred into a file beside itself on the same disk, which is exactly the failure
       # ("Wrote only N of M bytes") that free-disk-linux.sh and the line-tables debug cap
       # exist to prevent. Re-downloading them each run is the cheaper half of that trade.
+      #
+      # AND THAT SAME MEASUREMENT IS WHY THIS JOB DOES NOT HYDRATE FROM AN IMAGE. GitHub's
+      # ci.yml now seeds these toolchains from a published image before running the same
+      # installer (scripts/ci/hydrate-gg-toolchains.sh + containers/gg-ci/Dockerfile),
+      # which trades five upstream CDNs for one registry pull. Azure is deliberately left
+      # on the download path, for reasons that are all about THIS agent rather than about
+      # the idea: pulling a ~2 GB image has the identical disk problem the paragraph above
+      # measured, only sooner; free-disk-linux.sh reclaims space on the agent HOST, so
+      # moving the work into a container job would step around the one thing keeping this
+      # job green; and this is the pipeline that runs rust-lint.sh BEFORE rust-test.sh and
+      # therefore needs the toolchains earlier than either script installs them, which is
+      # why this step exists at all. Overturning that needs a measurement on a real agent
+      # that nobody has taken — not an argument.
       - script: |
           set -euo pipefail
           ./scripts/ci/install-gg-toolchains.sh

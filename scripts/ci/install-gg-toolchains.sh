@@ -14,9 +14,12 @@
 # devcontainer so that every developer has ONE environment rather than eleven personal ones, and a
 # toolchain that is required is therefore a toolchain that is *installed*. There is no machine that
 # builds gg without them and no artifact committed to spare one the install. **This is the single
-# script that makes a machine such a machine** — the devcontainer's `postCreateCommand` runs it, the
-# CI scripts run it, the release workflow runs it, the driver image's gg build stage runs it. One
-# pinned list, run everywhere, rather than a per-surface sequence that drifts arm by arm.
+# script that makes a machine such a machine** — the devcontainer IMAGE runs it as its last build
+# layer (`.devcontainer/languages/gg/install.sh`) and its `postCreateCommand` runs it again to
+# reconcile an image built before a pin moved, the CI scripts run it, `containers/gg-ci/Dockerfile`
+# runs it to bake the image those CI jobs hydrate from, the release workflow runs it, and the driver
+# image's gg build stage runs it. One pinned list, run everywhere, rather than a per-surface
+# sequence that drifts arm by arm.
 #
 # It composes the per-arm installers rather than reimplementing any of them. Each of those owns one
 # toolchain, reads its pin from that arm's own `*-version.sh`, prunes what a run container does not
@@ -47,11 +50,19 @@
 #     own is the arm's reflector: the pinned YARD, installed per-user, so a build never discovers
 #     mid-`cargo build` that it wants to talk to rubygems.org.
 #
-# PATH. `purs` and `esbuild` land in `$HOME/.local/bin`, so a caller that shells out to them needs
-# that directory on PATH — a child process cannot fix its parent's environment. The devcontainer
-# image already has it; a CI script that calls this should export it immediately afterwards, as
-# `scripts/ci/rust-test.sh` does. Everything else installs under a prefix `crates/gg` and the
-# reflectors look for by name, so nothing else has to be exported.
+# PATH — TWO OBLIGATIONS, and a caller that meets only the first gets a build that dies three arms
+# in. `purs` and `esbuild` land in `$HOME/.local/bin`, so a caller that shells out to them AFTERWARDS
+# needs that directory on PATH; a child process cannot fix its parent's environment (this script
+# exports it for its own run, which is why the checks below work regardless). The second is
+# `rustup`, usually `$HOME/.cargo/bin`, which must be on PATH BEFORE this runs: `install-rust-wasm.sh`
+# asks `rustc` where the wasm32 standard library would live and falls back to `rustup target add`,
+# and it exits 1 rather than skipping when it can find neither — deliberately, because on a machine
+# that runs this for real a missing wasm32 std is a defect and not a choice. That obligation is
+# invisible on an interactive shell, where rustup's own `~/.bashrc` edit has already met it, and
+# very visible inside a Dockerfile `RUN`, which sources no profile: it is what
+# `.devcontainer/ubuntu.dockerfile` and `containers/gg-ci/Dockerfile` both set an `ENV PATH` for.
+# Everything else installs under a prefix `crates/gg` and the reflectors look for by name, so
+# nothing else has to be exported.
 #
 # Usage:
 #   scripts/ci/install-gg-toolchains.sh

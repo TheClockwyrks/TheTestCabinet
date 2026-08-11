@@ -19,10 +19,28 @@
 # build context (`--from=` copies read an earlier stage, and remote `ADD` sources
 # read the network — neither touches the context):
 #   1. the source path exists in the repository, and
-#   2. `.dockerignore` leaves it in the context.
+#   2. the allowlist that applies to THAT Dockerfile leaves it in the context.
 #
-# Whole-context copies (`COPY . .`) are inspected for neither: they take whatever the
-# allowlist admits, which is exactly the question the allowlist answers.
+# WHICH ALLOWLIST APPLIES. Almost every image here is built from the repository root
+# and answers to the root `.dockerignore`. One is not: BuildKit reads
+# `<dockerfile-path>.dockerignore` in preference to the context root's whenever that
+# file exists, and `.devcontainer/ubuntu.dockerfile` has one — it builds from the repo
+# root too (it bakes gg's toolchains, which are pinned by the repository) but must not
+# widen the root allowlist to do it, because seven Dockerfiles that `COPY . .` share
+# that one. So this gate resolves the ignore file per Dockerfile, the way Docker does.
+# Evaluating a per-dockerfile context against the root allowlist would report a dozen
+# failures that no build has.
+#
+# Whole-context copies (`COPY . .`) are inspected for neither of the two checks: they
+# take whatever the allowlist admits, which is exactly the question the allowlist
+# answers. A DIRECTORY source is a weaker version of the same thing — `COPY dir dst`
+# copies the directory's surviving contents — so it is checked for whether the copy
+# transfers *anything*, not for whether the directory itself was re-included. That
+# distinction is load-bearing rather than pedantic: `.devcontainer/ubuntu.dockerfile`
+# copies `./packages`, whose allowlist entry is the glob
+# `!/packages/gg-sandbox-*/*-version.sh` — the directory is ignored, the nine files under
+# it are not, and the build works. What the check still catches is the real failure:
+# a directory none of whose contents survive, which copies nothing at all.
 #
 # The evaluation mirrors Docker's own: patterns apply in order, the last one to match
 # wins, a `!` pattern re-includes, and a path is ignored when it or any ancestor
@@ -120,12 +138,34 @@ context_includes() {
 	((ignored == 0))
 }
 
+# True when a DIRECTORY source contributes anything at all to the build context.
+# `COPY dir dst` copies what survives UNDER the directory, so a directory that the
+# allowlist ignores while re-including files beneath it copies those files perfectly
+# well — which is what a re-inclusion glob like `!/packages/gg-sandbox-*/*-version.sh`
+# is for. Asking `context_includes` about the directory itself would call that a
+# failure. Tracked files only (`git ls-files`), because untracked scratch is not a
+# thing a build may depend on and walking `target/` here would be absurd.
+context_includes_dir() {
+	local dir="$1" file
+	context_includes "$dir" && return 0
+	while IFS= read -r file; do
+		context_includes "$file" && return 0
+	done < <(git -C "$REPO_ROOT" ls-files -- "$dir")
+	return 1
+}
+
 # --- the matcher's teeth ----------------------------------------------------
 
 # A gate nobody has watched fail is a gate nobody knows works. This drives the
 # matcher over a synthetic allowlist of the shape this repository uses and asserts
 # both answers, including the two shapes that have actually broken a build here: a
-# file re-included by name, and a file under a re-included directory.
+# file re-included by name, and a file under a re-included directory. The third
+# shape — a re-inclusion that is a GLOB spanning one path segment
+# (`!/packages/gg-sandbox-*/*-version.sh`, how the devcontainer's allowlist admits
+# every arm's version file without naming the arms) — is asserted here because it is
+# new to this repository and its correctness rests entirely on `*` stopping at a
+# `/`: a matcher that let it span separators would quietly admit every arm's whole
+# source tree and scratch directories with it.
 self_test() {
 	local fixture failures=0 case_line path expected
 	fixture="$(mktemp)"
@@ -138,6 +178,7 @@ self_test() {
 !/apps/web
 !/docs/*.md
 !/vendor/**/keep.txt
+!/packages/gg-sandbox-*/*-version.sh
 **/target/
 **/node_modules/
 PATTERNS
@@ -161,7 +202,11 @@ crates/Cargo.toml included
 scripts/ci/install-java.sh included
 scripts/ci/install-purescript.sh ignored
 scripts/ci ignored
-packages/gg-sandbox-java/java-version.sh ignored
+packages/gg-sandbox-java/java-version.sh included
+packages/gg-sandbox-java/src/Main.java ignored
+packages/gg-sandbox-swift/.build/debug/swift-version.sh ignored
+packages/gg-sandbox-java ignored
+packages/ui/src/index.ts ignored
 apps/web/src/main.tsx included
 apps/docs/astro.config.mjs ignored
 crates/gg/target/debug/gg ignored
@@ -219,17 +264,30 @@ copy_instructions() {
 
 log "verify every Dockerfile COPY can see its source in the build context"
 self_test
-load_dockerignore "$REPO_ROOT/.dockerignore"
 
 problems=0
 checked=0
-mapfile -t dockerfiles < <(git ls-files '*Dockerfile' '*.Dockerfile' | sort)
+# `*.dockerfile` is the devcontainer's spelling, and it was outside this glob until
+# that image started building from the repository root — so the one Dockerfile whose
+# COPY paths this gate is most useful for was the one it silently skipped.
+mapfile -t dockerfiles < <(git ls-files '*Dockerfile' '*.Dockerfile' '*.dockerfile' | sort)
 ((${#dockerfiles[@]} > 0)) || {
 	echo "error: no tracked Dockerfiles found; this gate would pass vacuously." >&2
 	exit 1
 }
 
+loaded_ignore=""
 for dockerfile in "${dockerfiles[@]}"; do
+	# Docker's own rule: a `<dockerfile-path>.dockerignore` beside the Dockerfile
+	# replaces the context root's for that build. Loading is memoised because the
+	# list is sorted and all but one Dockerfile answers to the same root file.
+	ignore_file=".dockerignore"
+	[[ -f "$REPO_ROOT/$dockerfile.dockerignore" ]] && ignore_file="$dockerfile.dockerignore"
+	if [[ "$ignore_file" != "$loaded_ignore" ]]; then
+		load_dockerignore "$REPO_ROOT/$ignore_file"
+		loaded_ignore="$ignore_file"
+	fi
+
 	while read -r lineno instruction; do
 		[[ -n "$instruction" ]] || continue
 		# shellcheck disable=SC2206  # deliberate word-splitting: Dockerfile arguments
@@ -267,10 +325,19 @@ for dockerfile in "${dockerfiles[@]}"; do
 				problems=$((problems + 1))
 				continue
 			fi
-			if ! context_includes "$normalized"; then
-				echo "error: $dockerfile:$lineno copies '$source', which .dockerignore keeps OUT of the build context." >&2
+			# A directory source copies its surviving CONTENTS, so the question for it is
+			# whether anything under it survives — see context_includes_dir.
+			if [[ -d "$REPO_ROOT/$normalized" ]]; then
+				if ! context_includes_dir "$normalized"; then
+					echo "error: $dockerfile:$lineno copies the directory '$source', and $ignore_file keeps every tracked file under it OUT of the build context." >&2
+					echo "       The build will fail with: failed to compute cache key: \"/$normalized\": not found" >&2
+					echo "       Fix: re-include what that image reads in $ignore_file, with a comment saying which image needs it." >&2
+					problems=$((problems + 1))
+				fi
+			elif ! context_includes "$normalized"; then
+				echo "error: $dockerfile:$lineno copies '$source', which $ignore_file keeps OUT of the build context." >&2
 				echo "       The build will fail with: failed to compute cache key: \"/$normalized\": not found" >&2
-				echo "       Fix: add '!/$normalized' to the .dockerignore allowlist, with a comment saying which image needs it." >&2
+				echo "       Fix: add '!/$normalized' to the $ignore_file allowlist, with a comment saying which image needs it." >&2
 				problems=$((problems + 1))
 			fi
 		done

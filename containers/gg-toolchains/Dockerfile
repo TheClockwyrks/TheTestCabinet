@@ -1,9 +1,26 @@
 # syntax=docker/dockerfile:1
 # The **gg language-toolchain** BUILDER image for The Test Cabinet's run containers.
 #
-# This is NOT a run image: nothing ever executes in it and it is never published. It
-# exists solely as a `COPY --from` source, exactly as `containers/tools` does, so the
-# toolchains land in one place and every gg run image copies the same tree.
+# This is NOT a run image: nothing ever executes in it. It exists to be a `COPY --from`
+# source, exactly as `containers/tools` does, so the toolchains land in one place and
+# every gg run image copies the same tree.
+#
+# It IS published, though, and this file is where that fact belongs — `containers/build.sh`
+# and `containers/README.md` both point a reader here, and it used to say the opposite.
+# `build.sh` pushes it under `PUSH=1` and `.github/workflows/build-containers.yml`'s
+# manifest job fuses its two arch tags, so the exact tree baked into every `-gg` variant is
+# pullable and pinned by digest on its own terms; the argument for paying for that is where
+# `GG_TOOLCHAINS_IMAGE` is defined in `build.sh`, and is not repeated here.
+#
+# Published and yet absent from `containers/image-names.sh`, which looks like a
+# contradiction and is not: that list is the set of images a RUN RESOLVES, and nothing
+# resolves this one. The obstacle to listing it anyway is `build.sh` rather than the Rust
+# suite — `every_resolvable_image_is_one_the_build_publishes` in
+# `crates/core/src/harness.test.rs` keeps a `NOT_A_RUN_IMAGE` exception list, which already
+# holds `base` for exactly this shape — but `build_one` dispatches on that list BY NAME, so
+# an entry here would send `./build.sh` (and `make run-images`) through `build_asset_image`
+# for something that is not one. That is why the manifest job fuses this image by name
+# instead of picking it up from the loop.
 #
 # Why this exists
 # ---------------

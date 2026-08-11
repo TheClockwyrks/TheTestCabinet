@@ -8,14 +8,13 @@ Cloudflare `wrangler` CLI that `tcab publish` uses to deploy run builds to
 Cloudflare Pages, and the `k3d`, `kubectl`, and `docker` (client-only) tooling
 the [local service stack](#host-docker-access-the-local-service-stack) runs on.
 
-On top of that, the `postCreateCommand` runs
-[`scripts/ci/install-gg-toolchains.sh`](../scripts/ci/install-gg-toolchains.sh),
-which installs the toolchains of gg's eleven program-language arms: `purs` and
-`esbuild`, a JDK and TeaVM's jars, the Kotlin compiler, the
-`wasm32-unknown-unknown` standard library, the Swift toolchain and its
-WebAssembly SDK, wasi-sdk, .NET with Roslyn, and the pinned YARD. That is
-roughly **1.9 GB installed** and a good deal more downloaded on a first create,
-so expect the first container to take a while.
+On top of that, the image **bakes in the toolchains of gg's eleven
+program-language arms**: `purs` and `esbuild`, a JDK and TeaVM's jars, the Kotlin
+compiler, the `wasm32-unknown-unknown` standard library, the Swift toolchain and
+its WebAssembly SDK, wasi-sdk, .NET with Roslyn, uv, and the pinned YARD. That is
+roughly **1.9 GB installed** and a good deal more downloaded to produce it, so
+expect the first *pull or build* of the image to take a while — but a first
+**create** no longer does, which is the point of baking them.
 
 They are not optional and they are not only for gg's tests. Each arm's
 **signature catalogue** — the whole of what a model is told that arm's sandbox
@@ -24,17 +23,34 @@ tool (`tsc`, griffe, YARD, `purs`, javadoc, the Kotlin front end, rustdoc,
 `swiftc -emit-symbol-graph`, `clang++ -ast-dump=json`, Roslyn), and
 `crates/gg/build.rs` does that reflection **as a step of building the crate**
 rather than reading a committed copy. So a container missing them cannot build
-the workspace, cannot lint it, and fails the pre-commit hooks that run both.
-They are installed at `postCreate` rather than baked into the image because the
-repository pins them (each arm's `packages/gg-sandbox-*/<lang>-version.sh`) and
-the repository is only mounted from that point on. The one exception is Ruby
-itself, which is a distribution package and so is installed into the image by
-`system/apt.sh`.
+the workspace, cannot lint it, and fails the pre-commit hooks that run both. A
+prerequisite for working in the repository at all belongs in the image.
 
-If a first create is interrupted, or you rebuild an image from before those
-toolchains were added, run the installer again by hand — it is idempotent and a
-no-op in about a second when everything is already there — followed by the npm
-install it deliberately leaves alone (see
+The mechanism is the same one Node and Rust use — a thin
+[`languages/gg/install.sh`](languages/gg/install.sh) copied in and run by
+[`ubuntu.dockerfile`](ubuntu.dockerfile)'s last layer — with one wrinkle worth
+knowing about, because it is what the rest of this repository's `.dockerignore`
+conventions would otherwise make surprising. These toolchains are pinned by the
+**repository** (each arm's `packages/gg-sandbox-*/<lang>-version.sh`, installed
+by [`scripts/ci/install-gg-toolchains.sh`](../scripts/ci/install-gg-toolchains.sh),
+which every other surface that builds gg runs too), so the image build has to be
+able to read the repository: its build context is the **repo root**, and
+[`ubuntu.dockerfile.dockerignore`](ubuntu.dockerfile.dockerignore) — a
+per-dockerfile allowlist that applies to this build and no other — narrows that
+context to the ~230 kB slice the installers actually read. Every `COPY` in the
+Dockerfile is therefore written relative to the repo root. The one toolchain
+outside all of this is Ruby itself, which is a distribution package and so is
+installed by `system/apt.sh`.
+
+The `postCreateCommand` still runs the installer, now as a **reconciler**: an
+image built before a pin moved is stale, and the way you find that out otherwise
+is `rustc` refusing another release's `.rlib` with E0514 halfway through a build.
+The installer is idempotent — it compares what is installed against each pin and
+touches the network only on a mismatch — so it costs about 0.2 s when the image
+is current, and re-downloads one arm when it is not.
+
+If a create is interrupted, or you want to repair a container by hand, run it
+again yourself, followed by the npm install it deliberately leaves alone (see
 [Building inside the container](#building-inside-the-container)):
 
 ```sh
@@ -61,11 +77,29 @@ For rootless Podman (for example on a NixOS host):
 
 ```sh
 cd .devcontainer
-cp docker-compose.podman.yml docker-compose.local.yml
+cp docker-compose.nixos.yml docker-compose.local.yml
 cp .env.podman .env
 ```
 
 Then run **Dev Containers: Reopen in Container** in VS Code.
+
+> **Podman and the image's ignore file.** Since the gg toolchains were baked in, this
+> image builds from the **repository root** and narrows that context with
+> [`ubuntu.dockerfile.dockerignore`](ubuntu.dockerfile.dockerignore) — a
+> *per-dockerfile* ignore file, which is a BuildKit rule. Buildah (and so Podman)
+> looks for `.containerignore`/`.dockerignore` in the **context directory** instead
+> and takes an explicit `--ignorefile`; it has no sibling-to-the-Dockerfile rule. If
+> your Podman build dies on the first `COPY` with "no such file or directory", that is
+> why, and the workaround is to build the image yourself and let compose reuse it:
+>
+> ```sh
+> podman build --ignorefile .devcontainer/ubuntu.dockerfile.dockerignore \
+>   -f .devcontainer/ubuntu.dockerfile -t <the tag compose expects> .
+> ```
+>
+> This has not been measured on a Podman host — nobody has run one since the change —
+> so treat it as the first thing to check rather than as a known failure. The ignore
+> file's header carries the same note and the reasoning behind it.
 
 ## Host Docker access (the local service stack)
 
@@ -101,10 +135,12 @@ This works out of the box on a standard setup. Two knobs cover the rest:
 
 Two of the eleven signature catalogues `crates/gg`'s build script reflects come
 out of the pinned `typescript` in the npm workspaces, so a checkout that has
-never been installed cannot build the Cargo workspace either. The
-`postCreateCommand` runs `npm ci` for that reason, right after the toolchains —
-but if it was interrupted, or you deleted `node_modules` at some point, run it
-again by hand. The build script says so by name if you forget.
+never been installed cannot build the Cargo workspace either. It is the one gg
+prerequisite the image cannot bake — the workspaces are part of the checkout,
+which is a bind mount that exists only once the container is running — so the
+`postCreateCommand` runs `npm ci` right after reconciling the toolchains. If that
+was interrupted, or you deleted `node_modules` at some point, run it again by
+hand. The build script says so by name if you forget.
 
 ```sh
 cargo build --workspace        # CLI, core, and the Tauri desktop shell

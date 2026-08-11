@@ -154,8 +154,14 @@ containers/
 ├── gg-toolchains/Dockerfile    # the gg LANGUAGE-TOOLCHAIN builder: every compiler a gg run's
 │                               #   responses-as-code programs may need, under /opt/gg (purs+esbuild,
 │                               #   a JDK+TeaVM, the Kotlin compiler, a pruned rustc, a pruned
-│                               #   Swift + its wasm SDK, wasi-sdk, a pruned .NET). Not a run image
-│                               #   and never published — the `-gg` variants `COPY --from` it
+│                               #   Swift + its wasm SDK, wasi-sdk, a pruned .NET). Not a run image —
+│                               #   the `-gg` variants `COPY --from` it — but it IS published, so the
+│                               #   tree inside them is pullable and pinned by digest on its own
+├── gg-ci/Dockerfile            # the gg CI TOOLCHAIN image: the same eleven toolchains under a
+│                               #   staged $HOME instead of /opt, so a CI job that must COMPILE gg
+│                               #   copies them in rather than fetching 1.9 GB from five upstreams.
+│                               #   Not a run image, not built by build.sh, not a `COPY --from`
+│                               #   source — its own workflow builds it (see Building)
 ├── gg/Dockerfile               # ONE parameterized `<parent>-gg` variant: any run image plus that tree
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
 ├── sprite-sheet/Dockerfile     # the base image plus the baked-in `draw-sheet` binary
@@ -620,10 +626,25 @@ stages (with the same cache mounts applied directly).
 exactly the same reason: it assembles every language toolchain a gg run's programs
 may be compiled with under one prefix (`/opt/gg/toolchains`), exports it as a
 `scratch` image, and each `-gg` variant resolves it through a `GG_TOOLCHAINS_IMAGE`
-build arg and copies the tree out. It is not a run image, never appears in
-`image-names.sh`, and is never pushed; like the asset tooling it is **always**
+build arg and copies the tree out. It is not a run image and never appears in
+`image-names.sh` — that list is the set of images a *run resolves*, and `build.sh`'s
+`build_one` dispatches on it by name, so an entry would route `make run-images` through
+the asset-image builder. (The Rust suite is not what blocks it: that test keeps a
+`NOT_A_RUN_IMAGE` exception list, which already holds `base`.) Like the asset tooling it is **always**
 rebuilt when any variant is selected, because it carries the compilers a run's
 programs are judged by.
+
+Unlike the asset tooling it **is** pushed under `PUSH=1`, and the difference between the
+two is worth stating. The asset tooling is ~20 Rust binaries compiled from this checkout
+behind cargo cache mounts, so a registry copy would save nothing. This tree is ~1.9 GB
+fetched from five upstreams and pruned, and it is byte-identical in every `-gg` variant —
+so publishing it means the tree inside those variants is pullable and pinned by digest on
+its own terms rather than only inspectable by taking a run image apart, and
+`./build.sh <name>-gg` can be pointed at the published tag through `GG_TOOLCHAINS_IMAGE`
+instead of paying for the fetch again. The registry stores the layers once however many
+variants carry them. Because it is not in `image-names.sh`, the `manifest` job in
+`build-containers.yml` — which is driven by that list — fuses this one arch pair by name,
+immediately after its loop.
 
 Two constraints bind every toolchain added to it, and both are written down in the
 Dockerfile's header. It must be **relocatable and distribution-portable** — the same
@@ -736,6 +757,46 @@ is pushed and its pinned `repo@sha256:…` digest printed. Runners resolve the
 published image directly from their own registry configuration; the script does
 **not** register anything with the backend, which plays no part in container
 distribution (see `../apps/docs/src/content/docs/components/core/execution.md`).
+
+### The gg CI toolchain image
+
+[`gg-ci/Dockerfile`](gg-ci/Dockerfile) is the odd one out in this directory: it is neither
+a run image nor a builder anything here copies from. It exists for the machines that
+**compile** gg rather than the containers that run it.
+
+Since the eleven signature catalogues stopped being committed, `crates/gg/build.rs`
+reflects each of them out of its arm's own SDK with its arm's own documentation tool on
+every build — so a machine that cannot run `swiftc`, `javac`, `purs`, Roslyn and the rest
+cannot run `cargo build --workspace` at all. `scripts/ci/install-gg-toolchains.sh` is the
+one pinned list that makes a machine such a machine, and it works; what it costs a cold CI
+agent is ten-ish minutes across five separate upstreams, each of which is a way for a run
+to go red for a reason unrelated to the change under test. This image is those ten minutes,
+done once, published, and pulled.
+
+Three things about it are decisions rather than details:
+
+- **It installs into a staged `$HOME` (`/gg-home`), not `/opt`.** That is what makes it a
+  second image rather than a `--target` of `gg-toolchains`. The run tree lives at
+  `/opt/gg/toolchains` because gg resolves it there inside a run container; the *build*
+  path resolves through `$HOME`, and three of the eleven arms cannot be redirected away
+  from it at all — `install-uv.sh` overwrites any inherited `UV_INSTALL_DIR`, YARD is a
+  `--user-install` gem in `Gem.user_dir`, and the `wasm32-unknown-unknown` standard library
+  is a rustup component. So this image runs the shared installer with **no overrides**: the
+  defaults are the point.
+- **It is not in `image-names.sh` and `build.sh` never builds it.** `make run-images` must
+  not start a 1.9 GB build of something no run container will pull, and that list is the set
+  of images a *run resolves* (asserted both ways by the Rust suite). It has its own
+  workflow, [`build-gg-ci-image.yml`](../.github/workflows/build-gg-ci-image.yml), whose
+  `paths:` are the closure of the pinned list expressed as globs, so a new arm is covered
+  without an edit.
+- **Hydrating from it never replaces the pinned installer.**
+  [`scripts/ci/hydrate-gg-toolchains.sh`](../scripts/ci/hydrate-gg-toolchains.sh) copies the
+  tree in *before* `rust-test.sh` / `contract-drift.sh` run `install-gg-toolchains.sh` as
+  they always have. The image supplies the bytes; the pinned list verifies them, and repairs
+  the one arm an image built before a pin moved has wrong. Every failure path in that
+  script — no image yet, a fork, a registry hiccup — falls back to the full install and
+  exits 0, because the commit that introduces all of this is by definition the commit
+  before the image exists.
 
 ## Runtime contract
 

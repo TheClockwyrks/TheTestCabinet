@@ -115,8 +115,10 @@ scripts/ci/install-gg-toolchains.sh   # every arm's documentation tool, idempote
 npm ci                                # the pinned `tsc` two of the arms are reflected with
 ```
 
-The devcontainer runs that installer for you on create, and every CI surface that builds or
-lints gg runs it too. That is the whole argument for generating rather than committing: this
+The devcontainer image runs that installer as its last build layer, so a container arrives with
+all of it already there and re-runs the installer on create only to reconcile an image built
+before a pin moved (about 0.2 s when it is current); every CI surface that builds or lints gg
+runs it too. That is the whole argument for generating rather than committing: this
 repository is developed in one environment on purpose, so a toolchain it requires is a
 toolchain it installs, and committing an artifact so a developer can skip an install defeats
 the point of the devcontainer and of the artifact at once. The installer covers `uv` (for

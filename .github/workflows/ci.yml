@@ -13,6 +13,16 @@ name: CI
 # until the repository is mirrored to GitHub (the same condition as the deploy
 # and catalog workflows).
 #
+# The one thing these jobs do that the Azure pipeline does not is SEED gg's eleven
+# program-language toolchains from a published image before running the pinned
+# installer (build-gg-ci-image.yml publishes it; hydrate-gg-toolchains.sh copies it in).
+# Two jobs here compile test-cabinet-gg and both therefore need ~1.9 GB of compilers on
+# disk before the first cargo invocation, and fetching that from five upstreams every
+# run is five ways for a red build to mean nothing about the change. The installer still
+# runs afterwards and still owns the pins; the image only saves it the download. Azure
+# stays on the download path deliberately — see the disk paragraph in its own toolchain
+# step for why that is about its agents rather than about the approach.
+#
 # macOS validation of the shipped binary is NOT here: it is costly and only
 # needed at release time, so it lives in the on-demand `binary-macos.yml`
 # workflow (manual or release-invoked). Azure covers the Linux and Windows legs
@@ -44,6 +54,20 @@ jobs:
           node-version: 22.23.1
           cache: npm
       - run: npm ci
+      # And the toolchains the step above could not install: the ones `rust-test.sh` fetches
+      # through scripts/ci/install-gg-toolchains.sh, seeded here from the published CI image
+      # rather than downloaded from five upstreams. That installer still runs inside
+      # rust-test.sh and still owns every pin — this only saves it the download. See the
+      # identical step in the `contract` job below for the whole argument, including why it
+      # is allowed to fail and what happens when it does.
+      - name: Hydrate gg's program-language toolchains
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          # The package name comes from containers/gg-ci/image-name.sh, which the publishing
+          # workflow pushes under; only the registry namespace is composed here.
+          ./scripts/ci/hydrate-gg-toolchains.sh "ghcr.io/${owner}/$(./containers/gg-ci/image-name.sh):latest"
       # The runner ships a stable Rust toolchain; rust-toolchain.toml selects it.
       - run: ./scripts/ci/install-nextest.sh
       - run: ./scripts/ci/rust-test.sh
@@ -87,4 +111,33 @@ jobs:
         with:
           node-version: 22.23.1
           cache: npm
+      # gg's eleven program-language toolchains, seeded from the image that already has them.
+      #
+      # Both this job and `rust` above compile test-cabinet-gg, and since the eleven signature
+      # catalogues stopped being committed that means both need ~1.9 GB of compilers on disk
+      # before the first cargo invocation — `crates/gg/build.rs` reflects each arm's catalogue
+      # out of its own SDK with its own documentation tool. `contract-drift.sh` and
+      # `rust-test.sh` each already call `scripts/ci/install-gg-toolchains.sh`, the one pinned
+      # list, and neither of them changes: this step runs BEFORE it and only seeds the disk, so
+      # the installer that owns the pins still checks every one of them and repairs anything the
+      # image had at an older version.
+      #
+      # It is allowed to fail and says so in its own log. On the first run there is no image
+      # (`build-gg-ci-image.yml` publishes it, and only from master/staging), on a fork the
+      # owner's namespace has never had one, and between a pin bump and the rebuild that follows
+      # it the published image is a version behind for one arm. Every one of those degrades to
+      # exactly the behaviour this job had before the image existed — the full install from
+      # upstream — which is slower and just as correct. See the script's header.
+      #
+      # The image reference is derived from the repository owner rather than hard-coded, the same
+      # way build-containers.yml and build-service-images.yml derive theirs (GHCR requires the
+      # namespace to be lowercase, hence the `tr`).
+      - name: Hydrate gg's program-language toolchains
+        env:
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')"
+          # The package name comes from containers/gg-ci/image-name.sh, which the publishing
+          # workflow pushes under; only the registry namespace is composed here.
+          ./scripts/ci/hydrate-gg-toolchains.sh "ghcr.io/${owner}/$(./containers/gg-ci/image-name.sh):latest"
       - run: ./scripts/ci/contract-drift.sh

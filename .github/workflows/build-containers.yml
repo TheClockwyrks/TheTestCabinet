@@ -45,7 +45,9 @@ name: Build containers
 # One-time setup: after the first successful push, set EACH published package's
 # visibility to Public in the org's GHCR package settings so unauthenticated runners
 # can pull them — one `test-cabinet-<name>` package per name in containers/image-names.sh
-# (base, every asset-generation kind including blender, adversarial, and performance).
+# (base, every asset-generation kind including blender, adversarial, and performance),
+# PLUS `test-cabinet-gg-toolchains`, which build.sh pushes but that list deliberately does
+# not name (see the manifest job at the bottom for why).
 # A newly-added image needs this the first time it is published.
 on:
   push:
@@ -55,16 +57,28 @@ on:
     # the Foray CLI + buildkit + reference modules), so a change to those crates
     # must rebuild the images too — not just a change under `containers/`.
     #
-    # `.dockerignore` and the gg toolchain installer are here for a subtler reason:
+    # `.dockerignore` and the gg toolchain installers are here for a subtler reason:
     # both are INPUTS to a build that lives entirely under `containers/`, and neither
     # is under it. `.dockerignore` is an allowlist, so the fix for a `COPY` that
     # cannot see its source is an edit to that file alone — which, without this
     # trigger, would leave the broken build unretried until something else pushed.
+    #
+    # The gg toolchain half is expressed as GLOBS, and it is worth saying why, because
+    # it was an enumeration and the enumeration was wrong. It named exactly two files —
+    # `scripts/ci/install-java.sh` and the Java arm's version file — from when Java was
+    # the only arm `containers/gg-toolchains/Dockerfile` installed by script. That
+    # Dockerfile now also runs the Kotlin, Swift, wasi-sdk and .NET installers, and
+    # `build_gg_toolchains` in containers/build.sh additionally sources the PureScript
+    # and Rust arms' pins to pass as build args — so a Swift or .NET pin bump changed
+    # what every `-gg` variant bakes in and rebuilt nothing. A glob covers an arm added
+    # tomorrow; a list covers the arms someone remembered.
     paths:
       - ".dockerignore"
       - "containers/**"
-      - "scripts/ci/install-java.sh"
-      - "packages/gg-sandbox-java/java-version.sh"
+      - "scripts/ci/install-*.sh"
+      - "scripts/ci/lib.sh"
+      - "packages/gg-sandbox-*/*-version.sh"
+      - "rust-toolchain.toml"
       - "crates/draw/**"
       - "crates/voxel/**"
       - "crates/voxel-anim/**"
@@ -221,3 +235,24 @@ jobs:
               "$repo:latest-amd64" "$repo:latest-arm64"
             docker buildx imagetools inspect "$repo:$GIT_SHA"
           done < <(./containers/image-names.sh)
+
+          # And the one image build.sh pushes that image-names.sh does not list: the gg
+          # LANGUAGE-TOOLCHAIN builder. It is not a run image — nothing resolves it, nothing
+          # executes in it, it is only ever a `COPY --from` source for the `-gg` variants — and
+          # image-names.sh is the set of images a run resolves. The Rust suite would tolerate an
+          # entry (`every_resolvable_image_is_one_the_build_publishes` keeps a NOT_A_RUN_IMAGE
+          # list, which already holds `base`); build.sh would not, because `build_one` dispatches
+          # on that list by name. So the loop above stays special-case-free and this one image is
+          # fused by name. See containers/gg-toolchains/Dockerfile's header.
+          #
+          # It is fused rather than left as two arch tags for the same reason everything above is:
+          # a `:latest` that is single-arch is a pull that either 404s or silently hands somebody
+          # the wrong architecture's compilers. Why it is published at all is argued where
+          # GG_TOOLCHAINS_IMAGE is defined in containers/build.sh.
+          repo="$registry/test-cabinet-gg-toolchains"
+          echo "==> assembling $repo:latest + $repo:$GIT_SHA from :latest-amd64 + :latest-arm64"
+          docker buildx imagetools create \
+            -t "$repo:latest" \
+            -t "$repo:$GIT_SHA" \
+            "$repo:latest-amd64" "$repo:latest-arm64"
+          docker buildx imagetools inspect "$repo:$GIT_SHA"

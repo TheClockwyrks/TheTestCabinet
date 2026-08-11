@@ -31,14 +31,16 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y \
 #     building the crate — so without a Ruby this image cannot `cargo build
 #     --workspace` at all. It is the ONE gg toolchain that comes from a
 #     distribution package rather than from a pinned download, which is why it is
-#     here and the other ten are in `scripts/ci/install-gg-toolchains.sh` (run from
-#     `postCreateCommand`, because those are pinned by the repository and the
-#     repository is not mounted yet at image-build time). That script installs the
-#     pinned YARD on top of this Ruby; the interpreter itself is deliberately
-#     unpinned, because what has to agree between a devcontainer, a CI agent and an
-#     image build is the reflector rather than the thing it runs on. Declared here
-#     for the reason iproute2 is: it was present by accident for a while, and an
-#     undeclared tool disappears silently on a base-image change.
+#     here and the other ten are in `scripts/ci/install-gg-toolchains.sh` — which
+#     this image also runs, several layers below (`languages/gg/install.sh`), so
+#     this line is a PREREQUISITE of that layer rather than an exception to it: the
+#     installer refuses to proceed without a `ruby` on PATH, and says so naming this
+#     file. That script installs the pinned YARD on top of this Ruby; the
+#     interpreter itself is deliberately unpinned, because what has to agree between
+#     a devcontainer, a CI agent and an image build is the reflector rather than the
+#     thing it runs on. Declared here for the reason iproute2 is: it was present by
+#     accident for a while, and an undeclared tool disappears silently on a
+#     base-image change.
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
 	build-essential \
 	cmake \

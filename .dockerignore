@@ -4,9 +4,26 @@
 # images, which compile the Foray/Lattice tooling in their own stages) and the
 # service-image builds (deployments/images/services.Dockerfile, which compiles the
 # backend/auth/dispatcher/driver/artifacts/arena/publisher crates) use the
-# repository root as their context. Every one of those builds is just a `cargo
+# repository root as their context. Almost every one of those builds is just a `cargo
 # build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
 # everything, then re-include only the paths cargo actually reads.
+#
+# ONE BUILD FROM THIS CONTEXT IS NOT A CARGO BUILD: containers/gg-ci/Dockerfile, which
+# bakes gg's eleven program-language toolchains into an image CI hydrates from. It
+# compiles nothing of this repository; what it reads is a slice of it (scripts/ci,
+# packages, rust-toolchain.toml) so that the pinned installers can find the pins they
+# install from. Those three are re-included below anyway, for the driver image's gg
+# stage, which is why this image needed no widening — but it is a second consumer of
+# them, and the notes below say so, because a reader pruning an entry whose consumer
+# they cannot find is the mistake this file's own history records twice.
+#
+# And one build from this context answers to a DIFFERENT allowlist:
+# .devcontainer/ubuntu.dockerfile, which carries its own
+# ubuntu.dockerfile.dockerignore beside it (BuildKit prefers a per-dockerfile ignore
+# file over the context root's). It bakes the same toolchains for the devcontainer and
+# deliberately does not widen this file to do it — seven Dockerfiles here `COPY . .`,
+# so a re-inclusion for the devcontainer would recompile the asset tooling. Nothing
+# below is for it.
 #
 # (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
 # all: they only `COPY --from` the tooling builder. They are still built with the
@@ -164,6 +181,13 @@
 # scripts that reflect them are build inputs of the driver image now, exactly as
 # crates/ is.
 #
+# THE SECOND CONSUMER of everything in the next three blocks is containers/gg-ci, the
+# image CI hydrates those toolchains from. It COPYs `packages` and `scripts/ci` as
+# directories and needs each arm's `*-version.sh` for the pin and nothing else — so it
+# would survive a narrowing that the driver stage above would not, and any narrowing has
+# to be argued against the driver stage, which genuinely compiles the reflections. It is
+# named here so that both consumers are findable from the entries rather than only one.
+#
 # So the whole of every guest package rides along. Each is a few hundred kB of sources,
 # tools and pins (the big directories inside them — .build/, .spago/, output/ — are
 # re-excluded at the end of this file), and each is named as a directory rather than as
@@ -184,7 +208,9 @@
 # gg-build stage runs scripts/build-gg-static.sh, whose cargo build runs
 # scripts/gg-signatures.sh, which runs the ten per-arm reflectors; the stage separately
 # runs scripts/ci/install-gg-toolchains.sh, which runs eight per-arm installers and
-# sources scripts/ci/lib.sh beside them. The two entry points are named. The installer
+# sources scripts/ci/lib.sh beside them. containers/gg-ci/Dockerfile runs that same
+# installer from that same directory, so `!/scripts/ci` has two consumers, not one.
+# The two entry points are named. The installer
 # family is admitted as a DIRECTORY, because enumerating that half is precisely the trap
 # this file's own history records twice — the Blender helpers and the Java arm's
 # installer — and because it is the half that grows every time an arm is added. (The
