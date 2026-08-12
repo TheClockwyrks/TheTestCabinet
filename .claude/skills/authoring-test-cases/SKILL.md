@@ -33,7 +33,7 @@ revision checklist to run before you call the work done.
 ## Pick your guide
 
 Pick the `asset_kind` from
-[`testing/asset-generation/manifests.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md);
+[`testing/asset-generation/manifests/overview.md`](../../../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md);
 an end-to-end or full-stack case has no `asset_kind` (a full-stack case is an
 end-to-end game that additionally produces its own 2D assets during the run).
 
@@ -72,7 +72,7 @@ For a variant of a `skinned`, `ui`, `material`, `particle`, or `audio` case —
 kinds with no dedicated variant guide — follow the additive-brief pattern in
 [`guides/creating-a-sprite-variant.md`](../../../apps/docs/src/content/docs/guides/authoring/creating-a-sprite-variant.md)
 together with that kind's authoring guide and the
-[manifest rules](../../../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
+[manifest rules](../../../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md):
 a variant layers **additive** specs and review items on the common set, and an
 asset-generation case declares no `[[reference]]`.
 

@@ -3,7 +3,7 @@
 # database. Layered onto an environment overlay via its `components:` list; today
 # both overlays/azure-prod and overlays/azure-staging include it, so the staging↔prod
 # parity the base+overlay split buys is preserved (one definition of the Postgres
-# shape, applied to both). See deployment/kubernetes.md#backend and
+# shape, applied to both). See deployment/kubernetes/control-plane.md#backend and
 # deployment/backups.md#managed-postgresql for the why.
 #
 # A Component (not an overlay) so it carries no namespace/images/env of its own —

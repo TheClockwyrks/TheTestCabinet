@@ -1,7 +1,7 @@
 # `gg-sandbox-purescript` — gg's PureScript SDK and library set
 
 The **PureScript** arm of gg's
-[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
+[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
 capability. Under that capability a model answers a turn by writing a whole
 **program** instead of a batch of tool calls; this arm compiles that program to
 JavaScript on the host with `purs`, flattens it with `esbuild`, and hands the result
@@ -117,4 +117,4 @@ that what went in is reviewable even though what came out is a binary.
 | What the SDK looks like and why | [`crates/gg/src/sandbox/language/purescript.rs`](../../crates/gg/src/sandbox/language/purescript.rs) |
 | Why the arm has no component of its own | [`crates/gg/src/sandbox/language/purescript.rs`](../../crates/gg/src/sandbox/language/purescript.rs) |
 | The end-to-end proof, through gg's real linker and store | `crates/gg/src/sandbox/language/purescript.substrate.test.rs` |
-| The narrative | [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md) |
+| The narrative | [Program languages](../../apps/docs/src/content/docs/gg/languages/overview.md) |

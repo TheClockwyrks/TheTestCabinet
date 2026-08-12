@@ -1,6 +1,6 @@
 // Where each turn's wall-clock went: a stacked bar per turn, split into the three
 // phases every gg turn passes through — assembling the prompt, waiting on the model,
-// and handling the response (see gg/telemetry.md). A run that feels slow is slow in
+// and handling the response (see gg/telemetry/turn-timing.md). A run that feels slow is slow in
 // one of the three, and the turn's total says which only by accident; this graph is
 // what makes that a reading rather than a guess.
 //

@@ -4,9 +4,9 @@
 //! Two documents, because the surface has two halves. The **index** is everything that
 //! belongs to no program language: every tool gg can offer a model — its description and
 //! parameter schema, exactly as they go on the wire — grouped into gg's own families, plus
-//! a line per [program language](https://docs.testcabinet.ai/gg/program-languages/) gg
+//! a line per [program language](https://docs.testcabinet.ai/gg/languages/overview/) gg
 //! registers. Each arm's own
-//! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) surface is a
+//! [responses-as-code](https://docs.testcabinet.ai/gg/languages/agent-surface/) surface is a
 //! document of its own, fetched when a reader picks that arm, because the eleven SDKs are
 //! deliberately idiomatic rather than transliterations of one another and a page showing
 //! one of them would be documenting a tenth of gg while looking complete.

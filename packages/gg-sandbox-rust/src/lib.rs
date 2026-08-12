@@ -1,6 +1,6 @@
 //! `gg` — the crate a **Rust** [responses-as-code] program is compiled against.
 //!
-//! [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
+//! [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/overview/
 //!
 //! Under that capability a model answers a turn by writing a whole *program* instead of a batch of
 //! tool calls, and the language it writes in is a run variable. This is the Rust arm's half of that:

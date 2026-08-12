@@ -940,7 +940,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// every refusal is opened and closed as an API call and lands on the turn's roster as a
     /// [`SandboxRefusal`] under gg's own `object.key` identity,
     /// caught or uncaught, whatever the guest made of the throw. That is the record a toolset
-    /// ablation joins on, and `/gg/static-sdks/` tells an operator the same thing.
+    /// ablation joins on, and `/gg/languages/static-sdks/` tells an operator the same thing.
     fn granted(&mut self, call: SurfaceCall, binding: Binding) -> Result<(), ToolError> {
         if self.grants.permits(binding) {
             return Ok(());

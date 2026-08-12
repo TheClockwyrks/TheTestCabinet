@@ -2,85 +2,114 @@
 title: Overview
 ---
 
-The dispatcher is a thin, stateless controller that turns the
-[backend](/components/backend/overview/)'s **run queue** into Kubernetes work. It
-holds no durable state of its own — the backend's job table is the source of truth
-— and it does only one thing: claim a queued run and create one
-[driver](/components/driver/overview/) `Job` to execute it.
+The dispatcher is a stateless controller that turns the
+[backend](/components/backend/overview/)'s queues into Kubernetes work. It
+claims a queued run and creates one [driver](/components/driver/overview/) `Job`
+to execute it, and claims a queued publish and creates one publisher `Job` to
+release it. The backend's job tables are the source of truth, so the dispatcher
+holds no durable state of its own.
 
-It replaces the old long-lived **worker pool**. Where a worker was a registered,
-hand-scaled HTTP server that a console addressed directly, the dispatcher sits
-entirely behind the backend: a console enqueues a run at the backend and never
-talks to the dispatcher at all. Concurrency scales with the cluster (queue
-admission plus available capacity), not with a manually-sized set of workers, and
-there is no per-pod registration to manage.
+The dispatcher sits entirely behind the backend. A console enqueues work at the
+backend and never addresses the dispatcher. Concurrency scales with queue
+admission and available cluster capacity.
 
-## What it does
+## The control loop
 
-The dispatcher runs a single control loop forever:
+The dispatcher runs one loop forever. Each tick:
 
-1. **Claim** the next claimable job from the backend (`POST /jobs/next`),
-   authenticating with a shared **service token**. The claim is atomic, so the
-   backend hands each job to exactly one dispatcher. The backend — not the
-   dispatcher — enforces each harness's **maximum parallelism** here: it only hands
-   back a job whose harness has fewer than its configured limit of runs already in
-   flight, holding the rest in the `pending` state until a slot frees (see
-   [Harnesses → per-harness configuration](/components/core/harnesses/#per-harness-configuration)).
-   The backend also holds back a **game-jam** job while another run of the same jam
-   and model is in flight under any harness, so a model's jam entries run one at a
-   time and each is briefed with the previous one's README (see
-   [Game jam → repeated runs](/testing/game-jam/overview/#repeated-runs-build-something-distinct)).
-2. **Create one driver `Job`** for the claimed run through the Kubernetes API, with
-   exactly the environment the [driver](/components/driver/overview/) reads: the
-   backend URL, the job id and its per-job token, the serialized launch request,
-   `TCAB_DRIVER_RUNTIME=kubernetes`, the `TCAB_K8S_*` sandbox-pod passthroughs, and
-   the `TCAB_CONTAINER_*` run-image selection the driver resolves the sandbox image
-   from (so a deployment pins the run images by `:<git-sha>` here, not via a
-   Kubernetes `image:` field) — plus the driver pod's own IP from the downward API,
-   so the driver can route a sandbox's live-preview frames back to itself.
-3. **Watch** the `Job`s it created, holding at most `TCAB_DISPATCHER_MAX_INFLIGHT`
-   in flight **across all harnesses** (this global cap composes with the backend's
-   per-harness limit from step 1), and **report** any driver-pod death the driver
-   itself could not (`POST /jobs/{id}/status`), reading the dead pod's logs for the
-   failure detail.
-4. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
+1. Reconcile against the live cluster: list the `Job`s this dispatcher owns
+   (selected by their `app.kubernetes.io/managed-by` label), count the
+   non-terminal ones as the in-flight total, and report any driver-pod death the
+   driver itself could not. Counting from the cluster rather than from an
+   in-memory tally is what makes a restart safe.
+2. Admit while the in-flight total is under `TCAB_DISPATCHER_MAX_INFLIGHT`:
+   claim the oldest queued run job (`POST /jobs/next`) and create one driver
+   `Job` for it. When the run queue is empty and a publisher image is
+   configured, claim the oldest queued publish job instead and create one
+   publisher `Job`. Both kinds carry the same `managed-by` label, so one
+   in-flight cap covers both.
+3. Let each finished `Job` reap itself (`ttlSecondsAfterFinished`).
 
-The dispatcher never executes a run, resolves a definition, or touches a record:
-all of that is the driver's job. It is purely the bridge between the backend's
-queue and the cluster's scheduler.
+A tick that admits a job loops straight back, so the queue keeps draining while
+capacity remains. An empty queue or a full cap backs off for the poll interval.
 
-## Relationship to the others
+The dispatcher authenticates its claims with a shared service token
+(`TCAB_BACKEND_SERVICE_TOKEN`, which the backend also holds). The claim is
+atomic, so the backend hands each job to exactly one dispatcher.
 
-- **The backend owns the queue; the dispatcher owns all `Job` creation.** This
-  keeps the backend portable (HTTP + a database, no cluster dependency) and isolates
-  the cluster RBAC in one small component.
-- **The driver does the work.** The dispatcher's whole product is a
-  [driver](/components/driver/overview/) `Job` per run; see that page for how a run
-  actually executes.
-- **One service token, per-job tokens minted by the backend.** The dispatcher
-  authenticates its claim with a shared service token (`TCAB_BACKEND_SERVICE_TOKEN`,
-  which the backend also holds); each driver authenticates its own streaming with
-  the per-job token the backend minted at enqueue and the dispatcher passed in.
+The dispatcher is the bridge between the backend's queues and the cluster's
+scheduler. Executing a run, resolving a definition, and storing a record all
+belong to other components.
+
+## Backend-enforced admission rules
+
+Two admission rules are enforced by the backend at the claim, not by the
+dispatcher.
+
+- Per-harness maximum parallelism. The backend hands back only a job whose
+  harness has fewer than its configured limit of runs already in flight, holding
+  the rest in the `pending` state until a slot frees. See
+  [Harnesses](/components/core/harnesses/#per-harness-configuration).
+- One game-jam entry per jam and model. The backend holds a
+  [game-jam](/testing/game-jam/overview/) job back while another run of the same
+  jam by the same model is in flight under any harness, so a model's jam entries
+  run one at a time and each is briefed with the previous one's README.
+
+## The driver Job
+
+The dispatcher's product for a claimed run is one `batch/v1` `Job` running the
+driver image, with exactly the environment the driver reads: the backend URL,
+the job id and its per-job token, the serialized launch request,
+`TCAB_DRIVER_RUNTIME=kubernetes`, the `TCAB_K8S_*` sandbox-pod passthroughs, and
+the `TCAB_CONTAINER_*` run-image selection the driver resolves the sandbox image
+from. A deployment therefore pins the run images by `:<git-sha>` here rather
+than through a Kubernetes `image:` field. The driver pod's own IP is wired in
+from the downward API so the driver can route a sandbox's live-preview frames
+back to itself.
+
+The `Job` is one-and-done: `restartPolicy: Never` and `backoffLimit: 0`, because
+the driver owns reporting its own specific failure and a silent retry would race
+that. Every `Job` carries the `managed-by` label the reconcile selects on, and a
+`tcab.dev/job-id` label mapping it back to its backend job.
+
+Configured driver `Secret`s reach the pod's environment through `envFrom`, which
+is how the harness provider API key arrives. When a subscription `Secret` is
+configured it is mounted instead as a read-only volume at the configured
+directory, with `optional: true` so a missing `Secret` never wedges an
+API-key-only pod, and the pod carries an `fsGroup` so the unprivileged driver
+user can read the projected files.
+
+## Death detection
+
+A driver that dies before reporting leaves its backend job hanging. For each
+owned `Job` that failed terminally, the dispatcher checks the backend job's
+state and, while it is still live, reports the failure with the dead pod's logs
+as the detail (`POST /jobs/{id}/status`), presenting the per-job token it
+retained at dispatch. Each job is reported once. A token lost across a restart
+leaves that job to its own driver's reporting.
+
+The publish path carries no equivalent detection. A publisher that dies surfaces
+as a stuck `dispatched` publish job or is reaped by its TTL.
 
 ## RBAC
 
 The dispatcher runs under its own `ServiceAccount` with a namespaced `Role`
-granting exactly: `batch`/`jobs` create/get/list/watch/delete (to create and
-reconcile driver `Job`s) and `core`/`pods` + `pods/log` get/list (to read a dead
-driver pod's status and logs for failure reporting). It creates **no** pods
-directly — the [driver](/components/driver/overview/) does that, under its own
-identity. The manifests are in
-[`deployments/k8s/base/rbac.yaml`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/k8s/base/rbac.yaml)
-and [Kubernetes: staging & prod](/deployment/kubernetes/#rbac).
+granting exactly `batch`/`jobs` create/get/list/watch/delete and `core`/`pods`
+plus `pods/log` get/list. It creates no pods directly; the
+[driver](/components/driver/overview/) does that under its own identity. Naming
+a `Secret` on a `Job` needs no `secrets` rule, because the kubelet reads and
+projects it. The manifests are in `deployments/k8s/base/rbac.yaml`. See
+[Kubernetes: staging & prod](/deployment/kubernetes/run-plane/#rbac).
 
-## Status
+## Deployment
 
-The dispatcher is implemented as the `test-cabinet-dispatcher` crate
-(`crates/dispatcher`), with no HTTP server and no flags — its whole configuration
-is environment variables, documented on its
-[`config.rs`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/crates/dispatcher/src/config.rs).
-It is deployed as a single-replica `Deployment` (a second replica would only race
-the same atomic claim — wasted work, not a correctness risk) with no `Service`,
-since it binds no socket. Local development runs the same manifests on
-[k3d](/development/running/), so a run schedules as a `Job` locally exactly as it
-does in the cloud.
+The dispatcher is the `test-cabinet-dispatcher` crate (`crates/dispatcher`),
+with no HTTP server and no flags. Its whole configuration is environment
+variables, documented in `crates/dispatcher/src/config.rs`. `TCAB_BACKEND_URL`,
+`TCAB_BACKEND_SERVICE_TOKEN` and `TCAB_DRIVER_IMAGE` are required, and
+`TCAB_PUBLISHER_IMAGE` enables the publish path.
+
+It is deployed as a single-replica `Deployment` with no `Service`, since it
+binds no socket. A second replica would only race the same atomic claim. Local
+development runs the same manifests on [k3d](/development/running/), so a run
+schedules as a `Job` locally exactly as it does in the cloud.

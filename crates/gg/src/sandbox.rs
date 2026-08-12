@@ -1,7 +1,7 @@
 //! **Responses as code** — the wasmtime sandbox that runs an agent's code-shaped response as a
 //! *program over the tools*.
 //!
-//! Under the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) capability a
+//! Under the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) capability a
 //! model answers a turn by writing a whole **program**, and every gg tool is a distinct, typed
 //! function in that program's scope. This module is the host: it prepares the program for its
 //! guest through the run's [program language](mod@language), evaluates it inside that language's

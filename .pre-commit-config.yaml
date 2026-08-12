@@ -177,16 +177,17 @@ repos:
 
       - id: markdownlint
         name: markdownlint
-        description: Lint staged test-case/game-jam specs' Markdown style (shares .markdownlint-cli2.yaml).
+        description: Lint staged specs' and documentation Markdown style (shares .markdownlint-cli2.yaml).
         entry: markdownlint-cli2
         language: node
         additional_dependencies: ["markdownlint-cli2@0.22.1"]
         # markdownlint-cli2's config (.markdownlint-cli2.yaml) already scopes the
-        # lint to test-cases/**/*.md and game-jams/**/*.md, and any CLI paths are
-        # *added* to that glob rather than replacing it. So mirror `npm run lint:md`
-        # exactly: pass no files and let the config's globs drive. Trigger only when
-        # a spec Markdown file is staged (like rust-fmt keys off staged Rust).
-        files: '^(test-cases|game-jams)/.*\.md$'
+        # lint to test-cases/**/*.md, game-jams/**/*.md and the documentation site,
+        # and any CLI paths are *added* to that glob rather than replacing it. So
+        # mirror `npm run lint:md` exactly: pass no files and let the config's globs
+        # drive. Trigger only when a linted Markdown file is staged (like rust-fmt
+        # keys off staged Rust).
+        files: '^(test-cases/.*\.md|game-jams/.*\.md|apps/docs/src/content/docs/.*\.md)$'
         pass_filenames: false
 
       - id: cspell

@@ -387,7 +387,7 @@ impl Agent {
 /// A gg run spans **several models** — subagents can run on different, possibly cross-provider,
 /// [slots](GgSlotBinding) than the parent — so usage and cost are accumulated per slot rather
 /// than as one figure for one model (this is why a gg run cannot be a single point on the
-/// per-model metric graphs; see the [multi-model](https://docs.testcabinet.ai/gg/multi-model/)
+/// per-model metric graphs; see the [multi-model](https://docs.testcabinet.ai/gg/configurations/#model-slots)
 /// design). Each agent's loop reports its total tagged with the slot it ran on
 /// ([`LoopEnd::slot`]); the orchestrator [`record`](Self::record)s it here, keyed by
 /// `(slot, model)`, and emits one [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup per key.
@@ -1450,7 +1450,7 @@ struct Orchestrator {
     estimator: Arc<dyn TokenEstimator>,
     /// The [model catalog's context window](GgInvocation::model_windows) for each model this run
     /// can bind, as pushed in with the invocation. Consulted per agent, since a
-    /// [multi-model](https://docs.testcabinet.ai/gg/multi-model/) run measures each agent against
+    /// [multi-model](https://docs.testcabinet.ai/gg/configurations/#model-slots) run measures each agent against
     /// its own model's window.
     model_windows: BTreeMap<String, u64>,
     /// Which of this run's models may be shown an image, seeded from the invocation's

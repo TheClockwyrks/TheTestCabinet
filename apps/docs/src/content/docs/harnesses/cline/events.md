@@ -2,78 +2,57 @@
 title: Events
 ---
 
-Cline runs with `cline --json` and emits a line-delimited JSON stream
-(`EventFormat::Cline`) on standard output, which the harness layer translates
-into the normalized [harness events](/components/core/events/). Cline 3.x wraps
-every record in a top-level `type`; older versions emit a flat say/ask stream.
-Both shapes are handled.
-
-The session id is captured from a `sessionId`, `session_id`, or `id` field. The
-`taskId`/`task_id` fields name the in-memory conversation, not the session, and
-are never captured.
+Cline emits its activity as `EventFormat::Cline`. It runs with `cline --json`,
+which writes a line-delimited JSON stream on standard output. The harness layer
+parses that stream and maps it onto the normalized
+[harness events](/components/core/events/).
 
 ## Raw event stream
 
-Each non-empty line is a complete JSON object dispatched on its top-level `type`:
+Each non-empty line is one complete JSON object carrying a top-level `type`.
+Current Cline versions wrap every record in an `agent_event`, whose real event
+is nested in an `event` object; versions that emit a flat say/ask stream are
+supported as well.
 
-| Top-level `type` | Handling |
-| --- | --- |
-| `hook_event` | Lifecycle bookkeeping. Consumed; no event. |
-| `run_result` | The terminal record; its final text and usage are consumed elsewhere. No event. |
-| `agent_event` | Agent activity nested in the record's `event` object (see below). |
-| anything else | Treated as a legacy say/ask record (see below). |
+The session id is captured from a `sessionId`, `session_id`, or `id` field. The
+`taskId` and `task_id` fields name the in-memory conversation rather than the
+session, so they are never captured.
 
 Within an `agent_event`, the nested `event` object's `type` and `contentType`
-drive the mapping. An `agent_event` with no nested `event` becomes an
-[unknown](/components/core/events/#unknown) event.
+drive the mapping. A tool call's input arrives on its `content_start`, keyed by
+`toolCallId`, and is resolved when the matching `content_end` arrives with the
+call's terminal output. A tool whose `content_start` was missed is still
+classified from the `content_end` alone when that record restates the `toolName`
+and `input`. A text or reasoning block's streaming delta is consumed on
+`content_start`, because the matching `content_end` carries the complete text.
 
-- `iteration_start`, `iteration_end`, `usage`, and `done` are consumed; totals
-  come from the `run_result` record instead.
-- `content_start` records a tool call's input (a `tool` `contentType`, keyed by
-  `toolCallId`) for later resolution. A text block's streaming delta is consumed
-  here because the matching `content_end` carries the complete text.
-- `content_end` resolves the block: a `text` block emits an
-  [agent](/components/core/events/#agent-message) message (from the record's
-  `text`, falling back to `content`; empty text emits nothing), a `reasoning` (or
-  `thinking`) block emits a [reasoning](/components/core/events/#reasoning) event
-  the same way, and a `tool` block resolves the recorded tool into its event(s). A
-  tool whose `content_start` was missed is still classified from the `content_end`
-  alone when it restates the `toolName` and `input`. Any other `contentType`
-  becomes an unknown event.
+A tool's success is read from its `content_end` `output`: a `success` flag, or,
+for a batch carried as an `output` array or an `output.results` array, every
+item succeeding.
 
-  Note that whether reasoning arrives as its own `reasoning` block depends on the
-  model and provider: some models (for example Gemini routed through OpenRouter)
-  fold their reasoning into the visible `text` rather than emitting a separate
-  block, in which case it is reported as part of the agent message with no
-  reasoning event.
-
-A tool's success is read from its `content_end` `output`: a `success` flag, or —
-for a batch (`output` array or `output.results` array) — every item succeeding.
-
-Older Cline versions emit a flat say/ask stream. It is handled conservatively: a
-`say` of `text` or `completion_result`, and an `ask` of `followup`, become agent
-messages when they carry non-empty `text`; `say` `reasoning` becomes a
-[reasoning](/components/core/events/#reasoning) event; `say`
-`error` or `api_req_failed` becomes an
-[error](/components/core/events/#harness-error) event. Everything else —
-including legacy tool activity, which is not reconstructed — becomes an unknown
-event.
+Whether reasoning arrives as its own block depends on the model and the
+provider. A model that folds its reasoning into the visible text has that
+reasoning reported as part of the agent message.
 
 ## Normalized mapping
 
 | Raw record | Normalized event |
 | --- | --- |
 | `hook_event` | consumed |
-| `run_result` | consumed (text and usage) |
-| `agent_event` → `iteration_start` / `iteration_end` / `usage` / `done` | consumed |
-| `agent_event` → `content_start` | consumed (records tool input or text delta) |
-| `agent_event` → `content_end` (`text`) | [agent](/components/core/events/#agent-message) |
-| `agent_event` → `content_end` (`reasoning` / `thinking`) | [reasoning](/components/core/events/#reasoning) |
-| `agent_event` → `content_end` (`tool`) | per the [tool mapping](#tool-mapping) |
-| legacy `say` `text` / `completion_result`, `ask` `followup` | [agent](/components/core/events/#agent-message) |
-| legacy `say` `reasoning` | [reasoning](/components/core/events/#reasoning) |
-| legacy `say` `error` / `api_req_failed` | [error](/components/core/events/#harness-error) |
-| `agent_event` with no nested `event`, unrecognized `contentType`, legacy tool activity, anything else | [unknown](/components/core/events/#unknown) |
+| `run_result` | consumed; carries the session usage totals read for [metrics](/harnesses/cline/metrics/) |
+| `agent_event` → `iteration_start`, `iteration_end`, `usage`, `done` | consumed |
+| `agent_event` → `content_start` | consumed; records the tool input or the streaming delta |
+| `agent_event` → `content_end` (`text`) | [agent](/components/core/events/#agent-message) message, from `text` or `content` |
+| `agent_event` → `content_end` (`reasoning`, `thinking`) | [reasoning](/components/core/events/#reasoning), from `text` or `content` |
+| `agent_event` → `content_end` (`tool`) | the events its tool classifies to (see [Tool mapping](#tool-mapping)) |
+| `say` `text`, `say` `completion_result`, `ask` `followup` | [agent](/components/core/events/#agent-message) message when it carries text |
+| `say` `reasoning` | [reasoning](/components/core/events/#reasoning) |
+| `say` `error`, `say` `api_req_failed` | [error](/components/core/events/#harness-error) |
+| an `agent_event` with no nested `event`, an unrecognized `contentType`, say/ask tool activity, anything else | [unknown](/components/core/events/#unknown) |
+
+A `content_end` whose text is empty emits nothing. A line that fails to parse as
+JSON becomes a [warning](/components/core/events/#warning), so the stream stays
+lossless.
 
 ## Tool mapping
 
@@ -81,14 +60,11 @@ A `tool` `content_end` is classified by its `toolName`:
 
 | Cline tool | Event |
 | --- | --- |
-| `run_commands`, `execute_command`, `bash` | [command](/components/core/events/#command) (one per command — a `commands` array or single string) |
-| `read_files`, `read_file` | [read](/components/core/events/#file-read) (one per file — a `files` array or single path) |
+| `run_commands`, `execute_command`, `bash` | [command](/components/core/events/#command), one per command in a `commands` array or one for a single command string |
+| `read_files`, `read_file` | [read](/components/core/events/#file-read), one per file in a `files` array or one for a single path |
 | `editor`, `write_to_file`, `replace_in_file`, `new_rule` | [write](/components/core/events/#file-write) |
-| `apply_patch` | [write](/components/core/events/#file-write) (one per file named by the patch markers) |
-| `search_files`, `search_codebase` | [search](/components/core/events/#file-search) |
+| `apply_patch` | one [write](/components/core/events/#file-write) per file named by the patch markers |
+| `search_files`, `search_codebase` | [search](/components/core/events/#file-search), one per pattern in a `queries` array or one for a single query |
 | `list_files` | [list](/components/core/events/#directory-list) |
 | `skills`, `use_skill` | [skill](/components/core/events/#skill) |
 | any other tool | [unknown](/components/core/events/#unknown) |
-
-See [Harness Events](/components/core/events/) for the normalized event types
-these map onto.

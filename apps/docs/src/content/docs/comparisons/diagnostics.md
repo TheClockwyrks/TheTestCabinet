@@ -1,113 +1,83 @@
 ---
-title: "Why: run diagnostics"
+title: "Run diagnostics"
 ---
 
-Knowing that Kilo cost 6× what Pi did is the start of the question, not the
-answer. A comparison must show **why** — the tool-call behavior and token
-breakdown that explain the gap. The target is the depth
-[gg's result views](/gg/telemetry/) already reach for its own runs (per-tool call
-counts, per-turn tokens, cache ratios), brought to the **third-party harnesses** so
-every arm is diagnosable on equal terms.
+The diagnostics explain a cost gap between two arms, through the tool-call
+behavior and the token breakdown behind it. Every arm is diagnosable on the same
+terms, so a third-party harness reports the per-tool and per-turn detail that
+[gg's telemetry](/gg/telemetry/overview/) records for a gg run.
 
-This requires capturing more than the run-level totals recorded today. Both gaps
-below are **in scope** for the comparison feature.
+## Recorded run data
 
-## What is recorded today
+Every non-gg run stores three things the diagnostics build on.
 
-Every non-gg run stores:
+Run-level [metrics](/components/core/metrics/): total run time, the four
+normalized token classes (`uncached_input`, `cached_input`, `output`,
+`reasoning`), and cost as both `comparable` and `actual`.
 
-- **Run-level [metrics](/components/core/metrics/) only:** total run time, the four
-  normalized token classes (`uncached_input`, `cached_input`, `output`,
-  `reasoning`), and cost (`comparable` / `actual`). No turn count, no tool-call
-  count, no per-turn breakdown.
-- **A normalized [event stream](/components/core/events/)** —
-  `HarnessOutcome.translated_events`, persisted as the `run.events_json` column and
-  served at `GET /runs/{id}/events`. Every harness's raw output is parsed into
-  semantic [`EventKind`](/components/core/events/) events (`Read`, `Write`,
-  `Command`, `Search`, `List`, `Skill`, `Orchestration`, `Reasoning`, `Agent`, …).
+A normalized [event stream](/components/core/events/),
+`HarnessOutcome.translated_events`, persisted as the `run.events_json` column
+and served at `GET /runs/{id}/events`. Every harness's raw output is parsed into
+semantic [`EventKind`](/components/core/events/) events.
 
-The event stream is the seam the diagnostics build on — but it needs the two
-additions below.
+A per-tool invocation tally, `RunRecord.tool_calls`, keyed by lowercased raw
+tool name.
 
-## Prerequisite: correct event classification (done)
+## Event classification
 
 The tool-call diagnostics are only as trustworthy as the classification behind
-them. That classification was **audited and fixed** as the first step of this
-feature (`crates/core/src/event.rs`), validated by re-parsing real Codex /
-OpenCode / Cline / Kilo / Pi runs of Carom until zero tool calls fell through to
-`unknown`. Five tools had been leaking:
-
-- `apply_patch` (Kilo/OpenCode) — the patch body is in `patchText`, which the path
-  extractor didn't read, so **every file write these harnesses made was dropped**;
-  they appeared to never write a file. Now mapped to `Write`.
-- `background_process` (Kilo/OpenCode) — unhandled; a `start` action now maps to
-  its command.
-- `task` (OpenCode) — the subagent-spawn tool was routed only by Kilo; now shared,
-  mapping to `Orchestration`.
-- `search_codebase` (Cline) — its patterns arrive in a `queries` array, not a
-  scalar; now one `Search` per query.
-- `agent_settled` (Pi) — lifecycle noise, now consumed instead of surfaced.
-
-Any future harness or tool must be validated the same way. The reference
-technique: pull runs with `scripts/extract-assets.sh`, then re-parse each
-`raw.jsonl` through the current `EventParser` and confirm no tool lands in
+them, so every tool a supported harness emits maps to a semantic event or is
+deliberately consumed (`crates/core/src/event.rs`). Nothing falls through to
 `unknown`.
 
-## Gap 1: tool-call counts (including consumed tools)
+A new harness, or a new tool on an existing one, is validated the same way: pull
+runs with `scripts/extract-assets.sh`, re-parse each `raw.jsonl` through the
+current `EventParser`, and confirm no tool lands in `unknown`.
 
-**Tool-call counts by category** — how many reads, writes, commands, searches,
-subagent spawns a run made — are now _derivable_ from the corrected event stream,
-and the comparison must surface them per arm. This is often the whole story: a
-harness that re-reads the same files, or shells out far more than it needs to,
-shows it here.
+## Tool-call counts
 
-One subtlety makes a naive count wrong. Some tools are **recognized and
-deliberately consumed** — they emit no event because they touch no workspace state.
-The clearest case is the **todo tools** (`todowrite`/`todoread`, and Goose's `todo`
-extension): Kilo called `todowrite` **53 times** across three Carom runs. Those are
-real API round-trips that cost real tokens, and a tool-call view built purely from
-the emitted event stream would show **zero** of them. For the comparison
-diagnostics, count **every tool invocation the model made**, including consumed
-ones — either by counting raw tool events before the consume step, or by having the
-consumed-tool paths still record a count while emitting no semantic event. Silent
-consumption is correct for the activity feed but wrong for a cost diagnostic.
+Some tools are recognized and deliberately consumed, emitting no event because
+they touch no workspace state. The todo tools (`todowrite`, `todoread`, and
+Goose's `todo`) are the clearest case, and a harness may call them dozens of
+times in a run. Each is a real API round-trip costing real tokens.
 
-## Gap 2: per-turn token attribution
+The tally therefore counts every tool invocation the model made, consumed ones
+included, and is recorded independently of the event stream. Silent consumption
+is correct for the activity feed and wrong for a cost diagnostic, so the two are
+kept apart: `count_tool` records the invocation, and the parser emits an event
+only when there is workspace activity to show.
 
-Run-level token totals answer "how much" but not "on what." The raw streams of the
-third-party harnesses **do** carry per-turn usage — Pi emits it on each
-`message_end`, Kilo/OpenCode on each `step_finish` — but it is currently **summed
-away** into a single run-level total by `parse_session_usage`
-(`crates/core/src/harness_registry.rs`), and the event translator discards the
-per-turn usage records entirely.
+Names are lowercased when counted, so a harness that varies casing counts one
+tool.
 
-Capturing it means:
+## Per-turn token attribution
 
-- Adding a **usage/turn event** to the [`EventKind`](/components/core/events/) enum
-  — a non-gg analogue of gg's per-turn `Usage`/`TurnStarted` telemetry.
-- Having each `parse_*` function (`parse_pi`, `parse_kilo`, `parse_opencode`,
-  `parse_codex`, `parse_claude`, `parse_cline`, `parse_goose` in
-  `crates/core/src/event.rs`) **emit** that per-turn usage instead of dropping it,
-  and `parse_session_usage` retain per-turn slices rather than only the summed
-  total.
+Run-level totals answer how much was spent; per-turn usage answers what it was
+spent on. Harnesses that report usage incrementally emit an
+[`EventKind::Usage`](/components/core/events/) event per turn, carrying that
+turn's token counts and, when the harness reports one, that turn's cost.
 
-With per-turn usage in hand, the comparison can plot tokens-per-turn and
-cost-per-turn across a run and attribute spend to phases (the cache-miss ratio and
-reasoning-token share are usually where a 6× gap lives), matching what
-[gg's request-metrics graphs](/gg/telemetry/) already show for gg runs.
+The per-turn counts are mapped onto the four normalized classes by the same
+`crates/core/src/harness_registry` mapping that produces the session total, so a
+turn slice and the run total never diverge. The registry names the events that
+carry usage per harness: `step_finish` for Kilo Code and OpenCode, `message_end`
+for Pi. A harness that reports only a cumulative running total emits none, since
+a cumulative snapshot is not a per-turn figure.
 
-## Presentation
+## Arm diagnostics
 
-Per arm, the diagnostics view presents, for the arm as a whole and drillable to
-each run:
+`ArmDiagnostics` (`crates/core/src/comparison.rs`) carries the four token
+classes and the tool-call counts, each summed across the arm's runs. Ratios such
+as the cache-hit ratio and the reasoning share are derived by the view from
+those raw classes.
 
-- the **token breakdown** by class, with the cache-hit ratio and reasoning share;
-- **tool-call counts** by category, including consumed tools (Gap 1);
-- **per-turn** token and cost curves (Gap 2);
-- **cost** (`comparable`), run time, and — for a gg arm — the per-slot rollup from
-  `gg_summary` (`GgSlotCost`).
+The comparison detail page presents, per arm and alongside the
+[statistics](/comparisons/statistics/):
 
-As everywhere else in this feature, the view **presents** these numbers; it draws
-no conclusion about which arm is "better." See
-[statistics](/comparisons/statistics/) for how the per-run diagnostics are
-summarized across an arm's `N` runs.
+- the [comparable cost](/components/core/metrics/) and total-token
+  distributions;
+- the automated-only score and pass rate;
+- tool-call counts by tool, stacked per arm, consumed tools included.
+
+The view presents these numbers and draws no conclusion about which arm is
+better.

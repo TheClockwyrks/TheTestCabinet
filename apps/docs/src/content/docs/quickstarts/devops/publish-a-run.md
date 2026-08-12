@@ -2,66 +2,60 @@
 title: Publish a Run
 ---
 
-Get a finished run onto the gallery through three steps — **push**, **review**,
-**publish** ([lifecycle](/components/core/results/#lifecycle)). The CLI's
-`tcab publish` collapses all three when you review your own run. You can drive each
-from a [console](/components/tauri/overview/) or the CLI. The full workflow and
-prerequisites are in
+## Overview
+
+Publishing releases a reviewed run to public hosting and the gallery. A produced
+run's record and artifacts are already stored privately on the backend by the
+driver, so publishing has two steps: review it, then publish it
+([lifecycle](/components/core/results/#lifecycle)). The full workflow is
 [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/).
 
 ## Prerequisites
 
-- You are [signed in](/quickstarts/setup/register-and-login/) — push, review, and
-  publish each require an account.
-- The run has at least one [review](/quickstarts/development/review-a-run/). Publishing refuses
-  a run without one.
-- The GitHub CLI (`gh`) is installed and authenticated on the host, with a token
-  carrying `repo` and `workflow` scopes (`gh auth login` or `GH_TOKEN`).
-- Release credentials are configured; see
-  [CLI Authentication](/components/cli/overview/#authentication).
+- You are [signed in](/quickstarts/setup/register-and-login/): reviewing and
+  publishing each require an account.
+- `TCAB_BACKEND_URL` points at the backend holding the run.
+- The run carries at least one [review](/quickstarts/development/review-a-run/).
+  Publishing a run with no review is refused.
+
+The repository-host and Cloudflare credentials the release itself needs live with
+the backend's publisher Job, not on your machine.
 
 ## From a console
 
-In the [Tauri desktop app](/components/tauri/overview/) or the
-[web console](/components/web/overview/), sign in, then open the run and use its
-push, review, and publish actions. Pushing releases the source and build and stores
-the run privately so it can be reviewed; publishing flips a reviewed run public —
-all without leaving the app.
+In the [desktop app](/components/tauri/overview/) or the
+[web console](/components/web/overview/), sign in and open the run. The web
+console offers Submit review and Publish run as separate actions, with Publish
+gated on the run carrying a review. The desktop app offers a single Publish run
+that saves your review and publishes in one step.
 
-## Solo path from the CLI: `tcab publish`
+## From the CLI
 
-When you ran, reviewed, and are publishing the run yourself, one command does push
-+ self-review + publish:
-
-```sh
-tcab publish runs/<id>/run-record.json --dry-run   # show what would change
-tcab publish runs/<id>/run-record.json             # release for real
-```
-
-It is idempotent and batch-capable — pass several record paths to do a sweep at
-once. A single run missing its review stops the **whole** batch before anything is
-released, so `--dry-run` is the fastest way to confirm a batch is fully reviewed
-first. Use `--force` to re-run the work for an already-published run.
-
-## Three-step path: when someone else reviews
+`tcab publish` is the solo path: it self-reviews each run from a local writeup
+and then publishes it. Author `<run-id>.md` in the working directory for each run
+(the format is in [Review a Run](/quickstarts/development/review-a-run/)), then:
 
 ```sh
-tcab push runs/<id>/run-record.json                       # release + store privately
-tcab review runs/<id>/run-record.json --writeup w.md      # a reviewer's own account
-tcab publish runs/<id>/run-record.json                    # flip public once reviewed
+tcab publish <run-id> --dry-run       # show what would be reviewed and published
+tcab publish <run-id>                 # review and release
+tcab publish <run-id> <run-id> …      # a whole sweep in one invocation
 ```
 
-A pushed run is private but its build is playable, so a *different* person can
-review it before it is published. A run can carry several reviews, one per account.
+Every run's writeup is validated before anything is submitted, so a batch missing
+one review stops before releasing any of it. `--dry-run` is the fastest way to
+confirm a batch is fully reviewed.
 
-## What it releases
+When someone else reviews the run, they submit it with
+`tcab review <run-id> --writeup <file>` or from a console, and the run is
+published from a console afterwards.
 
-- **Source** — each run's implementation as its own public repository.
-- **Playable build** — the built implementation deployed to Cloudflare Pages and
-  served at its own per-run `pages.dev` subdomain root.
-- **Gallery** — the run record and its reviews submitted to the
-  [backend](/components/backend/overview/), which refreshes the public snapshot
-  once the run is published.
+## What publishing releases
 
-See [Results](/components/core/results/#lifecycle) for the conceptual model behind
-the three steps.
+- Source: the run's implementation, as its own public repository.
+- Playable build: the built implementation, deployed to Cloudflare Pages at its
+  own per-run subdomain.
+- Gallery: the run record and its reviews, which the backend folds into the
+  public snapshot.
+
+The release runs as a `tcab-publisher` Job; `tcab publish` streams its progress
+until the release reports its outcome.

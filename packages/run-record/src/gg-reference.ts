@@ -369,7 +369,7 @@ export type GgReferenceEntry = {
    */
   body: string;
   /**
-   * gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this
+   * gg's own [operation](https://docs.testcabinet.ai/gg/languages/static-sdks/) id for what this
    * call does (`files.read_file`) — the identity that is the same in all eleven arms, and the
    * string a run's calls are recorded under. `None` for a type, which is not a call.
    */

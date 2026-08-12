@@ -18,7 +18,7 @@
 //! # Scheduling
 //!
 //! There is **one global running-slot cap** ([`SubagentConfig::max_parallel`]), counting running
-//! agents regardless of which [model slot](https://docs.testcabinet.ai/gg/multi-model/) they run
+//! agents regardless of which [model slot](https://docs.testcabinet.ai/gg/configurations/#model-slots) they run
 //! on. The grant policy, implemented by [`select_grant_index`] and driven by [`Scheduler::pump`],
 //! is:
 //!

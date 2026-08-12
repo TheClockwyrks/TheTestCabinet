@@ -2,360 +2,348 @@
 title: Results
 ---
 
+## Overview
+
 A run's value is in its output: the implementation a model produced, together
 with the metrics describing how it got there. The Test Cabinet publishes both so
-that anyone can inspect, clone, and play the result. The final product is
-released as it is, including any bugs and flaws: a run's score and reviews
-*frame* the playable build rather than standing in for it, so a number never
-replaces seeing the implementation run.
+anyone can inspect, clone, and play the result. The final product is released as
+it is, including any bugs and flaws. A run's score and reviews frame the
+playable build rather than standing in for it.
 
-A finished run reaches the public gallery through two distinct steps —
-**review** and **publish** — separated on purpose, so that the person who *ran* a
-model is not the only person who can *judge* it. A run's record is stored on the
-backend automatically when it finishes (the [driver](/components/driver/overview/)
-reports it), so it is reviewable as soon as it is produced; the public **release**
-of its code and build happens only at publish (see [Lifecycle](#lifecycle)).
+A finished run reaches the public gallery through two separate steps, review and
+publish, so that a model can be judged by someone other than the person who ran
+it. A run's record is stored on the backend automatically when it finishes, so
+it is reviewable as soon as it is produced. The public release of its code and
+build happens at publish (see [Lifecycle](#lifecycle)).
 
-## Generated Code
+## Generated code
 
-Each published run whose model **writes code** — every type except
-asset-generation — must be released as its **own** public git repository.
+Each published run whose model writes code, meaning every type except
+asset-generation, is released as its own public git repository. Releasing each
+run as a standalone repository keeps results independent and maps cleanly onto
+per-run hosting and embedding (see [Site](/components/site/overview/#hosting)).
 
-- Releasing each run as a standalone repository keeps results independent and maps
-  cleanly onto per run hosting and embedding. See [Site](/components/site/overview/#hosting).
-- The generated implementation must include a README and any other documentation
-  that a user needs to clone the repository and run it locally. Requiring this
-  documentation is part of every code-writing test case.
-- **Asset-generation runs are the exception**: their authoritative output is the
-  recorded sequence of operations (uploaded to the backend as the run's assets),
-  not a source tree, so **no per-run repository is created** and the run carries no
-  source link. The run folder is still a git repo (seeded like any other), but
-  publishing one never creates a repository on GitHub. This covers all four
-  [asset kinds](/testing/asset-generation/overview/#asset-kinds) — a sprite or
-  sprite-sheet run uploads its regenerated images, and a
-  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run instead
-  uploads its emitted per-part `.glb` and (for an animated model) `rig.json`, so
-  the review UI can render an interactive 3D model: a `voxel-model` auto-rotates and
-  a `voxel-animation` gives one orbit-drag viewer per animation with a control per
-  caller joint. See [Evaluation](/testing/asset-generation/evaluation/#voxel-validation).
+The generated implementation must include a README and any other documentation a
+user needs to clone the repository and run it locally. Requiring that
+documentation is part of every code-writing test case.
+
+An [asset-generation](/testing/asset-generation/overview/) run is the exception.
+Its authoritative output is the recorded sequence of operations, uploaded to the
+backend as the run's assets, rather than a source tree, so publishing one
+creates no repository on GitHub and the run carries no source link. The run
+folder is still a git repo, seeded like any other. What the run uploads depends
+on its asset kind: a sprite or sprite-sheet run uploads its regenerated images,
+while a model run uploads its emitted geometry and rig so the review UI can
+render an interactive 3D model. See
+[Evaluation](/testing/asset-generation/evaluation/).
 
 ## Reference implementations
 
-Separate from any run's output, a test-case variant may ship a **reference
-implementation**: an authored, in-repo, versioned, buildable static game that is
-the *correct* implementation of that variant. Think of it as the case-variant
-analogue of a run's playable build — the answer key rather than a model's
-attempt. It lets the case page show, alongside the models' runs, what a faithful
-build of the spec looks like.
+Separate from any run's output, a test-case variant may ship a reference
+implementation: an authored, in-repo, versioned, buildable static game that is
+the correct implementation of that variant. It is the case-variant analogue of a
+run's playable build, and it lets a case page show what a faithful build of the
+spec looks like alongside the models' runs.
 
-A reference implementation is authored **in the repository, versioned with the
-case**: it lives in a directory under the version folder (by convention
-`reference-impl/<variant>/`) and a variant opts in by naming that directory with
-its optional
-[`reference_implementation`](/testing/end-to-end/manifests/) key. Because it is
-declared per variant, each variant may have its own correct build, and a variant
-without the key simply has none. It is built with the case's existing
-[`[build]` commands](/testing/end-to-end/manifests/) run from that directory, and
-emits its static site into the same `dist/`, `build/`, or `out/` a run's build
-does.
+A reference implementation is authored in the repository and versioned with the
+case. It lives in a directory under the version folder, by convention
+`reference-impl/<variant>/`, and a variant opts in by naming that directory with
+its optional [`reference_implementation`](/testing/end-to-end/manifests/) key.
+Because it is declared per variant, each variant may have its own correct build.
+It is built with the case's existing `[build]` commands run from that directory
+and emits its static site into the same `dist/`, `build/`, or `out/` a run's
+build does.
 
 Two properties keep it honest:
 
-- It is **never seeded** into a run. It is the authored answer, so handing it to a
-  model would defeat the point of the case. It never crosses into the run
-  container, the seeded tree, or the prompt — only into the published gallery.
-- It is deployed **out-of-band**, by a person, not as part of any run's lifecycle.
-  The [`tcab publish-reference`](/components/cli/overview/#commands) command builds
-  the variant's `reference_implementation` directory with the case `[build]`
-  commands, runs the **same secret-redaction scrubber** the run
-  [publisher](#secret-redaction) uses over the output, and deploys it to
-  Cloudflare Pages — its own references project (a required `--env` selects prod's
-  `test-cabinet-references` or staging's `test-cabinet-references-staging`), on a
-  branch named `<slug>-<version-with-dots-as-dashes>-<variant>` — exactly the way a
-  published run's build is deployed to Pages. Cloudflare truncates long subdomains,
-  so the served URL is **read back** from `wrangler`'s output rather than
-  constructed, then written into a committed lockfile.
+- It is never seeded into a run. It is the authored answer, so handing it to a
+  model would defeat the point of the case. It reaches the published gallery and
+  nothing else.
+- It is deployed out of band, by a person, rather than as part of any run's
+  lifecycle. The [`tcab publish-reference`](/components/cli/overview/#commands)
+  command builds the variant's `reference_implementation` directory with the
+  case `[build]` commands, runs the same [secret-redaction](#secret-redaction)
+  scrubber the run publisher uses over the output, and deploys it to Cloudflare
+  Pages. A required `--env` selects prod's `test-cabinet-references` project or
+  staging's `test-cabinet-references-staging`, on a branch named
+  `<slug>-<version-with-dots-as-dashes>-<variant>`. Cloudflare truncates long
+  subdomains, so the served URL is read back from `wrangler`'s output rather
+  than constructed.
 
-Recording the URL follows a **pull** model, not a push: the remote backends are
-private (VPN-only), so nothing off-cluster can `PUT` to them. Instead
-`publish-reference` writes each URL into a committed lockfile,
-`test-cases/reference-builds.lock.json`, keyed **by environment first** (`prod` and
-`staging` deploy to different Pages projects, so a variant has a URL per
-environment). The backend **ingests** that lockfile from its own git checkout on the
-next re-ingest (`scripts/reingest-cluster.sh`, the same path that refreshes catalog
-edits), reads the entries for its own `TCAB_ENV`, and **reconciles** the dedicated
-`case_reference_build` table (keyed by `(slug, version, variant)`) to match —
-upserting each URL and pruning any the lockfile no longer lists. A version's
-`GET /test-cases/{slug}/versions/{version}` response carries each variant's
-`referenceBuild` URL, and the public snapshot serializes it as each variant's
-`referenceBuild` field, so the console can surface it. On the case page it appears
-as a **Reference** tab — shown for a case whose selected variant has a recorded
-build — that embeds the game inline (loaded by default, with a fullscreen toggle
-and no "unedited model code" caveat, because this is the vetted correct build
-rather than a run's raw output).
+### Recording a reference build
+
+Recording the URL follows a pull model. The remote backends are private, so
+nothing off-cluster can write to them. `publish-reference` instead writes each
+URL into a committed lockfile, `test-cases/reference-builds.lock.json`, keyed by
+environment first, since prod and staging deploy to different Pages projects.
+
+The backend ingests that lockfile from its own git checkout on the next
+re-ingest, reads the entries for its own `TCAB_ENV`, and reconciles the
+`case_reference_build` table, keyed by `(slug, version, variant)`, to match. It
+upserts each URL and prunes any the lockfile no longer lists.
+
+A version's `GET /test-cases/{slug}/versions/{version}` response carries each
+variant's `referenceBuild` URL, and the public snapshot serializes it as each
+variant's `referenceBuild` field. On the case page it appears as a Reference
+tab, shown for a case whose selected variant has a recorded build, embedding the
+game inline with a fullscreen toggle.
 
 ### Script references (asset generation)
 
-An [asset-generation](/testing/asset-generation/overview/) case has no `[build]`
-table and produces no site, so everything above about building and deploying does
-not apply to it — but the *concept* does, and it uses the same
-`reference_implementation` key and the same **Reference** tab.
+An asset-generation case has no `[build]` table and produces no site, so it
+records no Pages URL. It uses the same `reference_implementation` key and the
+same Reference tab.
 
-Its reference is a `draw.sh` of nothing but calls to the case's drawing binary,
-drawing the correct sheet the same one-operation-at-a-time way a model must.
-`publish-reference` seeds a workspace from the case manifest, runs that script, and
-uploads each frame's rendered image **and its recorded action log** to the public
-snapshot bucket under `media/references/<slug>/<version>/<variant>/frames/`. The
-log travels with the image because the log is what a run is actually scored on.
+Its reference is a `draw.sh` containing nothing but calls to the case's drawing
+binary, drawing the correct sheet the same one-operation-at-a-time way a model
+must. `publish-reference` seeds a workspace from the case manifest through the
+real seeding path, runs that script, and uploads each frame's rendered image and
+its recorded action log to the public snapshot bucket under
+`media/references/<slug>/<version>/<variant>/frames/`. The log travels with the
+image because the log is what a run is scored on.
 
-Three consequences worth holding onto:
+Three consequences follow:
 
-- **Nothing is committed** — not the images, not the logs. The script reproduces
-  both exactly, so it is the only source of truth and a committed image could
-  silently drift from it.
-- **There is no lockfile.** A Pages URL must be recorded because Cloudflare
-  truncates long subdomains; R2 keys are constructible, so the backend instead
-  *discovers* references by listing the prefix at ingest and reconciling a
-  `case_reference_sheet` table. The pull model is preserved — the backend still
-  only reads — but there is nothing to commit in between.
-- **The tab renders natively.** There is no page to embed, so the variant carries
-  `referenceSheet` (the published frame indices) instead of a URL, and the tab
-  plays the case's declared sequences and shows the individual frames rather than
-  an iframe.
+- The script is the only source of truth for both the images and the logs, and
+  it reproduces both exactly, so neither is committed.
+- Object-store keys are constructible, so the backend discovers references by
+  listing the prefix at ingest and reconciling a `case_reference_sheet` table.
+  The pull model holds and the backend still only reads.
+- The tab renders natively from the variant's `referenceSheet` and its published
+  frame indices, playing the case's declared sequences and showing the
+  individual frames.
 
-A reference implementation is distinct from a **reference visual mockup** (the
-[`[[reference]]`](/testing/end-to-end/manifests/) views). A mockup is a rendered
-screenshot of a single view, **seeded** into the run as a static *target* the
-model builds toward (and used as the baseline for a validation check); it is a
-picture of one screen and it deliberately never includes its source. A reference
-implementation is the **whole playable game**, is **never seeded**, and is
-deployed and shown as a live build. One shows the model where to aim; the other
-shows a human what hitting the mark looks like.
+A reference implementation is distinct from a reference visual mockup, the
+[`[[reference]]`](/testing/end-to-end/manifests/) views. A mockup is a rendered
+screenshot of a single view, seeded into the run as a static target the model
+builds toward and used as the baseline for a validation check, and it includes
+no source. A reference implementation is the whole playable game, is never
+seeded, and is deployed and shown as a live build.
 
-## Run Record
+## Run record
 
-Each finished run's [run record](/components/core/run-records/) must be uploaded
-to the [backend](/components/backend/overview/), with its links pointing at the
+Each finished run's [run record](/components/core/run-records/) is uploaded to
+the [backend](/components/backend/overview/), with its links pointing at the
 run's source repository and playable build. The backend is the system of record
-for runs; the [public site](/components/site/overview/) is built from a dataset
-the backend exports rather than from records committed to a repository. This
-replaces The Test Cabinet's original "git-as-a-db" design, in which each run
-record was committed directly into the site's dataset.
+for runs, and the [public site](/components/site/overview/) is built from a
+dataset the backend exports.
 
 ## Lifecycle
 
-A run reaches the gallery through two explicit steps — **review** and
-**publish** — after the automatic storage every produced run gets when it
-finishes. Splitting review from publish is what lets a run be reviewed by
-*someone other than the operator who produced it*, and it is what keeps the public
-gallery to runs a human has actually assessed.
+A run reaches the gallery through two explicit steps, review and publish, after
+the automatic storage every produced run gets when it finishes. Splitting review
+from publish is what lets a run be reviewed by someone other than the operator
+who produced it, and it keeps the public gallery to runs a human has assessed.
 
-### Stored when produced
+### Automatic storage
 
 A run needs no operator action to become reviewable. When the
 [driver](/components/driver/overview/) finishes a run it reports the produced
-[run record](/components/core/run-records/) to the
-[backend](/components/backend/overview/), which stores it **privately**, and it
-uploads the produced tree — the playable build, proof and asset media — to the
-[artifact service](/components/artifacts/overview/). The run is now stored but
-**not** in the public gallery, and its build is playable *for review* straight off
-the artifact service. No code has been released publicly yet — that happens only at
-publish.
+[run record](/components/core/run-records/) to the backend, which stores it
+privately, and it uploads the produced tree, meaning the playable build together
+with proof and asset media, to the [artifact
+service](/components/artifacts/overview/). The run is stored but absent from the
+public gallery, and its build is playable for review straight off the artifact
+service.
 
 ### Review
 
-Reviewing a produced run is the **assessment** step. Anyone with an
-[account](/components/backend/overview/#accounts) — typically a *different* person
-than the operator who produced it — plays the run's build (served by the
-[artifact service](/components/artifacts/overview/)) and submits a
+Reviewing a produced run is the assessment step. Anyone with an
+[account](/components/backend/overview/#authentication), typically someone other
+than the operator who produced it, plays the run's build and submits a
 [review](#reviews): a writeup, a rating per scoring domain, and the checklist
 verdicts. Every review is attributed to the authenticated account that wrote it.
 
-A run may carry **multiple reviews — one per account**. A reviewer cannot submit
-two reviews for the same run; submitting again replaces their own. This is how a
-run accumulates more than one independent human judgement before it goes public.
+A run may carry multiple reviews, one per account. A reviewer cannot submit two
+reviews for the same run; submitting again replaces their own. This is how a run
+accumulates more than one independent human judgement before it goes public.
 
 ### Publish
 
-Publishing is the step that **releases** a reviewed run and flips it **public**.
-It is the only point at which a run's outputs cross onto the open internet. What it
-requires depends on the run's [terminal state](/components/core/run-records/#status):
+Publishing releases a reviewed run and flips it public. It is the only point at
+which a run's outputs cross onto the open internet. What it requires depends on
+the run's [terminal state](/components/core/run-records/#status):
 
-- A **`completed`** run is published through review: the backend **refuses to
-  publish one that has no review** (`422`).
-- A **`catastrophic`** or **`timed_out`** run is a publishable model *failure*
-  (real signal at the benchmark's edge — a model that produced unbuildable output,
-  or never converged). It has no review checklist to complete, so publishing it needs
-  **no review**; it is published from a separate "publish failures" affordance
-  rather than the review flow.
-- A **`harness_error`** run (the harness exited non-zero — the model drove it to
-  exit early) publishes through the **same** publish-failures affordance and
-  likewise needs **no review**, but it is a *statistic-only* publish: it releases
-  **no** source repository and no playable build (it produced nothing evaluable
-  worth releasing), and is recorded as a per-model harness-error rate shown on the
-  model page. Because a subscription auth-token refresh also surfaces as a harness
-  non-zero exit, publishing is never automatic — an operator records each real
-  harness error deliberately and leaves the auth-refresh ones unpublished.
-- A **`hung`** run (the harness stopped producing output entirely and was killed by
-  the idle watchdog) publishes exactly like a `harness_error`: the same
-  publish-failures affordance, no review, no source repository and no playable
-  build, recorded only as a per-model statistic. It is a separate tier because
-  nothing exited — there is no exit code to report — and because a hang is ended by
-  the Test Cabinet's own timer rather than observed after the fact.
-- An **`infrastructure`** failure is the Test Cabinet's own fault and is **never
-  publishable** (`422`), no matter what reviews it carries.
-- A **`canceled`** run — one an operator killed from the live monitor — is likewise
-  **never publishable** (`422`), no matter what reviews it carries. It is retained
-  for inspection only: a run a human stopped is not an outcome, so there is nothing
+- A `completed` run is published through review. The backend refuses with `422`
+  to publish one that has no review.
+- A `catastrophic` or `timed_out` run is a publishable model failure, real
+  signal at the benchmark's edge from a model that produced unbuildable output
+  or never converged. It has no review checklist to complete, so publishing it
+  needs no review and happens from a separate publish-failures affordance.
+- A `harness_error` run publishes through the same publish-failures affordance
+  and likewise needs no review, but it is a statistic-only publish. It releases
+  no source repository and no playable build, and is recorded as a per-model
+  harness-error rate shown on the model page. Because a subscription auth-token
+  refresh also surfaces as a harness non-zero exit, publishing is deliberate: an
+  operator records each real harness error and leaves the auth-refresh ones
+  unpublished.
+- A `hung` run publishes exactly like a `harness_error`.
+- An `infrastructure` failure is the Test Cabinet's own fault and is never
+  publishable (`422`), whatever reviews it carries.
+- A `canceled` run is likewise never publishable (`422`). It is retained for
+  inspection only: a run a human stopped is not an outcome, so there is nothing
   about the model to release or report.
 
-Publishing is **asynchronous**: the backend gates the run and enqueues a
-per-publish `tcab-publisher` Job, which does the release work and reports back. The
-release Job:
+Publishing is asynchronous. The backend gates the run and enqueues a per-publish
+`tcab-publisher` Job, which does the release work and reports back. The release
+Job:
 
-- Releases the run's generated code to its own public repository (skipped for an
-  asset-generation run, which has no code to release).
+- Releases the run's generated code to its own public repository, skipped for an
+  asset-generation run.
 - Deploys the produced static build to Cloudflare Pages
   (`wrangler pages deploy <dir> --branch=<run-id>`), which serves it at its own
-  `pages.dev` subdomain root — needing no manual step and keeping the build
-  playable exactly as the test case's
-  [build interface](/testing/end-to-end/overview/#design-requirements) and the
-  [load check](/components/core/validation/#load-check) require.
+  `pages.dev` subdomain root, keeping the build playable exactly as the test
+  case's [build interface](/testing/end-to-end/overview/#design-requirements)
+  and the [load check](/components/core/validation/#load-check) require.
 
 The backend records the resulting links on the run and, once the Job reports a
 terminal success, flips the run public and regenerates the snapshot. Releasing
-per-run artifacts has no shared state — each run is its own repository and its own
-build — so each release is independent and the Job holds the credentials it needs.
-The release is idempotent: a re-publish reuses an existing repository rather than
-recreating it, but still re-commits and re-pushes the implementation — a clean
-no-op when the repository is already current, and the recovery path when an
+per-run artifacts has no shared state, since each run is its own repository and
+its own build, so each release is independent and the Job holds the credentials
+it needs.
+
+The release is idempotent. A re-publish reuses an existing repository rather
+than recreating it, and still re-commits and re-pushes the implementation, which
+is a no-op when the repository is already current and the recovery path when an
 earlier publish created the repository but its first push never landed. The push
-is retried through GitHub's brief permission-propagation lag on a freshly created
-organization repository (a short settle before the first push, then bounded
-retries with backoff), so a transient post-create `403` self-heals instead of
-failing the publish.
+is retried through GitHub's brief permission-propagation lag on a freshly
+created organization repository, settling briefly before the first push and then
+retrying with backoff, so a transient post-create `403` self-heals.
 
-The public snapshot, and therefore the gallery, contains **only published runs**.
-A published catastrophic/timeout failure shows its generated source but has no
-playable build (it produced none); its outcome is reported as a per-model
-statistic, separate from the score that ranks the runs that were at least
-workable. A published `harness_error` or `hung` run goes further and shows **no** source or
-build at all — it is purely a per-model statistic. The model page's **reliability
-ring** turns these into a breakdown of the model's published runs — completed vs
-the publishable failure tiers: harness errors, hangs, and timeouts — so how often a
-model finishes, drives the harness to a non-zero exit, leaves it hanging, or runs
-out of time all read at a glance. (A timeout keeps its source and build, since the
-model did useful work before the cap; a harness error or a hang contributes only
-its count.) `infrastructure` and `canceled` runs are absent from the ring and from
-every other model statistic — neither is a model outcome, and counting a run an
-operator chose to stop would distort every rate it appeared in.
+The public snapshot, and therefore the gallery, contains only published runs. A
+published catastrophic or timeout failure shows its generated source and has no
+playable build, and its outcome is reported as a per-model statistic separate
+from the score that ranks workable runs. A published `harness_error` or `hung`
+run shows no source and no build at all and is purely a per-model statistic.
 
-The backend performs publish (and the snapshot regeneration it triggers) as the
-**synchronized** half of the lifecycle: because the backend is the single entity
-doing this, two operators publishing at once cannot race on the store or the
-snapshot. See
-[Publishing and Synchronization](/components/backend/overview/#review-publish-and-synchronization).
+The model page's reliability ring turns these into a breakdown of the model's
+published runs: completed against the publishable failure tiers, namely harness
+errors, hangs, and timeouts. `infrastructure` and `canceled` runs are absent
+from the ring and from every other model statistic, since neither is a model
+outcome.
+
+The backend performs publish and the snapshot regeneration it triggers as the
+synchronized half of the lifecycle. A single entity does both, so two operators
+publishing at once cannot race on the store or the snapshot. See [the
+backend](/components/backend/overview/#review-and-publish).
 
 #### Secret redaction
 
 A run executes with a real provider API key in its container, so a model that
-dumps its environment can have written that key into a source file it produced.
-The backend a run streams to is private and trusted and keeps the captured data
-as-is; the exposure is only where a run's data crosses into the open internet — at
-**release**. Publishing therefore redacts secrets at each public-egress point, as
-the release Job produces it:
+dumps its environment can write that key into a source file it produced. The
+backend a run streams to is private and trusted and keeps the captured data
+as-is. The exposure is where a run's data crosses into the open internet, at
+release, so publishing redacts secrets at each public-egress point as the
+release Job produces it:
 
-- **The public source repository.** Before the generated code is committed and
+- The public source repository. Before the generated code is committed and
   pushed, every staged file is scanned and any leaked key is rewritten in place.
-- **The Cloudflare Pages build.** Before the static output is deployed, the built
+- The Cloudflare Pages build. Before the static output is deployed, the built
   tree is scanned the same way, in case a key was carried through the build into
   an emitted asset.
 
-The scrubber matches any provider-shaped `sk-…` token (and, where the release Job
-holds them, the exact key values from its environment), replacing each with
-`[REDACTED]`. The third public surface — the run's record and event stream in the
-public snapshot — is scrubbed by the backend as it builds that snapshot; see
-[the snapshot's per-run record](/components/backend/snapshot/#runsrun-idjson--per-run-record).
+The scrubber matches any provider-shaped `sk-…` token, anchored to the `sk-`
+prefix and requiring a long enough body, along with the exact key values from
+the release Job's environment where it holds them. Each match is replaced with
+`[REDACTED]`. The third public surface, the run's record and event stream in the
+public snapshot, is scrubbed by the backend as it builds that snapshot; see [the
+per-run record](/components/backend/snapshot/#runsrun-idjson--per-run-record).
 
-### `tcab publish`: the solo path
+### Combined review and publish
 
-Review and publish are separate so that *different people* can perform them. When
-the same person does both — they ran the model, they played it, and they vouch for
-it — the CLI's **`tcab publish`** is a convenience that does both in one step: it
-self-reviews the run (with the writeup and ratings the operator wrote) and
-publishes it. It is batch-capable: a batch is checked for its reviews up front —
-the review is known locally — so a single run missing one stops the whole batch
-before anything is published.
+Review and publish are separate so different people can perform them. When one
+operator ran the model, played it, and vouches for it, the CLI's `tcab publish`
+does both in one step: it self-reviews the run with the writeup and ratings the
+operator wrote, then publishes it. It is batch-capable. A batch is checked for
+its reviews up front, since the review is known locally, so a single run missing
+one stops the whole batch before anything is published.
 
-Submitting to the backend requires the caller to be **authenticated**: review and
-publish each require a bearer token, attributed to an account (see
-[Accounts and bearer tokens](/components/backend/overview/#accounts)). Reads stay
+Submitting to the backend requires the caller to be authenticated. Review and
+publish each require a bearer token attributed to an account (see
+[Authentication](/components/backend/overview/#authentication)). Reads stay
 open.
 
 ## Reviews
 
-A reviewed run carries one or more hand-written **reviews**. A single review is a
-short [writeup](/components/site/overview/#implementation-writeups) the site shows
-before the playable build, together with a **rating per scoring domain**, a
-**checklist** of verdicts on the items the test case asked the reviewer to check,
-and the **reviewer's identity** — the account that authored it. The verdicts and
-the items' point weights produce that review's numeric **score**.
+A reviewed run carries one or more hand-written reviews. A single review is a
+short [writeup](/components/site/overview/#implementation-writeups) the site
+shows before the playable build, together with a rating per scoring domain, a
+checklist of verdicts on the items the test case asked the reviewer to check,
+and the reviewer's identity. The verdicts and the items' point weights produce
+that review's numeric score.
 
-Not every type is reviewed, and not every reviewed type carries a checklist. A
+A review is authored separately by a person after playing the finished build
+rather than emitted by a run, and it is not part of the [run
+record](/components/core/run-records/) contract. The per-domain ratings and the
+checklist verdicts travel with the writeup, in its frontmatter. Publishing makes
+a run's reviews available to the site alongside the run record.
+
+Which types are reviewed, and whether a reviewed type carries a checklist,
+varies by test type. A
 [performance](/testing/performance/evaluation/#no-human-review) run is graded
-entirely by its validator — correctness against a reference oracle, then the fuel
-a correct engine burned — so it declares no scoring domains or checklist items and
-carries no review at all; its recorded result is its verdict. An
-[asset-generation](/testing/asset-generation/evaluation/#review) run is reviewed by
-a person, but on a **single overall rating** with no checklist: a produced asset is
-judged as a whole against its brief, so the case declares one `overall` domain and
-no items, and the run carries a rating and a writeup but no point score.
+entirely by its validator, on correctness against a reference oracle and then
+the fuel a correct engine burned, so it declares no scoring domains or checklist
+items and carries no review at all. An
+[asset-generation](/testing/asset-generation/evaluation/#review) run is reviewed
+by a person on a single overall rating with no checklist, because a produced
+asset is judged as a whole against its brief, so the case declares one `overall`
+domain and no items and the run carries a rating and a writeup but no point
+score.
 
-A review is curatorial — authored separately by a person after playing the
-finished build, rather than emitted by a run — and it is **not** part of the
-[run record](/components/core/run-records/) contract. The per-domain ratings and
-the checklist verdicts travel with the writeup (in its frontmatter), not in the
-record. Publishing makes a run's reviews available to the site alongside the run
-record.
+### The checklist
 
-The **checklist** records a binary verdict — **pass** or **fail**, with an
-optional note — for each reviewer checklist item the test case version declares
-(see the version manifest's
+The checklist records a verdict, with an optional note, for each reviewer
+checklist item the test case version declares (see the version manifest's
 [`review_item`s](/testing/end-to-end/manifests/)). An item that declares
-[sub-items](/testing/end-to-end/manifests/#sub-items) is instead verdicted per
-sub-item, its verdict recorded under the composite id `<item id>.<sub-item id>`.
-Every declared item — and every sub-item — must carry a verdict before a review
-can be submitted, so a reviewer cannot silently skip a requirement the case author
-called out. Each item is worth a **weight** in points: graded as a whole, a `pass`
-earns the item's weight and a `fail` earns none; graded by sub-items, the weight
-splits evenly across them and the item earns the fraction that passed (so a
-review's earned score can be fractional). A review's **score** is the earned
-weight over the total declared weight.
+[sub-items](/testing/end-to-end/manifests/#sub-items) is verdicted per sub-item,
+each recorded under the composite id `<item id>.<sub-item id>`. Every declared
+item and sub-item must carry a verdict before a review can be submitted, so a
+reviewer cannot silently skip a requirement the case author called out.
 
-A case declares one or more **common scoring domains** (for example a game's
-single-player and versus modes), and the run's variant may add its own; the
-reviewer assigns one of five tiers — **flawless**, **great**, **passable**,
-**scuffed**, or **broken**, in descending order of fidelity to the spec — to each
-domain in the run variant's **effective** set (common plus that variant's own). Within one
-review the **overall rating** is the *worst* across those domains, so a flawless
-mode cannot mask a broken one. What each
-tier means is reviewer judgment rather than anything a run emits, so the criteria
-for choosing one live with the review workflow; see
-[Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#write-the-review).
+A binary item is judged `pass` or `fail`. Graded as a whole it earns its full
+weight on a `pass` and none on a `fail`. Graded by sub-items, each sub-item
+earns its own declared weight when it passes, and the item's weight is the sum
+of its sub-items' weights, so sub-items within one item can be weighted
+independently.
+
+A [game-jam](/testing/game-jam/overview/) case grades its items on a five-level
+scale instead: `broken`, `poor`, `neutral`, `great`, and `incredible`, worth 0,
+1, 3, 5, and 10 points. A graded item's available points are ten times its
+weight, and it earns its tier's points times its weight. A reserved `overall`
+verdict carries the reviewer's whole-game mark on the same scale.
+
+A review's score is the earned weight over the total declared weight. An item
+excluded from scoring for the version, through an erratum, contributes to
+neither side of that ratio while remaining visible and checked.
+
+### Ratings
+
+A case declares one or more common scoring domains, for example a game's
+single-player and versus modes, and the run's variant may add its own. The
+reviewer assigns one of five tiers to each domain in the run variant's effective
+set, meaning the common domains plus that variant's own. The tiers, in
+descending order of fidelity to the spec, are `flawless`, `great`, `passable`,
+`scuffed`, and `broken`.
+
+Within one review the overall rating is the worst across those domains, so a
+flawless mode cannot mask a broken one. What each tier means is reviewer
+judgement rather than anything a run emits, so the criteria for choosing one
+live with the review workflow; see [Reviewing Test Run
+Results](/guides/development/reviewing-test-run-results/).
 
 ### Aggregating across reviews
 
 A published run may carry several reviews, so the numbers shown for the run are
 aggregated across them:
 
-- The run's **score** is the **average** of its reviews' scores — each review's
-  earned weight over total declared weight, averaged across every review.
-- The run's **overall rating** is the **worst (lowest)** rating across all of its
-  reviews: still the worst across domains *within* each review, then the worst of
-  those across reviews. One reviewer marking a domain `broken` pulls the run's
-  overall rating to `broken`, however generous the others were.
+- The run's score is the average of its reviews' scores, each review's earned
+  weight over the shared total declared weight.
+- The run's overall rating is the worst rating across all of its reviews: the
+  worst across domains within each review, then the worst of those across
+  reviews. One reviewer marking a domain `broken` pulls the run's overall rating
+  to `broken`, however generous the others were.
 
 The aggregate rating and score are shown together on the run, each review's
-per-domain ratings break it down (attributed to its reviewer), and each test
+per-domain ratings break it down attributed to its reviewer, and each test
 case's [leaderboard](/components/site/overview/#leaderboard) ranks models by the
 aggregate score.

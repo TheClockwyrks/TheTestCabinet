@@ -1,0 +1,250 @@
+---
+title: "The tool surface"
+---
+
+## Typed functions
+
+Every gg operation is a distinct, typed function in the run's program language,
+already in the program's scope. A program names no tool through a dispatcher and
+assembles no JSON.
+
+The interface between a program and gg is a
+[WIT](https://component-model.bytecodealliance.org/design/wit.html) membrane,
+`crates/gg/wit/gg-sandbox.wit`. It declares one function per operation, with
+typed parameters and a typed `result<T, tool-error>`, grouped one interface per
+family: `types`, `shell`, `files`, `helpers`, `skills`, `memories`, `tasks`,
+`board`, `context`, `session`, `docs`, `views`, `programs`, `delegation`,
+`feedback`. Three properties follow, and each is required:
+
+- A membrane function cannot exist without a host implementation, so a tool
+  cannot be added, renamed or removed without a typed signature following it.
+- A model gets a real API. `gg.files.readFile(p, { limit: 200 })` is
+  discoverable and wrong in ways the SDK can name.
+- The membrane is the only route to gg. What the interface does not declare is
+  not something a program can ask gg to do.
+
+No JSON crosses the membrane and none reaches a tool implementation. The
+membrane calls a native, typed method per operation, and that method calls gg's
+tool struct directly. JSON is built in one place only: as the recorded arguments
+of the `ToolCall` a program's call streams as, so
+[session-record](/gg/session-record/) capture and telemetry are the same for a
+program's call and a native one.
+
+The WIT is language-neutral. Each arm binds this same world and layers its own
+idiomatic SDK over it, so two arms differ in the spelling of a call rather than
+in which calls exist.
+
+## The module vocabulary
+
+A program reaches gg through one object, `gg`, carrying one object per module.
+The module ids, in the order the prompt and the agent surface present them:
+`files`, `shell`, `board`, `tasks`, `memories`, `docs`, `views`, `context`,
+`delegation`, `skills`, `programs`, `session`, `core`. `core` carries no
+function; it holds `ToolError` and the types other signatures name.
+
+The model-facing spelling of a call is its fully-qualified name,
+`gg.<module>.<name>`. That is the key documentation is filed under, the key a
+search hit carries, and a path a program writes. TypeScript spellings:
+
+| Function | Returns |
+| --- | --- |
+| `gg.shell.shell(command: string, options?: { timeoutSecs?: number })` | `ShellOutput` |
+| `gg.files.readFile(path: string, options?: { offset?: number; limit?: number })` | `FileRead` |
+| `gg.files.readTextFile(path: string, options?: { offset?: number; limit?: number })` | `string` |
+| `gg.files.writeFile(path: string, contents: string)` | `number` (bytes written) |
+| `gg.files.editFile(path: string, oldString: string, newString: string)` | `void` |
+| `gg.files.listDir(path?: string)` | `DirEntry[]` |
+| `gg.views.openText(label: string, body: string)` | `void` |
+| `gg.delegation.spawnSubagent(request: { agent: string } & ({ prompt: string } \| { issueId: string }))` | `SubagentHandle` |
+
+Two more names are bound bare: `ToolError`, so `e instanceof ToolError` reads
+naturally in a `catch`, and `lib` when the agent has loaded code. The scope also
+binds each module's object under the alias names the PureScript, Java and Kotlin
+bundles resolve as free identifiers. Those aliases are in no catalogue, so
+nothing puts one in front of a model.
+
+A program is evaluated as the body of a function whose parameters are the
+scope's names, so redeclaring one of those names is a `SyntaxError` raised
+before any statement runs. Five aliases are module ids themselves, `tasks`,
+`context`, `skills`, `programs` and `docs`, and are therefore seeded bare. The
+prompt says that gg seeds short names of its own into the scope, naming `gg`,
+`ToolError` and `lib` among them, rather than listing every one.
+
+## Static binding
+
+The scope is static and takes no argument. Every function of the SDK is
+compiled, linked and callable in every program whatever the run enabled, and the
+surface a program's scope is built from covers all 35 gg tools. Both ending
+groups are bound on every agent, and the agent's role decides which of them the
+membrane accepts.
+
+A call the agent was not granted travels to the membrane and is refused there.
+See [static SDKs](/gg/languages/static-sdks/) for that design and for what a
+model reads on each arm.
+
+Three delegation calls are deferred rather than performed in place.
+`gg.delegation.exec` and `gg.delegation.transitionState` register the
+succession, return, and let the program run to its end; the loop applies it once
+the turn closes. They share one succession slot and the first declaration
+stands, so a second succession in a turn is refused. `gg.delegation.fork`
+returns the copy's real id immediately and the copy is dispatched when the turn
+closes, so a fork is waited on from a later turn rather than from the program
+that created it.
+
+## The capability gate
+
+`crates/gg/src/sandbox/operations.rs` holds gg's whole model-facing vocabulary
+as 50 operations. Each row names an `OperationId` of the form `namespace.key`
+(`files.read_file`), the family it belongs to, whether the call takes input, and
+its `Binding`. A `Binding` is one of four things:
+
+- `Tool(name)`, bought by a gg tool the run's toolset offers. 37 rows over the
+  35 tools: `files.read_file`, `files.read_text_file` and `views.open_file` are
+  three operations over the one `read_file` tool.
+- `Capability(id)`, bought by a gg capability. `docs.close` and `docs.close_all`
+  are bought by `docview-close`; `programs.history`, `programs.get` and
+  `programs.rerun` by `program-library`.
+- `Ending(role)`, bought by the agent's ending role. `session.finish` is
+  `Standard`; `session.approve` and `session.request_changes` are `Review`.
+- `Always`, bound to every program whatever a run enables. `docs.search`,
+  `views.open_text`, `views.open_docs_view`, `views.close` and `views.current`.
+
+Capability ids appear only in this table. No signature catalogue, no SDK and
+nothing a reflector emits carries one, so no arm asserts anything about gg's
+configuration surface.
+
+`Grants::permits` is the whole gate. The membrane asks it when a call arrives,
+and the documentation runtime asks it when a search decides what to show. There
+is one implementation of the question, so what a model can find and what gg will
+service are one set.
+
+The same grant decides the prompt's vocabulary. A module is named in the system
+prompt where this agent binds a function in it, so a withheld capability
+contributes no prompt text and the toolset and its description come from one
+source.
+
+The gate is asked inside the call's own recording bracket, so a refused call is
+still an API call the model made and lands on the turn's refusal roster as a
+failed one. That count is what [toolset ablation](/gg/toolset-ablation/)
+measures.
+
+An operation's `Applicability` is `Universal` or `UniversalExcept`, and every
+exemption carries a written reason held at compile time. No operation carries an
+exemption.
+
+### Refusals
+
+A refusal is a typed `ToolError` with code `unavailable`, which a program can
+catch and recover from on the same turn. Its message names what is missing: the
+gg tool a toolset did not offer, the capability id the agent was not given, or
+the endings the agent does have. The call the message quotes is spelled in the
+program's own language, because the sentence is an instruction the model can
+act on. The error's `tool` field carries gg's own key instead, because a catch
+site branches on identity rather than on prose.
+
+An uncaught refusal is classified from the failure code, so it records as
+`program_unknown_name`. Two arms do not carry a code up with the throw, so a
+cross-arm count of refusals joins on the refusal roster rather than on the
+turn's error type.
+
+## Failed calls
+
+A failed call throws a typed `ToolError` carrying `.tool`, `.code` and
+`.message`, and an uncaught throw ends the program at that statement. Every call
+the program landed before the throw has landed for good. What the model is told
+is which statement threw, at the coordinates of its own program.
+
+- `.tool` names the failed call in gg's own vocabulary: the gg tool a dispatched
+  call ran, or the operation's own key for one the membrane refused. The guest
+  re-tags a binding-level `TypeError` as a `ToolError` on the call it came out
+  of, and that one carries the SDK's spelling, so
+  `gg.tasks.addTask({ title: "x" })` reports as `` `addTask` failed
+  (invalid-argument) `` with the bindings' own complaint after it.
+- `ToolError` serialises. It carries an explicit `toJSON`, because a plain
+  `Error`'s `message` is non-enumerable and a failure a program put in a view
+  would otherwise arrive as `{}`.
+- Every classifier in the guest asks `Object.prototype.toString` for a value's
+  brand. The generated component bindings are evaluated against a different
+  `Error` intrinsic than the SDK and the program see, so `instanceof Error`
+  answers `false` for a bindings fault.
+- `gg.shell.shell` is carved out. A process that ran is a successful call
+  whatever it exited with, so the exit code is a value the program branches on
+  and a call is usable inside an expression.
+- A `ReferenceError` is answered with the list of gg's modules, qualified as the
+  documentation qualifies them, plus `lib` when the agent has loaded code. The
+  common cause is a program reaching for a flat name where the qualified one
+  belongs.
+
+## `lib`: code the agent loaded
+
+`lib` holds the code the agent has loaded, from exactly two sources, both of
+them things the agent read: a [code skill](/gg/skills/), a skill directory's
+module in this language's own file, and a [code memory](/gg/memories/), the
+`code` a program handed `writeMemory`, `createMemory` or `updateMemory`.
+
+Each is bound at `lib.<key>`, `key` being the skill's name or the memory's slug
+in the language's own convention. Two things that spell alike are deduplicated
+with a numeric suffix: a skill `csv-tools` and a memory `csv_tools` both want
+`lib.csvTools`, the first read gets it and the second gets `csvTools2`. The
+reply to the read that loaded it states the key it really got, in that agent's
+own syntax, and lists what it exports.
+
+```ts
+const rows = lib.csvTools.parseCsv(gg.files.readTextFile("data/vendor.csv"));
+gg.views.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
+```
+
+`lib` joins the scope only when the agent has loaded something. It is not an API
+object: it holds no gg function, and the hint an unknown name earns names it
+separately from the modules.
+
+Loaded code costs no tokens. It is prepared source the host holds and hands to
+the guest, so it is never a context item, is never summarized or evicted, and a
+[compaction](/gg/compaction/) does not touch it. A `fork` or a successor
+inherits the window and the skills read set and starts with nothing bound.
+Re-reading the skill reloads it, and the repeat read is answered with the same
+note naming the same key.
+
+### Module shape
+
+A module is an ordinary file in the run's program language, prepared by a step
+of its own beside the one for programs. TypeScript's parses the file as a module
+so `export` is legal, blanks the `export` keywords, type-strips it as it strips
+a program, and appends the `return { … }` that makes its exports the value of
+evaluating it. The blanking is textual and byte-for-byte, so every diagnostic
+points at the line the author wrote.
+
+A module exports whatever it says it exports, and a file that says nothing
+exports everything it declares. Type-only declarations export nothing, and a
+renaming export is offered under the name it was exported as.
+
+Refused, with a located diagnostic in the same voice a program's errors use:
+`import` in any form, `export … from`, `export *`, `export default`, a dynamic
+`import()`, and top-level `await`. That list is TypeScript's, and the two facts
+behind it hold in any arm: a module is `lib.<key>` resolved against no module
+loader, and the sandbox is synchronous. The nesting ceiling that bounds a
+program bounds a module identically, checked against the author's own source
+before the parse, because a module is untrusted input whoever wrote it.
+
+### Module scope
+
+A module is evaluated as the body of a function whose parameters are the scope's
+names, which is the same scope the program gets, so it may call any gg function
+the run offers and a helper may be a whole procedure.
+
+Modules are evaluated in order, each against that scope rather than against the
+`lib` being built, so a module sees no other module. Load order is the order the
+agent happened to read things in, and it is kept out of the contract.
+
+### Module failures
+
+A module's author is whoever wrote the skill or the memory rather than the model
+whose program has it in scope, so a throw while loading leaves the turn
+standing. gg leaves `lib.<key>` as an empty object, lets the program run, and
+reports the failure as a module error naming the binding key and the message.
+The module's source is never shown to the model. A program that then calls into
+it gets an ordinary, located `TypeError` naming the member it wanted. Module
+errors accumulate across a hand-over chain and are deduplicated.
+
+The same channel carries an on-use script that failed: one sentence naming the
+skill or the memory, and the turn's own outcome untouched.

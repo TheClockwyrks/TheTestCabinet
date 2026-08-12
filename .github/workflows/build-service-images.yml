@@ -36,7 +36,7 @@ name: Build service images
 # the console from the workspace. All are built with the repository root as the
 # build context and tagged both `:latest` and `:<git-sha>` so a deployment can pin an
 # immutable digest/tag. The Kubernetes manifests under deployments/k8s/ pull these
-# from the registry the cluster is pointed at (see deployment/kubernetes.md).
+# from the registry the cluster is pointed at (see deployment/kubernetes/overview.md).
 #
 # Note the deliberate trade-off in the matrix below: because the Rust legs share one
 # build stage, each leg compiles ALL seven service binaries rather than just its own.

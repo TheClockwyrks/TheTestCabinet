@@ -84,7 +84,7 @@ const DEFAULT_IMPORTS: [&str; 8] = [
 /// package holding the exception and the types the rest of them name.
 ///
 /// This is what makes `Files.readFile("main.java")` an ordinary call on an ordinary class, which is
-/// [the seam's first rule](https://docs.testcabinet.ai/gg/program-languages/) — a namespaced binding
+/// [the seam's first rule](https://docs.testcabinet.ai/gg/languages/agent-surface/) — a namespaced binding
 /// rather than a dispatcher — spelled the way Java spells reaching a library: an `import`, resolved
 /// by javac against a jar on the classpath. A model writes no import line of its own for any of it.
 ///

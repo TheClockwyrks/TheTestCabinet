@@ -1,7 +1,7 @@
 # `@test-cabinet/gg-sandbox` — gg's TypeScript guest
 
 The **TypeScript** guest for gg's
-[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
+[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
 capability. Under that capability a model answers a turn by writing a whole
 **program** instead of a batch of tool calls; gg prepares that program in-process
 and evaluates it inside a wasm component. This package is one such component's
@@ -17,7 +17,7 @@ serves **two** registered arms, because `javascript` is this arm with the type
 check removed, and its component is also what the compiled PureScript arm is
 evaluated by. What every guest shares, and what a new one has to satisfy, is in
 [Another language](#another-language) below and in
-[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
+[Program languages](../../apps/docs/src/content/docs/gg/languages/registration.md).
 
 It is not published and has no runtime dependents. Its output is a set of artifacts the
 Rust crate embeds, named for the language rather than for this package. Six of the seven are
@@ -194,7 +194,7 @@ needs one now, and that directory does not exist at all.
 
 The design of the seam — why the language is an axis, the rules every language's SDK
 obeys, and a worked walkthrough of adding Python — is
-[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md). What
+[Program languages](../../apps/docs/src/content/docs/gg/languages/overview.md). What
 follows is this package's own side of it.
 
 A second program language is a **sibling directory**, and there are now three to read:

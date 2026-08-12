@@ -1141,7 +1141,7 @@ pub const CAPABILITY_AGENT_TRANSITIONS: &str = "agent-transitions";
 /// "does a code-shaped response help a model tackle the large [Hard](https://docs.testcabinet.ai/testing/end-to-end/)
 /// cases?" with data. Opt-in, like the other Phase 2+ capabilities.
 ///
-/// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
+/// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/overview/
 pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 
 /// The stable id of the **program library** capability: gg keeps the source of every program a
@@ -3528,7 +3528,7 @@ pub struct GgInvocation {
     /// The context window, in tokens, of each model this run may bind — the **model
     /// catalog's** figure for it, resolved when the run was triggered and pushed in
     /// here. Keyed by the model id the [binding](GgSlotBinding::model_id) names, so a
-    /// [multi-model](https://docs.testcabinet.ai/gg/multi-model/) run carries one entry
+    /// [multi-model](https://docs.testcabinet.ai/gg/configurations/#model-slots) run carries one entry
     /// per bound model and each agent is measured against its own model's window.
     ///
     /// gg keeps **no model table of its own**. The catalog the backend owns is the
@@ -3606,16 +3606,16 @@ pub enum GgContextSource {
     /// The output of a tool the agent called, fed back as a tool result.
     ///
     /// **Tool calling only.** A
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program has no tool
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program has no tool
     /// results: a call's value returns into the program, and the only thing that reaches the model
     /// is a [view](Self::FileView) it opened. What gg has to say back to a code-mode agent is
     /// therefore never tool output — it is a [compiler](Self::CompilerError) or
     /// [runtime](Self::RuntimeError) error, or a [notice](Self::System).
     ToolOutput,
-    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program that failed
+    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program that failed
     /// to compile, carrying the compiler's error and nothing else.
     CompilerError,
-    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program that
+    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/messages/) program that
     /// compiled and then threw, or that the sandbox stopped, carrying the error and nothing else.
     ///
     /// Split from [`CompilerError`](Self::CompilerError) because the two are different failures with
@@ -3627,7 +3627,7 @@ pub enum GgContextSource {
     /// file view).
     FileView,
     /// Material the agent **composed** and put in its own window — a value a
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) program
     /// computed and opened as a labelled view, rather than something read off the
     /// workspace or reported back by gg.
     ///
@@ -3641,7 +3641,7 @@ pub enum GgContextSource {
     /// and closed by name exactly as a file view is by path.
     TextView,
     /// One **documentation view** a
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) agent opened: the
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) agent opened: the
     /// documentation for one thing gg's SDK offers, keyed by the name it is addressed under.
     ///
     /// Its own band rather than a share of [`Skill`](Self::Skill), which it used to be told apart
@@ -5374,7 +5374,7 @@ pub enum GgTelemetryKind {
         /// gg has exactly one name for. A study comparing arms — or comparing two agents of one run
         /// written in two languages — joins on this and on nothing else.
         ///
-        /// `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/)
+        /// `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/)
         /// carve-outs, which no arm's catalogue spells and which therefore name no operation. They
         /// are already recorded under gg's own words for them, so `object`.`function` reads exactly
         /// as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
@@ -6264,7 +6264,7 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         baseline: Option<String>,
     },
-    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the
+    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/programs/) **turn** — the
     /// event that makes a code-shaped turn observable: what gg had to do to the model's reply
     /// before it could run it, what the program then did, and whether it ended the run.
     ///
@@ -6317,7 +6317,7 @@ pub enum GgTelemetryKind {
         /// spent running, excluding time parked in a bridged tool call, which is the per-program
         /// efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
         /// Reported on every path that reached the engine, including a fault, a trap, or an
-        /// [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
+        /// [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is
         /// the time burned up to the stop, not the ceiling); `Some(0)` when the program never
         /// reached the engine (a program that would not prepare, or a sandbox that could not be
         /// built).

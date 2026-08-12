@@ -1,5 +1,5 @@
 //! Tests for **views** — the material a
-//! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program declares should be
+//! [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) program declares should be
 //! visible to it, and the open/supersede/close machinery the context model gives it.
 //!
 //! Split out of `context.test.rs`, which is already long; the two share the model's other seams and

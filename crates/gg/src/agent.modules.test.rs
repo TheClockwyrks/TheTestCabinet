@@ -326,7 +326,7 @@ async fn every_instance_opens_with_a_roster_and_its_state_snapshots() {
 /// modules `announce_configuration` introduces instead), and that function grew a `state_event()`
 /// arm per capability as each was added — except the archive, which arrived last. The result was
 /// that the one agent every run has emitted nothing at all for its archive until it happened to
-/// call `archive_thread`, against a documented contract (`gg/telemetry.md`) that says the snapshot
+/// call `archive_thread`, against a documented contract (`gg/telemetry/agent-surface.md`) that says the snapshot
 /// arrives as an agent opens. An archive the model never uses is precisely the case worth reading
 /// — "the capability was given and nothing was put in it" — so it is also the case that must not be
 /// missing from the record.

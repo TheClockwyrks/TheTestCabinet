@@ -185,7 +185,7 @@ fn the_embedded_component_imports_the_membrane_and_the_wasi_it_was_baked_with() 
         ],
         "the embedded component's imports changed; if that was intended, update the prose that \
          describes what this guest can reach (`packages/gg-sandbox/README.md`, \
-         `gg/program-languages.md`, `gg/responses-as-code.md`) in the same commit"
+         `gg/languages/agent-surface.md`, `gg/responses-as-code/sandbox.md`) in the same commit"
     );
 }
 

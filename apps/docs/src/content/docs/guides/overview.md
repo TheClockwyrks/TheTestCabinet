@@ -2,114 +2,115 @@
 title: User Guides
 ---
 
-User guides are the detailed, end-to-end walkthroughs of the tasks people
-perform with The Test Cabinet. Where a [quickstart](/quickstarts/overview/) gives
-just the steps for someone who already knows the tool, a user guide states the
-prerequisites, the exact commands, and the reasoning behind the design choices
-along the way.
+## Overview
 
-If you only need a refresher, the matching quickstart is faster. Reach for the
-guide when you are doing the task for the first time, or when you need to know
-*why* a step is the way it is.
+User guides are the end-to-end walkthroughs of the tasks people perform with The
+Test Cabinet. Each guide states the prerequisites, the exact commands, and the
+constraints that govern the task. The matching
+[quickstart](/quickstarts/overview/) is the same task reduced to its steps.
 
-## Guides
+## Setup
 
-### Setup
+- [First Time Setup](/guides/setup/first-time-setup/) installs the toolchain,
+  stands up a reachable backend, registers an account, and makes a first run.
 
-- [First Time Setup](/guides/setup/first-time-setup/) — install the toolchain,
-  container runtime, run-container image, browser, and credentials, then make a
-  first run.
+## Development
 
-### Development
+- [Running the Local Service Stack](/guides/development/running-the-local-service-stack/)
+  stands up the backend, auth, dispatcher, driver, artifact, and arena services
+  on local k3d, and drives runs the way a deployment does.
+- [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/)
+  covers playing a finished run, reading its validation signals, and writing the
+  required review.
 
-- [Running the Local Service Stack](/guides/development/running-the-local-service-stack/) —
-  stand up the backend, auth, dispatcher, driver, artifact service, and web
-  console on local k3d, and drive runs the way a deployment does.
-- [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/) — play a
-  finished run, read its validation signals, and write the required review.
-
-### Authoring — end-to-end
+## Authoring end-to-end and full-stack cases
 
 - [Writing Case Specifications and Prompts](/guides/authoring/writing-case-specifications/)
-  — the editorial rules every playable case's seeded specs and prompt must
-  follow: authoritative and self-contained, no history, no sign that this is a
-  test, edge cases as review items rather than warnings, and no advice in the
-  prompt.
+  states the editorial rules every playable case's seeded specs and prompt
+  follow.
 - [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
-  — write a new playable-game case or version: its specification, prompt,
-  references, and manifest.
-- [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/) — add
-  a new playable mode to an existing end-to-end version.
+  covers writing a new playable-game case or version, with its specification,
+  prompt, references, and manifest.
+- [Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/)
+  adds a new playable mode to an existing end-to-end version.
+- [Authoring a Full-Stack Test Case](/guides/authoring/authoring-a-full-stack-test-case/)
+  covers writing a case whose run produces both the game and its own 2D assets.
 
-### Authoring — 2D asset generation
+## Authoring 2D asset-generation cases
 
 - [Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/)
-  — write a new sprite (`draw`) or sprite-sheet (`draw-sheet`) case or version: its
-  brief, tool, output, and manifest.
+  covers writing a new sprite (`draw`) or sprite-sheet (`draw-sheet`) case or
+  version, with its brief, tool, output, and manifest.
 - [Creating a Single-Sprite Variant](/guides/authoring/creating-a-sprite-variant/)
-  — add a brief variation to a single-sprite version (`asset_kind = "sprite"`).
+  adds a brief variation to a single-sprite version (`asset_kind = "sprite"`).
 - [Creating a Sprite-Sheet Variant](/guides/authoring/creating-a-sprite-sheet-variant/)
-  — add a brief variation to a sprite-sheet version (`asset_kind = "sprite-sheet"`).
-- [Authoring a UI Test Case](/guides/authoring/authoring-a-ui-test-case/) — write a
-  high-resolution interface asset (`asset_kind = "ui"`): one image or a kit of
-  named elements, painted with the `paint` and `ui` binaries.
-- [Authoring a Material Test Case](/guides/authoring/authoring-a-material-test-case/) —
-  write a tileable PBR material (`asset_kind = "material"`): a set of maps painted
-  with the `texture` and `pbr` binaries.
+  adds a brief variation to a sprite-sheet version
+  (`asset_kind = "sprite-sheet"`).
+- [Authoring a UI Test Case](/guides/authoring/authoring-a-ui-test-case/) covers
+  a high-resolution interface asset (`asset_kind = "ui"`), either one image or a
+  kit of named elements, painted with the `paint` and `ui` binaries.
+- [Authoring a Material Test Case](/guides/authoring/authoring-a-material-test-case/)
+  covers a tileable PBR material (`asset_kind = "material"`), a set of maps
+  painted with the `texture` and `pbr` binaries.
 
-### Authoring — 3D asset generation
+## Authoring 3D asset-generation cases
 
 - [Authoring a Voxel Model Test Case](/guides/authoring/authoring-a-voxel-model-test-case/)
-  — sculpt a static cube-voxel model (`asset_kind = "voxel-model"`) with the `voxel`
-  binary.
-- [Creating a Voxel Model Variant](/guides/authoring/creating-a-voxel-model-variant/) —
-  add a brief variation to a static voxel-model version.
+  sculpts a static cube-voxel model (`asset_kind = "voxel-model"`) with the
+  `voxel` binary.
+- [Creating a Voxel Model Variant](/guides/authoring/creating-a-voxel-model-variant/)
+  adds a brief variation to a static voxel-model version.
 - [Authoring a Voxel Animation Test Case](/guides/authoring/authoring-a-voxel-animation-test-case/)
-  — sculpt a rigged voxel model and author its required animations
+  sculpts a rigged voxel model and authors its required animations
   (`asset_kind = "voxel-animation"`).
 - [Creating a Voxel Animation Variant](/guides/authoring/creating-a-voxel-animation-variant/)
-  — add a brief variation to a rigged voxel version.
-- [Authoring a Mesh Model Test Case](/guides/authoring/authoring-a-mesh-model-test-case/) —
-  sculpt a static meshed signed-distance field (`asset_kind =
-  "mc-model"`/`"sn-model"`/`"dc-model"`).
-- [Creating a Mesh Model Variant](/guides/authoring/creating-a-mesh-model-variant/) — add
-  a brief variation to a static meshed version.
+  adds a brief variation to a rigged voxel version.
+- [Authoring a Mesh Model Test Case](/guides/authoring/authoring-a-mesh-model-test-case/)
+  sculpts a static meshed signed-distance field
+  (`asset_kind = "mc-model"`/`"sn-model"`/`"dc-model"`).
+- [Creating a Mesh Model Variant](/guides/authoring/creating-a-mesh-model-variant/)
+  adds a brief variation to a static meshed version.
 - [Authoring a Mesh Animation Test Case](/guides/authoring/authoring-a-mesh-animation-test-case/)
-  — sculpt and rig an animated meshed model (`asset_kind =
-  "mc-animation"`/`"sn-animation"`/`"dc-animation"`) with declared required animations.
+  sculpts and rigs an animated meshed model
+  (`asset_kind = "mc-animation"`/`"sn-animation"`/`"dc-animation"`) with declared
+  required animations.
 - [Creating a Mesh Animation Variant](/guides/authoring/creating-a-mesh-animation-variant/)
-  — add a brief variation to a rigged meshed version.
+  adds a brief variation to a rigged meshed version.
 - [Authoring a Skinned Character Test Case](/guides/authoring/authoring-a-skinned-test-case/)
-  — write a single continuous deforming skin bound to a model-invented skeleton
+  covers a single continuous deforming skin bound to a model-invented skeleton
   (`asset_kind = "mc-skinned"`/`"sn-skinned"`/`"dc-skinned"`).
 - [Authoring a Blender Character Test Case](/guides/authoring/authoring-a-blender-character-test-case/)
-  — build a rigged, skinned character in headless Blender via `build.py` + `tcab-blend`
-  (`asset_kind = "blender-character"`).
+  builds a rigged, skinned character in headless Blender via `build.py` and
+  `tcab-blend` (`asset_kind = "blender-character"`).
 
-### Authoring — effects & audio
+## Authoring effects and audio cases
 
-- [Authoring a Particle Test Case](/guides/authoring/authoring-a-particle-test-case/) —
-  write an emitter system simulated live (`asset_kind =
-  "particle-2d"`/`"particle-3d"`).
-- [Authoring an Audio Test Case](/guides/authoring/authoring-an-audio-test-case/) — write a
-  short rendered clip (`asset_kind = "sfx-synth"`/`"sfx-sample"`/`"music"`).
-- [Publishing an Audio Sample Pack](/guides/authoring/publishing-an-audio-sample-pack/) —
-  build an `sfx-sample`/`music` pack from its manifest, publish it to the private
-  R2 bucket, and pin it into the run-container image.
+- [Authoring a Particle Test Case](/guides/authoring/authoring-a-particle-test-case/)
+  covers an emitter system simulated live
+  (`asset_kind = "particle-2d"`/`"particle-3d"`).
+- [Authoring an Audio Test Case](/guides/authoring/authoring-an-audio-test-case/)
+  covers a short rendered clip
+  (`asset_kind = "sfx-synth"`/`"sfx-sample"`/`"music"`).
+- [Publishing an Audio Sample Pack](/guides/authoring/publishing-an-audio-sample-pack/)
+  builds an `sfx-sample`/`music` pack from its manifest, publishes it to the
+  private R2 bucket, and pins it into the run-container image.
 
-### DevOps
+## DevOps
 
-- [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/) — curate a
-  model in the app (display name, aliases, provider logo, description), how
-  derived models appear from runs, and how price history is recorded.
-- [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/) — release
-  a reviewed run to public hosting and the gallery.
-- [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/) —
-  deploy a case variant's authored, correct static build out-of-band, and the
-  non-experimental release gate that governs when a reference is required.
-- [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/) —
-  promote a CI-built service-image sha to the production cluster: re-pin the
-  overlay, apply it through the private cluster, and commit.
+- [Adding or Updating a Model](/guides/devops/adding-or-updating-a-model/)
+  curates a model in the app, and covers how derived models and price history
+  appear.
+- [Authoring Errata](/guides/devops/authoring-errata/) records a known issue with
+  a shipped test-case version without cutting a new version.
+- [Publishing a Test Run Result](/guides/devops/publishing-a-test-run-result/)
+  releases a reviewed run to public hosting and the gallery.
+- [Publishing a Reference Implementation](/guides/devops/publishing-a-reference-implementation/)
+  deploys a case variant's authored, correct static build out-of-band.
+- [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/)
+  promotes a CI-built service-image sha to the production cluster.
 
-These guides describe how to *use* The Test Cabinet. To understand how it works
-internally, see the [Components](/components/architecture/) section.
+## Component documentation
+
+These guides describe how to use The Test Cabinet. The
+[Components](/components/architecture/) section describes how it works
+internally.

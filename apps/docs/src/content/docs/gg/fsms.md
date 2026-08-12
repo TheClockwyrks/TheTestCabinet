@@ -2,30 +2,22 @@
 title: "FSM-driven processes"
 ---
 
-A structured alternative to ad-hoc delegation built on a **finite state
-machine**. Where a workflow is a fan-out plus sequencing the agent assembles, an FSM
-is a **process the agent is driven through**.
+An FSM agent is a process an agent is driven through. Each state runs an agent
+profile, and only the machine decides when one state hands over to the next, so
+the order of the work is a property of the configuration rather than of the
+model's discretion.
 
-The motivating example is enforcing a **test-driven development** order:
-
-```
-write tests → implement → verify with tests
-```
-
-as opposed to the default `implement → write tests`. The FSM makes the *order* a
-property of the process, not a matter of the model's discretion — the agent cannot
-skip to "implement" before "write tests", because each state runs a different agent
-and only the machine decides when one hands over to the next.
-
-The machine is **entirely yours**. gg implements the engine; the states, the agents
-they run, and what each transition carries are configuration.
+The motivating example is enforcing a test-driven order: write tests, then
+implement, then verify with the tests. An agent cannot reach the implementing
+state before it has left the test-writing one. gg implements the engine. The
+states, the agents they run, and what each transition carries are configuration.
 
 ## The shape of a machine
 
-An agent profile that enables the `fsm` capability is an **FSM shell**. It has no
-turns of its own — so it carries **no model**, no prompt and no roster, and no other
-capabilities — and its whole content is the `states` param: an ordered list of states
-over the run's *other* [agent profiles](/gg/configurations/#agents).
+A profile that enables the `fsm` capability is an FSM shell. It takes no turns of
+its own, so it carries no model, no prompt, no roster and no other capabilities.
+Its whole content is the `states` param: an ordered list of states over the run's
+other [agent profiles](/gg/configurations/).
 
 ```jsonc
 {
@@ -62,176 +54,152 @@ over the run's *other* [agent profiles](/gg/configurations/#agents).
 }
 ```
 
-- **The entry state is the first one declared.** It is a position rather than a flag,
-  matching how the run's root agent is `agents[0]` — a document that says which one
-  starts in two places can disagree with itself.
-- **A state with no transitions is terminal.** Its agent is offered no transition call
-  at all, so the machine ends when that agent ends, and its ending is the FSM agent's
-  return value to whoever put it to work.
-- **A machine may loop.** `build → explore` is an ordinary edge; nothing about the
-  table has to be acyclic.
+The entry state is the first one declared, a position rather than a flag,
+matching how the run's root agent is `agents[0]`. A state with no transitions is
+terminal: its agent is offered no transition call, so the machine ends when that
+agent ends, and its ending is the FSM agent's return value to whoever put it to
+work. A machine may loop, so `build → explore` is an ordinary edge.
 
-An FSM shell is namable everywhere an agent profile is: as the run's root, as a
-`spawn_subagent` target, as an issue's implementer, as a workflow stage. Whoever put
-it to work cannot tell the difference — the whole machine is **one agent**, with one
-id in the tree, one scheduler slot, and one return value.
+An FSM shell is namable wherever an agent profile is: as the run's root, as a
+`spawn_subagent` target, as an issue's implementer. The whole machine is one
+agent, with one id in the tree, one scheduler slot and one return value, so
+whoever put it to work cannot tell the difference.
 
-Because a machine has no model, the agent dispatched onto one resolves its client from
-the **entry state's** profile: the profile it is already standing in before its first
-turn. That is also the model a run whose *root* is a machine is recorded under. Nothing
-asks a machine for a model — a launch does not collect one for it, the editor does not
-offer the field, and the save gate does not require it. A hand-written set that binds one
-anyway is told at launch that it will not be read.
+A machine has no model, so the agent dispatched onto one resolves its client from
+the entry state's profile, which is also the model a run whose root is a machine
+is recorded under. A launch collects no model for a machine, the editor offers it
+no such field, and a hand-written set that binds one anyway is told at launch
+that it will not be read.
 
 ## How a transition happens
 
-The state's agent is offered a `transition_state` call listing exactly the states it
-may move to, with each transition's `description` beside it — the same shape
-`spawn_subagent` lists the agents it may spawn. Naming an undeclared target is a
-**tool refusal** that lists the legal ones: the agent stays where it is and the run
-carries on.
+The state's agent is offered a `transition_state` call listing exactly the states
+it may move to, with each transition's `description` beside it. Naming an
+undeclared target is a tool refusal that lists the legal ones; the agent stays
+where it is and the run carries on.
 
-The move itself is deferred to the end of the turn, exactly as an ending is: the call
-returns, the turn's remaining tool results are recorded, and only then does gg tear the
-running instance down and stand the next state's up. In
-[responses-as-code](/gg/responses-as-code/) mode `agents.transitionState(…)` is the
-same deferred declaration — the program runs to its end first, because replacing the
-agent (and its window) mid-program would pull every remaining call out from under it.
-The **first** declaration in a turn stands; a second is refused, and a turn that also
-declared an ending keeps the ending.
+The move is deferred to the end of the turn: the call returns, the turn's
+remaining tool results are recorded, and only then does gg tear the running
+instance down and stand the next state's up. In
+[responses-as-code](/gg/responses-as-code/overview/) mode
+`gg.delegation.transitionState(…)` is the same deferred declaration, and the
+program runs to its end first. The first declaration in a turn stands, a second
+is refused, and a turn that also declared an ending keeps the ending. A turn that
+also compacted applies the compaction first, so the successor inherits the window
+the turn actually produced.
 
-Each incarnation gets a fresh agent id, parents to the one before it, and keeps the
-**same depth**: succession is not delegation, and the depth cap exists to bound the
-delegation tree. Accounting keys on the state's agent profile, so a machine's cost
-splits per state in the run's per-slot rollup.
+Each incarnation gets a fresh agent id, parents to the one before it, and keeps
+the same depth: succession is not delegation, and the depth cap bounds the
+delegation tree. Accounting keys on the state's agent profile, so a machine's
+cost splits per state in the run's per-slot rollup.
 
 ## What a transition carries
 
-`transfer` names the [modules](/gg/modules/) the successor inherits — in the state
-they were in, not as a summary. A transition declaring `["history", "tasks"]` hands
-over the whole conversation and the task list itself; the successor's first turn opens
-on its predecessor's thread, under its own system prompt — which is never one of the
-things a transfer carries, whatever the list says (see [modules](/gg/modules/)).
+`transfer` names the [modules](/gg/modules/) the successor inherits, in the state
+they were in rather than as a summary. A transition declaring
+`["history", "tasks"]` hands over the whole conversation and the task list
+itself, so the successor's first turn opens on its predecessor's thread under its
+own system prompt. A system prompt is never one of the things a transfer carries.
 
-**The list is explicit, and an absent or empty one carries nothing.** That is a
-deliberate hard reset between states rather than an oversight: a recorded configuration
-has to say what it does, and a default nobody wrote down is exactly the sort of decision
-a reader of the record cannot see. The console's editor pre-fills `["history"]` on every
-transition it creates, so the common case is still one click.
+The list is explicit. An absent or empty one carries nothing, which is a hard
+reset between states, and it is what a recorded configuration has to say out
+loud. The console's editor pre-fills `["history"]` on every transition it
+creates.
 
-A transition that does **not** carry `history` gives the successor a genuinely empty window,
-so gg opens it exactly as it opens a new agent's: the successor's own system prompt, then the
-run's build prompt (or, for an agent that was spawned, the brief it was spawned with), then
-whatever its own capabilities pre-load — [autoloaded specifications](/gg/autoload-specifications/), a
-[persistent](/gg/agent-persistence/) profile's file views — and the handoff note at the tail
-on top of them. A state that has been reset still knows what the run is for; what it has lost
-is the conversation, which is what the empty list asked for.
+A transition that does not carry `history` gives the successor an empty window,
+so gg opens it exactly as it opens a new agent's: the successor's own system
+prompt, then the run's build prompt (or, for an agent that was spawned, the brief
+it was spawned with), then whatever its own capabilities pre-load, with the
+handoff note at the tail. A state that has been reset still knows what the run is
+for.
 
-Per module, a transition does one of three things:
+Per module, a transition does one of three things.
 
 | | |
 | --- | --- |
-| **Transferred** | Named by the edge and held by the outgoing agent — the live module moves across, with its caps, its mode and (where it has one) its [ownership](/gg/modules/#ownership) re-resolved from the receiving profile. |
-| **Dropped** | Held by the outgoing agent and not named (or named, but turned off on the receiving profile) — its backing store is deleted. |
-| **Initialized** | Enabled on the receiving profile and not carried — a fresh, empty module, exactly as a new agent would get. |
+| Transferred | Named by the edge and held by the outgoing agent. The live module moves across, with its caps, its mode and (where it has one) its [ownership](/gg/modules/) re-resolved from the receiving profile. |
+| Dropped | Held by the outgoing agent and not named, or named but turned off on the receiving profile. Its backing store is deleted. |
+| Initialized | Enabled on the receiving profile and not carried. A fresh, empty module, exactly as a new agent would get. |
 
-The successor is **told** all of this in an opening note at the tail of its window,
-along with whatever the transition's `note` argument said. An agent left to discover an
-empty task list by calling `add_task` has spent a turn learning something a sentence
-could have said.
+The successor is told all of this in an opening note at the tail of its window,
+along with whatever the transition's `note` argument said. An agent left to
+discover an empty task list by calling `add_task` has spent a turn learning
+something a sentence could have said.
 
 ### Windows of different sizes
 
-A successor's compaction check runs before its first turn, against **its own** window
-limit — so an agent moving from a million-token model into a state on a 32k one is over
-its window the moment it arrives, and compacts immediately. gg does not try to be clever
-about the mismatch. If two states' windows differ greatly, configure a
-[compaction](/gg/compaction/) strategy whose summarizer runs on a separate model. That
-is a configuration decision, not something the harness should be guessing at.
+A successor's compaction check runs before its first turn against its own window
+limit, so an agent moving from a million-token model into a state on a 32k one is
+over its window the moment it arrives and compacts immediately. Where two states'
+windows differ greatly, configure a [compaction](/gg/compaction/) strategy whose
+summarizer runs on a separate model.
 
-## Authoring one in the console
+## Authoring a machine in the console
 
-A machine is written in the [configuration editor](/gg/configurations/), not by hand. Turn
-the `fsm` capability on for a profile and it stops being an agent form and becomes a
-**process editor**: one card per state, in order, with the first one badged **entry** and a
-state with no outgoing edges badged **terminal**.
+A machine is written in the [configuration editor](/gg/configurations/). Setting
+a profile's agent type to FSM gives it two tabs, Agent and States, and the States
+tab is the process editor: one card per state, in order, with the first badged
+entry and a state with no outgoing edges badged terminal.
 
-Per state: a **name**, the **agent** it runs — a select over the configuration's other
-profiles, so a state can only ever name something that exists — and its outgoing edges.
-Per edge: the **target**, a select over the sibling state names; **when to take this**, the
-free-text `description` the model is shown beside the target; and **what transfers**, a
-checkbox per [module kind](/gg/modules/). A new edge arrives with **History** ticked,
-which is the common case, and an edge carrying nothing says so on its face rather than
-looking like an edge somebody forgot to finish.
+Per state: a name, the agent it runs as a select over the configuration's other
+profiles, and its outgoing edges. Per edge: the target as a select over the
+sibling state names, the free-text `description` the model is shown beside the
+target, and a checkbox per [module kind](/gg/modules/) for what transfers. A new
+edge arrives with History ticked, and an edge carrying nothing says so on its
+face.
 
-Two editing affordances exist because the two mistakes they prevent are silent ones.
-**Make entry** moves a state to the front rather than asking anyone to reorder rows to
-change which one starts. And **renaming a state carries its inbound edges** — every
-transition pointing at the old name follows it — because a rename that left them behind
-would produce exactly the "a transition names a state that does not exist" failure below,
-one field away from where it was caused.
+Two editing affordances exist because the mistakes they prevent are silent ones.
+Make entry moves a state to the front rather than asking anyone to reorder
+rows. Renaming a state carries its inbound edges, so every transition pointing at
+the old name follows it.
 
-The editor refuses to save a machine gg would refuse to launch, in the same words and
-beside the row that has to change, and shows the non-blocking cases as warnings rather
-than blocking on them. That is the whole point of authoring it here: a machine that fails
-at launch fails after the run container is up and the model is bound.
+The editor refuses to save a machine gg would refuse to launch, in the same words
+and beside the row that has to change, and shows the non-blocking cases as
+warnings. A machine that fails at launch fails after the run container is up and
+the model is bound.
 
 ## What is refused at launch
 
-These are **launch failures**, in the same class as a roster reference naming an
-undeclared profile — a run carrying one is not a differently-configured run, it is an
-unrunnable one:
+These are launch failures, in the same class as a roster reference naming an
+undeclared profile.
 
-- an enabled `fsm` capability whose `states` is absent, unparseable, or empty;
-- a state with an empty name, or two states with the same name;
-- a state whose `agent` names a profile the set does not declare;
-- a transition whose `to` names a state the machine does not declare;
-- an FSM shell named as a state's `agent` — a machine cannot be a state of another
+- An enabled `fsm` capability whose `states` is absent, unparseable, or empty.
+- A state with an empty name, or two states with the same name.
+- A state whose `agent` names a profile the set does not declare.
+- A transition whose `to` names a state the machine does not declare.
+- An FSM shell named as a state's `agent`. A machine cannot be a state of another
   machine.
 
-These are **warnings**: the machine still runs, and what it will actually do is stated
-on the root agent's stream before the first turn.
+These are warnings: the machine still runs, and what it will actually do is
+stated on the root agent's stream before the first turn.
 
-- a `transfer` entry naming something that is not a module kind (it carries nothing);
-- a state unreachable from the entry state (it is kept, but nothing can enter it);
-- an FSM shell declaring any of a worker's configuration — a model binding, a prompt, a
-  roster, or capabilities other than `fsm` — which is named part by part and ignored. The
-  editor offers a machine none of these fields, so this is a hand-written set.
+- A `transfer` entry naming something that is not a module kind. It carries
+  nothing.
+- A state unreachable from the entry state. It is kept, and nothing can enter it.
+- An FSM shell declaring any of a worker's configuration: a model binding, a
+  prompt, a roster, or capabilities other than `fsm`. Each part is named and
+  ignored. The editor offers a machine none of these fields, so this is a
+  hand-written set.
 
 ## Telemetry
 
-Each incarnation emits an `fsm_state` event on its own stream naming the machine, the
-state it entered, the profile that state runs, and the state it came from (absent for
-the entry state). Each succession emits an `agent_transition` on the **outgoing**
-instance's stream, immediately before the successor's `agent_spawned`, carrying what
-each module did — transferred, dropped, or initialized fresh.
+Each incarnation emits an `fsm_state` event on its own stream naming the machine,
+the state it entered, the profile that state runs, and the state it came from
+(absent for the entry state). Each succession emits an `agent_transition` on the
+outgoing instance's stream, immediately before the successor's `agent_spawned`,
+carrying what each module did. Together they are what lets the console render a
+succession as a lineage rather than as unrelated agents that happened to appear
+in order.
 
-Together they are what lets the console render a succession as a lineage rather than as
-N unrelated agents that happened to appear in order.
+## Relation to exec and fork
 
-## The same handoff, chosen by the model
+A transition is one of the three [successions](/gg/fork-and-exec/) gg performs,
+and all three are the same operation over [modules](/gg/modules/). What a machine
+adds is that the order is declared: a state's agent may move only where the table
+says, carrying only what the edge names. An agent standing in a state is offered
+no `exec`, because inside a process the next move belongs to the process. `fork`
+stays available: a copy of a state's agent is a second worker, not a second
+driver of the machine.
 
-A transition is one of three [successions](/gg/fork-and-exec/) gg performs, and all three
-are the same operation over [modules](/gg/modules/). What a machine adds is that the
-*order* is declared: a state's agent may move only where the table says, carrying only what
-the edge names. An [`exec`](/gg/fork-and-exec/) is the same handoff with the model choosing
-both, which is why an agent standing in a state is not offered one — inside a process the
-next move belongs to the process. `fork` is unaffected: a copy of a state's agent is a
-second worker, not a second driver of the machine.
-
-An `exec` may also name an FSM shell, which enters that machine at its entry state. That is
-how an ordinary agent hands its work to a declared process.
-
-## The built-in machines are gone
-
-gg's first FSM engine shipped a small library of **harness-authored** machines — `tdd`
-and `plan-first` — selected by a `machine` param. Both were removed, along with the
-planning capability whose read-only mode and fresh-context reset `plan-first` reused. A
-machine only the harness can author is a machine only the harness can study, and a fixed
-pair of built-ins was an answer to a question a configuration should be able to ask for
-itself.
-
-A configuration written against the old engine does **not** silently degrade into an
-ordinary single agent: `"machine": "tdd"` with no `states` is a launch failure. That is
-the one intentional hard break in this rework, and it is deliberate — a run recorded as
-"the TDD arm" that was nothing of the sort would poison every comparison drawn from it.
+An `exec` may name an FSM shell, which enters that machine at its entry state.
+That is how an ordinary agent hands its work to a declared process.

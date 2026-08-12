@@ -2,63 +2,46 @@
 title: Creating a Sprite-Sheet Variant
 ---
 
+## Overview
+
 A sprite-sheet [asset-generation](/testing/asset-generation/overview/) test case
-(`asset_kind = "sprite-sheet"`) draws a **set of animation frames**, each its own
-separate file — described by a `[sheet]` table (the declared `[[sheet.frame]]`
-entries and one or more named `[[sheet.sequence]]` animations) — to match a written
-brief. There is **no target image** for any frame. Its version offers one or more
-[variants](/testing/end-to-end/overview/#variants), and a run selects exactly one.
-Every variant seeds the version's **common specs** (the brief) plus its own
-**additive** specs. The chosen variant's slug is recorded in the run record, so
-every result is attributed to a specific build.
+(`asset_kind = "sprite-sheet"`) draws a set of animation frames, each its own
+file, to match a written brief. A `[sheet]` table declares the frames and the
+named sequences a reviewer plays back. Its version offers one or more variants,
+and a run selects exactly one. Every variant seeds the version's common specs
+plus its own additive specs. The chosen variant's slug is recorded in the run
+record, so every result is attributed to a specific build.
 
-This guide is the full procedure for adding a variant to an **existing**
-sprite-sheet asset-generation version. The authoritative rules live in
-[Manifests](/testing/asset-generation/manifests/) — including the `[sheet]` rules;
-read them first.
+This guide is the procedure for adding a variant to an existing sprite-sheet
+version. The authoritative rules live in
+[Sprite cases](/testing/asset-generation/manifests/sprite-cases/) and the
+[Manifests overview](/testing/asset-generation/manifests/overview/).
 
-For a **single-sprite** case (`asset_kind = "sprite"`) — one sprite on the whole
-canvas, with no `[sheet]` table — see
-[Creating a Single-Sprite Variant](/guides/authoring/creating-a-sprite-variant/) instead. To
-author a brand-new case, see
-[Authoring an Asset-Generation Test Case](/guides/authoring/authoring-an-asset-generation-test-case/).
-To add a mode to an [end-to-end](/testing/end-to-end/overview/) case instead, see
-[Creating an End-to-End Variant](/guides/authoring/creating-an-end-to-end-variant/).
+## Variant scope
 
-## What a sprite-sheet variant can (and cannot) change
+An asset-generation case has no target image and declares no `[[reference]]`;
+resolution rejects any reference, common or per-variant. A variant therefore has
+nothing to repoint: the model draws to match the brief.
 
-This is the one place asset-generation variants differ sharply from end-to-end
-ones. An asset-generation case has **no target image** and declares **no
-`[[reference]]`** — resolution rejects any reference, common or per-variant. It also
-**forbids per-variant `[sheet]` tables**. A variant therefore has no targets to
-repoint: the model draws to match the brief, not to copy supplied pictures.
+Three things are version-level, so a variant leaves them alone: the
+`asset_kind`, the `[canvas]` frame size, and the `[sheet]` layout of declared
+frames and named sequences. Every variant therefore draws the same frames and
+animates them at the same fps.
 
-For a sprite sheet, two things are fixed at the **version level** and a variant
-cannot touch them: the **`asset_kind`** itself, and the **`[sheet]` layout** — the
-declared `[[sheet.frame]]` entries (each just the index it is written to) and the
-named `[[sheet.sequence]]` animations. Those are version-level, so every variant
-draws the same frames and animates them at the same fps.
+What a variant varies is the brief itself, through an additive spec: a tighter
+palette applied across every frame, a stricter operation budget, a required
+drawing technique such as flat fills or left-right symmetry between mirrored
+directions, or a cross-frame consistency rule the animation makes observable. A
+different subject, a different set of frames, or different sequences is a new
+case or a new version rather than a variant.
 
-What a variant *can* do is vary the **brief** the model draws toward, via an
-additive spec: a tighter palette applied across every frame, a stricter operation
-budget across all frames, a required drawing technique (flat fills only; no
-dithering; left/right symmetry between mirrored directions), or a cross-frame
-consistency rule the animation makes observable. If you need a genuinely different
-subject, a different set of frames, or different sequences, that is a new **case**
-(or a new version), not a variant.
-
-Review stays exactly the same as the base: each regenerated **frame** is judged
-against the brief — **per frame**, with no whole-sheet aggregate. The sequences only
-drive the review UI's animated playback.
-
-A variant's `spec` entries are **additive** — they layer on top of the common ones
-rather than replacing them. A variant adds **no review items**: an asset-generation
-case has no reviewer checklist at all, and the produced asset is judged as a whole
-against the brief the run was seeded with, on the case's single `overall` domain
-(see
-[Judged on one overall rating](/testing/asset-generation/manifests/#judged-on-one-overall-rating)).
-The variant brief is therefore the *only* place its constraint is recorded — write
-it precisely enough that a reviewer can weigh it.
+Review is the same as the base. Each regenerated frame is judged against the
+brief, per frame, and the sequences drive the review UI's animated playback. An
+asset-generation case declares no reviewer checklist, so the produced sheet is
+judged as a whole on the case's single `overall` domain (see
+[Judged on one overall rating](/testing/asset-generation/manifests/overview/#judged-on-one-overall-rating)).
+The variant brief is therefore the only place its constraint is recorded, so
+write it precisely enough that a reviewer can weigh it.
 
 ## Procedure
 
@@ -66,71 +49,65 @@ it precisely enough that a reviewer can weigh it.
 
 Decide the constraint the variant imposes and keep it consistent everywhere:
 
-- **slug** — lowercase, used in `test-case.toml` and the spec filename (e.g.
-  `flat`);
-- **display name** — title case, the variant's `name` (e.g. `Flat Shading`);
-- **description** — one line naming the constraint, since there is no menu label
-  to carry it.
+- slug, lowercase, used in `test-case.toml` and the spec filename, such as
+  `flat`;
+- display name, title case, the variant's `name`, such as `Flat Shading`;
+- description, one line naming the constraint.
 
-Favor a single constraint a reviewer can observe in the regenerated sheet — either
+Favor a single constraint a reviewer can observe in the regenerated sheet, either
 in a still frame or in a sequence the review UI plays back.
 
 ### 2. Write the variant brief
 
-Create `specs/<slug>.md`, stated as a **delta** against the common brief ("same
-subject, frames, and palette as the brief, except …"):
+Create `specs/<slug>.md`, stated as a delta against the common brief:
 
-- open by stating it builds on the common brief, by name;
-- state the added or tightened constraint with **precise, testable** terms (exact
-  colors, an operation cap, the technique required), and say whether it applies to
-  every frame, to a named sequence, or across frames;
-- reaffirm that it draws to match the **same brief** against the **same** `[sheet]`
-  frames and sequences — neither the subject nor the frame layout changes, only the
-  added constraint does.
+- open by stating which common brief it builds on, by name;
+- state the added or tightened constraint in precise, testable terms, such as
+  exact colors, an operation cap, or the technique required, and say whether it
+  applies to every frame, to a named sequence, or across frames;
+- reaffirm that it draws to match the same brief against the same frames and
+  sequences, with only the added constraint changing.
 
-A variant spec **may** reference the common specs freely (they are always seeded)
-but must **not** reference another variant's spec.
+A variant spec may reference the common specs freely, since they are always
+seeded, and must never reference another variant's spec.
 
 ### 3. Create the variant file and list it
 
-Write `variants/<slug>.toml` as a standalone TOML document whose **top-level keys
-are the variant's fields**, then add its path to the `variants` array in
-`test-case.toml` (the first entry is the default). Do **not** add or change a
-`[sheet]` table here — the sheet is declared once at the version level. Paths
-inside resolve against the version folder, and `dest` defaults to `source`:
+Write `variants/<slug>.toml` as a standalone TOML document whose top-level keys
+are the variant's fields, then add its path to the `variants` array in
+`test-case.toml`. The first entry is the default. Paths inside resolve against
+the version folder, and `dest` defaults to `source`.
 
 ```toml
 # variants/flat.toml
 slug = "flat"
 name = "Flat Shading"
-description = "Same brief and sheet, drawn with flat fills only — no gradients or dithering, across every frame."
+description = "Same brief and sheet, drawn with flat fills only, across every frame."
 spec = [{ source = "specs/flat.md" }]
 ```
 
 ```toml
-# test-case.toml — add the new file to the ordered list (first = default)
+# test-case.toml: add the new file to the ordered list (first = default)
 variants = ["variants/base.toml", "variants/flat.toml"]
 ```
 
-Rules enforced at resolution:
+What resolution enforces, and what a variant leaves alone:
 
-- `spec` entries are **additive** on the common specs; within one variant, no two
-  seeded specs (common + own) may share a `dest`.
-- **No `reference` entry** — references are rejected for this test type entirely
-  (an asset-generation case has no target image), so neither the case nor a variant
-  may declare one.
-- **No per-variant `[sheet]` / `asset_kind`** — the sheet's frames and sequences,
-  and the asset kind, are version-level; a variant cannot redeclare them.
-- **No `review_item` entries** — an asset-generation case declares no reviewer
-  checklist, on the case or on a variant.
+- `spec` entries are additive on the common specs. Within one variant, no two
+  seeded specs may share a `dest`.
+- A `reference` entry is rejected for this test type, on the case and on a
+  variant.
+- `asset_kind`, `[canvas]`, and `[sheet]` are version-level, so a variant
+  declares none of them.
+- A variant declares no review items, matching the case.
 
-Also update the human-readable comment in the manifest that enumerates the
-variants so the list stays accurate.
+Update the human-readable comment in the manifest that enumerates the variants so
+the list stays accurate.
 
 ## Validate your work
 
-Seed and render the **new** variant, and re-check the **existing** ones to confirm
-your edits changed nothing for them:
+Seed and render the new variant, and re-check the existing ones to confirm your
+edits changed nothing for them:
 
 ```sh
 tcab seed   --test-case <slug> --version <version> --variant <new-variant>
@@ -138,9 +115,20 @@ tcab prompt --test-case <slug> --version <version> --variant <new-variant>
 ```
 
 Read the seeded output to confirm the new variant's brief is self-contained and
-leaves the `[sheet]` frames and sequences intact, and lint the specs with
-`npm run lint:specs` (markdownlint + cspell; see [Building](/development/building/)).
-Then exercise it with [Run a Test Case](/quickstarts/development/run-a-test-case/) — a backend
-that already holds this version keeps serving the old definition until you **force a
-re-ingest**, so re-ingest the case after adding the variant (see
-[Running the Local Service Stack](/guides/development/running-the-local-service-stack/)).
+leaves the `[sheet]` frames and sequences intact, then lint the specs with
+`npm run lint:specs`. If `cspell` flags a legitimate domain term, add it to
+`.cspell/project-words.txt`.
+
+The backend's definition store is immutable per case version, so force a
+re-ingest before running:
+
+```sh
+scripts/reingest.sh --force <slug>
+```
+
+Force re-ingest overwrites the stored version in place and is for development
+only. Adding a variant edits an existing version, so do it only while that
+version is unpublished; a version a published run references is
+[frozen](/development/frozen-versions/) and needs a new version instead. Then
+exercise the variant with
+[Run a Test Case](/quickstarts/development/run-a-test-case/).

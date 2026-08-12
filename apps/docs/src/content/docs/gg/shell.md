@@ -2,60 +2,60 @@
 title: "Shell"
 ---
 
-The `shell` capability offers the one tool an agent builds a project with: `shell`, which
-runs a command line through `sh -c` in the run's workspace and hands back the merged
-stdout and stderr with the exit code. It is on in the default capability set, and it
-appears in the **Models & tools** group of the
-[configuration](/gg/configurations/) editor.
+The `shell` capability contributes one tool, `shell`, which runs a command line
+through `sh -c` in the run's workspace and returns the merged stdout and stderr
+with the exit code. It is enabled in the default capability set, and it appears
+in the Models & tools group of the [configuration](/gg/configurations/) editor.
 
-Every command runs with its working directory set to the workspace root, in its own
-process group, under a per-call timeout that defaults to **120 seconds** and is clamped to
-whatever is left of the run's wall-clock budget. A **non-zero exit is a result, not a failed call**:
-the code and the output come back so the agent can branch on them, because checking
-whether a build or a test run passed is the single most common thing an agent does with
-this tool.
+## Running a command
 
-Under [responses as code](/gg/responses-as-code/) the call is `system.shell(command)`, and
-it is one of the two or three the [system prompt](/gg/prompts/) spells out up front rather
-than leaving to search and `view.openDocsView` — for the reason above, restated as a cost:
-running a build or a test is the most common thing a *program* does, and a model that has to
-discover the call spends a turn on it. That line renders only when this
-capability is **offered**, because a call named to a run that does not bind it is a
-`ReferenceError` the model copies verbatim, and it is gated on nothing else. What it says is
-what a program needs and no more: the call returns the `exitCode` and the merged output **to
-the program**, so a model that wants to read that output opens a view on it. Everything
-below is a fact about what that output contains, and it reaches the model where it always
-has — [inside the output itself](#what-the-agent-sees), not as a paragraph of prompt.
+A command runs with its working directory set to the workspace root, or to the
+agent's own worktree when it has one. It runs in its own process group, so a
+timeout kill reaches the whole tree rather than `sh` alone, under a per-call
+timeout that defaults to 120 seconds.
+
+A non-zero exit is a result rather than a failed call. The exit code and the
+output both come back so the agent can branch on them, because deciding whether
+a build or a test run passed is the most common thing an agent does with this
+tool. Two conditions fail the call itself: a process that could not be launched,
+and one the timeout killed.
+
+Under [responses as code](/gg/responses-as-code/overview/) a program calls
+`gg.shell.shell(command, { timeoutSecs })` and is handed back the `exitCode`, the
+merged `output`, and whether that output was `truncated`. The requested timeout
+is clamped to 24 hours and then to whatever is left of the run's wall-clock
+budget, since a host call cannot be cut short once it is in flight. The system
+prompt renders one line for this capability when the agent is offered it, saying
+that a program can run a command in the workspace and that the exit code and
+output come back to the program.
 
 ## Output offloading
 
-How much of a command's output comes back **inline** is the shell capability's swappable
-implementation. A chatty command is one of the few things an agent does that can spend a
-large fraction of its context window in a single call, on text it usually needed three
-lines of — a failing test suite, a webpack build, a `find` across `node_modules`. Whether
-capping that helps or hurts is exactly the kind of question gg exists to answer, so it is
-a mode rather than a fixed behavior.
+How much of a command's output comes back inline is the shell capability's
+swappable implementation. A chatty command can spend a large fraction of a
+context window in a single call, so the amount that returns inline is a
+configurable arm rather than a fixed behavior.
 
-| Mode | `shell` returns | Written to disk |
+| Mode | Returned inline | On disk |
 | --- | --- | --- |
-| `adaptive` *(default)* | For a command that **succeeded**: its exit code and the paths, nothing else. For one that **failed**: the same tail `offload` returns. | **Every** command's stdout and stderr, as a file pair. |
-| `offload` | Only the last `maxLines` lines and/or `maxChars` characters, plus a note naming the files. | **Every** command's stdout and stderr, as a file pair. |
-| `inline` | The whole merged output, tail-truncated at gg's 16 KiB cap. | Nothing. |
+| `adaptive` *(default)* | Exit code and paths on success, the tail on failure | Both |
+| `offload` | The tail, plus a note naming the files | Both |
+| `inline` | The whole output, capped at 16 KiB | Nothing |
 
-Under either truncating mode, each command's two streams are written to their own file
-under `/tmp/gg-shell` — outside the workspace, because these are gg's bookkeeping and a
-run's diff should not fill up with build logs. The pair is written for *every* command, not
-only a chatty one: "the full output is on disk" is only useful if it is true
-unconditionally, since an agent that has to guess whether this command's log exists is back
-to re-running the command to find out.
+The tail is the last `maxLines` lines and/or `maxChars` characters, described
+under [the two ceilings](#the-two-ceilings) below.
 
-### Adaptive: the default
+Under either truncating mode each command's two streams are written to their own
+file under `/tmp/gg-shell`, outside the workspace so a run's diff holds the
+agent's work rather than gg's bookkeeping. The pair is written for every
+command, so "the full output is on disk" holds unconditionally and an agent
+never re-runs a command to find out whether its log exists.
 
-`adaptive` splits the decision on the one signal that predicts whether the output will be
-read — the exit code. A successful command's output is the bulk of what a run's shell calls
-produce and the part an agent least often needs: `cargo build` printing forty lines of
-`Compiling` says nothing the exit code did not. A failed command is the opposite. So a
-success comes back as
+### Adaptive
+
+`adaptive` decides per command on the exit code. A successful command's output
+is the bulk of what a run's shell calls produce and the part an agent least
+often reads, so a success comes back as three lines:
 
 ```
 Exit code: 0
@@ -63,47 +63,46 @@ stdout: /tmp/gg-shell/cmd-41-0003.stdout
 stderr: /tmp/gg-shell/cmd-41-0003.stderr
 ```
 
-Three lines of facts and nothing else: what the command did, and where the whole of what it
-printed is. The `exit code:` header a tool call's result normally carries is dropped here,
-because the note already states it — and it has to state it, since a
-[responses-as-code](/gg/responses-as-code/) program is handed the note *without* that
-header around it.
+That note states the exit code itself, so gg adds no `exit code:` header around
+it. It has to state it, because a responses-as-code program is handed the note
+with no header around it.
 
-A failure comes back exactly as it would under `offload`. A command that printed
-nothing and succeeded reads `(no output)` — there is nothing worth pointing at. A command
-killed by its timeout did not succeed, so its partial output is *not* withheld.
+A failure comes back exactly as it would under `offload`. A command that
+succeeded and printed nothing reads `(no output)`, since there is nothing on
+disk worth pointing at. A command the timeout killed fails the call, and
+whatever it had printed travels in the failure message on the same terms a
+completed command's output does.
 
-The output is withheld, never discarded: if gg cannot write the file pair there is nowhere
-to withhold it *to*, so the whole output is handed over instead (with a note saying why the
-promised files are missing).
+Withholding depends on the file pair. When gg cannot write it, the whole output
+is returned inline instead, with a note naming the write error.
 
 ### The two ceilings
 
-Both truncating modes read them, and honor both when both are set:
+Both truncating modes read two params, and honor both when both are set:
 
-- **`maxLines`** — the most trailing lines that come back inline. A trailing newline
-  terminates the last line rather than starting a new one, so the count matches what
-  `tail -n` would report.
-- **`maxChars`** — the most trailing *characters* (not bytes, so a ceiling means the same
-  thing whatever the output is written in).
+- `maxLines` — the most trailing lines that come back inline. A trailing newline
+  terminates the last line rather than starting a new one, so the count matches
+  what `tail -n` reports.
+- `maxChars` — the most trailing characters that come back inline. Characters
+  rather than bytes, so a ceiling means the same thing whatever the output is
+  written in.
 
-With both set the **tighter** one decides, because the result has to satisfy both. gg's
-16 KiB byte cap still applies behind them, so a `maxLines` generous enough to admit a
-megabyte cannot defeat the thing offloading is for.
+With both set, the tighter one decides, because the result has to satisfy both.
+gg's 16 KiB byte cap applies behind them under every mode.
 
-Either ceiling alone is a complete instruction, and leaves the axis it omits uncapped. A
-mode that names **neither** takes gg's defaults — **250 lines and 4096 characters** — rather
-than quietly becoming `inline` under another name.
+Either ceiling alone is a complete instruction and leaves the other axis
+uncapped. A mode that names neither takes gg's defaults of 250 lines and 4096
+characters.
 
-A mode gg does not recognize is a misconfiguration rather than an instruction: it runs as
-`adaptive`, and gg logs a warning on the root agent's stream before the first turn. Nothing
-fails the launch — a sweep's one shared configuration document has to stay interpretable by
-every arm — but the warning is what stops one arm from quietly wearing another's name.
+A mode gg does not recognize runs as `adaptive`, and gg reports it as a launch
+warning naming the modes it does recognize. The launch still proceeds, so a
+sweep's one shared configuration document stays interpretable by every arm.
 
-### What the agent sees
+### The truncation note
 
-Output that fits under the ceiling comes back untouched, with no note: a two-line command
-costs no context for a feature it did not need. Output that does not is followed by:
+Output that fits under the ceilings comes back untouched and carries no note, so
+a two-line command costs no context for a feature it did not need. Output that
+does not is followed by:
 
 ```
 [Output truncated: last 200 lines]
@@ -111,31 +110,26 @@ stdout: /tmp/gg-shell/cmd-41-0003.stdout
 stderr: /tmp/gg-shell/cmd-41-0003.stderr
 ```
 
-If gg's 16 KiB byte cap cut the tail further, the first line says so too —
+When gg's 16 KiB byte cap cut the tail further, the first line says so as well:
 `[Output truncated: last 200 lines, capped at 16384 bytes]`.
 
-The note is part of the command's **output** rather than prose gg wraps around it, so a
-[responses-as-code](/gg/responses-as-code/) program that shows itself a `ShellOutput.output`
-— `view.openText("test-run", out.output)` — puts the paths in front of the model exactly as
-a tool-calling agent sees them. The `shell` tool's own description states
-the rule up front as well, because a model that first meets it in a truncated build log
-will assume the missing output is *gone* and re-run the command with a narrower filter,
-rather than grepping the file it was just handed.
+The note is part of the command's output rather than prose gg wraps around it,
+so a program that opens a view on `ShellOutput.output` puts the paths in front
+of the model exactly as a tool-calling agent sees them. The `shell` tool's own
+description states the rule as well, so a model meets it before its first
+truncated build log rather than in one, and greps the file it was handed instead
+of re-running the command with a narrower filter.
 
-If gg cannot write the pair (a full disk, an unwritable `/tmp`), it does **not** truncate
-to a tail whose remainder now exists nowhere: it falls back to the inline behavior, and the
-note says why the promised files are missing.
+### Where the policy applies
 
-### Where it applies
+One function applies the policy, so a JSON tool call and a program's
+`gg.shell.shell(…)` are governed identically. gg's [hook](/gg/hooks/) runner
+reaches the same function: a command hook's output is offloaded on the agent's
+policy unless that hook names its own `output` mode. A script hook's stdout is
+its verdict and is always read whole.
 
-The policy is applied in the one function both execution modes reach, so it governs a JSON
-tool call and a program's `system.shell(…)` identically, and it also covers a
-[hook](/gg/hooks/)'s commands, which gg runs on the agent's behalf — a failing test suite
-is exactly the kind of output that arrives by the megabyte.
-
-It is read only from a capability that is **enabled**; an absent or disabled one resolves
-to `inline`. Offloading is a bargain — you see less of the output, and you get the rest back
-by grepping — and an agent that was not offered the `shell` tool cannot hold up its end.
+The policy is read only from an enabled `shell` capability. An absent or
+disabled one resolves to `inline`.
 
 ### Example
 

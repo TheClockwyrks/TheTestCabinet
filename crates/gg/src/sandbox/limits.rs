@@ -97,7 +97,7 @@
 //!
 //! **Reopen it** when a parked turn is observed in a real run, or when an arm can block in a way a
 //! model reaches by accident rather than by writing a sleep. The full statement, with the
-//! measurements, is in `apps/docs/src/content/docs/gg/program-languages.md`.
+//! measurements, is in `apps/docs/src/content/docs/gg/responses-as-code/sandbox.md`.
 
 use std::time::Duration;
 

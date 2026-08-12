@@ -8,7 +8,7 @@
 #
 # secrets.example.yaml is deliberately NOT a base resource: it is a placeholder
 # template you create for real from your secret manager (or, in the local overlay,
-# generate empty/dev values for). See the README and deployment/kubernetes.md.
+# generate empty/dev values for). See the README and deployment/kubernetes/overview.md.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

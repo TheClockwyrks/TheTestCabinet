@@ -8,7 +8,7 @@ It is not an npm package and not a Cargo crate. It is a directory of C++ sources
 because what it produces is not a library anybody links from this repository — it is compile
 *inputs* that ride inside `gg` and are unpacked next to a model's program once per machine.
 
-[responses as code]: https://docs.testcabinet.ai/gg/responses-as-code/
+[responses as code]: https://docs.testcabinet.ai/gg/responses-as-code/overview/
 
 ## What this arm is
 

@@ -54,7 +54,7 @@
 //! the types every other module's signatures name; each module owns the types it produces, so
 //! `gg::files::FileRead` is both the key a documentation view is opened by and a path a program can
 //! write. Every call hands back `Result<_, ToolError>`, and optional arguments are a struct with a
-//! `Default`. What that looks like in full is in `apps/docs/src/content/docs/gg/program-languages.md`.
+//! `Default`. What that looks like in full is in `apps/docs/src/content/docs/gg/languages/rust.md`.
 //!
 //! The library set is `std` plus the five crates `packages/gg-sandbox-rust/Cargo.toml` declares
 //! under a `# --- heading ---`: `regex`, `serde_json`, `base64`, `itertools` and `indexmap`. Only

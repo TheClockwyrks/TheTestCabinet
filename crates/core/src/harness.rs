@@ -130,7 +130,7 @@ const PERFORMANCE_IMAGE_NAME: &str = "test-cabinet-performance";
 
 /// The suffix that names the **gg variant** of a run image: the same image plus the
 /// language toolchains a [`gg`](HarnessSlug::Gg) run's
-/// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) programs are
+/// [responses-as-code](https://docs.testcabinet.ai/gg/languages/compilation/) programs are
 /// compiled with (`containers/gg/Dockerfile`).
 ///
 /// Every run image has one, and it is *derived* rather than listed: the variant of
@@ -302,7 +302,7 @@ impl ImageSpec {
 
     /// The **gg variant** of this image: the same image plus the language toolchains a
     /// [`gg`](HarnessSlug::Gg) run's
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) programs
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/languages/compilation/) programs
     /// are compiled with, named by appending [`GG_IMAGE_NAME_SUFFIX`] (and its override
     /// by appending [`GG_IMAGE_OVERRIDE_ENV_SUFFIX`]).
     ///

@@ -106,7 +106,7 @@ Task-oriented walkthroughs:
   which points to the right
   [quickstart](apps/docs/src/content/docs/quickstarts/) and
   [user guide](apps/docs/src/content/docs/guides/) for the test type and
-  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests.md)
+  [`asset_kind`](apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md)
   you are working on. The [`testing/`](apps/docs/src/content/docs/testing/) pages
   remain authoritative for what each manifest field means.
 

@@ -551,8 +551,8 @@ print("still here")
     assert!(
         outcome.elapsed >= Duration::from_secs(2),
         "a single 3 s park against a 1 s budget is expected to run to completion — if the deadline \
-         now bounds it, the acceptance in `sandbox::limits` and the caution in the program-languages \
-         page are both out of date: {:?}",
+         now bounds it, the acceptance in `sandbox::limits` and the caution in the \
+         `gg/languages/python.md` page are both out of date: {:?}",
         outcome.elapsed
     );
 }
@@ -689,7 +689,7 @@ fn the_embedded_guest_imports_the_whole_membrane_and_the_whole_wasi_surface() {
         ],
         "the embedded Python guest's imports changed; if that was intended, update the prose that \
          describes what this guest can reach (`packages/gg-sandbox-python/README.md`, \
-         `gg/program-languages.md`) in the same commit"
+         `gg/languages/python.md`) in the same commit"
     );
 
     // Every gg interface the world declares is present, because the SDK imports every one of them

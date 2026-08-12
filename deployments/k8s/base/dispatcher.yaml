@@ -13,7 +13,7 @@
 #
 # It runs under the `tcab-dispatcher` ServiceAccount (deployments/k8s/base/rbac.yaml),
 # which grants exactly jobs create/get/list/watch/delete plus pods + pods/log get
-# for failure reporting. See deployment/kubernetes.md and the dispatcher's
+# for failure reporting. See deployment/kubernetes/run-plane.md and the dispatcher's
 # config docs (crates/dispatcher/src/config.rs) for every variable.
 apiVersion: apps/v1
 kind: Deployment

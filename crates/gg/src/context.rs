@@ -1914,7 +1914,7 @@ impl ContextModel {
     /// as its own attributable item.
     ///
     /// This is the counterpart of one tool result per tool call for a
-    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program, which has no
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) program, which has no
     /// tool calls to attach material to. Re-opening the same `label`
     /// [supersedes](Self::supersede_view) the copy that was there: `openText` names an **intent** —
     /// *this should be visible* — and re-stating an intent replaces it, so a program that recomputes

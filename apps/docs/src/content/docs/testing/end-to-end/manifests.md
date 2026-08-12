@@ -3,49 +3,39 @@ title: Manifests
 ---
 
 Each end-to-end test case version declares its contents in a `test-case.toml`
-manifest in the version folder. The testing harness reads this manifest to
-resolve the version and to decide, unambiguously, what is seeded into a run,
-which references are rendered as visual targets, and which validation checks run.
-Inferring this from file names alone would be fragile, so it is stated
-explicitly. For the meaning of the pieces it declares, see
+manifest in the version folder. Resolution reads this manifest to decide what is
+seeded into a run, which references are rendered as visual targets, and which
+validation checks run. For what the declared pieces mean, see
 [Overview](/testing/end-to-end/overview/).
 
-The **`slug`** is the case's stable identity: it is the definition-store key and is
-recorded in every run, so it — not the folder name — is what ties a run to its case.
-It is declared explicitly rather than derived from the folder so the two are
-**decoupled**: a case's folder can be renamed for tidiness while its slug stays put,
-and the runs already published under that slug remain attached. In the common case the
-slug simply equals the folder name; the exception in this repo is `carom/`, which pins
-`slug = "pong"` to keep the runs published before its rename. A slug must be a valid
-kebab-case token (lowercase letters, digits, single hyphens between them) and be
-declared identically on every version of a folder. A whole-catalog ingest keys the
-store by the slug and prunes any stored case the checkout no longer declares (sparing
-any a published or pending run still references), so a rename that keeps the slug
-overwrites in place instead of leaving a duplicate.
+Every path a manifest names is relative to the version folder and must resolve
+inside it, so a version stays self-contained. A declared path is validated to
+exist when the case resolves.
+
+## The case manifest
 
 ```toml
 # test-cases/<type>/<difficulty>/<folder>/<version>/test-case.toml
-slug = "pong"                # stable identity (required); the store key + recorded in every run
-name = "Carom"               # human-readable display name (site-facing)
+slug = "pong"                # stable identity (required); the store key, recorded in runs
+name = "Carom"               # human-readable display name (site-facing, required)
+type = "end-to-end"          # test type (default "end-to-end")
 difficulty = "medium"        # relative difficulty: easy | medium | hard (required)
-tags = ["arcade", "2d"]      # free-form classification tags (site-facing, required)
-summary = "..."              # optional one- or two-sentence abstract for the site cards (inline; NOT seeded)
+tags = ["arcade", "2d"]      # classification tags (site-facing, required; may be empty)
+summary = "..."              # optional abstract for the site cards (inline; NOT seeded)
 description = "description.md" # optional site-facing prose (relative path; NOT seeded)
-changelog = "changelog.md"   # REQUIRED per-version changelog entry (relative path; NOT seeded)
+changelog = "changelog.md"   # REQUIRED per-version changelog (relative path; NOT seeded)
 prompt = "prompt.hbs"        # the prompt template handed to the harness (required)
-max_runtime_hours = 0.5      # cap on the harness session before it's stopped (default 1)
-experimental = false         # optional; true hides the case from the UI unless the deployment enables experimental cases (default false)
-workspace = "workspaces/base" # optional starter directory; its files seed the run root before the specs
-init = "npm install"         # optional command run in the container after seeding, before the harness
+max_runtime_hours = 0.5      # cap on the harness session before it is stopped (default 1)
+experimental = false         # optional; true hides the case unless the deployment opts in
+workspace = "workspaces/base" # optional starter directory, seeded into the run root
+init = "npm install"         # optional command run after seeding, before the harness
 assets = []                  # asset files/directories, seeded (relative paths)
-packages = []                # Test Cabinet packages installed into the run, e.g. ["@test-cabinet/particle-runtime"]
+packages = []                # Test Cabinet packages the build imports (npm names)
 
 # Variants: an ORDERED list of paths to standalone variant files (the first is the
 # default). Exactly one variant runs per run, and its slug is recorded in the run
-# record. Each path is relative to the version folder; by convention the files
-# live under `variants/`, and each is a self-contained TOML document (see "Variant
-# files" below). Because `variants` is a ROOT key, it must appear BEFORE the first
-# table header (`[build]`, `[[spec]]`, …) in this file.
+# record. At least one entry is required. Because `variants` is a ROOT key, it must
+# appear BEFORE the first table header (`[build]`, `[[spec]]`, …) in this file.
 variants = [
   "variants/base.toml",      # first entry = the default variant
   "variants/frenzy.toml",
@@ -54,62 +44,60 @@ variants = [
 # How validation builds the produced implementation into a served static site.
 # Required: a case must state both commands explicitly; there are no defaults.
 [build]
-install = "npm ci"           # dependency install command (required)
-build = "npm run build"      # static-build command (required)
+install = "npm ci"           # dependency install command (required, non-empty)
+build = "npm run build"      # static-build command (required, non-empty)
 
 # Common specs, seeded for EVERY variant. Each maps a `source` inside the version
-# folder to a `dest` in the run's workspace. A `.hbs` source is rendered (see Spec
-# templates); any other source is seeded verbatim. `dest` is OPTIONAL and defaults
-# to `source` with a trailing `.hbs` extension removed — so `specs/overview.md`
-# seeds to `specs/overview.md`, and `specs/overview.md.hbs` renders to
-# `specs/overview.md`. Give an explicit `dest` only to remap the seeded path.
+# folder to a `dest` in the run's workspace. A `.hbs` source is rendered; any other
+# source is seeded verbatim. `dest` defaults to `source` with a trailing `.hbs`
+# removed, so `specs/overview.md` seeds to `specs/overview.md` and
+# `specs/mode.md.hbs` renders to `specs/mode.md`.
 [[spec]]
-source = "specs/overview.md" # source path (relative to this folder); dest defaults to it
-
-[[spec]]
-source = "specs/mode.md.hbs" # .hbs source is rendered; dest defaults to "specs/mode.md"
+source = "specs/overview.md" # source path (required); dest defaults to it
+# dest = "specs/renamed.md"  # optional remap
+# kind = "spec"              # optional role: spec (default) | script
 
 # Common reference views, seeded for EVERY variant. A reference is EITHER an HTML
 # mockup rendered to a screenshot (`path`) OR a static image/video served as-is
 # (`media`) — exactly one. A rendered source is not seeded; a static one is.
-# References are not validated unless a check below names them.
+# A reference is compared against only when a [[check]] names it.
 [[reference]]
 view = "gameplay"            # view slug
-path = "reference/gameplay.html" # rendered mockup (relative to this folder)
-# A static media reference instead of a rendered mockup (image or .mp4):
-# [[reference]]
-# view = "intro"
-# media = "reference/intro.mp4"  # served as-is; kind inferred from the extension
+path = "reference/gameplay.html" # rendered mockup
+# media = "reference/intro.mp4"  # served as-is; media kind inferred from the extension
 
-# Proof of implementation, requested for EVERY variant. Each declares a `dest`
-# path the build must write a screenshot or .webm clip to as evidence; the spec
-# that asks for it must reference the same path. Validation records whether each
-# is present (informational). The media kind is inferred from the extension.
+# Proof of implementation, requested for EVERY variant. Each declares a `dest` the
+# build must write a screenshot or clip to as evidence; the spec that asks for it
+# must name the same path. Validation records whether each is present.
 [[proof]]
-id = "title"                 # stable slug, recorded in validation and paired by review items
-name = "Title menu"          # display name (optional; default humanizes the id)
+id = "title"                 # stable slug, recorded in validation; paired by review items
+name = "Title menu"          # display name (optional; defaults to a humanized id)
 dest = "proof/title.png"     # where the build must write it (relative to the run root)
 
 # Validation checks (opt-in). Only declared checks run.
 [[check]]
 view = "title"               # the view this check records under
-name = "Title"               # display name (optional; default humanizes the view slug)
-reference = "title"          # baseline: the rendered screenshot of this reference
-actions = []                 # actions to drive the build into the view (empty = on load)
+name = "Title"               # display name (optional; defaults to a humanized view slug)
+reference = "title"          # baseline reference view (optional; defaults to `view`)
+actions = []                 # actions driving the build into the view (empty = on load)
+
+# The debug-API handle, required as soon as any review item declares a
+# `validation` script. Reporter-side, never seeded.
+[instrumentation]
+handle = "__carom"           # the window property the build installs its debug API on
+tick_hz = 120                # optional fixed simulation rate, in whole ticks per second
 
 # COMMON reviewer checklist items, checked for EVERY variant. Reporter-side
-# material (NOT seeded): each names something a reviewer must explicitly check
-# after playing the build. A variant may add its own in its variant file.
+# material (NOT seeded). A variant may add its own in its variant file.
 [[review_item]]
 id = "ball-spin"             # stable slug, recorded with the reviewer's verdict
-title = "Paddle spin"        # short heading shown above the item (numbered) in the reviewer UI
+title = "Paddle spin"        # short heading shown above the item in the reviewer UI
 text = "Swinging a paddle as the ball contacts it imparts spin." # what to check
-weight = 1                   # points this item is worth toward the score (required, > 0)
+weight = 2                   # points this item is worth toward the score (required, > 0)
 reference = "gameplay"       # optional: a reference view shown as the EXPECTED target
 proof = "title"              # optional: a proof id whose SUBMITTED media is shown
 domain = "single-player"     # optional: a COMMON item may name only a COMMON domain
-# optional: name-only sub-items graded pass/fail independently (see "Sub-items" below).
-# When present, the reviewer verdicts each sub-item and `weight` splits evenly across them.
+# optional: name-only sub-items graded pass/fail independently (see "Sub-items").
 sub_items = [
   { id = "stationary", title = "No spin while stationary" },
   { id = "moving", title = "Imparts spin while moving" },
@@ -117,38 +105,40 @@ sub_items = [
 
 # COMMON scoring domains, rated for EVERY variant. The reviewer rates each
 # independently while playing the build; the run's OVERALL rating is the WORST
-# across the run variant's EFFECTIVE domain set (these common domains plus any the
-# run's variant declares in its own file). At least one common domain is required.
+# across the run variant's EFFECTIVE domain set (these plus any the run's variant
+# declares). At least one common domain is required.
 [[domain]]
 id = "single-player"         # stable slug, recorded with the per-domain rating
-name = "Single Player"       # display name (optional; default humanizes the id)
-description = "Solo play against the AI opponent." # what the reviewer is rating (required)
+name = "Single Player"       # display name (optional; defaults to a humanized id)
+description = "Solo play against the AI."  # what the reviewer is rating (required)
 ```
 
-Each `variants` entry points at a standalone variant file — a TOML document whose
-**top-level keys are the variant's own fields**. Every path inside it is relative
-to the **version folder** (not the variant file's location), exactly as an inline
-variant was. A variant seeds the common specs plus its own additive specs, may
-supply variant-specific references, review items, and workspace, and may declare
-**additional scoring domains** rated only when it runs:
+## The variant file
+
+Each `variants` entry points at a standalone variant file whose top-level keys
+are the variant's own fields. Every path inside it is relative to the version
+folder rather than to the variant file's location. A variant seeds the common
+specs plus its own additive specs, and may supply its own references, proofs,
+review entries, workspace, and additional scoring domains.
 
 ```toml
-# test-cases/<type>/<difficulty>/<slug>/<version>/variants/frenzy.toml
-slug = "frenzy"              # stable slug, recorded in the run record
-name = "Frenzy"             # display name (optional; default humanizes the slug)
+# test-cases/<type>/<difficulty>/<folder>/<version>/variants/frenzy.toml
+slug = "frenzy"              # stable slug, recorded in the run record; unique per case
+name = "Frenzy"              # display name (optional; defaults to a humanized slug)
 description = "..."          # optional inline prose (site-facing)
 workspace = "workspaces/frenzy" # optional; REPLACES the common workspace for this variant
-reference_implementation = "reference-impl/frenzy" # optional; the CORRECT buildable static build of this variant (NEVER seeded)
-# ADDITIVE specs on top of the common specs; same `{ source, dest }` shape as a
-# `[[spec]]`, and `dest` likewise defaults to `source` (trailing `.hbs` stripped).
-spec = [{ source = "specs/modes/frenzy.md" }]
-# ADDITIVE references on top of the common ones; same `{ view, path }` shape as a
-# `[[reference]]`. Lets a view differ per variant (for example a per-variant menu).
-reference = [{ view = "title", path = "reference/menu-frenzy.html" }]
+reference_implementation = "reference-impl/frenzy" # optional correct build (NEVER seeded)
 
-# ADDITIVE reviewer checklist items on top of the common ones; same shape as a
-# `[[review_item]]`. A variant item may name a COMMON domain OR one of this
-# variant's OWN domains (below).
+# ADDITIVE specs on top of the common specs; same `{ source, dest, kind }` shape as
+# a `[[spec]]`, and `dest` likewise defaults to `source` with `.hbs` stripped.
+spec = [{ source = "specs/modes/frenzy.md" }]
+# ADDITIVE references; same shape as a `[[reference]]`.
+reference = [{ view = "title", path = "reference/menu-frenzy.html" }]
+# ADDITIVE proofs; same shape as a `[[proof]]`.
+proof = [{ id = "frenzy-rally", dest = "proof/frenzy.webm" }]
+
+# ADDITIVE reviewer checklist items; same shape as a `[[review_item]]`. A variant
+# item may name a COMMON domain OR one of this variant's OWN domains.
 [[review_item]]
 id = "frenzy-escalation"     # unique within the variant's effective set (common + own)
 title = "Frenzy escalation"
@@ -156,244 +146,205 @@ text = "Each hit multiplies ball speed with no cap, so the rally visibly escalat
 weight = 1
 domain = "frenzy"
 
-# ADDITIONAL scoring domains, rated ONLY when this variant runs — layered on top of
-# the case's common domains. A domain id must be unique across the common domains
-# and this variant's own.
+# ADDITIONAL scoring domains, rated ONLY when this variant runs.
 [[domain]]
 id = "frenzy"
 name = "Frenzy"
-description = "The escalating Frenzy mode: uncapped speed that visibly ramps every hit."
+description = "The escalating Frenzy mode: uncapped speed that ramps every hit."
 ```
 
+## Case keys
+
+- `slug` is the case's stable identity: the definition-store key, recorded in
+  every run, and what ties a run to its case. It is declared rather than derived
+  from the folder name, so a folder can be renamed while the runs published
+  under the slug stay attached. It must be a valid kebab-case token of lowercase
+  letters and digits with single hyphens between them, and must be declared
+  identically on every version of a folder. A whole-catalog ingest keys the
+  store by slug and prunes any stored case the checkout no longer declares,
+  sparing any that a published or pending run references, so a rename that keeps
+  the slug overwrites in place.
 - `name`, `difficulty`, and `tags` are site-facing metadata used to present and
-  filter the case; they have no bearing on how a run is executed. All three are
-  **required**, though `tags` may be an empty list.
-- `summary` is an optional one- or two-sentence abstract shown on the site's test
-  case cards. Unlike `description` it is authored **inline** as plain text rather
-  than as a file, so it stays short and renders safely inside the card's link;
-  the longer `description` is shown on the detail page. Like `description` it is
-  **never seeded** into a run — it is site-only prose.
+  filter the case. All three are required, though `tags` may be an empty list.
+- `type` selects the test type and defaults to `end-to-end`. The type decides
+  which tables are required and which are rejected.
+- `summary` is an optional one- or two-sentence abstract shown on the site's
+  test case cards. It is authored inline as plain text so it renders safely
+  inside the card's link. It is never seeded.
 - `description` is an optional path to a Markdown file describing the case for
-  the site. Unlike the specs and `assets`, it is **never seeded** into a run — it
-  is site-only prose. Like every other path it must resolve inside the version
-  folder, and it is validated to exist when declared.
-- `changelog` is **required** and points at a Markdown file recording what changed
-  **in this version** of the case, so no revision ships without a note. The first
-  version typically just reads `Introduced.`; a later version describes its change
-  (for example, a proof clip switching format). Each version folder carries its own
-  entry, and the site aggregates every version's entry into one **newest-first**
-  changelog on the case's detail page. Like `description` it is site-only prose —
-  **never seeded** into a run — must resolve inside the version folder, and is
-  validated to exist.
-- `prompt` is **required** and points at the Handlebars template that becomes
-  the instruction handed to the harness. The template is **rendered, not
-  seeded**; see [Prompt template](/testing/end-to-end/overview/#prompt-template).
-- `max_runtime_hours` is the maximum wall-clock duration the harness session is
-  allowed before the run container is torn down and the run aborts. It is
-  authored in hours and fractional values are allowed (for example `0.5` for
-  thirty minutes, `1.5` for ninety), because every cap is long enough that
-  seconds add no useful precision. It exists so a stuck or runaway session can
-  never run unbounded. It defaults to `1` (one hour) when omitted and must be a
-  positive number. This is the per-case default; a run can override it for a
-  single invocation (for example `tcab run --max-runtime <hours>`).
-- `experimental` is an optional boolean, defaulting to `false`, that marks a case
-  as **still being iterated on** — not yet ready to publish runs for. It applies
-  to every test type. A deployment only offers experimental cases to the UI when
-  it opts in with the `TCAB_BACKEND_ALLOW_EXPERIMENTAL` environment variable
-  (truthy); otherwise an experimental case is **hidden from the catalog and
-  refuses to resolve**, so it is treated as if it does not exist — and therefore
-  is never run or published. The local k3d cluster (`make -C deployments/local
-  local-up`) enables experimental cases; production leaves the variable unset.
-  The flag is purely a visibility filter and has no effect on how a run executes.
-- `workspace` is an optional path to a **starter directory** whose contents are
-  seeded into the root of the run before the specs (see
-  [Workspace](/testing/end-to-end/overview/#workspace)). A variant may override
-  it with its own `workspace` (see [Variants](/testing/end-to-end/overview/#variants)).
-  Like every path it must resolve inside the version folder and is validated to
-  be a directory.
-- `init` is an optional **init command** run inside the run container once the
-  workspace and specs are seeded and before the harness starts (see
-  [Init](/testing/end-to-end/overview/#init)). It must be non-empty when declared.
-- `packages` is an optional list of **Test Cabinet packages** — the repo's own
-  `@test-cabinet/*` runtime libraries — to make available to the build as
-  ordinary installed dependencies (see
-  [Packages](/testing/end-to-end/overview/#packages)). It is how a case that must
-  consume a *produced* asset whose format needs a runtime to interpret — a
-  [particle](/testing/asset-generation/particle-binaries/) `system.json` a game
-  plays by simulating it live, a voxel rig a game poses — hands the model the
-  library that plays it, rather than asking the model to reimplement the runtime
-  from a schema. Each entry is a package **name** (not a path), and every name
-  must be one of the **shippable packages** in the host package store (listed in
-  [`containers/README.md`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/containers/README.md#the-shippable-test-cabinet-packages));
-  an unknown name is rejected at resolution. `packages` is **end-to-end only** —
-  an asset-generation case that declares it is rejected. The harness does **not**
-  modify your `package.json`: you ship a `workspace` whose `package.json` already
-  depends on each declared package via an **in-repo relative** `file:` spec —
-  `"@test-cabinet/particle-runtime": "file:./.tcab/packages/@test-cabinet/particle-runtime"`
-  — and `packages` is the declaration resolution validates that file against. At
-  seed time the named libraries are **vendored into the run repo** at
-  `.tcab/packages/` (and committed), so that relative path resolves wherever the
-  produced tree later lives — the run container, the validation host, or a clone
-  of the published repo. A case that declares a package but ships no
-  `package.json`, omits the dependency, or points it anywhere other than that
-  in-repo `file:` path is **rejected at resolution**, so a misconfiguration
-  surfaces at authoring time rather than leaving the model to discover the missing
-  dependency mid-run. The model then
-  installs and imports it like any other dependency; see
-  [Packages](/testing/end-to-end/overview/#packages) for the model-facing contract
-  and why a `packages` case's `init` must run `npm install` (not `npm ci`). Each
-  declared package is surfaced on the case's **Inputs** tab (tagged `Package`) with
-  a short description of what it provides. That description is **UI-only** — it is
-  never seeded into a run — and is defined once, centrally, next to the shippable
-  package list in `core` (not per case), so every case that ships a package shows
-  the same description; you declare only the **name** in the manifest.
-- The `[build]` table is **required** and declares the commands validation runs
-  to turn a produced implementation into a served static site: `install`
-  (dependency install) and `build` (the static build). Both must be stated
-  explicitly — there are no defaults, so a case always records exactly how its
-  implementation is built. Each runs from the implementation's repository root,
-  and neither may be empty. `npm ci` is the conventional `install` because it
-  requires a committed lockfile and installs exactly what it pins, matching the
-  deployed build; a case may pin a different toolchain but must still emit a
-  static build into `dist/`, `build/`, or `out/`. Both steps are reported in the
-  run's [validation results](/components/core/validation/#results). See
-  [Evaluation](/testing/end-to-end/evaluation/#load-check).
-- Each `[[spec]]` declares a **common** spec — one seeded for every variant — by
-  mapping a `source` file inside the version folder onto a `dest` path in the
-  run workspace. `dest` is **optional**: it defaults to `source` with a trailing
-  `.hbs` extension removed, so `specs/x.md` seeds to `specs/x.md` and
-  `specs/x.md.hbs` renders to `specs/x.md`; give an explicit `dest` only to remap
-  the seeded path. A `source` ending in `.hbs` is a Handlebars template rendered
-  into its `dest` (see [Spec templates](/testing/end-to-end/overview/#spec-templates));
-  any other `source` is
-  seeded verbatim. An optional `kind` marks the file's **role**: it defaults to
-  `spec` (a prose specification the model reads) and may be set to `script` for an
-  executable starter the model edits and runs — the case's `build.py` starter stub
-  the [Blender](/testing/asset-generation/blender-binaries/) asset kind seeds, whose
-  `dest` coincides with `[output].actions`. `kind` is **presentation only**: it does
-  not change how the file is seeded, only that the **Inputs** tab tags it `Script`
-  rather than `Spec`. The rendered reference screenshots are seeded too. Asset
-  entries may be files or directories; a directory is seeded recursively.
-- The `variants` list names the builds the case offers, in order, as paths to
-  standalone **variant files** (the first is the default). It is a root key, so it
-  must precede the first table header. A run selects exactly one variant, which
-  seeds the common specs plus the variant's own `spec` entries; each variant file
-  is a self-contained TOML document whose top-level keys are the variant's fields,
-  and every path inside it resolves against the version folder. See
+  the site's detail page. It is never seeded.
+- `changelog` is required and points at a Markdown file recording what changed
+  in this version, so no revision ships without a note. The first version
+  typically reads `Introduced.`. The site aggregates every version's entry into
+  one newest-first changelog on the case's detail page. It is never seeded.
+- `prompt` is required and points at the Handlebars template that becomes the
+  instruction handed to the harness. The template is rendered rather than
+  seeded; see
+  [Prompt template](/testing/end-to-end/overview/#prompt-template).
+- `max_runtime_hours` is the maximum wall-clock duration the harness session may
+  run before the container is torn down and the run aborts. It is authored in
+  hours, fractional values allowed, must be a positive finite number, and
+  defaults to `1`. A run can override it for a single invocation, for example
+  `tcab run --max-runtime <hours>`.
+- `experimental` marks a case as still being iterated on and defaults to
+  `false`. A deployment offers experimental cases only when it sets
+  `TCAB_BACKEND_ALLOW_EXPERIMENTAL` to a truthy value; otherwise an experimental
+  case is hidden from the catalog and refuses to resolve, so it is never run or
+  published. The flag is a visibility filter with no effect on how a run
+  executes.
+- `workspace` is an optional path to a starter directory whose contents seed
+  into the root of the run before the specs; it must be a directory. A variant
+  may replace it with its own. See
+  [Workspace](/testing/end-to-end/overview/#workspace).
+- `init` is an optional command run inside the run container once the workspace
+  and specs are seeded and before the harness starts. It must be non-empty when
+  declared. See [Init](/testing/end-to-end/overview/#init).
+- `assets` lists files or directories seeded into the run at their path relative
+  to the version folder; a directory is seeded recursively.
+- `packages` lists the Test Cabinet runtime libraries the build imports. Each
+  entry is a package name rather than a path, and every name must be one of the
+  shippable packages staged into the host package store. It is valid for the
+  end-to-end, full-stack, and game-jam types only. The case must ship a
+  `workspace` whose `package.json` depends on each declared package, as a
+  dependency or a dev dependency, via its in-repo `file:` spec under
+  `.tcab/packages/`. A declared package missing from that file or pointing
+  anywhere else is rejected at resolution. Each declared package is surfaced on
+  the case's Inputs tab, tagged `Package`, with a description defined centrally
+  in `core` rather than per case. See
+  [Packages](/testing/end-to-end/overview/#packages).
+- `variants` names the builds the case offers, in order, as paths to standalone
+  variant files. The first is the default and at least one is required. It is a
+  root key, so it must precede the first table header. See
   [Variants](/testing/end-to-end/overview/#variants).
-- Each `[[reference]]` declares a **common** reference view, seeded as a visual
-  target for **every** variant. A reference is **either** an HTML mockup rendered
-  to a screenshot (`path`, whose source is never seeded) **or** a static image or
-  `.mp4` served as-is (`media`, which is seeded and served unchanged) — exactly
-  one of the two; declaring both or neither is rejected. A static reference's
-  media kind (image vs. video) is inferred from its extension, letting the
-  "expected" side of a review item be a video or a prepared still. A variant may
-  declare additional, variant-specific references through its own `reference`
-  array; see [Variants](/testing/end-to-end/overview/#variants). A view slug must
-  not be declared both as a
-  common reference and by a variant, and a variant must not declare the same view
-  twice. All paths are relative to the version folder and must resolve inside it,
-  keeping a version self-contained.
-- Each `[[proof]]` declares a **proof-of-implementation** artifact the build is
-  asked to produce, requested for **every** variant. It names a stable `id`
-  (recorded in the run's [validation results](/components/core/validation/#results)
-  and used to pair a review item with the submitted media), an optional `name`
-  (defaulting to a humanized `id`), and a `dest` path the build must write the
-  proof to, relative to the run workspace root. The media kind (image or video)
-  is inferred from the `dest` extension (`png`/`jpg`/`jpeg`/`webp`/`gif` →
-  image, `webm`/`mp4` → video); any other extension is rejected. A **video
-  proof** should be a `.webm` — the format Playwright records natively, so a run
-  captures it without transcoding; the public gallery transcodes it to `.mp4` at
-  snapshot time for universal (incl. iOS/Safari) playback. Unlike specs and
-  references a proof is **not seeded** — it is *output* the agent produces during
-  the run — so the spec that requests it must reference the same `dest`. A
-  variant may declare additive proofs through its own `proof` array; an id must
-  be unique within a variant's effective set, and a `dest` must not collide with a
-  seeded file. See [Evaluation](/testing/end-to-end/evaluation/#proofs).
-- Each `[[check]]` is an opt-in validation comparison. Its `reference` must name
-  a reference view that resolves for **every** variant — a common reference, or
-  one that each variant declares — whose rendered screenshot is the baseline;
-  `actions` drive the built implementation into the view before capture. Its
-  optional `name` is a display label, defaulting to a humanized form of `view`.
-  See [Evaluation](/testing/end-to-end/evaluation/#checks).
-- Each `[[review_item]]` declares a **common** reviewer checklist item — one a
-  person must explicitly check when reviewing any variant — by a stable `id`
-  (recorded with the verdict), a short `title` shown above the item in the
-  reviewer UI, the `text` a reviewer reads, and a `weight`: the number of points
-  the item is worth toward the run's **score**. A variant may declare
-  **additive** items through its own `review_item` array (same shape); see
-  [Variants](/testing/end-to-end/overview/#variants). Review items are
-  reporter-side material: like the reference *source* and a case's
-  `description`, they are **never seeded** into a run, so the model never
-  receives the checklist. They restate observable requirements the seeded
-  specification already states, so withholding them hides nothing. An item id
-  must be unique within a variant's effective set (common plus that variant's
-  own); a collision is rejected at resolution. `weight` is **required** and must
-  be greater than zero — a `pass` verdict earns the item's weight and a `fail`
-  earns none, and the run's score is the earned weight over the total declared
-  weight (verdicts are binary; there is no "not applicable"). An item may also
-  carry an optional `domain` naming the scoring domain it rolls up to; a common
-  item may name only a **common** domain, while a variant's own item may name a
-  common domain **or** one of that variant's own domains. A general item that
-  applies to every mode omits it.
-  An item may also pair an expected reference and the submitted proof with its
-  check: the optional `reference` names a reference view (shown as the
-  **expected** target) and the optional `proof` names a proof id (whose
-  **submitted** media is shown), so the reviewer compares the target against the
-  evidence before judging. The two are independent — an item may declare just a
-  `proof` with no `reference` (a video clip with no still that meaningfully
-  depicts it, say); the reviewer UI then shows that one side full width rather
-  than reserving an empty pane. Each named id must resolve for the item's variant
-  or resolution is rejected. An item may also break into **sub-items** — see
-  [Sub-items](#sub-items) below. See
-  [Reviewing Test Run Results](/guides/development/reviewing-test-run-results/#work-the-checklist).
-- Each `[[domain]]` declares a **scoring domain** the reviewer rates
-  independently — for example a game's `single-player` and `versus` modes — by a
-  stable `id` (recorded with the per-domain rating), an optional `name`
-  (defaulting to a humanized `id`), and a required `description` telling the
-  reviewer what they are rating. A case declares its **common** domains with
-  `[[domain]]` in `test-case.toml` (at least one is **required**), and every
-  variant is rated on those. A variant may declare **additional** `[[domain]]`
-  tables in its own file; the **effective** set a reviewer rates for a run is the
-  common domains plus that run's variant's own. Domain ids must be unique across
-  the common domains and any given variant's own. The run's **overall rating** is
-  the *worst* rating across its effective domains, so a flawless mode cannot mask a
-  broken one. Review items roll up to a domain through their optional `domain`. See
-  [Evaluation](/testing/end-to-end/evaluation/#scoring).
-- `reference_implementation` is an **optional** per-variant key naming a
-  **reference implementation** — a directory holding a buildable static web
-  project that is the *correct* implementation of this variant, authored in-repo
-  and versioned with the case. It is declared as a top-level key of a **variant
-  file** (not `test-case.toml`), so each variant may point at its own correct build
-  and a variant that omits the key simply has none. Its value is a path resolved
-  against the **version folder** (`test-cases/<type>/<difficulty>/<folder>/<version>/`), by convention
-  `reference-impl/<variant>/`. The project is built with the case's existing
-  `[build]` commands — the shared `install` then `build`, run from that
-  directory — and its static output must land in the same `dist/`, `build/`, or
-  `out/` a run's build does. A reference implementation is **never seeded** into a
-  run: it is the authored answer, so exposing it to a model would defeat the case.
-  It exists only to be **published** out-of-band — deployed to Cloudflare Pages by
-  [`tcab publish-reference`](/components/cli/overview/#commands), whose served URL
-  the backend records — and then shown on the case page's **Reference** tab
-  (inline, with a fullscreen option). Do not confuse it with a **reference visual
-  mockup** (`[[reference]]`): a mockup is a rendered screenshot of one view, seeded
-  as a *target* the model builds toward, whereas a reference implementation is the
-  whole playable game and is never seeded. See
-  [Reference implementations](/components/core/results/#reference-implementations).
+
+## Case tables
+
+- `[build]` is required and declares the commands validation runs to turn a
+  produced implementation into a served static site: `install` then `build`.
+  Both are required, must be non-empty, and run from the implementation's
+  repository root. `npm ci` is the conventional `install` because it requires a
+  committed lockfile and installs exactly what it pins. A case may pin a
+  different toolchain so long as it still emits a static build into `dist/`,
+  `build/`, or `out/`. Both steps are reported in the run's validation results.
+  A `module` key belongs to the adversarial and performance types and is
+  rejected here.
+- `[[spec]]` declares a common spec, seeded for every variant, mapping a
+  `source` inside the version folder onto a `dest` in the run workspace. `dest`
+  defaults to `source` with a trailing `.hbs` removed; give it explicitly only
+  to remap the seeded path. A `source` ending in `.hbs` is rendered as a
+  [spec template](/testing/end-to-end/overview/#spec-templates); any other
+  source is seeded verbatim. The optional `kind` is `spec` (the default, a prose
+  specification) or `script` (an executable starter the model edits and runs).
+  `kind` is presentation only: it changes how the Inputs tab tags the file, not
+  how it is seeded.
+- `[[reference]]` declares a common reference view, seeded as a visual target
+  for every variant. A reference declares exactly one of `path`, an HTML mockup
+  rendered to a PNG whose source is never seeded, or `media`, a static file
+  seeded and served unchanged. Declaring both or neither is rejected. A static
+  reference's media kind is inferred from its extension: `png`, `jpg`, `jpeg`,
+  `webp`, and `gif` are images; `webm` and `mp4` are video. A variant may
+  declare additional references. A view slug must not be declared both commonly
+  and by a variant, and a variant must not declare one twice.
+- `[[proof]]` declares a proof-of-implementation artifact the build is asked to
+  produce, requested for every variant. It names a stable `id`, recorded in the
+  run's validation results and used to pair a review item with the submitted
+  media, an optional `name` defaulting to a humanized `id`, and a `dest` path
+  relative to the run root. The media kind is inferred from the `dest`
+  extension, from the same lists a reference uses, and any other extension is
+  rejected. A video proof should be a `.webm`, the format Playwright records
+  natively, which the public gallery transcodes to `.mp4` at snapshot time for
+  playback on every browser. A proof is output the agent produces rather than a
+  seeded file, so the spec that requests it must name the same `dest`, and that
+  `dest` must not collide with a seeded file. A variant may declare additive
+  proofs; an id must be unique within a variant's effective set. See
+  [Proofs](/testing/end-to-end/evaluation/#proofs).
+- `[[check]]` is an opt-in validation comparison. `view` is the slug the result
+  is recorded under, the optional `name` is a display label defaulting to a
+  humanized `view`, and `reference` names the reference view whose rendered
+  screenshot is the baseline, defaulting to `view`. That reference must resolve
+  for every variant, either commonly or from each variant's own set. `actions`
+  drives the built implementation into the view before capture; an empty list
+  captures whatever the build shows on load. Each action is an inline table
+  tagged by `type`:
+  - `{ type = "wait", ms = 500 }` pauses for `ms` milliseconds.
+  - `{ type = "key", key = "Enter" }` presses and releases a Playwright key.
+  - `{ type = "hold", key = "ArrowUp", ms = 300 }` holds a key, then releases it.
+  - `{ type = "click", x = 320, y = 180 }` clicks a logical-pixel point.
+
+  See [Checks](/testing/end-to-end/evaluation/#checks).
+- `[instrumentation]` names the case's debug-API surface once for the whole
+  case. `handle` is the `window` property the build installs its debug API on,
+  without the `window.` prefix, and must be a plain identifier of letters,
+  digits, `_`, and `$` that does not start with a digit. It is required as soon
+  as any verdict unit declares a `validation` script. The optional `tick_hz` is
+  the case's fixed simulation rate in whole ticks per second and must be
+  positive; it is what lets the validation runtime convert an exact number of
+  stepped ticks into real time. Omit it for a case whose build is clocked in
+  real time. The table is reporter-side and never seeded; the seeded
+  specification documents the same handle independently as an ordinary game
+  debug feature.
+- `[[review_item]]` declares a common reviewer checklist item. It carries a
+  stable `id` recorded with the verdict, a short `title` shown above the item,
+  the `text` a reviewer reads, and a `weight`: the points the item is worth
+  toward the run's score. `id`, `title`, and `text` must be non-empty and
+  `weight` must be greater than zero. Review items are reporter-side material
+  and never seeded, so the model never receives the checklist; they restate
+  observable requirements the seeded specification already states. An item id
+  must resolve to verdict ids unique within a variant's effective set. The
+  optional `domain` names the scoring domain the item rolls up to; a common item
+  may name only a common domain, a variant's own item may name a common domain
+  or one of that variant's own, and a general item omits it. The optional
+  `reference` names a reference view shown as the expected target and the
+  optional `proof` names a proof id whose submitted media is shown; the two are
+  independent, and the reviewer UI gives a single declared side the full width.
+  Each named id must resolve for the item's variant. An item may break into
+  [sub-items](#sub-items) and may declare
+  [automated validation](#automated-validation).
+- `[[domain]]` declares a scoring domain the reviewer rates independently, by a
+  stable `id` recorded with the per-domain rating, an optional `name` defaulting
+  to a humanized `id`, and a required non-empty `description` telling the
+  reviewer what they are rating. At least one common domain is required, and
+  every variant is rated on all of them. A variant may declare additional
+  domains, so the effective set for a run is the common domains plus that
+  variant's own; ids must be unique across that set. The run's overall rating is
+  the worst rating across the effective set. See
+  [Scoring](/testing/end-to-end/evaluation/#scoring).
+
+## Variant keys
+
+A variant file carries `slug`, an optional `name` defaulting to a humanized
+slug, and optional site-facing `description` prose. Variant slugs must be unique
+within the case. Its `spec`, `reference`, `proof`, and review entries are
+additive on top of the case's common ones and take the same shape as the
+corresponding case tables; `workspace` replaces the common workspace rather than
+layering on it; `[[domain]]` tables add to the common domains.
+
+`reference_implementation` names a directory holding a buildable static web
+project that is the correct implementation of this variant, authored in-repo and
+versioned with the case. It is declared on a variant file rather than in
+`test-case.toml`, so each variant may point at its own; a variant that omits it
+has none. By convention the path is `reference-impl/<variant>/`. The project is
+built with the case's `[build]` commands run from that directory, and its static
+output must land in the same `dist/`, `build/`, or `out/` a run's build uses. A
+reference implementation is never seeded into a run: it is the authored answer.
+It is published out-of-band by
+[`tcab publish-reference`](/components/cli/overview/#commands), whose served URL
+the backend records, and shown on the case page's Reference tab. It is also what
+[`tcab capture-baselines`](/components/cli/overview/#commands) drives to
+synthesize the baseline half of the validation media.
 
 ## Sub-items
 
-A `[[review_item]]` that covers a section of the build often has several points a
-reviewer would grade independently. Rather than collapsing them into one pass/fail
-(where a single missed point fails the whole item), an item may declare **sub-items**:
-name-only entries, each verdicted `pass`/`fail` on its own — an academic question's
-"2a", "2b", …
+A review item that covers a section of the build often has several points a
+reviewer grades independently. Rather than collapsing them into one pass/fail,
+an item may declare sub-items: name-only entries, each verdicted `pass` or
+`fail` on its own.
 
 ```toml
 [[review_item]]
 id = "ball-spin"
 title = "Paddle spin"
-text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward; a stationary paddle imparts no new spin."
+text = "Swinging a paddle as it strikes the ball curves the ball's flight afterward."
 weight = 2
 sub_items = [
   { id = "stationary", title = "No spin while stationary" },
@@ -401,76 +352,58 @@ sub_items = [
 ]
 ```
 
-Each sub-item carries only an `id` (which keys its verdict) and a `title` (its
-heading, shown lettered a, b, c… in the reviewer UI); it has **no** `text`, `weight`,
-or media of its own — the parent item's `text`, reference, and proof are the shared
-context. Rules:
+Each sub-item carries an `id` keying its verdict and a `title` shown lettered a,
+b, c… in the reviewer UI. It has no prose or media of its own; the parent item's
+`text`, reference, and proof are the shared context. The rules:
 
-- **Ids** must be non-empty and unique **within the item**. A sub-item's verdict is
-  recorded under the composite id `<item id>.<sub-item id>` (for example
-  `ball-spin.moving`), so it must not collide with any other item's verdict id.
-- **Scoring** splits the item's `weight` evenly across its sub-items: the item earns
-  `weight × (passed sub-items ÷ total sub-items)`. So a two-point item with two
-  sub-items awards one point per passed sub-item, and a one-point item with three
-  awards a third each. The item's earned score is therefore **fractional** in general,
-  while the case's total available points are unchanged (still the sum of item
-  weights).
-- **Completeness.** Every sub-item must be verdicted before a run can be published,
-  exactly as every whole-item must be — an item with sub-items has no verdict of its
-  own.
+- Ids must be non-empty and unique within the item. A sub-item's verdict is
+  recorded under the composite id `<item id>.<sub-item id>`, for example
+  `ball-spin.moving`, which must not collide with any other verdict id in the
+  variant's effective set.
+- Scoring credits each sub-item one point, so an item with sub-items is worth
+  the number of sub-items it declares. Declare the item's `weight` as that
+  number so its stated worth matches what it can earn.
+- Completeness. Every sub-item must be verdicted before a run can be published,
+  exactly as every whole item must be. An item with sub-items has no verdict of
+  its own.
 
-Sub-items are declared inline as an array of `{ id, title }` tables (shown above) or,
-equivalently, as repeated `[[review_item.sub_item]]` tables. They are available to a
-variant's own additive items too, with the same shape and rules. See
-[Evaluation](/testing/end-to-end/evaluation/#scoring) for how they roll up to the
-score.
+Sub-items are declared inline as an array of `{ id, title }` tables, as above,
+or as repeated `[[review_item.sub_item]]` tables. A variant's own additive items
+may declare them under the same rules. See
+[Scoring](/testing/end-to-end/evaluation/#scoring).
 
 ## Automated validation
 
 A case that mandates [instrumentation](/testing/end-to-end/instrumentation/) can
-mark a review item as **automatically validated**: The Test Cabinet drives a
-reporter-side **debug script** against the build's debug API to decide the item's
-verdict(s) and synthesize its proof media, rather than leaving it to a human. Two
-manifest pieces declare this.
+mark a review item as automatically validated: The Test Cabinet drives a
+reporter-side debug script against the build's debug API to decide the item's
+verdict and synthesize its proof media. The case declares its
+`[instrumentation]` handle, and the verdict unit declares a `validation` table
+naming the script and the media outputs it produces.
 
-The case names its debug-API handle **once**, in a root `[instrumentation]` table:
-
-```toml
-[instrumentation]
-handle = "__carom"           # the window global the build installs its debug API on
-```
-
-- `handle` is the `window` property name the build installs its debug API on
-  (`window.__carom` here), **without** the `window.` prefix. It must be a plain
-  identifier and is **required** as soon as any review item declares a `validation`
-  script. It is reporter-side and **never seeded**; the seeded specification
-  documents the same handle independently as an ordinary game debug feature (never
-  naming The Test Cabinet — see
-  [Authoring guidelines](/testing/end-to-end/instrumentation/#authoring-guidelines)).
-
-A **verdict unit** then opts into automation with a `validation` table naming the
-**script** that drives the handle and the media **outputs** the script produces.
-Validation attaches to the graded unit: an item graded as a whole carries it
-directly, but an item broken into **sub-items** is verdicted per sub-item, so its
-validation lives on **each sub-item** instead — one script and one set of proof
-media per sub-item, so a reviewer can visually verify each point on its own.
-Declaring item-level `validation` alongside `sub_items` is rejected.
+Validation attaches to the graded unit. An item graded as a whole carries it
+directly; an item broken into sub-items is verdicted per sub-item, so its
+validation lives on each sub-item, one script and one set of proof media per
+sub-item. Declaring item-level `validation` alongside `sub_items` is rejected.
 
 ```toml
 [[review_item]]
 id = "ball-spin"
 title = "Paddle spin"
 text = "Swinging a paddle as the ball contacts it imparts spin."
-weight = 1
-# Each sub-item carries its own driver + proof clip.
+weight = 2
 [[review_item.sub_item]]
 id = "stationary"
 title = "No spin while stationary"
-validation = { script = "validation/ball-spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+validation = { script = "validation/ball-spin/stationary.mjs", outputs = [
+  { id = "straight", name = "Straight return", kind = "video" },
+] }
 [[review_item.sub_item]]
 id = "moving"
 title = "Imparts spin while moving"
-validation = { script = "validation/ball-spin/moving.mjs", outputs = [{ id = "curve", name = "Curved shot", kind = "video" }] }
+validation = { script = "validation/ball-spin/moving.mjs", outputs = [
+  { id = "curve", kind = "video" },
+] }
 
 # An item with no sub-items is validated as a whole, carrying `validation` itself:
 [[review_item]]
@@ -478,61 +411,63 @@ id = "scoring-point"
 title = "Scoring"
 text = "A ball crossing a goal edge increments the correct player's score."
 weight = 1
-validation = { script = "validation/scoring-point.mjs", outputs = [{ id = "goal", name = "A ball crossing the goal", kind = "video" }] }
+validation = { script = "validation/scoring-point.mjs", outputs = [
+  { id = "goal", kind = "video" },
+] }
 ```
 
-- `script` is a path, relative to the version folder (by convention
-  `validation/<item>.mjs` for a whole-item driver, `validation/<item>/<sub>.mjs`
-  for a per-sub-item one), to an ES-module driver that default-exports
-  `async (api) => ({ verdicts, notes })`. It drives the debug API — `reset`,
-  `step`, `snapshot`, and the case's control operations — to set up a scenario,
-  run the **real** simulation forward, and read the outcome back, returning a
-  pass/fail keyed by the verdict id it backs (the item's own id, or the composite
-  `<item>.<sub>` for a sub-item). Like a review item, a debug script is
-  **reporter-side and never seeded**. Per run, validation runs it against the
-  model's build to capture the *actual* media. The *baseline* — the same script
-  driven against the variant's `reference_implementation` — is a fixed property of
-  the case version, so it is captured **once** by
-  [`tcab capture-baselines`](/components/cli/overview/#commands), committed under the
-  version folder (`validation-baseline/<variant>/`), and served
-  case-scoped; a run never re-drives the reference implementation. The reviewer sees
-  expected-vs-observed media side by side, beside the exact verdict it backs.
+- `script` is a path, by convention `validation/<item>.mjs` for a whole-item
+  driver and `validation/<item>/<sub>.mjs` for a per-sub-item one, to an ES
+  module that default-exports a validation item: an `{ id, arrange, act,
+  assert }` object, or a factory returning one. Its `id` names the verdict the
+  script backs, the item's own id or the composite `<item>.<sub>`. `arrange`
+  poses the scenario through the debug API and `act` runs the behavior under
+  test, both required; the optional `assert` records the checks that decide the
+  verdict. A debug script is reporter-side and never seeded. Each script may
+  drive at most one verdict unit across the whole checklist.
 - `outputs` declares the media the script captures, each an `{ id, name, kind }`
-  where `kind` is `image` (a still the script screenshots) or `video` (a clip
-  recorded across the drive). `name` defaults to a humanized `id`. Output ids must
-  be unique within the script, and a script may declare **at most one** `video`
-  output. Each output is served under the flat name `<verdict>__<output>.<ext>`,
-  where `<verdict>` is the item's id or the composite `<item>.<sub>` — the same name
-  for the run-scoped *actual* media and the case-scoped *baseline* media, told apart
-  by where they are served from, not their name.
-- A `validation` unit may **not** be a graded [game-jam](/testing/game-jam/overview/)
-  category (there is no pass/fail to auto-decide), and the item's `weight`/`sub_items`
-  scoring is unchanged — automation only pre-decides the same verdicts a human
-  would, in a distinguishable color the reviewer can override.
+  where `kind` is `image` for a still or `video` for a clip recorded across the
+  drive. `name` defaults to a humanized `id`. At least one output is required,
+  output ids must be unique within the script, and a script may declare at most
+  one `video` output. Each output is served under the flat name
+  `<verdict>__<output>.<ext>`, where `<verdict>` is the item's id or the
+  composite `<item>.<sub>`. The run-scoped actual media and the case-scoped
+  baseline media share that name and are told apart by where they are served
+  from.
+- Per run, validation runs the script against the model's build to capture the
+  actual media. The baseline is the same script driven against the variant's
+  `reference_implementation`, a fixed property of the case version, so it is
+  captured once by
+  [`tcab capture-baselines`](/components/cli/overview/#commands), committed under
+  the version folder at `validation-baseline/<variant>/`, and served case-scoped.
+  The reviewer sees expected and observed media side by side, beside the verdict
+  each backs.
+- A `validation` table requires the case to declare an `[instrumentation]`
+  handle, and may not sit on a graded [game-jam](/testing/game-jam/overview/)
+  category, which has no pass/fail to decide. Weights and sub-item scoring are
+  unchanged: automation pre-decides the same verdicts a human would, in a
+  distinguishable color the reviewer can override.
 
-The debug API is **load-bearing**: if a declared script cannot run against a
-conformant build — the handle is missing, a call throws, the return is malformed,
-or a declared output is never produced — **the verdict it backs fails
-automatically**, pre-filled into the review like any other auto verdict and
-overridable by the reviewer (see
-[The debug API is load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing)).
-The exception is a script whose *precondition* could not be met in the world the
-model invented: that decides nothing, so the point is left for the reviewer.
-A host with no browser to drive with degrades entirely, exactly as a
-[check](/components/core/validation/#checks) does. Which properties a script
-asserts, like every other reviewer-side detail, are **not** stated in the seeded
-spec; the spec states the observable requirement and mandates the instrument.
+A script that cannot be driven against a conformant build fails the verdict it
+backs. The handle being missing, a call throwing, a malformed return, or a
+declared output never being produced each count, and the failed verdict is
+pre-filled into the review like any other auto verdict and overridable by the
+reviewer. See
+[load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
+A script whose precondition could not be met in the world the model invented
+decides nothing, so the point is left for the reviewer. A host with no browser
+degrades entirely, exactly as a check does. Which properties a script asserts is
+reporter-side detail: the seeded spec states the observable requirement and
+mandates the instrument.
 
 ## The categories grammar (`format = 2`)
 
-The legacy `[[review_item]]` arrays above are one of **two** ways to author a
-case's checklist. The alternative — opted into with a `[review]` table declaring
-`format = 2` — makes the grouping explicit: the top-level entries are bare
-**categories**, and every graded point is a **review item** under a category. The
-two grammars are mutually exclusive within a case (declaring both a `[review]`
-table and any `[[review_item]]` is rejected), and a manifest keeps its existing
-grammar unchanged — this is a purely additive opt-in. Carom v2.0.0 is authored
-this way; the other bundled cases remain on the legacy grammar.
+A case authors its checklist in exactly one of two grammars. The
+`[[review_item]]` arrays above are one; the alternative, opted into with a
+`[review]` table declaring `format = 2`, makes the grouping explicit. Its
+top-level entries are bare categories, and every graded point is a review item
+under a category. Declaring both a `[review]` table and any `[[review_item]]` is
+rejected.
 
 ```toml
 [review]
@@ -540,71 +475,66 @@ format = 2                     # opt into the categories grammar (declared once,
 
 [[review.categories]]
 id = "spin"                    # groups its items; not itself a verdict id
-title = "Spin"                 # the accordion group heading — a category has NOTHING else
+title = "Spin"                 # the accordion group heading; a category has nothing else
 [[review.categories.items]]
 id = "stationary"
 title = "No spin from a stationary paddle"
 description = "A stationary paddle imparts no new spin, so the return stays straight."
 weight = 1                     # optional, defaults to 1
-validation = { script = "validation/spin/stationary.mjs", outputs = [{ id = "straight", name = "Straight return, no curve", kind = "video" }] }
+validation = { script = "validation/spin/stationary.mjs", outputs = [
+  { id = "straight", kind = "video" },
+] }
 [[review.categories.items]]
 id = "decay"
 title = "Spin decays"
-description = "Imparted spin decays back to straight within roughly a couple of seconds."
+description = "Imparted spin decays back to straight within a couple of seconds."
 reference = "gameplay"         # a review item pairs its OWN media (a category pairs none)
 proof = "gameplay"
 ```
 
-How it maps onto the same model the legacy grammar produces — a category is a review
-item whose sub-items are its review items — so nothing downstream of resolution
-(scoring, validation, the reviewer UI) needs to know which grammar authored a case:
+A category resolves to a review item whose sub-items are its review items, so
+scoring, validation, and the reviewer UI treat both grammars identically:
 
-- A **category** (`[[review.categories]]`) carries **only** an `id` and a `title`.
-  It has no prose, weight, validation, reference, proof, or domain of its own —
-  those belong to its items — and any such key is rejected. A category must hold at
-  least one item, and its **weight is the sum of its items' weights**.
-- A **review item** (`[[review.categories.items]]`) is the scored leaf. It carries
-  its own optional `description` (the requirement prose a reviewer reads — a category
-  has none), an optional `weight` (default `1`), optional paired `reference`/`proof`
-  media, and an optional `validation` driver. Its verdict is recorded under the
-  composite id `<category id>.<item id>`, so item ids need only be unique **within**
-  their category. Scoring credits **each passed item by its own weight**.
-- **Validation** works exactly as above (an item's `validation` table names a
-  `script` and its `outputs`, and the case still declares `[instrumentation]`), with
-  one added rule: a given `script` path may drive **at most one** review item across
-  the whole checklist.
-- The `format` is declared **once**, in the case manifest. A **variant** file adds
-  its own `[[review.categories]]` and inherits the format — it must not use
-  `[[review_item]]`, nor repeat `format`.
-- The categories grammar attaches **no domain** to a point. `[[domain]]` blocks stay
-  for the qualitative per-domain ratings; a mode-specific category is simply named so
-  the checklist still reads by mode. The reviewer UI renders the categories as a
-  collapsible accordion — categories as the headings, their items nested beneath.
+- A category carries only an `id` and a `title`, both non-empty. Prose, weight,
+  validation, reference, proof, and domain belong to its items, and declaring
+  any of them on a category is rejected. A category must hold at least one item,
+  and its weight is the sum of its items' weights.
+- A review item is the scored leaf. It carries a non-empty `id` and `title`, an
+  optional `description` holding the requirement prose a reviewer reads, an
+  optional `weight` defaulting to `1` and greater than zero, optional paired
+  `reference` and `proof` media, and an optional `validation` driver. A declared
+  `description` must be non-empty. Its verdict is recorded under the composite
+  id `<category id>.<item id>`, so item ids need only be unique within their
+  category. Scoring credits each passed item its own weight.
+- The `format` is declared once, in the case manifest. A variant file adds its
+  own `[[review.categories]]` and inherits the format; it must not use
+  `[[review_item]]` or repeat `format`.
+- The categories grammar attaches no domain to a point. `[[domain]]` blocks stay
+  for the per-domain ratings, and a mode-specific category is simply named so
+  the checklist reads by mode. The reviewer UI renders categories as a
+  collapsible accordion.
 
 ## Errata
 
-Errata record **known issues with a version that shipped** — problems found after
-the fact — so they can be acknowledged **without cutting a new version**. This
-matters because a run is grouped in the metrics by its exact `(slug, version)`: a
-scoring-affecting fix would otherwise force a version bump, and the bump would move
-every existing run to a different version and drop it from that version's graphs.
-An erratum instead says "this is known and will be addressed" while the version —
-and its runs — stay put.
+Errata record known issues with a version that has already shipped, so a problem
+can be acknowledged without cutting a new version. A run is grouped in the
+metrics by its exact `(slug, version)`, so a version bump moves every existing
+run to a different version and drops it from that version's graphs. An erratum
+instead states that an issue is known while the version and its runs stay put.
 
-Errata are **not** part of `test-case.toml`. A version folder may carry an optional
-`errata.toml` beside its manifest; it is **auto-discovered** (no manifest key
-declares it), so it can be added to an already-reviewed version without touching the
-reviewed definition. Like the changelog it is **site-facing only** — never seeded
-into a run. This mechanism is **shared by every test type** (end-to-end, full-stack,
-asset-generation, adversarial, performance, and game jams), not just end-to-end.
+Errata live in an optional `errata.toml` beside the manifest rather than in
+`test-case.toml`. The file is auto-discovered, so it can be added to an
+already-reviewed version without touching the reviewed definition. Like the
+changelog it is site-facing only and never seeded. Every test type shares this
+mechanism.
 
 ```toml
-# test-cases/<type>/<difficulty>/<slug>/<version>/errata.toml
+# test-cases/<type>/<difficulty>/<folder>/<version>/errata.toml
 [[erratum]]
-id = "cue-clips-rail"                 # stable slug, unique within the version
+id = "cue-clips-rail"                # stable slug, unique within the version
 title = "Cue ball clips the rail at very high speed"
-date = "2026-07-17"                   # optional YYYY-MM-DD, shown on the site
-severity = "major"                    # info | minor | major (default: minor)
+date = "2026-07-17"                  # optional YYYY-MM-DD, shown on the site
+severity = "major"                   # info | minor | major (default: minor)
 affects_scoring = true               # default false; flags an issue reviewers must weigh
 body = """
 Above a certain speed the cue ball can tunnel through a rail. Do not penalise a
@@ -616,42 +546,36 @@ resolved_in = "v1.1.0"               # optional; set once a later version fixes 
 # exclude_from_score = true          # remove the linked `review` point from scoring
 ```
 
-- `id` is **required**, must be non-empty, and must be **unique** within the file.
-- `title` and `body` are **required** (`body` is Markdown; a TOML `"""…"""` string
-  handles multi-line prose).
-- `severity` is one of `info` / `minor` / `major` and defaults to `minor`. It is a
-  badge only — it has no automatic effect on a run's score.
-- `affects_scoring` (default `false`) marks an issue a reviewer should weigh when
-  grading a run of the version. It is the signal that the eventual fix would
-  otherwise warrant a version bump.
-- `resolved_in` is optional and names the version the issue is (or will be) fixed
-  in. It is **not** required to already exist — the fix may be planned. A resolved
-  erratum stays visible, badged with its fix version, rather than being deleted.
-- `variant` optionally scopes an erratum to a single variant (it must name a
-  declared variant); omitting it applies the erratum to every variant.
-- `review` optionally ties an erratum to a scored point — a review item id, or a
-  composite `<item id>.<sub-item id>` — and must name a verdict id that exists in
-  the case's checklist. It lets the issue be surfaced beside the point it concerns.
-- `exclude_from_score` (default `false`) **removes** the linked `review` point from
-  scoring for the version: the point is still checked, driven, and shown, but it no
-  longer contributes to any run's score — and, when the point is
-  [auto-validated](/testing/end-to-end/instrumentation/), a failed drive of it no
-  longer [gates](/testing/end-to-end/instrumentation/#the-reliability-principle) the
-  run. It **requires** a `review` link (there is nothing to exclude without one).
-  Reach for it when a review point turns out to be mis-scoring runs — a buggy
-  automated `validation` check, or a requirement that proved ambiguous — so the
-  existing runs can be re-scored correctly **without** the version bump that would
-  otherwise evict them from the version's metrics. Unlike `affects_scoring` (an
-  advisory a reviewer weighs by hand), this is a mechanical change: the point simply
-  stops counting for every run of the version.
+- `id` is required, must be non-empty, and must be unique within the file.
+- `title` and `body` are required and non-empty. `body` is Markdown, so a TOML
+  `"""…"""` string handles multi-line prose.
+- `severity` is `info`, `minor`, or `major` and defaults to `minor`. It is a
+  badge with no automatic effect on a run's score.
+- `affects_scoring` defaults to `false` and marks an issue a reviewer should
+  weigh when grading a run of the version. It is the signal that the eventual
+  fix would otherwise warrant a version bump.
+- `resolved_in` optionally names the version the issue is fixed in. That version
+  need not exist yet, since the fix may be planned. A resolved erratum stays
+  visible, badged with its fix version.
+- `variant` optionally scopes an erratum to a single declared variant. Omitting
+  it applies the erratum to every variant.
+- `review` optionally ties an erratum to a scored point, so the issue is
+  surfaced beside the point it concerns. Its value is a review item id or a
+  composite `<item id>.<sub-item id>`, and must name a verdict id that exists in
+  the case's checklist.
+- `exclude_from_score` defaults to `false` and removes the linked `review` point
+  from scoring for the version: the point is still checked, driven, and shown,
+  but it no longer contributes to any run's score, and when the point is
+  auto-validated a failed drive of it no longer gates the run. It requires a
+  `review` link. Reach for it when a review point turns out to be mis-scoring
+  runs, so existing runs can be re-scored correctly without the version bump
+  that would evict them from the version's metrics.
 
-Errata surface in two places in the console: the case's **Errata tab** (all of a
-case's errata, grouped by version, newest first — the tab appears only when a
-version records any), and a **"Known errata for this version"** callout on a run's
-detail view, resolved by the run's version and variant so a reviewer sees the known
-issues before scoring.
+Errata surface in two places in the console: the case's Errata tab, holding all
+of a case's errata grouped by version and newest first, and a "Known errata for
+this version" callout on a run's detail view, resolved by the run's version and
+variant so a reviewer sees the known issues before scoring.
 
-Because errata live in the same `test-cases/` tree the backend ingests from a git
-checkout, publishing them needs **no `tcab` release** and never stores anything only
-in a cluster: commit the `errata.toml` and re-ingest. See
-[Publish errata](/quickstarts/devops/publish-errata/).
+Because errata live in the same `test-cases/` tree the backend ingests from a
+git checkout, publishing them needs no `tcab` release: commit the `errata.toml`
+and re-ingest. See [Publish errata](/quickstarts/devops/publish-errata/).

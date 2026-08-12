@@ -1,7 +1,7 @@
 // The reusable pieces of a multi-agent gg run's read-out. gg is headless, so an
 // agent's identity (who it is, what it runs on, the worktree it works in, what it
 // returned) and the run's delegation structure are the only window into its shape
-// (see gg/subagents.md, gg/multi-model.md).
+// (see gg/subagents.md, gg/configurations.md).
 //
 // The subagent *tree* itself is drawn by the Instances explorer's filesystem sidebar
 // (see GgAgentsExplorer), so this module no longer renders it; it exports the

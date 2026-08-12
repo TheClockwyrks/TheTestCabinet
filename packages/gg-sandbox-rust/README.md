@@ -1,7 +1,7 @@
 # `gg-sandbox-rust` — gg's Rust SDK and library set
 
 The **Rust** arm of gg's
-[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
+[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
 capability. Under that capability a model answers a turn by writing a whole
 **program** instead of a batch of tool calls; this arm compiles that program with a
 real `rustc`, on the host, per turn — into the **wasm component that turn is

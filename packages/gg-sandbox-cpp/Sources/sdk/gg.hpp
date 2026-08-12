@@ -1,6 +1,6 @@
 // **gg's surface, in one header** — everything a C++ [responses-as-code] program may call.
 //
-// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
+// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/overview/
 //
 // It is included by `Sources/prelude.hpp`, which is precompiled once per machine and put in front
 // of every model program with `-include-pch` — so a program starts with all of this already

@@ -7,8 +7,8 @@ a **separate sandbox pod via the Kubernetes API**. There is no worker pool and n
 headless Service.
 
 Read the docs first — these files are the *assets*; the narrative lives at
-[`deployment/kubernetes.md`](../../apps/docs/src/content/docs/deployment/kubernetes.md)
-(published at <https://docs.testcabinet.ai/deployment/kubernetes/>). Everything
+[`deployment/kubernetes/overview.md`](../../apps/docs/src/content/docs/deployment/kubernetes/overview.md)
+(published at <https://docs.testcabinet.ai/deployment/kubernetes/overview/>). Everything
 here uses **placeholder values** (`REPLACE_REGISTRY`, `REPLACE_OWNER`,
 `REPLACE_ME`, the `tcab-prod` namespace); adapt them, don't apply them blind.
 
@@ -87,7 +87,7 @@ Staging and prod are the same manifests; only the namespace, `TCAB_ENV`, and
 secrets differ — `overlays/staging` rewrites them. Keep them otherwise identical so
 staging rehearses prod. The dispatcher's `TCAB_K8S_*` sandbox settings are
 documented in
-[`deployment/kubernetes.md`](../../apps/docs/src/content/docs/deployment/kubernetes.md)
+[`deployment/kubernetes/run-plane.md`](../../apps/docs/src/content/docs/deployment/kubernetes/run-plane.md)
 and the dispatcher's
 [`config.rs`](../../crates/dispatcher/src/config.rs).
 

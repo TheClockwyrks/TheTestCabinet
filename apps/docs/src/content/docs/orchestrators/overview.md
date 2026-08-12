@@ -3,23 +3,23 @@ title: Orchestrators
 ---
 
 A test case is implemented by driving a [harness](/harnesses/overview/). An
-**orchestrator** decides how that harness's sessions are conducted — how many
-sessions to run, what each one is told, and when the work is done — while the
-harness layer still owns each individual session. The single-session behaviour is
-just one orchestrator (`one-shot`); a multi-session strategy would be another.
+orchestrator decides how that harness's sessions are conducted: how many sessions
+to run, what each one is told, and when the work is done. The harness layer still
+owns each individual session. A single session driven to completion is one
+orchestrator, `one-shot`; spreading a case across several sessions that build on
+each other is another.
 
-Orchestration is **harness-agnostic**: an orchestrator drives sessions the same
-way regardless of which harness is selected. It is therefore a distinct run
-dimension, selected per run alongside the test case, variant, harness, and model,
-and recorded as `orchestratorSlug` on the run.
+Orchestration is harness-agnostic. An orchestrator drives sessions the same way
+whichever harness is selected, so it is a distinct run dimension, selected per
+run alongside the test case, variant, harness, and model, and recorded as
+`orchestratorSlug` on the run.
 
-This section is the catalogue of the built-in orchestrators. For the contract
-they implement — the execution model, the `tcab-session` wrapper, the runner
-environment, and how external orchestrators are resolved — see the core
-[Orchestrators](/components/core/orchestrators/) doc. Unlike a harness, an
-orchestrator carries **no in-tree code**: it is entirely data, a directory in the
-repo under `orchestrators/<slug>/` holding an `orchestrator.toml` manifest and a
-runner script.
+This section is the catalogue of the built-in orchestrators. An orchestrator
+carries no in-tree code: it is a directory under `orchestrators/<slug>/` holding
+an `orchestrator.toml` manifest and a runner script. For the contract they
+implement, covering the execution model, the `tcab-session` wrapper, the runner
+environment, and how external orchestrators are resolved, see
+[Orchestrators](/components/core/orchestrators/).
 
 ## Built-in orchestrators
 
@@ -27,34 +27,28 @@ runner script.
 | --- | --- | --- |
 | [One-shot](/orchestrators/one-shot/) | `one-shot` | A single harness session driven to completion. The default. |
 
-`one-shot` is the only built-in. A multi-session strategy layered on a
-third-party harness — re-running sessions and passing progress between them
-through the filesystem — was shipped as a built-in (`ralph`) and has since been
-removed: [gg](/gg/overview/), The Test Cabinet's own harness, conducts multi-step
-work directly through its own executor (context compaction, memories, a project
-board, sub-agents), which supersedes what an external session loop could do. A
-session-loop strategy can still be run as an
-[external orchestrator](#external-orchestrators).
+The built-ins are embedded into `crates/core` at build time, so a backend-driven
+worker with no checkout resolves them the same way the CLI does. They are listed
+by `tcab orchestrators`.
 
 ## Selecting an orchestrator
 
-An orchestrator is selected per run, defaulting to `one-shot`. Every
-[runner](/components/cli/overview/) selects one, and the resolved slug is recorded
-on the run.
+An orchestrator is selected per run, defaulting to `one-shot`, and the resolved
+slug is recorded on the run. The [CLI](/components/cli/overview/) selects one
+with `--orchestrator <slug>`.
 
-A **non-default** orchestrator — in practice an external one, since `one-shot` is
-the only built-in — is **limited to the test types that build a program over a
-working session**: [end-to-end](/testing/end-to-end/overview/),
+A non-default orchestrator is limited to the test types that build a program over
+a working session: [end-to-end](/testing/end-to-end/overview/),
 [full-stack](/testing/full-stack/overview/), and
 [game-jam](/testing/game-jam/overview/). The other types build a single artifact
-in one pass, and the run rejects a non-default orchestrator for them.
+in one pass, and a run rejects a non-default orchestrator for them before any
+container is started.
 
 ## External orchestrators
 
-Because an orchestrator is just a directory of data, a custom one can be supplied
-**entirely from outside this repository** at run time by pointing a run at a
-directory anywhere on disk with `--orchestrator-dir <path>`. The directory has the
-same shape as a built-in (`orchestrator.toml` plus a runner script). A custom
-orchestrator is resolved purely at run time: it is never enumerated in this
-catalogue and requires no change to The Test Cabinet's code. See
-[External orchestrators](/components/core/orchestrators/#external-orchestrators).
+Because an orchestrator is a directory of data, a custom one can be supplied
+entirely from outside this repository and resolved at run time from a directory
+anywhere on disk. The directory has the same shape as a built-in, and its own
+manifest slug is authoritative for the run record. An external orchestrator is
+never enumerated in this catalogue and requires no change to The Test Cabinet's
+code.

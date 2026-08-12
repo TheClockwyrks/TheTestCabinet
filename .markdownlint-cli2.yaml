@@ -1,10 +1,11 @@
 # markdownlint-cli2 configuration for The Test Cabinet.
 #
-# Scoped to the authored test-case specifications under `test-cases/**` and the
-# game-jam briefs under `game-jams/**`, which is the prose a case/jam version ships
-# to a model. Keeping it lint-clean keeps it readable and the rendered catalog tidy.
-# See the `lint:md` script in `package.json` and the test-case authoring/variant
-# guides under `apps/docs/src/content/docs/guides/`.
+# Scoped to the authored prose this repository ships or publishes: the test-case
+# specifications under `test-cases/**` and the game-jam briefs under
+# `game-jams/**`, which are what a case or jam version sends to a model, and the
+# documentation site under `apps/docs/src/content/docs/**`, which is the
+# authoritative documentation. See the `lint:md` script in `package.json` and the
+# documentation policies in `.claude/skills/documentation/SKILL.md`.
 
 config:
   # Fenced code blocks used for plain text shouldn't need a language tag.
@@ -33,3 +34,4 @@ gitignore: true
 globs:
   - test-cases/**/*.md
   - game-jams/**/*.md
+  - apps/docs/src/content/docs/**/*.md

@@ -2,129 +2,100 @@
 title: Set Up Authentication
 ---
 
-Before a run can drive a harness, the harness needs credentials for its model
-provider. The Test Cabinet authenticates each harness in one of two modes — an
-**API key** or an account **subscription** — and the credential you provide never
-touches the seeded repository; it is injected into the run container as a secret
-(an API key) or copied in as a file (a subscription). This quickstart gives the
-fastest path for each. The full contract — mode resolution, credential refresh,
-and the exact variables and files each harness uses — is in
-[Agent Harnesses → Authentication](/components/core/harnesses/#authentication)
-and each harness's **Authentication** page under [Harnesses](/harnesses/overview/).
+## Overview
 
-## Option A: API key
+A run's harness authenticates to its model provider in one of two modes: an API
+key, or an account subscription. The deployment that executes the run supplies
+the credential to the run container, so the credential is configured where the
+run executes rather than where it is launched. The full contract is in
+[Agent Harnesses](/components/core/harnesses/#authentication).
 
-Export the variable the harness reads on the host (or put it in `.env.runner`).
-Each harness reads a specific variable:
+## API key
+
+Each harness reads one provider variable:
 
 | Harness | Variable |
 | --- | --- |
 | `claude` | `ANTHROPIC_API_KEY` |
 | `codex` | `OPENAI_API_KEY` |
-| `cline`, `goose`, `kilo`, `opencode`, `pi` | `OPENROUTER_API_KEY` |
+| `cline`, `goose`, `kilo`, `opencode`, `pi`, `gg` | `OPENROUTER_API_KEY` |
 
-The variable you export is the conventional provider one; the harness layer
-injects it under whatever variable the CLI actually reads (`codex exec`, for
-example, reads `CODEX_API_KEY` internally — you still export `OPENAI_API_KEY`).
-Billing is charged directly against the key, so a run records an exact,
-attributable cost.
+Billing is charged against the key, so the run records an attributable cost.
 
-The CLI loads a `.env.runner` from the working directory (or any parent) on
-startup. Copy the example and fill in the keys you need:
+For the local k3d stack, export at least one variable (or set it in the
+repository's `.env`) before bringing the stack up. The `secrets` target reads it
+from there into the cluster's `tcab-driver-secrets` Secret, and the dispatcher
+injects that Secret into every driver Job:
 
 ```sh
-cp .env.runner.example .env.runner
-# edit .env.runner — set ANTHROPIC_API_KEY, OPENAI_API_KEY, and/or OPENROUTER_API_KEY
+export OPENROUTER_API_KEY=…
+make -C deployments/local local-up
 ```
 
-A variable already exported in the shell takes precedence over the file.
+For a remote deployment, the operator creates the same `tcab-driver-secrets`
+Secret in the target namespace, following
+`deployments/k8s/base/secrets.example.yaml`.
 
-## Option B: Subscription
+## Subscription
 
-Sign in with the harness's own CLI, in a trusted environment, so it writes its
-credential files to your home directory. The Test Cabinet never performs the
-login or mints tokens — it only copies the files the CLI already wrote into the
-run container. After signing in once, the credentials are reused for every run
-(the harnesses use long-lived refresh tokens).
+Sign in with the harness's own CLI on a trusted machine so it writes its
+credential files. The Test Cabinet copies those files into the run container; it
+performs no login and mints no tokens.
 
 | Harness | Sign in with | Credential it writes |
 | --- | --- | --- |
-| `claude` | the `claude` CLI | `~/.claude/.credentials.json` |
-| `codex` | `codex login` | `~/.codex/auth.json` |
+| `claude` | the `claude` CLI | `~/.claude/.credentials.json`, `~/.claude.json` |
+| `codex` | `codex login` | `~/.codex/auth.json` (`$CODEX_HOME` relocates it) |
 | `antigravity` | the `agy` CLI (Google account) | `~/.gemini/antigravity-cli/antigravity-oauth-token` |
 
-[Antigravity](/harnesses/antigravity/overview/) supports **only** subscription
-authentication — it has no API-key mode. A subscription carries no per-run
-provider charge, though a harness that still reports an exact charge (Claude Code
-does) is recorded as-is, and one that reports none falls back to OpenRouter
-pricing.
+[Antigravity](/harnesses/antigravity/overview/) authenticates by subscription
+only. A subscription carries no per-run provider charge. A harness that reports
+an exact charge has it recorded as-is, and one that reports none is costed from
+OpenRouter pricing.
 
-### Subscription in the service flow (the cluster path)
+The local k3d stack builds the `tcab-driver-subscription` Secret from whichever
+of those files exist on the host, as part of the same `make local-up`.
+Subscription support is opt-in, so absent files leave runs on API keys.
 
-The steps above are the CLI/desktop path: the run executes on the trusted host
-that signed in, so it reads the credential files straight from `~`. A
-**backend-driven run** executes in an ephemeral driver pod that has no host home,
-so subscription credentials are supplied to it from an operator-provided
-**Secret** instead — one shared subscription per deployment.
-
-The operator creates a `tcab-driver-subscription` Secret holding the same files
-the CLI reads, keyed by each credential's **basename**, from a trusted host where
-the harness CLIs are signed in:
+For a remote deployment, upload the same files from a machine where the harness
+CLIs are signed in. The cluster reconciles them into the Secret on its own:
 
 ```sh
-kubectl -n tcab-prod create secret generic tcab-driver-subscription \
-  --from-file=.credentials.json="$HOME/.claude/.credentials.json" \
-  --from-file=auth.json="$CODEX_HOME/auth.json" \
-  --from-file=antigravity-oauth-token="$HOME/.gemini/antigravity-cli/antigravity-oauth-token"
+scripts/upload-subscription-creds.sh --env prod
 ```
 
-Point the dispatcher at it (`TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET`, see
-[`deployments/k8s/base/dispatcher.yaml`](https://github.com/) and the
-[dispatcher config](/components/dispatcher/overview/)); the dispatcher mounts it
-read-only into every driver Job and the driver maps each basename back to the
-harness's full container path. Mode selection is unchanged from the CLI path — a
-console can request subscription per run (the launch request's `authMode`), or the
-operator can lock it cluster-wide with `TCAB_DISPATCHER_DRIVER_AUTH_MODE`. This is
-what unblocks the subscription-only Antigravity harness for console-driven runs.
-
-The local k3d stack wires this for you: the `secrets` target in
-[`deployments/local/Makefile`](https://github.com/) **optionally** builds
-`tcab-driver-subscription` from your host's signed-in CLI files (it never errors
-when they are absent — subscription stays opt-in). See
-[Run the Local Service Stack](/guides/development/running-the-local-service-stack/).
-
-The per-account credential vault (each user uploading their own subscription) is a
-deferred follow-up; today's service-flow subscription is the single shared
-operator Secret.
+Re-run it whenever the tokens refresh. The dispatcher mounts the Secret read-only
+into every driver Job, and the driver maps each credential's basename back to the
+path its harness reads.
 
 ## Choosing a mode
 
-When both an API key and a subscription are present, The Test Cabinet **prefers
-the subscription** by default. Lock the mode when you need to:
+Accepted modes are `auto`, `subscription`, and `api-key`. `auto` is the default
+and uses a subscription when its credentials are present, an API key otherwise.
+Lock the mode at one of three levels:
 
-```sh
-export TCAB_AUTH_MODE=api-key            # every harness
-export TCAB_AUTH_MODE_CLAUDE=api-key     # one harness (wins over the above)
-```
-
-Accepted values are `auto` (the default), `subscription`, and `api-key`.
+- Per run: `tcab run --auth-mode subscription …`, forwarded to the backend and
+  applied by the driver.
+- Per deployment: the dispatcher's `TCAB_DISPATCHER_DRIVER_AUTH_MODE`, forwarded
+  into every driver Job.
+- Per process: `TCAB_AUTH_MODE`, or `TCAB_AUTH_MODE_<SLUG>` for a single harness,
+  which wins over the global variable.
 
 ## Verify
 
-Check which harnesses are ready to run — a cost-free readiness check that reads
-only whether the needed credentials are present, without starting a container:
+`tcab harnesses` reports, for each harness, whether the credentials its resolved
+mode needs are present on this machine. It reads configuration only and starts no
+container:
 
 ```sh
-tcab harnesses          # human-readable table; add --json for machine output
+tcab harnesses          # add --json for machine output
 ```
 
-A harness shows as available once the credentials its resolved mode needs are in
-place. From a source checkout, substitute `cargo run -p test-cabinet-cli --
-harnesses` for `tcab harnesses`.
+From a source checkout, substitute
+`cargo run -p test-cabinet-cli -- harnesses`.
 
 ## Next steps
 
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) — drive a harness now that
-  it's authenticated.
-- [First Time Setup](/guides/setup/first-time-setup/) — the rest of what a run needs
-  (container runtime, run-container image, headless browser).
+- [Run a Test Case](/quickstarts/development/run-a-test-case/).
+- [First Time Setup](/guides/setup/first-time-setup/) for the rest of a working
+  machine.

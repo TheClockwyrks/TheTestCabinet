@@ -2,58 +2,45 @@
 title: The Test Cabinet
 ---
 
-The Test Cabinet is an evaluation suite for AI models and harnesses. It pairs
-automated validation — building and loading each implementation, and driving it
-through the debug tooling every case requires to check that the spelled-out
-mechanics work — with a reviewer who runs the final build and judges the
-qualities automation cannot. Each run is then assigned a numeric **score** — the
-points its checklist earned out of the points available — and a quality
-**rating** for each of the case's scoring domains, so a flawless mode can't mask
-a broken one. Each test case has a per-variant **leaderboard**
-ranking models by score.
+The Test Cabinet is an evaluation suite for AI models and harnesses. Every run
+is assessed two ways. Automated validation builds the implementation, loads it,
+and drives it through the debug tooling each test case requires, confirming that
+the spelled-out mechanics work. A reviewer then runs the final build and judges
+the qualities automation cannot.
 
-Test cases used by The Test Cabinet are very different from existing benchmarks
-like SWE Bench Pro. The Test Cabinet's tests do not attempt to be small-scale;
-if anything, these test cases are intentionally *not* small scale. The purpose
-of the tests is not to answer "How well can a model complete a small task in a
-codebase?", but rather "How well can a model handle a large, complex task and
-take it to completion autonomously?".
+Each run earns a numeric score, the checklist points it earned out of the points
+available, and a quality rating for each of the case's scoring domains. A run's
+overall rating is the worst of those domain ratings, so a flawless mode cannot
+mask a broken one. Each test case has a per-variant leaderboard ranking the
+harness and model pairings that have scored runs of it.
+
+Test cases are deliberately large. They answer how well a model handles a large,
+complex task and takes it to completion autonomously, rather than how well it
+completes a small task inside an existing codebase.
 
 ## Audience
 
-This documentation is intended for developers working on The Test Cabinet itself
-and for any end users who would like to run The Test Cabinet locally. Test cases
-can be driven from the command line with the [CLI](/components/cli/overview/),
-interactively in the [Tauri desktop app](/components/tauri/overview/), or on a
-server via a per-run [driver](/components/driver/overview/) `Job` from the
-[web console](/components/web/overview/). Developers will want to primarily refer
-to the [Components](/components/architecture/) section, while end users should
-focus their attention on the [Quickstarts](/quickstarts/overview/) and
-[User Guides](/guides/overview/) sections. New users should start with
-[First Time Setup](/guides/setup/first-time-setup/).
+This documentation serves developers working on The Test Cabinet and users who
+run it themselves. Runs are launched from the command line, from the desktop
+app, or from the web console. Every path enqueues the run at the backend, and a
+dispatcher creates a per-run driver `Job` to execute it.
 
-## AI-Generated Documentation
+Developers should start with the [Components](/components/architecture/)
+section. Users should start with [First Time
+Setup](/guides/setup/first-time-setup/) and then work through the
+[Quickstarts](/quickstarts/overview/) and [User Guides](/guides/overview/).
 
-Documentation for The Test Cabinet is typically AI-generated initially. This is
-done to establish intent and lock in design decisions before writing code, after
-which the implementation is created using the documentation as a reference.
+## AI-generated documentation
 
-Once an implementation has been written and adjusted as needed, a second, manual
-pass is done over the documentation. This means that there will be a mix of
-developer-authored and AI-authored documentation present. Expect to see a mix of
-em dashes and regular hyphens depending on who authored the documentation and
-whether a developer has opted to rewrite part of the documentation during the
-manual pass.
+Documentation is drafted by AI to establish intent and lock in design decisions
+before the code is written, and the implementation is then built from that
+documentation. A manual pass follows the implementation, so authored and
+generated text sit side by side.
 
-The documentation is also going to be significantly easier to read by hosting
-the docs as a website rather than reading the Markdown files directly. AI
-loves to **bold** or *italicize* words and add [links](#ai-generated-documentation)
-to different sections, which noticeably hurts readability of the raw Markdown
-docs.
+The documentation is written to be read as a website rather than as raw Markdown
+files.
 
 ## Status
 
-This project is currently in early development. Expect missing features, janky
-implementations, and UI/UX built around knowing the project ahead of time. The
-project is not at a state where a user could pick up the project without any
-knowledge about it and be able to use it to its full extent.
+The project is in early development. Expect missing features, rough
+implementations, and a UI that assumes prior knowledge of the project.

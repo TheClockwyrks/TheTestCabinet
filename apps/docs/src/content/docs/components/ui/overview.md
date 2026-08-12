@@ -3,102 +3,101 @@ title: Overview
 ---
 
 The UI library (`@test-cabinet/ui`, in `packages/ui`) is the shared frontend
-code for The Test Cabinet's three GUIs — the [public site](/components/site/overview/),
-the [web console](/components/web/overview/), and the
-[Tauri app](/components/tauri/overview/). It hosts the **entire routed gallery
-application** plus the presentational primitives those GUIs render, so the three
-apps are thin hosts over one shared app rather than three separate
-implementations.
+code for The Test Cabinet's three GUIs: the [public
+site](/components/site/overview/), the [web console](/components/web/overview/),
+and the [Tauri app](/components/tauri/overview/). It hosts the entire routed
+gallery application plus the primitives those GUIs render, so all three are thin
+hosts over one application.
 
-It is a code-sharing library, not a component itself: it ships no service and
+It is a code-sharing library rather than a component: it ships no service and
 runs in no process of its own. Each GUI mounts the shared app inside its own
-router and supplies it a data source; the [site](/components/site/overview/),
-[web](/components/web/overview/), and [Tauri](/components/tauri/overview/) hosts
-differ only in (a) where that data comes from and (b) whether they enable run
-execution.
+router and supplies it a data source. The three hosts differ only in where that
+data comes from and whether they enable run execution.
 
-## What it provides
+## Subpath entries
 
-The package exposes three subpath entries: its root (`@test-cabinet/ui`) ships
-the primitives and the rating model; `@test-cabinet/ui/app` ships the full routed
-gallery application; and `@test-cabinet/ui/client` ships the backend/worker client
-interfaces. A host imports only what it needs.
+A host imports only the entries it needs.
 
-- **The routed gallery application** (`./app`) — the whole site UI: the routed
-  pages (Home, Test Cases, Runs, Models, About), the app shell and topbar, and
-  the synthwave backdrop, *plus* the run-execution screens (new run, live
-  monitor, review, the account and sign-in/registration pages, the Connections
-  settings) and the notification subsystem. The topbar carries the console-only
-  affordances — the notifications bell and the account control (the signed-in
-  user, linking to the account page, or a sign-in prompt) — beside the Settings
-  gear. All three GUIs mount the same `GalleryApp` component. It reads its data and its
-  capabilities from context, so a host varies it only by what it provides — not
-  by swapping out screens. There is no longer a separate "console" build: the
-  consoles *are* this gallery app with run execution turned on.
-- **The data and capability context** — `GalleryDataProvider` and the
-  `GalleryData` it carries. Each host builds this from its own source: the static
-  [site](/components/site/overview/) from the build-time public snapshot, and the
-  [web](/components/web/overview/) and [Tauri](/components/tauri/overview/)
-  consoles live from a backend (via the shared `useLiveGallery`
-  assembly). A `canExecute` flag on this value is what gates the run-execution
-  surface — the new-run button, the live monitor, the editable review, the
-  account and sign-in/registration pages with their topbar account control, the
-  Connections settings, and the notification layer — so the static site renders
-  the same component with those parts off. The value also resolves each run's
-  submitted [proof-of-implementation](/components/core/validation/#proofs) media to
-  loadable URLs (a published run from the backend; a produced run over HTTP from
-  the [artifact service](/components/artifacts/overview/)'s proof endpoint; the
-  site from snapshot assets), which the reworked review flow and the run **Proof**
-  tab display beside the expected references. It resolves an
-  [asset-generation](/testing/asset-generation/overview/) run's media — the
-  regenerated, target, and preview images plus the action log, and for a
-  [voxel](/testing/asset-generation/overview/#voxel-models-and-rigs) run its
-  emitted per-part `.glb` and `rig.json` — the same way (a
-  published run from the backend's `/runs/{id}/asset/{file}` endpoint; a produced
-  run from the artifact service's matching endpoint; the site from snapshot
-  assets), which the **Verdict** tab's result view shows side by side. A voxel run
-  additionally renders an **interactive 3D model** through the `VoxelViewer`
-  component — a lazy-loaded React Three Fiber canvas that mounts the
-  [voxel-runtime](/components/voxel-runtime/overview/)'s `VoxelRig` (a `voxel-model`
-  auto-rotating; a `voxel-animation` orbit-drag with a range control per caller
-  joint, e.g. `turret_yaw`, playback of each auto-play joint, and a play button per
-  case-authored **predetermined animation**), falling back to the emitted
-  preview PNG (rendered by the binary with wgpu) where WebGL is unavailable or reduced motion is requested so the run
-  stays reviewable. Each 3D view carries an **expand-to-fullscreen** button: inline,
-  scroll-to-zoom is disabled (the model rotates but does not zoom); expanded, both
-  scroll-to-zoom and grab-to-rotate are enabled. The **live monitor** renders a
-  voxel run's in-progress model the same way — rebuilding it in 3D from the streamed
-  `.glb` bytes (decoded with the same `parseGlb`) after each operation (a **Scene** view assembling every part whose
-  mount location is known, and a **Model** view for one part at a time) instead of
-  the emitted preview PNG. (Both
-  consoles share the **same HTTP transport** — `@test-cabinet/ui/transport`; the
-  desktop's old `tcab-proof://` / `tcab-asset://` schemes were removed.)
-- **Presentational primitives** (`./` root) — the brand-neutral building blocks
-  every GUI uses: the Markdown renderer, the rating badge, panels, the metric
-  tile, the spec/reference accordion, pagination, and the chart wrapper.
-- **The client interfaces** (`./client`) — the `BackendClient` and
-  `WorkerClient` interfaces the consoles are written against, plus the React
-  contexts that supply them. The app depends only on these interfaces; each
-  console provides a transport (HTTP in the web app, Tauri commands in the desktop
-  app) behind them. This is what lets one app serve both consoles.
-- **The rating model** (`./` root) — the `Rating` tiers and their display
-  metadata, mirroring the [reviews](/components/core/results/#reviews) model in
-  the core, so every GUI shows ratings identically.
+| Entry                         | Contents                                                           |
+| ----------------------------- | ------------------------------------------------------------------ |
+| `@test-cabinet/ui`            | Presentational primitives, the rating model, and model-id helpers. |
+| `@test-cabinet/ui/app`        | The full routed gallery application and its data context.          |
+| `@test-cabinet/ui/client`     | The transport-agnostic client interfaces and their React contexts. |
+| `@test-cabinet/ui/transport`  | The HTTP transports the live consoles mount.                       |
+| `@test-cabinet/ui/tokens.css` | The `--tcab-*` theme token defaults.                               |
+
+## The gallery application
+
+`./app` exports `GalleryApp`, the whole console UI: the routed pages (home, test
+cases, runs, models, game jams, comparisons, gg analysis, tournaments, account,
+settings, about), the app shell and topbar, the backdrop, the run-execution
+screens (new run, live monitor, review, sign-in and registration), and the
+notification subsystem. All three GUIs mount this one component. It reads its
+data and its capabilities from context, so a host varies it by what it provides
+rather than by swapping screens.
+
+The topbar carries the notifications bell and the account control beside the
+Settings gear. Route paths are built through the exported `routes` builders, so
+each path is defined in one place.
+
+## The data and capability context
+
+`GalleryDataProvider` carries the `GalleryData` value each host builds from its
+own source. The static site builds it from the build-time public snapshot; the
+web and desktop consoles build it live from a backend through the shared
+`useLiveGallery` assembly.
+
+A `canExecute` flag on that value gates the run-execution surface: the new-run
+button, the live monitor, the editable review, the account and authentication
+pages, the Connections settings, and the notification layer. The static site
+renders the same component with those parts off.
+
+Optional capability members gate the rest. `arena` is present on a host that can
+run [adversarial](/testing/adversarial/overview/) matches and tournaments;
+`harnessAuth` is present only on the Tauri app, and carries the harness
+credential controls. A host that omits one hides the corresponding surface.
+
+The value also resolves a run's media to loadable URLs, whichever host is
+asking: [proof-of-implementation](/components/core/validation/#proofs) media, an
+[asset-generation](/testing/asset-generation/overview/) run's regenerated,
+target and preview images with its action log, a voxel run's per-part `.glb` and
+`rig.json`, a particle run's `system.json`, and case-scoped validation
+baselines. The site resolves these from snapshot assets, a console from the
+backend for a published run and from the [artifact
+service](/components/artifacts/overview/) for a produced one.
+
+Listing pages are answered through `queryRunSummaries`, a paged, filtered,
+sorted query the host implements. A console forwards it to the backend's offset
+endpoint; the site answers it from its in-memory summary index with the same
+semantics, so a numbered pager sizes identically on either host.
+
+## Asset viewers
+
+The run-detail and live-monitor screens render a produced asset interactively
+rather than as a still image. A voxel run mounts the [voxel
+runtime](/components/voxel-runtime/overview/)'s `VoxelRig` or `SkinnedVoxelRig`
+in a React Three Fiber canvas, with a control per caller joint and a play
+control per model-authored animation. A particle run mounts the [particle
+runtime](/components/particle-runtime/overview/)'s player and simulates the
+effect live. Each 3D view expands to fullscreen, and falls back to the emitted
+preview image where WebGL is unavailable or reduced motion is requested, so a
+run stays reviewable.
+
+## Client interfaces and transports
+
+`./client` declares the `BackendClient` and `WorkerClient` interfaces the
+console is written against, plus the React contexts that supply them and the
+authentication context. The app depends only on these interfaces.
+
+`./transport` is the single implementation of the backend wire protocol: the
+HTTP backend and execution clients, the HTTP arena client, and the helpers that
+read the artifact, arena, snapshot, and Grafana URLs the backend reports from
+`GET /config`. Both consoles mount these transports, so neither host duplicates
+the protocol. The desktop app supplies its own arena transport, because its
+arena runs in-process.
 
 ## Theming
 
-The components are themed through a small set of `--tcab-*` CSS custom
-properties (a documented token contract with synthwave defaults). Each app
-supplies its own values: the site maps them onto its existing palette so the
-moved components render exactly as before, and the console apps can theme
-themselves independently. No component hard-codes a palette.
-
-## Status
-
-Implemented in `packages/ui`. All three hosts mount the shared `GalleryApp`: the
-[site](/components/site/overview/) renders it from the build-time snapshot with
-run execution off, and the [web](/components/web/overview/) and
-[Tauri](/components/tauri/overview/) consoles render it live with run execution
-on, supplying the backend/worker transports behind the client interfaces. The
-earlier separate "console" build and the standalone tab console it grew out of
-have been retired in favor of this single shared app.
+Components are themed through the `--tcab-*` CSS custom properties. The
+`tokens.css` entry supplies working defaults; an app may override any property
+in its own global styles. No component hard-codes a palette.

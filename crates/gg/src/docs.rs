@@ -1,6 +1,6 @@
 //! The documentation carve-out's runtime state.
 //!
-//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the system prompt no
+//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) the system prompt no
 //! longer lists every tool signature — and, since the prompt rewrite, names no function at all. It
 //! names the modules a program's surface is divided into and says, in words, that a model can always
 //! do two things: search for a function by keyword, and open a documentation view of one to read

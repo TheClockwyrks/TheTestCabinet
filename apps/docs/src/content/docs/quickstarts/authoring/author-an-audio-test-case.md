@@ -2,99 +2,96 @@
 title: Author an Audio Test Case
 ---
 
-Scaffold a new [audio](/testing/asset-generation/overview/#audio)
-asset-generation test case — a model authors one short game-audio clip (a sound
-effect or a snatch of music) through an **audio binary**, one recorded operation
-at a time, to match a written brief. A case is exactly one kind, fixed by
-`asset_kind`: **`sfx-synth`** (DSP-only synth graph, no library), **`sfx-sample`**
-(layer over a baked sample pack), or **`music`** (sequence notes over a baked
-instrument bank, emits a `.mid`). This is the short version;
-[Authoring an Audio Test Case](/guides/authoring/authoring-an-audio-test-case/)
-covers it in full, and [Manifests](/testing/asset-generation/manifests/) is the
-authoritative schema.
+## Overview
 
-Drawing a sprite or building a game instead? See
-[Author an Asset-Generation Test Case](/quickstarts/authoring/author-an-asset-generation-test-case/)
-or [Author an End-to-End Test Case](/quickstarts/authoring/author-an-end-to-end-test-case/).
-An `sfx-sample` or `music` case names a `name@version` palette baked into the run
-image — if it does not exist yet, publish it first with
+Scaffold an audio asset-generation case: the model authors one short game-audio
+clip through an audio binary, one recorded operation at a time, to match a
+written brief. A case is exactly one kind, fixed by `asset_kind`: `sfx-synth`
+builds a DSP-only synth graph, `sfx-sample` layers over a baked sample pack, and
+`music` sequences notes over a baked instrument bank and emits a `.mid` score
+alongside the clip. [Audio cases](/testing/asset-generation/manifests/audio-cases/)
+is the authoritative manifest schema, and
+[Authoring an Audio Test Case](/guides/authoring/authoring-an-audio-test-case/)
+is the full procedure.
+
+An `sfx-sample` or `music` case names a `name@version` palette baked into its run
+image. The published pins live in `containers/sample-packs/packs.lock.json`;
 [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/)
-(today's published palettes are `combat-core` and `gm-lite`).
+adds a new one.
 
 ## Layout
 
-A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is **immutable** once runs
-reference it — revise by adding a new version, not by editing a published one.
+A version lives at `test-cases/<type>/<difficulty>/<slug>/<version>/` and is
+frozen once a run references it. Revise by adding a new version.
 
 ```text
-test-cases/<type>/<difficulty>/<slug>/<version>/
-  test-case.toml         # manifest: type, asset_kind, audio, tool, output, the overall domain
-  variants/              # one standalone TOML file per variant (listed in `variants`)
-  prompt.hbs             # rendered into the harness instruction (NOT seeded)
-  specs/brief.md         # what to build + how the tool behaves — SEEDED
+test-cases/asset-generation/<difficulty>/<slug>/<version>/
+  test-case.toml    # type, asset_kind, [audio], [tool], [output], the overall domain
+  variants/         # one standalone TOML file per variant, listed in `variants`
+  prompt.hbs        # rendered into the harness instruction; not seeded
+  specs/brief.md    # the sound and how the binary behaves; seeded
+  description.md    # site-facing summary; not seeded
+  changelog.md      # what changed in this version; not seeded
 ```
 
-There is **no target clip** and **no `reference/` directory** — an audio case
-declares no references and is reviewed by a human (by ear) against its brief.
+A run receives the seeded brief plus the orchestrator-written
+`sfx-synth.config.json`, `sfx-sample.config.json`, or `music.config.json`. The
+case declares no `[[reference]]`, `[build]`, `[[check]]`, or `[[review_item]]`.
 
 ## Steps
 
-1. Pick the `asset_kind` by the skill you want to measure, plus a catalog **slug**
-   and `version`. Worked examples: `spectra-laser` (`sfx-synth`),
-   `thunderhead-broadside` (`sfx-sample`, over `combat-core`), `thunderhead-theme`
-   (`music`, over `gm-lite`) — read the one matching your kind.
-2. Write `specs/brief.md`: describe the **sound**, not the operations — its
-   character and in-game role, its envelope and timing within `max_duration_ms`,
-   its layers/synth graph/note material conceptually, and `mono`/`stereo`. State
-   that the binary shapes sound, renders only on `render`, records the
-   authoritative op log, and that its `--help` is the operation vocabulary. Keep it
+1. Pick the `asset_kind` by the skill you want to measure, plus a catalog `slug`
+   and a `version`. The worked examples are `spectra-laser` (`sfx-synth`),
+   `thunderhead-broadside` (`sfx-sample`) and `thunderhead-theme` (`music`).
+2. Write `specs/brief.md`. Describe the sound rather than the operations: its
+   character and in-game role, its envelope and timing within
+   `max_duration_ms`, its layers, synth graph or note material as intent, and
+   whether it is mono or stereo. State that the binary shapes sound, renders
+   only on `render`, and records the authoritative operation log, and that its
+   `--help` is the operation vocabulary. Keep the brief
    [self-contained](/testing/end-to-end/overview/#self-contained-specifications).
-   There is **no operations schema**.
-3. Write `prompt.hbs` using only the documented template variables
-   (`{{variant.*}}`, `{{#each specs}}`) — it renders in strict mode — pointing the
-   model at the brief and the binary's `--help` (and, for a sampled kind, to browse
-   the library with `list-samples` first).
-4. Write `test-case.toml`: metadata (`name`, `difficulty`, `tags`),
-   `type = "asset-generation"`, `asset_kind`, a `variants` list of paths to
-   standalone variant files (a root key, so it must precede the first table header;
-   first = default), and the tables below.
-   - **`[audio]`** — `sample_rate`, `channels`, `max_duration_ms` (all required).
-     An `sfx-sample` case adds `sample_pack = "name@version"`; a `music` case adds
-     `instrument_bank = "name@version"`; `sfx-synth` names neither. An unpinned
-     palette is a build error, not a fallback.
-   - **`[tool]`** — `binary` (matching the kind) and the `preview` path (waveform +
-     spectrogram; a piano-roll too, for `music`). No operations schema.
-   - **`[output]`** — the `actions` op log (authoritative). `clip.wav` (and `.mid`
-     for `music`) is emitted automatically — not manifest-declared.
-   - the single **`[[domain]]`** (`overall`) the reviewer rates under, and **no
-     `[[review_item]]`s** — the clip is judged as a whole against its brief.
-   - **No `[model]`**, **no `[[reference]]`**, **no `[build]`**, **no `[[check]]`** —
-     each is rejected.
-
-[Authoring an Audio Test Case](/guides/authoring/authoring-an-audio-test-case/)
-is the full procedure — read it, and the matching worked example, before you
-start.
+3. Write `prompt.hbs` from the documented template variables (`{{workspace}}`,
+   `{{variant.*}}`, `{{#each specs}}`). Rendering is strict, so an unknown
+   variable is an error. Point the model at the brief and the binary's `--help`.
+   For a sampled kind, tell it to browse the library with `list-samples` first.
+4. Write `test-case.toml`:
+   - the site-facing metadata (`name`, `difficulty`, `tags`, `summary`,
+     `description`, `changelog`), `prompt`, `max_runtime_hours`, and
+     `type = "asset-generation"`;
+   - `asset_kind`, and `variants`, a list of paths to the files under
+     `variants/`. It is a root key, so it precedes the first table header, and
+     its first entry is the default;
+   - `[audio]` with `sample_rate`, `channels` (`mono` or `stereo`) and
+     `max_duration_ms`. An `sfx-sample` case adds `sample_pack = "name@version"`
+     and a `music` case adds `instrument_bank = "name@version"`; `sfx-synth`
+     names neither;
+   - `[tool]` naming the `binary` for the kind and the `preview` PNG path, and
+     `[output]` naming the `actions` log. Core emits `clip.wav`, and `clip.mid`
+     for `music`, automatically;
+   - one `[[domain]]` with `id = "overall"`, the single rating the clip is
+     judged on.
+5. Write each variant file under `variants/`, giving it a `slug`, a `name`, a
+   `description`, and any additive `spec` entries.
 
 ## Validate
 
-There is no separate authoring linter — validate by resolving and seeding. For
-**every** variant:
+Run both commands for every variant.
 
 ```sh
 tcab prompt --test-case <slug> --version <version> --variant <variant>
 tcab seed   --test-case <slug> --version <version> --variant <variant>
 ```
 
-`prompt` catches strict-mode template errors and manifest problems (a missing
-`[audio]` field, a `sample_pack` on a non-`sfx-sample` case, an `instrument_bank`
-on a non-`music` case, a stray `[[reference]]`/`[build]`/`[[check]]`); `seed`
-writes the seeded set (brief + the seeded audio config) so you can confirm it is
-self-contained. If you named a `sample_pack`/`instrument_bank`, double-check it is
-a published, pinned `name@version`.
+`prompt` catches strict-mode template errors and manifest errors, including a
+missing `[audio]` field, a `sample_pack` on a kind other than `sfx-sample`, and
+an `instrument_bank` on a kind other than `music`. `seed` writes the seeded
+repository under `tmp/`, so you can confirm the seeded set is self-contained.
 
 ## Next steps
 
-- [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/) —
-  if your `sfx-sample` / `music` case needs a pack or bank that does not exist yet.
-- [Run a Test Case](/quickstarts/development/run-a-test-case/) to exercise it end to end.
-- [Review a Run](/quickstarts/development/review-a-run/) to assess the result against the brief.
+- [Publish an Audio Sample Pack](/quickstarts/authoring/publish-an-audio-sample-pack/)
+  builds and pins a pack or bank the case needs.
+- [Run a Test Case](/quickstarts/development/run-a-test-case/) exercises the
+  case end to end.
+- [Review a Run](/quickstarts/development/review-a-run/) rates the clip against
+  the brief.

@@ -7,7 +7,7 @@ cannot reach the host or other runs' work (see
 
 There is **one image per run kind**, selected by a run's
 [test type](../apps/docs/src/content/docs/testing/) and — for asset-generation —
-its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md).
+its [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md).
 The full set is whatever [`build.sh`](#building) builds; the notable ones:
 
 - the **base** image, the shared Node foundation every other image is built `FROM`
@@ -112,7 +112,7 @@ runner picks the image by test type and asset kind via
 ### The exception: the `-gg` variants
 
 `gg` is The Test Cabinet's own in-container harness, and under
-[responses-as-code](../apps/docs/src/content/docs/gg/responses-as-code.md) a model
+[responses-as-code](../apps/docs/src/content/docs/gg/responses-as-code/overview.md) a model
 answers with a **program**. The language that program is written in is a run
 variable, and a compiled language needs its **compiler on the turn path** — inside
 the run container, on every turn. gg itself is a single static binary copied in at
@@ -362,7 +362,7 @@ To add one:
 
 ## Asset-generation images
 
-Asset-generation runs split by [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests.md):
+Asset-generation runs split by [`asset_kind`](../apps/docs/src/content/docs/testing/asset-generation/manifests/overview.md):
 a single-sprite case draws with `draw`, a sprite-sheet case draws with
 `draw-sheet`. Each gets its own image so a run carries only the tool it uses:
 
@@ -656,7 +656,7 @@ while every process exited zero. The calling side supplies most of that — gg r
 compiler with its working directory, `HOME`, `TMPDIR` and `XDG_*` roots inside that
 preparation's own tree — so what this constrains is the toolchain that can *only* be
 driven through a process shared between compilations. See
-[per-agent compiler isolation](../apps/docs/src/content/docs/gg/program-languages.md#per-agent-compiler-isolation).
+[per-agent compiler isolation](../apps/docs/src/content/docs/gg/languages/compilation.md#per-agent-compiler-isolation).
 
 The tree carries **PureScript**'s toolchain today: `purs` and `esbuild`, both statically
 linked, both a single file, and both pinned by

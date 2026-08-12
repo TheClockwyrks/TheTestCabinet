@@ -3,94 +3,89 @@ title: "Reference material"
 ---
 
 Lattice hands the model everything it needs to implement and validate its engine
-**short of the answer key**: the fully-documented
-[rules](/testing/performance/lattice/overview/), a set of **training
-scenarios** with their expected outputs, and the
-[`lattice` CLI](/testing/performance/lattice/architecture/#the-cli) that
-both generates more of them and scores a submission locally. What it does **not**
-hand over are the **scored scenarios** — the held-out set the validator grades on.
-This is the machine-learning **train/test split**, applied to a simulation
-benchmark: you may practise against as many labelled examples as you like, but your
-grade is on examples you have never seen.
+short of the answer key: the fully documented
+[rules](/testing/performance/lattice/overview/), a set of training scenarios with
+their expected outputs, and the
+[`lattice` CLI](/testing/performance/lattice/architecture/#the-cli) that both
+generates more of them and scores a submission locally. The scored scenarios are
+held out. This is the machine-learning train/test split applied to a simulation
+benchmark: a model may practise against as many labelled examples as it likes,
+and its grade is on examples it has never seen.
 
-## What the model receives
+## Provided material
 
-The performance run-container image provides, under the case's reference root:
+The performance run-container image provides, under `$LATTICE_HOME`
+(`/opt/lattice`):
 
-- The **rules** — the simulation spec
-  ([entities, the fixed-point model, compaction, splitter/inserter/assembler/source/
-  sink behaviour](/testing/performance/lattice/overview/)) and the
+- The rules, as the seeded specs and the
   [prototype table](/testing/performance/lattice/architecture/#prototypes-and-recipes)
-  of belt tiers, the inserter swing, and recipes. These are the **complete and authoritative**
-  definition of the simulation — there is nothing about an entity's behaviour the
-  model is expected to infer from examples. Lattice is a *reimplement-this-exactly*
-  problem, not a *guess-the-rules* one.
-- A set of **training scenarios**, each a
-  [`scenario.json`](/testing/performance/lattice/architecture/#scenario--the-input)
-  paired with the reference engine's
-  [expected canonical output](/testing/performance/lattice/architecture/#state--the-output)
-  (full state and checksum). These span the entity set and the tricky cases on
-  purpose — a single side-loaded lane, a backed-up inserter, a saturated splitter, an
-  assembler starved then flooded — so the model can check its engine against the exact
-  behaviours the rules describe.
-- The **`lattice` CLI** on `PATH`, which is both the **oracle** (`lattice solve`
-  produces the expected output for *any* scenario, so the model can generate unlimited
-  fresh labelled examples with `lattice gen`) and the **local scorer** (`lattice run`
-  builds the submission and reports correctness + fuel using the same host the
-  validator uses). See
-  [The CLI](/testing/performance/lattice/architecture/#the-cli).
+  of belt speed, the inserter swing, the item order, and the recipes. These are
+  the complete and authoritative definition of the simulation, so Lattice is a
+  reimplement-this-exactly problem rather than a guess-the-rules one.
+- A set of training scenarios under `$LATTICE_HOME/training/<name>/`, each a
+  [`scenario.json`](/testing/performance/lattice/architecture/#the-scenario-input)
+  paired with the reference oracle's
+  [`expected.json`](/testing/performance/lattice/architecture/#the-state-output),
+  which carries the full state and the per-snapshot checksums. They span the
+  entity set and the tricky behaviours deliberately: a side-loaded lane, a backed
+  up inserter, a saturated splitter, a curve, a multi-input recipe, and a
+  two-stage crafting chain.
+- The `lattice` CLI on `PATH`, which is both the oracle and the local scorer.
+  `lattice solve` produces the expected output for any scenario and `lattice gen`
+  generates fresh ones, so the model can build unlimited labelled examples.
+  `lattice run` reports correctness and fuel using the same host the validator
+  uses.
 
-With these the loop is tight: write the engine, `lattice run` it against the training
-scenarios to confirm it is **bit-exact**, generate harder and larger scenarios to find
-where it diverges or where its fuel balloons, and iterate until it is both correct and
-fast.
+The engine buildkit under `$LATTICE_HOME/buildkit` holds the `lattice-core`
+contract types and the `lattice-sdk` the model's `engine` crate path-depends on,
+so the seeded workspace vendors nothing.
+
+The loop is therefore tight: write the engine, `lattice run` it against the
+training scenarios to confirm it is bit-exact, generate harder and larger
+scenarios to find where it diverges or where its fuel balloons, and iterate until
+it is both correct and fast.
 
 ## The held-out scored set
 
-The scenarios the validator actually grades — the manifest's
-[`[[case]]`](/testing/performance/manifests/) entries — are **not** in the image. They
-are committed with the case (the validator's, like a held-out test set), and they are
-deliberately chosen to be **larger and longer** than the training scenarios: big
-grids, long runs, dense belt networks where the
-[efficiency gap](/testing/performance/lattice/architecture/#why-this-is-a-performance-case)
-between a naive and a transport-line engine dominates the fuel total. A submission is
-[scored](/testing/performance/evaluation/) by running these unseen scenarios —
-correctness first (every snapshot checksum must match the reference), then the fuel a
-correct engine consumed.
+The scenarios the validator grades, the manifest's
+[`[[case]]`](/testing/performance/manifests/) entries, are committed with the case
+and are absent from the run-container image and from the seeded workspace. They
+are deliberately larger and longer than the training scenarios: big grids, long
+runs, and dense interconnected factories where the
+[efficiency
+gap](/testing/performance/lattice/architecture/#the-efficiency-spread)
+between a naive and an efficient engine dominates the fuel total. A submission is
+[scored](/testing/performance/evaluation/) by running these unseen scenarios,
+correctness first, then the fuel a correct engine consumed.
 
-:::caution[There is no shortcut around simulating]
-Because the scored scenarios are unseen and the
-[submission runs as pure sandboxed wasm](/testing/performance/lattice/architecture/#the-cli),
-there is no way to pass by **memorizing** outputs or by **reaching** the reference: a
-correct checksum on an unseen scenario can only come from actually simulating it. The
-training scenarios are for *building and validating* the engine, never an answer set
-to hardcode — they will not be the ones you are graded on.
+Because the scored scenarios are unseen and the submission runs as pure sandboxed
+wasm, a correct checksum on an unseen scenario can only come from actually
+simulating it. The training scenarios exist to build and validate the engine.
 
-### Where the secrecy boundary actually is
+### The secrecy boundary
 
-"Held out" means held out from **the run**, not from the repository. The scored
-scenarios and their expected outputs are committed with the case, and they ship inside
-the distributed desktop app (which stages the `test-cases/` tree so it can run and
-grade a case locally — grading reads both the input and the expected answer, so a local
-runner cannot work without them).
+Held out means held out from the run rather than from the repository. The scored
+scenarios and their expected outputs are committed with the case, and they ship
+inside the distributed desktop app, which stages the `test-cases/` tree so it can
+run and grade a case locally. Grading reads both the input and the expected
+answer, so a local runner needs them.
 
-That is deliberate and safe, because the boundary that matters is enforced at run time,
-not by obscurity: the submission executes as sandboxed wasm with no filesystem access,
-and the scored set is neither seeded into the workspace nor baked into the run-container
-image. A model being graded cannot read these files no matter where else they exist. So
-possession of the scored set by a *person* — a contributor reading the repo, a user of
-the desktop app — does not weaken the gate, and is not treated as a leak.
-:::
+That is safe because the boundary is enforced at run time. The submission
+executes as sandboxed wasm with no filesystem access, and the scored set is
+neither seeded into the workspace nor baked into the run-container image. A model
+being graded cannot read these files wherever else they exist, so possession of
+the scored set by a person is not treated as a leak.
 
-## Why this works as a benchmark
+## Benchmark properties
 
-Lattice deliberately removes every source of correctness ambiguity so that **fuel is
-the only thing left to compete on**. The rules are fully specified, the arithmetic is
-[integer / fixed-point](/testing/performance/lattice/architecture/#determinism-and-the-canonical-state)
-so the answer is bit-exact and language-independent, and the reference engine is a
-black-box oracle the model can query without limit. What separates submissions is not
-whether they *can* simulate a factory — the rules are right there — but **how much
-work** their simulation does. A model that ports Factorio's transport-line
-representation and event-driven machines lands the same checksums as one that moves
-every item every tick, for a fraction of the fuel, and that difference is the entire
+Lattice removes every source of correctness ambiguity so that fuel is the only
+thing left to compete on. The rules are fully specified, the arithmetic is
+[integer and fixed-point](/testing/performance/lattice/architecture/) so the
+answer is bit-exact and language-independent, and the reference engine is a
+black-box oracle the model can query without limit.
+
+What separates submissions is how much work their simulation does. A model that
+exploits the transport-line representation, event-driven machines, and the
+factory's steady-state cycle lands the same checksums as one that moves every
+item every tick, for a fraction of the fuel, and that difference is the entire
 result.

@@ -1,7 +1,7 @@
 # `gg-sandbox-python` — gg's Python guest
 
 The **Python** guest for gg's
-[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
+[responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
 capability. Under that capability a model answers a turn by writing a whole
 **program** instead of a batch of tool calls, and the language it writes in is a
 first-class axis of gg — it is what a cross-language A/B study compares arms on.
@@ -167,7 +167,7 @@ parked WASI call, and the bound on a parked turn stays the run-level idle watchd
 behaviour underneath is not new — `gg.shell.shell("sleep 3600")` parks for an hour on every arm
 gg has — and both closures cost more than they buy today. The full argument, and the condition
 under which it is reopened, is in
-[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
+[The sandbox](../../apps/docs/src/content/docs/gg/responses-as-code/sandbox.md).
 
 ## Rebuilding
 
@@ -205,4 +205,4 @@ the substrate tests assert.
 
 The seam every guest plugs into, what a registered language must supply, and the
 worked steps for adding one are in
-[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
+[Registering a language](../../apps/docs/src/content/docs/gg/languages/registration.md).

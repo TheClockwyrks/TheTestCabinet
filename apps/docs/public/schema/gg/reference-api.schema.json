@@ -62,7 +62,7 @@
           "type": "array"
         },
         "operation": {
-          "description": "gg's own [operation](https://docs.testcabinet.ai/gg/responses-as-code/) id for what this\ncall does (`files.read_file`) — the identity that is the same in all eleven arms, and the\nstring a run's calls are recorded under. `None` for a type, which is not a call.",
+          "description": "gg's own [operation](https://docs.testcabinet.ai/gg/languages/static-sdks/) id for what this\ncall does (`files.read_file`) — the identity that is the same in all eleven arms, and the\nstring a run's calls are recorded under. `None` for a type, which is not a call.",
           "type": ["string", "null"]
         },
         "receiver": {

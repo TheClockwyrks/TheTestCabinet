@@ -124,5 +124,5 @@ opposite ways, and each is the way its own documentation tool accepts.
 - `crates/gg/src/sandbox/language/java.surface.test.rs` — every gg tool driven through that
   membrane from its Java spelling, the agreement gate over the generated catalogue, and
   every declared library driven into the real compiler.
-- [`gg/program-languages.md`](../../apps/docs/src/content/docs/gg/program-languages.md) —
+- [`gg/languages/java.md`](../../apps/docs/src/content/docs/gg/languages/java.md) —
   the prose, including what TeaVM is not.

@@ -2,103 +2,100 @@
 title: Metrics
 ---
 
-Every run records a small set of metrics describing how much it cost to produce.
-These are the numbers surfaced on the [site](/components/site/overview/). They
-measure the *resources* a run consumed — distinct from the run's quality
-[score and rating](/components/core/results/#reviews), which come from the review.
-The metrics exist to let viewers understand a run's cost, not to rank
-implementations; the per-case [leaderboard](/components/site/overview/#leaderboard)
-ranks by score, never by cost or tokens.
+## Overview
 
-## Run Time
+Every run records the resources it consumed: wall-clock time, normalized token
+counts, and cost. These are the numbers the [site](/components/site/overview/)
+surfaces alongside a run. They are distinct from the run's quality score and
+rating, which come from its [review](/components/core/results/#reviews). A
+per-case leaderboard ranks by score, never by cost or tokens.
 
-The end to end wall clock time of a run must be recorded. Run time is the least
-important metric because it depends heavily on which underlying provider serves
-the request. It is recorded for completeness but should be presented as
-secondary.
+## Run time
+
+Every run records its end-to-end wall-clock time in seconds. Run time depends
+heavily on which provider served the requests, so it is presented as a secondary
+figure.
 
 ## Tokens
 
-Token usage is the most meaningful resource metric. Every run must record the
-following normalized token classes:
+Every run records four normalized token classes:
 
-- **Uncached input tokens** — input tokens that were not served from the
-  provider's cache. If a harness reports input as `input + cache_read`, the
-  cached reads must be subtracted so this value excludes them.
-- **Cached input tokens** — input tokens served from the provider's cache. These
-  are billed at a much lower rate than uncached input tokens, so they are
-  tracked separately.
-- **Output tokens** — non reasoning output tokens. If a harness reports output
-  as `output + reasoning`, the reasoning tokens must be subtracted so this value
+- Uncached input tokens: input tokens that were not served from the provider's
+  cache. A harness that reports input as `input + cache_read` has its cached
+  reads subtracted so this value excludes them.
+- Cached input tokens: input tokens served from the provider's cache. They are
+  billed at a lower rate, so they are tracked separately.
+- Output tokens: non-reasoning output tokens. A harness that reports output as
+  `output + reasoning` has its reasoning tokens subtracted so this value
   excludes them.
-- **Reasoning tokens** — internal reasoning tokens. These are billed as output
-  tokens but are tracked separately because they are not useful output to a
-  reader.
+- Reasoning tokens: internal reasoning tokens. They are billed as output tokens
+  and are tracked separately because they are not useful output to a reader.
 
-Each class is **optional**: a class is `null` when the harness does not report it
-at all. `null` means "could not be determined" and is deliberately distinct from
-`0` ("reported, and was zero") — for example a harness that folds reasoning into
-its output total, and so never reports a separate reasoning figure, records `null`
-for reasoning rather than `0`.
+Each class is optional. A class is `null` when the harness does not report it,
+which is distinct from `0`, meaning the harness reported the class and it was
+zero. A harness that folds reasoning into its output total records `null` for
+reasoning.
 
-A `null` class is not lost from the **total**: a harness that doesn't break a split
-out still folds those tokens into the class it does report — a cache-unaware
-harness reports all input as uncached, and a harness that doesn't separate
-reasoning reports it within output — so the total counts them, and the run still
-participates in token comparisons. A total is unknown only when *no* input (or
-output) class is reported at all. What `null` does signal is that the **breakdown**
-is unavailable: a consumer must not, say, chart "cached vs uncached" for a run
-whose cached class is `null`, because the split is genuinely unknown rather than
-zero.
+A `null` class still counts toward the totals. A harness that reports no split
+folds those tokens into the class it does report: a cache-unaware harness
+reports all input as uncached, and a harness that folds reasoning into output
+reports it there. An input or output total is `null` only when neither class on
+that side is reported. What `null` signals is that the breakdown is unavailable,
+so a consumer must not chart cached against uncached for a run whose cached
+class is `null`.
 
-The [agent harness layer](/components/core/harnesses/#usage-reporting) is
-responsible for producing these normalized values from each harness's raw
-reporting.
+The [agent harness layer](/components/core/harnesses/#usage-reporting) produces
+these normalized values from each harness's raw reporting.
 
 ## Cost
 
-Every run must record cost two ways:
+Every run records cost two ways:
 
-- The **comparable cost**, the canonical figure shown on the site. By default it
-  is computed from the per token prices that OpenRouter lists for the model
-  used, rather than the exact charged amount, because OpenRouter may route a
-  single model to different providers that price calls differently, which would
-  make raw charged costs inconsistent between otherwise identical runs.
-- The **actual cost** charged for the run, recorded alongside the comparable
-  cost for reference.
+- The comparable cost, the canonical figure shown on the site. It is computed
+  from the per-token prices OpenRouter lists for the model used rather than the
+  amount actually charged, because OpenRouter may route one model to providers
+  that price calls differently.
+- The actual cost charged for the run, recorded alongside the comparable cost
+  for reference.
 
 Comparable cost is derived from the recorded token classes and the listed prices
 for uncached input, cached input, and output tokens, with reasoning tokens
-priced at the output rate.
+priced at the output rate. A class that carries tokens but whose per-token price
+is unknown makes the whole cost unknown rather than under-counted; a class with
+zero tokens needs no price. A cost of `null` means unknown, distinct from `0.0`,
+a genuinely free run.
 
-The OpenRouter per-token prices are fetched by the **backend**, not the CLI. The
-backend records a model's price **when a run completes** — capturing the rate in
-effect at that moment, so a promotional price such as a launch-week discount is
-reflected in the runs that ran under it — and again on a **24-hour periodic
-refresh**, appending a new observation to the model's price history only when the
-price changed. A model with no price on record yet is seeded the first time it is
-seen at all — when it is curated in the app, and when a run binding it is enqueued
-— so a cost split is available while the run is still going rather than only after
-it ends. The history is retained per model and shown on the model's detail
-page. A run whose model id carries a `:free`-style OpenRouter variant tag is
-priced at the model's **base rate**, never `$0`: the free tag is a routing hint,
-not a genuinely free run.
+### Price history
+
+The OpenRouter per-token prices are fetched by the
+[backend](/components/backend/overview/), not the CLI. The backend records a
+model's price when a run completes, capturing the rate in effect at that moment
+so a promotional price is reflected in the runs that ran under it, and again on
+a 24-hour periodic refresh. A refresh appends a new observation to the model's
+history only when the observed facts changed, covering the price triple along
+with the context window, release date, and accepted input modalities.
+
+A model with no price on record is seeded the first time it is seen at all, both
+when it is curated in the app and when a run binding it is enqueued, so a cost
+split is available while the run is still going. The history is retained per
+model and shown on the model's detail page.
+
+A model id carrying a `:free`-style OpenRouter variant tag is priced at the
+model's base rate. The tag selects a pricing route rather than a different
+model, so it neither splits the model in two nor makes a run look free.
 
 ### Harness-reported cost
 
 Some harnesses drive a single provider directly through an API key and report
-the exact cost of a run themselves — for example, Claude Code reports a
-`total_cost_usd` figure on its terminal result. When a harness reports its own
-cost, that figure is used for **both** the comparable and the actual cost, and
-the OpenRouter price lookup is skipped:
+the exact cost of a run themselves; Claude Code reports a `total_cost_usd`
+figure on its terminal result. When a harness reports its own cost, that figure
+is used for both the comparable and the actual cost and the OpenRouter price
+lookup is skipped.
 
-- The reasoning behind the OpenRouter figure — normalizing away OpenRouter's
-  per-provider routing — does not apply to a harness that talks to one provider
-  at one price, so its reported charge is already provider-stable and serves as
-  the comparable figure directly.
-- These harnesses pass the provider's native model ID (such as
-  `claude-sonnet-4-6`), which is not guaranteed to appear in OpenRouter's
-  catalog, so an OpenRouter lookup would fail for them in any case.
+A harness that talks to one provider at one price is already provider-stable, so
+its reported charge serves as the comparable figure directly. These harnesses
+also pass provider-native model ids, which OpenRouter's catalog need not list at
+all.
 
-The [agent harness layer](/components/core/harnesses/#usage-reporting) is
-responsible for extracting any reported cost from each harness's output.
+The [agent harness layer](/components/core/harnesses/#usage-reporting) extracts
+any reported cost from each harness's output.

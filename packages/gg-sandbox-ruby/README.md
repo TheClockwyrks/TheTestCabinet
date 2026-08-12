@@ -1,6 +1,6 @@
 # `gg-sandbox-ruby`
 
-The **Ruby guest** for gg's [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
+The **Ruby guest** for gg's [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/overview.md)
 sandbox: the hand-written Ruby SDK a model is given, the libraries a program may require,
 and the **Opal compiler** gg turns a model's Ruby into JavaScript with.
 

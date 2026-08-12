@@ -2,124 +2,99 @@
 title: Architecture
 ---
 
-The Test Cabinet is built as a **headless core** with a set of components
-layered on top of it. The core owns all of the orchestration — resolving a test
-case version, seeding a run's repository, executing the run in a container,
-invoking the agent harness, collecting metrics, running validation, writing the
-run record, and publishing — and every other component is a thin wrapper that
-exposes that functionality under whatever interface it is expected to provide (a
-CLI, an HTTP API, a desktop GUI, and so on).
+The Test Cabinet is a headless core with a set of components layered on top of
+it. The core owns run orchestration: resolving a test case version, seeding a
+run's repository, executing the run in a container, invoking the agent harness,
+collecting metrics, running validation, writing the run record, and publishing.
+Every other component links against that library and exposes it under the
+interface it provides, whether that is a CLI, an HTTP API, or a desktop GUI.
 
-Keeping orchestration in the core and out of the interfaces is what makes batch
-runs, automation, unattended sweeps, and remote execution possible: any
-component can drive a run because none of them re-implement what a run is.
+Keeping orchestration in the core is what makes batch runs, automation,
+unattended sweeps, and remote execution possible. Every component drives a run
+through the same library.
 
 ## Components
 
-The Test Cabinet is made up of the following components.
-
 | Component | What it is |
 | --------- | ---------- |
-| [Core](/components/core/overview/) | The Rust library that implements ~95% of the functionality. Everything else wraps it. |
+| [Core](/components/core/overview/) | The Rust library that implements the run lifecycle and owns the data contracts. |
 | [CLI](/components/cli/overview/) | The `tcab` binary. Exposes the core so runs can be scripted and swept in batch. |
-| [Dispatcher](/components/dispatcher/overview/) | A thin controller that claims queued runs from the backend and creates one driver `Job` per run. |
-| [Driver](/components/driver/overview/) | The per-run executor: it runs exactly one test case in a `Job`, streams its progress to the backend, and exits. |
-| [Artifacts](/components/artifacts/overview/) | A data-plane service that serves produced run trees (playable builds, proof/asset media) off a persistent volume. |
-| [Tauri app](/components/tauri/overview/) | The desktop GUI — the primary interactive way to launch runs, watch them live, review them, and publish. It enqueues runs at the backend like the web console. |
-| [Web console](/components/web/overview/) | The same launcher/reporter console as the Tauri app, running in a browser, that enqueues runs at the backend's run queue. |
-| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results (stored, reviewed, and published). |
-| [Auth service](/components/auth/overview/) | A small standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
+| [Dispatcher](/components/dispatcher/overview/) | A controller that claims queued runs from the backend and creates one driver `Job` per run. |
+| [Driver](/components/driver/overview/) | The per-run executor. It runs exactly one test case in a `Job`, streams its progress to the backend, and exits. |
+| [Artifacts](/components/artifacts/overview/) | A data-plane service that serves produced run trees (playable builds, proof and asset media) off a persistent volume. |
+| [Arena](/components/arena/overview/) | A data-plane service that runs the adversarial test type's matches and tournaments off the backend. |
+| [Tauri app](/components/tauri/overview/) | The desktop GUI: the primary interactive way to launch runs, watch them live, review them, and publish. |
+| [Web console](/components/web/overview/) | The same launcher and reporter as the Tauri app, running in a browser. |
+| [Backend](/components/backend/overview/) | A private Rust server that distributes test case definitions, owns the run queue, and stores run results. |
+| [Auth service](/components/auth/overview/) | A standalone Rust server for user accounts: self-registration, password login, and the bearer tokens the backend verifies. |
 | [Site](/components/site/overview/) | The public static gallery at [testcabinet.ai](https://testcabinet.ai) where published runs are browsed and played. |
-| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the full routed gallery application all three GUIs mount, the presentational primitives they render, and the backend client interfaces the Tauri and web consoles share. |
+| [UI library](/components/ui/overview/) | Shared frontend code (`@test-cabinet/ui`): the routed gallery application all three GUIs mount, the primitives they render, and the backend client interfaces. |
+| [Voxel runtime](/components/voxel-runtime/overview/) | Poses and renders a produced voxel rig. |
+| [Particle runtime](/components/particle-runtime/overview/) | Simulates and renders a produced particle system. |
 | [Docs](/components/docs/overview/) | This documentation site. |
 
-## Runners and Reporters
+## Runners and reporters
 
-Two roles recur across the components:
+Two roles recur across the components.
 
-- A **runner** is the component that actually executes a test case. There is now
-  exactly **one**: the [driver](/components/driver/overview/) the
-  [dispatcher](/components/dispatcher/overview/) creates per run. The driver needs
-  a container runtime (the Kubernetes API, which it uses to create an untrusted
-  sandbox pod), resolves the requested test case version from the backend, drives
-  the run through the core, and reports the result back to the backend. The
-  [CLI](/components/cli/overview/), the [Tauri app](/components/tauri/overview/),
-  and the [web console](/components/web/overview/) do **not** run test cases
-  themselves; they **enqueue** a run at the backend and watch it (see
-  [Server-side Run Topology](#server-side-run-topology)), so none of them needs a
-  container runtime.
-- A **reporter** is any component that displays run results: the
-  [Tauri app](/components/tauri/overview/), the
-  [web console](/components/web/overview/), and the
-  [public site](/components/site/overview/). Reporters read published results;
-  only GUI reporters let a person interact with the produced implementations.
+- A runner executes a test case. The [driver](/components/driver/overview/) is
+  the only one. It resolves the requested test case version from the backend,
+  drives the run through the core, creates an untrusted sandbox pod through the
+  Kubernetes API, and reports the result back to the backend.
+- A reporter displays run results: the [Tauri app](/components/tauri/overview/),
+  the [web console](/components/web/overview/), and the [public
+  site](/components/site/overview/). Reporters read stored results, and the two
+  consoles let a person interact with the produced implementations.
 
-The Tauri app and the web console are launchers and reporters in one — they
-enqueue runs, watch them live, review them, and show results in one place — which
-is why the Tauri app is expected to be the primary way The Test Cabinet is used.
-The two consoles differ only in delivery (a desktop binary vs. a browser bundle)
-and in their host wiring; both enqueue runs at the
-[backend](/components/backend/overview/), which a
-[dispatcher](/components/dispatcher/overview/) drains into per-run
-[driver](/components/driver/overview/) `Job`s. All three GUIs in fact mount the
-*same* routed gallery application from the [UI library](/components/ui/overview/);
-the consoles are that app with the launch surface enabled, and the public site is
-the same app with it off.
+The Tauri app and the web console are launchers and reporters in one. They
+enqueue runs, watch them live, review them, and show results in one place. The
+Tauri app is the primary way The Test Cabinet is used. The two consoles differ
+in delivery and host wiring: a desktop binary against a browser bundle.
 
-## The Backend
+All three GUIs mount the same routed gallery application from the [UI
+library](/components/ui/overview/). The consoles are that application with the
+launch surface enabled, and the public site is the same application with it off.
 
-Earlier versions of The Test Cabinet deliberately had **no** backend. Run
-records were committed into the site's dataset — a "git-as-a-db" design that was
-chosen for convenience rather than because it was sound. That requirement has
-been dropped in favor of a single, centralized
-[backend](/components/backend/overview/) that records run results and serves as
-the canonical copy of the test case definitions runners need.
+## Server-side run topology
 
-The backend stays deliberately small and has no public write surface; it sits on
-a private network, so reaching it is the first line of access control (see
-[Backend](/components/backend/overview/#authentication)). On top of that, real
-**user [accounts](/components/backend/overview/#accounts)** — held in a standalone
-[auth service](/components/auth/overview/) — identify *who* acts, so that every
-[review](/components/core/results/#reviews) is attributed to a person. The backend
-verifies the auth service's bearer tokens on the mutating run endpoints (review,
-publish); reads stay open. The [public site](/components/site/overview/)
-remains a fully static, backend-less deployment: publishing exports a public
-snapshot of the **published** runs that the site builds from, so the gallery has
-no live dependency on the private backend.
+A run launched from the [CLI](/components/cli/overview/), the [Tauri
+app](/components/tauri/overview/), or the [web
+console](/components/web/overview/) executes on the cluster rather than on the
+launcher's machine. The launcher enqueues the run at the
+[backend](/components/backend/overview/), which owns the run queue. A
+[dispatcher](/components/dispatcher/overview/) claims the queued run and creates
+one Kubernetes `Job` running a [driver](/components/driver/overview/).
 
-## Local Operation
+The driver executes the run, creating an untrusted sandbox pod through the
+Kubernetes API. It streams live progress back to the backend, which relays it to
+the launcher; uploads the produced tree to the [artifact
+service](/components/artifacts/overview/); and reports the produced record,
+which the backend stores privately.
 
-No run executes on the machine that launched it. The CLI, the Tauri app, and the
-web console all **enqueue** a run at the [backend](/components/backend/overview/)
-and watch it; the only component that needs a container runtime is the
-[driver](/components/driver/overview/), and the runtime it needs is the Kubernetes
-API. So a launcher requires nothing more than a reachable backend (and an
-account) — no host Docker or Podman. For local development this means the
-service-driven stack must be up: the local mirror runs the backend, dispatcher,
-driver, and artifact service on a [k3d](/development/running/) cluster, and `tcab
-run` and the desktop app target that stack just as a console does in production.
-See [Execution](/components/core/execution/) and [Running](/development/running/).
+Each run is one schedulable `Job`, so concurrency scales with the cluster. A
+launcher needs a reachable backend and an account, and no container runtime of
+its own. Local development runs the same manifests on a [k3d
+cluster](/development/running/), so a run is a `Job` everywhere. See
+[Kubernetes: run plane](/deployment/kubernetes/run-plane/).
 
-## Server-side Run Topology
+## The backend
 
-A run launched from **any** of the GUIs — the CLI, the
-[Tauri app](/components/tauri/overview/), or the
-[web console](/components/web/overview/) — does not execute on the launcher's
-machine. The launcher **enqueues** the run at the
-[backend](/components/backend/overview/), which owns a run queue; a thin
-[dispatcher](/components/dispatcher/overview/) claims the queued run and creates one
-Kubernetes `Job` running a [driver](/components/driver/overview/); the driver
-executes the run (creating an untrusted sandbox pod via the Kubernetes API), streams
-its live progress back to the backend (which relays it to the launcher), uploads the
-produced tree to the [artifact service](/components/artifacts/overview/), and reports
-the produced record (the backend stores it privately). Each run is one schedulable
-`Job`, so concurrency scales with
-the cluster rather than with a hand-sized pool — there is no per-pod registration
-and no long-lived worker. Local development runs the **same** manifests on
-[k3d](/development/running/), so a run is a `Job` everywhere. This topology replaces
-the earlier worker-pool design; see [Kubernetes: staging & prod](/deployment/kubernetes/).
+The [backend](/components/backend/overview/) records run results and serves as
+the canonical copy of the test case definitions runners need. It stays small and
+has no public write surface, and it sits on a private network, so reaching it is
+the first line of access control.
 
-## A Run
+User [accounts](/components/backend/overview/#authentication), held in the
+standalone [auth service](/components/auth/overview/), identify who acts, so
+that every [review](/components/core/results/#reviews) is attributed to a
+person. The backend verifies the auth service's bearer tokens on the mutating
+run endpoints, review and publish; reads stay open.
+
+The [public site](/components/site/overview/) is a fully static, backend-less
+deployment. Publishing exports a public snapshot of the published runs that the
+site builds from, so the gallery has no live dependency on the private backend.
+
+## A run
 
 At a high level, launching a run must:
 
@@ -128,42 +103,34 @@ At a high level, launching a run must:
 - Seed a fresh git repository with the selected
   [variant](/testing/end-to-end/overview/#variants)'s data.
 - Start a container and invoke the agent harness against the seeded repository.
-- Surface the harness's activity as a live stream of
-  [harness events](/components/core/events/) while the run is in progress.
-- Record [metrics](/components/core/metrics/) as the run proceeds and collect the
-  produced repository when it finishes.
-- Run [validation](/components/core/validation/) over the produced implementation.
-- Write a [run record](/components/core/run-records/); the driver reports it to the
-  backend, which stores it *privately*, leaving the run ready to be
-  [reviewed and published](/components/core/results/#lifecycle).
+- Surface the harness's activity as a live stream of [harness
+  events](/components/core/events/) while the run is in progress.
+- Record [metrics](/components/core/metrics/) as the run proceeds and collect
+  the produced repository when it finishes.
+- Run [validation](/components/core/validation/) over the produced
+  implementation.
+- Write a [run record](/components/core/run-records/) and report it to the
+  backend, which stores it privately.
 
-Getting a run onto the gallery is two explicit steps: **review** lets people
-(typically not the operator) submit assessments of the produced run (its build is
-playable for review off the [artifact service](/components/artifacts/overview/));
-and **publish** releases the produced code to its own public repository, deploys
-its build to Cloudflare Pages, and flips the reviewed run public, which refreshes
-the snapshot the site is built from. The produced record is stored privately the
-moment the run finishes, so neither step is a separate "push". The CLI's
-`tcab publish` collapses both for the solo case. See
+A stored run reaches the gallery through two explicit steps. Review collects
+assessments of the produced run from people other than the operator, and publish
+releases the produced code and flips the reviewed run public. See
 [Results](/components/core/results/).
 
-## Live Streaming
+## Live streaming
 
-Some progress happens *inside* the run container — most visibly an
-[asset-generation](/testing/asset-generation/overview/) run drawing through its
-in-container binary — and a watched run shows that progress to the viewer in real
-time. Because the container's filesystem is not host-visible mid-run and a
-subprocess's stdout is mediated by the harness, the host opens a small per-run
-network listener that the in-container process connects back to, and relays each
-update to the viewer over the run's existing live channel. This is a reusable
-pattern; see [Live Streaming](/components/live-streaming/).
+Progress that happens inside the run container reaches a watching viewer in real
+time over a dedicated channel: the run host opens a per-run network listener
+that the in-container process connects back to, and each update is relayed to
+the viewer over the run's existing live channel. See [Live
+Streaming](/components/live-streaming/).
 
-## A Note on "Harness"
+## The two meanings of "harness"
 
-The word *harness* is used two ways throughout these docs:
+The word harness is used two ways throughout these docs.
 
-- The *testing harness* is The Test Cabinet's own application that runs
+- The testing harness is The Test Cabinet's own application that runs
   benchmarks.
-- An *agent harness* is a third-party coding tool (for example Claude Code or
-  Codex) that drives a model through a test case. See
-  [Agent Harnesses](/components/core/harnesses/).
+- An agent harness is a coding tool, for example Claude Code or Codex, that
+  drives a model through a test case. See [Agent
+  Harnesses](/components/core/harnesses/).

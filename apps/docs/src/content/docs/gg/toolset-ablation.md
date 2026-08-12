@@ -2,91 +2,85 @@
 title: "Toolset ablation"
 ---
 
-Because gg's [modularity comes from the toolset](/gg/overview/#modularity-through-tools),
-the **set of tools offered to agents is itself an experimental variable**. Toolset
-ablation makes that variable first-class: the toolset is recorded as part of the
-[capability set](/gg/overview/#the-capability-set) and exposed as a slice-by facet
-in [result aggregation](/gg/result-aggregation/), so "which tools actually matter?"
-is a query, not a guess.
+The set of tools an agent is offered is an experimental variable. gg records the
+toolset a run resolved to, and every agent instance reports the surface it was
+given, so a study can vary the toolset between arms and read what each arm
+actually offered out of the record.
 
-This is the purest expression of gg's reason for existing. Because switching a
-capability on or off *is* offering or withholding its tools, most ablation studies
-reduce to varying the toolset. Examples:
+Enabling a capability is what offers its tools, so an ablation is expressed as a
+capability set plus the per-agent `disabledTools` list, which strikes individual
+tools whose capability is on.
 
-- Does an agent with semantic search do better than one with `grep` only?
-- Does `apply-patch` beat whole-file `write-file`, or vice versa?
-- Does **removing** a tool the model over-uses improve results?
+## The toolset on the run record
 
-It costs almost nothing beyond what the capability set and aggregation already
-provide, which makes it the cheapest way to start producing findings.
+The session summary records `effective_tools`: the root agent's resolved toolset,
+in the order the model was shown it, after capability gating and after
+`disabledTools`. The [query language](/gg/analysis/query-language/) exposes it as
+`tool.<name>`, written only for the tools a run offered. "Never offered this
+tool" is therefore asked as `not tool.<name>`.
 
-## Reading the arm on a single run
+## The surface of one agent instance
 
-Aggregation compares the arms; it does not tell you whether one run's arm was really
-applied. For that, every agent instance reports the toolset gg **resolved** for it, on the
-run's own stream — see [`agent_surface`](/gg/telemetry/#what-an-agent-is-offered). That is
-the configuration after it was applied, not the configuration itself: capabilities,
-[modules](/gg/modules/) that actually bound, position in an [FSM](/gg/fsms/), and the
-per-agent `disabledTools` that strike a tool whose capability is on.
+The run record answers whether an arm applied through `agent_surface`, which
+every instance emits once per incarnation with the surface gg resolved for it.
+See [telemetry](/gg/telemetry/overview/) for the event itself. It carries:
 
-So the console can state the difference this page exists to make. In the **Instances**
-explorer each agent gets a **tools** file (**apis**, for a
-[code-shaped](/gg/responses-as-code/) agent), and in the **Agents** panel each profile's
-detail carries the same set unioned across its instances:
+- `tools` is every gg tool name the instance was offered, in the order the model
+  was shown them, including the ending calls its dispatched role may end with.
+- `apis` is the capability modules a responses-as-code program binds, and is
+  empty for a tool-calling instance.
+- `withheld` is the `disabledTools` entries that name a gg tool.
+- `execution_mode`, `program_language` and `doc_view_types` are per-agent
+  settings a single run may hold two values of, which is what makes an A/B
+  within one run readable.
 
-- a tool the model **called** leads with its count — and for a code agent that count is
-  the **function's own**, since gg records a model-facing call under the function the
-  program wrote rather than under whatever tool ran underneath it;
-- a tool it was **offered and never called** stays in the list, reading a real `0×` and
-  muted — the model ignored it, which is a result about the model;
-- a tool `disabledTools` **withheld** is listed apart and marked as such — the harness
-  never offered it, which is a result about the run.
+The resolved surface accounts for facts no re-derivation from the configuration
+could reach: which [modules](/gg/modules/) bound, which memory strategy is in
+force, where the instance stands in an [FSM](/gg/fsms/), and which tools an
+ablation struck.
 
-That third list is gg's own, carried on the surface event beside the offered set rather
-than re-read from the configuration, and it holds only the `disabledTools` entries that
-**name a gg tool**. A name gg does not know — a typo, a tool since removed — is absent
-from it, because it withheld nothing: gg treats such a name as inert, warns about it at
-startup (*"it is not a tool gg offers, so it withholds nothing"*), and offers the agent
-exactly the surface it would have had. So the panel cannot show an ablation that never
-applied as applied, which on the one page whose job is telling *never offered* from
-*never called* would be the worst thing it could say. The configuration speaks for itself
-in exactly one place: an arm no instance of which ever reported a surface — one the run
-never spawned, or a record written before gg emitted the event — where the **Agents**
-panel names the ablation the arm *asked for* and says, in as many words, that whether it
-applied is unknown.
+## Names that withhold nothing
 
-Without the offered set the second and third are the same empty space on the page, which
-is precisely the confound an ablation is trying to remove. It is also how you catch an arm
-that never took, in either of its two shapes: an ablation whose withheld tool still
-appears in an instance's offered set is a configuration that did not do what it said, and
-a `disabledTools` entry that reaches neither list — absent from the offered set and absent
-from the withheld one — is a name gg never recognized, which the run log will have warned
-about.
+`withheld` holds only the `disabledTools` entries that name a gg tool. A name gg
+does not recognize is inert: gg warns about it at startup and offers the agent
+exactly the surface it would have had. A consumer may therefore state every entry
+as an ablation gg applied, without checking it against a vocabulary it has no way
+to know.
 
-## One confound this page cannot remove: a code agent's own runtime
+An entry that names a real tool no enabled capability was contributing stays in
+the list. It withholds nothing in practice and is a deliberate setting for one
+arm of a sweep. What was offered is `tools`, and neither field derives the other.
 
-Under [responses as code](/gg/responses-as-code/) the guest is linked against the full
-WASI surface, so a program has the host's filesystem, clock, randomness and sockets
-through **the language's own standard library** — not through a gg tool. That is
-deliberate ([why](/gg/program-languages/#what-the-host-links-and-why-it-is-the-same-for-every-language)),
-and it has a consequence an ablation has to be told about rather than discover.
+## Reading it in the console
 
-Withholding the filesystem tools from a code agent does **not** withhold the workspace. It
-withholds gg's *typed, recorded* way of reaching it: an arm without `read_file` still has
-whatever its language spells `open(path)`, and nothing about that call appears in the
-offered set, in the call counts, or in the run's tool records. The same is true of the
-network.
+In the Instances explorer each agent instance gets a tools file, or an apis file
+where it answers as code. A tool the model called leads with its count, and for a
+code agent that count is the function's own, because gg records a model-facing
+call under the function the program wrote. A tool that was offered and never
+called stays in the list reading zero. A withheld tool is listed apart and marked
+as withheld.
 
-**`shell` is the exception, and it is a real one.** WASI p2 has no process-spawn interface
-at all, so a guest cannot execute a command through its language's standard library either:
-`subprocess`, `Runtime.exec` and their equivalents are non-functional in the sandbox
-whatever the linker defines. Withholding the `shell` family from a code agent therefore
-withholds the capability, exactly as it does for a tool-calling agent.
+The Agents panel carries the same material per profile, unioned across the
+profile's instances, with the count of instances that were offered each entry. A
+profile no instance of which reported a surface is described from its
+configuration, and the panel says that whether the ablation applied is unknown.
 
-So for a code agent, an ablation of the **filesystem or network** families measures
-*whether the model reaches for gg's surface*, not whether it can reach the resource. That is
-still a real and interesting question — it is the question of whether the typed surface
-earns its place — but it is not the question the same ablation answers for a tool-calling
-agent, and the two arms must not be read as the same experiment. An ablation that needs the
-filesystem or the network genuinely absent has to be run in an environment that lacks it; an
-ablation of `shell` needs nothing of the sort.
+## Ablating a code agent's tools
+
+Under [responses as code](/gg/responses-as-code/overview/) the guest is linked
+against WASI: the container root is preopened at `/`, the network is inherited,
+and the process environment, a real clock and a real RNG are available. A program
+reaches the filesystem and the network through its own language's standard
+library, without a gg tool, and nothing about such a call appears in the offered
+set, in the call counts, or in the run's tool records.
+
+Withholding the filesystem or network families from a code agent measures whether
+the model reaches for gg's typed surface, which is a different question from the
+one the same ablation answers for a tool-calling agent. An ablation that needs
+the filesystem or the network genuinely absent has to run in an environment that
+lacks it.
+
+`shell` is the exception. WASI p2 exposes no process-spawn interface, so a guest
+cannot execute a command through its standard library either. Withholding the
+shell family from a code agent withholds the capability, exactly as it does for a
+tool-calling agent.

@@ -13,7 +13,7 @@ This folder holds the *assets*; the authoritative, narrative documentation is th
 and how they fit together:
 
 - Overview — `apps/docs/src/content/docs/deployment/overview.md`
-- Kubernetes (staging & prod) — `apps/docs/src/content/docs/deployment/kubernetes.md`
+- Kubernetes (staging & prod) — `apps/docs/src/content/docs/deployment/kubernetes/overview.md`
 
 Running the same services locally on one machine (the `local/` template below) is
 documented in the Development section, not here:

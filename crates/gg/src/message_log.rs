@@ -24,7 +24,7 @@
 //! keeps the console's [per-agent reduction] able to resolve a pointer from that agent's
 //! partition of the stream alone.
 //!
-//! [per-agent reduction]: https://docs.testcabinet.ai/gg/telemetry/
+//! [per-agent reduction]: https://docs.testcabinet.ai/gg/telemetry/overview/
 
 use std::collections::BTreeSet;
 use std::collections::hash_map::DefaultHasher;

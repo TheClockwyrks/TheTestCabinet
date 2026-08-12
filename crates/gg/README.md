@@ -13,7 +13,7 @@ subprocess through an [orchestrator](../../orchestrators/README.md) and
 `tcab-session` — `gg` **is** the executor. `core` invokes this binary **directly**,
 and it contains the whole agent, in-process:
 
-- the **model client** (multi-provider, [slot-bound](../../apps/docs/src/content/docs/gg/multi-model.md)),
+- the **model client** (multi-provider, [slot-bound](../../apps/docs/src/content/docs/gg/configurations.md#model-slots)),
 - the **agent turn loop** (the one coarse-grained plug point),
 - **tool dispatch** and the toolset (the primary axis of modularity), and
 - the first-party **telemetry** emitter.
@@ -106,7 +106,7 @@ page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table
 | `model.rs` | The provider-agnostic message/tool types (`Message`, `ToolCall`, `ToolDefinition`, `ModelResponse`) and the `ModelClient` trait + `ModelError`. |
 | `client.rs` | The slot-bound model clients: `OpenRouterClient` (with bounded retry/backoff), the scripted offline `MockClient`, and slot → client selection. |
 | `agent.rs` | The agent turn loop and the orchestrator above it (the one coarse-grained plug point). |
-| `agent.code.rs` | One [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md) turn: heal the reply into a program, run it, service every call it composes, and tell the loop what to do next. |
+| `agent.code.rs` | One [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code/programs.md) turn: heal the reply into a program, run it, service every call it composes, and tell the loop what to do next. |
 | `agent.transitions.rs` | [Succession](../../apps/docs/src/content/docs/gg/fork-and-exec.md): the `Handoff` an `exec`, a `fork` or an [FSM transition](../../apps/docs/src/content/docs/gg/fsms.md) declares, and the refusals that answer an illegal one. |
 | `modules.rs` | [Modules](../../apps/docs/src/content/docs/gg/modules.md): the six units of per-agent state, the ownership param the board and the archive read, and the fork / share / transfer primitives every succession is built from. |
 | `healing.rs` | [Response healing](../../apps/docs/src/content/docs/gg/response-healing.md): the deletion-only, counted, disclosed repairs applied to a model's reply before it is compiled. |
@@ -114,8 +114,8 @@ page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table
 | `context.rs` | The context window model: what the agent is holding, what is pinned, and what a reclaim frees. |
 | `prompts.rs` | Everything gg *says* to a model, rendered from the `templates/*.hbs` files. |
 | `tools/` | Tool dispatch, the offered toolset, and the typed `ToolData`/`ToolFailure` outcomes every tool emits. |
-| `sandbox.rs` + `sandbox/` | [Responses as code](../../apps/docs/src/content/docs/gg/responses-as-code.md): the wasmtime host and the WIT membrane. |
-| `sandbox/language.rs` + `sandbox/language/` | [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md): the seam a program's language is registered behind — preparing a reply for its guest, that guest's prebuilt component and the signature catalogue `build.rs` reflects out of its SDK, what it needs from the host linker, and its healing/prompt dialects. Eleven languages are registered, one module each; `language/typescript.check.rs` is the `tsc` pass that type-checks a model's program against the SDK's own declarations. |
+| `sandbox.rs` + `sandbox/` | [Responses as code](../../apps/docs/src/content/docs/gg/responses-as-code/sandbox.md): the wasmtime host and the WIT membrane. |
+| `sandbox/language.rs` + `sandbox/language/` | [Program languages](../../apps/docs/src/content/docs/gg/languages/registration.md): the seam a program's language is registered behind — preparing a reply for its guest, that guest's prebuilt component and the signature catalogue `build.rs` reflects out of its SDK, what it needs from the host linker, and its healing/prompt dialects. Eleven languages are registered, one module each; `language/typescript.check.rs` is the `tsc` pass that type-checks a model's program against the SDK's own declarations. |
 | `replay.rs` / `replay_driver.rs` | Capturing a run's non-deterministic inputs, and reconstructing the run from that record. |
 
 ## Building it

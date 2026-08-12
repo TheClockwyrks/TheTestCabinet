@@ -43,7 +43,7 @@
 //!
 //! # The prompt names no functions at all — the model discovers them
 //!
-//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt names
+//! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/views/) the prompt names
 //! **no call**. Each capability section says that the agent has the capability, what it is for and
 //! how it behaves, and stops there; the signatures and documentation live behind the
 //! [docs carve-out](crate::docs), reflected from the SDK's own declarations, and are reached by
@@ -459,7 +459,7 @@ fn tidy(rendered: &str) -> String {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SystemContext {
-    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
+    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/)
     /// mode, where the tools are described as functions a program calls rather than as tool calls.
     pub responses_as_code: bool,
     /// The [language](GgProgramLanguage) this agent writes its programs in, which decides **which**
@@ -1190,7 +1190,7 @@ struct NoContext {}
 // it is product text of exactly the same weight as the system prompt, and lives in the same place.
 //
 // Every brief that ends in a **verdict or a summary** takes a `code` flag, because under
-// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) there is no final message
+// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/programs/) there is no final message
 // to end and no stopping that is not a `finish` call. A brief that teaches the wrong ending fails
 // silently: the child does the work, never reaches `completed`, and everything gated on that status
 // discards it.
@@ -1335,7 +1335,7 @@ pub struct CompactionPromptContext {
     pub compact_call: bool,
     /// The agent must record its working state as [memories](crate::memories).
     pub memory_writes: bool,
-    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
+    /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/overview/)
     /// mode, so the instruction names the call the way that run's model actually makes it.
     pub code_mode: bool,
     /// The name of the compact tool, so the prompt names it from one source.

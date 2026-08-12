@@ -902,7 +902,7 @@ fn a_role_gets_only_its_own_ending_calls() {
 /// neither is a hole in the *measurement*, because the refusal itself is uniform on all eleven arms:
 /// it is opened and closed as an API call and lands on the turn's refusal roster
 /// (a `SandboxRefusal`) under gg's own key. **That roster is what a
-/// cross-arm count of withheld reaches must join on**, not the turn's error type. `/gg/static-sdks/`
+/// cross-arm count of withheld reaches must join on**, not the turn's error type. `/gg/languages/static-sdks/`
 /// says the same thing to an operator.
 #[test]
 fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {

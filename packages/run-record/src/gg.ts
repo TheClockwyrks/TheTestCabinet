@@ -2587,7 +2587,7 @@ export type GgTelemetryKind =
        * gg has exactly one name for. A study comparing arms — or comparing two agents of one run
        * written in two languages — joins on this and on nothing else.
        *
-       * `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/)
+       * `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/)
        * carve-outs, which no arm's catalogue spells and which therefore name no operation. They
        * are already recorded under gg's own words for them, so `object`.`function` reads exactly
        * as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
@@ -3388,7 +3388,7 @@ export type GgTelemetryKind =
        * spent running, excluding time parked in a bridged tool call, which is the per-program
        * efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
        * Reported on every path that reached the engine, including a fault, a trap, or an
-       * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
+       * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
        * reached the engine (a program that would not prepare, or a sandbox that could not be
        * built).
@@ -3725,7 +3725,7 @@ export type GgTelemetryEvent = {
        * gg has exactly one name for. A study comparing arms — or comparing two agents of one run
        * written in two languages — joins on this and on nothing else.
        *
-       * `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/)
+       * `None` for the [documentation](https://docs.testcabinet.ai/gg/responses-as-code/views/)
        * carve-outs, which no arm's catalogue spells and which therefore name no operation. They
        * are already recorded under gg's own words for them, so `object`.`function` reads exactly
        * as an operation id would (`docs`.`search`) — the identity is there, it is simply not the
@@ -4526,7 +4526,7 @@ export type GgTelemetryEvent = {
        * spent running, excluding time parked in a bridged tool call, which is the per-program
        * efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.
        * Reported on every path that reached the engine, including a fault, a trap, or an
-       * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
+       * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/sandbox/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
        * reached the engine (a program that would not prepare, or a sandbox that could not be
        * built).

@@ -166,5 +166,5 @@ as a paragraph where it expected a summary — fails on the author instead.
 - `crates/gg/src/sandbox/language/kotlin.surface.test.rs` — every gg tool driven through that
   membrane from its Kotlin spelling, the agreement gate over the generated catalogue, and every
   declared library driven into the real compiler.
-- [`gg/program-languages.md`](../../apps/docs/src/content/docs/gg/program-languages.md) — the
+- [`gg/languages/kotlin.md`](../../apps/docs/src/content/docs/gg/languages/kotlin.md) — the
   prose, including why a program is a script.

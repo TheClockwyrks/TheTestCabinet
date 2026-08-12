@@ -2,152 +2,125 @@
 title: Writing Case Specifications and Prompts
 ---
 
-The seeded specs and the rendered prompt are the entire world a model sees when
-it builds a case. This guide collects the editorial rules that apply to every
+## Overview
+
+The seeded specs and the rendered prompt are the whole world a model sees when it
+builds a case. The rules on this page apply to every
 [end-to-end](/testing/end-to-end/overview/) and
-[full-stack](/testing/full-stack/overview/) case, so that the per-type authoring
-guides can stay focused on structure, manifests, and validation.
+[full-stack](/testing/full-stack/overview/) case, whether you are authoring one,
+revising one, or adding a variant. The per-type authoring guides say which files
+to produce; this page says what goes in them.
 
-Read this alongside
-[Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
-or
-[Authoring a Full-Stack Test Case](/guides/authoring/authoring-a-full-stack-test-case/).
-Those guides describe *what files to produce*; this one describes *how to write
-what goes in them*, and applies equally when revising an existing case or adding
-a variant.
+## The seeded set
 
-## The specification is the only source of truth
+A run is seeded with the selected variant's specs plus the case's assets, in an
+isolated container. Everything a model must know to build the case is written
+into that set, in real numbers and observable terms.
 
-A run is seeded with the selected variant's specs and nothing else: no links out,
-no docs site, no reference source, no conversation. Anything a model must know to
-build the case correctly has to be written down in the seeded set, in real
-numbers and observable terms.
+Every value that matters is stated as a concrete value: dimensions, colors,
+timings, scores. Reference screenshots illustrate the target; the numbers stay in
+the specs.
 
-Two consequences follow.
+The seeded set describes the design as it stands today. A case's history lives in
+git and in the immutable versions under its slug, so wording such as
+"previously", "as of v1.1", or "this was changed to" is removed from the seeded
+files.
 
-**Say it once, and say it completely.** If a value matters (a dimension, a
-color, a timing, a score) it belongs in a spec as a concrete value, not as a
-gesture at one. Screenshots illustrate a target; they never substitute for the
-numbers.
+## Keeping evaluation out of the seeded set
 
-**Write only the current state.** A model sees the specs exactly as they stand
-today, so the history of how they got there is noise that costs tokens and
-invites confusion. Do not write "previously", "as of v1.1", "this was changed
-to", "the old behavior was", or changelog-style notes. Describe the system that
-exists. Version history lives in git, and a case's own history lives in the
-immutable versions under its slug.
+A model must not learn that it is being evaluated, that its output is scored, or
+that The Test Cabinet exists. Knowing it is under test changes how a model
+behaves and contaminates the result.
 
-## Never reveal that this is a test
-
-A model must not learn that it is being evaluated, that its output will be
-scored, or that The Test Cabinet exists. Knowing it is under test changes how a
-model behaves, which contaminates the result.
-
-Keep out of every seeded spec and prompt:
+Every seeded spec and the prompt exclude:
 
 - the phrases "test case", "test cabinet", "benchmark", "evaluation", "grading",
-  "scoring", and the names of any of this project's components or tooling;
-- any framing that presents a requirement as something being *measured* rather
-  than something the product needs;
-- URLs, paths, or identifiers that point back at this repository or the gallery.
+  and "scoring", and the names of this project's components and tooling;
+- framing that presents a requirement as something measured rather than something
+  the product needs;
+- URLs, paths, and identifiers that point at this repository or the gallery.
 
-Requirements that exist for validation still go in the spec, framed as ordinary
-product requirements. The [instrumentation](/testing/end-to-end/instrumentation/)
+Requirements that exist for validation are written as ordinary product
+requirements. The [instrumentation](/testing/end-to-end/instrumentation/)
 contract is the standing example: the debug API, deterministic core, and debug
-overlay are specified as normal debugging features that the game needs, never as
-the mechanism a run is judged through.
+overlay are specified as debugging features the game needs.
 
-Mentioning **reviewers** is acceptable. Work gets reviewed whether or not it is
-part of a benchmark, so "reviewers will check X" reads as ordinary engineering
-process rather than as a tell.
+Mentioning reviewers is acceptable. Work gets reviewed whether or not it is part
+of a benchmark, so "reviewers will check X" reads as ordinary engineering
+process.
 
-## Edge cases belong in review items, not in specs
+## Edge cases
 
 A spec states the rules of the system. Recognizing what those rules imply at the
-boundaries is the model's job, and failing to recognize it is a genuine result
-worth measuring.
+boundaries is the model's job, and failing to recognize it is a result worth
+measuring.
 
-So do not write gotcha notes. If a situation is already covered by the spec's
-wording, calling it out separately hands the model a hint it should have derived,
-and turns a design test into a reading-comprehension test.
+An edge case earns a place in a spec when it needs behavior the general rules do
+not already produce. In that case it is a rule, and it is written as one.
 
-An edge case earns a place in the spec only when it needs **special** behavior
-that the general rules do not already produce. In that case it is not really an
-edge case, it is a rule, and it should be written as one.
-
-Every edge case you are tempted to warn about should instead become a
+Every other edge case becomes a
 [review item](/testing/end-to-end/evaluation/#review) with an
 [automated validation script](/testing/end-to-end/manifests/#automated-validation),
-so a model that misses it is docked points rather than rescued by a footnote.
-Write the script against the debug API and the deterministic core, exactly as the
-[instrumentation](/testing/end-to-end/instrumentation/) doc describes.
+so a model that misses it is docked points. Write the script against the debug
+API and the deterministic core.
 
-## Say nothing about variants a run cannot see
+## One variant per run
 
-A run receives one variant. References to sibling variants, alternate modes, or
-"the other difficulty settings" describe things the model has no access to and
-cannot build, so they read as missing specs.
+A run receives one variant, so a seeded spec describes only that variant.
+References to sibling variants, alternate modes, or other difficulty settings
+describe things the model cannot build.
 
-- Never mention other variants or modes by name in a seeded spec.
 - Give each variant its own spec file seeded to a common destination, or branch
   with Handlebars so the rendered spec carries only the selected variant's
   section.
-- Do not keep a `modes/` directory holding a single file. If a variant has one
-  mode spec, name it for what it is (`mode.md`), and let the seeded destination
-  be stable across variants.
+- Name a single mode spec for what it is (`mode.md`) and keep its seeded
+  destination stable across variants.
 
-## Name and scope files for this case
+## File names and scope
 
-Spec filenames are part of the specification a model reads, so they should
-describe this case's concerns. Many cases were scaffolded from Carom and inherited
-its file names even where they fit badly. There is no requirement to match Carom
-name for name, and no reason to force a case into a shape that is not natural for
-it.
+Spec file names are part of the specification a model reads, so they describe
+this case's concerns. Rename and split freely so each file has an accurate name
+and a coherent scope: a reader can predict a file's contents from its name and
+find a given rule in exactly one file, with the others cross-referenced by name.
 
-Rename and split freely so that each file has an accurate name and a coherent
-scope: a reader should be able to predict a file's contents from its name, and
-find a given rule in exactly one file. Cross-reference the others by name. When
-you rename a spec, update the `[[spec]]` entries in `test-case.toml` and every
-cross-reference in the seeded set, then re-seed to confirm nothing dangles.
+When you rename a spec, update the `[[spec]]` entries in `test-case.toml` and
+every cross-reference in the seeded set, then re-seed to confirm nothing dangles.
 
-## Prompts state the task, not advice
+## Prompt content
 
 `prompt.hbs` tells the model what it is being asked to build, where the workspace
-is, and how the build must be invoked. It is not a place to coach.
+is, and how the build is invoked. Every other requirement lives in the specs and
+is pointed at rather than restated. If a sentence appears in both the prompt and
+a spec, cut it from the prompt.
 
-Remove "Verify before you finish", "make sure to test your work", "double-check
-your implementation", and every similar exhortation. A capable model should
-recognize on its own that it needs to validate what it built. A model that does
-not, and ships a broken build, has produced a real and useful signal, and
-prompting that behavior into existence hides it.
+The prompt carries no coaching. "Verify before you finish", "make sure to test
+your work", and similar exhortations are removed. A capable model recognizes on
+its own that it needs to validate what it built, and a model that ships a broken
+build has produced a real signal.
 
-State capability, not conduct: it is correct for the prompt to say that Playwright
-with Chromium is available in the container, and incorrect for it to say how or
-whether to use it.
-
-Keep the prompt short. It carries the task, the run-specific operational detail
-(workspace path, commit expectations), and the fixed build-and-serve interface.
-Every other requirement lives in the specs and is pointed at, not restated.
+State capability rather than conduct: the prompt says Playwright with Chromium is
+available in the container, and leaves how and whether to use it to the model.
 
 ## Prose style
 
 The specs are read by a model under a token budget, so density matters more than
 voice.
 
-**Em dash interruptions.** Avoid the parenthetical em dash aside. Text of the
-form "the ball bounces — losing speed — off the wall" should be restructured into
-plain sentences, or split into two. A single em dash introducing a clause at the
-end of a sentence is acceptable in moderation; a running habit of them is not.
+### Em dash asides
 
-**Bold.** Reserve bold for the few words that would change the build if missed.
-Existing specs over-use it heavily, and the correct target when revising is well
-under a tenth of the current amount. When everything is emphasized, nothing is.
-Prefer structure (headings, lists, tables) over inline emphasis to make a
-requirement findable.
+Restructure "the ball bounces — losing speed — off the wall" into plain
+sentences. A single em dash introducing a clause at the end of a sentence is
+acceptable in moderation.
 
-**Lists and tables over paragraphs** for anything enumerable: values, states,
-screens, controls, and thresholds all read better and stay unambiguous in a
-table.
+### Bold
+
+Reserve bold for the few words that would change the build if missed. Prefer
+structure such as headings, lists, and tables to make a requirement findable.
+
+### Lists and tables
+
+Values, states, screens, controls, and thresholds all read better and stay
+unambiguous in a table.
 
 ## Revision checklist
 
@@ -155,29 +128,25 @@ When you finish revising a case's specs or prompt, confirm each of the following
 
 - The seeded set is complete and self-contained, with every value written as a
   concrete number.
-- No historical or changelog wording anywhere in the seeded set.
-- No mention of testing, benchmarking, scoring, or this project, in specs,
-  prompt, or filenames.
-- No gotcha or edge-case warnings that the spec's own rules already imply, and a
-  review item with a validation script for each edge case you removed.
-- No references to other variants or modes, and no single-file `modes/`
-  directory.
-- Filenames describe this case's concerns, and each file has one coherent scope.
-- No "verify your work" advice in the prompt.
-- Em dash asides and bold usage cut back hard.
+- The seeded set carries no historical or changelog wording.
+- Specs, prompt, and file names carry no mention of testing, benchmarking,
+  scoring, or this project.
+- Each edge case the spec's own rules already imply has become a review item with
+  a validation script.
+- No spec references another variant or mode.
+- File names describe this case's concerns, and each file has one coherent scope.
+- The prompt states the task and the operational detail only.
+- Em dash asides and bold are cut back hard.
 
-Then re-run the resolution and seeding for every variant, as the per-type
-authoring guide's **Validate your work** section describes, and read the seeded
-output rather than the sources when checking these items. The seeded tree is what
-the model actually receives.
+Then re-render the prompt and re-seed every variant, as the per-type authoring
+guide's validation section describes, and check these items against the seeded
+output rather than the sources. The seeded tree is what the model receives.
 
 ## Next steps
 
-- [Authoring an End-to-End Test Case](/guides/authoring/authoring-an-end-to-end-test-case/)
-  — the full structural procedure for a playable case.
-- [Authoring a Full-Stack Test Case](/guides/authoring/authoring-a-full-stack-test-case/)
-  — the same, for a case that also produces its own 2D assets.
-- [Instrumentation](/testing/end-to-end/instrumentation/) — the debug API and
-  deterministic core that validation scripts drive.
-- [End-to-End Manifests](/testing/end-to-end/manifests/) — review items, sub-items,
-  and the `validation` table an edge case turns into.
+- [Authoring an end-to-end case](/guides/authoring/authoring-an-end-to-end-test-case/)
+  gives the structural procedure for a playable case.
+- [Authoring a full-stack case](/guides/authoring/authoring-a-full-stack-test-case/)
+  does the same for a case that also produces its own 2D assets.
+- [Instrumentation](/testing/end-to-end/instrumentation/) covers the debug API
+  and deterministic core that validation scripts drive.

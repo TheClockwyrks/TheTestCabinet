@@ -60,7 +60,7 @@ const MISSING_DESCRIPTION: &str = "(no description provided)";
 /// One parsed skill: the front-matter [`name`](Self::name)/[`description`](Self::description)
 /// shown to the model up front, the [`body`](Self::body) (front matter stripped) that
 /// `read_skill` returns and pins into context, and — under
-/// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) — the
+/// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/tools/) — the
 /// [code](Self::code) and [on-use script](Self::on_use) it carries.
 ///
 /// All three of body, code and on-use are optional in the sense that matters: a skill may be pure

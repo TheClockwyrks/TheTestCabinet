@@ -2,315 +2,325 @@
 title: "Session records"
 ---
 
-A **session record** pins what a gg session consumed, so a run that explains
-nothing on its own can still be explained. This page specifies **format v2**,
-which rewrites the record from a per-turn transcript into a content-addressed
-input log — and, because that removes the quadratic term, makes capture
-**always-on** rather than an opt-in debugging capability.
+A session record pins what a gg session consumed, so a run that explains nothing
+on its own can still be explained. This page specifies the record format, the
+journal a running session writes, and how the host folds one into the other. The
+[session record](/gg/session-record/) page describes what the capture is for.
 
-The [session record](/gg/session-record/) page describes what the capture is for.
-This is its format.
+Capture is on for every gg run and is gated by no capability.
 
-## The problem with v1
+## The shape of a record
 
-Today's record is a transcript: every turn re-serializes the whole conversation
-and the whole offered-tool array. It is quadratic in messages, linear-times-N in
-tool definitions, and carries full base64 image bytes inside that quadratic term.
+A record is a fixed seed, an agent provenance table, three content-addressed
+pools, a clip table, and an ordered log of the inputs the session consumed. Its
+size is `O(unique bytes) + O(Σ window items)`.
 
-The numbers come from a real captured record — a 23-entry, 12-turn, single-agent,
-no-image session:
+The seed is the identity the session started from: the baseline commit gg
+observed in the container, the build prompt the root agent was given, the
+context window resolved for each bound model slot, and each slot's final
+resolved modalities. Windows are recorded because compaction thresholds and the
+fullness signal are computed against them. Modalities are recorded as resolved
+rather than as initial, because a provider that refuses an image denies that
+model for the rest of the run.
 
-| Measure | Bytes |
-| --- | ---: |
-| On disk (pretty-printed) | 245,510 |
-| Compact re-serialization | 157,593 |
-| Σ per-turn conversation | 62,758 |
-| Unique messages / unique bytes | 28 / 9,756 — **6.4× redundancy at 12 turns** |
-| Σ per-turn tool definitions | 82,224 |
-| Distinct toolsets | **1** — **12× redundancy, i.e. exactly N** |
+The pools hold messages, offered toolsets and texts. Each entry is stored once
+under a content address and referenced by index.
 
-The finding that reshaped the design: **the offered tool array was 52% of the
-record — larger than the messages.** Pooling messages alone leaves half the bytes
-on the table for a short run and a permanent `O(N)` term for a long one.
+- The message pool holds each distinct message body. Its id is a 128-bit SHA-256
+  content address, computed over the message including its exact image payloads.
+  The stored body has each inline image payload reduced to a descriptor.
+  Addressing before the reduction is what keeps two different pictures of one
+  media type and decoded size two different messages.
+- The toolset pool holds each distinct offered tool-definition array. A run's
+  offered toolset rarely changes, so its redundancy is the turn count.
+- The text pool holds every large string payload: a tool outcome's output, a
+  `git` invocation's streams, a shell command's streams. A tool's output is also
+  quoted verbatim into the `tool` message that carries it into the window, so
+  interning both against one table collapses the pair.
 
-Images are the catastrophic case. A view's base64 payload is re-serialized every
-turn it survives: one 500 KB PNG is ~67 MB over 100 turns, and
-[autoloading a case's specifications](/gg/autoload-specifications/) seeds _all_ of
-its reference mockups — four images across 100 turns is ~267 MB. Pooled, the same
-four images are 2.7 MB, flat.
-
-## The shape
-
-> `seed` (fixed identity) + three content-addressed pools + an ordered input log
-
-This is [Foray's](/testing/adversarial/foray/architecture/) replay shape applied to
-gg: a fixed header plus the ordered inputs the session consumed. Size becomes
-`O(unique bytes) + O(Σ window items)`.
-
-**The three pools.** Messages, toolsets and texts. Each entry is stored once under a
-content address and referenced by **index**.
-
-- The **message pool** holds each distinct message body. Its id is a 128-bit
-  SHA-256 content address over the message _including its exact image payloads_ —
-  deliberately **not** the telemetry
-  [`fingerprint`](/gg/context-visibility/), which is a 64-bit hash over image
-  _descriptors_ and therefore not a content address for images at all. Two
-  different pictures of the same media type and decoded size fingerprint
-  identically, and would then collapse into one pooled message, which would put one
-  turn's window in place of another's.
-- The **toolset pool** holds each distinct offered tool-definition array. The
-  measured 12× redundancy above collapses to 1.
-- The **text pool** holds every large string payload — a tool outcome's output, a
-  `git` invocation's stdout, a probe body. It exists because the two largest
-  unpooled payloads are *duplicates of pooled material*: a tool's output is quoted
-  verbatim into the `tool` message that carries it into the window, and an
-  [issue review](/gg/project-management/)'s diff is quoted verbatim into the
-  reviewer's prompt. Interning both against one table collapses each pair.
-**The input log** is a flat, ordered list of entries, each carrying the agent that
-consumed the input and a globally monotonic `seq`.
+The input log is a flat, ordered list of entries. Each carries the id of the
+agent that consumed the input and a globally monotonic `seq` minted across all
+agents from one counter. Because a gg run holds run-global mutable state that is
+rendered into every agent's pinned prompt each turn, the recorded interleaving
+is part of what each agent was shown: entries read in `seq` order are the
+windows the run built.
 
 ## What counts as an input
 
-The reason to enumerate this exhaustively is that v1 silently dropped four
-categories that change control flow — so the record was blank precisely where a
-developer was most likely to be looking.
+The record captures every input that changes control flow:
 
-| Input | Changes control flow? | v1 | v2 |
-| --- | --- | --- | --- |
-| Model responses | yes | captured | captured, tagged with the call shape |
-| An image a turn carried | — | inline base64, re-serialized every turn | **descriptor only** — media type and decoded size, never the bytes |
-| Model **errors** | **yes** — a vision refusal strips images and re-runs the turn; a retry exhaustion counts against an error ceiling | **dropped** | captured |
-| [Handoff-compaction](/gg/compaction/) summarizer calls | yes — they rewrite the whole window | **not captured at all** | captured, on their own queue |
-| Tool outcomes | yes | captured | captured, typed, text and images pooled |
-| Orchestrator `git` — worktree add/commit/merge/diff | **yes** — a merge conflict changes the run | **bypasses tool dispatch entirely** | captured |
-| Cancel-file probe | **yes** — it ends the session | dropped | captured |
-| Deadline clock | **yes** | dropped | captured |
-| Latency clocks | no — metrics only | dropped | captured |
-| Startup filesystem (skills, memories, autoloaded files, templates) | — | dropped | **not captured** — see below |
-| Bulky text payloads (a command's streams, a tool's output) | yes | inline, whole | pooled and clipped, with a clip row saying what was dropped |
-| Cross-agent interleaving | yes | _observed_ via `seq` | the recorded `seq` **is** the input |
-| RNG | — | none exists | none exists |
+| Entry | What it holds |
+| --- | --- |
+| `model_io` | The pooled request, the response, and the call's latency |
+| `model_error` | The pooled request and why the call failed |
+| `tool_result` | The call and the exact outcome the dispatch returned |
+| `prompt_frame` | One agent's context window as it stood for the turn just recorded |
+| `shell` | One shell command gg ran, with its origin, exit status and pooled streams |
+| `git` | One `git` subprocess gg's own orchestration ran, with its pooled streams |
+| `cancel_probe` | One read of the cancel file, and what it found |
+| `clock` | One read of the wall-clock deadline: elapsed and remaining milliseconds |
 
-That handoff-summarizer row was a straight bug: gg's second compaction client was
-never wrapped in the recording decorator, so **every handoff-compaction model call
-in every record captured before v2 is missing**. Fixing it needed a discriminator
-on the entry — otherwise a compaction turn and the agent's own turn interleave into
-one indistinguishable queue. The client role is that discriminator.
+A recorded request carries two discriminators. Its `role` is either the agent's
+own turn loop or the [compaction](/gg/compaction/) summarizer, which rewrites
+the whole window rather than advancing the conversation; without the
+discriminator the two interleave into one queue and a compaction's turn is
+attributed to the agent. Its `shape` says whether the offered tool was required,
+since a forced call read as a free choice is the opposite of what happened.
 
-Two categories are recorded as the **decision** rather than the mechanism: thread
-interleaving (recorded as `seq`) and provider non-determinism (recorded as the
-response).
+A recorded shell command carries its own origin: the `shell` tool, a
+[responses-as-code](/gg/responses-as-code/overview/) program's `gg.shell.shell`,
+or a [hook](/gg/hooks/). The origin is what keeps the commands gg runs without
+the model asking distinguishable from the ones the model asked for. Every
+command records where it ran, relative to the workspace wherever possible,
+because an absolute path is a property of the container rather than of the run.
+
+Model errors are recorded by class, because the class is what the loop branches
+on: a missing credential, a fatal provider status, retry exhaustion, an
+unsupported image modality, an unparseable response, and a response that
+[loop detection](/gg/loop-detection/) abandoned on every attempt. Two of them change
+control flow directly. A vision refusal strips images and re-runs the turn, and
+a retry exhaustion counts against the run's error ceiling.
+
+Prompt templates, memories, autoloaded specification files and skills are not
+recorded as filesystem reads. Templates are embedded in the gg binary, so the
+recorder's commit is what says which ones a run used. Every memory mutation and
+every skill body a session read is a recorded tool outcome, every rendered index
+is a pooled message, and an autoloaded specification reaches the model as a
+message.
 
 ## The prompt frame
 
-The single most valuable thing v2 adds is not a size win. Four typed context
-fields exist in gg's window model and are recoverable from **nowhere** — not the
-telemetry stream, not the raw output, not the v1 record:
+Four typed fields of gg's window model are recoverable from the record alone:
 
-- an item's **retention** — whether it survives compaction verbatim;
-- a paged file view's **region** — the `offset`/`limit` window it covers;
-- the **turn** it was pushed on;
-- its **slot** — which of the window model's three slots it came from.
+- `retention`, which says whether the item survives compaction verbatim;
+- `region`, the `offset`/`limit` window a paged file view covers;
+- `turn`, the turn the item was pushed on;
+- `slot`, which of the window model's three slots it came from.
 
-The last one matters more than it looks. A system prompt and a rebuilt
-context-usage signal are otherwise indistinguishable on the wire: both `System`
-band, both unlabelled, both pinned.
+The slot matters most. A system prompt and a rebuilt context-usage signal are
+otherwise indistinguishable: both are `System`-sourced, both unlabelled, both
+pinned.
 
-v2 records all four as a `PromptFrame` entry at the one place in gg that holds the
-`PromptItem` stream — the same call site that emits the telemetry
-[`Prompt`](/gg/telemetry/) event. The frame lands after the model call it
-describes and before that agent's next one, which is the same attachment rule tool
-results already use, and it handles vision recovery correctly for free: a refused
-image turn produces `error → call → frame`, so the frame attaches to the call that
+A frame is recorded at the one place the loop holds a turn's prompt-item stream,
+which is the same call site that emits the telemetry `Prompt` event. The
+recorder reaches that site directly rather than through the telemetry emitter,
+which stays unaware of capture. The frame lands after the model call it
+describes and before that agent's next one, the same attachment rule tool
+results follow. A refused image turn therefore produces
+`model_error → model_io → prompt_frame`, and the frame attaches to the call that
 was actually sent.
 
-The recorder does **not** thread through the telemetry emitter to get this. The
-emitter is telemetry and stays unaware of capture.
+## Agent provenance
 
-## Capture is a journal, and assembly is somebody else's job
+The record carries one row per agent, in creation order, not one per turn. A row
+names the agent's id, the profile it ran under, its origin, the status its turn
+loop ended in, and which ceiling stopped it.
 
-v1 held every entry as an owned JSON value in a mutex for the whole run, then
-serialized the lot in one shot at the end. v2 splits capture from assembly:
+The origin is what identifies an agent across runs, because live subagent ids
+come off a global counter in the order agents reach their spawn. Every origin is
+keyed by a function of the run's own structure: the root agent; a spawn, by its
+parent and its position in that parent's turn loop; a succession, by its
+predecessor and position; an issue attempt, by the issue and which dispatch of
+it this is; a reviewer, by the issue, the round and the position within the
+round; a merge, by the issue and which merge of it this is. An issue attempt
+counts every dispatch rather than every retry, because a review that requests
+changes re-dispatches the issue without charging the retry budget.
 
-- **In the container, gg appends NDJSON lines to `.gg/replay.ndjson`** through a
-  dedicated writer thread and never holds bodies in memory. A dedicated OS thread
-  rather than a mutex-guarded writer, because gg runs every agent on one
-  `current_thread` runtime — a synchronous file write on that runtime stalls every
-  agent and skews the very turn timings the run is measured on.
-- **On the host, after collection, `core` folds the journal into the served
-  `replay.json.gz`**, streaming through gzip via segment files so peak memory is
-  one journal line rather than one record. This is what satisfies the
-  [budget constraint](/gg/analysis/overview/#design-principles): gg assembles
-  nothing.
+A row is written when the agent comes into existence and again when its loop
+ends, and assembly upserts by agent id, so the terminal row supersedes the
+opening one. Writing the opening row is what keeps the agents worth explaining:
+one parked behind the parallelism cap when the run was killed, one whose first
+model call never returned, one spawned into a session that ended before it
+spoke.
 
-### Capture stops atomically — it never drops a line
+## The capture journal
 
-A dropped pool line leaves a hole that positional assembly silently shifts,
-substituting the wrong message body into a recorded prompt. That is
-unacceptable, so nothing is ever dropped individually. Index minting and line
-sending happen under **one** critical section, and any failure — a size ceiling, a
-stalled disk, a dead writer — stops capture for the **whole run**. The pool arrays
-are therefore always a contiguous prefix and no entry can reference a body that was
-never written. Serialization happens outside the lock, so the lock is held for
-nanoseconds.
+Capture and assembly are split. In the container, gg appends one JSON object per
+line to `.gg/replay.ndjson` and never holds a message body in memory. On the
+host, after the tree is collected, `core` folds those lines into the served
+record. That split is what keeps gg's own diagnostics off the run's runtime
+budget: gg assembles nothing.
 
-### A record can never lie about being complete
+Lines are written on a dedicated OS thread rather than inline. gg runs every
+agent on one `current_thread` runtime, where a synchronous file write stalls
+every agent and skews the turn timings the run is measured on. The queue to that
+thread is bounded, because an unbounded queue turns a stalled disk into
+unbounded memory growth inside the run container.
 
-Capture writes a **mandatory `End` line** on the normal exit path. Its absence is
-the only reliable signal that a session died mid-capture — a killed gg cannot write
-a self-reported truncation marker either, so assembly reads the _absence_ rather
-than waiting for a report. No `End` ⇒ the record is marked killed. A torn final
-line, a pool index that skips, or an entry referencing a body past the pool's end
-all mark the record corrupt **at the last complete `seq`**, keeping everything
-before it.
+The journal's vocabulary is a header, a seed, an agent row, one line per newly
+interned pool entry, one line per input entry, and a terminating marker. The
+header is the first line and carries the format version, the session id, the
+capability set and the recording build. The seed line may be written again, and
+assembly keeps the last one, which is how a streaming journal carries a value
+that is only resolved at the end.
 
-## The journal must be invisible to the run it observes
+Every pool line names the index it occupies even though position implies it.
+That redundancy is the gap detector: a pool that skips would shift every later
+reference by one and substitute the wrong message body into a recorded prompt.
 
-Streaming capture means the journal now grows *inside the model's working tree
-during the run*, which is a new interaction with gg's own git plumbing that v1
-never had. Left alone, the consequences are all real:
+### Stopping capture
 
-- an [issue's](/gg/project-management/) reviewers are handed a per-file diff stat
-  built by staging the whole tree — the journal would be **in the diff they read**,
-  growing it every round;
-- a worktree commit would commit it;
-- and the model has a shell and its own `git add -A`, so a mid-run model commit
-  would push the journal to the **public per-run repository**. A publish-time
-  exclusion cannot undo a commit the model already made.
+Minting a pool index and queueing its line happen under one critical section,
+and an entry's newly interned bodies are queued together with the entry that
+references them as one indivisible batch. Any failure stops capture for the
+whole run, permanently, whether it is the byte ceiling, a queue the writer
+cannot keep up with, or a dead writer. The written pools are therefore always a
+contiguous prefix and no entry can reference a body that was never written.
 
-The fix is to exclude `.gg/` at **seed** time through `.git/info/exclude` — the
-mechanism seeding already uses for a game jam's prior-entries folder, and for
-exactly the stated reason: an uncommitted ignore keeps a path out of both the seed
-commit and the model's own `git add -A`, and travels with the repository into the
-container and into every worktree.
+Every stop is a recorded fact and the run is untouched. Capture degrades; it
+never fails the run it observes.
 
-This also fixes a **pre-existing** exposure: today a captured run's
-`.gg/replay.json` _is_ caught by the publisher's blanket `git add --all`. Already
-published repositories are not retroactively cleaned; any containing a
-`.gg/replay.json` need a separate audit.
+### The terminating line
 
-## Salvaging the runs the record exists for
+Capture writes a terminating line on the normal exit path, carrying how many
+entries the journal holds and, when capture stopped early, why. Its absence is
+the only reliable signal that a session died mid-capture, because a killed gg
+cannot write a self-reported truncation marker either.
 
-Streaming capture does not, on its own, rescue the runs that most need rescuing. A
-`hung` or `timed_out` run **never reaches artifact collection** — the engine's
-error path stops the container and returns before the collector runs — so there is
-no collected tree and therefore no journal to assemble. Those are precisely the
-surprising outcomes the record was built for.
+## Ceilings and clipping
 
-So the artifact collector grows one narrowly-scoped method: copy a single sidecar
-file out of a possibly-dying container, best-effort, returning "not found" rather
-than failing the run's error path. The engine salvages the journal **before**
-teardown and assembles it into the same directory the failed record is later
-written to, so the two land together and the existing publish path picks it up
-unchanged.
+Three ceilings bound what a capture costs.
 
-## Identity, and what a reader may branch on
+| Ceiling | Value | Applies to |
+| --- | --- | --- |
+| Journal bytes (`replayMaxBytes`) | 256 MiB | The whole journal; capture stops |
+| Subprocess stream | 32 KiB | One recorded stdout or stderr |
+| Tool payload | 256 KiB | One recorded tool output or lifted data text |
 
-The record carries three identities because they answer three different questions,
-and conflating them is how a version check becomes the bug:
+The journal ceiling is configurable among the run's
+[execution limits](/gg/execution-limits/). It is the one ceiling that stops the
+observation rather than the run.
+
+The two payload ceilings are separate numbers with separate reasons, and the
+tool one is the larger. A recorded stream is what a process printed, of which
+the `shell` tool shows the model the last 16 KiB. A recorded tool payload is
+what the model was shown, and the largest such payload is a whole-file
+`read_file`, capped at 256 KiB by the filesystem tool itself. Sizing the tool
+ceiling at that cap preserves the invariant a reader depends on: a payload the
+model was shown in full is recorded in full, so a clip in the tool pool means
+the tool layer had already clipped it too.
+
+A clipped payload keeps its tail, matching the rule gg's own shell output cap
+uses. The clip table records, for each clipped pool entry, how many bytes the
+whole payload had and the whole payload's content address. That address is what
+keeps a clipped record checkable: a reader holding the whole output can hash it
+and answer whether it is the same output. It is also what makes dedup
+unambiguous, because interning keys on the address of the original, so two
+payloads that share a tail occupy two entries with two rows.
+
+An image is recorded as its media type and decoded size and never as its bytes,
+which is what the telemetry stream records of the same turn.
+
+## Assembly on the host
+
+Assembly is a [post-run stage](/gg/analysis/overview/#where-analysis-runs) named
+`gg-session-record`. It applies to gg runs that wrote a journal; a missing
+journal is an ordinary absence. It writes `replay.json.gz` at the root of the
+run directory, never inside `implementation/`, which is a verbatim copy of what
+the model produced.
+
+The document is never built in memory. Each of its five arrays is streamed into
+a segment file as the journal is walked, and the segments are copied through a
+gzip encoder into the artifact, so peak memory is one journal line. Segment
+files live in a scratch directory beside the output, which is the one volume
+known to have room for them.
+
+Damage is reported when it is bounded and refused when it is not. A journal that
+stops early yields a shorter record that says so; a journal whose indices do not
+line up would yield a record that looks complete and describes a conversation
+that never happened.
+
+| Condition | Outcome |
+| --- | --- |
+| No terminating line | `session_killed`; everything read is kept |
+| A torn or unparseable line | `corrupt_journal` at the last complete `seq` |
+| A terminating line whose count disagrees with the walk | `corrupt_journal` |
+| The journal writer failed | `write_failed`, as the recorder reported it |
+| The byte ceiling was crossed | `byte_ceiling`, as the recorder reported it |
+| A pool line whose index is not the next one | Refused; no record is written |
+| An entry referencing past a pool's end | Refused; no record is written |
+| A journal in a format this build does not write | Refused; no record is written |
+
+The journal's structure outranks its self-report: a recorder that stopped
+deliberately still wrote a correct journal, so its reported reason stands unless
+the walk found damage or the entry count disagrees.
+
+A refusal is an ordinary stage failure. The run is untouched, and the honest
+signal is a run with no record rather than a run with a subtly wrong one. On
+success the stage removes the journal from the collected tree, since that tree
+is copied into the run's `implementation/` directory and into the archive. A
+refused journal is left where it is, because it is then the only account of the
+session left to diagnose the refusal from.
+
+## Salvage from a torn-down container
+
+A `hung` or `timed_out` run never reaches artifact collection: the engine's
+error path stops the container and returns. Those are the outcomes the record
+most exists for, so the engine salvages the journal before teardown. The
+artifact collector copies that single file out of a possibly-dying container
+into a scratch directory shaped like a collected tree, and the same assembly
+stage folds it into the same run directory a completed run's record is written
+into. The publish path picks it up unchanged, and the record reports itself
+killed, which is what happened.
+
+Only the journal is salvaged. Salvaging the implementation tree would change
+what a hung run means to validation, publishing and the review worklist, because
+a half-written build would become something reviewers could open, score and
+publish. The journal renders no verdict and reaches no score. Code analysis is
+deliberately not run on the salvage path, since a figure computed over an empty
+scratch directory would be a convincing-looking zero rather than an absence.
+
+Every failure on this path is swallowed and the absent artifact is the signal.
+The run being reported is already failing, and reporting that failure accurately
+outranks the diagnostic.
+
+## Excluding the journal from git
+
+The journal grows inside the model's working tree while the session runs, so it
+is excluded from git at seed time by appending an anchored `/.gg/` pattern to
+the workspace's `.git/info/exclude`. An uncommitted exclusion keeps the path out
+of the seed commit, out of the per-file diff a
+[board issue's](/gg/project-management/) reviewers are handed, out of a worktree
+commit, and out of the model's own `git add -A`. That last one is what keeps a
+transcript of every model call out of the public per-run repository. The
+exclusion has to be in place at seed time, because no publish-time filter can
+undo a commit the model already made.
+
+## Identity and compatibility
+
+A record carries three identities, and they answer three different questions.
 
 | Field | Question | May a reader branch on it? |
 | --- | --- | --- |
-| `formatVersion` | Can this build parse this record at all? | **Yes** — this is the compatibility contract |
-| `ggVersion` | Which build wrote it? | No — explanatory only |
-| `commit` | Which _exact_ build wrote it? | Only to verify a resolved binary is the one that recorded |
+| `formatVersion` | Can this build parse this record? | Yes; the compatibility contract |
+| `recorder.ggVersion` | Which build wrote it? | No; explanatory only |
+| `recorder.commit` | Which exact build wrote it? | Only to verify a resolved binary |
 
-Using `ggVersion` as the gate is wrong in **both** directions: a version bump with
-no prompt change must not invalidate every record on every release, and an
-uncommitted prompt edit _within_ one build must not pass.
+Gating on the gg version is wrong in both directions: a version bump with no
+prompt change must not invalidate every record on every release, and an
+uncommitted prompt edit within one build must not pass.
 
-`formatVersion` is `#[serde(default)]`, and its absence means format 1 — the
-pre-versioned shape, from before pooling. Format 2 is the one format the current
-build reads, and **everything else is refused**, in both directions: a record from a
-newer gg may carry entry kinds this build has never heard of, and a v1 record is a
-different, unpooled shape whose upgrade-on-read went with the reconstruction it was
-written for. Reporting a v1 body as a format-2 record would hand a reader entries it
-cannot mean, so it fails to parse instead.
-
-That refusal costs nothing operationally: the backend stores and serves records as
-opaque bytes, so a v1 record still downloads with a run's archive — it simply is not
-parsed by this build.
-
-Foray writes a replay version and never checks it. Do not copy that omission.
-
-## Always-on
-
-With pooling, a projected 200-turn run drops from **~187 MB to ~3.6 MB compact,
-~0.5 MB gzipped**. Against a run tree that already carries tens of megabytes of
-produced source, capture is no longer a cost worth gating.
-
-So **capture is always on**. Three reasons, in order of weight:
-
-1. **An opt-in debugging capture is never on when you need it.** The record exists
-   for surprising outcomes, which are by definition not predicted.
-2. **It is the only artifact from which the four typed context fields exist at
-   all.** Making that opt-in makes gg's own context construction unauditable by
-   default.
-3. It costs under a megabyte.
-
-A per-run byte ceiling bounds the worst case. Crossing it stops capture and marks
-the record truncated — **capture degrades, it never fails the run it observes.**
-
-### What a capture withholds, and how it says so
-
-Two payload classes are bounded, because a capture that runs on every run has to be
-affordable on every run.
-
-**A picture is a descriptor.** An image a turn carried is recorded as its media type
-and decoded size and never as its bytes — the same thing the
-[telemetry](/gg/telemetry/) stream records of the same turn, so the two cannot
-disagree about what a message was. The message's *content address* is still computed
-over the payload, which is what keeps two different pictures of one media type and
-size two different messages.
-
-**A clipped payload says so.** The text pool is a flat array of strings with
-nowhere to record that an entry is a fragment, and a reader handed 32 KiB of a
-command's output cannot otherwise tell a command that printed exactly that much
-from one that printed forty megabytes — which is precisely the case where the
-missing part is the part worth having. So the record carries a sparse **clip
-table**: for each clipped pool entry, how many bytes the whole payload had and
-**its content address**. That address is what keeps a clipped record *checkable*:
-anyone holding the whole output can hash it and answer "is this the same output?"
-exactly, from a record that kept a fraction of it. It is also what makes the pool's
-dedup unambiguous — interning keys on the address of the original, so two payloads
-that happen to share a tail are two entries with two rows rather than one entry whose
-single row could describe only one of them.
-
-### The startup filesystem is not captured
-
-The original design named the startup filesystem as a category of its own.
-Implementing it established that it decomposes into four parts, none of which is
-anything a record has to hold:
-
-- **Prompt templates** are embedded in the gg binary at compile time. They are
-  never read from a filesystem, so there is nothing to digest; which templates a
-  run used is exactly what the recorder's `commit` answers.
-- **Memories** are created during the session, not loaded at startup. Every
-  mutation is already a recorded tool outcome and every rendered index is already
-  a pooled message.
-- **Autoloaded specification files** reach the model as messages, and every message
-  the model was sent is pooled. What the record does not hold is their bytes, for the
-  same reason it holds no other picture's.
-- **Skills** are a real directory read, but every skill body that influences the
-  run reaches the record verbatim regardless: the description listing is part of
-  the pooled system message, and reading one is a recorded tool outcome. What a
-  verbatim capture would add is the body of a skill the session *never read* —
-  inventory rather than input, and not something the session ever consumed.
+Format 2 is the one format this build reads, and every other value is refused. A
+record from a newer gg may carry entry kinds this build has never heard of. An
+absent `formatVersion` means format 1, a different unpooled shape. Reporting
+either as a format-2 record would hand a reader entries it cannot mean, so
+parsing fails instead. The refusal costs nothing operationally, because the
+backend stores and serves records as opaque bytes, so any stored record still
+downloads with a run's archive.
 
 ## Serving and consuming
 
 The record is stored gzipped at the run tree's root, mirrored into the backend
-store, and served content-negotiated on the request's `Accept-Encoding`. That
-negotiation is required rather than cosmetic: the workspace HTTP client is built
-without gzip support, so it neither advertises the encoding nor decodes it, while
-browsers always advertise it. Keying on the stored bytes instead of the request
-header is simply the wrong axis.
+store by the driver, and served at `GET /runs/{id}/replay`, content-negotiated
+on the request's `Accept-Encoding`. A browser is handed the stored bytes
+verbatim; a gzip-unaware client is handed them decoded. The negotiation keys on
+the request header rather than on the stored bytes, because the workspace HTTP
+client is built without gzip support while browsers always advertise it. Code
+analysis is served through the same helper, under the same store slot shape and
+route pair.
 
-This is the artifact convention the rest of gg analysis follows —
-[code analysis](/gg/analysis/code-analysis/) uses the same store slot shape, route
-pair, driver mirror, and negotiation helper.
-
-The record has no console view. Every gg surface the console renders — live and
-post-run alike — is folded from the [telemetry](/gg/telemetry/) stream, which is
-what keeps a finished run's page identical to the page its live monitor showed. The
-record is the diagnostic underneath, reachable in a run's downloadable archive.
+The record has no console view. Every gg surface the console renders, live and
+post-run alike, is folded from the [telemetry](/gg/telemetry/overview/) stream,
+which keeps a finished run's page identical to the one its live monitor showed.
+The record is the diagnostic underneath, reachable through that route and in a
+run's downloadable archive.

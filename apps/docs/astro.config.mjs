@@ -312,6 +312,11 @@ export default defineConfig({
               items: ["components/artifacts/overview"],
             },
             {
+              label: "Arena",
+              collapsed: true,
+              items: ["components/arena/overview"],
+            },
+            {
               label: "Tauri",
               collapsed: true,
               items: ["components/tauri/overview"],
@@ -387,7 +392,19 @@ export default defineConfig({
           collapsed: true,
           items: [
             "deployment/overview",
-            "deployment/kubernetes",
+            // The cluster itself, split by plane: what always runs, what a run
+            // is scheduled onto, the database, and how they reach each other.
+            {
+              label: "Kubernetes",
+              collapsed: true,
+              items: [
+                "deployment/kubernetes/overview",
+                "deployment/kubernetes/control-plane",
+                "deployment/kubernetes/run-plane",
+                "deployment/kubernetes/postgres",
+                "deployment/kubernetes/internal-ingress",
+              ],
+            },
             "deployment/backups",
             "deployment/telemetry",
           ],
@@ -506,39 +523,33 @@ export default defineConfig({
             "orchestrators/one-shot",
           ],
         },
-        // gg — The Test Cabinet's own first-party harness (v0.7.0 headline). Its
-        // own top-level section, not under Harnesses: because we own both sides it
-        // is a distinct run mode with its own configuration and result space, not
-        // a third-party catalogue entry.
+        // gg is The Test Cabinet's own first-party harness. It has its own
+        // top-level section rather than an entry under Harnesses: we own both
+        // sides of it, so it is a distinct run mode with its own configuration
+        // and result space.
         {
           label: "gg",
           collapsed: true,
           items: [
             "gg/overview",
-            // How a capability set is named, saved, and launched in the console —
-            // the operator-facing counterpart to the overview's design material.
+            // How a capability set is named, saved and launched in the console.
             "gg/configurations",
             // The ceilings a run is bounded by. Beside Configurations rather than
-            // under Capabilities: a ceiling is an operator's guardrail that applies
-            // to every capability and to both execution modes, not a feature under
-            // ablation.
+            // under Capabilities: a ceiling applies to every capability and to
+            // both execution modes, and is not itself under ablation.
             "gg/execution-limits",
-            // The other guardrail that is not a capability, and beside the ceilings
-            // for the same reason: it bounds one *reply* rather than a run, is armed
-            // per agent, and — unlike everything under Capabilities — changes gg's
-            // transport rather than what a model is offered.
+            // The other guardrail that is not a capability: it bounds one reply
+            // rather than a run, and is armed per agent.
             "gg/loop-detection",
-            // How gg's model-facing prose is authored (Handlebars templates) and
-            // how the system prompt is assembled from the capability set. Not a
-            // capability: it cuts across all of them.
+            // How gg's model-facing prose is authored and how the system prompt
+            // is assembled. Not a capability: it cuts across all of them.
             "gg/prompts",
-            // The other half of the model-facing surface, and beside Prompts for the
-            // same reason: it cuts across every capability. Unlike everything below
-            // it, none of it is authored — the page is projected from gg's own tool
-            // definitions and signature catalogue.
+            // The other half of the model-facing surface, and beside Prompts for
+            // the same reason. This page is projected from gg's own tool
+            // definitions and signature catalogues rather than authored.
             "gg/reference",
-            // One page per capability. Grouped by concern for reading order; the
-            // grouping is editorial, matching the index on the overview page.
+            // One page per capability, grouped by concern for reading order. The
+            // grouping matches the index on the overview page.
             {
               label: "Capabilities",
               collapsed: true,
@@ -549,69 +560,98 @@ export default defineConfig({
                 "gg/compaction",
                 "gg/context-visibility",
                 "gg/agent-managed-context",
-                // What an agent *holds*, as opposed to what it can do: the six
-                // per-agent modules, whether its prompt carries each one, and what
-                // happens to them when it is copied or succeeded.
+                // What an agent holds, as opposed to what it can do.
                 "gg/modules",
                 "gg/skills",
                 "gg/memories",
                 "gg/tasks",
                 "gg/project-management",
                 "gg/subagents",
-                // A property of delegation rather than of context, despite what it
-                // carries: what it changes is how many instances of one profile run
-                // at a time, and the file views ride along on that.
+                // A property of delegation rather than of context: it sets how
+                // many instances of one profile run at a time.
                 "gg/agent-persistence",
                 "gg/fsms",
-                // The two model-chosen successions — becoming another agent, and
-                // running a copy of yourself — which are the same module handoff an
-                // FSM transition performs, with the model choosing when.
+                // The two model-chosen successions, which perform the same
+                // module handoff an FSM transition does.
                 "gg/fork-and-exec",
-                // The lifecycle seam an operator scripts a run through: commands and
-                // scripts bound to gg's own events, able to block an operation and to
-                // put their output in front of the model.
                 "gg/ending-a-session",
+                // The lifecycle seam an operator scripts a run through.
                 "gg/hooks",
                 "gg/toolset-ablation",
-                "gg/responses-as-code",
-                // The axis that capability is parameterised on: which language a
-                // program is written in, what a language has to supply to be
-                // registered, and what adding a second one costs. Directly after
-                // responses as code because it is the design of that capability's
-                // one pluggable seam, not a capability of its own.
-                "gg/program-languages",
-                // The capability model that seam settled on: every arm's SDK carries
-                // every function, and a call the agent was not granted is refused at
-                // the host rather than missing from the language. Directly after
-                // program languages because it is the one rule all eleven now share.
-                "gg/static-sdks",
-                // Also a property of responses as code — the counted, disclosed
-                // repairs gg makes to a reply before running it as a program — so it
-                // sits inside this group, unlike the run-level limits.
+                // Answering a turn by writing a program over the tool surface.
+                // Its own group: the capability spans the program contract, the
+                // tool surface, views, gg's replies and the sandbox.
+                {
+                  label: "Responses as code",
+                  collapsed: true,
+                  items: [
+                    "gg/responses-as-code/overview",
+                    "gg/responses-as-code/programs",
+                    "gg/responses-as-code/tools",
+                    "gg/responses-as-code/views",
+                    "gg/responses-as-code/messages",
+                    "gg/responses-as-code/sandbox",
+                  ],
+                },
+                // A property of responses as code: the counted, disclosed
+                // repairs gg makes to a reply before running it as a program.
                 "gg/response-healing",
-                // Likewise a property of responses as code: what gg keeps of the
-                // programs it has already run, so a model can fix one instead of
-                // writing it again.
+                // Likewise: what gg keeps of the programs it has already run.
                 "gg/program-library",
-                "gg/telemetry",
+                // What a gg run emits while it runs. Its own group: the capture
+                // spans turn outcomes, turn timing, context spend, code
+                // execution, the agent surface and the console that reads them.
+                {
+                  label: "Telemetry",
+                  collapsed: true,
+                  items: [
+                    "gg/telemetry/overview",
+                    "gg/telemetry/turn-outcomes",
+                    "gg/telemetry/turn-timing",
+                    "gg/telemetry/context-spend",
+                    "gg/telemetry/code-execution",
+                    "gg/telemetry/agent-surface",
+                    "gg/telemetry/console",
+                  ],
+                },
                 "gg/result-aggregation",
                 "gg/session-record",
               ],
             },
-            // The analysis layer — what makes a gg run answerable after the fact.
-            // A sibling of Capabilities rather than a member of it: none of these
-            // is an ablatable run configuration. They are the capture format, the
-            // query language over every recorded session, and the static
-            // measurement of the source a run produced. Grouped together because
-            // they share one contract surface, one run-tree artifact convention,
-            // and one post-run stage.
+            // The axis responses as code is parameterised on. A sibling of
+            // Capabilities rather than a member of it: a language is not itself
+            // ablatable. The design pages come first, then one page per arm.
+            {
+              label: "Languages",
+              collapsed: true,
+              items: [
+                "gg/languages/overview",
+                "gg/languages/agent-surface",
+                "gg/languages/static-sdks",
+                "gg/languages/compilation",
+                "gg/languages/registration",
+                "gg/languages/typescript",
+                "gg/languages/javascript",
+                "gg/languages/python",
+                "gg/languages/ruby",
+                "gg/languages/purescript",
+                "gg/languages/java",
+                "gg/languages/kotlin",
+                "gg/languages/rust",
+                "gg/languages/swift",
+                "gg/languages/cpp",
+                "gg/languages/csharp",
+              ],
+            },
+            // What makes a gg run answerable after the fact. A sibling of
+            // Capabilities for the same reason: none of these is an ablatable
+            // run configuration. They share one contract surface, one run-tree
+            // artifact convention and one post-run stage.
             {
               label: "Analysis",
               collapsed: true,
               items: [
                 "gg/analysis/overview",
-                // Format v2 of the session record — the capture a hung run is
-                // explained from.
                 "gg/analysis/session-records",
                 "gg/analysis/query-language",
                 "gg/analysis/code-analysis",
@@ -709,7 +749,24 @@ export default defineConfig({
                 "testing/asset-generation/particle-binaries",
                 "testing/asset-generation/audio-binaries",
                 "testing/asset-generation/rigging-walkers",
-                "testing/asset-generation/manifests",
+                // The manifest format, one page per asset-kind family. The
+                // overview carries what every kind declares; each sibling
+                // carries only what its family adds.
+                {
+                  label: "Manifests",
+                  collapsed: true,
+                  items: [
+                    "testing/asset-generation/manifests/overview",
+                    "testing/asset-generation/manifests/sprite-cases",
+                    "testing/asset-generation/manifests/voxel-cases",
+                    "testing/asset-generation/manifests/skinned-cases",
+                    "testing/asset-generation/manifests/blender-cases",
+                    "testing/asset-generation/manifests/ui-cases",
+                    "testing/asset-generation/manifests/material-cases",
+                    "testing/asset-generation/manifests/particle-cases",
+                    "testing/asset-generation/manifests/audio-cases",
+                  ],
+                },
                 "testing/asset-generation/evaluation",
               ],
             },

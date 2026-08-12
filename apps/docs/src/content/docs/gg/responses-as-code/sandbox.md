@@ -1,0 +1,203 @@
+---
+title: "The sandbox"
+---
+
+A program runs in a wasmtime component, in a store built for that one program.
+Both ceilings a program runs under belong to the store, which is what lets the
+whole process share one compiled component per language while every program
+keeps its own budget.
+
+## Execution limits
+
+| Limit | Default | What it bounds |
+| --- | --- | --- |
+| `timeoutSecs` | 30 s | Guest-execution time for one program: the guest's own setup, the program itself, and every value marshalled across the membrane. |
+| `maxMemoryBytes` | 256 MiB | Guest linear memory. A `memory.grow` past the cap is denied. |
+
+Both are armed per program and re-armed every turn, so a session of fifty turns
+gives every program its own full budget and nothing accumulates. Neither is
+clamped: a study may starve the sandbox on purpose, and the error names the
+configured limit. The ceilings that bound a whole run, rather than one program,
+are the [execution limits](/gg/execution-limits/).
+
+The timeout is an infinite-loop guard rather than a work ration. It is set far
+longer than an honest program's execution needs, so a program that reaches it is
+almost always one that does not terminate. The heaviest honest program measured
+spends about 1.8 s of guest execution, reading, rewriting and writing back
+twenty 64 KiB files. The memory cap is about 25 times the 10.3 MiB the
+ECMAScript guest engine occupies at rest.
+
+### Timeout enforcement
+
+The timeout is wasmtime epoch interruption. A daemon ticker advances the
+engine's epoch every 100 ms, each store arms a deadline against it, and the
+deadline callback re-arms for however much guest budget is left after
+subtracting time spent in host calls. A program is stopped within one tick of
+its deadline.
+
+Time parked in a bridged tool call is therefore excluded from the budget. A
+program waiting minutes on a `shell` build is never mistaken for a runaway.
+
+An epoch deadline is delivered only where the guest is executing wasm, at a loop
+back-edge or a function entry. A guest parked inside a synchronous WASI call is
+executing none, so a program that sleeps in one long park runs that park out and
+the deadline lands at the first hop that returns to wasm. This ceiling bounds
+the guest's execution, and the bound on a parked turn is the run-level idle
+watchdog. Nothing stalls, because a program runs on a blocking thread, and the
+membrane refuses every bridged call once the run's budget is spent.
+
+### Fixed bounds
+
+- A `shell` timeout is clamped at both ends: down to what is left of the run's
+  wall-clock budget, because a host function cannot trap and an unclamped
+  `shell("sleep 3600")` would carry the run past its deadline with nothing left
+  to stop it; and down to a day, because the tool builds a `Duration` from
+  whatever number arrives and a `Duration` cannot hold every `f64`.
+- The ECMAScript arms' preparation step refuses a program whose brackets nest
+  more than 200 deep, checked before the parse. The parser is recursive descent
+  and a stack overflow would take the gg process down. A program's length is
+  unbounded: a reply is processed in full however long it is, and the parse runs
+  on a stack sized for that program.
+
+### The run's wall-clock budget
+
+The membrane checks the run's wall-clock deadline before every bridged call.
+Once the budget is spent, every further call is refused with a `limit-exceeded`
+failure, so the program stops cleanly and everything it already did stands.
+
+Calls that dispatch no gg tool never reach that check: the view family, the docs
+family, the session family and the program-library family are serviced whatever
+the budget says, because a turn that cannot say what it found is worse than one
+that says it late, and an ending must stay reachable. `gg.views.openFile` is
+refused, because it dispatches `read_file`.
+
+## The guest context
+
+gg's linker defines the whole WASI p2 surface for every guest, unconditionally.
+A program gets the process's environment, a real clock and randomness, the
+network with IP name lookup, and the container's filesystem preopened at `/`
+with full directory and file permissions. A model reaching for its language's
+ordinary date, random or file APIs is a model using the language it was told to
+write in.
+
+Stdout is withheld, because gg's telemetry stream is on fd 1. Stderr is captured
+rather than inherited: the host keeps the last 8 KiB of it and never fails a
+write, so a guest runtime's dying message reaches the model's feedback instead
+of the operator's log.
+
+The environment is inherited because a language runtime needs `HOME`, `PATH`,
+`TMPDIR` and the locale to work at all. The accepted consequence is that
+whatever this process's environment holds, including the run's model
+credentials, is readable from inside a program. That is the same reach a program
+has through the preopened filesystem, and the same reach an agent has through
+`shell`.
+
+The preopen is the one part of the context that may fail, and it fails only if
+the host cannot open `/` at all. The failure is ignored: a guest that never
+touches the filesystem is unaffected, and one that does gets an ordinary WASI
+error from its own runtime.
+
+### Globals the ECMAScript guest shadows
+
+Seven globals this engine defines cannot be honoured, and each is replaced with
+a thrower so it raises an ordinary, located, catchable program error naming what
+is missing and why.
+
+| Global | Reason given |
+| --- | --- |
+| `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, `requestAnimationFrame` | there is no event loop, so a scheduled callback would never run |
+| `queueMicrotask` | deferred work is not part of your program's result |
+| `fetch` | this program's runtime is built without an HTTP client |
+
+Both underlying failures are silent without a thrower. gg's `run` export is
+synchronous, so an unshadowed `setTimeout(() => { hit = 1 }, 0)` leaves `hit` at
+`0` and reports no error at all. Baking the component without the HTTP
+capability removes the WASI import but leaves the builtin defined, so an
+unshadowed `fetch` reaches a missing import and traps the whole store, which is
+uncatchable and unreportable.
+
+Nothing here denies a capability the component has. The clock, `Math.random` and
+`crypto` are real and reachable. `fetch`'s reason is a fact about this artifact:
+the host links `wasi:sockets` for every guest, so a guest that imported it would
+have the network.
+
+Each replacement is defensive. Some globals in this engine are accessor
+properties with no setter, and a plain assignment to one throws out of the
+shim's own setup, which `componentize-js` turns into an opaque trap. A global
+that refuses redefinition keeps its engine behaviour instead.
+
+## Build and distribution
+
+No arm's artifacts are committed. Every arm needs files on disk that a turn
+cannot fetch: a guest component with a language runtime baked into it, a
+compiled library set a program is linked or type-checked against, a compiler
+small enough to travel inside gg's own binary. Every one of them is an output of
+the build that embeds it.
+
+Each arm's `build.sh` writes the files that arm needs into
+`$GG_ARTIFACTS_OUT_DIR`, driven by a crate under
+`crates/gg-sandbox-artifacts/<arm>/`. That crate's `links` key carries the
+output directory to `crates/gg`'s build script, which republishes it as an
+environment variable the arm's module reads with `include_bytes!`. Ten crates
+serve eleven arms: `typescript` (which serves the JavaScript arm too), `python`,
+`ruby`, `java`, `kotlin`, `rust`, `purescript`, `cpp`, `swift` and `csharp`.
+
+There is one crate per arm rather than more steps of one build script, because a
+build script has a single rerun set. Per-arm crates buy three things. Editing
+the Java SDK re-cuts the Java jar and nothing else. A cold artifact build costs
+about what the slowest arm costs, since the arms build in parallel. Ordering is
+a type, since `crates/gg` depends on the arm crates and cargo runs their build
+scripts first.
+
+The signature catalogues are reflected separately, by `crates/gg/build.rs`, into
+its own `OUT_DIR`. A build of gg therefore cannot embed a catalogue older than
+the SDK sources in the same checkout, and cannot embed an artifact of a
+different vintage from the catalogue describing it.
+
+A generated artifact is a requirement. A committed artifact is a claim about
+source that is checked when it is generated and never again, and what it costs
+when it goes stale is a model told about a function the guest does not export,
+or compiled against a library that has not caught up. Five arms are not
+byte-reproducible, so nothing can re-cut one of their artifacts and diff it
+against a committed copy.
+
+What that costs is that building gg requires every arm's toolchain.
+`scripts/ci/install-gg-toolchains.sh` installs the eleven arms' own toolchains,
+idempotently, and every surface that builds gg runs it. Building the C# guest
+additionally needs a whole .NET SDK and an unpruned wasi-sdk that no run
+touches, installed under a prefix of their own by
+`scripts/ci/install-gg-build-toolchains.sh`.
+
+Artifacts are embedded rather than read from disk because gg is copied as a
+single file into an ephemeral run container and has to carry everything it needs
+with it.
+
+### Compiling a component
+
+The wasmtime engine is process-wide, and each registered language's compiled
+component lives in a slot of its own, so a language's artifact is compiled at
+most once per process and a run that never drives an agent in a language never
+compiles it. Nothing about a component is cached to disk.
+
+A warm-up compile is fired once per distinct language the configuration will
+actually drive, concurrently with the first model request, and never from a
+subagent. An arm that compiles a component per program has no component to warm.
+Its warm-up is its preparation step's.
+
+## The session record
+
+A program's composed calls stream as ordinary `ToolCall`/`ToolResult` pairs and
+are captured for the [session record](/gg/session-record/) exactly as native
+tool calls are. Each carries a synthetic call id `program:{ordinal}:{tool}`. The
+ordinal keeps two calls to one tool distinct, and the `program:` prefix is what
+lets a reader attribute a recorded result to a program rather than to a
+tool-calling turn the model never took.
+
+A code turn's assistant message carries no `tool_calls`, so a skill body a
+program read is pinned as a standalone user message rather than as a `tool`
+message, which would quote a minted id an OpenAI-shaped provider rejects. A
+skill body is pinned exactly once however many times a program reads it.
+
+The program library is a separate record, held outside the context window: one
+entry per turn that ran a program, holding the source that executed. See the
+[program library](/gg/program-library/).
